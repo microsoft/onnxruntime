@@ -274,18 +274,18 @@ To build ONNX Runtime with the NN API EP, first install Android NDK (see [Androi
 
 #### Build Instructions
 
-The basic build commands are below. There are also some other parameters for building the Android version under See [Android Build instructions](#android) for more details.
+The basic build commands are below. There are also some other parameters for building the Android version. See [Android Build instructions](#android) for more details.
 
 ##### Cross compiling on Windows
 
 ```bash
-./build.bat --android --android_ndk_path <android ndk path> --dnnlibrary
+./build.bat --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --dnnlibrary
 ```
 
 ##### Cross compiling on Linux
 
 ```bash
-./build.sh --android --android_ndk_path <android ndk path> --dnnlibrary
+./build.sh --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --dnnlibrary
 ```
 
 ---
@@ -580,21 +580,22 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 
 #### Pre-Requisites
 
-Install Android NDK from https://developer.android.com/ndk/downloads
+Install Android NDK in Android Studio or https://developer.android.com/ndk/downloads
 
 #### Build Instructions
 
 ##### Cross compiling on Windows
 
 ```bash
-./build.bat --android --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
+./build.bat --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
 ```
 
 ##### Cross compiling on Linux
 
 ```bash
-./build.sh --android --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
+./build.sh --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
 ```
 
-If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar.
 
+If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).

@@ -241,7 +241,9 @@ if(onnxruntime_USE_NNAPI)
 endif()
 
 if(onnxruntime_USE_FEATURIZERS)
-   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers onnxruntime_featurizers_comp)
+   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers)
+   list(APPEND onnxruntime_test_providers_libs onnxruntime_featurizers re2)
+   list(APPEND TEST_INC_DIR ${RE2_INCLUDE_DIR})
 endif()
 
 if(onnxruntime_USE_DML)
@@ -574,6 +576,13 @@ add_test(NAME onnx_test_pytorch_converted
 add_test(NAME onnx_test_pytorch_operator
   COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-operator)
 
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    list(APPEND android_shared_libs log android)
+    if (onnxruntime_USE_NNAPI)
+        list(APPEND android_shared_libs neuralnetworks)
+    endif()
+endif()
+
 #perf test runner
 set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
 set(onnxruntime_perf_test_src_patterns
@@ -610,6 +619,9 @@ if (onnxruntime_BUILD_SHARED_LIB)
           onnx_test_data_proto onnx_proto ${PROTOBUF_LIB} ${GETOPT_LIB_WIDE} onnxruntime ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
   if(NOT WIN32)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)
+  endif()
+  if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    list(APPEND onnxruntime_perf_test_libs ${android_shared_libs})
   endif()
   target_link_libraries(onnxruntime_perf_test PRIVATE ${onnxruntime_perf_test_libs} Threads::Threads)
   if(WIN32)
@@ -649,6 +661,9 @@ if (onnxruntime_BUILD_SHARED_LIB)
 
   if(NOT WIN32)
     list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
+  endif()
+  if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    list(APPEND onnxruntime_shared_lib_test_LIBS ${android_shared_libs})
   endif()
   AddTest(DYN
           TARGET onnxruntime_shared_lib_test
