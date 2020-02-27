@@ -41,7 +41,6 @@ Status SoftMaxComputeHelper(
   MIOPEN_RETURN_IF_ERROR(miopenSoftmaxForward_V2(handle, &alpha, input_tensor, X_data, &beta, output_tensor, Y_data, MIOPEN_SOFTMAX_ACCURATE, MIOPEN_SOFTMAX_MODE_INSTANCE));
 
   return Status::OK();
-  //return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SoftmaxForward is not supported");
 }
 
 #define REGISTER_KERNEL_TYPED(T)                                                \

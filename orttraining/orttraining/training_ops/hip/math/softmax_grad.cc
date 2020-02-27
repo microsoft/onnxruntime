@@ -4,6 +4,7 @@
 #include "orttraining/training_ops/hip/math/softmax_grad.h"
 #include "core/providers/hip/math/softmax.h"
 #include "core/providers/common.h"
+#include "core/providers/hip/miopen_common.h"
 
 namespace onnxruntime {
 namespace hip {
@@ -42,25 +43,25 @@ Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  // const auto alpha = Consts<HipT>::One;
-  // const auto beta = Consts<HipT>::Zero;
-  // MiopenTensor input_tensor;
-  // MiopenTensor output_tensor;
-  // ORT_RETURN_IF_ERROR(input_tensor.Set(dims, MiopenTensor::GetDataType<HipT>()));
-  // ORT_RETURN_IF_ERROR(output_tensor.Set(dims, MiopenTensor::GetDataType<HipT>()));
-  // MIOPEN_RETURN_IF_ERROR(
-  //     miopenSoftmaxBackward(
-  //         MiopenHandle(),
-  //         MIOPEN_SOFTMAX_ACCURATE,
-  //         MIOPEN_SOFTMAX_MODE_INSTANCE,
-  //         &alpha,
-  //         input_tensor,
-  //         Y_data,
-  //         input_tensor,
-  //         dY_data,
-  //         &beta,
-  //         output_tensor,
-  //         dX_data));
+  const auto alpha = Consts<HipT>::One;
+  const auto beta = Consts<HipT>::Zero;
+  MiopenTensor input_tensor;
+  MiopenTensor output_tensor;
+  ORT_RETURN_IF_ERROR(input_tensor.Set(dims, MiopenTensor::GetDataType<HipT>()));
+  ORT_RETURN_IF_ERROR(output_tensor.Set(dims, MiopenTensor::GetDataType<HipT>()));
+  MIOPEN_RETURN_IF_ERROR(
+      miopenSoftmaxBackward_V2(
+          MiopenHandle(),
+          &alpha,
+          input_tensor,
+          Y_data,
+          input_tensor,
+          dY_data,
+          &beta,
+          output_tensor,
+          dX_data,
+          MIOPEN_SOFTMAX_ACCURATE,
+          MIOPEN_SOFTMAX_MODE_INSTANCE));
 
   return Status::OK();
 }
