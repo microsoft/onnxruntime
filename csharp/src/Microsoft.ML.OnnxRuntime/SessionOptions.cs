@@ -37,7 +37,7 @@ namespace Microsoft.ML.OnnxRuntime
     public class SessionOptions : IDisposable
     {
         private IntPtr _nativePtr;
-        private static string[] cudaDelayLoadedLibs = { "cublas64_100.dll", "cudnn64_7.dll" };
+        private static string[] cudaDelayLoadedLibs = { "cublas64_10.dll", "cudnn64_7.dll", "curand64_10.dll" };
 
         #region Constructor and Factory methods
 
