@@ -14,9 +14,9 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(QuantizeLinear,
                               10,
                               uint8_t,
                               kCudaExecutionProvider,
-                                  KernelDefBuilder()
-                                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-                                      .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
+                              KernelDefBuilder()
+                                  .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+                                  .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
                               QuantizeLinear<uint8_t>);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(QuantizeLinear,
@@ -24,9 +24,9 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(QuantizeLinear,
                               10,
                               int8_t,
                               kCudaExecutionProvider,
-                                  KernelDefBuilder()
-                                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-                                      .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>()),
+                              KernelDefBuilder()
+                                  .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+                                  .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>()),
                               QuantizeLinear<int8_t>);
 
 template <class T>
@@ -87,7 +87,7 @@ Status DequantizeLinear<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto& x_shape = x->Shape();
 
   auto y = ctx->Output(0, x_shape);
- ORT_ENFORCE(y != nullptr);
+  ORT_ENFORCE(y != nullptr);
 
   const T* input = x->template Data<T>();
   float* output = y->template MutableData<float>();

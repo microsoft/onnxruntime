@@ -60,8 +60,8 @@ __global__ void DequantizeLinearKernel(const T* input, float* output, const floa
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-       output[id] = (input[id] - *zero_point )* (*scale);
-       id += NumThreadsPerBlock;
+      output[id] = (input[id] - *zero_point) * (*scale);
+      id += NumThreadsPerBlock;
     }
   }
 }
