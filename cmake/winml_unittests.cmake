@@ -89,10 +89,20 @@ get_winml_test_api_src(${WINML_TEST_SRC_DIR} winml_test_api_src)
 add_winml_test(
   TARGET winml_test_api
   SOURCES ${winml_test_api_src}
-  LIBS winml_test_common
+  LIBS winml_test_common delayimp.lib
 )
 target_compile_definitions(winml_test_api PRIVATE BUILD_GOOGLE_TEST)
 target_precompiled_header(winml_test_api testPch.h)
+
+target_link_libraries(winml_test_api PRIVATE windowsapp.lib)
+target_link_options(winml_test_api PRIVATE /NODEFAULTLIB:kernel32.lib /NODEFAULTLIB:user32.lib /NODEFAULTLIB:gdi32.lib /NODEFAULTLIB:winspool.lib /NODEFAULTLIB:shell32.lib /NODEFAULTLIB:ole32.lib /NODEFAULTLIB:oleaut32.lib /NODEFAULTLIB:uuid.lib /NODEFAULTLIB:comdlg32.lib /NODEFAULTLIB:advapi32.lib)
+target_link_options(winml_test_api PRIVATE /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
+if (onnxruntime_USE_DML)
+  target_link_options(winml_test_api PRIVATE /DELAYLOAD:directml.dll)
+endif()
+if (EXISTS ${dxcore_header})
+  target_link_options(winml_test_api PRIVATE /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll)
+endif()
 
 get_winml_test_scenario_src(${WINML_TEST_SRC_DIR} winml_test_scenario_src winml_test_scenario_libs)
 add_winml_test(
@@ -102,9 +112,21 @@ add_winml_test(
 )
 target_precompiled_header(winml_test_scenario testPch.h)
 target_compile_definitions(winml_test_scenario PRIVATE BUILD_GOOGLE_TEST)
-set_target_properties(winml_test_scenario PROPERTIES LINK_FLAGS
-  "/DELAYLOAD:d2d1.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll"
-)
+
+target_link_libraries(winml_test_scenario PRIVATE windowsapp.lib)
+target_link_options(winml_test_scenario PRIVATE /NODEFAULTLIB:kernel32.lib /NODEFAULTLIB:user32.lib /NODEFAULTLIB:gdi32.lib /NODEFAULTLIB:winspool.lib /NODEFAULTLIB:shell32.lib /NODEFAULTLIB:ole32.lib /NODEFAULTLIB:oleaut32.lib /NODEFAULTLIB:uuid.lib /NODEFAULTLIB:comdlg32.lib /NODEFAULTLIB:advapi32.lib)
+target_link_options(winml_test_scenario PRIVATE /DELAYLOAD:d2d1.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
+if (onnxruntime_USE_DML)
+  target_link_options(winml_test_scenario PRIVATE /DELAYLOAD:directml.dll)
+endif()
+if (EXISTS ${dxcore_header})
+  target_link_options(winml_test_scenario PRIVATE /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll)
+endif()
+
+# necessary for winml_test_scenario because of a still unknown reason, api-ms-win-core-libraryloader-l1-2-1.dll is linked against
+# on dev machines but not on the aiinfra agent pool
+target_link_options(winml_test_scenario PRIVATE /ignore:4199)
+
 
 # During build time, copy any modified collaterals.
 # configure_file(source destination COPYONLY), which configures CMake to copy the file whenever source is modified,
