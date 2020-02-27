@@ -33,7 +33,6 @@ Model::Model(const std::string& graph_name,
              const std::unordered_map<std::string, int>& domain_to_version,
              const std::vector<ONNX_NAMESPACE::FunctionProto>& model_functions,
              const logging::Logger& logger) {
-  //model_proto_ = onnxruntime::make_unique<ModelProto>();
   model_proto_.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   model_proto_.mutable_graph()->set_name(graph_name);
   model_metadata_ = model_metadata;
@@ -81,10 +80,6 @@ Model::Model(const ModelProto& model_proto, const IOnnxRuntimeOpSchemaRegistryLi
 
 Model::Model(ModelProto&& model_proto, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
              const logging::Logger& logger) {
-  //if (!model_proto) {
-  //  throw std::invalid_argument("ModelProto was null.");
-  //}
-
   if (!utils::HasGraph(model_proto)) {
     throw std::invalid_argument("ModelProto does not have a graph.");
   }
@@ -287,29 +282,6 @@ Status Model::Load(ModelProto&& model_proto, std::shared_ptr<Model>& model,
 
   return Status::OK();
 }
-
-/*
-Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Model>& model,
-                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                   const logging::Logger& logger) {
-  // we expect a graph to be present
-  if (!utils::HasGraph(*p_model_proto)) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
-  }
-
-  // need to call private ctor so can't use make_shared
-  GSL_SUPPRESS(r .11)
-  try {
-    model.reset(new Model(std::move(p_model_proto), local_registries, logger));
-  } catch (const std::exception& ex) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
-  }
-
-  ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(true));
-
-  return Status::OK();
-}
-*/
 
 template <typename T, typename Loader>
 static Status LoadModelHelper(const T& file_path, Loader loader) {
