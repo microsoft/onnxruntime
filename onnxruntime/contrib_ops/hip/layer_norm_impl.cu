@@ -123,13 +123,14 @@ __device__ void cuWelfordMuSigma2(
       cuWelfordOnlineSum<U>(curr, mu, sigma2, count);
     }
     // intra-warp reductions
-    for (int l = 0; l <= 4; ++l) {
-      int srcLaneB = (threadIdx.x + (1 << l)) & 31;
-      U muB = WARP_SHFL(mu, srcLaneB, warp_size);
-      U countB = WARP_SHFL(count, srcLaneB, warp_size);
-      U sigma2B = WARP_SHFL(sigma2, srcLaneB, warp_size);
+    #pragma unroll
+    for (int stride = warp_size / 2; stride > 0; stride /= 2) {
+      U muB = __shfl_down(mu, stride);
+      U countB = __shfl_down(count, stride);
+      U sigma2B = __shfl_down(sigma2, stride);
       cuChanOnlineSum<U>(muB, sigma2B, countB, mu, sigma2, count, warp_size);
     }
+
     // threadIdx.x == 0 has correct values for each warp
     // inter-warp reductions
     if (blockDim.y > 1) {
@@ -218,13 +219,14 @@ __device__ void cuWelfordMuSigma2(
       cuWelfordOnlineSum(curr, mu, sigma2, count);
     }
     // intra-warp reductions
-    for (int l = 0; l <= 4; ++l) {
-      int srcLaneB = (threadIdx.x + (1 << l)) & 31;
-      float muB = WARP_SHFL(mu, srcLaneB, warp_size);
-      float countB = WARP_SHFL(count, srcLaneB, warp_size);
-      float sigma2B = WARP_SHFL(sigma2, srcLaneB, warp_size);
+    #pragma unroll
+    for (int stride = warp_size / 2; stride > 0; stride /= 2) {
+      float muB = __shfl_down(mu, stride);
+      float countB = __shfl_down(count, stride);
+      float sigma2B = __shfl_down(sigma2, stride);
       cuChanOnlineSum(muB, sigma2B, countB, mu, sigma2, count, warp_size);
     }
+
     // threadIdx.x == 0 has correct values for each warp
     // inter-warp reductions
     if (blockDim.y > 1) {
