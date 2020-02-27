@@ -3,7 +3,6 @@
 
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
-#include "core/common/common.h"
 
 using namespace onnxruntime;
 using namespace ::onnxruntime::common;
@@ -23,7 +22,7 @@ common::Status GraphTransformerManager::Init(unsigned steps) {
 
 common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, TransformerLevel level, const logging::Logger& logger) const {
   if (!has_been_initialized_) {
-    return Status(ONNXRUNTIME, FAIL, "This instance of GraphTransformerManager has not been initialized.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This instance of GraphTransformerManager has not been initialized.");
   }
 
   const auto& transformers = level_to_transformer_map_.find(level);
@@ -48,12 +47,12 @@ common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, Transfor
 
 common::Status GraphTransformerManager::Register(std::unique_ptr<GraphTransformer> transformer, TransformerLevel level) {
   if (!has_been_initialized_) {
-    return Status(ONNXRUNTIME, FAIL, "This instance of GraphTransformerManager has not been initialized.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This instance of GraphTransformerManager has not been initialized.");
   }
 
   const auto& name = transformer->Name();
   if (transformers_info_.find(name) != transformers_info_.end()) {
-    return Status(ONNXRUNTIME, FAIL, "This transformer is already registered " + name);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This transformer is already registered " + name);
   }
 
   transformers_info_[name] = transformer.get();
