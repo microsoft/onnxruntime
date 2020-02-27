@@ -39,7 +39,7 @@ class GraphTransformerManager {
     }
   };
 
-  mutable onnxruntime::OrtMutex graph_transformer_mutex_;  // to ensure only one thread can invoke Initialize
+  mutable onnxruntime::OrtMutex graph_transformer_mutex_;  // to ensure only one thread can invoke Init
   unsigned steps_;                                         // GUARDED_BY(graph_transformer_mutex_)
   bool has_been_initialized_ = false;                      // GUARDED_BY(graph_transformer_mutex_)
 
