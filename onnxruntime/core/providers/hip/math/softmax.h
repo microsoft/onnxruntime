@@ -20,7 +20,7 @@ struct AccumulateType<double> { using type = double; };
 template <typename T>
 using AccType = typename AccumulateType<T>::type;
 
-template <typename T>
+template <typename T, bool is_log_softmax>
 Status SoftMaxComputeHelper(
     const T* input,
     const TensorShape& shape,
