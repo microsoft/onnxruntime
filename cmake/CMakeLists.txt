@@ -279,7 +279,6 @@ if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
     find_package(PythonLibs 3.5 REQUIRED)
   else()
     find_package(PythonInterp 3.4 REQUIRED)
-    find_package(PythonLibs 3.4 REQUIRED)
   endif()
 endif()
 
