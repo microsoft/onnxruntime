@@ -402,7 +402,7 @@ void RegisterGradientSchemas() {
           OpSchema::Optional)
       .Input(
           8,
-         "global_gradient_norm",
+          "global_gradient_norm",
           "Global gradient norm.",
           "T_GRAD_NORM",
           OpSchema::Optional)
@@ -518,7 +518,7 @@ void RegisterGradientSchemas() {
           "T_GRAD",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
-     .TypeConstraint(
+      .TypeConstraint(
           "T_BOOL",
           {"tensor(bool)"},
           "Constrain types to boolean tensors.")
@@ -728,7 +728,7 @@ void RegisterGradientSchemas() {
                       "Constrain indices to integer types")
       .SetDoc(R"DOC(SparseSoftmaxCrossEntropyGrad)DOC");
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
+    ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
@@ -751,7 +751,7 @@ void RegisterGradientSchemas() {
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "T1",
-          {"tensor(float)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input 'ratio' types to float tensors.")
       .TypeConstraint(
           "T2",
@@ -770,7 +770,6 @@ void RegisterGradientSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropoutGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("TrainableDropoutGrad")
       .AllowUncheckedAttributes()
       .Input(0, "dy", "The gradient tensor from output.", "T")
@@ -791,6 +790,38 @@ void RegisterGradientSchemas() {
       .TypeConstraint(
           "T1",
           {"tensor(float)"},
+          "Constrain input 'ratio' types to float tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(bool)"},
+          "Constrain 'mask' types to boolean tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DropoutGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("DropoutGrad")
+      .AllowUncheckedAttributes()
+      .Input(0, "dy", "The gradient tensor from output.", "T")
+      .Input(1, "mask",
+             "The mask tensor of the dropout. ", "T2")
+      .Input(2, "ratio",
+             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
+             "or if it was set to 0, the output would be a simple copy of the input. "
+             "If it's non-zero, output will be a random dropout of input, which is typically "
+             "the case during training.",
+             "T1",
+             OpSchema::Optional)
+      .Output(0, "dx", "Gradient of the input.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input 'ratio' types to float tensors.")
       .TypeConstraint(
           "T2",
@@ -1353,28 +1384,28 @@ Return true if all elements are true and false otherwise.
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SliceGrad)
-    .SetDomain(kMSDomain)
-    .SinceVersion(1)
-    .Input(0, "dY", "Gradient of output", "T")
-    .Input(1, "shape", "Shape of the Slice input X.", "I")
-    .Input(2, "starts", "Tensor of starting indices of corresponding axis in axes", "Tind")
-    .Input(3, "ends", "Tensor of starting indices of corresponding axis in 'axes'", "Tind")
-    .Input(4, "axes", "Tensor of axes that `starts` and `ends` apply to", "Tind", OpSchema::Optional)
-    .Input(5, "steps", "Tensor of slice step of corresponding axis in `axes`", "Tind", OpSchema::Optional)
-    .Output(0, "dX", "Gradient of input", "T")
-    .TypeConstraint(
-        "I",
-        {"tensor(int64)"},
-        "Constrain input shape to integer tensors.")
-    .TypeConstraint(
-        "T",
-        OpSchema::all_tensor_types(),
-        "Constrain input and output types to float tensors.")
-    .TypeConstraint(
-        "Tind",
-        {"tensor(int32)", "tensor(int64)"},
-        "Constrain indices to integer types");
-    
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "dY", "Gradient of output", "T")
+      .Input(1, "shape", "Shape of the Slice input X.", "I")
+      .Input(2, "starts", "Tensor of starting indices of corresponding axis in axes", "Tind")
+      .Input(3, "ends", "Tensor of starting indices of corresponding axis in 'axes'", "Tind")
+      .Input(4, "axes", "Tensor of axes that `starts` and `ends` apply to", "Tind", OpSchema::Optional)
+      .Input(5, "steps", "Tensor of slice step of corresponding axis in `axes`", "Tind", OpSchema::Optional)
+      .Output(0, "dX", "Gradient of input", "T")
+      .TypeConstraint(
+          "I",
+          {"tensor(int64)"},
+          "Constrain input shape to integer tensors.")
+      .TypeConstraint(
+          "T",
+          OpSchema::all_tensor_types(),
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "Tind",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain indices to integer types");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(FastGeluGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)

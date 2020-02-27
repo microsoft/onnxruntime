@@ -41,9 +41,9 @@ DropoutBase::CudnnDropoutState::~CudnnDropoutState() {
 
 #define REGISTER_KERNEL_TYPED(T)                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
-      TrainableDropout,                                               \
+      Dropout,                                                        \
       kOnnxDomain,                                                    \
-      9,                                                              \
+      12,                                                             \
       T,                                                              \
       kCudaExecutionProvider,                                         \
       KernelDefBuilder()                                              \
@@ -51,14 +51,14 @@ DropoutBase::CudnnDropoutState::~CudnnDropoutState() {
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())  \
           .InputMemoryType<OrtMemTypeCPUInput>(1),                    \
-      TrainableDropoutCudnn<T>);
+      DropoutCudnn<T>);
 
 // REGISTER_KERNEL_TYPED(MLFloat16)
 // REGISTER_KERNEL_TYPED(float)
 // REGISTER_KERNEL_TYPED(double)
 
 template <typename T>
-Status TrainableDropoutCudnn<T>::ComputeInternal(OpKernelContext* context) const {
+Status DropoutCudnn<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   //Get X_data
@@ -112,8 +112,8 @@ Status TrainableDropoutCudnn<T>::ComputeInternal(OpKernelContext* context) const
 
 #define REGISTER_GRADIENT_KERNEL_TYPED(T)                             \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
-      TrainableDropoutGrad,                                           \
-      kMSDomain,                                                    \
+      DropoutGrad,                                                    \
+      kMSDomain,                                                      \
       1,                                                              \
       T,                                                              \
       kCudaExecutionProvider,                                         \
@@ -122,14 +122,14 @@ Status TrainableDropoutCudnn<T>::ComputeInternal(OpKernelContext* context) const
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())  \
           .InputMemoryType<OrtMemTypeCPUInput>(2),                    \
-      TrainableDropoutCudnnGrad<T>);
+      DropoutCudnnGrad<T>);
 
 // REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16)
 // REGISTER_GRADIENT_KERNEL_TYPED(float)
 // REGISTER_GRADIENT_KERNEL_TYPED(double)
 
 template <typename T>
-Status TrainableDropoutCudnnGrad<T>::ComputeInternal(OpKernelContext* context) const {
+Status DropoutCudnnGrad<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   auto dY = context->Input<Tensor>(0);

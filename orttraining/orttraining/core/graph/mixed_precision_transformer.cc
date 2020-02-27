@@ -16,7 +16,7 @@ namespace training {
 // Goals of the mixed-precision-transformer: Replace full-precision (FP32) arithmetic by
 // low-precision (FP16) arithmetic as appropriate/required. Currently, the plan is to use
 // FP16, by default, and use FP32 only in the following exceptional situations:
-// (a) Due to the unavailability of FP16 ops or kernels for some ops such as TrainableDropout.
+// (a) Due to the unavailability of FP16 ops or kernels for some ops such as Trainable/Dropout.
 // (b) Due to the usefulness of full-precision in some ops such as SparseSoftmaxCrossEntropy.
 // Note that in the long term, it may be useful to extend ops such as ReduceSum with
 // an attribute to indicate that it should use a higher-precision accumulator internally
@@ -44,11 +44,15 @@ static bool IsFP32Node(const Node* node) {
 static const std::unordered_map<std::string, std::vector<int>> stage1_fp32_node_args = {
     {"TrainableDropout", {1}},
     {"TrainableDropoutGrad", {2}},
+    {"Dropout", {1}},
+    {"DropoutGrad", {2}},
 };
 
 static const std::unordered_map<std::string, std::vector<int>> stage2_fp32_node_args = {
     {"TrainableDropout", {1}},
     {"TrainableDropoutGrad", {2}},
+    {"Dropout", {1}},
+    {"DropoutGrad", {2}},
     {"SparseSoftmaxCrossEntropy", {0, 2}},
     {"SparseSoftmaxCrossEntropyGrad", {0, 1, 3}},
 };

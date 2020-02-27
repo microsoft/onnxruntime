@@ -490,10 +490,26 @@ IMPLEMENT_GRADIENT_BUILDER(GetPoolGradient) {
               SrcNodeAttributes())};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetDropoutGradient) {
+  std::vector<ArgDef> inputs{GO(0), O(1)};
+  for (int i = 1; i < GetSrcNodeInputSize(); i++) {
+    inputs.push_back(I(i));
+  }
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"DropoutGrad", kMSDomain, 1},
+              inputs,
+              {GI(0)},
+              {SrcNodeAttributes()})};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetTrainableDropoutGradient) {
+  std::vector<ArgDef> inputs{GO(0), O(1)};
+  for (int i = 1; i < GetSrcNodeInputSize(); i++) {
+    inputs.push_back(I(i));
+  }
   return std::vector<NodeDef>{
       NodeDef(OpDef{"TrainableDropoutGrad", kMSDomain, 1},
-              {GO(0), O(1), I(1)},
+              inputs,
               {GI(0)},
               {SrcNodeAttributes()})};
 }

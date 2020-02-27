@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/cpu/nn/dropout.h"
+#include "orttraining/training_ops/cpu/nn/dropout_7.h"
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
@@ -10,17 +10,21 @@ namespace onnxruntime {
 ONNX_CPU_OPERATOR_KERNEL(
     Dropout,
     7,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(), DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
-    Dropout);
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),
+                                            DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<double>()}),
+    Dropout_7);
 #else
 ONNX_CPU_OPERATOR_KERNEL(
     Dropout,
     7,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(), DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),
+                                            DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<double>()}),
     IdentityOp<true>);
 #endif
 
-Status Dropout::Compute(OpKernelContext* context) const {
+Status Dropout_7::Compute(OpKernelContext* context) const {
   const Tensor& X = *context->Input<Tensor>(0);
   const TensorShape& shape = X.Shape();
   Tensor& Y = *context->Output(0, shape);

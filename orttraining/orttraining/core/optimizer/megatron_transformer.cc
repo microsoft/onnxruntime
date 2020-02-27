@@ -79,8 +79,7 @@ static bool MatchLinearPattern(Graph& graph,
   for (const auto& node_info : node_infos) {
     Node* next_node_ptr = graph.GetNode(curr_node_ptr->OutputNodesBegin()->Index());
     bool has_matched_op = false;
-    for (const auto& op_info : node_info.op_infos)
-    {
+    for (const auto& op_info : node_info.op_infos) {
       if (IsExpectedOpAndProvider(*next_node_ptr, op_info, provider_type)) {
         has_matched_op = true;
         break;
@@ -360,7 +359,7 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
       continue;
     }
 
-    if(node.GetInputEdgesCount() > 0 && node.InputNodesBegin()->OpType().compare("MegatronF") == 0) {
+    if (node.GetInputEdgesCount() > 0 && node.InputNodesBegin()->OpType().compare("MegatronF") == 0) {
       continue;
     }
 
@@ -369,11 +368,11 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
     ProviderType provider_type = node.GetExecutionProviderType();
 
     std::vector<NodeInfo> linear_pattern = {
-        NodeInfo({add_info}),                                     // -15
+        NodeInfo({add_info}),  // -15
         NodeInfo({split_info}),
         NodeInfo({reshape_info}),
         NodeInfo({transpose_info}),
-        NodeInfo({matmul_info}),                                  // -11
+        NodeInfo({matmul_info}),  // -11
         NodeInfo({div_info}),
         NodeInfo({mul_info}),
         NodeInfo({sub_info}),
@@ -383,7 +382,7 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
         NodeInfo({transpose_info}),
         NodeInfo({reshape_info}),
         NodeInfo({matmul_info}),
-        NodeInfo({add_info})};                                    // -1
+        NodeInfo({add_info})};  // -1
     if (!MatchLinearPattern(graph, &node, provider_type, linear_pattern, sub_graph_node_ptrs)) {
       continue;
     }
@@ -403,8 +402,8 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
       continue;
     }
 
-    std::vector<Node*> transpose_node_ptrs; // For the 2nd and 3rd transpose nodes after split node for sub-graph structure checking.
-    std::vector<Node*> reshape_node_ptrs;   // To keep the reshape node that need to change the shape constant.
+    std::vector<Node*> transpose_node_ptrs;  // For the 2nd and 3rd transpose nodes after split node for sub-graph structure checking.
+    std::vector<Node*> reshape_node_ptrs;    // To keep the reshape node that need to change the shape constant.
     reshape_node_ptrs.push_back(sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 13]);
     reshape_node_ptrs.push_back(sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 3]);
     auto split_output_iter = split_node.OutputNodesBegin();
@@ -425,7 +424,7 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
       transpose_node_ptrs.push_back(transpose_node_ptr);
       sub_graph_node_ptrs.push_back(transpose_node_ptr);
     }
-    
+
     // Sub-graph structure and transpose attribute checking.
     if (transpose_node_ptrs.size() != 2 ||
         matmul_node_ptr != graph.GetNode(transpose_node_ptrs[0]->OutputNodesBegin()->Index()) ||
@@ -434,7 +433,7 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
         !optimizer_utils::IsAttributeWithExpectedValues(*transpose_node_ptrs[1], "perm", {0LL, 2LL, 1LL, 3LL})) {
       continue;
     }
-    
+
     // Partition weights. If any of them fails, skip transforming this sub-graph.
     auto qkv_weight_arg = node.MutableInputDefs()[1];
     ONNX_NAMESPACE::TensorProto qkv_weight_initializer_partition;
@@ -497,7 +496,7 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
     // It's possible that the node vector contains nullptr due to some optinal node infos during linear pattern matching.
     std::copy_if(sub_graph_node_ptrs.begin(), sub_graph_node_ptrs.end(),
                  std::back_inserter(nodes_to_clear_shape),
-                 [](Node* node_ptr){return node_ptr != nullptr;});
+                 [](Node* node_ptr) { return node_ptr != nullptr; });
 
     // Replace by the partition weights.
     NodeArg& qkv_weight_partition_arg = graph_utils::AddInitializer(graph, qkv_weight_initializer_partition);

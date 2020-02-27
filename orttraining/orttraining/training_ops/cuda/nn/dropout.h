@@ -9,10 +9,10 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T>
-class TrainableDropout final : public CudaKernel {
+template <typename T1, typename T2>
+class Dropout final : public CudaKernel {
  public:
-  TrainableDropout(const OpKernelInfo& info) : CudaKernel(info), default_ratio_(0.5) {
+  Dropout(const OpKernelInfo& info) : CudaKernel(info), default_ratio_(0.5) {
     int64_t seed = 0;
     int64_t default_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
     info.GetAttrOrDefault<int64_t>("seed", &seed, default_seed);
@@ -29,10 +29,10 @@ class TrainableDropout final : public CudaKernel {
   const float default_ratio_;
 };
 
-template <typename T>
-class TrainableDropoutGrad final : public CudaKernel {
+template <typename T1, typename T2>
+class DropoutGrad final : public CudaKernel {
  public:
-  TrainableDropoutGrad(const OpKernelInfo& info) : CudaKernel(info), default_ratio_(0.5) {}
+  DropoutGrad(const OpKernelInfo& info) : CudaKernel(info), default_ratio_(0.5) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:

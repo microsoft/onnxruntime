@@ -11,16 +11,19 @@
 namespace onnxruntime {
 namespace contrib {
 
-class TrainableDropout final : public OpKernel {
+template <typename T1, typename T2>
+class Dropout final : public OpKernel {
  public:
-  TrainableDropout(const OpKernelInfo& info);
+  Dropout(const OpKernelInfo& info) : OpKernel{info},
+                                      random_seed_{info.GetAttrOrDefault<int64_t>(
+                                          "seed",
+                                          std::chrono::steady_clock::now().time_since_epoch().count())},
+                                      rng_{static_cast<typename decltype(rng_)::result_type>(random_seed_)} {
+  }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  template <typename T>
-  Status ComputeImpl(OpKernelContext* context) const;
-
   const int64_t random_seed_;
 
   // random number generator state
@@ -29,15 +32,12 @@ class TrainableDropout final : public OpKernel {
   mutable std::default_random_engine rng_;
 };
 
-class TrainableDropoutGrad final : public OpKernel {
+template <typename T1, typename T2>
+class DropoutGrad final : public OpKernel {
  public:
-  TrainableDropoutGrad(const OpKernelInfo& info) : OpKernel{info} {}
+  DropoutGrad(const OpKernelInfo& info) : OpKernel{info} {}
 
   Status Compute(OpKernelContext* context) const override;
-
- private:
-  template <typename T>
-  Status ComputeImpl(OpKernelContext* context) const;
 };
 }  // namespace contrib
 }  // namespace onnxruntime

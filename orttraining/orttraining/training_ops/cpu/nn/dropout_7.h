@@ -8,9 +8,9 @@
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
-class Dropout final : public OpKernel {
+class Dropout_7 final : public OpKernel {
  public:
-  Dropout(const OpKernelInfo& info) : OpKernel(info) {
+  Dropout_7(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<float>("ratio", &ratio_).IsOK());
     keep_prob_ = 1.0f - ratio_;
 

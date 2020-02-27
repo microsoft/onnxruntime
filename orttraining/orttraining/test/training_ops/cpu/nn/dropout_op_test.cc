@@ -5,7 +5,7 @@
 #pragma warning(disable : 4389)
 #endif
 
-#include "orttraining/training_ops/cpu/nn/trainable_dropout_op.h"
+#include "orttraining/training_ops/cpu/nn/dropout_op.h"
 
 #include <algorithm>
 #include <memory>
@@ -24,7 +24,7 @@ namespace test {
 using namespace onnxruntime::test;
 
 namespace {
-constexpr auto k_trainable_dropout_opset_version = 9;
+constexpr auto k_dropout_opset_version = 12;
 
 const Tensor& FetchTensor(const OrtValue& ort_value) {
   if (ort_value.Fence()) {
@@ -33,9 +33,9 @@ const Tensor& FetchTensor(const OrtValue& ort_value) {
   return ort_value.Get<Tensor>();
 }
 
-void RunTrainableDropoutTest(
-    const float ratio, const bool use_mask, const std::vector<int64_t>& input_shape) {
-  OpTester t{"TrainableDropout", k_trainable_dropout_opset_version, kOnnxDomain};
+void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1,
+                    bool use_float16_ratio = false) {
+  OpTester t{op, k_dropout_opset_version, kOnnxDomain};
 
   const auto input_size = std::accumulate(
       input_shape.begin(), input_shape.end(), static_cast<int64_t>(1), std::multiplies<>{});
@@ -45,7 +45,13 @@ void RunTrainableDropoutTest(
 
   t.AddAttribute("seed", seed);
   t.AddInput("data", input_shape, input);
-  t.AddInput("ratio", {1}, {ratio});
+  if (ratio == -1) {
+    ratio = 0.5;  // default.
+  } else if (use_float16_ratio) {
+    t.AddInput("ratio", {}, {MLFloat16(0)});
+  } else {
+    t.AddInput("ratio", {}, {ratio});
+  }
 
   t.AddOutput<float>("output", input_shape, input);  // we'll do our own output verification
 
@@ -100,24 +106,52 @@ void RunTrainableDropoutTest(
 }
 }  // namespace
 
-// TrainableDropout
+// Dropout
+
+TEST(DropoutTest, Basic) {
+  RunDropoutTest("Dropout", false, {10, 10, 10}, 0.75);
+}
+
+TEST(DropoutTest, Mask) {
+  RunDropoutTest("Dropout", true, {1000}, 0.25);
+}
+
+TEST(DropoutTest, RatioLimit) {
+  RunDropoutTest("Dropout", true, {1000}, 0.0f);
+}
+
+TEST(DropoutTest, EmptyRatio) {
+  RunDropoutTest("Dropout", true, {1000});
+}
+
+TEST(DropoutTest, Float16Ratio) {
+  RunDropoutTest("Dropout", true, {1000}, 0.0f, true);
+}
 
 TEST(TrainableDropoutTest, Basic) {
-  RunTrainableDropoutTest(0.75, false, {10, 10, 10});
+  RunDropoutTest("TrainableDropout", false, {10, 10, 10}, 0.75);
 }
 
 TEST(TrainableDropoutTest, Mask) {
-  RunTrainableDropoutTest(0.25, true, {1000});
+  RunDropoutTest("TrainableDropout", true, {1000}, 0.25);
 }
 
 TEST(TrainableDropoutTest, RatioLimit) {
-  RunTrainableDropoutTest(0.0f, true, {1000});
+  RunDropoutTest("TrainableDropout", true, {1000}, 0.0f);
+}
+
+TEST(TrainableDropoutTest, EmptyRatio) {
+  RunDropoutTest("TrainableDropout", true, {1000});
+}
+
+TEST(TrainableDropoutTest, Float16Ratio) {
+  RunDropoutTest("TrainableDropout", true, {1000}, 0.0f, true);
 }
 
 namespace {
-void RunTrainableDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, bool default_ratio = true) {
+void RunDropoutGradTest(const char* op, float ratio, const std::vector<int64_t>& input_dims, bool default_ratio = true) {
   const auto input_shape = TensorShape(input_dims);
-  OpTester test("TrainableDropoutGrad", 1, kMSDomain);
+  OpTester test(op, 1, kMSDomain);
   if (default_ratio) {
     ratio = 0.5f;
   }
@@ -153,24 +187,42 @@ void RunTrainableDropoutGradTest(float ratio, const std::vector<int64_t>& input_
 }
 }  // namespace
 
-// TrainableDropoutGrad
+// DropoutGrad
+
+TEST(DropoutGradTest, Basic) {
+  //Ratio 0.2, 1D
+  RunDropoutGradTest("DropoutGrad", 0.2f, {16}, false);
+
+  //Ratio 0.3, 2D
+  RunDropoutGradTest("DropoutGrad", 0.3f, {8, 2}, false);
+
+  //Ratio 0.4, 3D
+  RunDropoutGradTest("DropoutGrad", 0.4f, {2, 4, 2}, false);
+
+  //default Ratio, 3D
+  RunDropoutGradTest("DropoutGrad", 0.5f, {2, 4, 2});
+}
+
+TEST(DropoutGradTest, RatioLimit) {
+  RunDropoutGradTest("DropoutGrad", 0.0f, {16}, false);
+}
 
 TEST(TrainableDropoutGradTest, Basic) {
   //Ratio 0.2, 1D
-  RunTrainableDropoutGradTest(0.2f, {16}, false);
+  RunDropoutGradTest("TrainableDropoutGrad", 0.2f, {16}, false);
 
   //Ratio 0.3, 2D
-  RunTrainableDropoutGradTest(0.3f, {8, 2}, false);
+  RunDropoutGradTest("TrainableDropoutGrad", 0.3f, {8, 2}, false);
 
   //Ratio 0.4, 3D
-  RunTrainableDropoutGradTest(0.4f, {2, 4, 2}, false);
+  RunDropoutGradTest("TrainableDropoutGrad", 0.4f, {2, 4, 2}, false);
 
   //default Ratio, 3D
-  RunTrainableDropoutGradTest(0.5f, {2, 4, 2});
+  RunDropoutGradTest("TrainableDropoutGrad", 0.5f, {2, 4, 2});
 }
 
 TEST(TrainableDropoutGradTest, RatioLimit) {
-  RunTrainableDropoutGradTest(0.0f, {16}, false);
+  RunDropoutGradTest("TrainableDropoutGrad", 0.0f, {16}, false);
 }
 
 }  // namespace test

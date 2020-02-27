@@ -1284,17 +1284,16 @@ TEST(GradientCheckerTest, GatherGrad) {
 }
 
 void TestDropoutOp(float ratio, TensorShape& x_shape, bool default_ratio = true) {
-  OpTester test("TrainableDropout", 1, kMSDomain, false);
+  OpTester test("Dropout", 12, kOnnxDomain, false);
   if (default_ratio)
     ratio = 0.5f;
   float input_constant = 3.0f;
   std::vector<float> x_data(x_shape.Size(), input_constant);
   std::vector<float> y_data(x_shape.Size(), 3.0f);
-  std::vector<float> ratio_data(1, ratio);
 
   test.AddInput<float>("x", x_shape.GetDims(), x_data);
   if (!default_ratio)
-    test.AddInput<float>("ratio", {1}, ratio_data);
+    test.AddInput<float>("ratio", {}, {ratio});
   test.AddOutput<float>("y", x_shape.GetDims(), y_data);
   test.AddOutput<bool>("mask", x_shape.GetDims(), {true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true});
   test.Run();
@@ -1323,7 +1322,7 @@ void TestDropoutOp(float ratio, TensorShape& x_shape, bool default_ratio = true)
 }
 
 void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = true) {
-  OpTester test("TrainableDropoutGrad", 1, kMSDomain, true);
+  OpTester test("DropoutGrad", 1, kMSDomain, true);
   if (default_ratio)
     ratio = 0.5;
   float input_constant = 3;
@@ -1354,7 +1353,7 @@ void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = t
 
 #ifdef USE_CUDA
 
-TEST(GradientCheckerTest, DISABLED_TrainableDropout) {
+TEST(GradientCheckerTest, DISABLED_Dropout) {
   {
     //Ratio 0
     TensorShape x_shape({2, 2, 2, 2});
@@ -1378,7 +1377,7 @@ TEST(GradientCheckerTest, DISABLED_TrainableDropout) {
   }
 }
 
-TEST(GradientCheckerTest, DISABLED_TrainableDropoutGrad) {
+TEST(GradientCheckerTest, DISABLED_DropoutGrad) {
   {
     //Ratio 0
     TensorShape x_shape({8, 2});

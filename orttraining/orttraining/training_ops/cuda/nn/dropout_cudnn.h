@@ -35,9 +35,9 @@ class DropoutBase : public CudaKernel {
 };
 
 template <typename T>
-class TrainableDropoutCudnn final : public DropoutBase {
+class DropoutCudnn final : public DropoutBase {
  public:
-  TrainableDropoutCudnn(const OpKernelInfo& info) : DropoutBase{info} {
+  DropoutCudnn(const OpKernelInfo& info) : DropoutBase{info} {
     info.GetAttrOrDefault("seed", &seed_, static_cast<float>(0.5));
   }
 
@@ -48,9 +48,9 @@ class TrainableDropoutCudnn final : public DropoutBase {
 };
 
 template <typename T>
-class TrainableDropoutCudnnGrad final : public DropoutBase {
+class DropoutCudnnGrad final : public DropoutBase {
  public:
-  TrainableDropoutCudnnGrad(const OpKernelInfo& info) : DropoutBase{info} {
+  DropoutCudnnGrad(const OpKernelInfo& info) : DropoutBase{info} {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
