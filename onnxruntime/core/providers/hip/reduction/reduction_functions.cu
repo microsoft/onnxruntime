@@ -13,7 +13,6 @@
 #define NUM_WARPS_PER_BLOCK 8
 #define MAX_NUM_BLOCKS 256
 
-#define ALL_ONE_MASK 0xFFFFFFFF
 #define ONE_MASK 0x00000001
 
 namespace onnxruntime {
@@ -94,7 +93,7 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
   TOut value_ = value;
 #pragma unroll
   for (int stride = NUM_THREADS_PER_WARP / 2; stride > 0; stride /= 2) {
-   value_ += __shfl_down(ALL_ONE_MASK, value_, stride);
+   value_ += __shfl_down(value_, stride);
   }
 
   // Return early if only one warp is used for reduction.

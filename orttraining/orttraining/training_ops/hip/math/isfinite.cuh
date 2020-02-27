@@ -15,7 +15,7 @@ __device__ __forceinline__ bool _IsFiniteScalar(const T value) {
 
 template<>
 __device__ __forceinline__ bool _IsFiniteScalar(const half value) {
-#if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
+#if __HIP_ARCH__ >= 530 || !defined(__HIP_ARCH__)
   return !__hisinf(value) && !__hisnan(value);
 #else
   return isfinite(float(value));

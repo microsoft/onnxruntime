@@ -68,61 +68,61 @@ static bool is_matrix_row_reduction(
 }
 
 // TODO ReduceKernel::ReduceKernelShared() is still used by some other training classes though it's not used here - this should be refactored.
-// template <bool allow_multi_axes>
-// template <typename T, typename OutT>
-// Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
-//     const T* X,
-//     const TensorShape& input_shape,
-//     OutT* Y,
-//     const TensorShape& output_shape,
-//     HipReduceTensorType reduce_type,
-//     std::vector<int64_t> output_dims) const {
-//   typedef typename ToHipType<T>::MappedType HipT;
-//   const auto rank = input_shape.NumDimensions();
+template <bool allow_multi_axes>
+template <typename T, typename OutT>
+Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
+    const T* X,
+    const TensorShape& input_shape,
+    OutT* Y,
+    const TensorShape& /*output_shape*/,
+    HipReduceTensorType reduce_type,
+    std::vector<int64_t> /*output_dims*/) const {
+  typedef typename ToHipType<T>::MappedType HipT;
+  const auto rank = input_shape.NumDimensions();
 
-// // Block of fast matrix row reduction.
-// // It relies on new atomicAdd for half type, so old hip can't use it.
-//   const auto stride = input_shape[input_shape.NumDimensions() - 1];
-//   const auto reduction_size = input_shape.Size() / stride;
-//   if (fast_reduction_ && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
-//       is_matrix_row_reduction(reduce_type,
-//         static_cast<int>(reduction_size),
-//         static_cast<int>(stride), rank, axes_)) {
+// Block of fast matrix row reduction.
+// It relies on new atomicAdd for half type, so old hip can't use it.
+  const auto stride = input_shape[input_shape.NumDimensions() - 1];
+  const auto reduction_size = input_shape.Size() / stride;
+  if (fast_reduction_ && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
+      is_matrix_row_reduction(reduce_type,
+        static_cast<int>(reduction_size),
+        static_cast<int>(stride), rank, axes_)) {
 
-//     reduce_matrix_rows(
-//       reinterpret_cast<const HipT*>(X),
-//       reinterpret_cast<HipT*>(Y),
-//       static_cast<int>(reduction_size),
-//       static_cast<int>(stride));
-//     return Status::OK();
-//   }
+    reduce_matrix_rows(
+      reinterpret_cast<const HipT*>(X),
+      reinterpret_cast<HipT*>(Y),
+      static_cast<int>(reduction_size),
+      static_cast<int>(stride));
+    return Status::OK();
+  }
 
-//   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "reduction is not supported");
-// }
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "reduction is not supported");
+}
 
-// template Status ReduceKernel<true>::ReduceKernelShared<double, double>(
-//     const double* X,
-//     const TensorShape& input_shape,
-//     double* Y,
-//     const TensorShape& output_shape,
-//     HipReduceTensorType reduce_type,
-//     std::vector<int64_t> output_dims) const;
+template Status ReduceKernel<true>::ReduceKernelShared<double, double>(
+    const double* X,
+    const TensorShape& input_shape,
+    double* Y,
+    const TensorShape& output_shape,
+    HipReduceTensorType reduce_type,
+    std::vector<int64_t> output_dims) const;
 
-// template Status ReduceKernel<true>::ReduceKernelShared<float, float>(
-//     const float* X,
-//     const TensorShape& input_shape,
-//     float* Y,
-//     const TensorShape& output_shape,
-//     HipReduceTensorType reduce_type,
-//     std::vector<int64_t> output_dims) const;
+template Status ReduceKernel<true>::ReduceKernelShared<float, float>(
+    const float* X,
+    const TensorShape& input_shape,
+    float* Y,
+    const TensorShape& output_shape,
+    HipReduceTensorType reduce_type,
+    std::vector<int64_t> output_dims) const;
 
-// template Status ReduceKernel<true>::ReduceKernelShared<MLFloat16, MLFloat16>(
-//     const MLFloat16* X,
-//     const TensorShape& input_shape,
-//     MLFloat16* Y,
-//     const TensorShape& output_shape,
-//     HipReduceTensorType reduce_type,
-//     std::vector<int64_t> output_dims) const;
+template Status ReduceKernel<true>::ReduceKernelShared<MLFloat16, MLFloat16>(
+    const MLFloat16* X,
+    const TensorShape& input_shape,
+    MLFloat16* Y,
+    const TensorShape& output_shape,
+    HipReduceTensorType reduce_type,
+    std::vector<int64_t> output_dims) const;
 
 static Status PrepareForReduce(OpKernelContext* ctx,
                                bool keepdims,

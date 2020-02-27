@@ -9,7 +9,7 @@ namespace hip {
 
 typedef struct {
   // Pointer to ONNX tensor's data on CPU.
-  // It should be removed once we enable CUDA-aware MPI.
+  // It should be removed once we enable HIP-aware MPI.
   void* buffer;
   // The size of buffer's content in bytes.
   size_t size;

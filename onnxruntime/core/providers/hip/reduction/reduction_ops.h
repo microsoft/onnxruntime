@@ -36,14 +36,14 @@ class ReduceKernel : public HipKernel, public ReduceKernelBase<allow_multi_axes>
   template <typename T>
   Status ComputeImpl(OpKernelContext* ctx, HipReduceTensorType reduce_type) const;
 
-  // template <typename T, typename OutT>
-  // Status ReduceKernelShared(
-  //     const T* X,
-  //     const TensorShape& input_shape,
-  //     OutT* Y,
-  //     const TensorShape& output_shape,
-  //     HipReduceTensorType reduce_type,
-  //     std::vector<int64_t> output_dims) const;
+  template <typename T, typename OutT>
+  Status ReduceKernelShared(
+      const T* X,
+      const TensorShape& input_shape,
+      OutT* Y,
+      const TensorShape& output_shape,
+      HipReduceTensorType reduce_type,
+      std::vector<int64_t> output_dims) const;
 
   using ReduceKernelBase<allow_multi_axes>::axes_;
   using ReduceKernelBase<allow_multi_axes>::keepdims_;
