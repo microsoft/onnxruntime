@@ -68,8 +68,6 @@ class _Aggregator {
     use_base_values_ = base_values_->size() == static_cast<size_t>(n_targets_or_classes_);
   }
 
-  const char* name() const { return "_Aggregator"; }
-
   // 1 output
 
   inline void ProcessTreeNodePrediction1(OTYPE* /*predictions*/, TreeNodeElement<OTYPE>* /*rooOTYPE*/,
@@ -103,100 +101,7 @@ class _Aggregator {
       val += has_scores[jt] ? scores[jt] : 0;
       scores[jt] = val;
     }
-    this->write_scores(scores, post_transform_, Z, add_second_class);
-  }
-
-  inline void ComputeSoftmax(std::vector<OTYPE>& values) const {
-    // compute exp with negative number to be numerically stable
-    OTYPE v_max = -std::numeric_limits<OTYPE>::max();
-    for (OTYPE value : values) {
-      if (value > v_max)
-        v_max = value;
-    }
-    OTYPE this_sum = 0.f;
-    for (OTYPE& value : values) {
-      value = std::exp(value - v_max);
-      this_sum += value;
-    }
-    for (OTYPE& value : values)
-      value /= this_sum;
-  }
-
-  inline void ComputeSoftmaxZero(std::vector<OTYPE>& values) const {
-    // compute exp with negative number to be numerically stable
-    OTYPE v_max = -std::numeric_limits<OTYPE>::max();
-    for (OTYPE value : values) {
-      if (value > v_max)
-        v_max = value;
-    }
-    OTYPE exp_neg_v_max = std::exp(-v_max);
-    OTYPE this_sum = 0.f;
-    for (OTYPE& value : values) {
-      if (value > 0.0000001f || value < -0.0000001f) {
-        value = std::exp(value - v_max);
-        this_sum += value;
-      } else {
-        value *= exp_neg_v_max;
-      }
-    }
-    for (OTYPE& value : values)
-      value /= this_sum;
-  }
-
-  void write_scores(std::vector<OTYPE>& scores, POST_EVAL_TRANSFORM post_transform,
-                    OTYPE* Z, int add_second_class) const {
-    if (scores.size() >= 2) {
-      switch (post_transform) {
-        case POST_EVAL_TRANSFORM::PROBIT:
-          for (auto it = scores.cbegin(); it != scores.cend(); ++it, ++Z)
-            *Z = static_cast<OTYPE>(ComputeProbit(static_cast<float>(*it)));
-          break;
-        case POST_EVAL_TRANSFORM::LOGISTIC:
-          for (auto it = scores.cbegin(); it != scores.cend(); ++it, ++Z)
-            *Z = static_cast<OTYPE>(ComputeLogistic(static_cast<float>(*it)));
-          break;
-        case POST_EVAL_TRANSFORM::SOFTMAX:
-          this->ComputeSoftmax(scores);
-          memcpy(Z, scores.data(), scores.size() * sizeof(OTYPE));
-          break;
-        case POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
-          this->ComputeSoftmaxZero(scores);
-          memcpy(Z, scores.data(), scores.size() * sizeof(OTYPE));
-          break;
-        default:
-        case POST_EVAL_TRANSFORM::NONE:
-          memcpy(Z, scores.data(), scores.size() * sizeof(OTYPE));
-          break;
-      }
-    } else if (scores.size() == 1) {  //binary case
-      if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
-        scores[0] = static_cast<OTYPE>(ComputeProbit(static_cast<float>(scores[0])));
-        *Z = scores[0];
-      } else {
-        switch (add_second_class) {
-          case 0:  //0=all positive weights, winning class is positive
-            scores.push_back(scores[0]);
-            scores[0] = 1.f - scores[0];  //put opposite score in positive slot
-            break;
-          case 1:  //1 = all positive weights, winning class is negative
-            scores.push_back(scores[0]);
-            scores[0] = 1.f - scores[0];  //put opposite score in positive slot
-            break;
-          case 2:
-          case 3:  //2 = mixed weights, winning class is positive
-            if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-              scores.push_back(static_cast<OTYPE>(ComputeLogistic(static_cast<float>(scores[0]))));
-              scores[0] = static_cast<OTYPE>(ComputeLogistic(static_cast<float>(-scores[0])));
-            } else {
-              scores.push_back(scores[0]);
-              scores[0] = -scores[0];
-            }
-            break;
-        }
-        *Z = scores[0];
-        *(Z + 1) = scores[1];
-      }
-    }
+    write_scores(scores, post_transform_, Z, add_second_class);
   }
 };
 
@@ -206,15 +111,12 @@ class _Aggregator {
 
 template <typename ITYPE, typename OTYPE>
 class _AggregatorSum : public _Aggregator<ITYPE, OTYPE> {
-  // has_score is not used.
  public:
   inline _AggregatorSum(size_t n_trees,
                         const int64_t& n_targets_or_classes,
                         POST_EVAL_TRANSFORM post_transform,
                         const std::vector<OTYPE>* base_values) : _Aggregator<ITYPE, OTYPE>(n_trees, n_targets_or_classes,
                                                                                            post_transform, base_values) {}
-
-  const char* name() const { return "_AggregatorSum"; }
 
   // 1 output
 
@@ -266,7 +168,7 @@ class _AggregatorSum : public _Aggregator<ITYPE, OTYPE> {
       for (; it != scores.end(); ++it, ++it2)
         *it += *it2;
     }
-    this->write_scores(scores, this->post_transform_, Z, add_second_class);
+    write_scores(scores, this->post_transform_, Z, add_second_class);
   }
 };
 
@@ -278,8 +180,6 @@ class _AggregatorAverage : public _AggregatorSum<ITYPE, OTYPE> {
                             POST_EVAL_TRANSFORM post_transform,
                             const std::vector<OTYPE>* base_values) : _AggregatorSum<ITYPE, OTYPE>(n_trees, n_targets_or_classes,
                                                                                                   post_transform, base_values) {}
-
-  const char* name() const { return "_AggregatorAverage"; }
 
   inline void FinalizeScores1(OTYPE* Z, OTYPE& val,
                               unsigned char&,
@@ -303,7 +203,7 @@ class _AggregatorAverage : public _AggregatorSum<ITYPE, OTYPE> {
       for (; it != scores.end(); ++it)
         *it /= this->n_trees_;
     }
-    this->write_scores(scores, this->post_transform_, Z, add_second_class);
+    write_scores(scores, this->post_transform_, Z, add_second_class);
   }
 };
 
@@ -315,8 +215,6 @@ class _AggregatorMin : public _Aggregator<ITYPE, OTYPE> {
                         POST_EVAL_TRANSFORM post_transform,
                         const std::vector<OTYPE>* base_values) : _Aggregator<ITYPE, OTYPE>(n_trees, n_targets_or_classes,
                                                                                            post_transform, base_values) {}
-
-  const char* name() const { return "_AggregatorMin"; }
 
   // 1 output
 
@@ -371,8 +269,6 @@ class _AggregatorMax : public _Aggregator<ITYPE, OTYPE> {
                                       POST_EVAL_TRANSFORM post_transform,
                                       const std::vector<OTYPE>* base_values) : _Aggregator<ITYPE, OTYPE>(n_trees, n_targets_or_classes,
                                                                                                          post_transform, base_values) {}
-
-  const char* name() const { return "_AggregatorMax"; }
 
   // 1 output
 
@@ -449,8 +345,6 @@ class _AggregatorClassifier : public _AggregatorSum<ITYPE, OTYPE> {
                                                              positive_label_(positive_label),
                                                              negative_label_(negative_label) {}
 
-  const char* name() const { return "_AggregatorClassifier"; }
-
   void get_max_weight(const std::vector<OTYPE>& classes,
                       const std::vector<unsigned char>& has_scores,
                       int64_t& maxclass, OTYPE& maxweight) const {
@@ -507,7 +401,7 @@ class _AggregatorClassifier : public _AggregatorSum<ITYPE, OTYPE> {
 
     int write_additional_scores = -1;
     if (this->base_values_->size() == 2) {
-      // add base values
+      // add base_values
       scores[1] = (*(this->base_values_))[1] + val;
       scores[0] = -scores[1];
       //has_score = true;
@@ -525,7 +419,7 @@ class _AggregatorClassifier : public _AggregatorSum<ITYPE, OTYPE> {
     }
 
     *Y = _set_score_binary(write_additional_scores, &(scores[0]), has_scores);
-    this->write_scores(scores, this->post_transform_, Z, write_additional_scores);
+    write_scores(scores, this->post_transform_, Z, write_additional_scores);
   }
 
   // N outputs
@@ -579,7 +473,7 @@ class _AggregatorClassifier : public _AggregatorSum<ITYPE, OTYPE> {
       *Y = _set_score_binary(write_additional_scores, &(scores[0]), &(has_scores[0]));
     }
 
-    this->write_scores(scores, this->post_transform_, Z, write_additional_scores);
+    write_scores(scores, this->post_transform_, Z, write_additional_scores);
   }
 };
 

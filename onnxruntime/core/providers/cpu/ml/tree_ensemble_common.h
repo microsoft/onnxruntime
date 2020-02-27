@@ -501,7 +501,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
 inline bool _isnan_(float x) { return std::isnan(x); }
 inline bool _isnan_(double x) { return std::isnan(x); }
 inline bool _isnan_(int64_t) { return false; }
-inline bool _isnan_(int) { return false; }
+inline bool _isnan_(int32_t) { return false; }
 
 template <typename ITYPE, typename OTYPE>
 TreeNodeElement<OTYPE>*
