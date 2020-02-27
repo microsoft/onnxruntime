@@ -11,7 +11,7 @@ namespace hip {
 
 template <typename T>
 void SoftMaxCrossEntropyImpl(
-    const T* prob,
+    const T* log_prob,
     const T* label,
     size_t normalize_factor,
     T* output_data,
@@ -20,7 +20,7 @@ void SoftMaxCrossEntropyImpl(
 template <typename T>
 void SoftMaxCrossEntropyGradImpl(
     const T* dY,
-    const T* prob,
+    const T* log_prob,
     const T* label,
     size_t normalize_factor,
     T* output_data,
@@ -28,7 +28,7 @@ void SoftMaxCrossEntropyGradImpl(
 
 template <typename T, typename Tin>
 void SparseSoftmaxCrossEntropyImpl(
-    const T* prob,
+    const T* log_prob,
     const Tin* label,
     const T* weight,
     const T* normalize_factor,
@@ -39,7 +39,7 @@ void SparseSoftmaxCrossEntropyImpl(
 template <typename T, typename Tin>
 void SparseSoftmaxCrossEntropyGradImpl(
     const T* dY,
-    const T* prob,
+    const T* log_prob,
     const Tin* label,
     const T* weight,
     const T* normalize_factor,

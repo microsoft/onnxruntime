@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/test/training_ops/compare_provider_test_utils.h"
+#include "test/providers/compare_provider_test_utils.h"
 
 using namespace std;
 
