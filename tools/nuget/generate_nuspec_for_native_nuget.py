@@ -180,12 +180,14 @@ def generate_files(list, args):
     target_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', args.package_name + '.props')    
     os.system('copy ' + source_props + ' ' + target_props)
     files_list.append('<file src=' + '"' + target_props + '" target="build\\native" />')
+    files_list.append('<file src=' + '"' + target_props + '" target="build\\netstandard1.1" />')
 
     # Process targets file
     source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets.xml')
     target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', args.package_name + '.targets')    
     os.system('copy ' + source_targets + ' ' + target_targets)
     files_list.append('<file src=' + '"' + target_targets + '" target="build\\native" />')   
+    files_list.append('<file src=' + '"' + target_targets + '" target="build\\netstandard1.1" />')
     
     # Some tools to be packaged in nightly build only, should not be released 
     # These are copied to the runtimes folder for convenience of loading with the dlls    
