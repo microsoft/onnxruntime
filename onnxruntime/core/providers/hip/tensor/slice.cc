@@ -79,9 +79,8 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
 
   if (dynamic) {
     std::vector<int64_t> input_starts, input_ends, input_axes, input_steps;
-    FillVectorsFromInput(input_starts, input_ends, input_axes, input_steps,
-                         ctx->Input<Tensor>(1), ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
-                         ctx->InputCount() == 5 ? ctx->Input<Tensor>(4) : nullptr);
+    FillVectorsFromInput(ctx->Input<Tensor>(1), ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
+                         ctx->InputCount() == 5 ? ctx->Input<Tensor>(4) : nullptr, input_starts, input_ends, input_axes, input_steps);
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
                                           input_steps, input_dimensions, starts, steps, output_dims,
                                           p_flattened_output_dims));
