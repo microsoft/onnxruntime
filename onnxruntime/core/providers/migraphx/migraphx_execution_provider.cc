@@ -807,34 +807,14 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       input_name_index[input_defs[i]->Name()] = i;
     }
 
-    // record name of each output
-    // std::unordered_map<std::string, std::size_t> output_name_index;
-    // const auto& output_defs = fused_node->OutputDefs();
-    // output_name_index.reserve(output_defs.size());
-    // for (std::size_t i = 0; i < output_defs.size(); ++i) {
-    //   // migraphx prepend a "output_" before the actual output name
-    //   std::string output_name = "output_" + output_defs[i]->Name();
-    //   output_name_index[output_name] = i;
-    // }
-
     // reconstruct the subgraph proto from fused nodes
     onnx::ModelProto model_proto = GetModelProtoFromFusedNode(fused_node, *GetLogger());
     std::string onnx_string_buffer;
     model_proto.SerializeToString(&onnx_string_buffer);
 
-    // std::ofstream ofs("ort_compile.onnx", std::ios::binary);
-    // ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
-    // ofs.close();
-
     // by parsing the model_proto, create a program corresponding to
     // the input fused_node
-    std::cout << "Finished write buffer and begin parsing" << std::endl;
     migraphx::program prog = migraphx::parse_onnx_buffer(onnx_string_buffer);
-    //migraphx::program prog = migraphx::parse_onnx_buffer(onnx_string_buffer.c_str(), onnx_string_buffer.size());
-    //migraphx::program prog = migraphx::parse_onnx("ort_compile.onnx");
-    std::cout << "prog = " << std::endl;
-    prog.print();
-    std::cout << std::endl;
 
     // compile the program
     prog.compile(t_);
@@ -853,12 +833,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
         input_index_map[param_index] = iit->second;
       }
 
-      // // process the output
-      // auto oit = output_name_index.find(name);
-      // if (oit != output_name_index.end())
-      // {
-      //   output_index_map[param_index] = oit->second;
-      // }
       ++param_index;
     }
 
@@ -895,7 +869,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       std::size_t param_index = 0;
       for (auto&& name : param_shapes.names())
       {
-        std::cout << "name = " << name << std::endl;
         if (map_input_index.count(param_index) > 0)
         {
           const OrtValue* input_tensor = ort.KernelContext_GetInput(context, map_input_index[param_index]);
@@ -930,7 +903,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
           };
 
           int output_index = compute_output_index(name);
-          std::cout << "output_index = " << output_index << std::endl;
           if (output_index != -1)
           {
             prog_output_indices.push_back(output_index);
