@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <fstream>
+#include <numeric>
 
 #include "gsl/gsl"
 
@@ -111,6 +112,8 @@ TEST(OptimizerInitializerTest, LoadExternalData) {
 
   check_initializer_load(0, tensor_data.size());
   check_initializer_load(tensor_data.size() / 2, tensor_data.size() / 3);
+
+  // bad offset and length
   check_initializer_load(tensor_data.size() - 1, 2);
   check_initializer_load(0, tensor_data.size() + 1);
 
