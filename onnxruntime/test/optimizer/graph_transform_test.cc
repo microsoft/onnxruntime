@@ -1242,7 +1242,8 @@ TEST(GraphTransformationTests, FastGeluFusionTest) {
   ASSERT_TRUE(load_ret.IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr;
+  graph_transformation_mgr.Init(5);
   graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1262,7 +1263,8 @@ TEST(GraphTransformationTests, FastGeluUseGraphInputFusionTest) {
   ASSERT_TRUE(load_ret.IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr;
+  graph_transformation_mgr.Init(5);
   graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1281,7 +1283,8 @@ TEST(GraphTransformationTests, FastGeluWithBiasFusionTest) {
   ASSERT_TRUE(load_ret.IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr;
+  graph_transformation_mgr.Init(5);
   graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
   graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGelu>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
@@ -1301,7 +1304,8 @@ TEST(GraphTransformationTests, FastGeluWithBiasUseGraphInputFusionTest) {
   ASSERT_TRUE(load_ret.IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr;
+  graph_transformation_mgr.Init(5);
   graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
   graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGelu>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
@@ -1321,7 +1325,8 @@ TEST(GraphTransformationTests, FastGeluFusionTest2) {
   ASSERT_TRUE(load_ret.IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr;
+  graph_transformation_mgr.Init(5);
   graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1340,7 +1345,8 @@ TEST(GraphTransformationTests, FastGeluUseGraphInputFusionTest2) {
   ASSERT_TRUE(load_ret.IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr;
+  graph_transformation_mgr.Init(5);
   graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1359,7 +1365,8 @@ TEST(GraphTransformationTests, FastGeluWithBiasFusionTest2) {
   ASSERT_TRUE(load_ret.IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr;
+  graph_transformation_mgr.Init(5);
   graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
   graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGelu>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
@@ -1379,7 +1386,8 @@ TEST(GraphTransformationTests, FastGeluWithBiasUseGraphInputFusionTest2) {
   ASSERT_TRUE(load_ret.IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr;
+  graph_transformation_mgr.Init(5);
   graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
   graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGelu>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
