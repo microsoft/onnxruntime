@@ -8,7 +8,7 @@ import zipfile # Available Python 3.2 or higher
 import glob
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description="ONNX Runtime create nuget spec script",
+    parser = argparse.ArgumentParser(description="Validate ONNX Runtime native nuget containing native shared library artifacts spec script",
                                      usage='')
     # Main arguments
     parser.add_argument("--nuget_path", required=True, help="Path containing the Nuget to be validated. Must only contain only one Nuget within this.")
@@ -70,7 +70,7 @@ def main():
     args = parse_arguments()
 
     files = os.listdir(args.nuget_path)
-    nuget_packages_found_in_path = [i for i in files if i.endswith('.nupkg')]
+    nuget_packages_found_in_path = [i for i in files if i.endswith('.nupkg') and "Managed" not in i]
     if (len(nuget_packages_found_in_path) != 1):
         print('Nuget packages found in path: ')
         print(nuget_packages_found_in_path)
