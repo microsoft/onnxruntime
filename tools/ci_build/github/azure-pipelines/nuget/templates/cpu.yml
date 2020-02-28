@@ -20,6 +20,7 @@ jobs:
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)     
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
@@ -38,9 +39,9 @@ jobs:
     DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage
-     cd $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\
+     cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
      ren *.nupkg win-x86.zip
-     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
@@ -59,9 +60,9 @@ jobs:
     DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm64 /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release /t:CreatePackage
-     cd $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\
+     cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
      ren *.nupkg win-arm64.zip
-     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
@@ -80,9 +81,9 @@ jobs:
     DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release /t:CreatePackage
-     cd $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\
+     cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
      ren *.nupkg win-arm.zip
-     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
@@ -249,7 +250,7 @@ jobs:
           Write-Host "##vso[task.setvariable variable=CurrentDate]$date"
 
   - task: AzureFileCopy@3
-    displayName: 'Copy Signed NuGet Package to Blob Store'
+    displayName: 'Copy Signed Native NuGet Package to Blob Store'
     condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
     inputs:
       sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(NuGetPackageVersionNumber).nupkg'
@@ -260,10 +261,30 @@ jobs:
       blobPrefix: '$(CurrentDate)/'
     continueOnError: true
 
+  - task: AzureFileCopy@3
+    displayName: 'Copy Signed Managed NuGet Package to Blob Store'
+    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
+    inputs:
+      sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.Managed.$(NuGetPackageVersionNumber).nupkg'
+      azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+      destination: azureBlob
+      storage: ortpackages
+      containerName: ortpackages
+      blobPrefix: '$(CurrentDate)/'
+    continueOnError: true
+
   - task: DotNetCoreCLI@2
-    displayName: 'Copy Signed NuGet Package to Internal NuGet Feed'
+    displayName: 'Copy Signed Native NuGet Package to Internal NuGet Feed'
     condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
     inputs:
       command: 'push'
       searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(NuGetPackageVersionNumber).nupkg'
+      feedPublish: 'OnnxRuntime'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Copy Signed Managed NuGet Package to Internal NuGet Feed'
+    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
+    inputs:
+      command: 'push'
+      searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.Managed.$(NuGetPackageVersionNumber).nupkg'
       feedPublish: 'OnnxRuntime'
