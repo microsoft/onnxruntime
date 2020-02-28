@@ -73,7 +73,7 @@ if (onnxruntime_USE_TELEMETRY)
 endif()
 
 if (onnxruntime_USE_MIMALLOC_STL_ALLOCATOR OR onnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR)
-    if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO) 
+    if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO)
         message(WARNING "Ignoring directive to use mimalloc on unimplemented targets")
     elseif (${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
         # Some of the non-windows targets see strange runtime failures
@@ -87,7 +87,7 @@ if (onnxruntime_USE_MIMALLOC_STL_ALLOCATOR OR onnxruntime_USE_MIMALLOC_ARENA_ALL
 endif()
 
 onnxruntime_add_include_to_target(onnxruntime_common date_interface safeint_interface)
-target_include_directories(onnxruntime_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${RE2_INCLUDE_DIR}
+target_include_directories(onnxruntime_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
         PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 
 target_include_directories(onnxruntime_common PUBLIC ${eigen_INCLUDE_DIRS})

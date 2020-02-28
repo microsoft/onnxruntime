@@ -16,10 +16,10 @@ namespace onnxruntime {
 class Path {
  public:
   Path() = default;
-  Path(const Path& other) = default;
-  Path& operator=(const Path& other) = default;
-  Path(Path&& other) = default;
-  Path& operator=(Path&& other) = default;
+  Path(const Path&) = default;
+  Path& operator=(const Path&) = default;
+  Path(Path&&) = default;
+  Path& operator=(Path&&) = default;
 
   /** Parses a path from `path_str`. */
   static Status Parse(const PathString& path_str, Path& path);
@@ -33,11 +33,42 @@ class Path {
   /** Gets the path components following the path root. */
   const std::vector<PathString>& GetComponents() const { return components_; }
 
+  /** Whether the path is empty. */
+  bool IsEmpty() const;
+
+  /** Whether the path is absolute (refers unambiguously to a file location). */
+  bool IsAbsolute() const;
+  /** Whether the path is relative (not absolute). */
+  bool IsRelative() const { return !IsAbsolute(); }
+
+  /** Returns a copy of the path without the last component. */
+  Path ParentPath() const;
+
   /**
-   * Returns a normalized path. That is, a path with .'s and ..'s resolved.
+   * Normalizes the path.
+   * A normalized path is one with "."'s and ".."'s resolved.
    * Note: This is a pure path computation with no filesystem access.
    */
-  Path Normalized() const;
+  Path& Normalize();
+  /** Returns a normalized copy of the path. */
+  Path NormalizedPath() const {
+    Path p{*this};
+    return p.Normalize();
+  }
+
+  /**
+   * Appends `other` to the path.
+   * The algorithm should model that of std::filesystem::path::append().
+   */
+  Path& Append(const Path& other);
+  /** Equivalent to this->Append(other). */
+  Path& operator/=(const Path& other) {
+    return Append(other);
+  }
+  /** Returns `a` appended with `b`. */
+  friend Path operator/(Path a, const Path& b) {
+    return a /= b;
+  }
 
   friend Status RelativePath(const Path& src, const Path& dst, Path& rel);
 

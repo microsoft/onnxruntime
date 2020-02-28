@@ -60,8 +60,8 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node, cons
     };
 
     auto get_initializer_data =
-        [](const ONNX_NAMESPACE::TensorProto* initializer) -> std::vector<int64_t> {
-      Initializer init(*initializer);
+        [&graph](const ONNX_NAMESPACE::TensorProto* initializer) -> std::vector<int64_t> {
+      Initializer init(*initializer, graph.ModelPath());
       if (initializer->data_type() == ONNX_NAMESPACE::TensorProto::INT32) {
         int32_t* init_data = init.data<int32_t>();
         return std::vector<int64_t>(init_data, init_data + init.size());

@@ -484,7 +484,7 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
   }
 
   auto p_model = onnxruntime::make_unique<onnxruntime::Model>(
-      "test", false, ModelMetaData(), custom_schema_registries_,
+      "test", false, ModelMetaData(), PathString(), custom_schema_registries_,
       domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{},
       DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = p_model->MainGraph();

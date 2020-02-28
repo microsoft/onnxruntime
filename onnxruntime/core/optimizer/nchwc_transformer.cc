@@ -366,15 +366,15 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     // Reuse the existing NodeArg.
     nchwc_conv_W_arg = filters_it->second;
   } else {
-    auto conv_W = onnxruntime::make_unique<Initializer>(*conv_W_tensor_proto);
+    Initializer conv_W{*conv_W_tensor_proto, graph_.ModelPath()};
 
-    std::vector<float> reordered_filter(conv_W->size() / output_channels * nchwc_output_channels);
+    std::vector<float> reordered_filter(conv_W.size() / output_channels * nchwc_output_channels);
 
     // Reorder the weights tensor statically.
     if (reorder_filter_OIHWBo) {
-      MlasReorderFilterOIHWBo(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
+      MlasReorderFilterOIHWBo(conv_W.dims().data(), conv_W.data<float>(), reordered_filter.data());
     } else {
-      MlasReorderFilterOIHWBiBo(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
+      MlasReorderFilterOIHWBiBo(conv_W.dims().data(), conv_W.data<float>(), reordered_filter.data());
     }
 
     ONNX_NAMESPACE::TensorProto nchwc_conv_W_tensor_proto;
@@ -385,7 +385,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
     nchwc_conv_W_tensor_proto.add_dims(nchwc_output_channels);
     for (size_t i = 1; i < 4; i++) {
-      nchwc_conv_W_tensor_proto.add_dims(conv_W->dims()[i]);
+      nchwc_conv_W_tensor_proto.add_dims(conv_W.dims()[i]);
     }
 
     nchwc_conv_W_arg = &graph_utils::AddInitializer(graph_, nchwc_conv_W_tensor_proto);
@@ -400,10 +400,10 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
       // Reuse the existing NodeArg.
       nchwc_conv_B_arg = biases_it->second;
     } else {
-      auto conv_B = onnxruntime::make_unique<Initializer>(*conv_B_tensor_proto);
+      Initializer conv_B{*conv_B_tensor_proto, graph_.ModelPath()};
 
       std::vector<float> aligned_bias(nchwc_output_channels);
-      std::copy_n(conv_B->data<float>(), output_channels, aligned_bias.data());
+      std::copy_n(conv_B.data<float>(), output_channels, aligned_bias.data());
 
       ONNX_NAMESPACE::TensorProto nchwc_conv_B_tensor_proto;
 
@@ -726,24 +726,24 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
     return;
   }
 
-  auto bn_scale = onnxruntime::make_unique<Initializer>(*bn_scale_tensor_proto);
-  auto bn_B = onnxruntime::make_unique<Initializer>(*bn_B_tensor_proto);
-  auto bn_mean = onnxruntime::make_unique<Initializer>(*bn_mean_tensor_proto);
-  auto bn_var = onnxruntime::make_unique<Initializer>(*bn_var_tensor_proto);
+  Initializer bn_scale{*bn_scale_tensor_proto, graph_.ModelPath()};
+  Initializer bn_B{*bn_B_tensor_proto, graph_.ModelPath()};
+  Initializer bn_mean{*bn_mean_tensor_proto, graph_.ModelPath()};
+  Initializer bn_var{*bn_var_tensor_proto, graph_.ModelPath()};
 
   // Calculate the scale and bias for the replacement convolution.
-  bn_var->add(epsilon);
-  bn_var->sqrt();
-  bn_scale->div(*bn_var);
-  bn_mean->mul(*bn_scale);
-  bn_B->sub(*bn_mean);
+  bn_var.add(epsilon);
+  bn_var.sqrt();
+  bn_scale.div(bn_var);
+  bn_mean.mul(bn_scale);
+  bn_B.sub(bn_mean);
 
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
   const int64_t nchwc_channels = (channels + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
 
   std::vector<float> padded_buffer(nchwc_channels);
 
-  std::copy_n(bn_scale->data<float>(), channels, padded_buffer.data());
+  std::copy_n(bn_scale.data<float>(), channels, padded_buffer.data());
 
   ONNX_NAMESPACE::TensorProto nchwc_conv_W_tensor_proto;
   nchwc_conv_W_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -756,7 +756,7 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
 
   auto* nchwc_conv_W_arg = &graph_utils::AddInitializer(graph_, nchwc_conv_W_tensor_proto);
 
-  std::copy_n(bn_B->data<float>(), channels, padded_buffer.data());
+  std::copy_n(bn_B.data<float>(), channels, padded_buffer.data());
 
   ONNX_NAMESPACE::TensorProto nchwc_conv_B_tensor_proto;
   nchwc_conv_B_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
