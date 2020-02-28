@@ -73,15 +73,13 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<int64_t> output_dims(2, 1);
   Tensor* Y = ctx->Output(0, TensorShape({}));
   // Sum((label * log(softmax)) using Reduction
-  ReduceKernelShared<T, T>(
+  return ReduceKernelShared<T, T>(
       temp_X.get(),
       logit_reshape,
       Y->template MutableData<T>(),
       TensorShape({}),
       HipReduceTensorType::HIP_REDUCE_TENSOR_ADD,
       output_dims);
-
-  return Status::OK();
 }
 
 template <typename T>
@@ -196,17 +194,28 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
                                 N,
                                 D);
 
-  // ReduceSum on loss_per_sample
-  std::vector<int64_t> output_dims(1, 1);
-  ReduceKernelShared<T, T>(
-      tmp_loss_sample.get(),
-      label_reshape,
-      total_loss_data,
-      TensorShape({}),
-      HipReduceTensorType::HIP_REDUCE_TENSOR_ADD,
-      output_dims);
-
+  // Compute buffer size in byte for reduction APIs.
+  const auto tmp_buffer_size = static_cast<size_t>(
+      compute_reduction_buffer_size(
+          static_cast<int>(sizeof(T)), static_cast<int>(N)));
+  // Allocate reduction buffer whose size is buffer_size bytes.
+  IAllocatorUniquePtr<void> tmp_reduction_buffer = GetScratchBuffer<void>(
+      tmp_buffer_size);
+  reduce_sum(tmp_loss_sample.get(),
+              total_loss_data,
+              static_cast<int>(N),
+              reinterpret_cast<T*>(tmp_reduction_buffer.get()));
   return Status::OK();
+
+  // ReduceSum on loss_per_sample
+  // std::vector<int64_t> output_dims(1, 1);
+  // return ReduceKernelShared<T, T>(
+  //     tmp_loss_sample.get(),
+  //     label_reshape,
+  //     total_loss_data,
+  //     TensorShape({}),
+  //     HipReduceTensorType::HIP_REDUCE_TENSOR_ADD,
+  //     output_dims);
 }
 
 template <typename T, typename Tin>

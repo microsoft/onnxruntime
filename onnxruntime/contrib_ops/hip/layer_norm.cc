@@ -14,7 +14,7 @@ namespace hip {
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       LayerNormalization,                                         \
       kOnnxDomain,                                                \
-      9,                                                          \
+      1,                                                          \
       T##_##U,                                                    \
       kHipExecutionProvider,                                     \
       KernelDefBuilder()                                          \
