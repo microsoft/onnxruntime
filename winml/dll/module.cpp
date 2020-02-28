@@ -7,6 +7,7 @@
 
 #include "LearningModelDevice.h"
 #include "OnnxruntimeProvider.h"
+#include "LearningModelBuilder.h"
 
 using namespace winrt::Windows::AI::MachineLearning::implementation;
 
@@ -86,6 +87,39 @@ STDAPI DllCanUnloadNow() {
   return S_FALSE;
 }
 
-STDAPI DllGetActivationFactory(HSTRING classId, void** factory) {
-  return WINRT_GetActivationFactory(classId, factory);
+int32_t WINRT_CALL WinmlMoreGetActivationFactory(void* classId, void** factory) noexcept {
+  try {
+    *factory = nullptr;
+    uint32_t length{};
+    wchar_t const* const buffer = WINRT_WindowsGetStringRawBuffer(classId, &length);
+    std::wstring_view const name{buffer, length};
+
+    auto requal = [](std::wstring_view const& left, std::wstring_view const& right) noexcept {
+      return std::equal(left.rbegin(), left.rend(), right.rbegin(), right.rend());
+    };
+
+    if (requal(name, L"Windows.AI.MachineLearning.More.LearningModelBuilder")) {
+      *factory = winrt::detach_abi(winrt::make<winrt::Windows::AI::MachineLearning::More::factory_implementation::LearningModelBuilder>());
+      return 0;
+    }
+
+#ifdef _WRL_MODULE_H_
+    return ::Microsoft::WRL::Module<::Microsoft::WRL::InProc>::GetModule().GetActivationFactory(static_cast<HSTRING>(classId), reinterpret_cast<::IActivationFactory**>(factory));
+#else
+    return winrt::hresult_class_not_available(name).to_abi();
+#endif
+  } catch (...) {
+    return winrt::to_hresult();
+  }
 }
+
+
+STDAPI DllGetActivationFactory(HSTRING classId, void** factory) {
+  auto ret = WINRT_GetActivationFactory(classId, factory);
+
+  if (ret != 0)
+    return WinmlMoreGetActivationFactory(classId, factory);
+
+  return 0;
+}
+

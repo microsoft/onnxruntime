@@ -111,6 +111,7 @@ function(target_cppwinrt
         convert_forward_slashes_to_back(${target_outputs}/comp_generated generated_dir_back_slash)
         convert_forward_slashes_to_back(${generated_dir_back_slash}/module.g.cpp module_g_cpp_back_slash)
         convert_forward_slashes_to_back(${generated_dir_back_slash}/module.g.excl.cpp module_g_ecxl_cpp_back_slash)
+        convert_forward_slashes_to_back(${out_sources_folder} out_sources_folder_back_slash)
 
         # using add_custom_command trick to prevent rerunning script unless ${file} is changed
         add_custom_command(
@@ -156,9 +157,9 @@ function(target_cppwinrt
                     for /f %I in ('dir /b ${temp_dir_back_slash}') \
                     do \
                     ( \
-                        if not exist ${out_sources_folder}\\%I \
+                        if not exist ${out_sources_folder_back_slash}\\%I \
                         ( \
-                            copy ${temp_dir_back_slash}\\%I ${out_sources_folder}\\%I \
+                            copy ${temp_dir_back_slash}\\%I ${out_sources_folder_back_slash}\\%I /Y /D \
                         ) \
                     )"
             COMMAND

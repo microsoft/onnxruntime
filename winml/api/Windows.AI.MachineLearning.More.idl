@@ -1,0 +1,118 @@
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+//! \file Windows.AI.MachineLearning.idl
+import "Windows.AI.MachineLearning.idl";
+import "Windows.Foundation.idl";
+import "windows.graphics.idl";
+import "windows.media.idl";
+
+#ifndef WINDOWSAI_RAZZLE_BUILD
+// Pull in definition for DualApiPartitionAttribute, because the WinML IDL
+// does not build in the OS Repo, and needs to access internal definitions for
+// various custom attirbute definitions.
+import "dualapipartitionattribute.idl";
+import "windows.graphics.directx.direct3d11.idl";
+import "windows.graphics.imaging.idl";
+import "windows.storage.idl";
+#endif
+
+#include <sdkddkver.h>
+
+namespace Windows.AI.MachineLearning.More
+{
+
+    //! \brief Describes the common properties that all features have.
+    [uuid(f3f39d9f-52ce-4588-86c5-94fbc382d8b6)]
+    interface ILearningModelLayer
+    {
+        ILearningModelLayer Then(ILearningModelLayer next_layer);
+
+        ILearningModelLayer Then(ILearningModelLayer next_layer, LearningModelLayerResolutionPolicy policy);
+    }
+
+    //! \interface ILearningModelLayer
+    //! \brief Represents a trained machine learning model.
+    //! \details This is the main object you use to interact with Windows Machine Learning.  You use 
+    //! it to load, bind, and evaluate trained ONNX models.   To load the model you use 
+    //! one of the Load constructors.  You can then enumerate the InputFeatures and 
+    //! OutputFeatures.   To bind and evaluate you create a LearningModelSession.
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass FullyConnectedLayer : ILearningModelLayer
+    {
+    }
+
+    //! \interface LearningModelBuilder
+    //! \brief Represents a trained machine learning model.
+    //! \details This is the main object you use to interact with Windows Machine Learning.  You use 
+    //! it to load, bind, and evaluate trained ONNX models.   To load the model you use 
+    //! one of the Load constructors.  You can then enumerate the InputFeatures and 
+    //! OutputFeatures.   To bind and evaluate you create a LearningModelSession.
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass LearningModelBuilder : Windows.Foundation.IClosable
+    {
+        ILearningModelLayer InputLayer { get; };
+        ILearningModelLayer OutputLayer { get; };
+
+        //! Create a builder.
+        static LearningModelBuilder Create();
+
+        static ILearningModelLayer AfterAll(
+          ILearningModelLayer target,
+          Windows.Foundation.Collections.IVectorView<ILearningModelLayer> input_layers);
+
+        static ILearningModelLayer AfterAll(
+          ILearningModelLayer target,
+          Windows.Foundation.Collections.IVectorView<ILearningModelLayer> input_layers,
+          LearningModelLayerResolutionPolicy policy);
+
+        ILearningModelLayer AddInput(Windows.AI.MachineLearning.ILearningModelFeatureDescriptor input_descriptor);
+
+        ILearningModelLayer AddOutput(Windows.AI.MachineLearning.ILearningModelFeatureDescriptor output_descriptor);
+
+        Windows.AI.MachineLearning.LearningModel CreateModel();
+    }
+}
+
+
+/*
+
+::ShapeSize()
+Tensor::Reshape()
+
+ILearningModelFeatureDescriptor input_desc = TensorFeatureDescriptor::Create();
+ILearningModelFeatureDescriptor output_desc = TensorFeatureDescriptor::Create();
+LearningModelBuilder mb;
+mb.AddInput(input_desc);
+mb.AddOutput(output_desc);
+
+auto fc1 = Layer::CreateFullyConnected(shape_tensor.ShapeSize(), Tensor::Uniform(TensorFloat::Create(...), mean));
+auto fc2 = Layer::CreateFullyConnected(shape_tensor.ShapeSize(), Tensor::Uniform(TensorFloat::Create(...), mean));
+auto fc3 = Layer::CreateFullyConnected(shape_tensor.ShapeSize(), Tensor::Uniform(TensorFloat::Create(...), mean));
+
+// fc1 -> fc2 -> fc3
+
+std::map<uint32_t, uint32_t> fc1_edge_map = { {0, 0}, {2, 1} };
+mb.InputLayer()
+  .Then(fc1, fc1_edge_map)
+  .Then(fc2)
+  .Then(fc3)
+  .Then(mb.OutputLayer());
+
+// fc1 -> fc3; fc2 -> fc3
+mb.InputLayer().Then(fc1);
+mb.InputLayer().Then(fc2);
+LearningModelBuilder::AfterAll(fc3, {fc1, fc2})
+  .Then(mb.OutputLayer());
+
+
+
+torch.
+torch.nn
+torch.nn.function
+
+*/

@@ -31,6 +31,7 @@ convert_forward_slashes_to_back(${exclusions} CPPWINRT_COMPONENT_EXCLUSION_LIST)
 #
 # For native idl files there are no casing restrictions.
 get_filename_component(winrt_idl "${winml_api_root}/Windows.AI.MachineLearning.idl" ABSOLUTE)
+get_filename_component(winrt_more_idl "${winml_api_root}/Windows.AI.MachineLearning.More.idl" ABSOLUTE)
 get_filename_component(idl_native "${winml_api_root}/windows.ai.machineLearning.native.idl" ABSOLUTE)
 get_filename_component(idl_native_internal "${winml_api_root}/windows.ai.machineLearning.native.internal.idl" ABSOLUTE)
 
@@ -46,6 +47,15 @@ add_generate_cppwinrt_sdk_headers_target(
 # generate winml headers from idl
 target_cppwinrt(winml_api
   ${winrt_idl}            # winml winrt idl to compile
+  ${winml_lib_api_dir}    # location for cppwinrt generated component sources
+  ${sdk_folder}           # location of sdk folder
+  ${sdk_version}          # sdk version
+  ${target_folder}        # the folder this target will be placed under
+)
+
+# generate winml.more headers from idl
+target_cppwinrt(winml_more_api
+  ${winrt_more_idl}       # winml winrt idl to compile
   ${winml_lib_api_dir}    # location for cppwinrt generated component sources
   ${sdk_folder}           # location of sdk folder
   ${sdk_version}          # sdk version
@@ -368,6 +378,11 @@ add_library(winml_lib_api STATIC
   ${winml_lib_api_dir}/SequenceFeatureDescriptor.h
   ${winml_lib_api_dir}/TensorFeatureDescriptor.cpp
   ${winml_lib_api_dir}/TensorFeatureDescriptor.h
+
+  ## WinML.More
+  ${winml_lib_api_dir}/LearningModelBuilder.cpp
+  ${winml_lib_api_dir}/LearningModelBuilder.h
+  
   ${winml_lib_api_dir}/pch/pch.h
 )
 
@@ -389,6 +404,7 @@ target_precompiled_header(winml_lib_api pch.h)
 # Includes
 target_include_directories(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
 target_include_directories(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
+target_include_directories(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_more_api/comp_generated) # windows machine learning generated component headers
 target_include_directories(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
 
 target_include_directories(winml_lib_api PRIVATE ${winml_lib_api_dir})
