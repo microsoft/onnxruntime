@@ -114,5 +114,27 @@ TEST(BiasGeluTest, Two_One_Dim) {
   RunBiasGeluTest(input_a_data, input_b_data, {2, 4}, {4});
 }
 
+TEST(MathOpTest, StackedComplexMul) {
+  if (HasCudaEnvironment(0)) {
+    std::vector<float> input_a_data = {
+        0.8f, -0.5f, 0.0f, 1.f,
+        0.5f, 0.2f, 0.3f, -0.6f};
+
+    std::vector<float> input_b_data = {
+        -0.5f, 0.6f};
+
+    std::vector<float> output_data = {
+        -0.10f, 0.73f, -0.60f, -0.50f,
+        -0.37f, 0.20f, 0.21f, 0.48f};
+
+    OpTester tester("StackedComplexMul", 1, onnxruntime::kMSDomain);
+    const std::vector<int64_t>& output_dims = {4, 2};
+    tester.AddInput<float>("A", {4, 2}, input_a_data);
+    tester.AddInput<float>("B", {2}, input_b_data);
+    tester.AddOutput<float>("C", output_dims, output_data);
+
+    tester.Run();
+  }
+}
 }  // namespace test
 }  // namespace onnxruntime

@@ -985,6 +985,15 @@ Sample echo operator.)DOC");
       .Output(0, "Y", "output tensor", "T")
       .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(StackedComplexMul)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC()DOC")
+      .Input(0, "A", "input_0", "T")
+      .Input(1, "B", "input_1", "T")
+      .Output(0, "C", "output tensor", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConvTransposeWithDynamicPads)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -2347,7 +2356,6 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   RegisterBertSchemas();
-
 }
 }  // namespace contrib
 }  // namespace onnxruntime
