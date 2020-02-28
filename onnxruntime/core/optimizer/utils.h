@@ -56,5 +56,15 @@ bool ValidateShape(const NodeArg& node_arg, const std::initializer_list<int64_t>
 */
 bool IsShapeKnownOnAllDims(const NodeArg& node_arg, int expected_dim_size);
 
+/** Get the index of node_arg among the node's all inputs.
+@remarks -1 when node_arg is not in node's inputs..
+*/
+int32_t IndexOfNodeInput(const Node& node, const NodeArg& node_arg);
+
+/** Check whether node's input data types are in supported data type list.
+@param supported_data_types specify the supported data types.
+*/
+bool IsSupportedDataType(const Node& node, const std::vector<std::string>& supported_data_types);
+
 }  // namespace optimizer_utils
 }  // namespace onnxruntime

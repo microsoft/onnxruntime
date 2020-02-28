@@ -56,7 +56,7 @@ def write_to_db(binary_size_data, args):
 
         #delete old records
         delete_query = ('DELETE FROM onnxruntime.binary_size '
-            'WHERE build_time < DATE_SUB(Now(), INTERVAL 30 DAY);'
+            'WHERE build_time < DATE_SUB(Now(), INTERVAL 180 DAY);'
         )
         
         cursor.execute(delete_query)

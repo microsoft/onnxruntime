@@ -32,7 +32,7 @@ HRESULT __stdcall WINRT_RoGetActivationFactory(HSTRING classId_hstring, GUID con
     if (starts_with(name, L"Windows.AI.MachineLearning."))
     {
         const wchar_t* libPath = winmlDllPath.c_str();
-        library = LoadLibraryW(libPath);
+        library = LoadLibraryExW(libPath, nullptr, 0);
     }
     else
     {

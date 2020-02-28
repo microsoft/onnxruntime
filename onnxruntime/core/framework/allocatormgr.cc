@@ -11,6 +11,12 @@
 
 namespace onnxruntime {
 
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
+  using TArenaAllocator = MiMallocArena;
+#else
+  using TArenaAllocator = BFCArena;
+#endif
+
 using namespace ::onnxruntime::common;
 
 AllocatorPtr CreateAllocator(DeviceAllocatorRegistrationInfo info, OrtDevice::DeviceId device_id) {
