@@ -261,7 +261,7 @@ Status RelativePath(const Path& src, const Path& dst, Path& rel) {
       "src root: ", ToMBString(src.GetRootPathString()),
       ", dst root: ", ToMBString(dst.GetRootPathString()));
 
-  const Path norm_src = src.Normalized(), norm_dst = dst.Normalized();
+  const Path norm_src = src.NormalizedPath(), norm_dst = dst.NormalizedPath();
   const auto& src_components = norm_src.GetComponents();
   const auto& dst_components = norm_dst.GetComponents();
 

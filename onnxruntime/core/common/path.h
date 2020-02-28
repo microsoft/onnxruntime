@@ -51,7 +51,7 @@ class Path {
    */
   Path& Normalize();
   /** Returns a normalized copy of the path. */
-  Path Normalized() const {
+  Path NormalizedPath() const {
     Path p{*this};
     return p.Normalize();
   }
