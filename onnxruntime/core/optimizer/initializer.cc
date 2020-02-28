@@ -18,7 +18,9 @@ Status Initializer::ReadExternalRawData(
           tensor_proto.data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING,
       "External data type must not be UNDEFINED or STRING.");
 
-  ORT_RETURN_IF(model_path.IsEmpty(), "model_path must not be empty.");
+  ORT_RETURN_IF(
+      model_path.IsEmpty(),
+      "model_path must not be empty. Ensure that a path is provided when the model is created or loaded.");
 
   std::unique_ptr<ExternalDataInfo> external_data{};
   ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data));
