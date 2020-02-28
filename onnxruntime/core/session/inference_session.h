@@ -383,6 +383,8 @@ class InferenceSession {
 
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   std::basic_string<ORTCHAR_T> model_location_;
+  
+  SessionOptions session_options_;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
@@ -417,9 +419,9 @@ class InferenceSession {
 
   common::Status InitializeSubgraphSessions(Graph& graph, SessionState& session_state);
 
-  void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                 TransformerLevel graph_optimization_level,
-                                 const std::vector<std::string>& custom_list);
+  virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                         TransformerLevel graph_optimization_level,
+                                         const std::vector<std::string>& custom_list);
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
@@ -438,8 +440,6 @@ class InferenceSession {
 
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
-
-  SessionOptions session_options_;
 
   std::unique_ptr<onnxruntime::GraphTransformerManager> graph_transformation_mgr_;
 

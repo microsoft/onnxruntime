@@ -29,10 +29,6 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
 
-#ifdef ENABLE_TRAINING
-#include "core/optimizer/matmul_transpose_fusion.h"
-#endif
-
 namespace onnxruntime {
 
 namespace optimizer_utils {
@@ -110,19 +106,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     case TransformerLevel::Level1: {
       std::unordered_set<std::string> l1_execution_providers = {};
 
-      // TODO hack - constant folding currently doesn't work after mixed precision transformation so it's disabled for now
-      //             ORT uses CPU kernels to evaluate constant values but some of them don't support fp16
-      // Enabled for inference only scenario.
-#ifndef ENABLE_TRAINING
       transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(l1_execution_providers));
-#endif
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
-
-#ifdef ENABLE_TRAINING
-      transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(l1_execution_providers));
-#endif
 
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
     } break;

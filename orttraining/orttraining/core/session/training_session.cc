@@ -12,10 +12,7 @@
 #include "orttraining/core/framework/data_transfer_utils.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/graph/optimizer_graph_builder_registry.h"
-#include "core/optimizer/gelu_fusion.h"
-#include "core/optimizer/layer_norm_fusion.h"
-#include "core/optimizer/identity_elimination.h"
-#include "orttraining/core/optimizer/insert_output_rewriter.h"
+#include "orttraining/core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "orttraining/core/graph/mixed_precision_transformer.h"
 #include "orttraining/core/graph/tensorboard_transformer.h"
@@ -315,23 +312,62 @@ static Status AddGradientAccumulationNodes(Graph& graph,
 }
 
 Status TrainingSession::ApplyTransformationsToMainGraph() {
-  try {
-    Graph& graph = model_->MainGraph();
+  GraphTransformerManager graph_transformation_mgr{1};
+  AddPreTrainingTransformers(graph_transformation_mgr);
 
-    GraphTransformerManager graph_transformation_mgr{1};
+  // apply transformers
+  Graph& graph = model_->MainGraph();
+  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+    ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
+  }
+  return common::Status::OK();
+}
 
-    // MUST be empty here, because this is called before partition, so the node's execution type is not decided yet.
-    // If we give values here, the check in transformer will fail.
-    std::unordered_set<std::string> compatible_eps = {};
-    auto gelu_transformer = onnxruntime::make_unique<GeluFusion>(compatible_eps);
-    graph_transformation_mgr.Register(std::move(gelu_transformer), TransformerLevel::Level2);
-    auto layernorm_transformer = onnxruntime::make_unique<LayerNormFusion>(compatible_eps);
-    graph_transformation_mgr.Register(std::move(layernorm_transformer), TransformerLevel::Level2);
+// Registers all the pre transformers with transformer manager
+void TrainingSession::AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,                                       
+                                                 TransformerLevel graph_optimization_level,
+                                                 const std::vector<std::string>& custom_list) {
+  auto add_transformers = [&](TransformerLevel level) {
+    // Generate and register transformers for level
+    auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(level, custom_list);
+    for (auto& entry : transformers_to_register) {
+      transformer_manager.Register(std::move(entry), level);
+    }
+  };
 
-    auto status = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *session_logger_);
-    return status;
-  } catch (const OnnxRuntimeException& exp) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to apply default optimization passes: ", exp.what());
+  ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
+              "Exceeded max transformer level. Current level is set to " +
+                  std::to_string(static_cast<uint32_t>(graph_optimization_level)));
+
+  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+    TransformerLevel level = static_cast<TransformerLevel>(i);
+    if ((graph_optimization_level >= level) || !custom_list.empty()) {
+      add_transformers(level);
+    }
+  }
+}
+
+// Registers all the predefined transformers with transformer manager
+void TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                                TransformerLevel graph_optimization_level,
+                                                const std::vector<std::string>& custom_list) {
+  auto add_transformers = [&](TransformerLevel level) {
+    // Generate and register transformers for level
+    auto transformers_to_register = transformer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides, custom_list);
+    for (auto& entry : transformers_to_register) {
+      transformer_manager.Register(std::move(entry), level);
+    }
+  };
+
+  ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
+              "Exceeded max transformer level. Current level is set to " +
+                  std::to_string(static_cast<uint32_t>(graph_optimization_level)));
+
+  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+    TransformerLevel level = static_cast<TransformerLevel>(i);
+    if ((graph_optimization_level >= level) || !custom_list.empty()) {
+      add_transformers(level);
+    }
   }
 }
 

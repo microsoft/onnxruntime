@@ -259,6 +259,16 @@ class TrainingSession : public InferenceSession {
 
   common::Status ApplyTransformationsToMainGraph();
 
+  /** configure initial transformers for training */
+  void AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
+                                  TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
+                                  const std::vector<std::string>& custom_list = {});
+
+  /** override the parent method in inference session for training specific transformers */
+  void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                 TransformerLevel graph_optimization_level,
+                                 const std::vector<std::string>& custom_list) override;
+
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a set of weights to be training.
   @param loss_function_output_name the name of the loss function's output.
