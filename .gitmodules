@@ -52,4 +52,4 @@
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/jywu-msft/onnx-tensorrt.git
-	branch = jywu_vs2019_constexpr
+	branch = jywu_test
