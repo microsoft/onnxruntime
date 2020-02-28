@@ -52,6 +52,7 @@ __global__ void _GatherKernel(
 }
 
 void GatherImpl(
+    cudaStream_t stream,
     const int64_t input_block_size,
     const int64_t indices_max,
     const fast_divmod& output_block_size,
@@ -68,28 +69,28 @@ void GatherImpl(
   switch (element_size) {
     case sizeof(int8_t): {
       using CudaType = typename ToCudaType<int8_t>::MappedType;
-      _GatherKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _GatherKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           input_block_size, indices_max, output_block_size, block_size, indices_data, index_element_size,
           reinterpret_cast<const CudaType*>(input_data), reinterpret_cast<CudaType*>(output_data), (CUDA_LONG)N);
 
     } break;
     case sizeof(int16_t): {
       using CudaType = typename ToCudaType<int16_t>::MappedType;
-      _GatherKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _GatherKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           input_block_size, indices_max, output_block_size, block_size, indices_data, index_element_size,
           reinterpret_cast<const CudaType*>(input_data), reinterpret_cast<CudaType*>(output_data), (CUDA_LONG)N);
 
     } break;
     case sizeof(int32_t): {
       using CudaType = typename ToCudaType<int32_t>::MappedType;
-      _GatherKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _GatherKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           input_block_size, indices_max, output_block_size, block_size, indices_data, index_element_size,
           reinterpret_cast<const CudaType*>(input_data), reinterpret_cast<CudaType*>(output_data), (CUDA_LONG)N);
 
     } break;
     case sizeof(int64_t): {
       using CudaType = typename ToCudaType<int64_t>::MappedType;
-      _GatherKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _GatherKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           input_block_size, indices_max, output_block_size, block_size, indices_data, index_element_size,
           reinterpret_cast<const CudaType*>(input_data), reinterpret_cast<CudaType*>(output_data), (CUDA_LONG)N);
 

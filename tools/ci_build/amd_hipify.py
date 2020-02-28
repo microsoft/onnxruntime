@@ -144,6 +144,7 @@ provider_excluded_files = [
                 'rnn/rnn_impl.cu',
                 'rnn/rnn_impl.h',
                 'shared_inc/cuda_call.h',
+                'shared_inc/cuda_utils.h',
                 'shared_inc/fast_divmod.h',
                 'shared_inc/fpgeneric.h',
                 'shared_inc/integer_gemm.h',

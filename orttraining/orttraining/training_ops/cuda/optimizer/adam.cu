@@ -139,6 +139,7 @@ __global__ void _AdamOptimizer_mode1(
 
 template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM, typename T_MIXED_PRECISION_FP>
 void AdamOptimizerImpl(
+    cudaStream_t stream,
     const T1* eta,
     const T2 update_count,
     const T3* weights,
@@ -176,7 +177,7 @@ void AdamOptimizerImpl(
   //         bias correction is applied on learning rate,
   //         weight decay is applied after weight is updated.
   if (weight_decay_mode == 0) {
-    _AdamOptimizer_mode0<T1, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _AdamOptimizer_mode0<T1, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       eta,
       weights,
       grads,
@@ -200,7 +201,7 @@ void AdamOptimizerImpl(
       N);
   }
   else if (weight_decay_mode == 1) {
-    _AdamOptimizer_mode1<T1, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _AdamOptimizer_mode1<T1, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       eta,
       weights,
       grads,
@@ -230,6 +231,7 @@ void AdamOptimizerImpl(
 
 #define SPECIALIZED_AdamOptimizerImpl(T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP)  \
   template void AdamOptimizerImpl(                                                                \
+      cudaStream_t stream,                                                                        \
       const T1* eta,                                                                              \
       const T2 update_count,                                                                      \
       const T3* weights,                                                                          \

@@ -21,6 +21,10 @@
 #include "core/framework/session_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
+#ifdef USE_CUDA
+#include <cuda.h>
+#include <cuda_runtime.h>
+#endif
 using namespace onnxruntime;
 
 namespace {
@@ -304,8 +308,27 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
+      // Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
+      // Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
+      cudaStream_t stream;
+      cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+      std::cout << "user compute stream: " << stream << std::endl;
+      OrtTensorRTProviderOptions tensorrt_options{
+          0,
+          1,
+          static_cast<void*>(stream)};
+
+      OrtCUDAProviderOptions cuda_options{
+          0,
+          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+          std::numeric_limits<size_t>::max(),
+          0,
+          true,
+          1,
+          static_cast<void*>(stream)};
+
+      sf.AppendExecutionProvider_TensorRT(tensorrt_options);
+      sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
       return -1;
@@ -328,7 +351,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           OrtCudnnConvAlgoSearch::EXHAUSTIVE,
           std::numeric_limits<size_t>::max(),
           0,
-          true};
+          true,
+          0,
+          nullptr};
       sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "CUDA is not supported in this build");
