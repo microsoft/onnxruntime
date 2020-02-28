@@ -34,6 +34,7 @@ class BackendManager {
   std::shared_ptr<IBackend> concrete_backend_;
   std::map<std::string, std::shared_ptr<IBackend>> backend_map_;
   std::vector<int> input_indexes_;
+  std::vector<std::string> output_names_;
 };
 
 }  // namespace openvino_ep

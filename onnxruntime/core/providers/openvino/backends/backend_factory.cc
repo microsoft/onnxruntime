@@ -10,11 +10,11 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-std::shared_ptr<IBackend> BackendFactory::MakeBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string type, InferenceEngine::Precision precision) {
+std::shared_ptr<IBackend> BackendFactory::MakeBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::vector<std::string> output_names, std::string type, InferenceEngine::Precision precision) {
     if(type == "CPU" || type == "GPU" || type == "MYRIAD") {
-        return std::make_shared<BasicBackend>(model_proto, input_indexes, type, precision);
+        return std::make_shared<BasicBackend>(model_proto, input_indexes, output_names, type, precision);
     } else if (type == "HDDL") {
-        return std::make_shared<VADMBackend>(model_proto, input_indexes, type, precision);
+        return std::make_shared<VADMBackend>(model_proto, input_indexes, output_names, type, precision);
     }
     else return nullptr;
 }

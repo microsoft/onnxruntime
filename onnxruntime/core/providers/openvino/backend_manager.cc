@@ -61,6 +61,11 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
     input_indexes_.push_back(index);
   }
 
+  auto graph_outputs_defs = fused_node->OutputDefs();
+  for (auto output_def : graph_outputs_defs){
+    output_names_.push_back(output_def->Name());
+  }
+
   model_proto_ = GetModelProtoFromFusedNode(fused_node, logger);
 
   if (ModelHasSymbolicInputDims(fused_node)) {
@@ -69,7 +74,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
   } else {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has concreate input dims. Initializing backend";
     has_dynamic_input_shape_ = false;
-    concrete_backend_ = BackendFactory::MakeBackend(model_proto_, input_indexes_, device_id_, precision_);
+    concrete_backend_ = BackendFactory::MakeBackend(model_proto_, input_indexes_, output_names_, device_id_, precision_);
   }
 }
 
@@ -189,7 +194,7 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
                          << "Creating concrete backend for key: " << key;
       auto modelproto_with_concrete_shapes = ReWriteInputShapeInfo(model_proto_, tensor_shapes);
-      dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes, input_indexes_, device_id_, precision_);
+      dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,input_indexes_,output_names_, device_id_, precision_);
       backend_map_.insert({key, dynamic_backend});
     } else {
       dynamic_backend = search->second;

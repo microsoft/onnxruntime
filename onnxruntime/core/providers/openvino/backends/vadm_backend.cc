@@ -23,8 +23,8 @@ using namespace backend_utils;
 
 #define NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE 500
 
-VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string device_id, InferenceEngine::Precision precision)
-    : input_indexes_{input_indexes}{
+VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::vector<std::string> output_names,std::string device_id, InferenceEngine::Precision precision)
+    : input_indexes_{input_indexes} , output_names_{output_names} {
 
   (void) device_id;
   // Infer Request class represents OpenVINO's logical hardware instance. These logical
@@ -141,7 +141,7 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
 
   // All infer_requests process identical tensor slices from the batch.
   // So using info from first infer_request to allocate all output tensors.
-  auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_requests_[0], ie_cnn_network_);
+  auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_requests_[0], ie_cnn_network_, output_names_);
 
   // Distribute the batched inputs among available Infer Requests
   // for parallel inference.

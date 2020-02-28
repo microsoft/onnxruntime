@@ -197,7 +197,7 @@ std::vector<const OrtValue*> GetInputTensors(Ort::CustomOpApi& ort, OrtKernelCon
 }
 
 std::vector<OrtValue*> GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_size, InferenceEngine::InferRequest::Ptr infer_request,
-                                  std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
+                                  std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network, std::vector<std::string> output_names) {
   std::vector<OrtValue*> output_tensors;
   auto graph_output_info = ie_cnn_network->getOutputsInfo();
 
@@ -217,8 +217,13 @@ std::vector<OrtValue*> GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext*
     for (size_t j = 0; j < num_dims; j++) {
       output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
     }
+    auto it = std::find(output_names.begin(), output_names.end(), output_info_iter->first);
+    if(it == output_names.end()){
+      ORT_THROW("Output names mismatch between OpenVINO and ONNX");
+    }
+    int index = distance(output_names.begin(), it);
 
-    output_tensors.push_back(ort.KernelContext_GetOutput(context, i, output_shape, num_dims));
+    output_tensors.push_back(ort.KernelContext_GetOutput(context, index, output_shape, num_dims));
   }
   return output_tensors;
 }
