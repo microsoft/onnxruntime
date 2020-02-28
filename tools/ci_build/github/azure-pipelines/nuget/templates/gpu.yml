@@ -66,8 +66,10 @@ jobs:
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.Onnxruntime.DirectML
      cd $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\
-     ren *.nupkg win-dml-x86.zip
-     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
+     dir
+     ren Microsoft.ML.Onnxruntime.DirectML.* win-dml-x86.zip
+     dir
+     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\win-dml-x86.zip $(Build.ArtifactStagingDirectory)
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
