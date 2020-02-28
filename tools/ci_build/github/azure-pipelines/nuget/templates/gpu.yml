@@ -22,6 +22,7 @@ jobs:
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
@@ -146,22 +147,26 @@ jobs:
      powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
      powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
      set PATH=%CD%;%PATH%
-     FOR /R %%i IN (*.nupkg) do ( 
-         rename %%~ni.nupkg %%~ni.zip
-         unzip %%~ni.zip -d %%~ni
-         del /Q %%~ni.zip
-         unzip linux-x64.zip -d linux-x64
-         mkdir %%~ni\runtimes\linux-x64
-         mkdir %%~ni\runtimes\linux-x64\native
-         move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
-         pushd %%~ni
-         zip -r ..\%%~ni.zip .
-         popd
-         move %%~ni.zip %%~ni.nupkg
+     SETLOCAL EnableDelayedExpansion 
+     FOR /R %%i IN (*.nupkg) do (
+         set filename=%%~ni
+         IF NOT "!filename:~25,7!"=="Managed" (
+             rename %%~ni.nupkg %%~ni.zip
+             unzip %%~ni.zip -d %%~ni
+             del /Q %%~ni.zip
+             unzip linux-x64.zip -d linux-x64
+             mkdir %%~ni\runtimes\linux-x64
+             mkdir %%~ni\runtimes\linux-x64\native
+             move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
+             pushd %%~ni
+             zip -r ..\%%~ni.zip .
+             popd
+             move %%~ni.zip %%~ni.nupkg
+         )
      )
      popd
      copy $(Build.BinariesDirectory)\nuget-artifact\*.nupkg $(Build.ArtifactStagingDirectory)
-    displayName: 'Bundle NuGet and other binaries'
+    displayName: 'Bundle Native NuGet and other binaries'
 
   - script: |
      pushd $(Build.BinariesDirectory)\nuget-artifact-dml
