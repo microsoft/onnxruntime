@@ -110,7 +110,7 @@ class Initializer final {
             break;
           }
           default:
-            ORT_NOT_IMPLEMENTED(__FUNCTION__, "data type is not supported");
+            ORT_NOT_IMPLEMENTED(__FUNCTION__, "unsupported data type: ", data_type_);
             break;
         }
       }
