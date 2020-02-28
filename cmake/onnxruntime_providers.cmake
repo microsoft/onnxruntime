@@ -95,7 +95,7 @@ endif()
 
 add_library(onnxruntime_providers ${onnxruntime_providers_src})
 if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-   target_compile_options(onnxruntime_providers PRIVATE "/wd4244")   
+   target_compile_options(onnxruntime_providers PRIVATE "/wd4244")
 endif()
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf safeint_interface)
 
@@ -426,7 +426,7 @@ if (onnxruntime_USE_DML)
     "${ONNXRUNTIME_ROOT}/core/providers/dml/*.cc"
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dml_cc_srcs})
-  add_library(onnxruntime_providers_dml ${onnxruntime_providers_dml_cc_srcs}) 
+  add_library(onnxruntime_providers_dml ${onnxruntime_providers_dml_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_dml onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
   add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dml PRIVATE ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/../cmake/external/wil/include)
@@ -453,7 +453,7 @@ if (onnxruntime_USE_DML)
   target_add_dml(onnxruntime_providers_dml)
   target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib delayimp.lib)
   set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll")
-  
+
   # The DML EP requires C++17
   set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD 17)
   set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD_REQUIRED ON)
