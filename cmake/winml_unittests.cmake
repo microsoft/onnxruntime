@@ -101,7 +101,7 @@ add_winml_test(
   SOURCES ${winml_test_api_src}
   LIBS winml_test_common delayimp.lib
 )
-target_link_options(winml_test_api PRIVATE /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
+target_link_options(winml_test_api PRIVATE /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
 if (onnxruntime_USE_DML)
   target_link_options(winml_test_api PRIVATE /DELAYLOAD:directml.dll)
 endif()
