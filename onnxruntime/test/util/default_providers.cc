@@ -25,7 +25,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVI
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(uint32_t);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
@@ -43,7 +43,8 @@ std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_aren
 
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
 #ifdef USE_TENSORRT
-  if (auto factory = CreateExecutionProviderFactory_Tensorrt(0))
+  OrtTensorRTProviderOptions params;
+  if (auto factory = CreateExecutionProviderFactory_Tensorrt(&params))
     return factory->CreateProvider();
 #endif
   return nullptr;

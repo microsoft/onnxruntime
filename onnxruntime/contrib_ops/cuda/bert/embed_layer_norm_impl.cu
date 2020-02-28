@@ -173,6 +173,7 @@ bool EmbedSkipLayerNorm(
 }
 
 bool LaunchEmbedLayerNormKernel(
+    cudaStream_t stream,
     void* output,
     void* mask_index,
     const int* input_ids,
@@ -188,10 +189,8 @@ bool LaunchEmbedLayerNormKernel(
     int batch_size,
     int sequence_length,
     const size_t element_size) {
-  const cudaStream_t stream = nullptr;  // default stream
-
   if (nullptr == input_mask) {
-    if (!CUDA_CALL(cudaMemsetAsync(mask_index, 0, sizeof(int) * batch_size)))
+    if (!CUDA_CALL(cudaMemsetAsync(mask_index, 0, sizeof(int) * batch_size, stream)))
       return false;
   } else if (!ComputeMaskIndex(stream, sequence_length, batch_size, input_mask, static_cast<int*>(mask_index))) {
     return false;
