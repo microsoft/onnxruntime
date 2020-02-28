@@ -358,7 +358,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
       if (group.second) {
         nodes_list_output.push_back(group);
       } else {
-        onnxruntime::Model model_build(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+        onnxruntime::Model model_build(graph.Name(), true, ModelMetaData(), PathString(),
+                                       IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap(),
+                                       std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
         onnxruntime::Graph& graph_build = model_build.MainGraph();
 
         // Add node and node args
@@ -422,7 +424,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // Serialize modelproto to string
         const onnxruntime::GraphViewer graph_viewer(graph_build);
 
-        onnxruntime::Model model(graph_viewer.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+        onnxruntime::Model model(graph_viewer.Name(), true, ModelMetaData(), PathString(),
+                                 IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap(),
+                                 std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
         ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
         ToGraphProtoInternal(graph_viewer, *(model_proto.mutable_graph()));
         model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -634,7 +638,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
     const Graph& graph_body = func_body->Body();
-    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), PathString(),
+                             IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap(),
+                             std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
     *(model_proto.mutable_graph()) = graph_body.ToGraphProto();
     model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
