@@ -679,10 +679,44 @@ GetPartitionedClusters(const std::vector<NodeIndex>& topological_order, const st
   return ng_clusters;
 }
 
+void IdentifyConnectedNodes(const GraphViewer& graph_viewer, NodeIndex curr_node_index,std::vector<NodeIndex>& cluster, std::vector<NodeIndex>& sub_cluster){
+
+  if(std::find(cluster.begin(), cluster.end(), curr_node_index) == cluster.end())
+    return;
+
+  sub_cluster.emplace_back(curr_node_index);
+  cluster.erase(std::remove(cluster.begin(), cluster.end(), curr_node_index), cluster.end());
+  auto curr_node = graph_viewer.GetNode(curr_node_index);
+
+  for (auto node = curr_node->InputNodesBegin(); node != curr_node->InputNodesEnd(); ++node){
+    IdentifyConnectedNodes(graph_viewer,(*node).Index(), cluster, sub_cluster);
+  }
+  for (auto node = curr_node->OutputNodesBegin(); node != curr_node->OutputNodesEnd(); ++node){
+    IdentifyConnectedNodes(graph_viewer,(*node).Index(), cluster, sub_cluster);
+  }
+}
+
+static std::vector<std::vector<NodeIndex>>
+GetConnectedClusters(const GraphViewer& graph_viewer, const std::vector<std::vector<NodeIndex>>& clusters){
+
+  std::vector<std::vector<NodeIndex>> connected_clusters;
+
+  for (auto this_cluster : clusters){
+
+    while(this_cluster.size() > 0){
+      std::vector<NodeIndex> sub_cluster;
+      IdentifyConnectedNodes(graph_viewer,this_cluster[0],this_cluster,sub_cluster);
+      connected_clusters.emplace_back(sub_cluster);
+    }
+  }
+  return connected_clusters;
+}
+
 static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
                                       const std::vector<NodeIndex>& cluster,
                                       const std::unordered_set<std::string>& ng_required_initializers,
                                       /*out*/ std::vector<std::string>& cluster_inputs,
+                                      /*out*/ std::vector<std::string>& constant_inputs,
                                       /*out*/ std::vector<std::string>& cluster_outputs) {
   std::unordered_set<std::string> input_args;
   std::vector<std::string> ordered_input_args;
@@ -691,7 +725,6 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
 
   for (const auto& node_idx : cluster) {
     const auto& node = graph_viewer.GetNode(node_idx);
-
     // Collect all inputs and outputs
     node->ForEachDef(
         [&input_args, &ordered_input_args, &output_args](const NodeArg& node_arg, bool is_input) {
@@ -737,11 +770,10 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
   }
 
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
-  std::vector<std::string> const_inputs;
   for (const auto& in_arg : ordered_input_args) {
     if ((initializers.count(in_arg) && !original_graph_inputs.count(in_arg)) ||
         ng_required_initializers.count(in_arg)) {
-      const_inputs.push_back(in_arg);
+      constant_inputs.push_back(in_arg);
     }
   }
 
@@ -752,11 +784,10 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
       cluster_inputs.push_back(in_arg);
     }
   }
-  if(!cluster_inputs.empty()){
-    for (const auto& in_arg : const_inputs) {
+
+    for (const auto& in_arg : constant_inputs) {
       cluster_inputs.push_back(in_arg);
     }
-  }
 
   std::copy(external_output_args.begin(), external_output_args.end(), std::back_inserter(cluster_outputs));
   for (const auto& node_arg : graph_viewer.GetOutputs()) {
@@ -831,18 +862,22 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   } else {  // unsupported_nodes_idx.empty()
     const auto ng_clusters = GetPartitionedClusters(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
 
-    for (const auto& this_cluster : ng_clusters) {
-      std::vector<std::string> cluster_inputs, cluster_outputs;
+    const auto connected_clusters = GetConnectedClusters(graph_viewer, ng_clusters);
 
+    for (const auto& this_cluster : connected_clusters) {
+      std::vector<std::string> cluster_inputs, const_inputs, cluster_outputs;
       //If subgraph only has Identity node, OpenVINO EP doesn't support it.
       if(this_cluster.size() == 1){
         const auto& node = graph_viewer.GetNode(this_cluster[0]);
         if(node->OpType() == "Identity")
           continue;
       }
-      GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_inputs, cluster_outputs);
+      GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_inputs, const_inputs, cluster_outputs);
 
-      if (!cluster_inputs.empty()) {
+
+      /* In scenarios, when there are no inputs or all inputs being initializers,
+         ConstantFolding optimization in onnxruntime pre-computes the value.*/
+      if (!cluster_inputs.empty() && cluster_inputs.size() != const_inputs.size()) {
         AppendClusterToSubGraph(this_cluster, cluster_inputs, cluster_outputs, result);
       }
     }
