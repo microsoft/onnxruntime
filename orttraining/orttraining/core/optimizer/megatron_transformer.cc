@@ -196,7 +196,7 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
     return false;
   }
 
-  auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
+  auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
   const float* a_weight = initializer->data<float>();
 
   initializer_partition.set_name("rank_" + std::to_string(horizontal_parallel_rank_) +
@@ -472,7 +472,7 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
 
       // The number of the values should be more than 2, and the 3rd value should be divisible by parallel size,
       // i.e., the attention head number should be divisible by parallel size.
-      auto init_const = onnxruntime::make_unique<Initializer>(*tensor);
+      auto init_const = onnxruntime::make_unique<Initializer>(*tensor, graph.ModelPath());
       if (init_const->size() != 3 && init_const->size() != 4) {
         is_reshape_valid = false;
         break;
@@ -518,7 +518,7 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
       const ONNX_NAMESPACE::TensorProto* tensor;
       graph.GetInitializedTensor(shape_arg->Name(), tensor);
       auto data_type = tensor->data_type();
-      auto init_const = onnxruntime::make_unique<Initializer>(*tensor);
+      auto init_const = onnxruntime::make_unique<Initializer>(*tensor, graph.ModelPath());
       const int64_t* val = init_const->data<int64_t>();
       int64_t size = init_const->size();
       ONNX_NAMESPACE::TensorProto tensor_partition;
