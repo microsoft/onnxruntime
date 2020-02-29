@@ -130,7 +130,7 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
     return false;
   }
 
-  auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
+  auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
   const float* a_weight = initializer->data<float>();
 
   initializer_partition.set_name("rank_" + std::to_string(horizontal_parallel_rank_) +
