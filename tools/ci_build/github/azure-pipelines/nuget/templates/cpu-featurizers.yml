@@ -1,6 +1,7 @@
 parameters:
   DoEsrp: 'false'
-  PackageName: 'Microsoft.ML.OnnxRuntime'
+  PackageNameNative: 'Microsoft.ML.ORTFeaturizers'
+  PackageNameManaged: 'Microsoft.ML.ORTFeaturizers.Managed'
   DoCompliance: 'false'
 
 jobs: 
@@ -20,6 +21,7 @@ jobs:
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
@@ -38,9 +40,9 @@ jobs:
     DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage
-     cd $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\
+     cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
      ren *.nupkg win-x86.zip
-     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
@@ -178,9 +180,18 @@ jobs:
   - NuGet_Test_MacOS
   steps:
   - task: NuGetCommand@2
-    displayName: 'NuGet push to ORT-NIGHTLY'
+    displayName: 'Copy Signed Native NuGet Package to ORT-NIGHTLY'
+    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
     inputs:
       command: 'push'
-      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(NuGetPackageVersionNumber).nupkg'
+      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/$(PackageNameNative).$(NuGetPackageVersionNumber).nupkg'
+      publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
+
+  - task: NuGetCommand@3
+    displayName: 'Copy Signed Managed NuGet Package to ORT-NIGHTLY'
+    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
+    inputs:
+      command: 'push'
+      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/$(PackageNameManaged).$(NuGetPackageVersionNumber).nupkg'
       publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
 
