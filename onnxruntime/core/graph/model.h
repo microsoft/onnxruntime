@@ -173,12 +173,12 @@ class Model {
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger);
 
-  static common::Status Load(ONNX_NAMESPACE::ModelProto&& p_model_proto,
+  static common::Status Load(ONNX_NAMESPACE::ModelProto&& model_proto,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger);
 
-  static common::Status Load(ONNX_NAMESPACE::ModelProto&& p_model_proto,
+  static common::Status Load(ONNX_NAMESPACE::ModelProto&& model_proto,
                              const PathString& model_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,

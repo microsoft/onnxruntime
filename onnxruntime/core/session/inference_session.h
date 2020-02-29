@@ -364,7 +364,7 @@ class InferenceSession {
     * @param protobuf object corresponding to the model file. This is primarily to support large models.
     * @return OK if success.
     */
-  common::Status Load(ONNX_NAMESPACE::ModelProto&& p_model_proto);
+  common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto);
 
   common::Status DoPostLoadProcessing(onnxruntime::Model& model);
 

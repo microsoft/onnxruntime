@@ -457,7 +457,7 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
   return Load(loader, "model_loading_proto");
 }
 
-common::Status InferenceSession::Load(ModelProto&& p_model_proto) {
+common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto) {
   if (model_loaded_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
@@ -471,7 +471,7 @@ common::Status InferenceSession::Load(ModelProto&& p_model_proto) {
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    return onnxruntime::Model::Load(std::move(p_model_proto), PathString(), model,
+    return onnxruntime::Model::Load(std::move(*p_model_proto), PathString(), model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
   };
 
