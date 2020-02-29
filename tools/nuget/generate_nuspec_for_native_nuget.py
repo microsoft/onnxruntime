@@ -126,7 +126,7 @@ def generate_files(list, args):
         # Process DirectML dll
         if os.path.exists(os.path.join(args.native_build_path, 'DirectML.dll')):
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-            files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.0.0.1\\LICENSE.txt') + '" target="LICENSE.txt' + args.target_architecture + '\\native" />')
+            files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.0.0.1\\LICENSE.txt') + '" target="DirectML_LICENSE.txt' + args.target_architecture + '\\native" />')
         
     # Process onnxruntime import lib, dll, and pdb
     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.lib') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
