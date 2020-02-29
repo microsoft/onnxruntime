@@ -90,7 +90,6 @@ namespace Microsoft.ML.OnnxRuntime
         #endregion
 
         #region ExecutionProviderAppends
-
         public void AppendExecutionProvider_CPU(int useArena)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(_nativePtr, useArena));
