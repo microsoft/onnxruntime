@@ -14,7 +14,8 @@ def parse_arguments():
     parser.add_argument("--target_architecture", required=True, help="Eg: x64")
     parser.add_argument("--build_config", required=True, help="Eg: RelWithDebInfo")
     parser.add_argument("--ort_build_path", required=True, help="ORT build directory.")
-    parser.add_argument("--native_build_path", required=True, help="Native build output directory..")
+    parser.add_argument("--native_build_path", required=True, help="Native build output directory.")
+    parser.add_argument("--packages_path", required=True, help="Nuget packages output directory.")
     parser.add_argument("--sources_path", required=True, help="OnnxRuntime source code root.")
     parser.add_argument("--commit_id", required=True, help="The last commit id included in this package.")
     parser.add_argument("--is_release_build", required=False, default=None, type=str, help="Flag indicating if the build is a release build. Accepted values: true/false.")        
@@ -125,7 +126,7 @@ def generate_files(list, args):
         # Process DirectML dll
         if os.path.exists(os.path.join(args.native_build_path, 'DirectML.dll')):
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-        
+            files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.0.0.1\\LICENSE.txt') + '" target="LICENSE.txt' + args.target_architecture + '\\native" />')
         
     # Process onnxruntime import lib, dll, and pdb
     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.lib') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
