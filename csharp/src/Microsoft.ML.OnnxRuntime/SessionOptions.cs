@@ -50,7 +50,8 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// A helper method to construct a SessionOptions object for CUDA execution
+        /// A helper method to construct a SessionOptions object for CUDA execution.
+        /// Use only if CUDA is installed and you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
         /// <returns>A SessionsOptions() object configured for execution on deviceId=0</returns>
         public static SessionOptions MakeSessionOptionWithCudaProvider()
@@ -59,7 +60,8 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// A helper method to construct a SessionOptions object for CUDA execution
+        /// A helper method to construct a SessionOptions object for CUDA execution.
+        /// Use only if CUDA is installed and you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
         /// <param name="deviceId"></param>
         /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
@@ -72,46 +74,9 @@ namespace Microsoft.ML.OnnxRuntime
             return options;
         }
 
-        #endregion
-
-        #region ExecutionProviderAppends
-        public void AppendExecutionProvider_CPU(int useArena)
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(_nativePtr, useArena));
-        }
-
-        public void AppendExecutionProvider_Dnnl(int useArena)
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Dnnl(_nativePtr, useArena));
-        }
-
-        public void AppendExecutionProvider_CUDA(int deviceId)
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(_nativePtr, deviceId));
-        }
-
-        public void AppendExecutionProvider_NGraph(string nGraphBackendType)
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_NGraph(_nativePtr, nGraphBackendType));
-        }
-
-        public void AppendExecutionProvider_OpenVINO(string deviceId)
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(_nativePtr, deviceId));
-        }
-
-        public void AppendExecutionProvider_Tensorrt(int deviceId)
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tensorrt(_nativePtr, deviceId));
-        }
-
-        public void AppendExecutionProvider_Nnapi()
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nnapi(_nativePtr));
-        }
-
         /// <summary>
-        /// A helper method to construct a SessionOptions object for Nuphar execution
+        /// A helper method to construct a SessionOptions object for Nuphar execution.
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
         /// <param name="settings">settings string, comprises of comma separated key:value pairs. default is empty</param>
         /// <returns>A SessionsOptions() object configured for execution with Nuphar</returns>
@@ -121,6 +86,66 @@ namespace Microsoft.ML.OnnxRuntime
             NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(options._nativePtr, 1, settings);
             return options;
         }
+
+        #endregion
+
+        #region ExecutionProviderAppends
+        public void AppendExecutionProvider_CPU(int useArena)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(_nativePtr, useArena));
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        public void AppendExecutionProvider_Dnnl(int useArena)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Dnnl(_nativePtr, useArena));
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        public void AppendExecutionProvider_CUDA(int deviceId)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(_nativePtr, deviceId));
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        public void AppendExecutionProvider_NGraph(string nGraphBackendType)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_NGraph(_nativePtr, nGraphBackendType));
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        public void AppendExecutionProvider_OpenVINO(string deviceId)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(_nativePtr, deviceId));
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        public void AppendExecutionProvider_Tensorrt(int deviceId)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tensorrt(_nativePtr, deviceId));
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        public void AppendExecutionProvider_Nnapi()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nnapi(_nativePtr));
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
         public void AppendExecutionProvider_Nuphar(string settings = "")
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(_nativePtr, 1, settings));
