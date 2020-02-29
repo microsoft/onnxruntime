@@ -200,7 +200,7 @@ jobs:
          move %%~ni.zip %%~ni.nupkg
      )
      popd
-     copy $(Build.BinariesDirectory)\nuget-artifact-dml\*.nupkg $(Build.ArtifactStagingDirectory)
+     copy $(Build.BinariesDirectory)\nuget-artifact-dml\Microsoft.ML.OnnxRuntime.DirectML*nupkg $(Build.ArtifactStagingDirectory)
     displayName: 'Bundle DML NuGet and other binaries'
 
   - template: ../../templates/esrp_nuget.yml
