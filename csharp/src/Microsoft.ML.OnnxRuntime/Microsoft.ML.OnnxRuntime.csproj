@@ -60,14 +60,14 @@
           Visible="false"
     />
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cuda\cuda_provider_factory.h"
-          Condition="'$(OrtPackageId)' != 'Microsoft.ML.Onnxruntime.DirectML'"
+          Condition="'$(OrtPackageId)' != 'Microsoft.ML.OnnxRuntime.DirectML'"
           PackagePath="\build\native\include"
           Pack="false"
           CopyToOutputDirectory="Never"
           Visible="false"
     />
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\dml\dml_provider_factory.h"
-          Condition="'$(OrtPackageId)' == 'Microsoft.ML.Onnxruntime.DirectML'"
+          Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'"
           PackagePath="\build\native\include"
           Pack="false"
           CopyToOutputDirectory="Never"
@@ -94,7 +94,7 @@
     />
     <None Include="$(NativeBuildOutputDir)\Windows.AI.MachineLearning.dll"
           Condition="Exists('$(NativeBuildOutputDir)\Windows.AI.MachineLearning.dll')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.Onnxruntime.DirectML'
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
           Pack="false"
@@ -103,7 +103,7 @@
     />
     <None Include="$(NativeBuildOutputDir)\Windows.AI.MachineLearning.lib"
           Condition="Exists('$(NativeBuildOutputDir)\Windows.AI.MachineLearning.lib')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.Onnxruntime.DirectML'
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
           Pack="false"
@@ -112,7 +112,7 @@
     />
     <None Include="$(NativeBuildOutputDir)\Windows.AI.MachineLearning.pdb"
           Condition="Exists('$(NativeBuildOutputDir)\Windows.AI.MachineLearning.pdb')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.Onnxruntime.DirectML'
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
           Pack="false"
@@ -121,7 +121,7 @@
     />
     <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.winmd"
           Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.winmd')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.Onnxruntime.DirectML'
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\build\native\metadata"
           Pack="false"
@@ -130,7 +130,7 @@
     />
     <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.h"
           Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.h')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.Onnxruntime.DirectML'
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\build\native\include"
           Pack="false"
@@ -139,7 +139,7 @@
     />
     <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.Native.h"
           Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.Native.h')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.Onnxruntime.DirectML'
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\build\native\include"
           Pack="false"
@@ -148,7 +148,7 @@
     />
     <None Include="$(NativeBuildOutputDir)\DirectML.dll"
           Condition="Exists('$(NativeBuildOutputDir)\DirectML.dll')
-                     And '$(OrtPackageId)' == 'Microsoft.ML.Onnxruntime.DirectML'"
+                     And '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
           Pack="false"
           CopyToOutputDirectory="Always"
