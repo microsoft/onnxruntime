@@ -120,6 +120,7 @@ Use the individual flags to only run the specified stages.
             help='')
     parser.add_argument("--android_api", type=int, default=27,
             help='Android API Level, e.g. 21')
+    parser.add_argument("--android_sdk_path", type=str, help='Path to the Android SDK')
     parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
 
     # Arguments needed by CI
@@ -164,6 +165,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_dml", action='store_true', help="Build with DirectML.")
     parser.add_argument("--use_winml", action='store_true', help="Build with WinML.")
     parser.add_argument("--use_telemetry", action='store_true', help="Only official builds can set this flag to enable telemetry.")
+    parser.add_argument("--enable_wcos", action='store_true', help="Build for Windows Core OS.")
     parser.add_argument("--enable_lto", action='store_true', help="Enable Link Time Optimization")
     return parser.parse_args()
 
@@ -343,6 +345,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
                  "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
                  "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
+                 "-Donnxruntime_ENABLE_WCOS=" + ("ON" if args.enable_wcos else "OFF"),
                  "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
                  ]
 
@@ -441,7 +444,7 @@ def clean_targets(cmake_path, build_dir, configs):
 
         run_subprocess(cmd_args)
 
-def build_targets(cmake_path, build_dir, configs, parallel):
+def build_targets(args, cmake_path, build_dir, configs, parallel):
     for config in configs:
         log.info("Building targets for %s configuration", config)
         build_dir2 = get_config_build_dir(build_dir, config)
@@ -461,7 +464,11 @@ def build_targets(cmake_path, build_dir, configs, parallel):
             cmd_args += [ "--" ]
             cmd_args += build_tool_args
 
-        run_subprocess(cmd_args)
+        env = {}
+        if args.android:
+            env['ANDROID_SDK_ROOT']=args.android_sdk_path
+
+        run_subprocess(cmd_args, env=env)
 
 def add_dir_if_exists(dir, dir_list):
     if (os.path.isdir(dir)):
@@ -992,7 +999,7 @@ def main():
     setup_dml_build(args, cmake_path, build_dir, configs)
 
     if (args.build):
-        build_targets(cmake_path, build_dir, configs, args.parallel)
+        build_targets(args, cmake_path, build_dir, configs, args.parallel)
 
     if args.test :
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,

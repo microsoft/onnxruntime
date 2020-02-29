@@ -162,7 +162,7 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                          logging::LoggingManager* logging_manager) {
-  auto status = FinalizeSessionOptions(session_options, model_proto_, model_proto_parsed_, session_options_);
+  auto status = FinalizeSessionOptions(session_options, model_proto_, model_loaded_, session_options_);
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
 
@@ -213,7 +213,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
-  model_proto_parsed_ = true;
+  model_loaded_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, logging_manager);
 }
@@ -227,7 +227,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
-  model_proto_parsed_ = true;
+  model_loaded_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, logging_manager);
 }
@@ -240,7 +240,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
   google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
   const bool result = model_proto_.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
-  model_proto_parsed_ = true;
+  model_loaded_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, logging_manager);
 }
@@ -252,7 +252,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
     : insert_cast_transformer_("CastFloat16Transformer") {
   const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
-  model_proto_parsed_ = true;
+  model_loaded_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, logging_manager);
 }
@@ -414,7 +414,7 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
 }
 
 common::Status InferenceSession::Load(const std::string& model_uri) {
-  if (model_proto_parsed_) {
+  if (model_loaded_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -425,7 +425,7 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
 
 #ifdef _WIN32
 common::Status InferenceSession::Load(const std::wstring& model_uri) {
-  if (model_proto_parsed_) {
+  if (model_loaded_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -436,7 +436,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 #endif
 
 common::Status InferenceSession::Load(const ModelProto& model_proto) {
-  if (model_proto_parsed_) {
+  if (model_loaded_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -450,7 +450,7 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
     }
 #endif
     // This call will create a copy of model_proto and the constructed model instance will own the copy thereafter
-    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+    return onnxruntime::Model::Load(model_proto, PathString(), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_);
   };
 
@@ -458,7 +458,7 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
 }
 
 common::Status InferenceSession::Load(ModelProto&& p_model_proto) {
-  if (model_proto_parsed_) {
+  if (model_loaded_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -471,7 +471,7 @@ common::Status InferenceSession::Load(ModelProto&& p_model_proto) {
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    return onnxruntime::Model::Load(std::move(p_model_proto), model,
+    return onnxruntime::Model::Load(std::move(p_model_proto), PathString(), model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
   };
 
@@ -479,7 +479,7 @@ common::Status InferenceSession::Load(ModelProto&& p_model_proto) {
 }
 
 common::Status InferenceSession::Load(std::istream& model_istream) {
-  if (model_proto_parsed_) {
+  if (model_loaded_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -500,7 +500,7 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    return onnxruntime::Model::Load(std::move(model_proto), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+    return onnxruntime::Model::Load(std::move(model_proto), PathString(), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_);
   };
 
@@ -508,7 +508,7 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
 }
 
 common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
-  if (model_proto_parsed_) {
+  if (model_loaded_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -529,7 +529,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
     }
 #endif
 
-    return onnxruntime::Model::Load(std::move(model_proto), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+    return onnxruntime::Model::Load(std::move(model_proto), PathString(), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_);
   };
 
@@ -537,7 +537,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 }
 
 common::Status InferenceSession::Load() {
-  if (!model_proto_parsed_) {
+  if (!model_loaded_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has not been parsed yet. "
                            "This API should be called in conjunction with a ctor that takes a model abstraction.");
@@ -551,7 +551,7 @@ common::Status InferenceSession::Load() {
     }
 #endif
     // Pass on ownership of the parsed ModelProto to the Model instance (its job here is done by this stage)
-    return Model::Load(std::move(this->model_proto_), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+    return Model::Load(std::move(this->model_proto_), model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                        *session_logger_);
   };
 

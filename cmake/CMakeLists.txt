@@ -93,6 +93,7 @@ option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
+option(onnxruntime_ENABLE_WCOS "Build for Windows Core OS" OFF)
 #The onnxruntime_PREFER_SYSTEM_LIB is mainly designed for package managers like apt/yum/vcpkg.
 #Please note, by default Protobuf_USE_STATIC_LIBS is OFF but it's recommended to turn it ON on Windows. You should set it properly when onnxruntime_PREFER_SYSTEM_LIB is ON otherwise you'll hit linkage errors.
 #If you have already installed protobuf(or the others) in your system at the default system paths(like /usr/include), then it's better to set onnxruntime_PREFER_SYSTEM_LIB ON. Otherwise onnxruntime may see two different protobuf versions and we won't know which one will be used, the worst case could be onnxruntime picked up header files from one of them but the binaries from the other one.
@@ -278,7 +279,6 @@ if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
     find_package(PythonLibs 3.5 REQUIRED)
   else()
     find_package(PythonInterp 3.4 REQUIRED)
-    find_package(PythonLibs 3.4 REQUIRED)
   endif()
 endif()
 
@@ -724,7 +724,7 @@ if (onnxruntime_USE_CUDA)
   if (WIN32)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
 
-    file(GLOB cuda_dll_paths "${onnxruntime_CUDA_HOME}/bin/cublas64_*" "${onnxruntime_CUDA_HOME}/bin/cudart64_*")
+    file(GLOB cuda_dll_paths "${onnxruntime_CUDA_HOME}/bin/cublas64_*" "${onnxruntime_CUDA_HOME}/bin/cudart64_*" "${onnxruntime_CUDA_HOME}/bin/curand64_*")
     set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:cudnn64_7.dll")
     foreach(cuda_dll_path ${cuda_dll_paths})
         get_filename_component(cuda_dll_file_name ${cuda_dll_path} NAME)

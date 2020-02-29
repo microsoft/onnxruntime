@@ -7,6 +7,7 @@
 #include <memory>
 #include <climits>
 #include <string>
+#include "core/common/path.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_c_api.h"
 
@@ -26,13 +27,14 @@ class Model {
   explicit Model(const std::string& graph_name,
                  bool is_onnx_domain_only,
                  const logging::Logger& logger)
-      : Model(graph_name, is_onnx_domain_only, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), {}, {},
-              logger) {}
+      : Model(graph_name, is_onnx_domain_only, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {},
+              {}, logger) {}
 
   // Construct model from scratch.
   explicit Model(const std::string& graph_name,
                  bool is_onnx_domain_only,
                  const ModelMetaData& model_metadata,
+                 const PathString& model_path,
                  const IOnnxRuntimeOpSchemaRegistryList& local_registries,
                  const std::unordered_map<std::string, int>& domain_to_version,
                  const std::vector<ONNX_NAMESPACE::FunctionProto>& model_specific_functions,
@@ -42,11 +44,27 @@ class Model {
   // hold a copy of <model_proto>.
   explicit Model(const ONNX_NAMESPACE::ModelProto& model_proto,
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                 const logging::Logger& logger)
+      : Model(model_proto, PathString(), local_registries, logger) {}
+
+  // NOTE: after calling this constructor, <*this> model will
+  // hold a copy of <model_proto>.
+  explicit Model(const ONNX_NAMESPACE::ModelProto& model_proto,
+                 const PathString& model_path,
+                 const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                  const logging::Logger& logger);
 
   // NOTE: after calling this constructor, <*this> model will
   // own the <model_proto>.
   explicit Model(ONNX_NAMESPACE::ModelProto&& model_proto,
+                 const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                 const logging::Logger& logger)
+      : Model(std::move(model_proto), PathString(), local_registries, logger) {}
+
+  // NOTE: after calling this constructor, <*this> model will
+  // own the <model_proto>.
+  explicit Model(ONNX_NAMESPACE::ModelProto&& model_proto,
+                 const PathString& model_path,
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                  const logging::Logger& logger);
 
@@ -86,6 +104,9 @@ class Model {
 
   const ModelMetaData& MetaData() const noexcept;
 
+  // Gets the path from which the model was loaded, if any.
+  const Path& ModelPath() const noexcept { return model_path_; }
+
   // Get model's main graph.
   Graph& MainGraph() noexcept;
   const Graph& MainGraph() const noexcept;
@@ -105,11 +126,11 @@ class Model {
 
   static common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
 
-  static common::Status Load(const std::basic_string<ORTCHAR_T>& file_path,
+  static common::Status Load(const PathString& file_path,
                              /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
 
   // TODO(Task:132) Use of shared_ptr<X>* in Load/Save methods is confusing.
-  static common::Status Load(const std::basic_string<ORTCHAR_T>& file_path,
+  static common::Status Load(const PathString& file_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger);
@@ -117,6 +138,12 @@ class Model {
   static common::Status Load(int fd, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
 
   static common::Status Load(int fd, /*out*/ std::shared_ptr<Model>& p_model,
+                             const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                             const logging::Logger& logger);
+
+  static common::Status Load(int fd,
+                             const PathString& model_path,
+                             /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger);
 
@@ -129,11 +156,30 @@ class Model {
                                       const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                                       const logging::Logger& logger);
 
+  // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks
+  static common::Status LoadFromBytes(int count, void* pBytes,
+                                      const PathString& model_path,
+                                      /*out*/ std::shared_ptr<Model>& p_model,
+                                      const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                                      const logging::Logger& logger);
+
   static common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto, /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger);
 
+  static common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto,
+                             const PathString& model_path,
+                             /*out*/ std::shared_ptr<Model>& p_model,
+                             const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                             const logging::Logger& logger);
+
   static common::Status Load(ONNX_NAMESPACE::ModelProto&& p_model_proto,
+                             /*out*/ std::shared_ptr<Model>& p_model,
+                             const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                             const logging::Logger& logger);
+
+  static common::Status Load(ONNX_NAMESPACE::ModelProto&& p_model_proto,
+                             const PathString& model_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger);
@@ -145,6 +191,9 @@ class Model {
   // This is a duplication of <model_proto_.metadata_props()>.
   // It gives better accessibility.
   ModelMetaData model_metadata_;
+
+  // Path to model file. May be empty.
+  const Path model_path_;
 
   // Main graph of the model.
   std::unique_ptr<Graph> graph_;
