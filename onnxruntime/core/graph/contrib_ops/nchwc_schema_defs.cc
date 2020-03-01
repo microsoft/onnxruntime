@@ -147,6 +147,48 @@ void RegisterNchwcSchemas() {
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GlobalAveragePool)
       .FillUsing(NchwcGlobalPoolOpSchemaGenerator);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Upsample)
+      .SetDomain(kMSNchwcDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(For internal use.)DOC")
+      .Attr("scales", "", AttributeProto::INTS, OPTIONAL)
+      .Input(0, "X", "", "T")
+      .Output(0, "Y", "", "T")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+
+        auto input_shape = ctx.getInputType(0)->tensor_type().shape();
+        auto output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+        auto input_rank = input_shape.dim_size();
+        if (input_rank < 2) {
+          fail_shape_inference("tensor rank too small");
+        }
+
+        std::vector<int64_t> scales;
+        if (!getRepeatedAttribute(ctx, "scales", scales)) {
+          return;
+        }
+        if (input_rank != scales.size()) {
+          fail_shape_inference("invalid scales dimension");
+        }
+
+        for (int i = 0; i < input_rank; i++) {
+          if (scales[i] <= 0) {
+            fail_shape_inference("invalid scales value");
+          }
+          const auto& input_dim = input_shape.dim(i);
+          auto* output_dim = output_shape->add_dim();
+          if (input_dim.has_dim_value()) {
+            output_dim->set_dim_value(input_dim.dim_value() * scales[i]);
+          }
+        }
+      });
 }
 
 }  // namespace contrib
