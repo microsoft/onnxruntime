@@ -2,6 +2,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
+# This script is an experimental feature. Use at your own risk.
+# Contributions are welcome.
 
 import numpy as np
 import onnxruntime as onnxrt

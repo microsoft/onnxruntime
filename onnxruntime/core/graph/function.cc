@@ -149,6 +149,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            const logging::Logger& logger)
     : parent_graph_(&graph),
       body_("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
+            graph.ModelPath().ToPathString(),
             IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
             graph.DomainToVersionMap(), {}, logger) {
   customized_func_body_ = std::move(customized_func);
@@ -228,7 +229,9 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
                            const logging::Logger& logger)
     : parent_graph_(&graph),
-      body_(onnx_func_proto.name(), false, onnxruntime::ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+      body_(onnx_func_proto.name(), false, onnxruntime::ModelMetaData(),
+            graph.ModelPath().ToPathString(),
+            IOnnxRuntimeOpSchemaRegistryList(),
             GetOpsetVersionMap(onnx_func_proto), {}, logger),
       onnx_func_proto_(onnx_func_proto) {
   // Make a copy of the FunctionProto.

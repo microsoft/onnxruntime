@@ -36,6 +36,8 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
     return false;
   }
 
+  const float atol = 1e-8f;
+  const float rtol = 1e-5f;
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
   if (is_constant) {
     tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
@@ -47,24 +49,32 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
     return false;
   }
 
-  auto init_const = onnxruntime::make_unique<Initializer>(*tensor_proto);
+  Initializer init_const{*tensor_proto, graph.ModelPath()};
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    const float* val = init_const->data<float>();
-    float diff = std::abs(val[0] - static_cast<float>(expected_value));
-    if (diff > FLT_EPSILON) {
+    const float* val = init_const.data<float>();
+    if (std::isnan(val[0]) || std::isinf(val[0])) return false;
+
+    float diff = std::abs(val[0] - expected_value);
+    if (diff > (atol + rtol * std::abs(expected_value))) {
       return false;
     }
   } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
-    const double* val = init_const->data<double>();
-    double diff = std::abs(val[0] - static_cast<double>(expected_value));
-    if (diff > DBL_EPSILON) {
+    const double* val = init_const.data<double>();
+    if (std::isnan(val[0]) || std::isinf(val[0])) return false;
+
+    const double expected_val = static_cast<double>(expected_value);
+    double diff = std::abs(val[0] - expected_val);
+    if (diff > (atol + rtol * std::abs(expected_value))) {
       return false;
     }
   } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-    const MLFloat16* val = init_const->data<MLFloat16>();
-    float diff = std::abs(math::halfToFloat(val[0].val) - math::halfToFloat(math::floatToHalf(expected_value)));
-    if (diff > FLT_EPSILON) {
+    const MLFloat16* val = init_const.data<MLFloat16>();
+    const float flt_val = math::halfToFloat(val[0].val);
+    if (std::isnan(flt_val) || std::isinf(flt_val)) return false;
+    const float expected_val = math::halfToFloat(math::floatToHalf(expected_value));
+    float diff = std::abs(flt_val - expected_val);
+    if (diff > (atol + rtol * std::abs(expected_value))) {
       return false;
     }
   } else {
@@ -88,15 +98,15 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
     return false;
   }
 
-  auto init_const = onnxruntime::make_unique<Initializer>(*tensor_proto);
+  Initializer init_const{*tensor_proto, graph.ModelPath()};
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    const int64_t* val = init_const->data<int64_t>();
+    const int64_t* val = init_const.data<int64_t>();
     if (val[0] != expected_value) {
       return false;
     }
   } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-    const int32_t* val = init_const->data<int32_t>();
+    const int32_t* val = init_const.data<int32_t>();
     if (static_cast<int64_t>(val[0]) != expected_value) {
       return false;
     }
@@ -137,16 +147,16 @@ bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, s
     return false;
   }
 
-  auto init_const = onnxruntime::make_unique<Initializer>(*tensor_proto);
+  Initializer init_const{*tensor_proto, graph.ModelPath()};
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    const int64_t* val = init_const->data<int64_t>();
-    data.reserve(data.size() + init_const->size());
-    data.insert(data.end(), val, val + init_const->size());
+    const int64_t* val = init_const.data<int64_t>();
+    data.reserve(data.size() + init_const.size());
+    data.insert(data.end(), val, val + init_const.size());
   } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-    const int32_t* val = init_const->data<int32_t>();
-    data.reserve(data.size() + init_const->size());
-    for (int64_t i = 0; i < init_const->size(); i++) {
+    const int32_t* val = init_const.data<int32_t>();
+    data.reserve(data.size() + init_const.size());
+    for (int64_t i = 0; i < init_const.size(); i++) {
       data.push_back(static_cast<int64_t>(val[i]));
     }
   } else {
@@ -188,6 +198,28 @@ bool IsShapeKnownOnAllDims(const NodeArg& node_arg, int expected_dim_size) {
     }
   }
 
+  return true;
+}
+
+int32_t IndexOfNodeInput(const Node& node, const NodeArg& node_arg) {
+  int32_t index = 0;
+  for (auto& input_arg : node.InputDefs()) {
+    if (input_arg->Name().compare(node_arg.Name()) == 0) {
+      return index;
+    }
+    index++;
+  }
+
+  return -1;
+}
+
+bool IsSupportedDataType(const Node& node, const std::vector<std::string>& supported_data_types) {
+  for (const auto& input_arg : node.InputDefs()) {
+    if (std::find(supported_data_types.begin(), supported_data_types.end(),
+                  *(input_arg->Type())) == supported_data_types.end()) {
+      return false;
+    }
+  }
   return true;
 }
 

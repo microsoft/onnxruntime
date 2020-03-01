@@ -61,11 +61,11 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
     return Status::OK();
   }
 
-  auto bn_scale = onnxruntime::make_unique<Initializer>(*bn_scale_tensor_proto);
-  auto bn_B = onnxruntime::make_unique<Initializer>(*bn_B_tensor_proto);
-  auto bn_mean = onnxruntime::make_unique<Initializer>(*bn_mean_tensor_proto);
-  auto bn_var = onnxruntime::make_unique<Initializer>(*bn_var_tensor_proto);
-  auto conv_W = onnxruntime::make_unique<Initializer>(*conv_W_tensor_proto);
+  Initializer bn_scale{*bn_scale_tensor_proto, graph.ModelPath()};
+  Initializer bn_B{*bn_B_tensor_proto, graph.ModelPath()};
+  Initializer bn_mean{*bn_mean_tensor_proto, graph.ModelPath()};
+  Initializer bn_var{*bn_var_tensor_proto, graph.ModelPath()};
+  Initializer conv_W{*conv_W_tensor_proto, graph.ModelPath()};
 
   std::unique_ptr<Initializer> conv_B = nullptr;
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
@@ -79,34 +79,34 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
         conv_B_tensor_proto->data_type() != bn_B_tensor_proto->data_type()) {
       return Status::OK();
     }
-    conv_B = onnxruntime::make_unique<Initializer>(*conv_B_tensor_proto);
+    conv_B = onnxruntime::make_unique<Initializer>(*conv_B_tensor_proto, graph.ModelPath());
   }
 
   // Calculate new value of initializers of conv node
-  bn_var->add(epsilon);
-  bn_var->sqrt();
-  bn_scale->div(*bn_var);
-  conv_W->scale_by_axis(*bn_scale, 1);
+  bn_var.add(epsilon);
+  bn_var.sqrt();
+  bn_scale.div(bn_var);
+  conv_W.scale_by_axis(bn_scale, 1);
 
   if (conv_inputs.size() == 3) {
-    conv_B->sub(*bn_mean);
-    conv_B->mul(*bn_scale);
-    conv_B->add(*bn_B);
+    conv_B->sub(bn_mean);
+    conv_B->mul(bn_scale);
+    conv_B->add(bn_B);
   } else {
-    bn_mean->mul(*bn_scale);
-    bn_B->sub(*bn_mean);
+    bn_mean.mul(bn_scale);
+    bn_B.sub(bn_mean);
   }
 
   // Create new initializers of conv
   ONNX_NAMESPACE::TensorProto new_conv_W_tensor_proto(*conv_W_tensor_proto);
-  conv_W->ToProto(new_conv_W_tensor_proto);
+  conv_W.ToProto(new_conv_W_tensor_proto);
 
   ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto;
   NodeArg* bn_B_node_arg = nullptr;
   if (conv_inputs.size() == 3) {
     conv_B->ToProto(new_conv_B_tensor_proto);
   } else {
-    bn_B->ToProto(new_conv_B_tensor_proto);
+    bn_B.ToProto(new_conv_B_tensor_proto);
     bn_B_node_arg = graph.GetNodeArg(bn_B_tensor_proto->name());
     if (bn_B_node_arg == nullptr) {
       return Status::OK();

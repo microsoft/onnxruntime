@@ -445,7 +445,7 @@ static NodeArg* ExtractEmbedding(Graph& graph,
   assert(sequence_length > 0);
   assert(hidden_size > 0);
 
-  auto old_initializer = onnxruntime::make_unique<Initializer>(*tensor);
+  Initializer old_initializer{*tensor, graph.ModelPath()};
   auto data_type = tensor->data_type();
 
   ONNX_NAMESPACE::TensorProto initializer;
@@ -456,14 +456,14 @@ static NodeArg* ExtractEmbedding(Graph& graph,
   const int64_t element_count = sequence_length * hidden_size;
 
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    const float* data = old_initializer->data<float>();
+    const float* data = old_initializer.data<float>();
     if (!CheckEmbeddingData(data, batch_size, element_count)) {
       return nullptr;
     }
 
     initializer.set_raw_data(data, element_count * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
-    const MLFloat16* data = old_initializer->data<MLFloat16>();
+    const MLFloat16* data = old_initializer.data<MLFloat16>();
     if (!CheckEmbeddingData(data, batch_size, element_count)) {
       return nullptr;
     }

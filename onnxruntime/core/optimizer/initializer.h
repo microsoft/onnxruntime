@@ -8,6 +8,7 @@
 #include <cmath>
 
 #include "core/common/common.h"
+#include "core/common/path.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/util/math.h"
@@ -51,7 +52,7 @@ class Initializer final {
     }
   }
 
-  Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto) : size_(0) {
+  Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const Path& model_path) {
     data_type_ = tensor_proto.data_type();
     if (utils::HasName(tensor_proto)) {
       name_ = tensor_proto.name();
@@ -63,54 +64,59 @@ class Initializer final {
 
     size_ = std::accumulate(dims_.begin(), dims_.end(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
 
-    if (utils::HasRawData(tensor_proto)) {
-      raw_data_ = tensor_proto.raw_data();
-    } else {
-      switch (data_type_) {
-        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
-          int64_t size = tensor_proto.int32_data_size();
-          ORT_ENFORCE(size_ == size, "size is different");
-          for (int i = 0; i < size_; i++) {
-            float16_data_.push_back(static_cast<uint16_t>(tensor_proto.int32_data(i)));
+    if (tensor_proto.data_location() != ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+      if (utils::HasRawData(tensor_proto)) {
+        raw_data_.assign(tensor_proto.raw_data().begin(), tensor_proto.raw_data().end());
+      } else {
+        switch (data_type_) {
+          case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+            int64_t size = tensor_proto.int32_data_size();
+            ORT_ENFORCE(size_ == size, "size is different");
+            for (int i = 0; i < size_; i++) {
+              float16_data_.push_back(static_cast<uint16_t>(tensor_proto.int32_data(i)));
+            }
+            break;
           }
-          break;
-        }
-        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-          int64_t size = tensor_proto.float_data_size();
-          ORT_ENFORCE(size_ == size, "size is different");
-          for (int i = 0; i < size_; i++) {
-            float_data_.push_back(tensor_proto.float_data(i));
+          case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
+            int64_t size = tensor_proto.float_data_size();
+            ORT_ENFORCE(size_ == size, "size is different");
+            for (int i = 0; i < size_; i++) {
+              float_data_.push_back(tensor_proto.float_data(i));
+            }
+            break;
           }
-          break;
-        }
-        case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
-          int64_t size = tensor_proto.double_data_size();
-          ORT_ENFORCE(size_ == size, "size is different");
-          for (int i = 0; i < size_; i++) {
-            double_data_.push_back(tensor_proto.double_data(i));
+          case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
+            int64_t size = tensor_proto.double_data_size();
+            ORT_ENFORCE(size_ == size, "size is different");
+            for (int i = 0; i < size_; i++) {
+              double_data_.push_back(tensor_proto.double_data(i));
+            }
+            break;
           }
-          break;
-        }
-        case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
-          int64_t size = tensor_proto.int32_data_size();
-          ORT_ENFORCE(size_ == size, "size is different");
-          for (int i = 0; i < size_; i++) {
-            int32_data_.push_back(tensor_proto.int32_data(i));
+          case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+            int64_t size = tensor_proto.int32_data_size();
+            ORT_ENFORCE(size_ == size, "size is different");
+            for (int i = 0; i < size_; i++) {
+              int32_data_.push_back(tensor_proto.int32_data(i));
+            }
+            break;
           }
-          break;
-        }
-        case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
-          int64_t size = tensor_proto.int64_data_size();
-          ORT_ENFORCE(size_ == size, "size is different");
-          for (int i = 0; i < size_; i++) {
-            int64_data_.push_back(tensor_proto.int64_data(i));
+          case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+            int64_t size = tensor_proto.int64_data_size();
+            ORT_ENFORCE(size_ == size, "size is different");
+            for (int i = 0; i < size_; i++) {
+              int64_data_.push_back(tensor_proto.int64_data(i));
+            }
+            break;
           }
-          break;
+          default:
+            ORT_NOT_IMPLEMENTED(__FUNCTION__, "unsupported data type: ", data_type_);
+            break;
         }
-        default:
-          ORT_NOT_IMPLEMENTED(__FUNCTION__, "data type is not supported");
-          break;
       }
+    } else {  // tensor_proto.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL
+      const auto status = ReadExternalRawData(tensor_proto, model_path, raw_data_);
+      ORT_ENFORCE(status.IsOK(), "ReadExternalRawData() failed: ", status.ErrorMessage());
     }
   }
 
@@ -132,7 +138,7 @@ class Initializer final {
 
     if (!raw_data_.empty()) {
       tensor_proto.clear_raw_data();
-      tensor_proto.set_raw_data(raw_data_);
+      tensor_proto.set_raw_data(raw_data_.data(), raw_data_.size());
     } else {
       switch (data_type_) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
@@ -231,27 +237,27 @@ class Initializer final {
   template <typename T>
   T* data() {
     if (!raw_data_.empty()) {
-      return (T*)&raw_data_[0];
+      return reinterpret_cast<T*>(raw_data_.data());
     }
     switch (data_type_) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
-        return (T*)float16_data_.data();
+        return reinterpret_cast<T*>(float16_data_.data());
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-        return (T*)float_data_.data();
+        return reinterpret_cast<T*>(float_data_.data());
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
-        return (T*)double_data_.data();
+        return reinterpret_cast<T*>(double_data_.data());
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
-        return (T*)int32_data_.data();
+        return reinterpret_cast<T*>(int32_data_.data());
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
-        return (T*)int64_data_.data();
+        return reinterpret_cast<T*>(int64_data_.data());
         break;
       }
       default:
@@ -264,27 +270,27 @@ class Initializer final {
   template <typename T>
   const T* data() const {
     if (!raw_data_.empty()) {
-      return (T*)&raw_data_[0];
+      return reinterpret_cast<const T*>(raw_data_.data());
     }
     switch (data_type_) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
-        return (T*)float16_data_.data();
+        return reinterpret_cast<const T*>(float16_data_.data());
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-        return (T*)float_data_.data();
+        return reinterpret_cast<const T*>(float_data_.data());
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
-        return (T*)double_data_.data();
+        return reinterpret_cast<const T*>(double_data_.data());
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
-        return (T*)int32_data_.data();
+        return reinterpret_cast<const T*>(int32_data_.data());
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
-        return (T*)int64_data_.data();
+        return reinterpret_cast<const T*>(int64_data_.data());
         break;
       }
       default:
@@ -628,12 +634,15 @@ class Initializer final {
   }
 
  private:
+  static Status ReadExternalRawData(
+      const ONNX_NAMESPACE::TensorProto& tensor_proto, const Path& model_path, std::vector<char>& raw_data);
+
   int data_type_;
   std::string name_;
   std::vector<int64_t> dims_;
   int64_t size_;
 
-  std::string raw_data_;
+  std::vector<char> raw_data_;
   std::vector<float> float_data_;
   std::vector<uint16_t> float16_data_;
   std::vector<double> double_data_;

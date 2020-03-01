@@ -33,7 +33,7 @@ class CPUExecutionProvider : public IExecutionProvider {
                                                 std::numeric_limits<size_t>::max()};
 
 #ifdef USE_JEMALLOC
-#if defined(USE_MIMALLOC)
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR) || defined(USE_MIMALLOC_STL_ALLOCATOR)
 #error jemalloc and mimalloc should not both be enabled
 #endif
 

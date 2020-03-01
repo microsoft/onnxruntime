@@ -101,9 +101,9 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
   assert(nullptr != q_tensor);
   assert(nullptr != k_tensor);
   assert(nullptr != v_tensor);
-  auto q_initializer = onnxruntime::make_unique<Initializer>(*q_tensor);
-  auto k_initializer = onnxruntime::make_unique<Initializer>(*k_tensor);
-  auto v_initializer = onnxruntime::make_unique<Initializer>(*v_tensor);
+  Initializer q_initializer(*q_tensor, graph.ModelPath());
+  Initializer k_initializer(*k_tensor, graph.ModelPath());
+  Initializer v_initializer(*v_tensor, graph.ModelPath());
   auto data_type = q_tensor->data_type();
 
   ONNX_NAMESPACE::TensorProto initializer;
@@ -118,9 +118,9 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
   const int64_t element_count = 3 * hidden_size * (is_matmul ? hidden_size : 1);
 
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    const float* q_weight = q_initializer->data<float>();
-    const float* k_weight = k_initializer->data<float>();
-    const float* v_weight = v_initializer->data<float>();
+    const float* q_weight = q_initializer.data<float>();
+    const float* k_weight = k_initializer.data<float>();
+    const float* v_weight = v_initializer.data<float>();
     std::vector<float> result;
     result.reserve(element_count);
     if (is_matmul) {
@@ -130,9 +130,9 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
     }
     initializer.set_raw_data(result.data(), element_count * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
-    const MLFloat16* q_weight = q_initializer->data<MLFloat16>();
-    const MLFloat16* k_weight = k_initializer->data<MLFloat16>();
-    const MLFloat16* v_weight = v_initializer->data<MLFloat16>();
+    const MLFloat16* q_weight = q_initializer.data<MLFloat16>();
+    const MLFloat16* k_weight = k_initializer.data<MLFloat16>();
+    const MLFloat16* v_weight = v_initializer.data<MLFloat16>();
     std::vector<MLFloat16> result;
     result.reserve(element_count);
     if (is_matmul) {
