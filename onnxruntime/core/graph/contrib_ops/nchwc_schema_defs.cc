@@ -174,7 +174,7 @@ void RegisterNchwcSchemas() {
         if (!getRepeatedAttribute(ctx, "scales", scales)) {
           return;
         }
-        if (input_rank != scales.size()) {
+        if (static_cast<size_t>(input_rank) != scales.size()) {
           fail_shape_inference("invalid scales dimension");
         }
 
