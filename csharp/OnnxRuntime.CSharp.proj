@@ -20,7 +20,7 @@ CMake creates a target to this project
     <!--internal build related properties-->
     <OnnxRuntimeSourceDirectory Condition="'$(OnnxRuntimeSourceDirectory)'==''">..</OnnxRuntimeSourceDirectory>
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">..\build\Windows</OnnxRuntimeBuildDirectory>
-    <OnnxRuntimePackagesDirectory Condition="'$(OnnxRuntimePackagesDirectory)'==''">${OnnxRuntimeBuildDirectory}\packages</OnnxRuntimePackagesDirectory>
+    <OnnxRuntimePackagesDirectory Condition="'$(OnnxRuntimePackagesDirectory)'==''">$(OnnxRuntimeBuildDirectory)\packages</OnnxRuntimePackagesDirectory>
     <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
     
   </PropertyGroup>
