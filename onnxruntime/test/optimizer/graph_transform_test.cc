@@ -950,6 +950,84 @@ TEST(GraphTransformationTests, ReshapeFusionOneConstTest) {
   }
 }
 
+// Test Reshape Fusion together with Unsqueeze elimination with two constant unsqueezes for Concat inputs.
+TEST(GraphTransformationTests, ReshapeFusionTwoConstUnsqueezeTest) {
+  auto model_uri = MODEL_FOLDER "fusion/reshape_with_unsqueeze.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<UnsqueezeElimination>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Shape"], 0);
+  ASSERT_EQ(op_to_count["Gather"], 0);
+  ASSERT_EQ(op_to_count["Unsqueeze"], 0);
+  ASSERT_EQ(op_to_count["Concat"], 0);
+  ASSERT_EQ(op_to_count["Reshape"], 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Reshape") {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
+      ASSERT_TRUE(tensor_proto != nullptr);
+
+      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      EXPECT_EQ(initializer->size(), 4);
+
+      const int64_t* val = initializer->data<int64_t>();
+      EXPECT_EQ(val[0], 0);
+      EXPECT_EQ(val[1], 0);
+      EXPECT_EQ(val[2], 12);
+      EXPECT_EQ(val[3], 64);
+    }
+  }
+}
+
+// Test Reshape Fusion together with Unsqueeze elimination with first input to concat being a const Unsqueeze.
+TEST(GraphTransformationTests, ReshapeFusionFirstInputConstUnsqueezeTest) {
+  auto model_uri = MODEL_FOLDER "fusion/reshape_first_constant.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<UnsqueezeElimination>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Shape"], 0);
+  ASSERT_EQ(op_to_count["Gather"], 0);
+  ASSERT_EQ(op_to_count["Unsqueeze"], 0);
+  ASSERT_EQ(op_to_count["Concat"], 0);
+  ASSERT_EQ(op_to_count["Reshape"], 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Reshape") {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
+      ASSERT_TRUE(tensor_proto != nullptr);
+
+      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      EXPECT_EQ(initializer->size(), 2);
+
+      const int64_t* val = initializer->data<int64_t>();
+      EXPECT_EQ(val[0], -1);
+      EXPECT_EQ(val[1], 768);
+    }
+  }
+}
+
 #ifndef DISABLE_CONTRIB_OPS
 
 static void ValidateAttention(Graph& graph) {
