@@ -91,7 +91,6 @@ Status LambOptimizerBuilder::Build(
   std::vector<float> beta;
   std::vector<float> lambda;
   std::vector<float> epsilon;
-  std::vector<float> threshold;
 
   // Each iteration handles the associated inputs and outputs of a weight tensor.
   // Associated inputs: [w, g, m1, m2, w_fp16].
@@ -135,12 +134,6 @@ Status LambOptimizerBuilder::Build(
         epsilon.emplace_back(epsilon_iter->second);
       else
         epsilon.emplace_back(1e-6f);
-
-      auto threshold_iter = attrs.find("threshold");
-      if (threshold_iter != attrs.end())
-        threshold.emplace_back(threshold_iter->second);
-      else
-        threshold.emplace_back(1.0f);
 
       // Extract weight's type and shape information.
       const TypeProto* const weight_type_proto = weight_argdefs[i].type_proto;
@@ -216,7 +209,6 @@ Status LambOptimizerBuilder::Build(
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("beta", beta));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("lambda", lambda));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("epsilon", epsilon));
-  attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("threshold", threshold));
 
   graph_defs.AddNodeDefs({NodeDef(OpType(),
                                   input_argdefs,

@@ -327,6 +327,7 @@ Status launch_lamb_reduction(
     ORT_ENFORCE(buckets.size() > 0);
   }
 
+  // Only launch multi-tensor function if we have at least one tensor in the buckets.
   if (tensor_sizes_in_buckets.size() > 0 && buckets.size() > 0) {
     typedef LambMultiTensorReductionFunctor<CudaTIn1, CudaTIn2, CudaTNorm, CudaTNorm, CudaTNorm> TReducer;
     TReducer reducer;
@@ -349,7 +350,6 @@ Status launch_lamb_update(
     std::vector<CudaT2*>& p_d_norms,
     std::vector<const CudaT2*>& p_ws,
     std::vector<CudaT3*>& p_ds,
-    const std::vector<float>& thresholds,
     /* output */ std::vector<CudaT2*>& p_w_news,
     /* output */ std::vector<CudaT3*>& p_g_news,
     /* output */ std::vector<half*>& p_w_fp16_news) {
@@ -367,8 +367,8 @@ Status launch_lamb_update(
 
   // Bucketize tensor groups by the associated optimizer configuration.
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
-  std::map<float, std::vector<std::vector<void*>>> buckets;
-  std::map<float, std::vector<int>> tensor_sizes_in_bucket;
+  std::vector<std::vector<void*>> buckets;
+  std::vector<int> tensor_sizes_in_bucket;
   const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
@@ -377,7 +377,6 @@ Status launch_lamb_update(
           p_d_norms[i],
           p_w_norms[i],
           p_ws[i],
-          CudaT2(thresholds[i]),
           p_ds[i],
           p_w_news[i],
           p_g_news[i],
@@ -392,26 +391,30 @@ Status launch_lamb_update(
       ptrs[4] = p_w_news[i];                   // new weight tensor
       ptrs[5] = p_g_news[i];                   // new gradient tensor
       ptrs[6] = p_w_fp16_news[i];              // new half-precision weight tensor
-      auto key = thresholds[i];
-      buckets[key].push_back(ptrs);
-      tensor_sizes_in_bucket[key].push_back(tensor_sizes[i]);
+      buckets.push_back(ptrs);
+      tensor_sizes_in_bucket.push_back(tensor_sizes[i]);
     }
   }
 
-  for (auto& pair : buckets) {
-    // Key of tensor groups.
-    const float key = pair.first;
+  if (buckets.size() > 0) {
+    ORT_ENFORCE(tensor_sizes_in_bucket.size() > 0);
+  }
 
+  if (tensor_sizes_in_bucket.size() > 0) {
+    ORT_ENFORCE(buckets.size() > 0);
+  }
+
+  // Only launch multi-tensor function if we have at least one tensor in the buckets.
+  if (tensor_sizes_in_bucket.size() > 0 && buckets.size() > 0) {
     typedef LambMultiTensorUpdateFunctor<CudaT1, CudaT2, CudaT3> LambStage2;
     LambStage2 lamb_stage2;
 
-    launch_multi_tensor_functor<tensor_count_per_group, LambStage2, const CudaT1*, const CudaT2>(
+    launch_multi_tensor_functor<tensor_count_per_group, LambStage2, const CudaT1*>(
         2048 * 32,
-        tensor_sizes_in_bucket[key],
-        buckets[key],
+        tensor_sizes_in_bucket,
+        buckets,
         lamb_stage2,
-        eta,
-        key);
+        eta);
   }
 
   return Status::OK();
@@ -470,7 +473,6 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
   ORT_ENFORCE(beta_.size() >= static_cast<size_t>(group_count));
   ORT_ENFORCE(lambda_.size() >= static_cast<size_t>(group_count));
   ORT_ENFORCE(epsilon_.size() >= static_cast<size_t>(group_count));
-  ORT_ENFORCE(threshold_.size() >= static_cast<size_t>(group_count));
 
   // If gradient norm is not finite, we copy inputs to outputs directly.
   if (ctx->Input<Tensor>(0)) {
@@ -648,7 +650,6 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
       p_d_norms,
       p_ws,
       p_ds,
-      threshold_,
       p_w_news,
       p_g_news,
       p_w_fp16_news);

@@ -98,11 +98,6 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
           "Small scalar to avoid dividing by zero.",
           AttributeProto::FLOATS,
           std::vector<float>(1024, 1e-6f))
-      .Attr(
-          "threshold",
-          "The max ratio of tensor norm and its gradient.",
-          AttributeProto::FLOATS,
-          std::vector<float>(1024, 1.0f))
       .TypeConstraint(
           "T1",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},

@@ -1639,12 +1639,15 @@ void compute_lamb(
     r_norm += r[i] * r[i];
     w_norm += w[i] * w[i];
   }
+
   r_norm = std::sqrt(r_norm);
   w_norm = std::sqrt(w_norm);
 
+  const float ratio = (w_norm != 0.0f && r_norm != 0.0f) ? eta * w_norm / r_norm : eta;
+
   // Compute the new weight.
   for (int64_t i = 0; i < size; ++i) {
-    g_new[i] = -eta * w_norm / r_norm * r[i];
+    g_new[i] = -ratio * r[i];
     w_new[i] = w[i] + g_new[i];
   }
 }
@@ -1694,9 +1697,6 @@ void run_lamb_test_with_baseline(
   test.AddAttribute("beta", std::vector<float>(1, beta));
   test.AddAttribute("lambda", std::vector<float>(1, lambda));
   test.AddAttribute("epsilon", std::vector<float>(1, epsilon));
-  // Tests should not trigger the thresholding mechnism,
-  // so we assign a big value here.
-  test.AddAttribute("threshold", std::vector<float>(1, 10000.0f));
 
   if (step > 0) {
     test.AddOutput<int64_t>("Step_Out", {}, {do_update ? step + 1 : step});
@@ -1829,9 +1829,6 @@ void run_multi_tensor_lamb_test_with_baseline(
   test.AddAttribute("beta", betas);
   test.AddAttribute("lambda", lambdas);
   test.AddAttribute("epsilon", epsilons);
-  // Tests should not trigger the thresholding mechnism,
-  // so we assign a big value here.
-  test.AddAttribute("threshold", std::vector<float>(group_count, 10000.0f));
 
   test.Run();
 }
@@ -1997,6 +1994,34 @@ TEST(OptimizerTest, LambOptimizerTestVector) {
   const float eta = 0.5f;
   const std::vector<float> w = {1.0f, 2.0f};
   const std::vector<float> g = {3.0f, 4.0f};
+  const std::vector<float> m = {-1.0f, -2.0f};
+  const std::vector<float> v = {2.0f, 1.0f};
+  const float lambda = 0.5f;
+  const float alpha = 0.2f;
+  const float beta = 0.8f;
+  const float epsilon = 1e-6f;
+
+  run_multi_tensor_lamb_test(
+      {shape},
+      eta,
+      1.f,
+      1.f,
+      {w},
+      {g},
+      {m},
+      {v},
+      {lambda},
+      {alpha},
+      {beta},
+      {epsilon});
+}
+
+TEST(OptimizerTest, LambOptimizerTestVectorWithZeroWeight) {
+  // Input tensors and attributes.
+  const std::vector<int64_t> shape = {2};
+  const float eta = 0.5f;
+  const std::vector<float> w = {0.0f, 0.0f};
+  const std::vector<float> g = {1.0f, -1.0f};
   const std::vector<float> m = {-1.0f, -2.0f};
   const std::vector<float> v = {2.0f, 1.0f};
   const float lambda = 0.5f;

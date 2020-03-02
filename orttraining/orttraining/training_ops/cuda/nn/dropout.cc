@@ -34,7 +34,8 @@ REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, double, 1)
 
 
 static DropoutGenerator& GetGenerator(){
-  //hardcode the default seed now
+  // Hardcode the default seed now.
+  // This generator is shared by all Dropouts.
   static DropoutGenerator generator(8211);
   return generator;
 }

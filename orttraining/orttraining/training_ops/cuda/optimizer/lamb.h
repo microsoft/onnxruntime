@@ -18,7 +18,6 @@ class LambOptimizer final : public CudaKernel {
     beta_ = info.GetAttrsOrDefault("beta", std::vector<float>(1024, 0.999f));
     lambda_ = info.GetAttrsOrDefault("lambda", std::vector<float>(1024, 0.0f));
     epsilon_ = info.GetAttrsOrDefault("epsilon", std::vector<float>(1024, 1e-6f));
-    threshold_ = info.GetAttrsOrDefault("threshold", std::vector<float>(1024, 1.0f));
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -28,7 +27,6 @@ class LambOptimizer final : public CudaKernel {
   std::vector<float> beta_;
   std::vector<float> lambda_;
   std::vector<float> epsilon_;
-  std::vector<float> threshold_;
 };
 
 // Implementation can be found in cuda file, optimizers_impl.cu
@@ -64,7 +62,6 @@ void LambUpdate(
     const T2* r_norm,
     const T2* w_norm,
     const T2* weights,
-    const T2 threshold,
     const T3* update_direction,
     T2* weights_out,
     T3* gradients_out,
@@ -144,8 +141,7 @@ template <typename T1, typename T2, typename T3>
 struct LambMultiTensorUpdateFunctor {
   void operator()(
       ChunkGroup<7> chunk_group,
-      const T1* eta,
-      const T2 threshold);
+      const T1* eta);
 };
 
 }  // namespace cuda

@@ -175,7 +175,6 @@ __device__ __forceinline__ void _LambUpdateRule(
     const T2& r_norm,
     const T2& w_norm,
     const T2& w,
-    const T2& threshold,
     const T3& d,
     T2* w_new,
     T3* g_new,
@@ -216,7 +215,6 @@ __global__ void _LambUpdateImpl(
     const T2* r_norm,
     const T2* w_norm,
     const T2* weights,
-    const T2 threshold,
     const T3* update_direction,
     T2* weights_out,
     T3* gradients_out,
@@ -229,7 +227,6 @@ __global__ void _LambUpdateImpl(
       *r_norm,
       *w_norm,
       weights[id],
-      threshold,
       update_direction[id],
       weights_out != nullptr ? weights_out + id : nullptr,
       gradients_out != nullptr ? gradients_out + id : nullptr,
@@ -242,7 +239,6 @@ void LambUpdate(
     const T2* r_norm,
     const T2* w_norm,
     const T2* weights,
-    const T2 threshold,
     const T3* update_direction,
     T2* weights_out,
     T3* gradients_out,
@@ -256,7 +252,6 @@ void LambUpdate(
       r_norm,
       w_norm,
       weights,
-      threshold,
       update_direction,
       weights_out,
       gradients_out,
@@ -270,7 +265,6 @@ void LambUpdate(
       const T2* r_norm,                         \
       const T2* w_norm,                         \
       const T2* weights,                        \
-      const T2 threshold,                       \
       const T3* update_direction,               \
       T2* weights_out,                          \
       T3* gradients_out,                        \
@@ -373,8 +367,7 @@ INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, float)
 template <typename T1, typename T2, typename T3>
 __global__ void LambMultiTensorUpdateImpl(
     ChunkGroup<7> chunk_group,
-    const T1* eta,
-    const T2 threshold) {
+    const T1* eta) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
   const int tensor_size = chunk_group.tensor_sizes[group_index];
   const int chunk_size = chunk_group.chunk_size;
@@ -394,7 +387,6 @@ __global__ void LambMultiTensorUpdateImpl(
         *r_norm,
         *w_norm,
         w[i],
-        threshold,
         d[i],
         w_new != nullptr ? w_new + i : nullptr,
         g_new != nullptr ? g_new + i : nullptr,
@@ -405,22 +397,19 @@ __global__ void LambMultiTensorUpdateImpl(
 template <typename T1, typename T2, typename T3>
 void LambMultiTensorUpdateFunctor<T1, T2, T3>::operator()(
     ChunkGroup<7> chunk_group,
-    const T1* eta,
-    const T2 threshold) {
+    const T1* eta) {
   const int thread_count = ChunkGroup<7>::thread_count_per_block;
   const int block_count = chunk_group.chunk_count;
 
   LambMultiTensorUpdateImpl<T1, T2, T3><<<block_count, thread_count, 0>>>(
       chunk_group,
-      eta,
-      threshold);
+      eta);
 }
 
 #define INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(T1, T2, T3)      \
   template void LambMultiTensorUpdateFunctor<T1, T2, T3>::operator()( \
       ChunkGroup<7> chunk_group,                                      \
-      const T1* eta,                                                  \
-      const T2 threshold);
+      const T1* eta);                                                 \
 
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(double, double, double)
