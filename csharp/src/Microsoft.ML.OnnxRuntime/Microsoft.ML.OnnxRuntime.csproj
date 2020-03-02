@@ -13,12 +13,17 @@
     <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
     <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
-    <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>    
+    <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>  
     
     <!--- packaging properties -->
     <OrtPackageId Condition=" '$(OrtPackageId)' == '' ">Microsoft.ML.OnnxRuntime</OrtPackageId>
-    <PackageId>$(OrtPackageId)</PackageId>
+
+    <!--- The package name is always hardcoded as the package created by this project only contains managed assemblies -->
+    <!--- The parameter OrtPackageId is only used for some conditional logic below -->    
+    <PackageId>Microsoft.ML.OnnxRuntime.Managed</PackageId>
     <Authors>Microsoft</Authors>
+    <PackageVersion Condition=" '$(PackageVersion)' == '' ">0.0</PackageVersion>
+    <Version>$(PackageVersion)</Version>
     <Description>This package contains ONNX Runtime for .Net platforms</Description>
     <PackageTags>ONNX;ONNX Runtime;Machine Learning</PackageTags>
     <PackageProjectUrl>https://github.com/Microsoft/onnxruntime</PackageProjectUrl>
@@ -44,46 +49,46 @@
   <ItemGroup>
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_*.h"
           PackagePath="\build\native\include"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Never"
           Visible="false"
     />
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h"
           PackagePath="\build\native\include"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Never"
           Visible="false"
     />
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cuda\cuda_provider_factory.h"
           Condition="'$(OrtPackageId)' != 'Microsoft.ML.OnnxRuntime.DirectML'"
           PackagePath="\build\native\include"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Never"
           Visible="false"
     />
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\dml\dml_provider_factory.h"
           Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'"
           PackagePath="\build\native\include"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Never"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.lib"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Never"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.dll"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Always"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb"
           Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Always"
           Visible="false"
     />
@@ -92,8 +97,17 @@
                      And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Always"
+          Visible="false"
+    />
+    <None Include="$(NativeBuildOutputDir)\windows.ai.machinelearning.lib"
+          Condition="Exists('$(NativeBuildOutputDir)\windows.ai.machinelearning.lib')
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
+                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
+          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          Pack="false"
+          CopyToOutputDirectory="Never"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\windows.ai.machinelearning.pdb"
@@ -101,43 +115,70 @@
                      And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Always"
+          Visible="false"
+    />
+    <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\windows.ai.machinelearning.winmd"
+          Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\windows.ai.machinelearning.winmd')
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
+                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
+          PackagePath="\build\native\metadata"
+          Pack="false"
+          CopyToOutputDirectory="Always"
+          Visible="false"
+    />
+    <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.h"
+          Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\windows.ai.machinelearning.h')
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
+                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
+          PackagePath="\build\native\include"
+          Pack="false"
+          CopyToOutputDirectory="Never"
+          Visible="false"
+    />
+    <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.Native.h"
+          Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\windows.ai.machinelearning.native.h')
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
+                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
+          PackagePath="\build\native\include"
+          Pack="false"
+          CopyToOutputDirectory="Never"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\DirectML.dll"
           Condition="Exists('$(NativeBuildOutputDir)\DirectML.dll')
                      And '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Always"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\dnnl.dll"
           Condition="Exists('$(NativeBuildOutputDir)\dnnl.dll')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Always"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\mklml.dll"
           Condition="Exists('$(NativeBuildOutputDir)\mklml.dll')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Always"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\libiomp5md.dll"
           Condition="Exists('$(NativeBuildOutputDir)\libiomp5md.dll')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Always"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\tvm.dll"
           Condition="Exists('$(NativeBuildOutputDir)\tvm.dll')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Always"
           Visible="false"
     />
@@ -152,27 +193,23 @@
           Visible="false"
     />
     <None Include="$(PackageId).targets" 
-          PackagePath="\build\$(TargetFramework);\build\native"
+          PackagePath="\build\$(TargetFramework)"
           Pack="true"
           Visible="false"
     />
-    <None Include="$(PackageId).props"
-          PackagePath="\build\$(TargetFramework);\build\native"
-          Pack="true"
-          Visible="false"
-    />
+
     <!-- Some tools to be packaged in nightly build only, should not be released -->
     <!-- These are copied to the runtimes folder for convenience of loading with the dlls -->
     <None Include="$(NativeBuildOutputDir)\onnxruntime_perf_test.exe"
           Condition="('$(IsReleaseBuild)' != 'true') And ($(TargetArchitecture)=='x64') And Exists('$(NativeBuildOutputDir)\onnxruntime_perf_test.exe')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="true"
+          Pack="false"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\onnx_test_runner.exe"
           Condition="('$(IsReleaseBuild)' != 'true') And ($(TargetArchitecture)=='x64') And Exists('$(NativeBuildOutputDir)\onnx_test_runner.exe')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="true"
+          Pack="false"
           Visible="false"
     />
 
@@ -180,28 +217,11 @@
 
   <ItemGroup>
     <LicenseFile Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE"/>
-    <PropertiesFile Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\props.xml"/>
     <TargetsFile Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets.xml"/>
   </ItemGroup>
 
-  <Target Name="ObtainPackageVersion" BeforeTargets="Build;Pack">
-    <ReadLinesFromFile File="$(OnnxRuntimeCsharpRoot)\..\VERSION_NUMBER">
-      <Output TaskParameter="Lines" ItemName="MajorVersionNumber"/>
-    </ReadLinesFromFile>
-    <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true">
-        <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitHashShort" />
-    </Exec>
-
-    <PropertyGroup>
-      <CurrentDate>$([System.DateTime]::UtcNow.ToString(yyyyMMdd))</CurrentDate>
-      <CurrentTime>$([System.DateTime]::UtcNow.ToString(hhmm))</CurrentTime>
-      <PackageVersion>@(MajorVersionNumber)</PackageVersion>
-      <Version>$(PackageVersion)</Version>
-      <PackageVersion Condition="'$(IsReleaseBuild)'!='true'">$(PackageVersion)-dev-$(CurrentDate)-$(CurrentTime)-$(GitCommitHashShort)</PackageVersion>
-    </PropertyGroup>
-    <Message Importance="High" Text="PackageVersion=$(PackageVersion)" />
+  <Target Name="CopyMiscFiles" BeforeTargets="Pack">
     <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')"/>
-    <Copy SourceFiles="@(PropertiesFile)" DestinationFiles="@(PropertiesFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).props')"/>
     <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).targets')"/>
 
   </Target>

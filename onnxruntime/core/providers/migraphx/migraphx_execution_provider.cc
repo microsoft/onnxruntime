@@ -664,8 +664,10 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   }
 
   // Construct modelproto from graph
-  onnxruntime::Model model(graph_viewer.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
-          graph_viewer.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+  onnxruntime::Model model(graph_viewer.Name(), true, ModelMetaData(), PathString{}, 
+          IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap(), 
+          std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+
   onnxruntime::Graph& graph_build = model.MainGraph();
   for (const auto& node : graph_viewer.Nodes()) {
     std::vector<onnxruntime::NodeArg*> inputs, outputs;
@@ -785,7 +787,7 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
   ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", fused_node->Name());
 
   const Graph& node_subgraph = node_function->Body();
-  onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{},
+  onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{}, PathString{},
                            IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap(),
                            std::vector<ONNX_NAMESPACE::FunctionProto>(), logger};
 

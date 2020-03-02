@@ -1,8 +1,9 @@
 #include "bias_gelu_fusion.h"
 
-#include "core/util/math_cpuonly.h"
-#include "core/platform/threadpool.h"
+#include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/platform/threadpool.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -42,7 +43,8 @@ Status BiasGelu<T>::Compute(OpKernelContext* ctx) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
 
-  BufferUniquePtr temp_data_buf_ptr = BufferUniquePtr(alloc->Alloc(sizeof(T) * X->Shape().Size()), BufferDeleter(alloc));
+  BufferUniquePtr temp_data_buf_ptr = BufferUniquePtr(alloc->Alloc(SafeInt<size_t>(sizeof(T)) * X->Shape().Size()),
+                                                      BufferDeleter(alloc));
   T* tmp_data = static_cast<T*>(temp_data_buf_ptr.get());
 
   const T* X_data = X->template Data<T>();

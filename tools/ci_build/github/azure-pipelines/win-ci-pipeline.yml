@@ -72,13 +72,6 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
       createLogFile: true
 
-  - task: PublishSymbols@2
-    displayName: 'Publish Build Symbols'
-    inputs:
-      symbolsFolder: $(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
-      searchPattern: '**/*.pdb'
-      symbolServerType: teamServices
-
   - task: PythonScript@0
     displayName: 'Build wheel'
     inputs:

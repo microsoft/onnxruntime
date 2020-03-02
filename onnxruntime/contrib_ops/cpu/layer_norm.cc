@@ -3,6 +3,7 @@
 
 #include "layer_norm.h"
 
+#include "core/common/safeint.h"
 #include "core/framework/tensor.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/common.h"
@@ -15,7 +16,7 @@ namespace contrib {
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       LayerNormalization,                                         \
       kOnnxDomain,                                                \
-      9,                                                          \
+      1,                                                          \
       T,                                                          \
       kCpuExecutionProvider,                                      \
       KernelDefBuilder()                                          \
@@ -70,7 +71,7 @@ Status LayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
   if (mean != nullptr) {
     mean_data = mean->template MutableData<T>();
   } else {
-    auto mean_data_buf = alloc->Alloc(sizeof(T) * norm_count);
+    auto mean_data_buf = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * norm_count);
     mean_data_buf_ptr = BufferUniquePtr(mean_data_buf, BufferDeleter(alloc));
     mean_data = static_cast<T*>(mean_data_buf_ptr.get());
   }
@@ -82,7 +83,7 @@ Status LayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
   if (inv_std_var != nullptr) {
     inv_std_var_data = inv_std_var->template MutableData<T>();
   } else {
-    auto inv_std_var_data_buf = alloc->Alloc(sizeof(T) * norm_count);
+    auto inv_std_var_data_buf = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * norm_count);
     inv_std_var_data_buf_ptr = BufferUniquePtr(inv_std_var_data_buf, BufferDeleter(alloc));
     inv_std_var_data = static_cast<T*>(inv_std_var_data_buf_ptr.get());
   }

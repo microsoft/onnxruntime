@@ -119,6 +119,7 @@ class NchwcTransformerImpl {
   void TransformConcat(Node& node);
   void TransformActivation(Node& node);
   void TransformBatchNormalization(Node& node);
+  void TransformTranspose(Node& node);
 
   Graph& graph_;
 
@@ -147,10 +148,11 @@ size_t NchwcTransformerImpl::RemoveOutputEdges(Node& node) {
   size_t output_edges_count = node.GetOutputEdgesCount();
   if (output_edges_count > 0) {
     graph_utils::RemoveNodeOutputEdges(graph_, node);
-  } else {
-    // Bias the edge count to handle the case of a node that produces a graph
-    // output.
-    output_edges_count = 1;
+  }
+  // Bias the edge count to handle the case of a node that produces a graph
+  // output.
+  if (!graph_.GetNodeOutputsInGraphOutputs(node).empty()) {
+    output_edges_count++;
   }
   return output_edges_count;
 }
@@ -198,7 +200,7 @@ void NchwcTransformerImpl::InsertReorderInput(Node& node) {
                                               {input_nchwc_arg},
                                               nullptr,
                                               kMSNchwcDomain);
-    reorder_input_node.SetExecutionProviderType(node.GetExecutionProviderType());
+    reorder_input_node.SetExecutionProviderType(kCpuExecutionProvider);
     input_defs[0] = input_nchwc_arg;
   } else {
     input_defs[0] = it->second;
@@ -364,15 +366,15 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     // Reuse the existing NodeArg.
     nchwc_conv_W_arg = filters_it->second;
   } else {
-    auto conv_W = onnxruntime::make_unique<Initializer>(*conv_W_tensor_proto);
+    Initializer conv_W{*conv_W_tensor_proto, graph_.ModelPath()};
 
-    std::vector<float> reordered_filter(conv_W->size() / output_channels * nchwc_output_channels);
+    std::vector<float> reordered_filter(conv_W.size() / output_channels * nchwc_output_channels);
 
     // Reorder the weights tensor statically.
     if (reorder_filter_OIHWBo) {
-      MlasReorderFilterOIHWBo(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
+      MlasReorderFilterOIHWBo(conv_W.dims().data(), conv_W.data<float>(), reordered_filter.data());
     } else {
-      MlasReorderFilterOIHWBiBo(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
+      MlasReorderFilterOIHWBiBo(conv_W.dims().data(), conv_W.data<float>(), reordered_filter.data());
     }
 
     ONNX_NAMESPACE::TensorProto nchwc_conv_W_tensor_proto;
@@ -383,7 +385,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
     nchwc_conv_W_tensor_proto.add_dims(nchwc_output_channels);
     for (size_t i = 1; i < 4; i++) {
-      nchwc_conv_W_tensor_proto.add_dims(conv_W->dims()[i]);
+      nchwc_conv_W_tensor_proto.add_dims(conv_W.dims()[i]);
     }
 
     nchwc_conv_W_arg = &graph_utils::AddInitializer(graph_, nchwc_conv_W_tensor_proto);
@@ -398,10 +400,10 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
       // Reuse the existing NodeArg.
       nchwc_conv_B_arg = biases_it->second;
     } else {
-      auto conv_B = onnxruntime::make_unique<Initializer>(*conv_B_tensor_proto);
+      Initializer conv_B{*conv_B_tensor_proto, graph_.ModelPath()};
 
       std::vector<float> aligned_bias(nchwc_output_channels);
-      std::copy_n(conv_B->data<float>(), output_channels, aligned_bias.data());
+      std::copy_n(conv_B.data<float>(), output_channels, aligned_bias.data());
 
       ONNX_NAMESPACE::TensorProto nchwc_conv_B_tensor_proto;
 
@@ -425,7 +427,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
                                     output_defs,
                                     &node.GetAttributes(),
                                     kMSNchwcDomain);
-  nchwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
+  nchwc_node.SetExecutionProviderType(kCpuExecutionProvider);
 
   nchwc_node.MutableInputDefs()[1] = nchwc_conv_W_arg;
 
@@ -484,7 +486,7 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
                                     output_defs,
                                     &node.GetAttributes(),
                                     kMSNchwcDomain);
-  nchwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
+  nchwc_node.SetExecutionProviderType(kCpuExecutionProvider);
 
   NchwcArgument::Shape output_shape(output_defs[0]);
 
@@ -724,24 +726,24 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
     return;
   }
 
-  auto bn_scale = onnxruntime::make_unique<Initializer>(*bn_scale_tensor_proto);
-  auto bn_B = onnxruntime::make_unique<Initializer>(*bn_B_tensor_proto);
-  auto bn_mean = onnxruntime::make_unique<Initializer>(*bn_mean_tensor_proto);
-  auto bn_var = onnxruntime::make_unique<Initializer>(*bn_var_tensor_proto);
+  Initializer bn_scale{*bn_scale_tensor_proto, graph_.ModelPath()};
+  Initializer bn_B{*bn_B_tensor_proto, graph_.ModelPath()};
+  Initializer bn_mean{*bn_mean_tensor_proto, graph_.ModelPath()};
+  Initializer bn_var{*bn_var_tensor_proto, graph_.ModelPath()};
 
   // Calculate the scale and bias for the replacement convolution.
-  bn_var->add(epsilon);
-  bn_var->sqrt();
-  bn_scale->div(*bn_var);
-  bn_mean->mul(*bn_scale);
-  bn_B->sub(*bn_mean);
+  bn_var.add(epsilon);
+  bn_var.sqrt();
+  bn_scale.div(bn_var);
+  bn_mean.mul(bn_scale);
+  bn_B.sub(bn_mean);
 
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
   const int64_t nchwc_channels = (channels + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
 
   std::vector<float> padded_buffer(nchwc_channels);
 
-  std::copy_n(bn_scale->data<float>(), channels, padded_buffer.data());
+  std::copy_n(bn_scale.data<float>(), channels, padded_buffer.data());
 
   ONNX_NAMESPACE::TensorProto nchwc_conv_W_tensor_proto;
   nchwc_conv_W_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -754,7 +756,7 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
 
   auto* nchwc_conv_W_arg = &graph_utils::AddInitializer(graph_, nchwc_conv_W_tensor_proto);
 
-  std::copy_n(bn_B->data<float>(), channels, padded_buffer.data());
+  std::copy_n(bn_B.data<float>(), channels, padded_buffer.data());
 
   ONNX_NAMESPACE::TensorProto nchwc_conv_B_tensor_proto;
   nchwc_conv_B_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -773,12 +775,53 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
                                     output_defs,
                                     nullptr,
                                     kMSNchwcDomain);
-  nchwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
+  nchwc_node.SetExecutionProviderType(kCpuExecutionProvider);
   nchwc_node.AddAttribute("group", nchwc_channels);
 
   nchwc_input->remaining_original_uses_--;
 
   CreateNchwcArgument(node, nchwc_node, channels, nchwc_input->shape_);
+  removed_nodes_.push_front(node.Index());
+}
+
+void NchwcTransformerImpl::TransformTranspose(Node& node) {
+  auto& input_defs = node.MutableInputDefs();
+  auto& output_defs = node.MutableOutputDefs();
+
+  const ONNX_NAMESPACE::AttributeProto* perm_attr = graph_utils::GetNodeAttribute(node, "perm");
+  if (perm_attr == nullptr || perm_attr->ints_size() != 4) {
+    return;
+  }
+
+  // Test if this transposes from NCHW to NHWC layout order.
+  const int64_t* perm_data = perm_attr->ints().data();
+  if (perm_data[0] != 0 || perm_data[1] != 2 || perm_data[2] != 3 || perm_data[3] != 1) {
+    return;
+  }
+
+  // Don't transform the node if the input is not already in NCHWc format.
+  auto it = nchwc_args_.find(input_defs[0]);
+  if (it == nchwc_args_.end()) {
+    return;
+  }
+  auto* nchwc_input = it->second.get();
+
+  // Create the replacement node.
+  Node& reorder_output_node = graph_.AddNode(graph_.GenerateNodeName("ReorderOutput"),
+                                             "ReorderOutput",
+                                             "ReorderOutput",
+                                             {nchwc_input->nchwc_arg_},
+                                             output_defs,
+                                             nullptr,
+                                             kMSNchwcDomain);
+  reorder_output_node.SetExecutionProviderType(kCpuExecutionProvider);
+  reorder_output_node.AddAttribute("channels", nchwc_input->channels_);
+  reorder_output_node.AddAttribute("channels_last", static_cast<int64_t>(1));
+
+  nchwc_input->remaining_original_uses_--;
+
+  graph_utils::RemoveNodeOutputEdges(graph_, node);
+
   removed_nodes_.push_front(node.Index());
 }
 
@@ -806,6 +849,8 @@ void NchwcTransformerImpl::Transform(Node& node) {
       TransformActivation(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "BatchNormalization", {7, 9})) {
       TransformBatchNormalization(node);
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1})) {
+      TransformTranspose(node);
     }
   }
 

@@ -1,5 +1,6 @@
 parameters:
   AgentPool : 'Win-CPU'
+  Skipx86Tests: 'false'
 
 jobs:
 - job: NuGet_Test_Win
@@ -13,6 +14,8 @@ jobs:
   - group: ORT_TEST_DATA_SAS
   - name: OnnxRuntimeBuildDirectory
     value: '$(Build.BinariesDirectory)'
+  - name: SKIPNONPACKAGETESTS
+    value: 'ON'
 
   steps:
   - task: UsePythonVersion@0
@@ -59,31 +62,36 @@ jobs:
     parameters:
       packageFolder: '$(Build.BinariesDirectory)\nuget-artifact'
 
+  # TODO: Add .Net Core AnyCPU test task
+
   - script: |
      @echo "Running Runtest.bat"
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
-    displayName: 'Run End to End Test (C#) .Net Core'
+    displayName: 'Run End to End Test (C#) .Net Core x64'
 
-  - script: |
-     @echo "Running Runtest.bat"
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
-    workingDirectory: '$(Build.SourcesDirectory)\csharp'
-    displayName: 'Run End to End Test (C#) .Net Core x86'
-    enabled: false
+  - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
+      - script: |
+         @echo "Running Runtest.bat"
+         test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        displayName: 'Run End to End Test (C#) .Net Core x86'
+
+  # TODO: Add .Net Framework AnyCPU test task
 
   - script: |
      @echo "Running Runtest.bat"
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x64 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
-    displayName: 'Run End to End Test (C#) .NetFramework'
+    displayName: 'Run End to End Test (C#) .NetFramework x64'
 
-  - script: |
-     @echo "Running Runtest.bat"
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x86 $(NuGetPackageVersionNumber)
-    workingDirectory: '$(Build.SourcesDirectory)\csharp'
-    displayName: 'Run End to End Test (C#) .NetFramework x86'
-    enabled: false
+  - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
+      - script: |
+         @echo "Running Runtest.bat"
+         test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x86 $(NuGetPackageVersionNumber)
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        displayName: 'Run End to End Test (C#) .NetFramework x86'
+        enabled: false
 
   - script: |
      @echo "Running runtest.bat"

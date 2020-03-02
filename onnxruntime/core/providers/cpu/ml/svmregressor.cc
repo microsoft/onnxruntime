@@ -45,31 +45,24 @@ Status SVMRegressor<T>::Compute(OpKernelContext* ctx) const {
 
   Tensor* Y = ctx->Output(0, TensorShape({N, 1}));  // this op outputs for one target only
   const auto* x_data = X->template Data<T>();
+  int64_t current_weight_0;
+  float sum;
 
   for (int64_t n = 0; n < N; n++) {  //for each example
-    int64_t current_weight_0 = n * stride;
-    std::vector<float> scores;
-
-    float sum = 0.f;
+    current_weight_0 = n * stride;
+    sum = 0.f;
     if (mode_ == SVM_TYPE::SVM_SVC) {
       for (int64_t j = 0; j < vector_count_; j++) {
-        float val1 = kernel_dot(x_data, current_weight_0, support_vectors_, feature_count_ * j, feature_count_, get_kernel_type());
-        float val2 = coefficients_[j];
-        float val3 = val1 * val2;
-        sum += val3;
+        sum += kernel_dot(x_data, current_weight_0, support_vectors_, feature_count_ * j,
+                          feature_count_, get_kernel_type()) * coefficients_[j];
       }
       sum += rho_[0];
     } else if (mode_ == SVM_TYPE::SVM_LINEAR) {  //liblinear
-      sum = kernel_dot(x_data, current_weight_0, coefficients_, 0, feature_count_, get_kernel_type());
+      sum = kernel_dot(x_data, current_weight_0, coefficients_, 0,
+                       feature_count_, get_kernel_type());
       sum += rho_[0];
     }
-    if (one_class_ && sum > 0) {
-      Y->template MutableData<float>()[n] = 1.f;
-    } else if (one_class_) {
-      Y->template MutableData<float>()[n] = -1.f;
-    } else {
-      Y->template MutableData<float>()[n] = sum;
-    }
+    Y->template MutableData<float>()[n] = one_class_ ? (sum > 0 ? 1.f : -1.f) : sum;
   }
 
   return Status::OK();

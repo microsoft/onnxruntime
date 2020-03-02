@@ -101,9 +101,9 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
   assert(nullptr != q_tensor);
   assert(nullptr != k_tensor);
   assert(nullptr != v_tensor);
-  auto q_initializer = onnxruntime::make_unique<Initializer>(*q_tensor);
-  auto k_initializer = onnxruntime::make_unique<Initializer>(*k_tensor);
-  auto v_initializer = onnxruntime::make_unique<Initializer>(*v_tensor);
+  Initializer q_initializer(*q_tensor, graph.ModelPath());
+  Initializer k_initializer(*k_tensor, graph.ModelPath());
+  Initializer v_initializer(*v_tensor, graph.ModelPath());
   auto data_type = q_tensor->data_type();
 
   ONNX_NAMESPACE::TensorProto initializer;
@@ -118,9 +118,9 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
   const int64_t element_count = 3 * hidden_size * (is_matmul ? hidden_size : 1);
 
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    const float* q_weight = q_initializer->data<float>();
-    const float* k_weight = k_initializer->data<float>();
-    const float* v_weight = v_initializer->data<float>();
+    const float* q_weight = q_initializer.data<float>();
+    const float* k_weight = k_initializer.data<float>();
+    const float* v_weight = v_initializer.data<float>();
     std::vector<float> result;
     result.reserve(element_count);
     if (is_matmul) {
@@ -130,9 +130,9 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
     }
     initializer.set_raw_data(result.data(), element_count * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
-    const MLFloat16* q_weight = q_initializer->data<MLFloat16>();
-    const MLFloat16* k_weight = k_initializer->data<MLFloat16>();
-    const MLFloat16* v_weight = v_initializer->data<MLFloat16>();
+    const MLFloat16* q_weight = q_initializer.data<MLFloat16>();
+    const MLFloat16* k_weight = k_initializer.data<MLFloat16>();
+    const MLFloat16* v_weight = v_initializer.data<MLFloat16>();
     std::vector<MLFloat16> result;
     result.reserve(element_count);
     if (is_matmul) {
@@ -280,7 +280,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if (node.GetOutputEdgesCount() == 4 &&
-        graph_utils::IsSupportedOptypeVersionAndDomain(node, "LayerNormalization", {9}, kOnnxDomain) &&
+        graph_utils::IsSupportedOptypeVersionAndDomain(node, "LayerNormalization", {1}, kOnnxDomain) &&
         graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
       // Get hidden size from layer norm bias tensor shape.
       const NodeArg& layer_norm_bias = *(node.InputDefs()[2]);
@@ -389,7 +389,7 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
       {0, 0, "Reshape", {5}, kOnnxDomain},
       {0, 0, "Add", {7}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 0, "LayerNormalization", {9}, kOnnxDomain}};
+      {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(add_after_layer_norm, true, parent_path, edges, logger)) {
@@ -532,7 +532,7 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
       {0, 0, "Reshape", {5}, kOnnxDomain},
       {0, 0, "Add", {7}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 0, "LayerNormalization", {9}, kOnnxDomain}};
+      {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(mask_add, true, q_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for q");
@@ -583,7 +583,7 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
       {0, 0, "Reshape", {5}, kOnnxDomain},
       {0, 0, "Add", {7}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 0, "LayerNormalization", {9}, kOnnxDomain}};
+      {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(qk_matmul, true, k_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for k");
