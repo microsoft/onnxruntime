@@ -502,8 +502,7 @@ static void AppendNodesToSubGraph(const std::vector<NodeIndex>& nodes,
 static std::vector<NodeIndex>
 GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, /*out*/ std::unordered_set<std::string>& mgx_required_initializers) {
   // const auto mgx_supported_ops = GetMIGraphXSupportedOps();
-  static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Acosh", "Add", "ArgMax", "ArgMin", 
-      "Asin", "Asinh", "Atan", "Atanh",
+  static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Add", "ArgMax", "ArgMin", "Asin", "Atan",
       "AveragePool", "BatchNormalization", "Cast", "Ceil", "Clip", "Concat", "Constant", "ConstantFill",
       "ConstantOfShape", "Conv", "Cos", "Cosh", "Div", "Dropout", "Elu", "Erf", "Exp", "Expand", 
       "Flatten", "Floor", "GRU", "Gather", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "Identity", "ImageScaler", 
@@ -695,6 +694,18 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
+  // migraphx now can only support on output. if there are multiple
+  // outputs, we cannot support this model
+  std::size_t num_outputs = model_proto.graph().output().size();
+  if (num_outputs > 1)
+  {
+      LOGS_DEFAULT(WARNING) << "MIGraphX can support only one output, but input model";
+      LOGS_DEFAULT(WARNING) << "has " << num_outputs << " outputs, so fall back to";
+      LOGS_DEFAULT(WARNING) << "default CPU implementation!";
+
+      return result;
+  }
+
   // migraphx now cannot support inputs with dynamic shape
   std::size_t num_inputs = model_proto.graph().input_size();
   for (std::size_t in_index = 0; in_index < num_inputs; ++in_index)
@@ -716,6 +727,9 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
       }
     }
   }
+
+  std::string onnx_string_buffer;
+  model_proto.SerializeToString(&onnx_string_buffer);
 
   // This is a list of initializers that migraphx considers as constants. 
   // Example weights, reshape shape etc.
@@ -789,6 +803,7 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 
 Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                         std::vector<NodeComputeInfo>& node_compute_funcs) {
+  // std::size_t fused_node_index = 0;
   for (const auto& fused_node : fused_nodes) {
     // map parameter input name to index
     std::unordered_map<std::string, std::size_t> input_name_index;
@@ -803,10 +818,12 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     const auto& output_defs = fused_node->OutputDefs();
     output_name_index.reserve(output_defs.size());
     for (std::size_t i = 0; i < output_defs.size(); ++i) {
-      // migraphx prepend a "output_" before the actual output name
-      std::string output_name = "output_" + output_defs[i]->Name();
-      output_name_index[output_name] = i;
+      output_name_index[output_defs[i]->Name()] = i;
     }
+
+    // FIXME later, hack
+    output_name_index.clear();
+    output_name_index["output"] = 0;
 
     // reconstruct the subgraph proto from fused nodes
     onnx::ModelProto model_proto = GetModelProtoFromFusedNode(fused_node, *GetLogger());
@@ -871,7 +888,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       migraphx::program_parameter_shapes param_shapes = prog.get_parameter_shapes();
       migraphx::program_parameters m;
 
-      std::vector<std::size_t> prog_output_indices;
       std::size_t param_index = 0;
       for (auto&& name : param_shapes.names())
       {
@@ -896,18 +912,13 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
 
         if (map_output_index.count(param_index) > 0)
         {
-          std::size_t output_index = map_output_index[param_index];
-          prog_output_indices.push_back(output_index);
-          auto prog_output_shapes = prog.get_output_shapes();
-          auto mgx_output_shape = prog_output_shapes[output_index];
-          auto lens = mgx_output_shape.lengths();
-          std::vector<int64_t> ort_output_shape(lens.begin(), lens.end());
-          OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, ort_output_shape.data(), ort_output_shape.size());
+          std::size_t output_index = map_output_index.begin()->second;
+          migraphx::shapes res_shapes = prog.get_output_shapes();
+          auto lens = res_shapes[0].lengths();
+          std::vector<int64_t> ort_shape(lens.begin(), lens.end());
+          OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, ort_shape.data(), ort_shape.size());
           void* output_data = ort.GetTensorMutableData<void>(output_tensor);
-
-          // argument shape
-          auto mgx_arg_shape = param_shapes[name];
-          m.add(name, migraphx::argument(mgx_arg_shape, output_data));
+          m.add("output", migraphx::argument(param_shapes["output"], output_data));
         } 
         param_index++;
       }
@@ -918,23 +929,18 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
         auto prog_outputs = prog.eval(m);
         hipDeviceSynchronize();
 
-        // In case of input parameters are reused as output parameter
-        // call hipMemcpy
-        auto output_num = prog_outputs.size();
-        if (prog_output_indices.size() < output_num)
+        // there is no output in parameter, we need to explicitly copy
+        // data from input buffer to output buffer
+        auto&& param_names = param_shapes.names();
+        if (std::find(param_names.begin(), param_names.end(), std::string("output")) == param_names.end())
         {
-          for (std::size_t i = 0; i < output_num; ++i)
-          {
-            if (std::find(prog_output_indices.begin(), prog_output_indices.end(), i) != prog_output_indices.end())
-              continue;
-            auto gpu_res = prog_outputs[i];
-            migraphx::shape res_shape = gpu_res.get_shape();
-            auto res_lens = res_shape.lengths();
-            std::vector<int64_t> ort_shape{res_lens.begin(), res_lens.end()};
-            OrtValue* output_tensor = ort.KernelContext_GetOutput(context, i, ort_shape.data(), ort_shape.size());
-            void* output_data = ort.GetTensorMutableData<void>(output_tensor);
-            hipMemcpy(output_data, gpu_res.data(), res_shape.bytes(), hipMemcpyDeviceToDevice);
-          }
+          auto gpu_res = prog_outputs[0];
+          migraphx::shape res_shape = gpu_res.get_shape();
+          auto res_lens = res_shape.lengths();
+          std::vector<int64_t> ort_shape{res_lens.begin(), res_lens.end()};
+          OrtValue* output_tensor = ort.KernelContext_GetOutput(context, 0, ort_shape.data(), ort_shape.size());
+          void* output_data = ort.GetTensorMutableData<void>(output_tensor);
+          hipMemcpy(output_data, gpu_res.data(), res_shape.bytes(), hipMemcpyDeviceToDevice);
         }
       } 
 
