@@ -12,285 +12,304 @@
 namespace onnxruntime {
 
 namespace {
-  struct DeepPointerEquality {
-    template<typename Ptr>
-    bool operator()(const Ptr& lhs, const Ptr& rhs) const {
-      if (lhs == nullptr || rhs == nullptr) {
-        return lhs == rhs;
-      }
-      return *lhs == *rhs;
-    }
-  };
-
-  struct DeepPointerHash {
-    template<typename Ptr>
-    std::size_t operator()(const Ptr& value) const {
-      if (value == nullptr) {
-        return 0;
-      }
-      return std::hash<std::decay_t<decltype(*value)>>{}(*value);
-    }
-  };
-
-  template<typename T, typename Hasher>
-  void UpdateHash(const T& x, Hasher hasher, std::size_t& hash) {
-    constexpr std::size_t kPrime = 31013;
-    hash = hash * kPrime + hasher(x);
-  }
-
-  template<typename T>
-  void UpdateHash(const T& x, std::size_t& hash) {
-    UpdateHash(x, std::hash<T>{}, hash);
-  }
-
-  template<typename Container>
-  void UpdateHashWithContainer(const Container& c, std::size_t& hash) {
-    for (const auto& element : c) {
-      UpdateHash(element, hash);
-    }
-  }
-
-  using OutputIndex = int;
-
-  constexpr OutputIndex kInvalidOutputIndex = -1;
-
-  const NodeArg* Normalize(const NodeArg* node_arg) {
-    return node_arg == nullptr || !node_arg->Exists() ? nullptr : node_arg;
-  }
-
-  // Represents an equivalence class of expressions (inputs, constant initializers and node outputs)
-  // that will always evaluate to the same runtime value.
-  class EquivalenceClass {
-  public:
-    bool operator==(const EquivalenceClass& other) const;
-    bool operator!=(const EquivalenceClass& other) const;
-
-    friend struct ::std::hash<EquivalenceClass>;
-    friend std::vector<std::vector<const EquivalenceClass*>> Normalize(const Node* node, const std::vector<const EquivalenceClass*>& inputs);
-
-    explicit EquivalenceClass(const NodeArg* non_op_value)
-      : attributes_(nullptr)
-      , output_index_(kInvalidOutputIndex)
-      , non_op_value_(Normalize(non_op_value))
-      , discriminator_(0)
-      , hash_(CalculateHash())
-    { }
-
-    EquivalenceClass(const Node* node, const std::vector<const EquivalenceClass*>& explicit_inputs,
-                OutputIndex output_index, int discriminator)
-      : op_type_(node->OpType())
-      , domain_(node->Domain())
-      , inputs_(Normalize(node, explicit_inputs))
-      , attributes_(&node->GetAttributes())
-      , output_index_(output_index)
-      , non_op_value_(nullptr)
-      , discriminator_(discriminator)
-      , hash_(CalculateHash())
-    { }
-
-  private:
-    std::size_t CalculateHash() const;
-
-    // Operation and domain of the node that produces this value.
-    const std::string op_type_;
-    const std::string domain_;
-
-    // Explicit inputs to the operation, sequence of inputs for each formal parameter.
-    const std::vector<std::vector<const EquivalenceClass*>> inputs_;
-
-    // Attributes of the operation.
-    const NodeAttributes* attributes_;
-
-    // Index of this value in the output list of the operation.
-    const OutputIndex output_index_;
-
-    // When the value is not an output of an operation, (i.e., a constant initializer or an input),
-    // non_op_value is set to the corresponding NodeArg, and other fields are empty.
-    // Currently, different NodeArg's are always considered different values, although we
-    // could merge equal initializers.
-    const NodeArg* non_op_value_;
-
-    // When an operation is not supported by the CSE optimization pass, we consider its
-    // outputs unique (not equal to other values). For this purpose we assign a unique
-    // discriminator for such values.
-    const int discriminator_;
-
-    const std::size_t hash_;
-  };
-
-  std::vector<std::vector<const EquivalenceClass*>> Normalize(const Node* node, const std::vector<const EquivalenceClass*>& inputs) {
-    const auto& arg_count = node->InputArgCount();
-    auto input_iter = inputs.begin();
-    std::vector<std::vector<const EquivalenceClass*>> result(arg_count.size());
-
-    for (std::size_t arg_index = 0; arg_index < arg_count.size(); ++arg_index) {
-      auto& arg = result[arg_index];
-      for (int i = 0; i < arg_count[arg_index]; ++i) {
-        if (input_iter != inputs.end()) {
-          arg.push_back(*input_iter);
-          ++input_iter;
-        }
-      }
-
-      // Remove missing optional inputs from the back
-      while (!arg.empty() && arg.back()->output_index_ == kInvalidOutputIndex && arg.back()->non_op_value_ == nullptr) {
-        arg.pop_back();
-      }
-    }
-
-    return result;
-  }
-
-  template<typename Range>
-  bool AreRangesEqual(const Range& lhs, const Range& rhs) {
-    return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
-  }
-
-  bool AreEqual(const ONNX_NAMESPACE::AttributeProto& lhs, const ONNX_NAMESPACE::AttributeProto& rhs) {
-    if (&lhs == &rhs) {
-      return true;
-    }
-
-    if (lhs.type() != rhs.type() || lhs.name() != rhs.name()) {
-      return false;
-    }
-
-    switch(lhs.type()) {
-      case onnx::AttributeProto_AttributeType_FLOAT: return lhs.f() == rhs.f();
-      case onnx::AttributeProto_AttributeType_INT: return lhs.i() == rhs.i();
-      case onnx::AttributeProto_AttributeType_STRING: return lhs.s() == rhs.s();
-      case onnx::AttributeProto_AttributeType_FLOATS: return AreRangesEqual(lhs.floats(), rhs.floats());
-      case onnx::AttributeProto_AttributeType_INTS: return AreRangesEqual(lhs.ints(), rhs.ints());
-      case onnx::AttributeProto_AttributeType_STRINGS: return AreRangesEqual(lhs.strings(), rhs.strings());
-      case onnx::AttributeProto_AttributeType_TENSOR:
-      case onnx::AttributeProto_AttributeType_GRAPH:
-      case onnx::AttributeProto_AttributeType_SPARSE_TENSOR:
-      case onnx::AttributeProto_AttributeType_TENSORS:
-      case onnx::AttributeProto_AttributeType_GRAPHS:
-      case onnx::AttributeProto_AttributeType_SPARSE_TENSORS:
-      case onnx::AttributeProto_AttributeType_UNDEFINED:
-        return false; // Don't support these attributes for now; corresponding nodes will be considered distinct.
-    }
-
-    return false;
-  }
-
-  std::size_t GetAttributeHash(const ONNX_NAMESPACE::AttributeProto& attr) {
-    std::size_t hash = 0;
-    UpdateHash(attr.type(), hash);
-    UpdateHash(attr.name(), hash);
-    switch (attr.type()) {
-      case onnx::AttributeProto_AttributeType_FLOAT: UpdateHash(attr.f(), hash); break;
-      case onnx::AttributeProto_AttributeType_INT: UpdateHash(attr.i(), hash); break;
-      case onnx::AttributeProto_AttributeType_STRING: UpdateHash(attr.s(), hash); break;
-      case onnx::AttributeProto_AttributeType_FLOATS: UpdateHashWithContainer(attr.floats(), hash); break;
-      case onnx::AttributeProto_AttributeType_INTS: UpdateHashWithContainer(attr.ints(), hash); break;
-      case onnx::AttributeProto_AttributeType_STRINGS: UpdateHashWithContainer(attr.strings(), hash); break;
-      case onnx::AttributeProto_AttributeType_TENSOR:
-      case onnx::AttributeProto_AttributeType_GRAPH:
-      case onnx::AttributeProto_AttributeType_SPARSE_TENSOR:
-      case onnx::AttributeProto_AttributeType_TENSORS:
-      case onnx::AttributeProto_AttributeType_GRAPHS:
-      case onnx::AttributeProto_AttributeType_SPARSE_TENSORS:
-      case onnx::AttributeProto_AttributeType_UNDEFINED:
-        break;
-    }
-
-    return hash;
-  }
-
-  bool SameAttribute(const NodeAttributes::value_type& lhs, const NodeAttributes::value_type& rhs) {
-    return lhs.first == rhs.first && AreEqual(lhs.second, rhs.second);
-  }
-
-  bool SameAttributes(const NodeAttributes* lhs, const NodeAttributes* rhs) {
+struct DeepPointerEquality {
+  template <typename Ptr>
+  bool operator()(const Ptr& lhs, const Ptr& rhs) const {
     if (lhs == nullptr || rhs == nullptr) {
       return lhs == rhs;
     }
-    return std::equal(lhs->begin(), lhs->end(), rhs->begin(), rhs->end(), &SameAttribute);
+    return *lhs == *rhs;
+  }
+};
+
+struct DeepPointerHash {
+  template <typename Ptr>
+  std::size_t operator()(const Ptr& value) const {
+    if (value == nullptr) {
+      return 0;
+    }
+    return std::hash<std::decay_t<decltype(*value)>>{}(*value);
+  }
+};
+
+template <typename T, typename Hasher>
+void UpdateHash(const T& x, Hasher hasher, std::size_t& hash) {
+  constexpr std::size_t kPrime = 31013;
+  hash = hash * kPrime + hasher(x);
+}
+
+template <typename T>
+void UpdateHash(const T& x, std::size_t& hash) {
+  UpdateHash(x, std::hash<T>{}, hash);
+}
+
+template <typename Container>
+void UpdateHashWithContainer(const Container& c, std::size_t& hash) {
+  for (const auto& element : c) {
+    UpdateHash(element, hash);
+  }
+}
+
+using OutputIndex = int;
+
+constexpr OutputIndex kInvalidOutputIndex = -1;
+
+const NodeArg* Normalize(const NodeArg* node_arg) {
+  return node_arg == nullptr || !node_arg->Exists() ? nullptr : node_arg;
+}
+
+// Represents an equivalence class of expressions (inputs, constant initializers and node outputs)
+// that will always evaluate to the same runtime value.
+class EquivalenceClass {
+public:
+  bool operator==(const EquivalenceClass& other) const;
+  bool operator!=(const EquivalenceClass& other) const;
+
+  friend struct ::std::hash<EquivalenceClass>;
+  friend std::vector<std::vector<const EquivalenceClass*>> Normalize(const Node* node, const std::vector<const EquivalenceClass*>& inputs);
+
+  explicit EquivalenceClass(const NodeArg* non_op_value)
+    : attributes_(nullptr),
+      output_index_(kInvalidOutputIndex),
+      non_op_value_(Normalize(non_op_value)),
+      discriminator_(0),
+      hash_(CalculateHash()) {
   }
 
-  bool EquivalenceClass::operator==(const EquivalenceClass& other) const {
-    // Below we compare inputs_ as pointers. This is valid due to how EquivalenceClass'es are constructed:
-    // we'll never have two distinct but equal inputs_ here, so their addresses are effectively their value numbers.
-    return hash_ == other.hash_ && output_index_ == other.output_index_ && discriminator_ == other.discriminator_ &&
-      non_op_value_ == other.non_op_value_ &&
-      op_type_ == other.op_type_ && domain_ == other.domain_ &&
-      inputs_ == other.inputs_ &&
-      SameAttributes(attributes_, other.attributes_);
+  EquivalenceClass(const Node* node, const std::vector<const EquivalenceClass*>& explicit_inputs,
+                   OutputIndex output_index, int discriminator)
+    : op_type_(node->OpType()),
+      domain_(node->Domain()),
+      inputs_(Normalize(node, explicit_inputs)),
+      attributes_(&node->GetAttributes()),
+      output_index_(output_index),
+      non_op_value_(nullptr),
+      discriminator_(discriminator),
+      hash_(CalculateHash()) {
   }
 
-  bool EquivalenceClass::operator!=(const EquivalenceClass& other) const {
-    return !operator==(other);
-  }
+private:
+  std::size_t CalculateHash() const;
 
-  std::size_t EquivalenceClass::CalculateHash() const {
-    std::size_t hash = 0;
-    UpdateHash(output_index_, hash);
-    UpdateHash(discriminator_, hash);
-    UpdateHash(non_op_value_, hash);
-    UpdateHash(op_type_, hash);
-    UpdateHash(domain_, hash);
-    if (attributes_ != nullptr) {
-      for (const auto& kv : *attributes_) {
-        UpdateHash(kv.first, hash);
-        UpdateHash(kv.second, &GetAttributeHash, hash);
+  // Operation and domain of the node that produces this value.
+  const std::string op_type_;
+  const std::string domain_;
+
+  // Explicit inputs to the operation, sequence of inputs for each formal parameter.
+  const std::vector<std::vector<const EquivalenceClass*>> inputs_;
+
+  // Attributes of the operation.
+  const NodeAttributes* attributes_;
+
+  // Index of this value in the output list of the operation.
+  const OutputIndex output_index_;
+
+  // When the value is not an output of an operation, (i.e., a constant initializer or an input),
+  // non_op_value is set to the corresponding NodeArg, and other fields are empty.
+  // Currently, different NodeArg's are always considered different values, although we
+  // could merge equal initializers.
+  const NodeArg* non_op_value_;
+
+  // When an operation is not supported by the CSE optimization pass, we consider its
+  // outputs unique (not equal to other values). For this purpose we assign a unique
+  // discriminator for such values.
+  const int discriminator_;
+
+  const std::size_t hash_;
+};
+
+std::vector<std::vector<const EquivalenceClass*>> Normalize(const Node* node, const std::vector<const EquivalenceClass*>& inputs) {
+  const auto& arg_count = node->InputArgCount();
+  auto input_iter = inputs.begin();
+  std::vector<std::vector<const EquivalenceClass*>> result(arg_count.size());
+
+  for (std::size_t arg_index = 0; arg_index < arg_count.size(); ++arg_index) {
+    auto& arg = result[arg_index];
+    for (int i = 0; i < arg_count[arg_index]; ++i) {
+      if (input_iter != inputs.end()) {
+        arg.push_back(*input_iter);
+        ++input_iter;
       }
     }
 
-    for (const auto& arg : inputs_) {
-      for (const EquivalenceClass* input : arg) {
-        UpdateHash(input, DeepPointerHash{}, hash);
-      }
+    // Remove missing optional inputs from the back
+    while (!arg.empty() && arg.back()->output_index_ == kInvalidOutputIndex && arg.back()->non_op_value_ == nullptr) {
+      arg.pop_back();
     }
-
-    return hash;
   }
 
-  // Representative of an equivalence class.
-  // node_index and output_index define the node that produced the node_arg.
-  // For inputs and constant initializers, output_index == kInvalidOutputIndex.
-  struct Representative {
-    const NodeArg* node_arg;
-    NodeIndex node_index;
-    OutputIndex output_index;
-  };
+  return result;
+}
 
-  struct NodeArgPtrHash {
-    std::size_t operator()(const NodeArg* node_arg) const {
-      return std::hash<const NodeArg*>{}(Normalize(node_arg));
-    }
-  };
+template <typename Range>
+bool AreRangesEqual(const Range& lhs, const Range& rhs) {
+  return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
+}
 
-  struct NodeArgPtrEquality {
-    bool operator()(const NodeArg* lhs, const NodeArg* rhs) const {
-      return Normalize(lhs) == Normalize(rhs);
-    }
-  };
-
-  bool IsNodeSupported(const Node& node) {
-    if (node.Domain() != kOnnxDomain || node.ContainsSubgraph()) {
-      return false;
-    }
-
-    const std::string& op = node.OpType();
-    if (op.substr(0, 6) == "Random" && node.GetAttributes().count("seed") == 0) {
-      // a unique seed will be generated, so this node is unique
-      return false;
-    }
-
+bool AreEqual(const ONNX_NAMESPACE::AttributeProto& lhs, const ONNX_NAMESPACE::AttributeProto& rhs) {
+  if (&lhs == &rhs) {
     return true;
   }
+
+  if (lhs.type() != rhs.type() || lhs.name() != rhs.name()) {
+    return false;
+  }
+
+  switch (lhs.type()) {
+    case onnx::AttributeProto_AttributeType_FLOAT:
+      return lhs.f() == rhs.f();
+    case onnx::AttributeProto_AttributeType_INT:
+      return lhs.i() == rhs.i();
+    case onnx::AttributeProto_AttributeType_STRING:
+      return lhs.s() == rhs.s();
+    case onnx::AttributeProto_AttributeType_FLOATS:
+      return AreRangesEqual(lhs.floats(), rhs.floats());
+    case onnx::AttributeProto_AttributeType_INTS:
+      return AreRangesEqual(lhs.ints(), rhs.ints());
+    case onnx::AttributeProto_AttributeType_STRINGS:
+      return AreRangesEqual(lhs.strings(), rhs.strings());
+    case onnx::AttributeProto_AttributeType_TENSOR:
+    case onnx::AttributeProto_AttributeType_GRAPH:
+    case onnx::AttributeProto_AttributeType_SPARSE_TENSOR:
+    case onnx::AttributeProto_AttributeType_TENSORS:
+    case onnx::AttributeProto_AttributeType_GRAPHS:
+    case onnx::AttributeProto_AttributeType_SPARSE_TENSORS:
+    case onnx::AttributeProto_AttributeType_UNDEFINED:
+      return false; // Don't support these attributes for now; corresponding nodes will be considered distinct.
+  }
+
+  return false;
+}
+
+std::size_t GetAttributeHash(const ONNX_NAMESPACE::AttributeProto& attr) {
+  std::size_t hash = 0;
+  UpdateHash(attr.type(), hash);
+  UpdateHash(attr.name(), hash);
+  switch (attr.type()) {
+    case onnx::AttributeProto_AttributeType_FLOAT:
+      UpdateHash(attr.f(), hash);
+      break;
+    case onnx::AttributeProto_AttributeType_INT:
+      UpdateHash(attr.i(), hash);
+      break;
+    case onnx::AttributeProto_AttributeType_STRING:
+      UpdateHash(attr.s(), hash);
+      break;
+    case onnx::AttributeProto_AttributeType_FLOATS:
+      UpdateHashWithContainer(attr.floats(), hash);
+      break;
+    case onnx::AttributeProto_AttributeType_INTS:
+      UpdateHashWithContainer(attr.ints(), hash);
+      break;
+    case onnx::AttributeProto_AttributeType_STRINGS:
+      UpdateHashWithContainer(attr.strings(), hash);
+      break;
+    case onnx::AttributeProto_AttributeType_TENSOR:
+    case onnx::AttributeProto_AttributeType_GRAPH:
+    case onnx::AttributeProto_AttributeType_SPARSE_TENSOR:
+    case onnx::AttributeProto_AttributeType_TENSORS:
+    case onnx::AttributeProto_AttributeType_GRAPHS:
+    case onnx::AttributeProto_AttributeType_SPARSE_TENSORS:
+    case onnx::AttributeProto_AttributeType_UNDEFINED:
+      break;
+  }
+
+  return hash;
+}
+
+bool SameAttribute(const NodeAttributes::value_type& lhs, const NodeAttributes::value_type& rhs) {
+  return lhs.first == rhs.first && AreEqual(lhs.second, rhs.second);
+}
+
+bool SameAttributes(const NodeAttributes* lhs, const NodeAttributes* rhs) {
+  if (lhs == nullptr || rhs == nullptr) {
+    return lhs == rhs;
+  }
+  return std::equal(lhs->begin(), lhs->end(), rhs->begin(), rhs->end(), &SameAttribute);
+}
+
+bool EquivalenceClass::operator==(const EquivalenceClass& other) const {
+  // Below we compare inputs_ as pointers. This is valid due to how EquivalenceClass'es are constructed:
+  // we'll never have two distinct but equal inputs_ here, so their addresses are effectively their value numbers.
+  return hash_ == other.hash_ && output_index_ == other.output_index_ && discriminator_ == other.discriminator_ &&
+         non_op_value_ == other.non_op_value_ &&
+         op_type_ == other.op_type_ && domain_ == other.domain_ &&
+         inputs_ == other.inputs_ &&
+         SameAttributes(attributes_, other.attributes_);
+}
+
+bool EquivalenceClass::operator!=(const EquivalenceClass& other) const {
+  return !operator==(other);
+}
+
+std::size_t EquivalenceClass::CalculateHash() const {
+  std::size_t hash = 0;
+  UpdateHash(output_index_, hash);
+  UpdateHash(discriminator_, hash);
+  UpdateHash(non_op_value_, hash);
+  UpdateHash(op_type_, hash);
+  UpdateHash(domain_, hash);
+  if (attributes_ != nullptr) {
+    for (const auto& kv : *attributes_) {
+      UpdateHash(kv.first, hash);
+      UpdateHash(kv.second, &GetAttributeHash, hash);
+    }
+  }
+
+  for (const auto& arg : inputs_) {
+    for (const EquivalenceClass* input : arg) {
+      UpdateHash(input, DeepPointerHash{}, hash);
+    }
+  }
+
+  return hash;
+}
+
+// Representative of an equivalence class.
+// node_index and output_index define the node that produced the node_arg.
+// For inputs and constant initializers, output_index == kInvalidOutputIndex.
+struct Representative {
+  const NodeArg* node_arg;
+  NodeIndex node_index;
+  OutputIndex output_index;
+};
+
+struct NodeArgPtrHash {
+  std::size_t operator()(const NodeArg* node_arg) const {
+    return std::hash<const NodeArg*>{}(Normalize(node_arg));
+  }
+};
+
+struct NodeArgPtrEquality {
+  bool operator()(const NodeArg* lhs, const NodeArg* rhs) const {
+    return Normalize(lhs) == Normalize(rhs);
+  }
+};
+
+bool IsNodeSupported(const Node& node) {
+  if (node.Domain() != kOnnxDomain || node.ContainsSubgraph()) {
+    return false;
+  }
+
+  const std::string& op = node.OpType();
+  if (op.substr(0, 6) == "Random" && node.GetAttributes().count("seed") == 0) {
+    // a unique seed will be generated, so this node is unique
+    return false;
+  }
+
+  return true;
+}
 }
 
 }
 
 namespace std {
-  template<> struct hash<onnxruntime::EquivalenceClass> {
-    std::size_t operator()(const onnxruntime::EquivalenceClass& val) const noexcept {
-      return val.hash_;
-    }
-  };
+template <>
+struct hash<onnxruntime::EquivalenceClass> {
+  std::size_t operator()(const onnxruntime::EquivalenceClass& val) const noexcept {
+    return val.hash_;
+  }
+};
 }
 
 namespace onnxruntime {
@@ -351,7 +370,7 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
       if (it == value_to_representative.end()) {
         unique_equivalence_classes.emplace_back(std::move(equivalence_class));
         it = value_to_representative.emplace_hint(it, raw_ptr,
-          Representative{output_def, node_index, output_index});
+                                                  Representative{output_def, node_index, output_index});
       }
 
       equivalence_classes[output_def] = it->first;
@@ -405,4 +424,3 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
 }
 
 }
-
