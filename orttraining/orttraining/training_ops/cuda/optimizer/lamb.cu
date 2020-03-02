@@ -180,18 +180,11 @@ __device__ __forceinline__ void _LambUpdateRule(
     T2* w_new,
     T3* g_new,
     half* w_fp16_new) {
-  // The reason to have _Min(...):
-  //   The confidence level should not exceed 1 for numerical stability.
-  //   The threshold will be used even if r_norm and w_norm are 0 because
-  //   NaN > threshold ? NaN : threshold returns threshold.
-  // The reason to have *w_norm != 0?:
-  //   If a tensor is zero-initialized, its w_norm will be 0 and therefore its
-  //   ratio is always 0 without the _Max(...). If a tensor's ratio is always
-  //   0, that tensor will never be updated.
-  const T2 ratio = w_norm != T2(0.0f) ? _Min(_Sqrt(w_norm / r_norm), threshold) : T2(1.0f);
+  // Confidence coefficeint of this update. 
+  const T2 ratio = (w_norm != T2(0.0f) && r_norm != T2(0.0f)) ? T2(eta) * _Sqrt(w_norm / r_norm) : T2(eta);
 
   // Compute delta using the saved update direction.
-  const T2 delta = -ratio * T2((eta)*T1(d));
+  const T2 delta = -ratio * T2(d);
   const T2 w_new_tmp = w + delta;
 
   if (_IsFiniteScalar(w_new_tmp)) {

@@ -19,13 +19,12 @@ class Dropout final : public CudaKernel {
 
     // TODO(bahuang): Seed is currently fixed for convergence verification purpose, will revert
     //generator_.SetSeed(static_cast<uint64_t>(seed));
-    generator_.SetSeed(static_cast<uint64_t>(42));
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  mutable DropoutGenerator generator_;
+  //mutable DropoutGenerator generator_;
   const float default_ratio_;
 };
 

@@ -32,6 +32,13 @@ REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, MLFloat16, 1)
 REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, float, 1)
 REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, double, 1)
 
+
+static DropoutGenerator& GetGenerator(){
+  //hardcode the default seed now
+  static DropoutGenerator generator(8211);
+  return generator;
+}
+
 template <typename T1, typename T2>
 Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T1>::MappedType CudaT;
@@ -72,7 +79,7 @@ Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   }
   ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
 
-  DropoutKernelImpl(N, ratio_data, generator_, X_data, Y_data, mask_data);
+  DropoutKernelImpl(N, ratio_data, GetGenerator(), X_data, Y_data, mask_data);
 
   return Status::OK();
 }

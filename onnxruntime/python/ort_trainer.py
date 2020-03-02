@@ -766,7 +766,7 @@ class ORTModel():
             postprocess_model(model)
 
         # onnx.save_model(model, 'bert_model_base_after_postproc.onnx')
-        self.session_, self.train_io_binding, self.eval_io_binding, self.output_name,
+        self.session_, self.train_io_binding, self.eval_io_binding, self.output_name,\
         self.torch_params, self.output_types =\
             create_ort_training_session_bind_parameters(model, device, self.world_rank, self.world_size,
                 gradient_accumulation_steps=self.gradient_accumulation_steps)
