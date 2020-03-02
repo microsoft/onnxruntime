@@ -229,6 +229,10 @@ bool SameAttributes(const NodeAttributes* lhs, const NodeAttributes* rhs) {
 }
 
 bool EquivalenceClass::operator==(const EquivalenceClass& other) const {
+  if (this == &other) {
+    return true;
+  }
+
   // Below we compare inputs_ as pointers. This is valid due to how EquivalenceClass'es are constructed:
   // we'll never have two distinct but equal inputs_ here, so their addresses are effectively their value numbers.
   return hash_ == other.hash_ && output_index_ == other.output_index_ && discriminator_ == other.discriminator_ &&

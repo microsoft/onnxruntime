@@ -6,7 +6,6 @@
 #include "core/graph/model.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/graph_transformer_mgr.h"
-#include "onnxruntime_c_api.h"
 
 #include "gtest/gtest.h"
 
@@ -20,8 +19,10 @@ namespace test {
 namespace {
 void ApplyCse(Model& model, unsigned num_steps = 1) {
   GraphTransformerManager graph_transformation_mgr(num_steps);
-  graph_transformation_mgr.Register(onnxruntime::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1);
-  graph_transformation_mgr.ApplyTransformers(model.MainGraph(), TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(
+      graph_transformation_mgr.Register(onnxruntime::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(
+      graph_transformation_mgr.ApplyTransformers(model.MainGraph(), TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 }
 
 std::vector<std::string> GetSortedNames(const std::vector<const NodeArg*>& node_args) {
@@ -215,5 +216,29 @@ TEST(CseTests, Subgraph) {
   ASSERT_EQ(op_count["Mul"], 3);
   ASSERT_EQ(op_count["Sum"], 1);
 }
+
+TEST(CseTests, MergeConstants) {
+  auto model_uri = ORT_TSTR("testdata/transform/cse/cse_merge_constants.onnx");
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
+        DefaultLoggingManager().DefaultLogger())
+      .IsOK());
+  Graph& graph = model->MainGraph();
+  GraphTransformerManager graph_transformation_mgr(1);
+  // In current implementation, equal constants are not merged. So CSE must precede constant folding, otherwise we end up
+  // with multiple copies of the same constant.
+  ASSERT_TRUE(
+      graph_transformation_mgr.Register(onnxruntime::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(
+      graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(), TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(
+      graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
+
+  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 1);
+  auto op_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_count.size(), 1);
+  ASSERT_EQ(op_count["Add"], 2);
+}
+
 }
 }
