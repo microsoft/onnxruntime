@@ -550,7 +550,7 @@ class TreeEnsembleCommonClassifier : TreeEnsembleCommon<ITYPE, OTYPE> {
                                const std::vector<std::string>& classlabels_strings,
                                const std::vector<int64_t>& classlabels_int64s);
 
-  int64_t get_class_count() const { return n_targets_or_classes_; }
+  int64_t get_class_count() const { return this->n_targets_or_classes_; }
 
   void compute(const Tensor* X, Tensor* Z, Tensor* label) const;
 };
@@ -605,7 +605,7 @@ TreeEnsembleCommonClassifier<ITYPE, OTYPE>::TreeEnsembleCommonClassifier(
     if (weights_are_all_positive_ && class_weights[i] < 0)
       weights_are_all_positive_ = false;
   }
-  binary_case_ = n_targets_or_classes_ == 2 && weights_classes.size() == 1;
+  binary_case_ = this->n_targets_or_classes_ == 2 && weights_classes.size() == 1;
   if (classlabels_strings_.size() > 0) {
     class_labels_.resize(classlabels_strings_.size());
     for (size_t i = 0; i < classlabels_strings_.size(); ++i)
@@ -619,7 +619,7 @@ void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::compute(const Tensor* X, Tensor
     this->compute_agg(
         X, Z, label,
         TreeAggregatorClassifier<ITYPE, OTYPE>(
-            this->roots_.size(), n_targets_or_classes_,
+            this->roots_.size(), this->n_targets_or_classes_,
             this->post_transform_, this->base_values_,
             &(classlabels_int64s_), binary_case_,
             weights_are_all_positive_));
@@ -630,7 +630,7 @@ void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::compute(const Tensor* X, Tensor
     this->compute_agg(
         X, Z, &label_int64,
         TreeAggregatorClassifier<ITYPE, OTYPE>(
-            this->roots_.size(), n_targets_or_classes_,
+            this->roots_.size(), this->n_targets_or_classes_,
             this->post_transform_, this->base_values_,
             &(class_labels_), binary_case_,
             weights_are_all_positive_));
