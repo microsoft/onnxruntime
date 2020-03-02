@@ -67,13 +67,23 @@ ONNX_CPU_OPERATOR_TYPED_NCHWC_KERNEL(
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     NchwcAveragePool);
 
+ONNX_CPU_OPERATOR_TYPED_NCHWC_KERNEL(
+    Upsample,
+    1,
+    float,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    NchwcUpsample);
+
 Status ReorderInput::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   const auto& X_shape = X->Shape();
   ORT_ENFORCE(X_shape.NumDimensions() == 4);
   ORT_ENFORCE((X_shape[1] % MlasNchwcGetBlockSize()) == 0);
+
   auto* Y = context->Output(0, X_shape);
   MlasReorderInput(X_shape.GetDims().data(), X->template Data<float>(), Y->template MutableData<float>());
+
   return Status::OK();
 }
 
@@ -157,8 +167,7 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
     }
   }
 
-  MlasNchwcConv(kernel_shape.size(),
-                X_shape.GetDims().data(),
+  MlasNchwcConv(X_shape.GetDims().data(),
                 kernel_shape.data(),
                 dilations.data(),
                 pads.data(),
@@ -178,7 +187,6 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
 
 Status NchwcPoolBase::NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind) const {
   const auto* X = context->Input<Tensor>(0);
-
   const auto& X_shape = X->Shape();
   ORT_ENFORCE(X_shape.NumDimensions() == 4);
   ORT_ENFORCE((X_shape[1] % MlasNchwcGetBlockSize()) == 0);
@@ -188,7 +196,6 @@ Status NchwcPoolBase::NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind
   auto* Y = context->Output(0, output_dims);
 
   MlasNchwcPool(kind,
-                2,
                 X_shape.GetDims().data(),
                 pool_attrs_.global_pooling ? nullptr : pool_attrs_.kernel_shape.data(),
                 pool_attrs_.global_pooling ? nullptr : pool_attrs_.dilations.data(),
@@ -209,6 +216,23 @@ Status NchwcMaxPool::Compute(OpKernelContext* context) const {
 Status NchwcAveragePool::Compute(OpKernelContext* context) const {
   return NchwcPoolBase::NchwcPool(context, pool_attrs_.count_include_pad ? MlasAveragePoolingIncludePad
                                                                          : MlasAveragePoolingExcludePad);
+}
+
+Status NchwcUpsample::Compute(OpKernelContext* context) const {
+  const auto* X = context->Input<Tensor>(0);
+  const auto& X_shape = X->Shape();
+  ORT_ENFORCE(X_shape.NumDimensions() == 4);
+  ORT_ENFORCE((X_shape[1] % MlasNchwcGetBlockSize()) == 0);
+
+  TensorShape Y_shape{X_shape[0], X_shape[1], X_shape[2] * scales_[2], X_shape[3] * scales_[3]};
+  auto* Y = context->Output(0, Y_shape);
+
+  MlasNchwcUpsample(X_shape.GetDims().data(),
+                    scales_.data() + 2,
+                    X->template Data<float>(),
+                    Y->template MutableData<float>());
+
+  return Status::OK();
 }
 
 }  // namespace contrib

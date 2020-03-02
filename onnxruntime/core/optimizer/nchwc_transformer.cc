@@ -115,11 +115,12 @@ class NchwcTransformerImpl {
 
   void TransformConv(Node& node);
   void TransformPool(Node& node);
-  void TransformAdd(Node& node);
+  void TransformBinary(Node& node, bool add_node);
   void TransformConcat(Node& node);
   void TransformActivation(Node& node);
   void TransformBatchNormalization(Node& node);
   void TransformTranspose(Node& node);
+  void TransformResize(Node& node);
 
   Graph& graph_;
 
@@ -217,9 +218,9 @@ void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
   // Maintain the batch count dimension from the NCHWc input.
   output_shape.dims_[0] = input_shape.dims_[0];
 
-  const ONNX_NAMESPACE::AttributeProto* pads_attr = graph_utils::GetNodeAttribute(node, "pads");
-  const ONNX_NAMESPACE::AttributeProto* strides_attr = graph_utils::GetNodeAttribute(node, "strides");
-  const ONNX_NAMESPACE::AttributeProto* dilations_attr = graph_utils::GetNodeAttribute(node, "dilations");
+  const auto* pads_attr = graph_utils::GetNodeAttribute(node, "pads");
+  const auto* strides_attr = graph_utils::GetNodeAttribute(node, "strides");
+  const auto* dilations_attr = graph_utils::GetNodeAttribute(node, "dilations");
 
   if ((pads_attr != nullptr && pads_attr->ints_size() != kernel_size * 2) ||
       (strides_attr != nullptr && strides_attr->ints_size() != kernel_size) ||
@@ -237,7 +238,7 @@ void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
     }
   }
 
-  auto* auto_pad_attr = graph_utils::GetNodeAttribute(node, "auto_pad");
+  const auto* auto_pad_attr = graph_utils::GetNodeAttribute(node, "auto_pad");
   bool auto_pad_same_shape = false;
   if (auto_pad_attr != nullptr && utils::HasString(*auto_pad_attr)) {
     auto& auto_pad = auto_pad_attr->s();
@@ -305,7 +306,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   const int64_t input_channels = conv_W_tensor_proto->dims(1);
 
   int64_t group_count;
-  auto* group_attr = graph_utils::GetNodeAttribute(node, "group");
+  const auto* group_attr = graph_utils::GetNodeAttribute(node, "group");
   if (group_attr != nullptr && utils::HasInt(*group_attr)) {
     group_count = group_attr->i();
   } else {
@@ -507,7 +508,7 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
 // The existing Add/Sum operator implementations can be used with tensors
 // in NCHWc format if the tensor shapes are exactly the same (elementwise
 // add).
-void NchwcTransformerImpl::TransformAdd(Node& node) {
+void NchwcTransformerImpl::TransformBinary(Node& node, bool add_node) {
   auto& input_defs = node.MutableInputDefs();
 
   // Verify that all of the inputs to this operator are from NCHWc outputs.
@@ -556,7 +557,7 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
 
   // If one of the inputs to the Add/Sum node is a NCHWc convolution, then
   // attempt to fuse the addition into the convolution itself.
-  if (input_defs_count == 2) {
+  if (add_node && input_defs_count == 2) {
     for (size_t n = 0; n < 2; n++) {
       auto* nchwc_input_n = nchwc_inputs[n];
       auto& nchwc_node = nchwc_input_n->output_node_;
@@ -597,7 +598,7 @@ void NchwcTransformerImpl::TransformConcat(Node& node) {
   auto& output_defs = node.MutableOutputDefs();
 
   // Verify that this is a concatenation along the channel axis.
-  auto* axis_attr = graph_utils::GetNodeAttribute(node, "axis");
+  const auto* axis_attr = graph_utils::GetNodeAttribute(node, "axis");
   if (axis_attr == nullptr || !utils::HasInt(*axis_attr) || axis_attr->i() != 1) {
     return;
   }
@@ -788,7 +789,14 @@ void NchwcTransformerImpl::TransformTranspose(Node& node) {
   auto& input_defs = node.MutableInputDefs();
   auto& output_defs = node.MutableOutputDefs();
 
-  const ONNX_NAMESPACE::AttributeProto* perm_attr = graph_utils::GetNodeAttribute(node, "perm");
+  // Don't transform the node if the input is not already in NCHWc format.
+  auto it = nchwc_args_.find(input_defs[0]);
+  if (it == nchwc_args_.end()) {
+    return;
+  }
+  auto* nchwc_input = it->second.get();
+
+  const auto* perm_attr = graph_utils::GetNodeAttribute(node, "perm");
   if (perm_attr == nullptr || perm_attr->ints_size() != 4) {
     return;
   }
@@ -798,13 +806,6 @@ void NchwcTransformerImpl::TransformTranspose(Node& node) {
   if (perm_data[0] != 0 || perm_data[1] != 2 || perm_data[2] != 3 || perm_data[3] != 1) {
     return;
   }
-
-  // Don't transform the node if the input is not already in NCHWc format.
-  auto it = nchwc_args_.find(input_defs[0]);
-  if (it == nchwc_args_.end()) {
-    return;
-  }
-  auto* nchwc_input = it->second.get();
 
   // Create the replacement node.
   Node& reorder_output_node = graph_.AddNode(graph_.GenerateNodeName("ReorderOutput"),
@@ -825,6 +826,101 @@ void NchwcTransformerImpl::TransformTranspose(Node& node) {
   removed_nodes_.push_front(node.Index());
 }
 
+void NchwcTransformerImpl::TransformResize(Node& node) {
+  auto& input_defs = node.MutableInputDefs();
+  auto& output_defs = node.MutableOutputDefs();
+
+  // Don't transform the node if the input is not already in NCHWc format.
+  auto it = nchwc_args_.find(input_defs[0]);
+  if (it == nchwc_args_.end()) {
+    return;
+  }
+  auto* nchwc_input = it->second.get();
+
+  // Only support the nearest interpolation mode (the default value).
+  const auto* mode_attr = graph_utils::GetNodeAttribute(node, "mode");
+  if (mode_attr != nullptr && utils::HasString(*mode_attr)) {
+    if (mode_attr->s() != "nearest") {
+      return;
+    }
+  }
+
+  NodeArg* scales_arg;
+  if (node.Op()->SinceVersion() >= 11) {
+    // Bail out if Resize has the optional "sizes" tensor.
+    if (input_defs.size() == 3) {
+      scales_arg = input_defs[2];
+    } else {
+      return;
+    }
+
+    // Only support the asymmetric coordinate transformation mode.
+    const auto* transform_mode_attr = graph_utils::GetNodeAttribute(node, "coordinate_transformation_mode");
+    if ((transform_mode_attr == nullptr) ||
+        !utils::HasString(*transform_mode_attr) ||
+        (transform_mode_attr->s() != "asymmetric")) {
+      return;
+    }
+
+    // Only support the floor rounding mode.
+    const auto* nearest_mode_attr = graph_utils::GetNodeAttribute(node, "nearest_mode");
+    if ((nearest_mode_attr == nullptr) ||
+        !utils::HasString(*nearest_mode_attr) ||
+        (nearest_mode_attr->s() != "floor")) {
+      return;
+    }
+  } else {
+    scales_arg = input_defs[1];
+  }
+
+  // Require that the scales tensor be static.
+  const ONNX_NAMESPACE::TensorProto* scales_tensor_proto = nullptr;
+  if (!graph_utils::NodeArgIsConstant(graph_, *scales_arg) ||
+      !graph_.GetInitializedTensor(scales_arg->Name(), scales_tensor_proto) ||
+      (scales_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) ||
+      (scales_tensor_proto->dims_size() != 1) ||
+      (scales_tensor_proto->dims(0) != 4)) {
+    return;
+  }
+
+  Initializer scales{*scales_tensor_proto, graph_.ModelPath()};
+  auto* scales_data = scales.template data<float>();
+
+  // Cast the scales to integers and verify that the scales are positive and
+  // round trip back to floating point.
+  std::vector<int64_t> scales_attr(4);
+  for (size_t n = 0; n < 4; n++) {
+    int64_t scale_value = static_cast<int64_t>(scales_data[n]);
+    if (scale_value <= 0 || static_cast<float>(scale_value) != scales_data[n]) {
+      return;
+    }
+    scales_attr[n] = scale_value;
+  }
+
+  // Only support spatial scaling at this time (batch and channel are unscaled).
+  if (scales_attr[0] != 1 || scales_attr[1] != 1) {
+    return;
+  }
+
+  std::string nchwc_node_name = graph_.GenerateNodeName(output_defs[0]->Name() + "_nchwc");
+  Node& nchwc_node = graph_.AddNode(nchwc_node_name,
+                                    "Upsample",
+                                    nchwc_node_name,
+                                    {nchwc_input->nchwc_arg_},
+                                    output_defs,
+                                    nullptr,
+                                    kMSNchwcDomain);
+  nchwc_node.SetExecutionProviderType(kCpuExecutionProvider);
+  nchwc_node.AddAttribute("scales", scales_attr);
+
+  nchwc_input->remaining_original_uses_--;
+
+  NchwcArgument::Shape output_shape(output_defs[0]);
+
+  CreateNchwcArgument(node, nchwc_node, nchwc_input->channels_, output_shape);
+  removed_nodes_.push_front(node.Index());
+}
+
 void NchwcTransformerImpl::Transform(Node& node) {
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11}) ||
       graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedConv", {1}, kMSDomain)) {
@@ -842,7 +938,9 @@ void NchwcTransformerImpl::Transform(Node& node) {
     // nodes unrelated to this transformer.
     if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {6, 8})) {
-      TransformAdd(node);
+      TransformBinary(node, true);
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Mul", {7})) {
+      TransformBinary(node, false);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4, 11})) {
       TransformConcat(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6})) {
@@ -851,6 +949,9 @@ void NchwcTransformerImpl::Transform(Node& node) {
       TransformBatchNormalization(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1})) {
       TransformTranspose(node);
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Upsample", {9}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Resize", {10, 11})) {
+      TransformResize(node);
     }
   }
 
