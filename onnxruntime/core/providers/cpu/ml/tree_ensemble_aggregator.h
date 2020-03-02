@@ -323,7 +323,7 @@ class TreeAggregatorMax : public TreeAggregator<ITYPE, OTYPE> {
 template <typename ITYPE, typename OTYPE>
 class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
  private:
-  const std::vector<int64_t>* class_labels_;
+  const std::vector<int64_t>& class_labels_;
   bool binary_case_;
   bool weights_are_all_positive_;
   int64_t positive_label_;
@@ -334,7 +334,7 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
                            const int64_t& n_targets_or_classes,
                            POST_EVAL_TRANSFORM post_transform,
                            const std::vector<OTYPE>& base_values,
-                           const std::vector<int64_t>* class_labels,
+                           const std::vector<int64_t>& class_labels,
                            bool binary_case,
                            bool weights_are_all_positive,
                            int64_t positive_label = 1,
@@ -372,18 +372,18 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
       if (weights_are_all_positive_) {
         if (pos_weight > 0.5) {
           write_additional_scores = 0;
-          return (*class_labels_)[1];  // positive label
+          return class_labels_[1];  // positive label
         } else {
           write_additional_scores = 1;
-          return (*class_labels_)[0];  // negative label
+          return class_labels_[0];  // negative label
         }
       } else {
         if (pos_weight > 0) {
           write_additional_scores = 2;
-          return (*class_labels_)[1];  // positive label
+          return class_labels_[1];  // positive label
         } else {
           write_additional_scores = 3;
-          return (*class_labels_)[0];  // negative label
+          return class_labels_[0];  // negative label
         }
       }
     }
@@ -444,7 +444,7 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
         }
       }
       get_max_weight(scores, has_scores, maxclass, maxweight);
-      *Y = (*class_labels_)[maxclass];
+      *Y = class_labels_[maxclass];
     } else {  // binary case
       if (this->base_values_.size() == 2) {
         // add base values

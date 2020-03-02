@@ -621,7 +621,7 @@ void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::compute(const Tensor* X, Tensor
         TreeAggregatorClassifier<ITYPE, OTYPE>(
             this->roots_.size(), this->n_targets_or_classes_,
             this->post_transform_, this->base_values_,
-            &(classlabels_int64s_), binary_case_,
+            classlabels_int64s_, binary_case_,
             weights_are_all_positive_));
   } else {
     int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
@@ -632,7 +632,7 @@ void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::compute(const Tensor* X, Tensor
         TreeAggregatorClassifier<ITYPE, OTYPE>(
             this->roots_.size(), this->n_targets_or_classes_,
             this->post_transform_, this->base_values_,
-            &(class_labels_), binary_case_,
+            class_labels_, binary_case_,
             weights_are_all_positive_));
     const int64_t* plabel = label_int64.template Data<int64_t>();
     std::string* labels = label->template MutableData<std::string>();
