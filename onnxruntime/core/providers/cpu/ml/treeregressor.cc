@@ -22,32 +22,28 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
 
 template <typename T>
 TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
-    : OpKernel(info), tree_ensemble_(100, 50) {
-  int64_t n_targets;
-  ORT_ENFORCE(info.GetAttr<int64_t>("n_targets", &n_targets).IsOK());
-
-  tree_ensemble_.init(info.GetAttrOrDefault<std::string>("aggregate_function", "SUM"),
-                      info.GetAttrsOrDefault<float>("base_values"),
-                      n_targets,
-                      info.GetAttrsOrDefault<int64_t>("nodes_falsenodeids"),
-                      info.GetAttrsOrDefault<int64_t>("nodes_featureids"),
-                      info.GetAttrsOrDefault<float>("nodes_hitrates"),
-                      info.GetAttrsOrDefault<int64_t>("nodes_missing_value_tracks_true"),
-                      info.GetAttrsOrDefault<std::string>("nodes_modes"),
-                      info.GetAttrsOrDefault<int64_t>("nodes_nodeids"),
-                      info.GetAttrsOrDefault<int64_t>("nodes_treeids"),
-                      info.GetAttrsOrDefault<int64_t>("nodes_truenodeids"),
-                      info.GetAttrsOrDefault<float>("nodes_values"),
-                      info.GetAttrOrDefault<std::string>("post_transform", "NONE"),
-                      info.GetAttrsOrDefault<int64_t>("target_ids"),
-                      info.GetAttrsOrDefault<int64_t>("target_nodeids"),
-                      info.GetAttrsOrDefault<int64_t>("target_treeids"),
-                      info.GetAttrsOrDefault<float>("target_weights"));
-}
-
-template <typename T>
-TreeEnsembleRegressor<T>::~TreeEnsembleRegressor() {
-}
+    : OpKernel(info),
+      tree_ensemble_(
+          100,
+          50,
+          info.GetAttrOrDefault<std::string>("aggregate_function", "SUM"),
+          info.GetAttrsOrDefault<float>("base_values"),
+          info.GetAttrOrDefault<int64_t>("n_targets", 0),
+          info.GetAttrsOrDefault<int64_t>("nodes_falsenodeids"),
+          info.GetAttrsOrDefault<int64_t>("nodes_featureids"),
+          info.GetAttrsOrDefault<float>("nodes_hitrates"),
+          info.GetAttrsOrDefault<int64_t>("nodes_missing_value_tracks_true"),
+          info.GetAttrsOrDefault<std::string>("nodes_modes"),
+          info.GetAttrsOrDefault<int64_t>("nodes_nodeids"),
+          info.GetAttrsOrDefault<int64_t>("nodes_treeids"),
+          info.GetAttrsOrDefault<int64_t>("nodes_truenodeids"),
+          info.GetAttrsOrDefault<float>("nodes_values"),
+          info.GetAttrOrDefault<std::string>("post_transform", "NONE"),
+          info.GetAttrsOrDefault<int64_t>("target_ids"),
+          info.GetAttrsOrDefault<int64_t>("target_nodeids"),
+          info.GetAttrsOrDefault<int64_t>("target_treeids"),
+          info.GetAttrsOrDefault<float>("target_weights")) {
+}  // namespace ml
 
 template <typename T>
 common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const {
@@ -65,5 +61,5 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
   return Status::OK();
 }
 
-}  // namespace ml
+}  // namespace onnxruntime
 }  // namespace onnxruntime

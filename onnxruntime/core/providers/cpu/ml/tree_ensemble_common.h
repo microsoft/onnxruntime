@@ -6,6 +6,7 @@
 
 namespace onnxruntime {
 namespace ml {
+namespace detail {
 
 template <typename ITYPE, typename OTYPE>
 class TreeEnsembleCommon {
@@ -17,65 +18,40 @@ class TreeEnsembleCommon {
   POST_EVAL_TRANSFORM post_transform_;
   AGGREGATE_FUNCTION aggregate_function_;
   int64_t n_nodes_;
-  TreeNodeElement<OTYPE>* nodes_;
+  std::vector<TreeNodeElement<OTYPE>> nodes_;
   std::vector<TreeNodeElement<OTYPE>*> roots_;
 
   int64_t max_tree_depth_;
   int64_t n_trees_;
   bool same_mode_;
   bool has_missing_tracks_;
-  int omp_tree_;
-  int omp_N_;
+  int parallel_tree_;  // starts parallelizing the computing if n_tree >= parallel_tree_ and n_rows == 1
+  int parallel_N_;     // starts parallelizing the computing if n_rows >= parallel_N_
 
  public:
-  TreeEnsembleCommon(int omp_tree, int omp_N);
-  ~TreeEnsembleCommon();
-
-  void init(
-      const std::string& aggregate_function,
-      std::vector<OTYPE> base_values,
-      int64_t n_targets_or_classes,
-      std::vector<int64_t> nodes_falsenodeids,
-      std::vector<int64_t> nodes_featureids,
-      std::vector<OTYPE> nodes_hitrates,
-      std::vector<int64_t> nodes_missing_value_tracks_true,
-      const std::vector<std::string>& nodes_modes,
-      std::vector<int64_t> nodes_nodeids,
-      std::vector<int64_t> nodes_treeids,
-      std::vector<int64_t> nodes_truenodeids,
-      std::vector<OTYPE> nodes_values,
-      const std::string& post_transform,
-      std::vector<int64_t> target_class_ids,
-      std::vector<int64_t> target_class_nodeids,
-      std::vector<int64_t> target_class_treeids,
-      std::vector<OTYPE> target_class_weights);
-
-  std::string runtime_options();
-
-  int omp_get_max_threads();
+  TreeEnsembleCommon(int parallel_tree,
+                     int parallel_N,
+                     const std::string& aggregate_function,
+                     const std::vector<OTYPE>& base_values,
+                     int64_t n_targets_or_classes,
+                     const std::vector<int64_t>& nodes_falsenodeids,
+                     const std::vector<int64_t>& nodes_featureids,
+                     const std::vector<OTYPE>& nodes_hitrates,
+                     const std::vector<int64_t>& nodes_missing_value_tracks_true,
+                     const std::vector<std::string>& nodes_modes,
+                     const std::vector<int64_t>& nodes_nodeids,
+                     const std::vector<int64_t>& nodes_treeids,
+                     const std::vector<int64_t>& nodes_truenodeids,
+                     const std::vector<OTYPE>& nodes_values,
+                     const std::string& post_transform,
+                     const std::vector<int64_t>& target_class_ids,
+                     const std::vector<int64_t>& target_class_nodeids,
+                     const std::vector<int64_t>& target_class_treeids,
+                     const std::vector<OTYPE>& target_class_weights);
 
   void compute(const Tensor* X, Tensor* Z, Tensor* label) const;
 
  protected:
-  void init_c(
-      const std::string& aggregate_function,
-      const std::vector<OTYPE>& base_values,
-      int64_t n_targets_or_classes,
-      const std::vector<int64_t>& nodes_falsenodeids,
-      const std::vector<int64_t>& nodes_featureids,
-      const std::vector<OTYPE>& nodes_hitrates,
-      const std::vector<int64_t>& nodes_missing_value_tracks_true,
-      const std::vector<std::string>& nodes_modes,
-      const std::vector<int64_t>& nodes_nodeids,
-      const std::vector<int64_t>& nodes_treeids,
-      const std::vector<int64_t>& nodes_truenodeids,
-      const std::vector<OTYPE>& nodes_values,
-      const std::string& post_transform,
-      const std::vector<int64_t>& target_class_ids,
-      const std::vector<int64_t>& target_class_nodeids,
-      const std::vector<int64_t>& target_class_treeids,
-      const std::vector<OTYPE>& target_class_weights);
-
   TreeNodeElement<OTYPE>* ProcessTreeNodeLeave(
       TreeNodeElement<OTYPE>* root, const ITYPE* x_data) const;
 
@@ -84,85 +60,40 @@ class TreeEnsembleCommon {
 };
 
 template <typename ITYPE, typename OTYPE>
-TreeEnsembleCommon<ITYPE, OTYPE>::TreeEnsembleCommon(int omp_tree, int omp_N) {
-  omp_tree_ = omp_tree;
-  omp_N_ = omp_N;
-  nodes_ = NULL;
-}
+TreeEnsembleCommon<ITYPE, OTYPE>::TreeEnsembleCommon(int parallel_tree, int parallel_N,
+                                                     const std::string& aggregate_function,
+                                                     const std::vector<OTYPE>& base_values,
+                                                     int64_t n_targets_or_classes,
+                                                     const std::vector<int64_t>& nodes_falsenodeids,
+                                                     const std::vector<int64_t>& nodes_featureids,
+                                                     const std::vector<OTYPE>& nodes_hitrates,
+                                                     const std::vector<int64_t>& nodes_missing_value_tracks_true,
+                                                     const std::vector<std::string>& nodes_modes,
+                                                     const std::vector<int64_t>& nodes_nodeids,
+                                                     const std::vector<int64_t>& nodes_treeids,
+                                                     const std::vector<int64_t>& nodes_truenodeids,
+                                                     const std::vector<OTYPE>& nodes_values,
+                                                     const std::string& post_transform,
+                                                     const std::vector<int64_t>& target_class_ids,
+                                                     const std::vector<int64_t>& target_class_nodeids,
+                                                     const std::vector<int64_t>& target_class_treeids,
+                                                     const std::vector<OTYPE>& target_class_weights) {
+  parallel_tree_ = parallel_tree;
+  parallel_N_ = parallel_N;
 
-template <typename ITYPE, typename OTYPE>
-TreeEnsembleCommon<ITYPE, OTYPE>::~TreeEnsembleCommon() {
-  if (nodes_ != NULL)
-    delete[] nodes_;
-}
+  ORT_ENFORCE(n_targets_or_classes > 0);
+  ORT_ENFORCE(nodes_falsenodeids.size() == nodes_featureids.size());
+  ORT_ENFORCE(nodes_falsenodeids.size() == nodes_modes.size());
+  ORT_ENFORCE(nodes_falsenodeids.size() == nodes_nodeids.size());
+  ORT_ENFORCE(nodes_falsenodeids.size() == nodes_treeids.size());
+  ORT_ENFORCE(nodes_falsenodeids.size() == nodes_truenodeids.size());
+  ORT_ENFORCE(nodes_falsenodeids.size() == nodes_values.size());
+  ORT_ENFORCE(target_class_ids.size() == target_class_nodeids.size());
+  ORT_ENFORCE(target_class_ids.size() == target_class_treeids.size());
+  ORT_ENFORCE(target_class_ids.size() == target_class_treeids.size());
 
-template <typename ITYPE, typename OTYPE>
-std::string TreeEnsembleCommon<ITYPE, OTYPE>::runtime_options() {
-  std::string res;
-#ifdef USE_OPENMP
-  res += "OPENMP";
-#endif
-  return res;
-}
-
-template <typename ITYPE, typename OTYPE>
-int TreeEnsembleCommon<ITYPE, OTYPE>::omp_get_max_threads() {
-#if USE_OPENMP
-  return ::omp_get_max_threads();
-#else
-  return 1;
-#endif
-}
-
-template <typename ITYPE, typename OTYPE>
-void TreeEnsembleCommon<ITYPE, OTYPE>::init(
-    const std::string& aggregate_function,
-    std::vector<OTYPE> base_values,
-    int64_t n_targets_or_classes,
-    std::vector<int64_t> nodes_falsenodeids,
-    std::vector<int64_t> nodes_featureids,
-    std::vector<OTYPE> nodes_hitrates,
-    std::vector<int64_t> nodes_missing_value_tracks_true,
-    const std::vector<std::string>& nodes_modes,
-    std::vector<int64_t> nodes_nodeids,
-    std::vector<int64_t> nodes_treeids,
-    std::vector<int64_t> nodes_truenodeids,
-    std::vector<OTYPE> nodes_values,
-    const std::string& post_transform,
-    std::vector<int64_t> target_class_ids,
-    std::vector<int64_t> target_class_nodeids,
-    std::vector<int64_t> target_class_treeids,
-    std::vector<OTYPE> target_class_weights) {
-  init_c(aggregate_function, base_values, n_targets_or_classes,
-         nodes_falsenodeids, nodes_featureids, nodes_hitrates,
-         nodes_missing_value_tracks_true, nodes_modes,
-         nodes_nodeids, nodes_treeids, nodes_truenodeids,
-         nodes_values, post_transform, target_class_ids,
-         target_class_nodeids, target_class_treeids,
-         target_class_weights);
-}
-
-template <typename ITYPE, typename OTYPE>
-void TreeEnsembleCommon<ITYPE, OTYPE>::init_c(
-    const std::string& aggregate_function,
-    const std::vector<OTYPE>& base_values,
-    int64_t n_targets_or_classes,
-    const std::vector<int64_t>& nodes_falsenodeids,
-    const std::vector<int64_t>& nodes_featureids,
-    const std::vector<OTYPE>& nodes_hitrates,
-    const std::vector<int64_t>& nodes_missing_value_tracks_true,
-    const std::vector<std::string>& nodes_modes,
-    const std::vector<int64_t>& nodes_nodeids,
-    const std::vector<int64_t>& nodes_treeids,
-    const std::vector<int64_t>& nodes_truenodeids,
-    const std::vector<OTYPE>& nodes_values,
-    const std::string& post_transform,
-    const std::vector<int64_t>& target_class_ids,
-    const std::vector<int64_t>& target_class_nodeids,
-    const std::vector<int64_t>& target_class_treeids,
-    const std::vector<OTYPE>& target_class_weights) {
-  aggregate_function_ = ::onnxruntime::ml::MakeAggregateFunction(aggregate_function);
-  post_transform_ = ::onnxruntime::ml::MakeTransform(post_transform);
+  aggregate_function_ = MakeAggregateFunction(aggregate_function);
+  post_transform_ = MakeTransform(post_transform);
   base_values_ = base_values;
   n_targets_or_classes_ = n_targets_or_classes;
   max_tree_depth_ = 1000;
@@ -172,7 +103,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::init_c(
   same_mode_ = true;
   int fpos = -1;
   for (size_t i = 0; i < nodes_modes.size(); ++i) {
-    cmodes[i] = ::onnxruntime::ml::MakeTreeNodeMode(nodes_modes[i]);
+    cmodes[i] = MakeTreeNodeMode(nodes_modes[i]);
     if (cmodes[i] == NODE_MODE::LEAF)
       continue;
     if (fpos == -1) {
@@ -186,40 +117,39 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::init_c(
   // filling nodes
 
   n_nodes_ = nodes_treeids.size();
-  nodes_ = new TreeNodeElement<OTYPE>[static_cast<int>(n_nodes_)];
+  nodes_.resize(n_nodes_);
   roots_.clear();
   std::map<TreeNodeElementId, TreeNodeElement<OTYPE>*> idi;
   size_t i;
 
   for (i = 0; i < nodes_treeids.size(); ++i) {
-    TreeNodeElement<OTYPE>* node = nodes_ + i;
-    node->id.tree_id = static_cast<int>(nodes_treeids[i]);
-    node->id.node_id = static_cast<int>(nodes_nodeids[i]);
-    node->feature_id = static_cast<int>(nodes_featureids[i]);
-    node->value = nodes_values[i];
-    node->hitrates = i < nodes_hitrates.size() ? nodes_hitrates[i] : -1;
-    node->mode = cmodes[i];
-    node->is_not_leave = node->mode != NODE_MODE::LEAF;
-    node->truenode = NULL;   // nodes_truenodeids[i];
-    node->falsenode = NULL;  // nodes_falsenodeids[i];
-    node->missing_tracks = i < static_cast<size_t>(nodes_missing_value_tracks_true.size())
-                               ? (nodes_missing_value_tracks_true[i] == 1
-                                      ? MissingTrack::TRUE
-                                      : MissingTrack::FALSE)
-                               : MissingTrack::NONE;
-    node->is_missing_track_true = node->missing_tracks == MissingTrack::TRUE;
-    if (idi.find(node->id) != idi.end()) {
-      ORT_THROW("Node ", node->id.node_id, " in tree ", node->id.tree_id, " is already there.");
+    TreeNodeElement<OTYPE>& node = nodes_[i];
+    node.id.tree_id = static_cast<int>(nodes_treeids[i]);
+    node.id.node_id = static_cast<int>(nodes_nodeids[i]);
+    node.feature_id = static_cast<int>(nodes_featureids[i]);
+    node.value = nodes_values[i];
+    node.hitrates = i < nodes_hitrates.size() ? nodes_hitrates[i] : -1;
+    node.mode = cmodes[i];
+    node.is_not_leaf = node.mode != NODE_MODE::LEAF;
+    node.truenode = NULL;   // nodes_truenodeids[i];
+    node.falsenode = NULL;  // nodes_falsenodeids[i];
+    node.missing_tracks = i < static_cast<size_t>(nodes_missing_value_tracks_true.size())
+                              ? (nodes_missing_value_tracks_true[i] == 1
+                                     ? MissingTrack::TRUE
+                                     : MissingTrack::FALSE)
+                              : MissingTrack::NONE;
+    node.is_missing_track_true = node.missing_tracks == MissingTrack::TRUE;
+    if (idi.find(node.id) != idi.end()) {
+      ORT_THROW("Node ", node.id.node_id, " in tree ", node.id.tree_id, " is already there.");
     }
-    idi.insert(std::pair<TreeNodeElementId, TreeNodeElement<OTYPE>*>(node->id, node));
+    idi.insert(std::pair<TreeNodeElementId, TreeNodeElement<OTYPE>*>(node.id, &node));
   }
 
   TreeNodeElementId coor;
-  TreeNodeElement<OTYPE>* it;
-  for (i = 0; i < static_cast<size_t>(n_nodes_); ++i) {
-    it = nodes_ + i;
-    if (!it->is_not_leave)
+  for (auto it = nodes_.begin(); it != nodes_.end(); ++it, ++i) {
+    if (!it->is_not_leaf)
       continue;
+    i = std::distance(nodes_.begin(), it);
     coor.tree_id = it->id.tree_id;
     coor.node_id = static_cast<int>(nodes_truenodeids[i]);
 
@@ -254,7 +184,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::init_c(
   int64_t previous = -1;
   for (i = 0; i < static_cast<size_t>(n_nodes_); ++i) {
     if ((previous == -1) || (previous != nodes_[i].id.tree_id))
-      roots_.push_back(nodes_ + i);
+      roots_.push_back(&(nodes_[i]));
     previous = nodes_[i].id.tree_id;
   }
 
@@ -288,33 +218,34 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute(const Tensor* X, Tensor* Z, Tenso
     case AGGREGATE_FUNCTION::AVERAGE:
       compute_agg(
           X, Z, label,
-          _AggregatorAverage<ITYPE, OTYPE>(
+          TreeAggregatorAverage<ITYPE, OTYPE>(
               roots_.size(), n_targets_or_classes_,
-              post_transform_, &(base_values_)));
+              post_transform_, base_values_));
       return;
     case AGGREGATE_FUNCTION::SUM:
       compute_agg(
           X, Z, label,
-          _AggregatorSum<ITYPE, OTYPE>(
+          TreeAggregatorSum<ITYPE, OTYPE>(
               roots_.size(), n_targets_or_classes_,
-              post_transform_, &(base_values_)));
+              post_transform_, base_values_));
       return;
     case AGGREGATE_FUNCTION::MIN:
       compute_agg(
           X, Z, label,
-          _AggregatorMin<ITYPE, OTYPE>(
+          TreeAggregatorMin<ITYPE, OTYPE>(
               roots_.size(), n_targets_or_classes_,
-              post_transform_, &(base_values_)));
+              post_transform_, base_values_));
       return;
     case AGGREGATE_FUNCTION::MAX:
       compute_agg(
           X, Z, label,
-          _AggregatorMax<ITYPE, OTYPE>(
+          TreeAggregatorMax<ITYPE, OTYPE>(
               roots_.size(), n_targets_or_classes_,
-              post_transform_, &(base_values_)));
+              post_transform_, base_values_));
       return;
+    default:
+      ORT_THROW("Unknown aggregation function in TreeEnsemble.");
   }
-  ORT_THROW("Unknown aggregation function in TreeEnsemble.");
 }
 
 template <typename ITYPE, typename OTYPE>
@@ -331,11 +262,11 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
     if (N == 1) {
       OTYPE scores = 0;
       unsigned char has_scores = 0;
-      if (n_trees_ <= omp_tree_) {
+      if (n_trees_ <= parallel_tree_) {
         for (int64_t j = 0; j < n_trees_; ++j)
           agg.ProcessTreeNodePrediction1(
               &scores,
-              ProcessTreeNodeLeave(roots_[j], x_data),
+              *ProcessTreeNodeLeave(roots_[j], x_data),
               &has_scores);
       } else {
         std::vector<OTYPE> scores_t(n_trees_, 0);
@@ -346,7 +277,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
         for (int64_t j = 0; j < n_trees_; ++j) {
           agg.ProcessTreeNodePrediction1(
               &(scores_t[j]),
-              ProcessTreeNodeLeave(roots_[j], x_data),
+              *ProcessTreeNodeLeave(roots_[j], x_data),
               &(has_scores_t[j]));
         }
         auto it = scores_t.cbegin();
@@ -357,7 +288,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
 
       agg.FinalizeScores1(z_data, scores, has_scores, label_data);
     } else {
-      if (N <= omp_N_) {
+      if (N <= parallel_N_) {
         OTYPE scores;
         unsigned char has_scores;
         size_t j;
@@ -368,7 +299,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
           for (j = 0; j < static_cast<size_t>(n_trees_); ++j)
             agg.ProcessTreeNodePrediction1(
                 &scores,
-                ProcessTreeNodeLeave(roots_[j], x_data + i * stride),
+                *ProcessTreeNodeLeave(roots_[j], x_data + i * stride),
                 &has_scores);
           agg.FinalizeScores1(z_data + i * n_targets_or_classes_, scores, has_scores,
                               label_data == NULL ? NULL : (label_data + i));
@@ -387,7 +318,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
           for (j = 0; j < static_cast<size_t>(n_trees_); ++j)
             agg.ProcessTreeNodePrediction1(
                 &scores,
-                ProcessTreeNodeLeave(roots_[j], x_data + i * stride),
+                *ProcessTreeNodeLeave(roots_[j], x_data + i * stride),
                 &has_scores);
           agg.FinalizeScores1(z_data + i * n_targets_or_classes_,
                               scores, has_scores,
@@ -400,11 +331,11 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
       std::vector<OTYPE> scores(n_targets_or_classes_, 0);
       std::vector<unsigned char> has_scores(n_targets_or_classes_, 0);
 
-      if (n_trees_ <= omp_tree_) {
+      if (n_trees_ <= parallel_tree_) {
         for (int64_t j = 0; j < n_trees_; ++j)
           agg.ProcessTreeNodePrediction(
               scores.data(),
-              ProcessTreeNodeLeave(roots_[j], x_data),
+              *ProcessTreeNodeLeave(roots_[j], x_data),
               has_scores.data());
         agg.FinalizeScores(scores, has_scores, z_data, -1, label_data);
       } else {
@@ -420,7 +351,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
           for (int64_t j = 0; j < n_trees_; ++j) {
             agg.ProcessTreeNodePrediction(
                 private_scores.data(),
-                ProcessTreeNodeLeave(roots_[j], x_data),
+                *ProcessTreeNodeLeave(roots_[j], x_data),
                 private_has_scores.data());
           }
 
@@ -435,7 +366,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
         agg.FinalizeScores(scores, has_scores, z_data, -1, label_data);
       }
     } else {
-      if (N <= omp_N_) {
+      if (N <= parallel_N_) {
         std::vector<OTYPE> scores(n_targets_or_classes_);
         std::vector<unsigned char> has_scores(n_targets_or_classes_);
         size_t j;
@@ -446,7 +377,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
           for (j = 0; j < roots_.size(); ++j)
             agg.ProcessTreeNodePrediction(
                 scores.data(),
-                ProcessTreeNodeLeave(roots_[j], x_data + i * stride),
+                *ProcessTreeNodeLeave(roots_[j], x_data + i * stride),
                 has_scores.data());
           agg.FinalizeScores(scores, has_scores,
                              z_data + i * n_targets_or_classes_, -1,
@@ -470,7 +401,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
             for (j = 0; j < roots_.size(); ++j)
               agg.ProcessTreeNodePrediction(
                   scores.data(),
-                  ProcessTreeNodeLeave(roots_[j], x_data + i * stride),
+                  *ProcessTreeNodeLeave(roots_[j], x_data + i * stride),
                   has_scores.data());
             agg.FinalizeScores(scores, has_scores,
                                z_data + i * n_targets_or_classes_, -1,
@@ -484,7 +415,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
 
 #define TREE_FIND_VALUE(CMP)                                         \
   if (has_missing_tracks_) {                                         \
-    while (root->is_not_leave) {                                     \
+    while (root->is_not_leaf) {                                      \
       val = x_data[root->feature_id];                                \
       root = (val CMP root->value ||                                 \
               (root->is_missing_track_true && _isnan_(val)))         \
@@ -492,7 +423,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
                  : root->falsenode;                                  \
     }                                                                \
   } else {                                                           \
-    while (root->is_not_leave) {                                     \
+    while (root->is_not_leaf) {                                      \
       val = x_data[root->feature_id];                                \
       root = val CMP root->value ? root->truenode : root->falsenode; \
     }                                                                \
@@ -512,7 +443,7 @@ TreeEnsembleCommon<ITYPE, OTYPE>::ProcessTreeNodeLeave(
     switch (root->mode) {
       case NODE_MODE::BRANCH_LEQ:
         if (has_missing_tracks_) {
-          while (root->is_not_leave) {
+          while (root->is_not_leaf) {
             val = x_data[root->feature_id];
             root = (val <= root->value ||
                     (root->is_missing_track_true && _isnan_(val)))
@@ -520,7 +451,7 @@ TreeEnsembleCommon<ITYPE, OTYPE>::ProcessTreeNodeLeave(
                        : root->falsenode;
           }
         } else {
-          while (root->is_not_leave) {
+          while (root->is_not_leaf) {
             val = x_data[root->feature_id];
             root = val <= root->value ? root->truenode : root->falsenode;
           }
@@ -546,7 +477,7 @@ TreeEnsembleCommon<ITYPE, OTYPE>::ProcessTreeNodeLeave(
     }
   } else {  // Different rules to compare to node thresholds.
     OTYPE threshold;
-    while (root->is_not_leave) {
+    while (root->is_not_leaf) {
       val = x_data[root->feature_id];
       threshold = root->value;
       switch (root->mode) {
@@ -590,84 +521,91 @@ TreeEnsembleCommon<ITYPE, OTYPE>::ProcessTreeNodeLeave(
 
 template <typename ITYPE, typename OTYPE>
 class TreeEnsembleCommonClassifier : TreeEnsembleCommon<ITYPE, OTYPE> {
- protected:
+ private:
   bool weights_are_all_positive_;
   bool binary_case_;
-  int64_t class_count_;
   std::vector<std::string> classlabels_strings_;
   std::vector<int64_t> classlabels_int64s_;
   std::vector<int64_t> class_labels_;
 
  public:
-  TreeEnsembleCommonClassifier(int omp_tree, int omp_N) : TreeEnsembleCommon<ITYPE, OTYPE>(omp_tree, omp_N) {}
+  TreeEnsembleCommonClassifier(int parallel_tree,
+                               int parallel_N,
+                               const std::string& aggregate_function,
+                               const std::vector<OTYPE>& base_values,
+                               const std::vector<int64_t>& nodes_falsenodeids,
+                               const std::vector<int64_t>& nodes_featureids,
+                               const std::vector<OTYPE>& nodes_hitrates,
+                               const std::vector<int64_t>& nodes_missing_value_tracks_true,
+                               const std::vector<std::string>& nodes_modes,
+                               const std::vector<int64_t>& nodes_nodeids,
+                               const std::vector<int64_t>& nodes_treeids,
+                               const std::vector<int64_t>& nodes_truenodeids,
+                               const std::vector<OTYPE>& nodes_values,
+                               const std::string& post_transform,
+                               const std::vector<int64_t>& class_ids,
+                               const std::vector<int64_t>& class_nodeids,
+                               const std::vector<int64_t>& class_treeids,
+                               const std::vector<OTYPE>& class_weights,
+                               const std::vector<std::string>& classlabels_strings,
+                               const std::vector<int64_t>& classlabels_int64s);
 
-  inline int64_t get_class_count() const { return class_count_; }
-
-  void init(
-      const std::string& aggregate_function,
-      std::vector<OTYPE> base_values,
-      std::vector<int64_t> nodes_falsenodeids,
-      std::vector<int64_t> nodes_featureids,
-      std::vector<OTYPE> nodes_hitrates,
-      std::vector<int64_t> nodes_missing_value_tracks_true,
-      const std::vector<std::string>& nodes_modes,
-      std::vector<int64_t> nodes_nodeids,
-      std::vector<int64_t> nodes_treeids,
-      std::vector<int64_t> nodes_truenodeids,
-      std::vector<OTYPE> nodes_values,
-      const std::string& post_transform,
-      std::vector<int64_t> class_ids,
-      std::vector<int64_t> class_nodeids,
-      std::vector<int64_t> class_treeids,
-      std::vector<OTYPE> class_weights,
-      std::vector<std::string> classlabels_strings,
-      std::vector<int64_t> classlabels_int64s);
+  int64_t get_class_count() const { return n_targets_or_classes_; }
 
   void compute(const Tensor* X, Tensor* Z, Tensor* label) const;
 };
 
 template <typename ITYPE, typename OTYPE>
-void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::init(
+TreeEnsembleCommonClassifier<ITYPE, OTYPE>::TreeEnsembleCommonClassifier(
+    int parallel_tree,
+    int parallel_N,
     const std::string& aggregate_function,
-    std::vector<OTYPE> base_values,
-    std::vector<int64_t> nodes_falsenodeids,
-    std::vector<int64_t> nodes_featureids,
-    std::vector<OTYPE> nodes_hitrates,
-    std::vector<int64_t> nodes_missing_value_tracks_true,
+    const std::vector<OTYPE>& base_values,
+    const std::vector<int64_t>& nodes_falsenodeids,
+    const std::vector<int64_t>& nodes_featureids,
+    const std::vector<OTYPE>& nodes_hitrates,
+    const std::vector<int64_t>& nodes_missing_value_tracks_true,
     const std::vector<std::string>& nodes_modes,
-    std::vector<int64_t> nodes_nodeids,
-    std::vector<int64_t> nodes_treeids,
-    std::vector<int64_t> nodes_truenodeids,
-    std::vector<OTYPE> nodes_values,
+    const std::vector<int64_t>& nodes_nodeids,
+    const std::vector<int64_t>& nodes_treeids,
+    const std::vector<int64_t>& nodes_truenodeids,
+    const std::vector<OTYPE>& nodes_values,
     const std::string& post_transform,
-    std::vector<int64_t> class_ids,
-    std::vector<int64_t> class_nodeids,
-    std::vector<int64_t> class_treeids,
-    std::vector<OTYPE> class_weights,
-    std::vector<std::string> classlabels_strings,
-    std::vector<int64_t> classlabels_int64s) {
+    const std::vector<int64_t>& class_ids,
+    const std::vector<int64_t>& class_nodeids,
+    const std::vector<int64_t>& class_treeids,
+    const std::vector<OTYPE>& class_weights,
+    const std::vector<std::string>& classlabels_strings,
+    const std::vector<int64_t>& classlabels_int64s) : TreeEnsembleCommon<ITYPE, OTYPE>(parallel_tree,
+                                                                                       parallel_N,
+                                                                                       aggregate_function,
+                                                                                       base_values,
+                                                                                       classlabels_strings.size() == 0 ? classlabels_int64s.size() : classlabels_strings.size(),
+                                                                                       nodes_falsenodeids,
+                                                                                       nodes_featureids,
+                                                                                       nodes_hitrates,
+                                                                                       nodes_missing_value_tracks_true,
+                                                                                       nodes_modes,
+                                                                                       nodes_nodeids,
+                                                                                       nodes_treeids,
+                                                                                       nodes_truenodeids,
+                                                                                       nodes_values,
+                                                                                       post_transform,
+                                                                                       class_ids,
+                                                                                       class_nodeids,
+                                                                                       class_treeids,
+                                                                                       class_weights) {
   classlabels_strings_ = classlabels_strings;
   classlabels_int64s_ = classlabels_int64s;
-  class_count_ = classlabels_strings_.size() == 0 ? classlabels_int64s_.size() : classlabels_strings_.size();
-  if (class_count_ == 0) {
-    ORT_THROW("classlabels_int64s_ and classlabels_strings_ cannot be both empty.");
-  }
-
-  TreeEnsembleCommon<ITYPE, OTYPE>::init(
-      aggregate_function, base_values, class_count_, nodes_falsenodeids,
-      nodes_featureids, nodes_hitrates, nodes_missing_value_tracks_true,
-      nodes_modes, nodes_nodeids, nodes_treeids, nodes_truenodeids,
-      nodes_values, post_transform, class_ids, class_nodeids,
-      class_treeids, class_weights);
 
   std::set<int64_t> weights_classes;
   weights_are_all_positive_ = true;
   for (size_t i = 0, end = class_ids.size(); i < end; ++i) {
     weights_classes.insert(class_ids[i]);
-    if (class_weights[i] < 0)
+    if (weights_are_all_positive_ && class_weights[i] < 0)
       weights_are_all_positive_ = false;
   }
-  binary_case_ = class_count_ == 2 && weights_classes.size() == 1;
+  binary_case_ = n_targets_or_classes_ == 2 && weights_classes.size() == 1;
   if (classlabels_strings_.size() > 0) {
     class_labels_.resize(classlabels_strings_.size());
     for (size_t i = 0; i < classlabels_strings_.size(); ++i)
@@ -680,9 +618,9 @@ void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::compute(const Tensor* X, Tensor
   if (classlabels_strings_.size() == 0) {
     this->compute_agg(
         X, Z, label,
-        _AggregatorClassifier<ITYPE, OTYPE>(
-            this->roots_.size(), class_count_,
-            this->post_transform_, &(this->base_values_),
+        TreeAggregatorClassifier<ITYPE, OTYPE>(
+            this->roots_.size(), n_targets_or_classes_,
+            this->post_transform_, this->base_values_,
             &(classlabels_int64s_), binary_case_,
             weights_are_all_positive_));
   } else {
@@ -691,16 +629,18 @@ void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::compute(const Tensor* X, Tensor
     Tensor label_int64(DataTypeImpl::GetType<int64_t>(), TensorShape({N}), allocator);
     this->compute_agg(
         X, Z, &label_int64,
-        _AggregatorClassifier<ITYPE, OTYPE>(
-            this->roots_.size(), class_count_,
-            this->post_transform_, &(this->base_values_),
+        TreeAggregatorClassifier<ITYPE, OTYPE>(
+            this->roots_.size(), n_targets_or_classes_,
+            this->post_transform_, this->base_values_,
             &(class_labels_), binary_case_,
             weights_are_all_positive_));
     const int64_t* plabel = label_int64.template Data<int64_t>();
+    std::string* labels = label->template MutableData<std::string>();
     for (size_t i = 0; i < (size_t)N; ++i)
-      label->template MutableData<std::string>()[i] = classlabels_strings_[plabel[i]];
+      labels[i] = classlabels_strings_[plabel[i]];
   }
 }
 
+}  // namespace detail
 }  // namespace ml
 }  // namespace onnxruntime

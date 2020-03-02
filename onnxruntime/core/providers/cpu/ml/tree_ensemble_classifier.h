@@ -13,7 +13,7 @@ class TreeEnsembleClassifier final : public OpKernel {
   common::Status Compute(OpKernelContext* context) const override;
 
  private:
-  TreeEnsembleCommonClassifier<T, float> tree_ensemble_;
+  detail::TreeEnsembleCommonClassifier<T, float> tree_ensemble_;
 };
 }  // namespace ml
 }  // namespace onnxruntime

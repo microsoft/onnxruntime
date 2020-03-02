@@ -11,10 +11,9 @@ class TreeEnsembleRegressor final : public OpKernel {
  public:
   explicit TreeEnsembleRegressor(const OpKernelInfo& info);
   common::Status Compute(OpKernelContext* context) const override;
-  ~TreeEnsembleRegressor();
 
  private:
-  TreeEnsembleCommon<T, float> tree_ensemble_;
+  detail::TreeEnsembleCommon<T, float> tree_ensemble_;
 };
 }  // namespace ml
 }  // namespace onnxruntime

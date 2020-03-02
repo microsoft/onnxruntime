@@ -137,26 +137,29 @@ ADD_IN_TYPE_TREE_ENSEMBLE_CLASSIFIER_OP(int32_t);
 
 template <typename T>
 TreeEnsembleClassifier<T>::TreeEnsembleClassifier(const OpKernelInfo& info)
-    : OpKernel(info), tree_ensemble_(100, 50) {
-  tree_ensemble_.init(info.GetAttrOrDefault<std::string>("aggregate_function", "SUM"),
-                      info.GetAttrsOrDefault<float>("base_values"),
-                      info.GetAttrsOrDefault<int64_t>("nodes_falsenodeids"),
-                      info.GetAttrsOrDefault<int64_t>("nodes_featureids"),
-                      info.GetAttrsOrDefault<float>("nodes_hitrates"),
-                      info.GetAttrsOrDefault<int64_t>("nodes_missing_value_tracks_true"),
-                      info.GetAttrsOrDefault<std::string>("nodes_modes"),
-                      info.GetAttrsOrDefault<int64_t>("nodes_nodeids"),
-                      info.GetAttrsOrDefault<int64_t>("nodes_treeids"),
-                      info.GetAttrsOrDefault<int64_t>("nodes_truenodeids"),
-                      info.GetAttrsOrDefault<float>("nodes_values"),
-                      info.GetAttrOrDefault<std::string>("post_transform", "NONE"),
-                      info.GetAttrsOrDefault<int64_t>("class_ids"),
-                      info.GetAttrsOrDefault<int64_t>("class_nodeids"),
-                      info.GetAttrsOrDefault<int64_t>("class_treeids"),
-                      info.GetAttrsOrDefault<float>("class_weights"),
-                      info.GetAttrsOrDefault<std::string>("classlabels_strings"),
-                      info.GetAttrsOrDefault<int64_t>("classlabels_int64s"));
-}
+    : OpKernel(info),
+      tree_ensemble_(
+          100,
+          50,
+          info.GetAttrOrDefault<std::string>("aggregate_function", "SUM"),
+          info.GetAttrsOrDefault<float>("base_values"),
+          info.GetAttrsOrDefault<int64_t>("nodes_falsenodeids"),
+          info.GetAttrsOrDefault<int64_t>("nodes_featureids"),
+          info.GetAttrsOrDefault<float>("nodes_hitrates"),
+          info.GetAttrsOrDefault<int64_t>("nodes_missing_value_tracks_true"),
+          info.GetAttrsOrDefault<std::string>("nodes_modes"),
+          info.GetAttrsOrDefault<int64_t>("nodes_nodeids"),
+          info.GetAttrsOrDefault<int64_t>("nodes_treeids"),
+          info.GetAttrsOrDefault<int64_t>("nodes_truenodeids"),
+          info.GetAttrsOrDefault<float>("nodes_values"),
+          info.GetAttrOrDefault<std::string>("post_transform", "NONE"),
+          info.GetAttrsOrDefault<int64_t>("class_ids"),
+          info.GetAttrsOrDefault<int64_t>("class_nodeids"),
+          info.GetAttrsOrDefault<int64_t>("class_treeids"),
+          info.GetAttrsOrDefault<float>("class_weights"),
+          info.GetAttrsOrDefault<std::string>("classlabels_strings"),
+          info.GetAttrsOrDefault<int64_t>("classlabels_int64s")) {
+}  // namespace ml
 
 template <typename T>
 common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) const {
