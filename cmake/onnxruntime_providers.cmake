@@ -431,14 +431,8 @@ if (onnxruntime_USE_DML)
   add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dml PRIVATE ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/../cmake/external/wil/include)
 
-  if(onnxruntime_target_platform STREQUAL "Win32")
-    set(directml_arch_folder x86)
-  else()
-    set(directml_arch_folder x64)
-  endif()
-
   if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
-    if(NOT onnxruntime_target_platform STREQUAL "Win32" AND NOT onnxruntime_target_platform STREQUAL "x64")
+    if(NOT onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_target_platform STREQUAL "x64")
       message(FATAL_ERROR "Target platform ${onnxruntime_target_platform} is not supported by DML")
     endif()
 
@@ -446,13 +440,13 @@ if (onnxruntime_USE_DML)
       add_custom_command(TARGET onnxruntime_providers_dml
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          "${DML_PACKAGE_DIR}/bin/${directml_arch_folder}/${file}" $<TARGET_FILE_DIR:onnxruntime_providers_dml>)
+          "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/${file}" $<TARGET_FILE_DIR:onnxruntime_providers_dml>)
     endforeach()
   endif()
 
   function(target_add_dml target)
     if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
-      target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${directml_arch_folder}/DirectML.lib")
+      target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/DirectML.lib")
       add_dependencies(${target} RESTORE_PACKAGES)
     endif()
   endfunction()
