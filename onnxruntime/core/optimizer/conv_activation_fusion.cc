@@ -39,7 +39,7 @@ static bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& m
       bool is_constant = true;
       const ONNX_NAMESPACE::TensorProto* initializer = graph_utils::GetConstantInitializer(graph, input->Name());
       if (initializer) {
-        Initializer i(*initializer);
+        Initializer i(*initializer, graph.ModelPath());
         switch (initializer->data_type()) {
           case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
             value = *i.data<float>();
