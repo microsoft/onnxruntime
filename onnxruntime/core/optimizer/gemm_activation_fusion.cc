@@ -4,7 +4,6 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/gemm_activation_fusion.h"
 #include "core/graph/graph_utils.h"
-#include <deque>
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -23,7 +22,6 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
-  std::deque<onnxruntime::NodeIndex> removed_nodes;
   for (auto index : order) {
     auto* node_ptr = graph.GetNode(index);
     if (!node_ptr)

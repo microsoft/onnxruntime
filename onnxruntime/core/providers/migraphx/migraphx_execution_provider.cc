@@ -198,81 +198,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   const auto& optype = node->OpType();
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
 
-  if (optype == "MaxPool") {
-    //MaxPool "indices" output is not currently supported.
-    if (node->OutputDefs().size() > 1) {
-      return true;
-    }
-
-    // ceil_mode and dilations attrs are not supported in MIGraphX
-    const auto& attributes = node->GetAttributes();
-    const auto ceil_attr = attributes.find("ceil_mode");
-    // default value of ceil_mode (0) is supported.
-    if (ceil_attr != attributes.end() and ceil_attr->second.i() != 0) {
-      return true;
-    }
-
-    auto dila_attr = attributes.find("dilations");
-    if (dila_attr != attributes.end()) {
-      auto dilas = dila_attr->second.ints();
-      bool ret = std::all_of(dilas.begin(), dilas.end(), [](auto i) { return i == 1;});
-      if (ret == false)
-      {
-        return true;
-      }
-    }
-
-    // storage order 1 (column major format) is not supported
-    const auto storage_order_attr = attributes.find("storage_order");
-    if (storage_order_attr != attributes.end() and storage_order_attr->second.i() != 0)
-    {
-      return true;
-    }
-
-    // input can only have 4 dims
-    const auto input_shape = node->InputDefs()[0]->Shape();
-    if (input_shape->dim_size() != 4)
-    {
-      return true;
-    }
-  } else if (optype == "Pad") {
-    // Pad is only supported only up to opset 10 (in opset 11 more inputs were added)
-    if (node->InputDefs().size() > 1) {
-      return true;
-    }
-
-    const auto& attributes = node->GetAttributes();
-    // Pad only support constant mode
-    const auto mode_attr = attributes.find("mode");
-    if(mode_attr != attributes.end())
-    {
-      const auto mode = mode_attr->second.s();
-      static const std::set<std::string> allowed_modes = {"constant"};
-
-      return allowed_modes.count(mode) == 0;
-    }
-  } else if (optype == "Slice") {
-    //Slice in opset 10 is currently not supported.
-    //unsupported inputs: starts, ends, axes, steps
-    if (node->InputDefs().size() > 1) {
-      return true;
-    }
-    //MIGraphX does not properly handle the situation where any 
-    //value of the "starts" attribute is higher than a corresponding 
-    // value in the "ends"
-    const auto& attributes = node->GetAttributes();
-    if (attributes.count("starts") == 0 || attributes.count("ends") == 0) {
-      return true;
-    }
-
-    const auto& starts = attributes.find("starts")->second.ints();
-    const auto& ends = attributes.find("ends")->second.ints();
-    for (int i = 0; i < starts.size(); ++i) {
-      if (starts.Get(i) > ends.Get(i)) {
-        return true;
-      }
-    }
-  } else if (optype == "AveragePool") {
+  if (optype == "AveragePool") {
     // ceil_mode attribute is not supported in MIGraphX
     const auto& attributes = node->GetAttributes();
     const auto ceil_attr = attributes.find("ceil_mode");
@@ -369,17 +295,16 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         }
       }
     }
-  } else if (optype == "Expand") {
-    // MIGraphX only supports constant shape input values
-    const auto& shape_input = node->InputDefs()[1];
-    return !graph_viewer.IsConstantInitializer(shape_input->Name(), true);
+  } else if (optype == "BatchNormalization") {
+    // input can only have 4 dims
+    const auto input_shape = node->InputDefs()[0]->Shape();
+    if (input_shape->dim_size() != 4)
+    {
+      return true;
+    }    
   } else if (optype == "Clip") {
     // MIGraphX only support opset6 with 1 input
     return (node->InputDefs().size() != 1);
-  } else if (optype == "Reshape") {
-    // MIGraphX only support opset6 with 1 input
-    const auto& shape_arg = node->InputDefs()[1];
-    return initializers.find(shape_arg->Name()) == initializers.end();
   } else if (optype == "Conv") {
     // input can only have 4 dims
     const auto input_shape = node->InputDefs()[0]->Shape();
@@ -414,8 +339,48 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     {
       return true;
     }
-  }
-  else if (optype == "MatMulInteger") {
+  } else if (optype == "Expand") {
+    // MIGraphX only supports constant shape input values
+    const auto& shape_input = node->InputDefs()[1];
+    return !graph_viewer.IsConstantInitializer(shape_input->Name(), true);
+  }else if (optype == "MaxPool") {
+    //MaxPool "indices" output is not currently supported.
+    if (node->OutputDefs().size() > 1) {
+      return true;
+    }
+
+    // ceil_mode and dilations attrs are not supported in MIGraphX
+    const auto& attributes = node->GetAttributes();
+    const auto ceil_attr = attributes.find("ceil_mode");
+    // default value of ceil_mode (0) is supported.
+    if (ceil_attr != attributes.end() and ceil_attr->second.i() != 0) {
+      return true;
+    }
+
+    auto dila_attr = attributes.find("dilations");
+    if (dila_attr != attributes.end()) {
+      auto dilas = dila_attr->second.ints();
+      bool ret = std::all_of(dilas.begin(), dilas.end(), [](auto i) { return i == 1;});
+      if (ret == false)
+      {
+        return true;
+      }
+    }
+
+    // storage order 1 (column major format) is not supported
+    const auto storage_order_attr = attributes.find("storage_order");
+    if (storage_order_attr != attributes.end() and storage_order_attr->second.i() != 0)
+    {
+      return true;
+    }
+
+    // input can only have 4 dims
+    const auto input_shape = node->InputDefs()[0]->Shape();
+    if (input_shape->dim_size() != 4)
+    {
+      return true;
+    }
+  } else if (optype == "MatMulInteger") {
     // migraphx can handle only two inputs
     if (node->InputDefs().size() != 2)
     {
@@ -432,6 +397,47 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8)
     {
       return true;
+    }
+  } else if (optype == "Pad") {
+    // Pad is only supported only up to opset 10 (in opset 11 more inputs were added)
+    if (node->InputDefs().size() > 1) {
+      return true;
+    }
+
+    const auto& attributes = node->GetAttributes();
+    // Pad only support constant mode
+    const auto mode_attr = attributes.find("mode");
+    if(mode_attr != attributes.end())
+    {
+      const auto mode = mode_attr->second.s();
+      static const std::set<std::string> allowed_modes = {"constant"};
+
+      return allowed_modes.count(mode) == 0;
+    }
+  } else if (optype == "Reshape") {
+    // MIGraphX only support opset6 with 1 input
+    const auto& shape_arg = node->InputDefs()[1];
+    return initializers.find(shape_arg->Name()) == initializers.end();
+  } else if (optype == "Slice") {
+    //Slice in opset 10 is currently not supported.
+    //unsupported inputs: starts, ends, axes, steps
+    if (node->InputDefs().size() > 1) {
+      return true;
+    }
+    //MIGraphX does not properly handle the situation where any 
+    //value of the "starts" attribute is higher than a corresponding 
+    // value in the "ends"
+    const auto& attributes = node->GetAttributes();
+    if (attributes.count("starts") == 0 || attributes.count("ends") == 0) {
+      return true;
+    }
+
+    const auto& starts = attributes.find("starts")->second.ints();
+    const auto& ends = attributes.find("ends")->second.ints();
+    for (int i = 0; i < starts.size(); ++i) {
+      if (starts.Get(i) > ends.Get(i)) {
+        return true;
+      }
     }
   }
 
@@ -665,8 +671,10 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   }
 
   // Construct modelproto from graph
-  onnxruntime::Model model(graph_viewer.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
-          graph_viewer.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+  onnxruntime::Model model(graph_viewer.Name(), true, ModelMetaData(), PathString{}, 
+          IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap(), 
+          std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+
   onnxruntime::Graph& graph_build = model.MainGraph();
   for (const auto& node : graph_viewer.Nodes()) {
     std::vector<onnxruntime::NodeArg*> inputs, outputs;
@@ -780,7 +788,7 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
   ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", fused_node->Name());
 
   const Graph& node_subgraph = node_function->Body();
-  onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{},
+  onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{}, PathString{},
                            IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap(),
                            std::vector<ONNX_NAMESPACE::FunctionProto>(), logger};
 

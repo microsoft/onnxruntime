@@ -35,9 +35,12 @@ Status LinearRegressor<float>::Compute(OpKernelContext* ctx) const {
   int64_t yindex = 0;
 
   bool useIntercepts = intercepts_.size() == static_cast<size_t>(targets_);
+  std::vector<float> scores;
+  scores.reserve(targets_);
+
   for (int64_t i = 0; i < N; i++)  //for each point
   {
-    std::vector<float> scores;
+    scores.clear();
     int64_t current_weight_0 = i * stride;
     for (int j = 0; j < targets_; j++)  //for each target
     {

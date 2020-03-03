@@ -2,10 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/nn/conv_integer.h"
+
+#include "core/common/safeint.h"
+#include "core/providers/common.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
-#include "core/providers/common.h"
 
 namespace onnxruntime {
 
@@ -89,7 +91,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
     AllocatorPtr alloc;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-    auto* col_data = alloc->Alloc(sizeof(uint8_t) * col_buffer_size);
+    auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
 
     if (kernel_rank != 2) {

@@ -74,7 +74,8 @@ void ExpectCopy(const onnxruntime::Node& source, const std::string copy_op,
 TEST(TransformerTest, MemcpyTransformerTest) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 7;
-  auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+  auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), PathString(),
+                                                    IOnnxRuntimeOpSchemaRegistryList(),
                                                     domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
                                                     DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
@@ -129,7 +130,8 @@ TEST(TransformerTest, MemcpyTransformerTest) {
 TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 7;
-  auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+  auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), PathString(),
+                                                    IOnnxRuntimeOpSchemaRegistryList(),
                                                     domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
                                                     DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
@@ -206,6 +208,7 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
   auto model = std::make_shared<onnxruntime::Model>("test",
                                                     false,
                                                     ModelMetaData(),
+                                                    PathString(),
                                                     IOnnxRuntimeOpSchemaRegistryList(),
                                                     domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
                                                     DefaultLoggingManager().DefaultLogger());
@@ -224,6 +227,7 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
   auto sub_model = std::make_shared<onnxruntime::Model>("test_subgraph",
                                                         false,
                                                         ModelMetaData(),
+                                                        PathString(),
                                                         IOnnxRuntimeOpSchemaRegistryList(),
                                                         subgraph_domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
                                                         DefaultLoggingManager().DefaultLogger());

@@ -453,7 +453,7 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
     }
 #endif
     // This call will create a copy of model_proto and the constructed model instance will own the copy thereafter
-    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+    return onnxruntime::Model::Load(model_proto, PathString(), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_);
   };
 
@@ -474,7 +474,7 @@ common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto)
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    return onnxruntime::Model::Load(std::move(p_model_proto), model,
+    return onnxruntime::Model::Load(std::move(p_model_proto), PathString(), model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
   };
 
@@ -503,7 +503,7 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    return onnxruntime::Model::Load(std::move(model_proto), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+    return onnxruntime::Model::Load(std::move(model_proto), PathString(), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_);
   };
 
@@ -532,7 +532,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
     }
 #endif
 
-    return onnxruntime::Model::Load(std::move(model_proto), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+    return onnxruntime::Model::Load(std::move(model_proto), PathString(), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_);
   };
 
@@ -554,7 +554,7 @@ common::Status InferenceSession::Load() {
     }
 #endif
     // Pass on ownership of the parsed ModelProto to the Model instance (its job here is done by this stage)
-    return Model::Load(std::move(this->model_proto_), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+    return Model::Load(std::move(this->model_proto_), model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                        *session_logger_);
   };
 
@@ -741,7 +741,7 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
   return Status::OK();
 }
 
-static bool ModelUseFP16Helper(const onnx::TypeProto& type_proto) {
+static bool ModelHasFP16InputsHelper(const onnx::TypeProto& type_proto) {
   switch (type_proto.value_case()) {
     case ::onnx::TypeProto::ValueCase::kTensorType: {
       if (type_proto.has_tensor_type()) {
@@ -755,14 +755,14 @@ static bool ModelUseFP16Helper(const onnx::TypeProto& type_proto) {
     case ::onnx::TypeProto::ValueCase::kSequenceType: {
       if (type_proto.has_sequence_type()) {
         auto& sequence_type = type_proto.sequence_type();
-        return ModelUseFP16Helper(sequence_type.elem_type());
+        return ModelHasFP16InputsHelper(sequence_type.elem_type());
       }
       break;
     }
     case ::onnx::TypeProto::ValueCase::kMapType: {
       if (type_proto.has_map_type()) {
         auto& map_type = type_proto.map_type();
-        return ModelUseFP16Helper(map_type.value_type());
+        return ModelHasFP16InputsHelper(map_type.value_type());
       }
       break;
     }
@@ -772,11 +772,9 @@ static bool ModelUseFP16Helper(const onnx::TypeProto& type_proto) {
   return false;
 }
 
-static bool ModelUseFP16(const onnx::ModelProto& model_proto) {
-  auto& graph = model_proto.graph();
-  auto& inputs = graph.input();
-  for (auto& input : inputs) {
-    if (input.has_name() && input.has_type() && ModelUseFP16Helper(input.type())) {
+static bool ModelHasFP16Inputs(const Graph& graph) {
+  for (auto& input : graph.GetInputs()) {
+    if (input->Exists() && ModelHasFP16InputsHelper(*(input->TypeAsProto()))) {
       return true;
     }
   }
@@ -874,10 +872,10 @@ common::Status InferenceSession::Initialize() {
     is_inited_ = true;
 
     // and log telemetry
-    bool model_use_fp16 = ModelUseFP16(model_->ToProto());
+    bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
     env.GetTelemetryProvider().LogSessionCreation(session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(),
                                                   model_->Domain(), model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(),
-                                                  model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(), model_use_fp16);
+                                                  model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs);
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   } catch (const NotImplementedException& ex) {
