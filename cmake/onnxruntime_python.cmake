@@ -107,11 +107,11 @@ add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_depende
 if (MSVC)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG}")
   # if MSVC, pybind11 looks for release version of python lib (pybind11/detail/common.h undefs _DEBUG)
-  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs}
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs}
           ${PYTHON_LIBRARY_RELEASE} ${onnxruntime_EXTERNAL_LIBRARIES})
 elseif (APPLE)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -undefined dynamic_lookup")
-  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES})
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES})
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
     INSTALL_RPATH "@loader_path"
     BUILD_WITH_INSTALL_RPATH TRUE
@@ -271,7 +271,7 @@ if (onnxruntime_USE_NUPHAR)
 endif()
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  include(onnxruntime_language_interop_ops.cmake)  
+  include(onnxruntime_language_interop_ops.cmake)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
