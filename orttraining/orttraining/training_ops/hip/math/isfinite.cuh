@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <hip/hip_fp16.h>
 #include "core/providers/hip/cu_inc/common.cuh"
 #include "isfinite.h"
 

@@ -1,4 +1,3 @@
-#include "hip/hip_runtime.h"
 /**
 * Copyright (c) 2016-present, Facebook, Inc.
 *
@@ -210,8 +209,8 @@ __device__ void cuWelfordMuSigma2(
     for (; l + 7 < n2; l += 8 * numx) {
       for (int k = 0; k < 8; k += 2) {
         float2 curr = __half22float2(*((__half2*)(lvals + l + k)));
-        cuWelfordOnlineSum(curr.x, mu, sigma2, count);
-        cuWelfordOnlineSum(curr.y, mu, sigma2, count);
+        cuWelfordOnlineSum(static_cast<float>(curr.x), mu, sigma2, count);
+        cuWelfordOnlineSum(static_cast<float>(curr.y), mu, sigma2, count);
       }
     }
     for (; l < n2; ++l) {
