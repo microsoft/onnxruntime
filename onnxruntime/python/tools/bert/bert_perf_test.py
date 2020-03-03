@@ -16,7 +16,39 @@ import psutil
 import csv
 import numpy as np
 from datetime import datetime
-from compare_bert_results import get_bert_inputs, create_session, generate_test_data, onnxruntime_inference
+from bert_test_data import get_bert_inputs, generate_test_data
+
+def create_session(model_path, use_gpu, use_openmp, graph_optimization_level, num_threads, wait_policy):
+    execution_providers = ['CPUExecutionProvider'] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
+    sess_options = onnxruntime.SessionOptions()
+    sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
+    sess_options.graph_optimization_level = graph_optimization_level
+    if not use_openmp:
+        sess_options.intra_op_num_threads=num_threads
+        if "OMP_NUM_THREADS" in os.environ:
+            del os.environ["OMP_NUM_THREADS"]
+        if "OMP_WAIT_POLICY" in os.environ:
+            del os.environ["OMP_WAIT_POLICY"]
+    else:
+        sess_options.intra_op_num_threads=1
+        os.environ["OMP_NUM_THREADS"] = str(num_threads)
+        os.environ["OMP_WAIT_POLICY"] = wait_policy
+
+    session = onnxruntime.InferenceSession(model_path, sess_options, providers=execution_providers)
+    if use_gpu:
+        assert 'CUDAExecutionProvider' in session.get_providers()
+    return session
+
+def onnxruntime_inference(session, all_inputs, output_names):
+    results = []
+    latency_list = []
+    for test_case_id, inputs in enumerate(all_inputs):
+        start_time = timeit.default_timer()
+        result = session.run(output_names, inputs)
+        latency = timeit.default_timer() - start_time
+        results.append(result)
+        latency_list.append(latency)
+    return results, latency_list
 
 def get_contiguous_inputs(all_inputs):
     """
@@ -63,22 +95,22 @@ def run_one_test(latency_results, model_path, all_inputs, batch_size, sequence_l
     print("Average latency is {} ms".format(format(average_latency, '.2f')))
     latency_results[key] = average_latency
 
-def run_perf_tests(average_latency, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, seed, verbose, contiguous, input_ids, segment_ids, input_mask, all_inputs):
-
-    run_one_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, use_openmp=False, contiguous=contiguous, num_threads=psutil.cpu_count(logical=True), wait_policy='ACTIVE')
+def run_perf_tests(average_latency, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, seed, verbose, contiguous, input_ids, segment_ids, input_mask, all_inputs, run_all_settings):
+    if use_gpu or run_all_settings:
+        run_one_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, use_openmp=False, contiguous=contiguous, num_threads=psutil.cpu_count(logical=True), wait_policy='ACTIVE')
 
     # onnxruntime-gpu package is not built with OpenMP, so skip openmp test for gpu.
     if not use_gpu:
-        run_one_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, use_openmp=True, contiguous=contiguous, num_threads=psutil.cpu_count(logical=True), wait_policy='PASSIVE')
         run_one_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, use_openmp=True, contiguous=contiguous, num_threads=psutil.cpu_count(logical=True), wait_policy='ACTIVE')
+        
+        if run_all_settings:
+            run_one_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, use_openmp=True, contiguous=contiguous, num_threads=psutil.cpu_count(logical=True), wait_policy='PASSIVE')
 
-        if psutil.cpu_count(logical=True) != psutil.cpu_count(logical=False):
-            run_one_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, use_openmp=True, contiguous=contiguous, num_threads=psutil.cpu_count(logical=False), wait_policy='ACTIVE')
-            run_one_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, use_openmp=True, contiguous=contiguous, num_threads=psutil.cpu_count(logical=False), wait_policy='PASSIVE')
+            if psutil.cpu_count(logical=True) != psutil.cpu_count(logical=False):
+                run_one_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, use_openmp=True, contiguous=contiguous, num_threads=psutil.cpu_count(logical=False), wait_policy='ACTIVE')
+                run_one_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, use_openmp=True, contiguous=contiguous, num_threads=psutil.cpu_count(logical=False), wait_policy='PASSIVE')
 
-    return average_latency
-
-def run_performance(average_latency, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, seed, verbose):
+def run_performance(average_latency, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, seed, verbose, run_all_settings):
     # Try deduce input names from model.
     input_ids, segment_ids, input_mask = get_bert_inputs(model_path)
 
@@ -87,14 +119,15 @@ def run_performance(average_latency, model_path, batch_size, sequence_length, us
     all_inputs = generate_test_data(batch_size, sequence_length, test_cases, seed, verbose, input_ids, segment_ids, input_mask, random_mask_length=False)
 
     contiguous = False
-    run_perf_tests(average_latency, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, seed, verbose, contiguous, input_ids, segment_ids, input_mask, all_inputs)
+    if run_all_settings:
+        run_perf_tests(average_latency, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, seed, verbose, contiguous, input_ids, segment_ids, input_mask, all_inputs, run_all_settings)
 
     # Convert inputs to contiguous array, which could improve inference performance
     all_inputs, contiguous_latency = get_contiguous_inputs(all_inputs)
     print("Extra latency for converting inputs to contiguous: {} ms".format(format(contiguous_latency, '.2f')))
 
     contiguous = True
-    run_perf_tests(average_latency, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, seed, verbose, contiguous, input_ids, segment_ids, input_mask, all_inputs)
+    run_perf_tests(average_latency, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, seed, verbose, contiguous, input_ids, segment_ids, input_mask, all_inputs, run_all_settings)
 
     return contiguous_latency
 
@@ -109,14 +142,14 @@ def parse_arguments():
     parser.add_argument('--sequence_length',  required=True, type=int,
                         help="maximum sequence length of input")
 
-    parser.add_argument('--samples',  required=False, type=int, default=1,
+    parser.add_argument('--samples',  required=False, type=int, default=10,
                         help="number of samples to be generated")
 
     parser.add_argument('--test_times',  required=False, type=int, default=0,
-                        help="number of times to run per sample")
+                        help="number of times to run per sample. By default, the value is 1000 / samples")
 
     parser.add_argument('--seed',  required=False, type=int, default=3,
-                        help="random seed")
+                        help="random seed. Use the same seed to make sure test data is same in multiple tests.")
 
     parser.add_argument('--verbose', required=False, action='store_true', help="print verbose information")
     parser.set_defaults(verbose=False)
@@ -126,6 +159,9 @@ def parse_arguments():
 
     parser.add_argument('--inclusive', required=False, action='store_true', help="include the latency of converting array to contiguous")
     parser.set_defaults(inclusive=False)
+
+    parser.add_argument('--all', required=False, action='store_true', help="test all settings")
+    parser.set_defaults(all=False)
 
     args = parser.parse_args()
     return args
@@ -143,7 +179,7 @@ def main():
         print("Warning: Please install onnxruntime package instead of onnxruntime-gpu to get best cpu performance.")
 
     average_latency = {}
-    contiguous_latency = run_performance(average_latency, args.model, args.batch_size, args.sequence_length, args.use_gpu, args.samples, args.test_times, args.seed, args.verbose)
+    contiguous_latency = run_performance(average_latency, args.model, args.batch_size, args.sequence_length, args.use_gpu, args.samples, args.test_times, args.seed, args.verbose, args.all)
 
     if average_latency is None:
         return
