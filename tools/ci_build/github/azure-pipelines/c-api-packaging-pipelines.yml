@@ -165,7 +165,7 @@ jobs:
   pool: 'Win-GPU-2019'
   timeoutInMinutes:  120
   variables:
-    EnvSetupScript: setup_env.bat
+    EnvSetupScript: setup_env_cuda.bat
     buildArch: x64
     msbuildArch: amd64
     msbuildPlatform: x64
