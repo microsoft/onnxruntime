@@ -11,21 +11,58 @@
 #include "backend_manager.h"
 #include <map>
 
-namespace ngraph {
-namespace runtime {
-class Backend;
-}
-}  // namespace ngraph
-
 namespace onnxruntime {
 
 // Information needed to construct OpenVINO execution providers.
 struct OpenVINOExecutionProviderInfo {
-  const char* device{"CPU_FP32"};
+  std::string device_id_;
+  std::string precision_;
 
-  explicit OpenVINOExecutionProviderInfo(const char* dev) : device(dev) {
+  explicit OpenVINOExecutionProviderInfo(std::string dev_id) {
+    if(dev_id == "") {
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP]" << "No runtime device selection option provided.";
+      #ifdef OPENVINO_CONFIG_CPU_FP32
+        device_id_ = "CPU";
+        precision_ = "FP32";
+      #endif
+      #ifdef OPENVINO_CONFIG_GPU_FP32
+        device_id_ = "GPU";
+        precision_ = "FP32";
+      #endif
+      #ifdef OPENVINO_CONFIG_GPU_FP16
+        device_id_ = "GPU";
+        precision_ = "FP16";
+      #endif
+      #ifdef OPENVINO_CONFIG_MYRIAD
+        device_id_ = "MYRIAD";
+        precision_ = "FP16";
+      #endif
+      #ifdef OPENVINO_CONFIG_VAD_M
+        device_id_ = "HDDL";
+        precision_ = "FP16";
+      #endif
+    } else if (dev_id == "CPU_FP32") {
+      device_id_ = "CPU";
+      precision_ = "FP32";
+    } else if (dev_id == "GPU_FP32") {
+      device_id_ = "GPU";
+      precision_ = "FP32";
+    } else if (dev_id == "GPU_FP16") {
+      device_id_ = "GPU";
+      precision_ = "FP16";
+    } else if (dev_id == "MYRIAD_FP16") {
+      device_id_ = "MYRIAD";
+      precision_ = "FP16";
+    } else if (dev_id == "VAD-M_FP16") {
+      device_id_ = "VAD-M";
+      precision_ = "FP16";
+    } else {
+      ORT_THROW("Invalid device string: " + dev_id);
+    }
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP]" << "Choosing Device: " << device_id_ << " , Precision: " << precision_;
   }
   OpenVINOExecutionProviderInfo() {
+    OpenVINOExecutionProviderInfo("");
   }
 };
 

@@ -282,7 +282,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     if (enable_openvino) {
 #ifdef USE_OPENVINO
       sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "CPU"));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, ""));
 #else
       fprintf(stderr, "OpenVINO is not supported in this build");
       return -1;
