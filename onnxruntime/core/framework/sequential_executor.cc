@@ -302,7 +302,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       Status compute_status;
 
       ORT_TRY {
-        std::cerr << "Node: " << p_op_kernel->Node().OpType() << " EP: " << p_op_kernel->Info().GetExecutionProvider()->Type() << std::endl;
+        //std::cerr << "Node: " << p_op_kernel->Node().OpType() << " EP: " << p_op_kernel->Info().GetExecutionProvider()->Type() << std::endl;
         compute_status = p_op_kernel->Compute(&op_kernel_context);
       }
       ORT_CATCH(const std::exception& ex) {
