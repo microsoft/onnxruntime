@@ -107,10 +107,27 @@ class FastGelu : public OpKernel {
       }
     }
 
-    const auto x_pow_3 = EIGEN_X.cube();
-    const auto tanh_result = (kAlpha * (kGamma * x_pow_3 + EIGEN_X)).tanh();
+    //
+    // Commented out EIGEN implentation due to EIGEN bug.
+    // On Windows build with GPU enabled, kGamma * x_pow_3 + EIGEN_X below would produce incorrect
+    // result, same issue discovered in fast_gelu_grad op.
+    // Given that CPU kernel is mostly for conformance check, where performance is not of high
+    // priority, to workaround this bug, use a for loop and avoid using EIGEN library.
+    //
+    // const auto x_pow_3 = EIGEN_X.cube();
+    // const auto tanh_result = (kAlpha * (kGamma * x_pow_3 + EIGEN_X)).tanh();
 
-    EIGEN_Y = 0.5f * EIGEN_X * (1.f + tanh_result);
+    // EIGEN_Y = 0.5f * EIGEN_X * (1.f + tanh_result);
+
+    const T* input = X->template Data<T>();
+    T* output = Y->template MutableData<T>();
+    int64_t elem_count = X->Shape().Size();
+    for (auto i = 0; i < elem_count; ++i) {
+      const auto x_val = input[i];
+      const auto x_cube = x_val * x_val * x_val;
+      T tanh_result = std::tanh(kAlpha * x_val + kAlpha * kGamma * x_cube);
+      output[i] = 0.5f * x_val * (tanh_result + 1.0f);
+    }
     return Status::OK();
   }
 

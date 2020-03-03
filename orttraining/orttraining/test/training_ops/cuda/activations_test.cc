@@ -35,16 +35,16 @@ static void TestActivations(const std::vector<int64_t>& tensor_dim,
   test.CompareWithCPU(kCudaExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
 }
 
-// temporary disable this test due to task 615984.
-TEST(CudaKernelTest, DISABLED_Gelu_basic) {
+TEST(CudaKernelTest, Gelu_basic) {
   std::vector<std::vector<int64_t>> test_dims{{4}, {16, 2}, {8, 2, 128, 128}};
   for (const auto& test_dim : test_dims) {
-    TestActivations(test_dim, "Gelu", false /* grad_op */);
+
+    // bump up the tolerance due to the nature of gelu op accumulation computation complexity
+    TestActivations(test_dim, "Gelu", false /* grad_op */, 1e-3, 1e-3);
   }
 }
 
-// temporary disable this test due to task 615984.
-TEST(CudaKernelTest, DISABLED_FastGelu_basic) {
+TEST(CudaKernelTest, FastGelu_basic) {
   std::vector<std::vector<int64_t>> test_dims{{4}, {16, 2}, {8, 2, 128, 128}};
   for (const auto& test_dim : test_dims) {
     TestActivations(test_dim, "FastGelu", false /* grad_op */);
@@ -58,8 +58,7 @@ TEST(CudaKernelTest, GeluGrad_basic) {
   }
 }
 
-// temporary disable this test due to task 615984.
-TEST(CudaKernelTest, DISABLED_FastGeluGrad_basic) {
+TEST(CudaKernelTest, FastGeluGrad_basic) {
   std::vector<std::vector<int64_t>> test_dims{{4}, {16, 2}, {8, 2, 128, 128}};
   for (const auto& test_dim : test_dims) {
     TestActivations(test_dim, "FastGeluGrad", true /* grad_op */);

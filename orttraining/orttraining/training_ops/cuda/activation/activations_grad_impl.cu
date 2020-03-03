@@ -22,7 +22,7 @@ struct OP_FastGeluGrad : public CtxGeluGrad {
   __device__ __inline__ T operator()(const T& dy, const T& x) const {
     const T kAlpha = static_cast<T>(M_2_SQRTPI * M_SQRT1_2);
     const T kGamma = T(0.044715);
-    const T kBeta = kAlpha * kGamma * T(3);    
+    const T kBeta = kAlpha * kGamma * T(3);
     const auto tanh_value =
         static_cast<T>(_Tanh(kAlpha * ((kGamma * x * x * x) + x)));
     return dy * T(0.5) * ((-x * tanh_value * tanh_value + x) * (kBeta * x * x + kAlpha) +

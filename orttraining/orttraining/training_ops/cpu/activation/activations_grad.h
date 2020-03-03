@@ -45,9 +45,9 @@ class FastGeluGrad final : public OpKernel {
     Tensor* dX = context->Output(0, X->Shape());
     //
     // Commented out EIGEN implentation due to EIGEN bug.
-    // On Windows Release build with GPU enabled, kAlpha * EIGEN_X below would produce pure 0 
+    // On Windows Release build with GPU enabled, kAlpha * EIGEN_X below would produce pure 0
     // result, even though neither kAlpha nor EIGEN_X is zero.
-    // Given that CPU kernal is mostly for conformance check, where performance is not of high 
+    // Given that CPU kernel is mostly for conformance check, where performance is not of high
     // priority, to workaround this bug, use a for loop and avoid using EIGEN library.
     //
     // EIGEN_X_VAR(xm);
@@ -59,13 +59,16 @@ class FastGeluGrad final : public OpKernel {
 
     // EIGEN_DX = dy * (0.5f * (tanh_result + sech_sqr_result * (kAlpha * xm + kBeta * x_cube) + 1));
     //
-    for (auto i = 0; i < X->Shape().Size(); ++i) {
-      const auto x_val = X->template Data<T>()[i];
+    const T* dY_data = dY->template Data<T>();
+    const T* X_data = X->template Data<T>();
+    T* dX_data = dX->template MutableData<T>();
+    int64_t elem_count = X->Shape().Size();
+    for (auto i = 0; i < elem_count; ++i) {
+      const auto x_val = X_data[i];
       const auto x_cube = x_val * x_val * x_val;
       T tanh_result = std::tanh(kAlpha * x_val + kAlpha * kGamma * x_cube);
       T sech_sqr_result = 1 - (tanh_result * tanh_result);
-      dX->template MutableData<T>()[i] = (dY->template Data<T>()[i]) *
-                                         (0.5f * (tanh_result + sech_sqr_result * (kAlpha * x_val + kBeta * x_cube) + 1));
+      dX_data[i] = (dY_data[i]) * (0.5f * (tanh_result + sech_sqr_result * (kAlpha * x_val + kBeta * x_cube) + 1));
     }
     return Status::OK();
   }
@@ -74,7 +77,7 @@ class FastGeluGrad final : public OpKernel {
   static constexpr T kAlpha = static_cast<T>(M_2_SQRTPI * M_SQRT1_2);
   static constexpr T kGamma = 0.044715f;
   static constexpr T kBeta = kGamma * kAlpha * 3.0f;
-  
+
 };
 
 }  // namespace contrib
