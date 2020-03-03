@@ -18,8 +18,9 @@ CMake creates a target to this project
     <IsReleaseBuild Condition=" '$(IsReleaseBuild)' == '' ">false</IsReleaseBuild>
 
     <!--internal build related properties-->
-    <OnnxRuntimeSourceDirectory Condition="'$(OnnxRuntimeSourceDirectory)'==''">..</OnnxRuntimeSourceDirectory>    
+    <OnnxRuntimeSourceDirectory Condition="'$(OnnxRuntimeSourceDirectory)'==''">..</OnnxRuntimeSourceDirectory>
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">..\build\Windows</OnnxRuntimeBuildDirectory>
+    <OnnxRuntimePackagesDirectory Condition="'$(OnnxRuntimePackagesDirectory)'==''">$(OnnxRuntimeBuildDirectory)\packages</OnnxRuntimePackagesDirectory>
     <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
     
   </PropertyGroup>
@@ -87,6 +88,9 @@ CMake creates a target to this project
     <ConvertToAbsolutePath Paths="$(NativeBuildOutputDir)">
       <Output TaskParameter="AbsolutePaths" PropertyName="NativeBuildOutputDirAbs"/>
     </ConvertToAbsolutePath>
+    <ConvertToAbsolutePath Paths="$(OnnxRuntimePackagesDirectory)">
+      <Output TaskParameter="AbsolutePaths" PropertyName="OnnxRuntimePackagesDirectoryAbs"/>
+    </ConvertToAbsolutePath>
     <ConvertToAbsolutePath Paths="$(OnnxRuntimeSourceDirectory)">
       <Output TaskParameter="AbsolutePaths" PropertyName="OnnxRuntimeSourceDirectoryAbs"/>
     </ConvertToAbsolutePath>    
@@ -107,7 +111,7 @@ CMake creates a target to this project
              Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId)"/>
     
     <Message Importance="High" Text="Generating nuspec for the native Nuget package ..." />
-    <Exec ContinueOnError="False" Command="python ..\tools\nuget\generate_nuspec_for_native_nuget.py --package_version $(PackageVersion) --package_name $(OrtPackageId) --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild)" ConsoleToMSBuild="true">
+    <Exec ContinueOnError="False" Command="python ..\tools\nuget\generate_nuspec_for_native_nuget.py --package_version $(PackageVersion) --package_name $(OrtPackageId) --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild)" ConsoleToMSBuild="true">
         <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
     </Exec>
 
