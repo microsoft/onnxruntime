@@ -507,13 +507,12 @@ static void AppendNodesToSubGraph(const std::vector<NodeIndex>& nodes,
 
 static std::vector<NodeIndex>
 GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, /*out*/ std::unordered_set<std::string>& mgx_required_initializers) {
-  // const auto mgx_supported_ops = GetMIGraphXSupportedOps();
   static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Add", "ArgMax", "ArgMin", "Asin", "Atan",
       "AveragePool", "BatchNormalization", "Cast", "Ceil", "Clip", "Concat", "Constant", "ConstantFill",
       "ConstantOfShape", "Conv", "Cos", "Cosh", "Div", "Dropout", "Elu", "Erf", "Exp", "Expand", 
       "Flatten", "Floor", "GRU", "Gather", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "Identity", "ImageScaler", 
       "InstanceNormalization", "LRN", "LSTM", "LeakyRelu", "Log", "LogSoftmax", "MatMul", "Max", "MaxPool", "Min", 
-      "Mul", "Pad", "Pow", "RNN", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", 
+      "Mul", "Pad", "Pow", "PRelu", "RNN", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", 
       "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", "Round", "Shape", 
       "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Sqrt", "Squeeze", "Sub", "Sum", "Tan", "Tanh", 
       "Transpose", "Unsqueeze"};
@@ -811,7 +810,6 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 
 Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                         std::vector<NodeComputeInfo>& node_compute_funcs) {
-  // std::size_t fused_node_index = 0;
   for (const auto& fused_node : fused_nodes) {
     // map parameter input name to index
     std::unordered_map<std::string, std::size_t> input_name_index;
