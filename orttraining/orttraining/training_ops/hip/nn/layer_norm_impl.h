@@ -24,6 +24,8 @@
 
 #pragma once
 
+#include "core/providers/hip/hip_common.h"
+
 namespace onnxruntime {
 namespace hip {
 

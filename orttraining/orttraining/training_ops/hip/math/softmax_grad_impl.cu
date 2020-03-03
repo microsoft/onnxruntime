@@ -1,4 +1,3 @@
-#include "hip/hip_runtime.h"
 /**
 * Copyright (c) 2016-present, Facebook, Inc.
 *
@@ -18,7 +17,6 @@
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
 
 #include "orttraining/training_ops/hip/math/softmax_grad.h"
-
 #include "core/providers/hip/cu_inc/common.cuh"
 #include "core/providers/hip/math/softmax_impl.cuh"
 

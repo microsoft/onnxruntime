@@ -7,10 +7,7 @@
 #include <mutex>
 #include <assert.h>
 
-#include <hip/hip_runtime.h>
-
 #include "core/providers/hip/hip_common.h"
-#include "core/providers/hip/hip_call.h"
 
 namespace onnxruntime {
 namespace hip {

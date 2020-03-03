@@ -1,5 +1,4 @@
-#include "hip/hip_runtime.h"
-#include <hip/hip_fp16.h>
+
 #include "core/providers/hip/cu_inc/common.cuh"
 #include "mixed_precision_scale.h"
 
