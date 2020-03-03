@@ -1,7 +1,7 @@
 parameters:
   DoEsrp: 'false'
-  PackageNameNative: 'Microsoft.ML.ORTFeaturizers'
-  PackageNameManaged: 'Microsoft.ML.ORTFeaturizers.Managed'
+  PackageNameManaged: 'Microsoft.ML.OnnxRuntime.Managed'
+  PackageName: 'Microsoft.ML.ORTFeaturizers'
   DoCompliance: 'false'
 
 jobs: 
@@ -19,7 +19,7 @@ jobs:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=$(PackageName)
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      mkdir $(Build.ArtifactStagingDirectory)\testdata
@@ -39,7 +39,7 @@ jobs:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage /p:OrtPackageId=$(PackageName)
      cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
      ren *.nupkg win-x86.zip
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
@@ -152,6 +152,7 @@ jobs:
   - template: ../../templates/validate-nuget.yml
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)'
+      NugetPackage: '$(PackageName)*nupkg'
       PlatformsSupported: 'win-x64,win-x86,linux-x64,osx-x64'
       VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
@@ -184,7 +185,7 @@ jobs:
     condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
     inputs:
       command: 'push'
-      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/$(PackageNameNative).$(NuGetPackageVersionNumber).nupkg'
+      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/$(PackageName).$(NuGetPackageVersionNumber).nupkg'
       publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
 
   - task: NuGetCommand@2
