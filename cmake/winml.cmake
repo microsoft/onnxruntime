@@ -602,5 +602,3 @@ endif()
 # However, there are no cuda imports in winml_dll, and the linker throws the 4199 warning.
 # This is needed to allow winml_dll build with cuda enabled.
 target_link_options(winml_dll PRIVATE /ignore:4199)
-
-target_link_libraries(winml_dll PRIVATE windowsapp.lib)
