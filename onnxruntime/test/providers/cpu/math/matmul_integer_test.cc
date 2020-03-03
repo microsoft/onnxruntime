@@ -35,7 +35,7 @@ TEST(MatmulIntegerOpTest, MatMulInteger) {
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t) {
-  if (!DefaultCudaExecutionProvider()) return;
+  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -61,7 +61,7 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t) {
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_ND) {
-  if (!DefaultCudaExecutionProvider()) return;
+  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -95,7 +95,7 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_ND) {
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_B_ND) {
-  if (!DefaultCudaExecutionProvider()) return;
+  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -129,7 +129,7 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_B_ND) {
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_ND_B_ND) {
-  if (!DefaultCudaExecutionProvider()) return;
+  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -166,7 +166,7 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_ND_B_ND) {
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_Has_Zero_Point) {
-  if (!DefaultCudaExecutionProvider()) return;
+  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -202,7 +202,7 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_Has_Zero_Point) {
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_No_Zero_Point) {
-  if (!DefaultCudaExecutionProvider()) return;
+  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
