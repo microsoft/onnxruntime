@@ -604,4 +604,3 @@ endif()
 target_link_options(winml_dll PRIVATE /ignore:4199)
 
 target_link_libraries(winml_dll PRIVATE windowsapp.lib)
-target_link_options(winml_dll PRIVATE /NODEFAULTLIB:kernel32.lib /NODEFAULTLIB:user32.lib /NODEFAULTLIB:gdi32.lib /NODEFAULTLIB:winspool.lib /NODEFAULTLIB:shell32.lib /NODEFAULTLIB:ole32.lib /NODEFAULTLIB:oleaut32.lib /NODEFAULTLIB:uuid.lib /NODEFAULTLIB:comdlg32.lib /NODEFAULTLIB:advapi32.lib)
