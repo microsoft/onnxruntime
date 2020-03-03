@@ -876,3 +876,4 @@ if (onnxruntime_BUILD_CSHARP)
   include(onnxruntime_csharp.cmake)
 endif()
 
+include(windows_toolchain.cmake)

@@ -204,7 +204,7 @@ list(APPEND winml_adapter_files
     ${winml_adapter_dir}/winml_adapter_model.h
     ${winml_adapter_dir}/winml_adapter_session.cpp
     )
-	
+
 if (onnxruntime_USE_DML)
   list(APPEND winml_adapter_files
     ${winml_adapter_dir}/abi_custom_registry_impl.cpp
