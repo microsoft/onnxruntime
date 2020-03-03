@@ -18,7 +18,7 @@ if (onnxruntime_ENABLE_WCOS)
     return()
 endif()
 
-set(win32_libs ${CMAKE_CXX_STANDARD_LIBRARIES})
+set(win32_libs "${CMAKE_CXX_STANDARD_LIBRARIES}")
 set(CMAKE_CXX_STANDARD_LIBRARIES "")
 get_directory_property(all_targets BUILDSYSTEM_TARGETS)
 foreach(target ${all_targets})
