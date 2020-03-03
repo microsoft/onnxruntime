@@ -30,6 +30,7 @@ class DropoutGenerator {
 
 template <typename T>
 void DropoutKernelImpl(
+  const cudaDeviceProp& prop,
   const int64_t N,
   const float ratio,
   DropoutGenerator& generator,

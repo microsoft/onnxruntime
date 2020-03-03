@@ -89,6 +89,10 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
       arena_extend_strategy_(info.arena_extend_strategy) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
+  // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
+  CUDA_CALL_THROW(cudaDeviceSynchronize());
+  CUDA_CALL_THROW(cudaGetDeviceProperties(&device_prop_, device_id_));
+
   size_t free = 0;
   size_t total = 0;
   CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));

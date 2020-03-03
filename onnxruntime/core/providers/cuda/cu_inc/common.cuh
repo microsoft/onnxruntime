@@ -226,12 +226,6 @@ __device__ __inline__ T _Gelu(T a) {
 #define CUDA_LONG int32_t
 #endif
 
-#define IDX2C(i, j, ld) (((j) * (ld)) + (i))  // 0 based indexing
-
-// ---------------------------------------------------------------------------
-// GridDim -- helper to choose the CUDA grid dimensions
-// ---------------------------------------------------------------------------
-
 template <class INT, class INT2>
 static INT CeilDiv(INT a, INT2 b)  // ceil(a/b)
 {
@@ -241,54 +235,13 @@ static INT CeilDiv(INT a, INT2 b)  // ceil(a/b)
 struct GridDim {
   enum : CUDA_LONG {
     maxThreadsPerBlock = 256,  // max threads per block
-    maxWarpsPerBlock = 32,     // max warps per block
     maxElementsPerThread = 4,  // max element processed per thread
   };
-
-  // use these for launching
-  //   GridDim grid(NN);
-  //   kernel<<<grid.m_blocksPerGrid, grid.m_threadsPerBlock, ...>>>(...)
-  int blocks_per_grid_, threads_per_block_;  // (these may in the future be extended to multi-dimensional ones)
-  CUDA_LONG N_;
-
-  GridDim(CUDA_LONG N)  // linear grid
-  {
-    N_ = N;
-    if (N == 0)  // CUDA will fail to launch with 0 blocks
-      N = 1;
-
-    // get device information
-    const auto& props = DeviceProp::GetDeviceProps();
-    CUDA_LONG numProcs = props.multiProcessorCount;
-    CUDA_LONG warpSize = props.warpSize;
-
-    // distribute warps evenly over processors
-    CUDA_LONG warpsPerProc = CeilDiv(N, numProcs * warpSize);
-
-    // if too many warps per block then reduce #warps
-    // This limits the number of threads to 512.
-    if (warpsPerProc > maxWarpsPerBlock) {
-      CUDA_LONG overBy = CeilDiv(warpsPerProc, maxWarpsPerBlock);  // we are over by this factor
-      warpsPerProc = CeilDiv(warpsPerProc, overBy);
-    }
-
-    // put it back together
-    threads_per_block_ = warpsPerProc * warpSize;  // =a multiple of 32 that is as close to 1024 as makes sense given NN
-    blocks_per_grid_ = CeilDiv(N, threads_per_block_);
-    if (blocks_per_grid_ == 1)
-      threads_per_block_ = N;  // don't launch more than necessary
-    assert(blocks_per_grid_ * threads_per_block_ >= N);
-  }
-
-  // compute our location on the grid
-  static __device__ CUDA_LONG GetLinearThreadId() {
-    return blockDim.x * blockIdx.x + threadIdx.x;
-  }
 };
 
-#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N) \
-  CUDA_LONG id = GridDim::GetLinearThreadId();     \
-  if (id >= N)                                     \
+#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N)          \
+  CUDA_LONG id = blockDim.x * blockIdx.x + threadIdx.x;     \
+  if (id >= N)                                              \
     return;
 
 // CUDA_KERNEL_ASSERT is a macro that wraps an assert() call inside cuda kernels.

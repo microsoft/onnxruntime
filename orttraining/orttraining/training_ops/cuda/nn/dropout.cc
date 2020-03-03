@@ -80,7 +80,7 @@ Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   }
   ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
 
-  DropoutKernelImpl(N, ratio_data, GetGenerator(), X_data, Y_data, mask_data);
+  DropoutKernelImpl(GetDeviceProp(), N, ratio_data, GetGenerator(), X_data, Y_data, mask_data);
 
   return Status::OK();
 }

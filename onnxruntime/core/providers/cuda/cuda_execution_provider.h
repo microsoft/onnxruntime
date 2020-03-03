@@ -76,9 +76,11 @@ class CUDAExecutionProvider : public IExecutionProvider {
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
   int GetDeviceId() const { return device_id_; }
+  const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
 
  private:
   OrtDevice::DeviceId device_id_;
+  cudaDeviceProp device_prop_;
   size_t cuda_mem_limit_;
   ArenaExtendStrategy arena_extend_strategy_;
 

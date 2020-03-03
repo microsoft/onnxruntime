@@ -65,7 +65,7 @@ Status LayerNormGrad<T, U>::ComputeInternal(OpKernelContext* p_op_kernel_context
   auto part_grad_gamma = GetScratchBuffer<CudaU>(part_size * n2);
   auto part_grad_beta = GetScratchBuffer<CudaU>(part_size * n2);
 
-  HostLayerNormGradient(Y_grad_data, mean_data, inv_std_var_data, X_data, n1, n2, scale_data, X_grad_data, scale_grad_data, bias_grad_data,
+  HostLayerNormGradient(GetDeviceProp(), Y_grad_data, mean_data, inv_std_var_data, X_data, n1, n2, scale_data, X_grad_data, scale_grad_data, bias_grad_data,
                         part_grad_gamma.get(), part_grad_beta.get(), part_size);
   return Status::OK();
 }
