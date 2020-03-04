@@ -108,6 +108,6 @@ install(TARGETS onnxruntime
 
 set_target_properties(onnxruntime PROPERTIES FOLDER "ONNXRuntime")
 
-if (onnxruntime_ENABLE_WCOS)
+if (WINDOWS_STORE)
   target_link_options(onnxruntime PRIVATE /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll)
 endif()

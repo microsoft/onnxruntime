@@ -1,6 +1,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+if (NOT WINDOWS_STORE)
+  message(FATAL_ERROR "WinML is only supported on WCOS")
+endif()
+
 include(precompiled_header.cmake)
 include(winml_sdk_helpers.cmake)
 include(winml_cppwinrt.cmake)
@@ -563,15 +567,6 @@ add_dependencies(winml_dll winml_sdk_cppwinrt)
 add_dependencies(winml_dll winml_api_native)
 add_dependencies(winml_dll winml_api_native_internal)
 
-# Any project that links in debug_alloc.obj needs this lib.
-# unresolved external symbol __imp_SymSetOptions
-# ...                        __imp_SymGetLineFromAddr64
-# ...                        __imp_SymInitialize
-# ...                        __imp_SymFromAddr
-if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
-  set(DBGHELP dbghelp.lib)
-endif("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
-
 # Link libraries
 target_link_libraries(winml_dll PRIVATE onnxruntime)
 target_link_libraries(winml_dll PRIVATE re2)
@@ -581,7 +576,15 @@ target_link_libraries(winml_dll PRIVATE winml_lib_image)
 target_link_libraries(winml_dll PRIVATE winml_lib_ort)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
 target_link_libraries(winml_dll PRIVATE delayimp.lib)
-target_link_libraries(winml_dll PRIVATE ${DBGHELP})
+
+# Any project that links in debug_alloc.obj needs this lib.
+# unresolved external symbol __imp_SymSetOptions
+# ...                        __imp_SymGetLineFromAddr64
+# ...                        __imp_SymInitialize
+# ...                        __imp_SymFromAddr
+if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug" OR "${CMAKE_BUILD_TYPE}" STREQUAL "RelWithDebInfo")
+  target_link_libraries(winml_dll PRIVATE dbghelp.lib)
+endif()
 
 # 1 of 3 projects that fail in link with 'failed to do memory mapped file I/O' (Only release)
 # when using x86 hosted architecture. When using the LKG compiler this becomes a problem
