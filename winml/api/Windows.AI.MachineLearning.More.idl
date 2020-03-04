@@ -21,26 +21,35 @@ import "windows.storage.idl";
 
 namespace Windows.AI.MachineLearning.More
 {
+	[threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass LearningModelJunctionResolutionPolicy
+    {
+        static LearningModelJunctionResolutionPolicy Create();
+
+        void Foo();
+    }
+
 
     //! \brief Describes the common properties that all features have.
     [uuid(f3f39d9f-52ce-4588-86c5-94fbc382d8b6)]
-    interface ILearningModelLayer
+    interface ILearningModelJunction
     {
-        ILearningModelLayer Then(ILearningModelLayer next_layer);
+        ILearningModelJunction Then(ILearningModelJunction next_junction);
 
-        ILearningModelLayer Then(ILearningModelLayer next_layer, LearningModelLayerResolutionPolicy policy);
+        ILearningModelJunction Then(ILearningModelJunction next_junction, LearningModelJunctionResolutionPolicy policy);
     }
 
-    //! \interface ILearningModelLayer
+    //! \interface ILearningModelJunction
     //! \brief Represents a trained machine learning model.
     //! \details This is the main object you use to interact with Windows Machine Learning.  You use 
     //! it to load, bind, and evaluate trained ONNX models.   To load the model you use 
     //! one of the Load constructors.  You can then enumerate the InputFeatures and 
     //! OutputFeatures.   To bind and evaluate you create a LearningModelSession.
-    [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
-    runtimeclass FullyConnectedLayer : ILearningModelLayer
+    runtimeclass FullyConnectedJunction : ILearningModelJunction
     {
     }
 
@@ -55,24 +64,24 @@ namespace Windows.AI.MachineLearning.More
     [dualapipartition(1)]
     runtimeclass LearningModelBuilder : Windows.Foundation.IClosable
     {
-        ILearningModelLayer InputLayer { get; };
-        ILearningModelLayer OutputLayer { get; };
+        ILearningModelJunction InputJunction { get; };
+        ILearningModelJunction OutputJunction { get; };
 
         //! Create a builder.
         static LearningModelBuilder Create();
 
-        static ILearningModelLayer AfterAll(
-          ILearningModelLayer target,
-          Windows.Foundation.Collections.IVectorView<ILearningModelLayer> input_layers);
+        static ILearningModelJunction AfterAll(
+          ILearningModelJunction target,
+          Windows.Foundation.Collections.IVectorView<ILearningModelJunction> input_junctions);
 
-        static ILearningModelLayer AfterAll(
-          ILearningModelLayer target,
-          Windows.Foundation.Collections.IVectorView<ILearningModelLayer> input_layers,
-          LearningModelLayerResolutionPolicy policy);
+        static ILearningModelJunction AfterAll(
+          ILearningModelJunction target,
+          Windows.Foundation.Collections.IVectorView<ILearningModelJunction> input_junctions,
+          LearningModelJunctionResolutionPolicy policy);
 
-        ILearningModelLayer AddInput(Windows.AI.MachineLearning.ILearningModelFeatureDescriptor input_descriptor);
+        ILearningModelJunction AddInput(Windows.AI.MachineLearning.ILearningModelFeatureDescriptor input_descriptor);
 
-        ILearningModelLayer AddOutput(Windows.AI.MachineLearning.ILearningModelFeatureDescriptor output_descriptor);
+        ILearningModelJunction AddOutput(Windows.AI.MachineLearning.ILearningModelFeatureDescriptor output_descriptor);
 
         Windows.AI.MachineLearning.LearningModel CreateModel();
     }

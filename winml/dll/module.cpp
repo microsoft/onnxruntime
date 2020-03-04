@@ -8,6 +8,7 @@
 #include "LearningModelDevice.h"
 #include "OnnxruntimeProvider.h"
 #include "LearningModelBuilder.h"
+#include "FullyConnectedJunction.h"
 
 using namespace winrt::Windows::AI::MachineLearning::implementation;
 

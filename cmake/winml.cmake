@@ -382,6 +382,10 @@ add_library(winml_lib_api STATIC
   ## WinML.More
   ${winml_lib_api_dir}/LearningModelBuilder.cpp
   ${winml_lib_api_dir}/LearningModelBuilder.h
+  ${winml_lib_api_dir}/LearningModelJunctionResolutionPolicy.cpp
+  ${winml_lib_api_dir}/LearningModelJunctionResolutionPolicy.h
+  ${winml_lib_api_dir}/FullyConnectedJunction.cpp
+  ${winml_lib_api_dir}/FullyConnectedJunction.h
   
   ${winml_lib_api_dir}/pch/pch.h
 )
