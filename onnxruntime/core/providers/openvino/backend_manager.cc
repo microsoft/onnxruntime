@@ -95,7 +95,7 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::Node* fused_no
       break;
     }
     for (auto dim : input->Shape()->dim()) {
-      if (dim.value_case() == dim.kDimParam) {
+      if (dim.value_case() != dim.kDimValue) {
         has_sym_dims = true;
         break;
       }
