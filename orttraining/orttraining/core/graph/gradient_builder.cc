@@ -918,5 +918,37 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetSendGradient) {
+  NodeAttributes new_attrs;
+  const auto& old_attrs = SrcNodeAttributes();
+ 
+  new_attrs["src"] = MakeAttribute("src", old_attrs.at("dst").i());
+  new_attrs["dst"] = MakeAttribute("dst", old_attrs.at("src").i());
+  new_attrs["tag"] = MakeAttribute("tag", old_attrs.at("tag").i());  // keep tag the same for now
+  new_attrs["element_type"] = MakeAttribute("element_type", old_attrs.at("element_type").i());
+
+  return std::vector<NodeDef>{
+      NodeDef("Recv",
+              {O(0)},
+              {GI(0), GI(1)},
+              new_attrs)};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetRecvGradient) {
+  NodeAttributes new_attrs;
+  const auto& old_attrs = SrcNodeAttributes();
+
+  new_attrs["src"] = MakeAttribute("src", old_attrs.at("dst").i());
+  new_attrs["dst"] = MakeAttribute("dst", old_attrs.at("src").i());
+  new_attrs["tag"] = MakeAttribute("tag", old_attrs.at("tag").i());  // keep tag the same for now
+  new_attrs["element_type"] = MakeAttribute("element_type", old_attrs.at("element_type").i());
+
+  return std::vector<NodeDef>{
+      NodeDef("Send",
+              {O(0), GO(1)},
+              {GI(0)},
+              new_attrs)};
+}
+
 }  // namespace training
 }  // namespace onnxruntime

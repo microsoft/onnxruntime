@@ -50,6 +50,8 @@ DECLARE_GRADIENT_BUILDER(GetMegatronFGradient)
 DECLARE_GRADIENT_BUILDER(GetMegatronGGradient)
 DECLARE_GRADIENT_BUILDER(GetSliceGradient)
 DECLARE_GRADIENT_BUILDER(GetFastGeluGradient)
+DECLARE_GRADIENT_BUILDER(GetSendGradient)
+DECLARE_GRADIENT_BUILDER(GetRecvGradient)
 
 }  // namespace training
 }  // namespace onnxruntime

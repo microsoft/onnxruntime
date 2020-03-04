@@ -89,6 +89,8 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("MegatronG", GetMegatronGGradient);
   REGISTER_GRADIENT_BUILDER("Slice", GetSliceGradient);
   REGISTER_GRADIENT_BUILDER("FastGelu", GetFastGeluGradient);
+  REGISTER_GRADIENT_BUILDER("Send", GetSendGradient);
+  REGISTER_GRADIENT_BUILDER("Recv", GetRecvGradient);
 };
 
 }  // namespace training
