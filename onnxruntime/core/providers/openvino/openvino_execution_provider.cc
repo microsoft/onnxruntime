@@ -195,6 +195,8 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     //nGraph Reshape op currently requires shape info available in advance.
     const auto& shape_arg = node->InputDefs()[1];
     //Empty Initializer check
+    if(shape_arg->Shape() == nullptr)
+      return false;
     if (shape_arg->Shape()->dim_size() == 1 && shape_arg->Shape()->dim(0).dim_value() == 0)
       return true;
     return initializers.find(shape_arg->Name()) == initializers.end();
@@ -560,7 +562,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
       } else {
         //Zero dimension check
         for (const auto& dim : shape->dim()) {
-          if (!utils::HasDimParam(dim) && dim.dim_value() == 0) {
+          if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
             has_unsupported_dimension = true;
             return;
           }
