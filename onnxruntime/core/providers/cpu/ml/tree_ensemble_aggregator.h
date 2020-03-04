@@ -28,6 +28,12 @@ struct SparseValue {
   T value;
 };
 
+template <typename T>
+struct ScoreValue {
+  unsigned char has_score;
+  T score;
+};
+
 enum MissingTrack {
   NONE,
   TRUE,
@@ -71,35 +77,29 @@ class TreeAggregator {
 
   // 1 output
 
-  void ProcessTreeNodePrediction1(OTYPE* /*predictions*/, const TreeNodeElement<OTYPE>& /*root*/,
-                                  unsigned char* /*has_predictions*/) const {}
+  void ProcessTreeNodePrediction1(ScoreValue<OTYPE>& /*prediction*/, const TreeNodeElement<OTYPE>& /*root*/) const {}
 
-  void MergePrediction1(OTYPE* /*predictions*/, unsigned char* /*has_predictions*/,
-                        OTYPE* /*predictions2*/, unsigned char* /*has_predictions2*/) const {}
+  void MergePrediction1(ScoreValue<OTYPE>& /*prediction*/, ScoreValue<OTYPE>& /*prediction2*/) const {}
 
-  void FinalizeScores1(OTYPE* Z, OTYPE& val,
-                       unsigned char& has_scores,
-                       int64_t* /*Y*/) const {
-    val = has_scores ? (val + origin_) : origin_;
-    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT ? static_cast<OTYPE>(ComputeProbit(static_cast<float>(val))) : val;
+  void FinalizeScores1(OTYPE* Z, ScoreValue<OTYPE>& prediction, int64_t* /*Y*/) const {
+    prediction.score = prediction.has_score ? (prediction.score + origin_) : origin_;
+    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT ? static_cast<OTYPE>(ComputeProbit(static_cast<float>(prediction.score))) : prediction.score;
   }
 
   // N outputs
 
-  void ProcessTreeNodePrediction(OTYPE* /*predictions*/, const TreeNodeElement<OTYPE>& /*root*/,
-                                 unsigned char* /*has_predictions*/) const {}
+  void ProcessTreeNodePrediction(std::vector<ScoreValue<OTYPE>>& /*predictions*/, const TreeNodeElement<OTYPE>& /*root*/) const {}
 
-  void MergePrediction(int64_t /*n*/, OTYPE* /*predictions*/, unsigned char* /*has_predictions*/,
-                       OTYPE* /*predictions2*/, unsigned char* /*has_predictions2*/) const {}
+  void MergePrediction(std::vector<ScoreValue<OTYPE>>& /*predictions*/, const std::vector<ScoreValue<OTYPE>>& /*predictions2*/) const {}
 
-  void FinalizeScores(std::vector<OTYPE>& scores,
-                      std::vector<unsigned char>& has_scores,
-                      OTYPE* Z, int add_second_class,
-                      int64_t*) const {
+  void FinalizeScores(std::vector<ScoreValue<OTYPE>>& predictions, OTYPE* Z, int add_second_class, int64_t*) const {
+    ORT_ENFORCE(predictions.size() == (size_t)n_targets_or_classes_);
     OTYPE val;
-    for (int64_t jt = 0; jt < n_targets_or_classes_; ++jt) {
+    std::vector<OTYPE> scores(predictions.size(), 0);
+    auto it = predictions.begin();
+    for (int64_t jt = 0; jt < n_targets_or_classes_; ++jt, ++it) {
       val = use_base_values_ ? base_values_[jt] : 0.f;
-      val += has_scores[jt] ? scores[jt] : 0;
+      val += it->has_score ? it->score : 0;
       scores[jt] = val;
     }
     write_scores(scores, post_transform_, Z, add_second_class);
@@ -121,53 +121,50 @@ class TreeAggregatorSum : public TreeAggregator<ITYPE, OTYPE> {
 
   // 1 output
 
-  void ProcessTreeNodePrediction1(OTYPE* predictions,
-                                  const TreeNodeElement<OTYPE>& root,
-                                  unsigned char*) const {
-    *predictions += root.weights[0].value;
+  void ProcessTreeNodePrediction1(ScoreValue<OTYPE>& prediction, const TreeNodeElement<OTYPE>& root) const {
+    prediction.score += root.weights[0].value;
   }
 
-  void MergePrediction1(OTYPE* predictions, unsigned char*,
-                        const OTYPE* predictions2, const unsigned char*) const {
-    *predictions += *predictions2;
+  void MergePrediction1(ScoreValue<OTYPE>& prediction, const ScoreValue<OTYPE>& prediction2) const {
+    prediction.score += prediction2.score;
   }
 
-  void FinalizeScores1(OTYPE* Z, OTYPE& val,
-                       unsigned char&,
-                       int64_t* /*Y*/) const {
-    val += this->origin_;
-    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT ? static_cast<OTYPE>(ComputeProbit(static_cast<float>(val))) : val;
+  void FinalizeScores1(OTYPE* Z, ScoreValue<OTYPE>& prediction, int64_t* /*Y*/) const {
+    prediction.score += this->origin_;
+    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT ? static_cast<OTYPE>(ComputeProbit(static_cast<float>(prediction.score))) : prediction.score;
   }
 
   // N outputs
 
-  void ProcessTreeNodePrediction(OTYPE* predictions, const TreeNodeElement<OTYPE>& root,
-                                 unsigned char* has_predictions) const {
+  void ProcessTreeNodePrediction(std::vector<ScoreValue<OTYPE>>& predictions, const TreeNodeElement<OTYPE>& root) const {
     for (auto it = root.weights.cbegin(); it != root.weights.cend(); ++it) {
-      predictions[it->i] += it->value;
-      has_predictions[it->i] = 1;
+      ORT_ENFORCE(it->i < (int64_t)predictions.size());
+      predictions[it->i].score += it->value;
+      predictions[it->i].has_score = 1;
     }
   }
 
-  void MergePrediction(int64_t n, OTYPE* predictions, unsigned char* has_predictions,
-                       const OTYPE* predictions2, const unsigned char* has_predictions2) const {
-    for (int64_t i = 0; i < n; ++i) {
-      if (has_predictions2[i]) {
-        predictions[i] += predictions2[i];
-        has_predictions[i] = 1;
+  void MergePrediction(std::vector<ScoreValue<OTYPE>>& predictions, const std::vector<ScoreValue<OTYPE>>& predictions2) const {
+    ORT_ENFORCE(predictions.size() == predictions2.size());
+    for (size_t i = 0; i < predictions.size(); ++i) {
+      if (predictions2[i].has_score) {
+        predictions[i].score += predictions2[i].score;
+        predictions[i].has_score = 1;
       }
     }
   }
 
-  void FinalizeScores(std::vector<OTYPE>& scores,
-                      std::vector<unsigned char>&,
-                      OTYPE* Z, int add_second_class,
-                      int64_t*) const {
+  void FinalizeScores(std::vector<ScoreValue<OTYPE>>& predictions, OTYPE* Z, int add_second_class, int64_t*) const {
+    std::vector<OTYPE> scores(predictions.size());
+    auto its = scores.begin();
+    auto it = predictions.begin();
     if (this->use_base_values_) {
-      auto it = scores.begin();
       auto it2 = this->base_values_.cbegin();
-      for (; it != scores.end(); ++it, ++it2)
-        *it += *it2;
+      for (; it != predictions.end(); ++it, ++it2, ++its)
+        *its = it->score + *it2;
+    } else {
+      for (; it != predictions.end(); ++it, ++its)
+        *its = it->score;
     }
     write_scores(scores, this->post_transform_, Z, add_second_class);
   }
@@ -182,27 +179,25 @@ class TreeAggregatorAverage : public TreeAggregatorSum<ITYPE, OTYPE> {
                         const std::vector<OTYPE>& base_values) : TreeAggregatorSum<ITYPE, OTYPE>(n_trees, n_targets_or_classes,
                                                                                                  post_transform, base_values) {}
 
-  void FinalizeScores1(OTYPE* Z, OTYPE& val,
-                       unsigned char&,
-                       int64_t* /*Y*/) const {
-    val /= this->n_trees_;
-    val += this->origin_;
-    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT ? static_cast<OTYPE>(ComputeProbit(static_cast<float>(val))) : val;
+  void FinalizeScores1(OTYPE* Z, ScoreValue<OTYPE>& prediction, int64_t* /*Y*/) const {
+    prediction.score /= this->n_trees_;
+    prediction.score += this->origin_;
+    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT ? static_cast<OTYPE>(ComputeProbit(static_cast<float>(prediction.score))) : prediction.score;
   }
 
-  void FinalizeScores(std::vector<OTYPE>& scores,
-                      std::vector<unsigned char>&,
-                      OTYPE* Z, int add_second_class,
-                      int64_t*) const {
+  void FinalizeScores(std::vector<ScoreValue<OTYPE>>& predictions, OTYPE* Z, int add_second_class, int64_t*) const {
+    std::vector<OTYPE> scores(predictions.size(), 0);
+    auto its = scores.begin();
     if (this->use_base_values_) {
-      auto it = scores.begin();
+      ORT_ENFORCE(this->base_values_.size() == predictions.size());
+      auto it = predictions.begin();
       auto it2 = this->base_values_.cbegin();
-      for (; it != scores.end(); ++it, ++it2)
-        *it = *it / this->n_trees_ + *it2;
+      for (; it != predictions.end(); ++it, ++it2, ++its)
+        *its = it->score / this->n_trees_ + *it2;
     } else {
-      auto it = scores.begin();
-      for (; it != scores.end(); ++it)
-        *it /= this->n_trees_;
+      auto it = predictions.begin();
+      for (; it != predictions.end(); ++it, ++its)
+        *its = it->score / this->n_trees_;
     }
     write_scores(scores, this->post_transform_, Z, add_second_class);
   }
@@ -219,44 +214,41 @@ class TreeAggregatorMin : public TreeAggregator<ITYPE, OTYPE> {
 
   // 1 output
 
-  void ProcessTreeNodePrediction1(OTYPE* predictions, const TreeNodeElement<OTYPE>& root,
-                                  unsigned char* has_predictions) const {
-    *predictions = (!(*has_predictions) || root.weights[0].value < *predictions)
-                       ? root.weights[0].value
-                       : *predictions;
-    *has_predictions = 1;
+  void ProcessTreeNodePrediction1(ScoreValue<OTYPE>& prediction, const TreeNodeElement<OTYPE>& root) const {
+    prediction.score = (!(prediction.has_score) || root.weights[0].value < prediction.score)
+                           ? root.weights[0].value
+                           : prediction.score;
+    prediction.has_score = 1;
   }
 
-  void MergePrediction1(OTYPE* predictions, unsigned char* has_predictions,
-                        const OTYPE* predictions2, const unsigned char* has_predictions2) const {
-    if (*has_predictions2) {
-      *predictions = *has_predictions && (*predictions < *predictions2)
-                         ? *predictions
-                         : *predictions2;
-      *has_predictions = 1;
+  void MergePrediction1(ScoreValue<OTYPE>& prediction, const ScoreValue<OTYPE>& prediction2) const {
+    if (prediction2.has_score) {
+      prediction.score = prediction.has_score && (prediction.score < prediction2.score)
+                             ? prediction.score
+                             : prediction2.score;
+      prediction.has_score = 1;
     }
   }
 
   // N outputs
 
-  void ProcessTreeNodePrediction(OTYPE* predictions, const TreeNodeElement<OTYPE>& root,
-                                 unsigned char* has_predictions) const {
+  void ProcessTreeNodePrediction(std::vector<ScoreValue<OTYPE>>& predictions, const TreeNodeElement<OTYPE>& root) const {
     for (auto it = root.weights.begin(); it != root.weights.end(); ++it) {
-      predictions[it->i] = (!has_predictions[it->i] || it->value < predictions[it->i])
-                               ? it->value
-                               : predictions[it->i];
-      has_predictions[it->i] = 1;
+      predictions[it->i].score = (!predictions[it->i].has_score || it->value < predictions[it->i].score)
+                                     ? it->value
+                                     : predictions[it->i].score;
+      predictions[it->i].has_score = 1;
     }
   }
 
-  void MergePrediction(int64_t n, OTYPE* predictions, unsigned char* has_predictions,
-                       const OTYPE* predictions2, const unsigned char* has_predictions2) const {
-    for (int64_t i = 0; i < n; ++i) {
-      if (has_predictions2[i]) {
-        predictions[i] = has_predictions[i] && (predictions[i] < predictions2[i])
-                             ? predictions[i]
-                             : predictions2[i];
-        has_predictions[i] = 1;
+  void MergePrediction(std::vector<ScoreValue<OTYPE>>& predictions, const std::vector<ScoreValue<OTYPE>>& predictions2) const {
+    ORT_ENFORCE(predictions.size() == predictions2.size());
+    for (size_t i = 0; i < predictions.size(); ++i) {
+      if (predictions2[i].has_score) {
+        predictions[i].score = predictions[i].has_score && (predictions[i].score < predictions2[i].score)
+                                   ? predictions[i].score
+                                   : predictions2[i].score;
+        predictions[i].has_score = 1;
       }
     }
   }
@@ -273,44 +265,41 @@ class TreeAggregatorMax : public TreeAggregator<ITYPE, OTYPE> {
 
   // 1 output
 
-  void ProcessTreeNodePrediction1(OTYPE* predictions, const TreeNodeElement<OTYPE>& root,
-                                  unsigned char* has_predictions) const {
-    *predictions = (!(*has_predictions) || root.weights[0].value > *predictions)
-                       ? root.weights[0].value
-                       : *predictions;
-    *has_predictions = 1;
+  void ProcessTreeNodePrediction1(ScoreValue<OTYPE>& prediction, const TreeNodeElement<OTYPE>& root) const {
+    prediction.score = (!(prediction.has_score) || root.weights[0].value > prediction.score)
+                           ? root.weights[0].value
+                           : prediction.score;
+    prediction.has_score = 1;
   }
 
-  void MergePrediction1(OTYPE* predictions, unsigned char* has_predictions,
-                        const OTYPE* predictions2, const unsigned char* has_predictions2) const {
-    if (*has_predictions2) {
-      *predictions = *has_predictions && (*predictions > *predictions2)
-                         ? *predictions
-                         : *predictions2;
-      *has_predictions = 1;
+  void MergePrediction1(ScoreValue<OTYPE>& prediction, const ScoreValue<OTYPE>& prediction2) const {
+    if (prediction2.has_score) {
+      prediction.score = prediction.has_score && (prediction.score > prediction2.score)
+                             ? prediction.score
+                             : prediction2.score;
+      prediction.has_score = 1;
     }
   }
 
   // N outputs
 
-  void ProcessTreeNodePrediction(OTYPE* predictions, const TreeNodeElement<OTYPE>& root,
-                                 unsigned char* has_predictions) const {
-    for (auto it = root.weights.cbegin(); it != root.weights.cend(); ++it) {
-      predictions[it->i] = (!has_predictions[it->i] || it->value > predictions[it->i])
-                               ? it->value
-                               : predictions[it->i];
-      has_predictions[it->i] = 1;
+  void ProcessTreeNodePrediction(std::vector<ScoreValue<OTYPE>>& predictions, const TreeNodeElement<OTYPE>& root) const {
+    for (auto it = root.weights.begin(); it != root.weights.end(); ++it) {
+      predictions[it->i].score = (!predictions[it->i].has_score || it->value > predictions[it->i].score)
+                                     ? it->value
+                                     : predictions[it->i].score;
+      predictions[it->i].has_score = 1;
     }
   }
 
-  void MergePrediction(int64_t n, OTYPE* predictions, unsigned char* has_predictions,
-                       OTYPE* predictions2, unsigned char* has_predictions2) const {
-    for (int64_t i = 0; i < n; ++i) {
-      if (has_predictions2[i]) {
-        predictions[i] = has_predictions[i] && (predictions[i] > predictions2[i])
-                             ? predictions[i]
-                             : predictions2[i];
-        has_predictions[i] = 1;
+  void MergePrediction(std::vector<ScoreValue<OTYPE>>& predictions, const std::vector<ScoreValue<OTYPE>>& predictions2) const {
+    ORT_ENFORCE(predictions.size() == predictions2.size());
+    for (size_t i = 0; i < predictions.size(); ++i) {
+      if (predictions2[i].has_score) {
+        predictions[i].score = predictions[i].has_score && (predictions[i].score > predictions2[i].score)
+                                   ? predictions[i].score
+                                   : predictions2[i].score;
+        predictions[i].has_score = 1;
       }
     }
   }
@@ -346,28 +335,26 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
                                                          positive_label_(positive_label),
                                                          negative_label_(negative_label) {}
 
-  void get_max_weight(const std::vector<OTYPE>& classes,
-                      const std::vector<unsigned char>& has_scores,
-                      int64_t& maxclass, OTYPE& maxweight) const {
+  void get_max_weight(const std::vector<ScoreValue<OTYPE>>& classes, int64_t& maxclass, OTYPE& maxweight) const {
     maxclass = -1;
     maxweight = 0;
-    typename std::vector<OTYPE>::const_iterator it;
-    typename std::vector<unsigned char>::const_iterator itb;
-    for (it = classes.begin(), itb = has_scores.begin();
-         it != classes.end(); ++it, ++itb) {
-      if (*itb && (maxclass == -1 || *it > maxweight)) {
-        maxclass = (int64_t)(it - classes.begin());
-        maxweight = *it;
+    for (auto it = classes.cbegin(); it != classes.cend(); ++it) {
+      if (it->has_score && (maxclass == -1 || it->score > maxweight)) {
+        maxclass = (int64_t)(it - classes.cbegin());
+        maxweight = it->score;
       }
     }
   }
 
-  int64_t _set_score_binary(int& write_additional_scores,
-                            const OTYPE* classes,
-                            const unsigned char* has_scores) const {
-    OTYPE pos_weight = has_scores[1]
-                           ? classes[1]
-                           : (has_scores[0] ? classes[0] : 0);  // only 1 class
+  int64_t _set_score_binary(int& write_additional_scores, const std::vector<ScoreValue<OTYPE>>& classes) const {
+    ORT_ENFORCE(classes.size() == 2 || classes.size() == 1);
+    return classes.size() == 2
+               ? _set_score_binary(write_additional_scores, classes[0].score, classes[0].has_score, classes[1].score, classes[1].has_score)
+               : _set_score_binary(write_additional_scores, classes[0].score, classes[0].has_score, 0, 0);
+  }
+
+  int64_t _set_score_binary(int& write_additional_scores, OTYPE score0, unsigned char has_score0, OTYPE score1, unsigned char has_score1) const {
+    OTYPE pos_weight = has_score1 ? score1 : (has_score0 ? score0 : 0);  // only 1 class
     if (binary_case_) {
       if (weights_are_all_positive_) {
         if (pos_weight > 0.5) {
@@ -394,87 +381,109 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
 
   // 1 output
 
-  void FinalizeScores1(OTYPE* Z, OTYPE& val,
-                       unsigned char& /*has_score*/,
-                       int64_t* Y) const {
+  void FinalizeScores1(OTYPE* Z, ScoreValue<OTYPE>& prediction, int64_t* Y) const {
     std::vector<OTYPE> scores(2);
     unsigned char has_scores[2] = {1, 0};
 
     int write_additional_scores = -1;
     if (this->base_values_.size() == 2) {
       // add base_values
-      scores[1] = this->base_values_[1] + val;
+      scores[1] = this->base_values_[1] + prediction.score;
       scores[0] = -scores[1];
       //has_score = true;
       has_scores[1] = 1;
     } else if (this->base_values_.size() == 1) {
       // ONNX is vague about two classes and only one base_values.
-      scores[0] = val + this->base_values_[0];
+      scores[0] = prediction.score + this->base_values_[0];
       //if (!has_scores[1])
       //scores.pop_back();
-      scores[0] = val;
+      scores[0] = prediction.score;
     } else if (this->base_values_.size() == 0) {
       //if (!has_score)
       //  scores.pop_back();
-      scores[0] = val;
+      scores[0] = prediction.score;
     }
 
-    *Y = _set_score_binary(write_additional_scores, &(scores[0]), has_scores);
+    *Y = _set_score_binary(write_additional_scores, scores[0], has_scores[0], scores[1], has_scores[1]);
     write_scores(scores, this->post_transform_, Z, write_additional_scores);
   }
 
   // N outputs
 
-  void FinalizeScores(std::vector<OTYPE>& scores,
-                      std::vector<unsigned char>& has_scores,
-                      OTYPE* Z, int /*add_second_class*/,
-                      int64_t* Y = 0) const {
+  void FinalizeScores(std::vector<ScoreValue<OTYPE>>& predictions, OTYPE* Z, int /*add_second_class*/, int64_t* Y = 0) const {
     OTYPE maxweight = 0;
     int64_t maxclass = -1;
 
     int write_additional_scores = -1;
+    std::vector<OTYPE> preds;
     if (this->n_targets_or_classes_ > 2) {
       // add base values
       for (int64_t k = 0, end = static_cast<int64_t>(this->base_values_.size()); k < end; ++k) {
-        if (!has_scores[k]) {
-          has_scores[k] = true;
-          scores[k] = this->base_values_[k];
+        if (!predictions[k].has_score) {
+          predictions[k].has_score = 1;
+          predictions[k].score = this->base_values_[k];
         } else {
-          scores[k] += this->base_values_[k];
+          predictions[k].score += this->base_values_[k];
         }
       }
-      get_max_weight(scores, has_scores, maxclass, maxweight);
+      get_max_weight(predictions, maxclass, maxweight);
       *Y = class_labels_[maxclass];
+      preds.resize(predictions.size());
+      auto it2 = predictions.cbegin();
+      for (auto it = preds.begin(); it != preds.end(); ++it, ++it2)
+        *it = it2->has_score ? it2->score : 0;
     } else {  // binary case
+      ORT_ENFORCE(predictions.size() == 2);
       if (this->base_values_.size() == 2) {
         // add base values
-        if (has_scores[1]) {
+        if (predictions[1].has_score) {
           // base_value_[0] is not used.
           // It assumes base_value[0] == base_value[1] in this case.
           // The specification does not forbid it but does not
           // say what the output should be in that case.
-          scores[1] = this->base_values_[1] + scores[0];
-          scores[0] = -scores[1];
-          has_scores[1] = true;
+          predictions[1].score = this->base_values_[1] + predictions[0].score;
+          predictions[0].score = -predictions[1].score;
+          predictions[1].has_score = 1;
         } else {
           // binary as multiclass
-          scores[1] += this->base_values_[1];
-          scores[0] += this->base_values_[0];
+          predictions[1].score += this->base_values_[1];
+          predictions[0].score += this->base_values_[0];
         }
+        preds.resize(2);
+        preds[0] = predictions[0].score;
+        preds[1] = predictions[1].score;
       } else if (this->base_values_.size() == 1) {
         // ONNX is vague about two classes and only one base_values.
-        scores[0] += this->base_values_[0];
-        if (!has_scores[1])
-          scores.pop_back();
+        predictions[0].score += this->base_values_[0];
+        if (!predictions[1].has_score) {
+          preds.resize(1);
+          preds[0] = predictions[0].score;
+        } else {
+          preds.resize(2);
+          preds[0] = predictions[0].score;
+          preds[1] = predictions[1].score;
+        }
       } else if (this->base_values_.size() == 0) {
-        if (!has_scores[1])
-          scores.pop_back();
+        if (!predictions[1].has_score) {
+          preds.resize(1);
+          preds[0] = predictions[0].score;
+        } else {
+          preds.resize(2);
+          preds[0] = predictions[0].score;
+          preds[1] = predictions[1].score;
+        }
+      }
+      if (preds.size() == 0) {
+        ORT_ENFORCE(predictions.size() == 2);
+        preds.resize(2);
+        preds[0] = predictions[0].score;
+        preds[1] = predictions[1].score;
       }
 
-      *Y = _set_score_binary(write_additional_scores, &(scores[0]), &(has_scores[0]));
+      *Y = _set_score_binary(write_additional_scores, predictions);
     }
 
-    write_scores(scores, this->post_transform_, Z, write_additional_scores);
+    write_scores(preds, this->post_transform_, Z, write_additional_scores);
   }
 };
 
