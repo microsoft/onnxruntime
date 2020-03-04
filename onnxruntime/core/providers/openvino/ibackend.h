@@ -18,7 +18,7 @@ class IBackend{
 
 class BackendFactory {
   public:
-  static std::shared_ptr<IBackend> MakeBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::vector<std::string> output_names, std::string type, InferenceEngine::Precision precision);
+  static std::shared_ptr<IBackend> MakeBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::unordered_map<std::string, int> output_names, std::string type, InferenceEngine::Precision precision);
 };
 
 } // namespace openvino_ep

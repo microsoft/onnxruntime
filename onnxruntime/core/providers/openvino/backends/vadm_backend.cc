@@ -23,7 +23,7 @@ using namespace backend_utils;
 
 #define NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE 500
 
-VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::vector<std::string> output_names,std::string device_id, InferenceEngine::Precision precision)
+VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::unordered_map<std::string, int> output_names,std::string device_id, InferenceEngine::Precision precision)
     : input_indexes_{input_indexes} , output_names_{output_names} {
 
   (void) device_id;

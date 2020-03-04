@@ -15,7 +15,7 @@ bool IsDebugEnabled();
 
 class VADMBackend : public IBackend {
  public:
-  VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::vector<std::string> output_names,std::string device_id, InferenceEngine::Precision precision);
+  VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::unordered_map<std::string, int> output_names,std::string device_id, InferenceEngine::Precision precision);
 
   void Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) override;
 
@@ -27,7 +27,7 @@ class VADMBackend : public IBackend {
   void CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtValue*> output_tensors, size_t batch_slice_idx, size_t infer_req_idx, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests, std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
 
   std::vector<int> input_indexes_;
-  std::vector<std::string> output_names_;
+  std::unordered_map<std::string, int> output_names_;
   mutable std::mutex compute_lock_;
   std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network_;
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;

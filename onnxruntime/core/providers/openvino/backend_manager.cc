@@ -62,8 +62,10 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
   }
 
   auto graph_outputs_defs = fused_node->OutputDefs();
+  i = 0;
   for (auto output_def : graph_outputs_defs){
-    output_names_.push_back(output_def->Name());
+    output_names_.insert({output_def->Name(), i});
+    i++;
   }
 
   model_proto_ = GetModelProtoFromFusedNode(fused_node, logger);
