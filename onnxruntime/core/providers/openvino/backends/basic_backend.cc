@@ -21,8 +21,8 @@ namespace openvino_ep {
 
 using namespace backend_utils;
 
-BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string device_id, InferenceEngine::Precision precision)
-    : input_indexes_{input_indexes} {
+BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::unordered_map<std::string, int> output_names, std::string device_id, InferenceEngine::Precision precision)
+    : input_indexes_{input_indexes},output_names_{output_names} {
 
   (void) device_id;
 
@@ -102,7 +102,7 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   auto input_tensors = GetInputTensors(ort, context, ie_cnn_network_, input_indexes_);
 
   size_t batch_size = 1;
-  auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_request_, ie_cnn_network_);
+  auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_request_, ie_cnn_network_, output_names_);
 
 
   StartAsyncInference(ort, input_tensors, infer_request_, ie_cnn_network_);
