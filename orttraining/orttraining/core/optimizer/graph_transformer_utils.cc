@@ -44,19 +44,20 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
 
   switch (level) {
     case TransformerLevel::Level1: {
-      transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(compatible_eps));
-
       rule_transformer =
           onnxruntime::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
                                                               compatible_eps);
       rule_transformer->Register(make_unique<InsertMaxPoolOutput>());
       rule_transformer->Register(make_unique<AdjustBatchNormOutputs>());
+      rule_transformer->Register(make_unique<UnsqueezeElimination>());
 
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(compatible_eps));
     } break;
 
     case TransformerLevel::Level2: {
+      // Put ReshapeFusion as level-2 optimization after all level-1 graph rewriters are run.
+      transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(compatible_eps));
     } break;
 
     case TransformerLevel::Level3: {
