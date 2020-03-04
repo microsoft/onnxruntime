@@ -992,3 +992,27 @@ class BertOnnxModel(OnnxModel):
         self.use_dynamic_axes()
 
         logger.info(f"opset verion: {self.model.opset_import[0].version}")
+
+    def get_fused_operator_statistics(self):
+        """
+        Returns node count of fused operators.
+        """
+        op_count = {}
+        ops = ['EmbedLayerNormalization', 'Attention', 'Gelu', 'FastGelu', 'BiasGelu', 'LayerNormalization', 'SkipLayerNormalization']
+        for op in ops:
+            nodes = self.get_nodes_by_op_type(op)
+            op_count[op] = len(nodes)
+        return op_count
+
+    def is_fully_optimized(self):
+        """
+        Returns True when the model is fully optimized.
+        """
+        op_count = self.get_fused_operator_statistics()
+        embed = op_count['EmbedLayerNormalization']
+        attention = op_count['Attention']
+        gelu = op_count['Gelu'] + op_count['BiasGelu'] + op_count['FastGelu']
+        layer_norm = op_count['LayerNormalization'] + op_count['SkipLayerNormalization']
+        is_optimized = (embed > 0) and (attention > 0) and (attention == gelu) and (layer_norm >= 2 * attention)
+        logger.info(f"EmbedLayer={embed}, Attention={attention}, Gelu={gelu}, LayerNormalization={layer_norm}, Succesful={is_optimized}")
+        return is_optimized

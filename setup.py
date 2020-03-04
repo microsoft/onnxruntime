@@ -91,7 +91,7 @@ try:
                 logger.info('copying %s -> %s', source, dest)
                 copyfile(source, dest)
                 result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
-                cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so']
+                cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so']
                 to_preload = []
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):

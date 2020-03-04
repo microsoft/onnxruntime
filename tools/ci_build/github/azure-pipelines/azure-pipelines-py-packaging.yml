@@ -47,7 +47,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD -e BUILD_BUILDNUMBER onnxruntime-manylinux-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest  --build_wheel --enable_onnx_tests --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD -e BUILD_BUILDNUMBER onnxruntime-manylinux-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync --parallel  --build_wheel --use_openmp --enable_onnx_tests --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: CopyFiles@2
@@ -114,7 +114,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD -e BUILD_BUILDNUMBER onnxruntime-manylinux-gpu-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest  --build_wheel --enable_onnx_tests --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so --use_cuda --cuda_version=10.0 --cuda_home=/usr/local/cuda-10.0  --cudnn_home=/usr/local/cuda-10.0
+          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD -e BUILD_BUILDNUMBER onnxruntime-manylinux-gpu-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel   --build_wheel --use_openmp --enable_onnx_tests --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1  --cudnn_home=/usr/local/cuda-10.1
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: CopyFiles@2
@@ -188,7 +188,7 @@ jobs:
     displayName: 'BUILD'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wheel --use_featurizers --enable_onnx_tests --parallel'
+      arguments: '--config RelWithDebInfo --enable_lto --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wheel --use_openmp --enable_onnx_tests --parallel'
       workingDirectory: '$(Build.BinariesDirectory)'     
   
   - task: CopyFiles@2
@@ -215,8 +215,8 @@ jobs:
   pool: 'Win-GPU-2019'
   timeoutInMinutes:  60  
   variables:
-    CUDA_VERSION: '10.0'
-    EnvSetupScript: setup_env.bat
+    CUDA_VERSION: '10.1'
+    EnvSetupScript: setup_env_cuda.bat
   strategy:
     matrix:
       Python35:
@@ -257,7 +257,7 @@ jobs:
       displayName: 'build'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --use_featurizers --cmake_generator "Visual Studio 16 2019" --msvc_toolset 14.16 --build_wheel --enable_onnx_tests --parallel --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v7.6.5.32\cuda"
+        arguments: --config RelWithDebInfo --enable_lto --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wheel --use_openmp --enable_onnx_tests --parallel --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v7.6.5.32\cuda"
         workingDirectory: '$(Build.BinariesDirectory)'   
 
     - task: CopyFiles@2
@@ -300,7 +300,7 @@ jobs:
     - script: |
         sudo python -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        ./build.sh --config Release --skip_submodule_sync --parallel --use_openmp --build_wheel --use_featurizers     
+        ./build.sh --config Release --skip_submodule_sync --parallel --build_wheel --use_openmp
       displayName: 'Command Line Script' 
       
     - task: CopyFiles@2

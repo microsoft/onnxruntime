@@ -90,7 +90,7 @@ struct NchwcTestHelper {
       tensor_proto.add_dims(dim);
     }
 
-    tensor_proto.mutable_float_data()->Resize(static_cast<int>(data.size()), 0.0f);
+    tensor_proto.mutable_float_data()->Resize(static_cast<int>(data.size()), 0.f);
     memcpy(tensor_proto.mutable_float_data()->mutable_data(), data.data(), data.size() * sizeof(float));
 
     graph_.AddInitializedTensor(tensor_proto);
@@ -101,6 +101,10 @@ struct NchwcTestHelper {
   NodeArg* MakeInitializer(const std::vector<int64_t>& shape) {
     int64_t num_elements = std::accumulate(shape.begin(), shape.end(), int64_t(1), std::multiplies<int64_t>{});
     return MakeInitializer(shape, FillRandomData(static_cast<size_t>(num_elements)));
+  }
+
+  NodeArg* Make1DInitializer(const std::vector<float>& data) {
+    return MakeInitializer({static_cast<int64_t>(data.size())}, data);
   }
 
   Node& AddNode(const std::string& op_type,
@@ -115,7 +119,7 @@ struct NchwcTestHelper {
 
   Node& AddConvNode(NodeArg* input_arg, NodeArg* output_arg, const std::vector<int64_t>& weights_shape, bool no_bias = false) {
     auto* weights_arg = MakeInitializer(weights_shape);
-    std::vector<NodeArg*> input_args = {input_arg, weights_arg};
+    std::vector<NodeArg*> input_args{input_arg, weights_arg};
     if (!no_bias) {
       auto* biases_arg = MakeInitializer({weights_shape[0]});
       input_args.push_back(biases_arg);
@@ -125,10 +129,10 @@ struct NchwcTestHelper {
 
   Node& AddClipNode(NodeArg* input_arg, NodeArg* output_arg, float min, float max) {
     int opset_version = graph_.DomainToVersionMap().find(kOnnxDomain)->second;
-    std::vector<NodeArg*> input_args = {input_arg};
+    std::vector<NodeArg*> input_args{input_arg};
     if (opset_version >= 11) {
-      input_args.push_back(MakeInitializer({1}, {min}));
-      input_args.push_back(MakeInitializer({1}, {max}));
+      input_args.push_back(Make1DInitializer({min}));
+      input_args.push_back(Make1DInitializer({max}));
     }
     auto& node = AddNode("Clip", input_args, {output_arg});
     if (opset_version < 11) {
@@ -190,8 +194,8 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
   // Build the model for this test.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
-  Model model("nchwc", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-              {}, DefaultLoggingManager().DefaultLogger());
+  Model model("nchwc", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
   NchwcTestHelper helper(model.MainGraph());
   build_test_case(helper);
   ASSERT_TRUE(model.MainGraph().Resolve().IsOK());
@@ -237,7 +241,7 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
                         helper.per_sample_tolerance_,
                         relative_per_sample_tolerance,
                         false);
-    EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS);
+    EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
   }
 }
 
@@ -253,7 +257,7 @@ TEST(NchwcOptimizerTests, ConvNchw) {
       if (!activation_op_type.empty()) {
         conv_output_arg = helper.MakeIntermediate();
         if (activation_op_type == "Clip") {
-          helper.AddClipNode(conv_output_arg, output_arg, 0.0f, 6.0f);
+          helper.AddClipNode(conv_output_arg, output_arg, 0.f, 6.f);
         } else {
           helper.AddNode(activation_op_type, {conv_output_arg}, {output_arg});
         }
@@ -277,7 +281,7 @@ TEST(NchwcOptimizerTests, ConvNchw) {
     NchwcOptimizerTester(build_test_case, check_nchwc_graph);
   };
 
-  std::vector<std::string> activation_op_types = {"", "Relu", "LeakyRelu", "Clip"};
+  std::vector<std::string> activation_op_types{"", "Relu", "LeakyRelu", "Clip"};
   for (auto& activation_op_type : activation_op_types) {
     test_case(activation_op_type);
   }
@@ -293,7 +297,7 @@ TEST(NchwcOptimizerTests, ConvNchwc) {
       if (!activation_op_type.empty()) {
         conv_output_arg = helper.MakeIntermediate();
         if (activation_op_type == "Clip") {
-          helper.AddClipNode(conv_output_arg, output_arg, -6.0f, 6.0f);
+          helper.AddClipNode(conv_output_arg, output_arg, -6.f, 6.f);
         } else {
           helper.AddNode(activation_op_type, {conv_output_arg}, {output_arg});
         }
@@ -315,7 +319,7 @@ TEST(NchwcOptimizerTests, ConvNchwc) {
     NchwcOptimizerTester(build_test_case, check_nchwc_graph);
   };
 
-  std::vector<std::string> activation_op_types = {"", "Relu", "LeakyRelu", "Clip"};
+  std::vector<std::string> activation_op_types{"", "Relu", "LeakyRelu", "Clip"};
   for (auto& activation_op_type : activation_op_types) {
     test_case(activation_op_type);
   }
@@ -350,7 +354,7 @@ TEST(NchwcOptimizerTests, ConvNchwcGrouped) {
     NchwcOptimizerTester(build_test_case, check_nchwc_graph);
   };
 
-  std::vector<std::string> activation_op_types = {"", "Relu", "LeakyRelu"};
+  std::vector<std::string> activation_op_types{"", "Relu", "LeakyRelu"};
   for (auto& activation_op_type : activation_op_types) {
     test_case(activation_op_type);
   }
@@ -385,7 +389,7 @@ TEST(NchwcOptimizerTests, ConvDepthwise) {
     NchwcOptimizerTester(build_test_case, check_nchwc_graph);
   };
 
-  std::vector<std::string> activation_op_types = {"", "Relu", "LeakyRelu"};
+  std::vector<std::string> activation_op_types{"", "Relu", "LeakyRelu"};
   for (auto& activation_op_type : activation_op_types) {
     test_case(activation_op_type);
   }
@@ -419,7 +423,7 @@ TEST(NchwcOptimizerTests, ConvPointwise) {
     NchwcOptimizerTester(build_test_case, check_nchwc_graph);
   };
 
-  std::vector<std::string> activation_op_types = {"", "Relu", "LeakyRelu"};
+  std::vector<std::string> activation_op_types{"", "Relu", "LeakyRelu"};
   for (auto& activation_op_type : activation_op_types) {
     test_case(activation_op_type);
   }
@@ -529,7 +533,7 @@ TEST(NchwcOptimizerTests, ConvGlobalPool) {
     NchwcOptimizerTester(build_test_case, check_nchwc_graph);
   };
 
-  std::vector<std::string> op_types = {"GlobalMaxPool", "GlobalAveragePool"};
+  std::vector<std::string> op_types{"GlobalMaxPool", "GlobalAveragePool"};
   for (auto& op_type : op_types) {
     test_case(op_type);
   }
@@ -569,7 +573,7 @@ TEST(NchwcOptimizerTests, ConvAddFusion) {
 
   // Verify that Add or Sum can be fused into a preceding NCHWc Conv node,
   // with an optional Relu node following.
-  std::vector<std::string> op_types = {"Add", "Sum"};
+  std::vector<std::string> op_types{"Add", "Sum"};
   static const int opset_versions[] = {7, 10, 11};
   for (auto& op_type : op_types) {
     for (auto opset_version : opset_versions) {
@@ -651,6 +655,44 @@ TEST(NchwcOptimizerTests, FusedConvAddFusion) {
   test_case(true, true, 1);
 }
 
+TEST(NchwcOptimizerTests, ConvBinary) {
+  auto test_case = [&](const std::string& op_type) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput({1, 32, 23, 23});
+      auto* conv1_output_arg = helper.MakeIntermediate();
+      auto* conv2_output_arg = helper.MakeIntermediate();
+      auto* relu1_output_arg = helper.MakeIntermediate();
+      auto* relu2_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv1_output_arg, {32, 32, 3, 3});
+      helper.AddNode("Relu", {conv1_output_arg}, {relu1_output_arg});
+      helper.AddConvNode(input_arg, conv2_output_arg, {32, 32, 3, 3});
+      helper.AddNode("Relu", {conv2_output_arg}, {relu2_output_arg});
+
+      helper.AddNode(op_type, {relu1_output_arg, relu2_output_arg}, {output_arg});
+    };
+
+    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
+      auto op_to_count = session.CountOpsInGraph();
+      EXPECT_EQ(op_to_count["nchwc.Conv"], 2);
+      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count[op_type], 1);
+      EXPECT_EQ(op_to_count["Relu"], 0);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+  };
+
+  // Verify that the optimizer keeps the inputs to the binary operator as NCHWc
+  // and only reorders the output of the binary operator.
+  std::vector<std::string> op_types{"Add", "Sum", "Mul"};
+  for (auto& op_type : op_types) {
+    test_case(op_type);
+  }
+}
+
 TEST(NchwcOptimizerTests, ConvConcat) {
   auto test_case = [&](int axis, int channel_count, int reorder_output_count) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
@@ -695,7 +737,7 @@ TEST(NchwcOptimizerTests, ConvReuseWeightsOIHWBiBo) {
     auto* output2_arg = helper.MakeOutput();
     auto* output3_arg = helper.MakeOutput();
 
-    std::vector<int64_t> weights_shape = {60, 64, 3, 3};
+    std::vector<int64_t> weights_shape{60, 64, 3, 3};
     auto* weights_arg = helper.MakeInitializer(weights_shape);
     auto* biases_arg = helper.MakeInitializer({weights_shape[0]});
 
@@ -740,7 +782,7 @@ TEST(NchwcOptimizerTests, ConvReuseWeightsOIHWBo) {
     auto* output3_arg = helper.MakeOutput();
     auto* output4_arg = helper.MakeOutput();
 
-    std::vector<int64_t> weights_shape = {64, 1, 3, 3};
+    std::vector<int64_t> weights_shape{64, 1, 3, 3};
     auto* weights_arg = helper.MakeInitializer(weights_shape);
     auto* biases_arg = helper.MakeInitializer({weights_shape[0]});
 
@@ -1010,13 +1052,13 @@ TEST(NchwcOptimizerTests, BatchNormalization) {
         bn_var[i] = static_cast<float>((i % 9) + 1) * 0.001f;
       }
 
-      auto* bn_scale_arg = helper.MakeInitializer({34}, bn_scale);
-      auto* bn_bias_arg = helper.MakeInitializer({34}, bn_bias);
-      auto* bn_mean_arg = helper.MakeInitializer({34}, bn_mean);
-      auto* bn_var_arg = helper.MakeInitializer({34}, bn_var);
+      auto* bn_scale_arg = helper.Make1DInitializer(bn_scale);
+      auto* bn_bias_arg = helper.Make1DInitializer(bn_bias);
+      auto* bn_mean_arg = helper.Make1DInitializer(bn_mean);
+      auto* bn_var_arg = helper.Make1DInitializer(bn_var);
 
       auto* bn_output_arg = helper.MakeIntermediate();
-      std::vector<NodeArg*> bn_output_args = {bn_output_arg};
+      std::vector<NodeArg*> bn_output_args{bn_output_arg};
       if (training_outputs) {
         bn_output_args.push_back(helper.MakeIntermediate());
         bn_output_args.push_back(helper.MakeIntermediate());
@@ -1030,7 +1072,7 @@ TEST(NchwcOptimizerTests, BatchNormalization) {
       // tests generate bit identical results when run with and without
       // optimizations, but the BatchNormalizationtransform does introduce
       // small bit differences.
-      helper.per_sample_tolerance_ = .000125;
+      helper.per_sample_tolerance_ = .00025;
     };
 
     auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
@@ -1126,6 +1168,54 @@ TEST(NchwcOptimizerTests, ConvReorderOutputCnhw) {
 
   // Verify that a CNHW transpose is not fused into ReorderOutput.
   NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+}
+
+TEST(NchwcOptimizerTests, Upsample) {
+  auto test_case = [&](int opset_version, float scale_h, float scale_w) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput({3, 16, 27, 15});
+      auto* conv_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv_output_arg, {132, 16, 1, 1});
+
+      std::string op_name = opset_version >= 10 ? "Resize" : "Upsample";
+      std::vector<NodeArg*> input_args;
+      input_args.push_back(conv_output_arg);
+      if (opset_version >= 11) {
+        input_args.push_back(helper.Make1DInitializer({0.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f, 1.f}));
+      }
+      input_args.push_back(helper.Make1DInitializer({1.f, 1.f, scale_h, scale_w}));
+      Node& resize_node = helper.AddNode(op_name, input_args, {output_arg});
+      if (opset_version >= 11) {
+        resize_node.AddAttribute("coordinate_transformation_mode", "asymmetric");
+        resize_node.AddAttribute("nearest_mode", "floor");
+      } else if (opset_version == 10) {
+        // Explicitly set the mode to nearest as an extra test.
+        resize_node.AddAttribute("mode", "nearest");
+      }
+    };
+
+    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
+      auto op_to_count = session.CountOpsInGraph();
+      EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
+      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count["nchwc.Upsample"], 1);
+      EXPECT_EQ(op_to_count["Resize"] + op_to_count["Upsample"], 0);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, opset_version);
+  };
+
+  // Verify that upsample nodes can be converted to the NCHWc format for
+  // various versions of the operator.
+  static const int opset_versions[] = {9, 10, 11};
+  for (auto opset_version : opset_versions) {
+    test_case(opset_version, 1.f, 1.f);
+    test_case(opset_version, 2.f, 2.f);
+    test_case(opset_version, 3.f, 5.f);
+  }
 }
 
 #endif

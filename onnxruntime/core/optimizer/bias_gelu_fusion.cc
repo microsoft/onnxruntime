@@ -64,8 +64,14 @@ Status BiasGelu::ApplyImpl(Graph& graph, bool& modified, int graph_level, const 
     }
 
     const Node& next_node = (*next_node_itr);
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Gelu", {1}, kMSDomain) ||
+    if (!(graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Gelu", {1}, kMSDomain) ||
+          graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "FastGelu", {1}, kMSDomain)) ||
         next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
+      continue;
+    }
+
+    bool is_fast_gelu = next_node.OpType().compare("FastGelu") == 0;
+    if (is_fast_gelu && next_node.InputDefs().size() > 1) {
       continue;
     }
 
@@ -75,9 +81,11 @@ Status BiasGelu::ApplyImpl(Graph& graph, bool& modified, int graph_level, const 
 
     Node& add_node = node;
     Node& gelu_node = const_cast<Node&>(next_node);
+    std::string op_type = "BiasGelu";
+    if (is_fast_gelu) op_type = "FastGelu";
 
-    Node& gelu_add_fusion_node = graph.AddNode(graph.GenerateNodeName("BiasGelu"),
-                                               "BiasGelu",
+    Node& gelu_add_fusion_node = graph.AddNode(graph.GenerateNodeName(op_type),
+                                               op_type,
                                                "fused Add and Gelu",
                                                gelu_input,
                                                {},

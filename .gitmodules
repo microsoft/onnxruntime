@@ -46,6 +46,9 @@
 [submodule "cmake/external/FeaturizersLibrary"]
 	path = cmake/external/FeaturizersLibrary
 	url = https://github.com/microsoft/FeaturizersLibrary.git
+[submodule "cmake/external/SafeInt/safeint"]
+	path = cmake/external/SafeInt/safeint
+	url = https://github.com/dcleblanc/SafeInt.git
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/stevenlix/onnx-tensorrt.git

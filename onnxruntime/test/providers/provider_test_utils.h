@@ -18,25 +18,12 @@
 #include "test/framework/TestAllocatorManager.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/session_options.h"
+#include "test/util/include/asserts.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <gsl/gsl>
 #include "core/util/math_cpuonly.h"
-
-// helpers to run a function and check the status, outputting any error if it fails.
-// note: wrapped in do{} while(false) so the _tmp_status variable has limited scope
-#define ASSERT_STATUS_OK(function)                  \
-  do {                                              \
-    auto _tmp_status = function;                    \
-    ASSERT_TRUE(_tmp_status.IsOK()) << _tmp_status; \
-  } while (false)
-
-#define EXPECT_STATUS_OK(function)                  \
-  do {                                              \
-    auto _tmp_status = function;                    \
-    EXPECT_TRUE(_tmp_status.IsOK()) << _tmp_status; \
-  } while (false)
 
 namespace onnxruntime {
 class InferenceSession;
@@ -522,7 +509,7 @@ class OpTester {
   std::vector<Data> output_data_;
   std::vector<OrtValue> fetches_;
 
-  // for gradient unit tests only 
+  // for gradient unit tests only
   std::shared_ptr<onnxruntime::Model> cached_model_;
 
 #ifndef NDEBUG

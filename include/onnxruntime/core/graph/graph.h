@@ -12,6 +12,7 @@
 
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
+#include "core/common/path.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/graph/basic_types.h"
@@ -25,6 +26,7 @@
 namespace onnxruntime {
 class Graph;
 struct IndexedSubGraph;
+class Model;
 class OpSignature;
 
 /**
@@ -492,6 +494,9 @@ class Graph {
   /** Gets the Graph description. */
   void SetDescription(const std::string& description);
 
+  /** Gets the path of the owning model, if any. */
+  const Path& ModelPath() const;
+
   /** Add an initializer tensor to the Graph. */
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
@@ -819,22 +824,24 @@ class Graph {
 
   // Constructor: Given a <GraphProto> loaded from model file, construct
   // a <Graph> object. Used by Model to create a Graph instance.
-  Graph(ONNX_NAMESPACE::GraphProto* graph_proto,
+  Graph(const Model& owning_model,
+        ONNX_NAMESPACE::GraphProto* graph_proto,
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         const logging::Logger& logger,
-        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
+        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions);
 
   // internal use by the Graph class only
-  Graph(ONNX_NAMESPACE::GraphProto* graph_proto,
+  Graph(const Model& owning_model,
+        ONNX_NAMESPACE::GraphProto* graph_proto,
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         Graph* parent_graph,
         const Node* parent_node,
         const logging::Logger& logger,
-        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
+        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions);
 
   // Add node with specified <node_proto>.
   Node& AddNode(const ONNX_NAMESPACE::NodeProto& node_proto,
@@ -960,6 +967,8 @@ class Graph {
   void AddFunction(const ONNX_NAMESPACE::FunctionProto* func_proto);
 
   void ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const;
+
+  const Model& owning_model_;
 
   // GraphProto to store name, version, initializer.
   // When serializing <*this> Graph to a GraphProto, the nodes and
