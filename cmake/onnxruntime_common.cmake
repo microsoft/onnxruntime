@@ -56,7 +56,7 @@ elseif(onnxruntime_target_platform STREQUAL "ARM" OR CMAKE_GENERATOR MATCHES "AR
     set(onnxruntime_target_platform "ARM")
 elseif(onnxruntime_target_platform STREQUAL "x64" OR onnxruntime_target_platform STREQUAL "x86_64" OR onnxruntime_target_platform STREQUAL "AMD64" OR CMAKE_GENERATOR MATCHES "Win64")
     set(onnxruntime_target_platform "x64")
-elseif(onnxruntime_target_platform STREQUAL "x86" OR onnxruntime_target_platform STREQUAL "i386" OR onnxruntime_target_platform STREQUAL "i686")
+elseif(onnxruntime_target_platform STREQUAL "Win32" OR onnxruntime_target_platform STREQUAL "x86" OR onnxruntime_target_platform STREQUAL "i386" OR onnxruntime_target_platform STREQUAL "i686")
     set(onnxruntime_target_platform "x86")
 endif()
 
@@ -73,7 +73,7 @@ if (onnxruntime_USE_TELEMETRY)
 endif()
 
 if (onnxruntime_USE_MIMALLOC_STL_ALLOCATOR OR onnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR)
-    if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO) 
+    if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO)
         message(WARNING "Ignoring directive to use mimalloc on unimplemented targets")
     elseif (${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
         # Some of the non-windows targets see strange runtime failures

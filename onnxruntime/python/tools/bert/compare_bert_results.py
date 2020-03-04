@@ -22,200 +22,8 @@ from datetime import datetime
 from onnx import ModelProto, TensorProto, numpy_helper
 from OnnxModel import OnnxModel
 from bert_model_optimization import optimize_by_onnxruntime
-
-def get_graph_input_from_embed_node(onnx_model, embed_node, input_index):
-    assert input_index < len(embed_node.input)
-
-    input = embed_node.input[input_index]
-    graph_input = onnx_model.find_graph_input(input)
-    if graph_input is None:
-        parent_node = onnx_model.get_parent(embed_node, input_index)
-        if parent_node is not None and parent_node.op_type == 'Cast':
-            graph_input = onnx_model.find_graph_input(parent_node.input[0])
-    return graph_input
-
-def fake_input_ids_data(input_ids, batch_size, sequence_length, dictionary_size):
-    """
-    Fake data based on the graph input of input ids.
-    Args:
-        input_ids (TensorProto): graph input of input tensor.
-    Returns:
-        data (np.array): the data for input tensor
-    """
-    assert input_ids.type.tensor_type.elem_type in [TensorProto.FLOAT, TensorProto.INT32, TensorProto.INT64]
-    
-    data = np.random.randint(dictionary_size, size=(batch_size, sequence_length), dtype=np.int32)
-
-    if input_ids.type.tensor_type.elem_type == TensorProto.FLOAT:
-        data = np.float32(data)
-    elif input_ids.type.tensor_type.elem_type == TensorProto.INT64:
-        data = np.int64(data)
-
-    return data
-
-def fake_segment_ids_data(segment_ids, batch_size, sequence_length):
-    """
-    Fake data based on the graph input of segment_ids.
-    Args:
-        segment_ids (TensorProto): graph input of input tensor.
-    Returns:
-        data (np.array): the data for input tensor
-    """
-    assert segment_ids.type.tensor_type.elem_type in [TensorProto.FLOAT, TensorProto.INT32, TensorProto.INT64]
-    
-    data = np.zeros((batch_size, sequence_length), dtype=np.int32)
-
-    if segment_ids.type.tensor_type.elem_type == TensorProto.FLOAT:
-        data = np.float32(data)
-    elif segment_ids.type.tensor_type.elem_type == TensorProto.INT64:
-        data = np.int64(data)
-
-
-    return data
-
-def fake_input_mask_data(input_mask, batch_size, sequence_length, random_mask_length):
-    """
-    Fake data based on the graph input of segment_ids.
-    Args:
-        segment_ids (TensorProto): graph input of input tensor.
-    Returns:
-        data (np.array): the data for input tensor
-    """
-    assert input_mask.type.tensor_type.elem_type in [TensorProto.FLOAT, TensorProto.INT32, TensorProto.INT64]
-
-    if random_mask_length:
-        actual_seq_len = random.randint(int(sequence_length * 2 / 3), sequence_length)
-        data = np.zeros((batch_size, sequence_length), dtype=np.int32)
-        temp = np.ones((batch_size, actual_seq_len), dtype=np.int32)
-        data[:temp.shape[0],:temp.shape[1]]=temp
-    else:
-        data = np.ones((batch_size, sequence_length), dtype=np.int32)
-
-    if input_mask.type.tensor_type.elem_type == TensorProto.FLOAT:
-        data = np.float32(data)
-    elif input_mask.type.tensor_type.elem_type == TensorProto.INT64:
-        data = np.int64(data)
-
-    return data
-
-def output_test_data(output_path, test_case_id, inputs, result, output_names):
-    """
-    Output test data so that we can use onnxruntime_perf_test.exe to check performance laster.
-    """
-    path = os.path.join(output_path, 'test_data_set_' + str(test_case_id))
-    try:
-        os.mkdir(path)
-    except OSError:
-        print ("Creation of the directory %s failed" % path)
-    else:
-        print ("Successfully created the directory %s " % path)
-
-    index = 0
-    for name, data in inputs.items():
-        tensor = numpy_helper.from_array(data, name)
-        with open(os.path.join(path, 'input_{}.pb'.format(index)), 'wb') as f:
-            f.write(tensor.SerializeToString())
-        index += 1
-
-def fake_test_data(batch_size, sequence_length, test_cases, dictionary_size, verbose, random_seed, input_ids, segment_ids, input_mask, random_mask_length):
-    """
-    Generate fake input data for test.
-    """
-    np.random.seed(random_seed)
-
-    all_inputs = []
-    for test_case in range(test_cases):
-        input_1 = fake_input_ids_data(input_ids, batch_size, sequence_length, dictionary_size)
-        input_2 = fake_segment_ids_data(segment_ids, batch_size, sequence_length)
-        input_3 = fake_input_mask_data(input_mask, batch_size, sequence_length, random_mask_length)
-        inputs = {input_ids.name: input_1,
-                  segment_ids.name: input_2,
-                  input_mask.name: input_3
-                 }
-        if verbose and len(all_inputs) == 0:
-            print("Example inputs", inputs)
-        all_inputs.append(inputs)
-    return all_inputs
-
-def get_bert_inputs(onnx_file):
-    """
-    Get graph inputs for bert model.
-    First, we will deduce from EmbedLayerNormalization node. If not found, we will guess based on naming.
-    """
-    model = ModelProto()
-    with open(onnx_file, "rb") as f:
-        model.ParseFromString(f.read())
-
-    onnx_model = OnnxModel(model)
-
-    graph_inputs = onnx_model.get_graph_inputs_excluding_initializers()
-    if len(graph_inputs) != 3:
-        raise ValueError("Expect the graph to have 3 inputs. Got {}".format(len(graph_inputs)))
-
-    embed_nodes = onnx_model.get_nodes_by_op_type('EmbedLayerNormalization')
-    if len(embed_nodes) == 1:
-        embed_node = embed_nodes[0]
-        input_ids = get_graph_input_from_embed_node(onnx_model, embed_node, 0)
-        segment_ids = get_graph_input_from_embed_node(onnx_model, embed_node, 1)
-        input_mask = get_graph_input_from_embed_node(onnx_model, embed_node, 7)
-        return input_ids, segment_ids, input_mask
-
-    # Try guess the inputs based on naming.
-    input_ids = None
-    segment_ids = None
-    input_mask = None
-    for input in graph_inputs:
-        input_name_lower = input.name.lower()
-        if "mask" in input_name_lower: # matches input with name like "attention_mask" or "input_mask"
-            input_mask = input
-        elif "token" in input_name_lower or "segment" in input_name_lower: # matches input with name like "segment_ids" or "token_type_ids"
-            segment_ids = input
-        else:
-            input_ids = input
-
-    if input_ids and segment_ids and input_mask:
-        return input_ids, segment_ids, input_mask
-
-    raise ValueError("Fail to assign 3 inputs. You might try rename the graph inputs.")
-
-def onnxruntime_inference(session, all_inputs, output_names):
-    results = []
-    latency_list = []
-    for test_case_id, inputs in enumerate(all_inputs):
-        start_time = timeit.default_timer()
-        result = session.run(output_names, inputs)
-        latency = timeit.default_timer() - start_time
-        results.append(result)
-        latency_list.append(latency)
-    return results, latency_list
-
-def generate_test_data(batch_size, sequence_length, test_cases, seed, verbose, input_ids, segment_ids, input_mask, random_mask_length):
-    dictionary_size = 10000
-    all_inputs = fake_test_data(batch_size, sequence_length, test_cases, dictionary_size, verbose, seed, input_ids, segment_ids, input_mask, random_mask_length)
-    if len(all_inputs) != test_cases:
-        print("Failed to create test data for test.")
-    return all_inputs
-
-def create_session(model_path, use_gpu, use_openmp, graph_optimization_level, num_threads, wait_policy):
-    execution_providers = ['CPUExecutionProvider'] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
-    sess_options = onnxruntime.SessionOptions()
-    sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
-    sess_options.graph_optimization_level = graph_optimization_level
-    if not use_openmp:
-        sess_options.intra_op_num_threads=num_threads
-        if "OMP_NUM_THREADS" in os.environ:
-            del os.environ["OMP_NUM_THREADS"]
-        if "OMP_WAIT_POLICY" in os.environ:
-            del os.environ["OMP_WAIT_POLICY"]
-    else:
-        sess_options.intra_op_num_threads=1
-        os.environ["OMP_NUM_THREADS"] = str(num_threads)
-        os.environ["OMP_WAIT_POLICY"] = wait_policy
-
-    session = onnxruntime.InferenceSession(model_path, sess_options, providers=execution_providers)
-    if use_gpu:
-        assert 'CUDAExecutionProvider' in session.get_providers()
-    return session
+from bert_test_data import get_bert_inputs, generate_test_data, output_test_data
+from bert_perf_test import create_session, onnxruntime_inference
 
 def run_model(baseline_model, all_inputs, use_gpu, use_openmp, graph_optimization_level):
     session = create_session(baseline_model, use_gpu, use_openmp, graph_optimization_level, num_threads=psutil.cpu_count(logical=True), wait_policy='ACTIVE')
@@ -226,26 +34,33 @@ def run_model(baseline_model, all_inputs, use_gpu, use_openmp, graph_optimizatio
 def compare(baseline_results, treatment_results, verbose, rtol=1e-3, atol=1e-4):
     # Validate the output of baseline and treatment, to make sure the results are similar.
     diff_count = 0
-    first_diff = True
-    max_rel_diff = []
-    max_abs_diff = []
+    max_rel_diff = 0
+    max_abs_diff = 0
     for test_case_id, results in enumerate(baseline_results):
-        treatment_first_output = treatment_results[test_case_id][0].tolist()
-        if not np.allclose(results[0].tolist(), treatment_first_output, rtol=rtol, atol=atol):
-            diff_count += 1
-            if verbose and first_diff:
+        case_passed = True
+        for i in range(len(results)):
+            treatment_first_output = treatment_results[test_case_id][0].tolist()
+            rel_diff = np.amax(np.abs((treatment_results[test_case_id][0] - results[0]) / results[0]))
+            abs_diff = np.amax(np.abs(treatment_results[test_case_id][0] - results[0]))
+            max_rel_diff = max(max_rel_diff, rel_diff)
+            max_abs_diff = max(max_abs_diff, abs_diff)
+            if verbose:
+                print("case {} output {}".format(test_case_id, i))
                 print("baseline={}\ntreatment={}".format(results[0].tolist(), treatment_first_output))
-                first_diff = False
-        max_rel_diff.append(np.amax(np.abs((treatment_results[test_case_id][0] - results[0]) / results[0])))
-        max_abs_diff.append(np.amax(np.abs(treatment_results[test_case_id][0] - results[0])))
+                print("rel_diff={} abs_diff={}".format(rel_diff, abs_diff))
+            if not np.allclose(results[0].tolist(), treatment_first_output, rtol=rtol, atol=atol):
+                if case_passed:
+                    case_passed = False
+                    diff_count += 1
 
-    print("{} out of {} results are not close (rtol={}, atol={}).".format(diff_count, len(baseline_results), rtol, atol))
+    if diff_count == 0:
+        print("100% passed for {} random inputs given thresholds (rtol={}, atol={}).".format(len(baseline_results), rtol, atol))
+    else:
+        print("{} out of {} results not passed for thresholds (rtol={}, atol={}).".format(diff_count, len(baseline_results), rtol, atol))
 
-    max_abs_diff_value = max(max_abs_diff)
-    print("maximum absolute difference={} in test case {}".format(max_abs_diff_value, max_abs_diff.index(max_abs_diff_value)))
+    print("maximum absolute difference={}".format(max_abs_diff))
 
-    max_rel_diff_value = max(max_rel_diff)
-    print("maximum relative difference={} in test case {}".format(max_rel_diff_value, max_rel_diff.index(max_rel_diff_value)))
+    print("maximum relative difference={}".format(max_rel_diff))
 
 def run_test(baseline_model, optimized_model, output_dir, batch_size, sequence_length, use_gpu, test_cases, seed, use_openmp, verbose, rtol, atol):
     # Try deduce input names from optimized model.
@@ -255,13 +70,16 @@ def run_test(baseline_model, optimized_model, output_dir, batch_size, sequence_l
     all_inputs = generate_test_data(batch_size, sequence_length, test_cases, seed, verbose, input_ids, segment_ids, input_mask, random_mask_length=True)
 
     baseline_results, baseline_latency, output_names = run_model(baseline_model, all_inputs, use_gpu, use_openmp, onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL)
-    print("baseline average latency: {} ms".format(statistics.mean(baseline_latency) * 1000))
+    if verbose:
+        print("baseline average latency: {} ms".format(statistics.mean(baseline_latency) * 1000))
 
-    for i, inputs in enumerate(all_inputs):
-        output_test_data(output_dir, i, inputs, baseline_results[i], output_names)
+    if output_dir is not None:
+        for i, inputs in enumerate(all_inputs):
+            output_test_data(output_dir, i, inputs)
 
     treatment_results, treatment_latency, treatment_output_names = run_model(optimized_model, all_inputs, use_gpu, use_openmp, onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL)
-    print("treatment average latency: {} ms".format(statistics.mean(treatment_latency) * 1000))
+    if verbose:
+        print("treatment average latency: {} ms".format(statistics.mean(treatment_latency) * 1000))
 
     # Validate the output of baseline and treatment, to make sure the results are similar.
     compare(baseline_results, treatment_results, verbose, rtol, atol)
@@ -275,7 +93,7 @@ def parse_arguments():
                         help="optimized model for the baseline model. They shall have same inputs. If it is None, an optimized model will be generated using OnnxRuntime.")
 
     parser.add_argument('--output_dir', required=False, type=str, default=None,
-                        help="output test data path. If not specified, we create a sub-directory under the directory of the optimized model.")
+                        help="output test data path. If not specified, test data will not be saved.")
 
     parser.add_argument('--batch_size', required=True, type=int,
                         help="batch size of input")
@@ -315,20 +133,15 @@ def main():
     if args.use_gpu and ('CUDAExecutionProvider' not in onnxruntime.get_available_providers()):
         print("Please install onnxruntime-gpu package instead of onnxruntime, and use a machine with GPU for testing gpu.")
 
-    output_dir= args.output_dir
-    if output_dir is None:
-        # Default output directory is under the same directory of optimized model.
-        p = Path(optimized_model)
-        output_dir = os.path.join(p.parent, "batch_{}_seq_{}".format(args.batch_size, args.sequence_length))
-
-    # create the output directory if not existed
-    path = Path(output_dir)
-    path.mkdir(parents=True, exist_ok=True)
+    if args.output_dir is not None:
+        # create the output directory if not existed
+        path = Path(args.output_dir)
+        path.mkdir(parents=True, exist_ok=True)
 
     run_test(
         args.baseline_model,
         optimized_model,
-        output_dir,
+        args.output_dir,
         args.batch_size,
         args.sequence_length,
         args.use_gpu,

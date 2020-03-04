@@ -45,7 +45,7 @@ For tf2onnx, please refer to this notebook: https://github.com/onnx/tensorflow-o
 
 Example of using the script bert_model_optimization.py to convert a BERT-large model to run in V100 GPU:
 ```console
-python bert_model_optimization.py --input original_model.onnx --output optimized_model_gpu.onnx --num_heads 24 --hidden_size 1024 --sequence_length 128 --input_int32 --float16 --gpu_only
+python bert_model_optimization.py --input original_model.onnx --output optimized_model_gpu.onnx --num_heads 16 --hidden_size 1024 --input_int32 --float16 --gpu_only
 ```
 
 ### Options
@@ -57,8 +57,9 @@ See below for description of all the options of bert_model_optimization.py:
 - **model_type**: (*defaul: bert*)
     There are 3 model types: *bert*, *bert_tf* and *bert_keras* for models exported by PyTorch, tf2onnx and keras2onnx respectively.
 - **num_heads**: (*default: 12*)
-    Number of attention heads, like 24 for BERT-large model.
+    Number of attention heads. BERT-base and BERT-large has 12 and 16 respectively.
 - **hidden_size**: (*default: 768*)
+    BERT-base and BERT-large has 768 and 1024 hidden nodes respectively.
 - **sequence_length**: (*default: 128*)
     Maximum sequence length.
 - **input_int32**: (*optional*)
@@ -118,3 +119,4 @@ python bert_perf_test.py --model optimized_model_gpu.onnx --batch_size 1 --seque
 ```
 
 After test is finished, a file like perf_results_CPU_B1_S128_<date_time>.txt or perf_results_GPU_B1_S128_<date_time>.txt will be output to the model directory.
+

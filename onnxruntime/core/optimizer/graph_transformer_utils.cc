@@ -28,7 +28,6 @@
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/mlas/inc/mlas.h"
-#include "core/session/inference_session.h"
 
 namespace onnxruntime {
 
