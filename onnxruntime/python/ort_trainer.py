@@ -50,11 +50,17 @@ def generate_sample(desc, device=None):
     else:
         return torch.randn(size, dtype=desc.dtype_, device=device)
 
-def get_device_index(input):
+def get_device_index(device):
+    if type(device) == str:
+        # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
+        device = torch.device(device)
+    return 0 if device.index is None else device.index
+
+def input_get_device_index(input):
     if isinstance(input, (list, tuple)):
-        device_index = input[0].device.index if input[0].device.index else 0
+        device_index = get_device_index(input[0].device)
     else:
-        device_index = input.device.index if input.device.index else 0
+        device_index = get_device_index(input.device)
 
     return device_index
 
@@ -78,7 +84,7 @@ def get_group_accumulated_gradients_output_node_arg_name(session):
 
 def ort_training_session_run_helper(session, iobinding, inputs, input_descs, output_descs, device, run_options=None):
     for input, input_desc in zip(inputs, input_descs):
-        device_index = get_device_index(input)
+        device_index = input_get_device_index(input)
         iobinding.bind_input(input_desc.name_, input.device.type, device_index, dtype_torch_to_numpy(input.dtype),
                              list(input.size()), input.data_ptr())
 
@@ -88,8 +94,8 @@ def ort_training_session_run_helper(session, iobinding, inputs, input_descs, out
         torch_tensor = torch.zeros(output_desc.shape_, device=device, 
                                    dtype=output_desc.eval_dtype_ if hasattr(output_desc, 'eval_dtype_')
                                    else output_desc.dtype_)
-        device_index = device.index if device.index else 0
-        iobinding.bind_output(output_desc.name_, torch_tensor.device.type, device_index,
+
+        iobinding.bind_output(output_desc.name_, torch_tensor.device.type, get_device_index(device),
                               dtype_torch_to_numpy(torch_tensor.dtype),
                               list(torch_tensor.size()), torch_tensor.data_ptr())
         torch_outputs[output_desc.name_] = torch_tensor
@@ -195,7 +201,7 @@ def dtype_torch_to_numpy(torch_dtype):
     elif torch_dtype == torch.int16 or torch_dtype == torch.short: 
         return np.int16
 
-def WrapForInputMatch(model, input_names):
+def wrap_for_input_match(model, input_names):
     import inspect
     sig = inspect.signature(model.forward)
     ordered_list_keys = list(sig.parameters.keys())
@@ -286,7 +292,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device):
     # pytorch onnx exporter/trace does not try to match argument names.
     # e.g. for models with optional inputs, it requires all inputs be present.
     # this is a problem because the model graph depends on inputs provided.
-    model = WrapForInputMatch(model, input_names)
+    model = wrap_for_input_match(model, input_names)
 
     torch.onnx._export(model, tuple(sample_inputs), f,
                        input_names=input_names, 
@@ -295,7 +301,9 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device):
                        dynamic_axes=dynamic_axes,
                        training=True,
                        _retain_param_name=True,
-                       example_outputs=tuple(sample_outputs))
+                       example_outputs=tuple(sample_outputs),
+                       do_constant_folding=False,
+                       enable_onnx_checker=False)
 
     model = onnx.load_model_from_string(f.getvalue())
 
@@ -435,11 +443,10 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
         for param in torch_params.keys():
             torch_tensor = torch_params[param]
 
-            device_index = torch_tensor.device.index if torch_tensor.device.index else 0
-            train_io_binding.bind_input(param, torch_tensor.device.type, device_index,
+            train_io_binding.bind_input(param, torch_tensor.device.type, get_device_index(torch_tensor.device),
                                         dtype_torch_to_numpy(torch_params[param].dtype), list(torch_tensor.size()),
                                         torch_tensor.data_ptr())
-            eval_io_binding.bind_input(param, torch_tensor.device.type, device_index,
+            eval_io_binding.bind_input(param, torch_tensor.device.type, get_device_index(torch_tensor.device),
                                        dtype_torch_to_numpy(torch_params[param].dtype), list(torch_tensor.size()),
                                        torch_tensor.data_ptr())
 
@@ -483,11 +490,11 @@ def create_ort_training_session_bind_parameters(model, device, world_rank=-1, wo
     enable_grad_accumulation = gradient_accumulation_steps > 1
     for param in torch_params.keys():
         torch_tensor = torch_params[param]
-        device_index = torch_tensor.device.index if torch_tensor.device.index else 0
-        train_io_binding.bind_input(param, torch_tensor.device.type, device_index,
+
+        train_io_binding.bind_input(param, torch_tensor.device.type, get_device_index(torch_tensor.device),
                                     dtype_torch_to_numpy(torch_params[param].dtype), list(torch_tensor.size()),
                                     torch_tensor.data_ptr())
-        eval_io_binding.bind_input(param, torch_tensor.device.type, device_index,
+        eval_io_binding.bind_input(param, torch_tensor.device.type, get_device_index(torch_tensor.device),
                                    dtype_torch_to_numpy(torch_params[param].dtype), list(torch_tensor.size()),
                                    torch_tensor.data_ptr())
 
@@ -499,7 +506,8 @@ class ORTTrainer():
 
     def __init__(self, model, loss_fn, model_desc, training_optimizer_name, map_optimizer_attributes,
                  learning_rate_description, device, gradient_accumulation_steps=1, postprocess_model=None,
-                 world_rank=-1, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False):
+                 world_rank=-1, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
+                 global_step=0, get_lr_this_step=None, loss_scaler=None):
         super(ORTTrainer, self).__init__()
         """
         Initializes ORTTrainer.
@@ -554,8 +562,21 @@ class ORTTrainer():
         self.session = None
         self.device_ = device
         self.gradient_accumulation_steps = gradient_accumulation_steps
+
+        # we use self.current_step to count calls to train_step. It is used for gradient accumulation.
+        # gradients are being accumulated when self.current_step is not divisible by gradient_accumulation_steps.
+        # gradients are updated when self.current_step is divisible by gradient_accumulation_steps.
         self.current_step = 0
+
+        # we use self.global_step_ to count optimizations being performed.
+        # it is used to calculate learning rate if self.get_lr_this_step_ is provided.
+        self.global_step_ = global_step
         self.post_process_model_fn_ = postprocess_model
+        self.get_lr_this_step_ = get_lr_this_step
+        self.loss_scaler_ = loss_scaler
+
+        if self.get_lr_this_step_ is not None or self.loss_scaler_ is not None:
+            print("It is experimental to use learning rate scheduler and loss scaler inside ORTTrainer.")
 
         if self.torch_model_ is not None:
             self.onnx_model_ = convert_model_loss_fn_to_onnx(self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'))
@@ -640,7 +661,28 @@ class ORTTrainer():
         with open(path, "wb") as f:
             f.write(self.onnx_model_.SerializeToString())
 
-    def train_step(self, input, fetches=None):
+    def prepare_input_and_fetches(self, input_desc_with_, learning_rate, loss_scale, *args, **kwargs):
+        fetches = None
+        if type(args) == tuple and len(args) == 1 and type(args[0]) == list:
+            input = tuple(args[0])
+        else:
+            input = args
+
+        for input_desc in input_desc_with_:
+            if input_desc.name_ in kwargs:
+                input = input + (kwargs[input_desc.name_],)
+        if learning_rate is not None:
+            input = input + (learning_rate,)
+        if loss_scale is not None:
+            input = input + (loss_scale,)
+
+        fetches = None
+        if 'fetches' in kwargs:
+            fetches = kwargs['fetches']
+
+        return input, fetches
+
+    def train_step(self, *args, **kwargs):
         """
         inputs: model inputs, labels, learning rate, and, if in mixed_precision mode, loss_scale.
         outputs: if fetches is not provided, outputs are loss and
@@ -648,6 +690,34 @@ class ORTTrainer():
             if fetches is provided, outputs contains these requested with fetches.
         fetches: names of requested outputs
         """
+
+        # inputs to the ONNX model includes inputs to the original PyTorch model
+        # plus learning rate and loss_scale if self.use_mixed_precision is True.
+        # 1. when there are internal learning_rate and loss_scale (in fp16 cases) generators,
+        #   *args and **kwargs together contain ONLY and COMPLETE inputs to the PyTorch model.
+        #   In this case, changes to the training script is minimized.
+        # 2. without internal learning rate and loss scale (in fp16 cases) generators,
+        #   *args and **kwargs passed in from the training script shall contains 
+        #   inputs to the PyTorch model plus learning_rate and loss_scale.
+        #   it optionally contains the fetches.
+        # localized arguments (*args) contains inputs to the ONNX model.
+        # named arguments can contain both inputs, learning_rate and loss_scale, and the fetches
+
+
+        learning_rate, loss_scale = None, None
+        if self.get_lr_this_step_ is not None:
+            # $args, **kwargs contains inputs to the pytorch model
+            lr_this_step = self.get_lr_this_step_(self.global_step_)
+            learning_rate = torch.tensor([lr_this_step])
+        if self.loss_scaler_ is not None and self.use_mixed_precision:
+            loss_scale = torch.tensor(self.loss_scaler_.loss_scale_)
+
+        if self.use_mixed_precision:
+            input, fetches = self.prepare_input_and_fetches(self.input_desc_with_lr_and_loss_scale,
+                learning_rate, loss_scale, *args, **kwargs)
+        else:
+            input, fetches = self.prepare_input_and_fetches(self.input_desc_with_lr, 
+                learning_rate, loss_scale, *args, **kwargs)
 
         if self.use_mixed_precision:
             assert len(self.input_desc_with_lr_and_loss_scale) == len(input)
@@ -663,7 +733,7 @@ class ORTTrainer():
         has_if_all_finite = False
         if fetches:
             output_desc = [output for fetch in fetches for output in self.model_desc_.outputs_ if output.name_ == fetch]
-        elif self.gradient_accumulation_steps > 1 and self.current_step % self.gradient_accumulation_steps != 0:
+        elif self.current_step % self.gradient_accumulation_steps != 0:
             run_options = ort.RunOptions()
             run_options.only_execute_path_to_fetches = True
             output_desc = self.output_desc_with_group_accumulated_gradients
@@ -681,29 +751,39 @@ class ORTTrainer():
                                                               self.device_,
                                                               run_options)
 
-        # After session run with all_fp32_gradients_finite, we need to clear the iobinding's output state.
-        # Otherwise next run with only_execute_path_to_fetches will lead to gradient all reduce
-        # because all_fp32_gradients_finite is still in the feed.
         if has_if_all_finite:
+            # After session run with all_fp32_gradients_finite, we need to clear the iobinding's output state.
+            # Otherwise next run with only_execute_path_to_fetches will lead to gradient all reduce
+            # because all_fp32_gradients_finite is still in the feed.
             self.train_io_binding.clear_binding_outputs()
 
-        if self.use_mixed_precision and has_if_all_finite:
-            result_list = list(session_run_results.values())
-            # return loss and all_is_finite
-            return result_list[0], result_list[-1]
-        if not fetches or len(fetches) == 1:
-            # TODO: most time it returns loss tensor for caller to report training progress.
-            return list(session_run_results.values())[0]
-        else:
-            return (session_run_results[fetch] for fetch in fetches)
+            all_finite = session_run_results[self.output_desc_with_all_fp_16_or_fp32_gradients_finite[-1].name_]
+            if self.loss_scaler_ is not None:
+                self.loss_scaler_.update_loss_scale(all_finite)
+            if all_finite:
+                # optimization has done, increase self.global_step_
+                self.global_step_ = self.global_step_ + 1
+        elif self.current_step % self.gradient_accumulation_steps == 0:
+            # optimization has done, increase self.global_step_
+            self.global_step_ = self.global_step_ + 1
 
-    def __call__(self, *inputs):
+        if fetches is not None:
+            results = [session_run_results[fetch] for fetch in fetches]
+        elif has_if_all_finite and self.loss_scaler_ is None:
+            # return descripted outputs plus the all_finite flag so that the training script can handle loss scaling.
+            results = [session_run_results[output_desc.name_] for output_desc in self.output_desc_with_all_fp_16_or_fp32_gradients_finite]
+        else:
+            results = [session_run_results[output_desc.name_] for output_desc in self.model_desc_.outputs_]
+
+        return results[0] if len(results) == 1 else results
+
+    def __call__(self, *args, **kwargs):
         if self.is_train:
-            return self.train_step(*inputs)
+            return self.train_step(*args, **kwargs)
         else:
-            return self.eval_step(*inputs)
+            return self.eval_step(*args, **kwargs)
 
-    def eval_step(self, input, fetches=None):
+    def eval_step(self, *args, **kwargs):
         """
         inputs: model inputs and/or labels.
         outputs: if 'fetches' is not provided, outputs are loss and 
@@ -713,6 +793,9 @@ class ORTTrainer():
         """
 
         # with model_loss_cls, the last input is label, first output is loss
+        input, fetches = self.prepare_input_and_fetches(self.model_desc_.inputs_,
+                                                        None, None, *args, **kwargs)
+
         input_desc = self.model_desc_.inputs_[0:len(input)]
         if fetches is None:
             output_desc = self.model_desc_.outputs_
@@ -734,7 +817,7 @@ class ORTTrainer():
         if len(session_run_results) == 1:
             return session_run_results[list(session_run_results.keys())[0]]
         else:
-            return session_run_results
+            return [session_run_results[output_desc.name_] for output_desc in output_desc]
 
     def verify_fully_optimized_model(self, model):
         assert(len(model.graph.output) > 0)
@@ -796,9 +879,8 @@ class ORTModel():
         enable_grad_accumulation = self.gradient_accumulation_steps > 1
         for param in self.torch_params.keys():
             torch_tensor = self.torch_params[param]
-            device_index = torch_tensor.device.index if torch_tensor.device.index else 0
             create_and_bind_grad_or_grad_accumulate_buffer(self.train_io_binding, torch_tensor, param,
-                                                           enable_grad_accumulation, torch_tensor.device, device_index)
+                                                           enable_grad_accumulation, torch_tensor.device, get_device_index(torch_tensor.device))
 
         return ort_training_session_run_helper(self.session_, self.train_io_binding, inputs,
                                                self.model_desc_.inputs_, self.model_desc_.outputs_,
