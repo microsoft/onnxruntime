@@ -152,7 +152,7 @@ jobs:
   - template: ../../templates/validate-nuget.yml
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)'
-      NugetPackage: 'Microsoft.ML.ORTFeaturizers*nupkg''
+      NugetPackage: 'Microsoft.ML.ORTFeaturizers*nupkg'
       PlatformsSupported: 'win-x64,win-x86,linux-x64,osx-x64'
       VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
