@@ -32,7 +32,7 @@ jobs:
   - task: BatchScript@1
     displayName: 'setup env'
     inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_cuda.bat'
       modifyEnvironment: true
       workingFolder: '$(Build.BinariesDirectory)'
 
