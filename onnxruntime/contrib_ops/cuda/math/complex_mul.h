@@ -9,10 +9,18 @@ namespace contrib {
 namespace cuda {
 
 using namespace ::onnxruntime::cuda;
+
 template <typename T>
-class StackedComplexMul : public BinaryElementwise<ShouldBroadcast> {
+class ComplexMul : public BinaryElementwise<ShouldBroadcast> {
  public:
-  StackedComplexMul(const OpKernelInfo info) : BinaryElementwise{info} {}
+  ComplexMul(const OpKernelInfo info) : BinaryElementwise{info} {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class ComplexMulConj : public BinaryElementwise<ShouldBroadcast> {
+ public:
+  ComplexMulConj(const OpKernelInfo info) : BinaryElementwise{info} {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 

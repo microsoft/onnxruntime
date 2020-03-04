@@ -12,7 +12,7 @@ namespace cuda {
 using namespace ::onnxruntime::cuda;
 
 template <typename T>
-void StackedComplexMul_Impl(
+void ComplexMul_Impl(
     int32_t output_rank_or_simple_broadcast,
     const TArray<int64_t>* lhs_padded_strides,
     const T* lhs_data,
@@ -22,7 +22,8 @@ void StackedComplexMul_Impl(
     const onnxruntime::cuda::fast_divmod& fdm_H,
     const onnxruntime::cuda::fast_divmod& fdm_C,
     T* output_data,
-    int64_t count);
+    int64_t count,
+    bool is_conj);
 
 }  // namespace cuda
 }  // namespace contrib

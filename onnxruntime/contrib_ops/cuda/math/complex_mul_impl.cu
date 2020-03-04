@@ -10,11 +10,18 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 template <typename T>
-__device__ __inline__ void _ComplexMul(T a0, T a1, T b0, T b1, T* output_data) {
-  T out_real = a0 * b0 - a1 * b1;
-  T out_imag = a0 * b1 + a1 * b0;
-  output_data[0] = out_real;
-  output_data[1] = out_imag;
+__device__ __inline__ void _ComplexMul(T a0, T a1, T b0, T b1, T* output_data, bool is_conj) {
+  if (is_conj) {
+    T out_real = a0 * b0 + a1 * b1;
+    T out_imag = a1 * b0 - a0 * b1;
+    output_data[0] = out_real;
+    output_data[1] = out_imag;
+  } else {
+    T out_real = a0 * b0 - a1 * b1;
+    T out_imag = a0 * b1 + a1 * b0;
+    output_data[0] = out_real;
+    output_data[1] = out_imag;
+  }
 };
 
 // broadcast by computing output coordinate from offset, using fast_divmod
@@ -27,7 +34,8 @@ __global__ void _ElementWiseWithStrideTwo(
     const T* rhs_data,
     const TArray<fast_divmod> fdm_output_strides,
     T* output_data,
-    CUDA_LONG N) {
+    CUDA_LONG N,
+    bool is_conj) {
   CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   T a[NumElementsPerThread];
   T b[NumElementsPerThread];
@@ -71,14 +79,14 @@ __global__ void _ElementWiseWithStrideTwo(
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N / 2) {
-      _ComplexMul(a[i], b[i], c[i], d[i], &output_data[2 * id]);
+      _ComplexMul(a[i], b[i], c[i], d[i], &output_data[2 * id], is_conj);
       id += NumThreadsPerBlock;
     }
   }
 };
 
 template <typename T>
-void StackedComplexMul_Impl(
+void ComplexMul_Impl(
     int32_t output_rank_or_simple_broadcast,
     const TArray<int64_t>* lhs_padded_strides,
     const T* lhs_data,
@@ -88,7 +96,8 @@ void StackedComplexMul_Impl(
     const onnxruntime::cuda::fast_divmod& fdm_H,
     const onnxruntime::cuda::fast_divmod& fdm_C,
     T* output_data,
-    int64_t count) {
+    int64_t count,
+    bool is_conj) {
   if (count == 0)  // special case where there's a dim value of 0 in the output shape
     return;
 
@@ -104,7 +113,8 @@ void StackedComplexMul_Impl(
         rhs_data,
         *fdm_output_strides,
         output_data,
-        N);
+        N,
+        is_conj);
   else if (lhs_padded_strides && lhs_padded_strides->size_)
     _ElementWiseWithStrideTwo<T, true, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         output_rank_or_simple_broadcast,
@@ -114,7 +124,8 @@ void StackedComplexMul_Impl(
         rhs_data,
         *fdm_output_strides,
         output_data,
-        N);
+        N,
+        is_conj);
   else
     _ElementWiseWithStrideTwo<T, false, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         output_rank_or_simple_broadcast,
@@ -124,11 +135,12 @@ void StackedComplexMul_Impl(
         rhs_data,
         *fdm_output_strides,
         output_data,
-        N);
+        N,
+        is_conj);
 };
 
 #define SPECIALIZE_STACKEDCOMPLEXMUL_IMPL(T)                            \
-  template void StackedComplexMul_Impl<T>(                              \
+  template void ComplexMul_Impl<T>(                                     \
       int32_t output_rank_or_simple_broadcast,                          \
       const TArray<int64_t>* lhs_padded_strides,                        \
       const T* lhs_data,                                                \
@@ -138,7 +150,8 @@ void StackedComplexMul_Impl(
       const onnxruntime::cuda::fast_divmod& fdm_H,                      \
       const onnxruntime::cuda::fast_divmod& fdm_C,                      \
       T* output_data,                                                   \
-      int64_t count);
+      int64_t count,                                                    \
+      bool is_conj);
 
 SPECIALIZE_STACKEDCOMPLEXMUL_IMPL(float)
 SPECIALIZE_STACKEDCOMPLEXMUL_IMPL(double)
