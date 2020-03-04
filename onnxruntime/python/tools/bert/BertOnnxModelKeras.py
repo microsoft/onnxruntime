@@ -106,7 +106,6 @@ class BertOnnxModelKeras(BertOnnxModelTF):
             else:
                 qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Mul', 'MatMul'], [0, 0, 0, None])
                 if qk_nodes is None:
-                    #  x / Sqrt(64) + (mask)
                     qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Div', 'MatMul'], [0, 0, 0, None])
                     if qk_nodes is None:
                         logger.debug("Failed to match qk path")
@@ -156,7 +155,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                 nodes_to_remove.append(extra_reshape_0)
                 self.replace_node_input(add, extra_reshape_0.output[0], matmul.output[0])
             else:
-                logger.debug(f"Root node not matched")
+                logger.debug("Root node not matched.")
                 continue
         self.remove_nodes(nodes_to_remove)
         self.update_graph()
@@ -187,7 +186,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
     def fuse_embedding(self, node, output_name_to_node):
         assert node.op_type == 'LayerNormalization'
-        logger.info(f"start fusing embedding from node with output={node.output[0]}...")
+        logger.debug(f"start fusing embedding from node with output={node.output[0]}...")
         word_embed_path = self.match_parent_path(
             node,
             ['Add', 'Add', 'Gather'],
@@ -354,7 +353,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
             self.remove_node(reshape_1)
             reshape_removed += 3
 
-        logger.info(f"Remove {reshape_removed} Reshape nodes.")
+        return reshape_removed
 
     def remove_extra_reshape_2(self):
         skiplayernorm_nodes = self.get_nodes_by_op_type("SkipLayerNormalization")
@@ -383,11 +382,12 @@ class BertOnnxModelKeras(BertOnnxModelTF):
             
             reshape_removed += 4
 
-        logger.info(f"Remove {reshape_removed} Reshape nodes.")
+        return reshape_removed
 
     def postprocess(self):
-        self.remove_extra_reshape()
-        self.remove_extra_reshape_2()
+        reshape_removed = self.remove_extra_reshape() + self.remove_extra_reshape_2()
+        logger.info(f"Remove {reshape_removed} Reshape nodes.")
+
         self.prune_graph()
 
     """
