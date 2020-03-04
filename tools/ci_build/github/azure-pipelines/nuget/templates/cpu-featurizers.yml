@@ -1,7 +1,5 @@
 parameters:
   DoEsrp: 'false'
-  PackageNameManaged: 'Microsoft.ML.OnnxRuntime.Managed'
-  PackageName: 'Microsoft.ML.ORTFeaturizers'
   DoCompliance: 'false'
 
 jobs: 
@@ -19,7 +17,7 @@ jobs:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=$(PackageName)
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.ORTFeaturizers
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      mkdir $(Build.ArtifactStagingDirectory)\testdata
@@ -39,7 +37,7 @@ jobs:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage /p:OrtPackageId=$(PackageName)
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.ORTFeaturizers
      cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
      ren *.nupkg win-x86.zip
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
@@ -185,7 +183,7 @@ jobs:
     condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
     inputs:
       command: 'push'
-      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/$(PackageName).$(NuGetPackageVersionNumber).nupkg'
+      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.ORTFeaturizers.$(NuGetPackageVersionNumber).nupkg'
       publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
 
   - task: NuGetCommand@2
@@ -193,6 +191,6 @@ jobs:
     condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
     inputs:
       command: 'push'
-      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/$(PackageNameManaged).$(NuGetPackageVersionNumber).nupkg'
+      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.Managed.$(NuGetPackageVersionNumber).nupkg'
       publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
 
