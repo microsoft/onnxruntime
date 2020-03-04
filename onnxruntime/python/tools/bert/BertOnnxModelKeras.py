@@ -474,3 +474,5 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         self.add_nodes(nodes_to_add)
         if len(nodes_to_add) > 0:
             logger.info("Fused {} count:{}".format('FastGelu (approximation)' if gelu_op_name == 'FastGelu' else 'Gelu', len(nodes_to_add)))
+        else:
+            super().fuse_gelu_with_elf(gelu_op_name)
