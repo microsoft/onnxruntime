@@ -45,8 +45,8 @@ Status QuantizeLinear<T>::ComputeInternal(OpKernelContext* ctx) const {
   const float* input = x->template Data<float>();
   T* output = y->template MutableData<T>();
 
-  ORT_ENFORCE(IsScalarOr1ElementVector(y_scale), "x_scale must be a scalar or 1D tensor or size 1.");
-  ORT_ENFORCE(IsScalarOr1ElementVector(y_zero_point), "x_zero_point must be a scalar or 1D tensor or size 1.");
+  ORT_ENFORCE(IsScalarOr1ElementVector(y_scale), "x_scale must be a scalar or 1D tensor of size 1.");
+  ORT_ENFORCE(IsScalarOr1ElementVector(y_zero_point), "x_zero_point must be a scalar or 1D tensor of size 1.");
 
   const T* zero_point = y_zero_point->template Data<T>();
   const float* scale = y_scale->template Data<float>();
@@ -92,8 +92,8 @@ Status DequantizeLinear<T>::ComputeInternal(OpKernelContext* ctx) const {
   const T* input = x->template Data<T>();
   float* output = y->template MutableData<float>();
 
-  ORT_ENFORCE(IsScalarOr1ElementVector(y_scale), "x_scale must be a scalar or 1D tensor or size 1.");
-  ORT_ENFORCE(IsScalarOr1ElementVector(y_zero_point), "x_zero_point must be a scalar or 1D tensor or size 1.");
+  ORT_ENFORCE(IsScalarOr1ElementVector(y_scale), "x_scale must be a scalar or 1D tensor of size 1.");
+  ORT_ENFORCE(IsScalarOr1ElementVector(y_zero_point), "x_zero_point must be a scalar or 1D tensor of size 1.");
 
   const T* zero_point = y_zero_point->template Data<T>();
   const float* scale = y_scale->template Data<float>();
