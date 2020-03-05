@@ -1,6 +1,7 @@
 parameters:
   DoEsrp: 'false'
   DoCompliance: 'false'
+  PackageName: 'Microsoft.ML.ORTFeaturizers'
 
 jobs: 
 - template: ../../templates/win-ci-2019.yml
@@ -16,6 +17,7 @@ jobs:
     DoNugetPack : 'true'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
+    OrtPackageId: 'Microsoft.ML.ORTFeaturizers'
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.ORTFeaturizers
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
@@ -36,6 +38,7 @@ jobs:
     DoNugetPack : 'true'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
+    OrtPackageId: 'Microsoft.ML.ORTFeaturizers'
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.ORTFeaturizers
      cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
