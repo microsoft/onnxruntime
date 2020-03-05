@@ -10,6 +10,7 @@
 
 #include "gtest/gtest.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/utils.h"
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "test/util/include/default_providers.h"
@@ -443,6 +444,20 @@ TEST(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) {
     ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
     ASSERT_TRUE(ret.IsOK());
     graphs.push_back(&graph);
+  }
+
+  // Dropout seed checking.
+  const AttributeProto* attr = graph_utils::GetNodeAttribute(*GetNodeByName(*graphs[0], "dropout1"), "seed");
+  ORT_ENFORCE(attr != nullptr && attr->has_i());
+  int64_t dropout1_rank0_seed = attr->i();
+  attr = graph_utils::GetNodeAttribute(*GetNodeByName(*graphs[0], "dropout2"), "seed");
+  ORT_ENFORCE(attr != nullptr && attr->has_i());
+  int64_t dropout2_rank0_seed = attr->i();
+  for (auto i = 1; i < total_rank; i++) {
+    attr = graph_utils::GetNodeAttribute(*GetNodeByName(*graphs[i], "dropout1"), "seed");
+    ORT_ENFORCE(attr != nullptr && attr->has_i() && attr->i() == dropout1_rank0_seed + i);
+    attr = graph_utils::GetNodeAttribute(*GetNodeByName(*graphs[i], "dropout2"), "seed");
+    ORT_ENFORCE(attr != nullptr && attr->has_i() && attr->i() == dropout2_rank0_seed);
   }
 
   onnxruntime::Model combine_model("combine_graph", false, DefaultLoggingManager().DefaultLogger());

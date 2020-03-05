@@ -7,6 +7,7 @@
 #include <random>
 
 #include "core/framework/op_kernel.h"
+#include "core/framework/random_seed.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -17,7 +18,7 @@ class Dropout final : public OpKernel {
   Dropout(const OpKernelInfo& info) : OpKernel{info},
                                       random_seed_{info.GetAttrOrDefault<int64_t>(
                                           "seed",
-                                          std::chrono::steady_clock::now().time_since_epoch().count())},
+                                          static_cast<int64_t>(utils::GetStaticRandomSeed()))},
                                       rng_{static_cast<typename decltype(rng_)::result_type>(random_seed_)} {
   }
 

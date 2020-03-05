@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/random_seed.h"
 #include "orttraining/training_ops/cuda/nn/dropout.h"
 
 #include "core/providers/common.h"
@@ -33,10 +34,9 @@ REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, float, 1)
 REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, double, 1)
 
 
-static DropoutGenerator& GetGenerator(){
-  // Hardcode the default seed now.
+static DropoutGenerator& GetGenerator() {
   // This generator is shared by all Dropouts.
-  static DropoutGenerator generator(8211);
+  static DropoutGenerator generator(static_cast<uint64_t>(utils::GetStaticRandomSeed()));
   return generator;
 }
 
@@ -80,7 +80,7 @@ Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   }
   ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
 
-  DropoutKernelImpl(GetDeviceProp(), N, ratio_data, GetGenerator(), X_data, Y_data, mask_data);
+  DropoutKernelImpl(GetDeviceProp(), N, ratio_data, generator_ != nullptr ? *generator_.get() : GetGenerator(), X_data, Y_data, mask_data);
 
   return Status::OK();
 }

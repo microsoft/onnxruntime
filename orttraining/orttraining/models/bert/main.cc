@@ -8,6 +8,7 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/profiler.h"
 #include "core/session/environment.h"
+#include "core/framework/random_seed.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/framework/mpi_setup.h"
@@ -93,6 +94,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<int>()->default_value("1"))
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
+      ("seed", "Random seed.", cxxopts::value<int>()->default_value("-1"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
       ("use_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
       ("allreduce_in_fp16", "Whether to do AllReduce in fp16. If false, AllReduce will be done in fp32", cxxopts::value<bool>()->default_value("true"))
@@ -226,6 +228,12 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       params.is_perf_test = mode == "perf";
     } else {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Incorrect command line for mode: it must be one of [perf|train]");
+    }
+
+    int seed = flags["seed"].as<int>();
+    if (seed > 0) {
+      utils::SetStaticRandomSeed(static_cast<uint32_t>(seed));
+      printf("Random seed is set to %d.\n", seed);
     }
 
     params.use_mixed_precision = flags["use_mixed_precision"].as<bool>();

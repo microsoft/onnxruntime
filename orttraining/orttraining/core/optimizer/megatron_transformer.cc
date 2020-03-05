@@ -5,6 +5,7 @@
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
+#include "core/framework/random_seed.h"
 #include <deque>
 
 using namespace ONNX_NAMESPACE;
@@ -28,11 +29,11 @@ struct OpInfo {
 
 const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v1 = {1};
 const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v1_11 = {1, 11};
-const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v1_6_7_10 = {1, 6, 7, 10};
 const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v2_11 = {2, 11};
 const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v5 = {5};
 const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v7 = {7};
 const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v9 = {9};
+const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v12 = {12};
 const OpInfo add_info = OpInfo("Add", opset_v7);
 const OpInfo split_info = OpInfo("Split", opset_v2_11, kOnnxDomainAlias, 3);
 const OpInfo reshape_info = OpInfo("Reshape", opset_v5);
@@ -43,7 +44,7 @@ const OpInfo mul_info = OpInfo("Mul", opset_v7);
 const OpInfo sub_info = OpInfo("Sub", opset_v7);
 const OpInfo softmax_info = OpInfo("Softmax", opset_v1_11);
 const OpInfo trainable_dropout_info = OpInfo("TrainableDropout", opset_v9, kOnnxDomain);
-const OpInfo dropout_info = OpInfo("Dropout", opset_v1_6_7_10);
+const OpInfo dropout_info = OpInfo("Dropout", opset_v12);
 
 struct NodeInfo {
   NodeInfo(const std::vector<OpInfo>& op_infos,
@@ -95,6 +96,18 @@ static bool MatchLinearPattern(Graph& graph,
   }
 
   return true;
+}
+
+// std::hash only guarantee deterministic value in single execution of a program.
+// So use this simple hash to generate dropout seed by name.
+static uint32_t HashName(const std::string& name)
+{
+  uint32_t hash = 0;
+  for (char const& c : name) {
+    hash = hash * 101 + c;
+  }
+
+  return hash;
 }
 
 bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const NodeArg& input_arg,
@@ -341,7 +354,8 @@ Status MegatronTransformer::TransformMLP(Graph& graph, bool& modified, int graph
 
 Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified, int graph_level,
                                                    const logging::Logger& logger,
-                                                   std::vector<Node*>& nodes_to_clear_shape) const {
+                                                   std::vector<Node*>& nodes_to_clear_shape,
+                                                   std::unordered_set<Node*>& self_attention_dropout_nodes) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -392,6 +406,7 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
     Node& split_node = *sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 14];
     Node& transpose_node = *sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 12];
     Node* matmul_node_ptr = sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 11];
+    Node* dropout_node_ptr = sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 6];
     Node* matmul_node_ptr1 = sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 5];
     Node& transpose_node1 = *sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 4];
     Node& matmul_node = *sub_graph_node_ptrs[sub_graph_node_ptrs.size() - 2];
@@ -536,6 +551,10 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
       graph.RemoveInitializedTensor(shape_arg->Name());
     }
 
+    if (dropout_node_ptr != nullptr) {
+      self_attention_dropout_nodes.insert(dropout_node_ptr);
+    }
+
     // Add MegatronF before the 1st MatMul and MegatronG before the last Add.
     const std::vector<NodeArg*> sa_f_input_defs{node.MutableInputDefs()[0]};
     auto sa_f_type_info = *node.MutableInputDefs()[0]->TypeAsProto();
@@ -570,15 +589,54 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
   return Status::OK();
 }
 
+Status MegatronTransformer::TransformDropout(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
+                                             std::unordered_set<Node*>& self_attention_dropout_nodes) const {
+  GraphViewer graph_viewer(graph);
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+  for (auto node_index : node_topology_list) {
+    auto& node = *graph.GetNode(node_index);
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+
+    if (!graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
+      continue;
+    }
+
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", opset_v12) &&
+        !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TrainableDropout", opset_v9, kOnnxDomain)) {
+      continue;
+    }
+
+    // Only need to set the seed if it's a transformed self-attention dropout, or the seed attribute is not set.
+    if (self_attention_dropout_nodes.find(&node) != self_attention_dropout_nodes.end() ||
+        graph_utils::GetNodeAttribute(node, "seed") == nullptr) {
+      int64_t seed = static_cast<int64_t>(HashName(node.MutableOutputDefs()[0]->Name())) + utils::GetStaticRandomSeed(8211);
+      if (self_attention_dropout_nodes.find(&node) != self_attention_dropout_nodes.end()) {
+        seed += horizontal_parallel_rank_;
+      }
+
+      if (graph_utils::GetNodeAttribute(node, "seed") != nullptr) {
+        node.ClearAttribute("seed");
+      }
+
+      node.AddAttribute("seed", seed);
+      modified = true;
+    }
+  }
+
+  return Status::OK();
+}
+
 Status MegatronTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   if (horizontal_parallel_size_ <= 1) {
     return Status::OK();
   }
 
   std::vector<Node*> nodes_to_clear_shape;
+  std::unordered_set<Node*> self_attention_dropout_nodes;
 
   ORT_ENFORCE(TransformMLP(graph, modified, graph_level, logger, nodes_to_clear_shape).IsOK());
-  ORT_ENFORCE(TransformSelfAttention(graph, modified, graph_level, logger, nodes_to_clear_shape).IsOK());
+  ORT_ENFORCE(TransformSelfAttention(graph, modified, graph_level, logger, nodes_to_clear_shape, self_attention_dropout_nodes).IsOK());
+  ORT_ENFORCE(TransformDropout(graph, modified, graph_level, logger, self_attention_dropout_nodes).IsOK());
 
   auto& graph_inputs = graph.GetInputs();
   for (auto& node : nodes_to_clear_shape) {

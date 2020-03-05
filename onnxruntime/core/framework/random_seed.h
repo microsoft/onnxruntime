@@ -6,15 +6,16 @@
 #include <cstdint>
 
 namespace onnxruntime {
-namespace test {
+namespace utils {
 
 /**
  * Gets the static random seed value. All calls to GetStaticRandomSeed()
  * throughout the lifetime of the process will return the same value.
  *
+ * @param default_seed If the random seed is not set, return this value instead of random if it's positive.
  * @return The static random seed value.
  */
-uint32_t GetStaticRandomSeed();
+uint32_t GetStaticRandomSeed(uint32_t default_seed = 0);
 
 /**
  * Sets the static random seed value.

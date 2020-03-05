@@ -53,6 +53,7 @@ def main():
         "--lambda", "0",
         "--use_nccl",
         "--convergence_test_output_file", convergence_test_output_path,
+        "--seed", "42",
     ]).check_returncode()
 
     # verify output

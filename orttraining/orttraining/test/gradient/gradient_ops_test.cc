@@ -7,11 +7,11 @@
 #include <random>
 
 #include "gtest/gtest.h"
+#include "core/framework/random_seed.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "orttraining/test/gradient/gradient_checker.h"
 #include "orttraining/test/gradient/gradient_op_test_utils.h"
-#include "test/random_seed.h"
 
 #include "onnx/defs/attr_proto_util.h"
 
@@ -29,7 +29,7 @@ static bool IsErrorWithinTolerance(float error, float tolerance) {
   EXPECT_TRUE(IsErrorWithinTolerance(max_error, tolerance)) \
       << "max_error: " << max_error                         \
       << "; tolerance: " << tolerance                       \
-      << "; ORT test random seed: " << GetStaticRandomSeed() << "; "
+      << "; ORT test random seed: " << utils::GetStaticRandomSeed() << "; "
 
 #define EXPECT_IS_TINY(max_error) \
   EXPECT_IS_TINIER_THAN(max_error, 1.5e-2f)
@@ -43,7 +43,7 @@ void GenerateRandomDataWithOneHot(
     // TODO: Consider varying mean and variance
     float scale = 5.f;
     float mean = 0.f;
-    const uint32_t seed = GetStaticRandomSeed();
+    const uint32_t seed = utils::GetStaticRandomSeed();
 
     std::default_random_engine generator{gsl::narrow_cast<decltype(generator)::result_type>(seed)};
     std::normal_distribution<T> distribution{mean, scale};

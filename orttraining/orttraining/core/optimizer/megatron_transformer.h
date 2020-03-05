@@ -24,7 +24,11 @@ class MegatronTransformer : public GraphTransformer {
                       std::vector<Node*>& nodes_to_clear_shape) const;
 
   Status TransformSelfAttention(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
-                                std::vector<Node*>& nodes_to_clear_shape) const;
+                                std::vector<Node*>& nodes_to_clear_shape,
+                                std::unordered_set<Node*>& self_attention_dropout_nodes) const;
+
+  Status TransformDropout(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
+                          std::unordered_set<Node*>& self_attention_dropout_nodes) const;
 
   bool PartitionWeightByColumn(const Graph& graph, const NodeArg& input_arg,
                                ONNX_NAMESPACE::TensorProto& initializer_partition, int stride = 1) const;

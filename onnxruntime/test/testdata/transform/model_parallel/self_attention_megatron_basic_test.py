@@ -39,9 +39,6 @@ shape_initializer2 = numpy_helper.from_array(shape_val2, 'concat_shape_2')
 shape_val3 = np.array([0, 0, hidden_size], dtype=np.int64)
 shape_initializer3 = numpy_helper.from_array(shape_val3, 'concat_shape_3')
 
-ratio = np.asarray([0.0], dtype=np.float32)
-ratio_initializer = numpy_helper.from_array(ratio, 'ratio')
-
 matmul1 = helper.make_node('MatMul', ['input', qkv_weight_initializer.name], ['matmul1'], name='matmul1')
 add1 = helper.make_node('Add', ['matmul1', qkv_bias_initializer.name], ['add1'], name='add1')
 split = helper.make_node('Split', ['add1'], ['mixed_query_layer', 'mixed_key_layer', 'mixed_value_layer'], name='split', axis=2)
@@ -57,28 +54,28 @@ div = helper.make_node('Div', ['matmul2', 'mask'], ['div'], name='div')
 mul = helper.make_node('Mul', ['div', 'mask'], ['mul'], name='mul')
 sub = helper.make_node('Sub', ['mul', 'mask'], ['sub'], name='sub')
 softmax = helper.make_node('Softmax', ['sub'], ['softmax'], name='softmax', axis=3)
-# Use 0.0f as the ratio for correctness test.
-dropout = helper.make_node('TrainableDropout', ['softmax', ratio_initializer.name], ['dropout'], name='dropout')
-matmul3 = helper.make_node('MatMul', ['dropout', 'transpose2'], ['matmul3'], name='matmul3')
+dropout1 = helper.make_node('Dropout', ['softmax'], ['dropout1'], name='dropout1')
+matmul3 = helper.make_node('MatMul', ['dropout1', 'transpose2'], ['matmul3'], name='matmul3')
 transpose3 = helper.make_node('Transpose', ['matmul3'], ['transpose3'], name='transpose3', perm=[0,2,1,3])
 reshape3 = helper.make_node('Reshape', ['transpose3', shape_initializer3.name], ['reshape3'], name='reshape3')
 matmul4 = helper.make_node('MatMul', ['reshape3', dense_weight_initializer.name], ['matmul4'], name='matmul4')
 add2 = helper.make_node('Add', ['matmul4', dense_bias_initializer.name], ['add2'], name='add2')
-# Add dummy identity so above add node has 1 output.
-identity = helper.make_node('Identity', ['add2'], ['output'], name='identity')
+dropout2 = helper.make_node('Dropout', ['add2'], ['dropout2'], name='dropout2')
+# Add dummy Identity so during inference dropout2 can be removed for testing.
+identity = helper.make_node('Identity', ['dropout2'], ['output'], name='identity')
 
 # Create the graph (GraphProto)
 graph_def = helper.make_graph(
-    [matmul1, add1, split, reshape, reshape1, reshape2, transpose, transpose1, transpose2, matmul2, div, mul, sub, softmax, dropout, matmul3, transpose3, reshape3, matmul4, add2, identity],
+    [matmul1, add1, split, reshape, reshape1, reshape2, transpose, transpose1, transpose2, matmul2, div, mul, sub, softmax, dropout1, matmul3, transpose3, reshape3, matmul4, add2, dropout2, identity],
     'self-attention-megatron-test-model',
     [X, X_mask],
     [Y],
-    [qkv_weight_initializer, qkv_bias_initializer, dense_weight_initializer, dense_bias_initializer, shape_initializer, shape_initializer1, shape_initializer2, shape_initializer3, ratio_initializer]
+    [qkv_weight_initializer, qkv_bias_initializer, dense_weight_initializer, dense_bias_initializer, shape_initializer, shape_initializer1, shape_initializer2, shape_initializer3]
 )
 
 opsets = []
 onnxdomain = OperatorSetIdProto()
-onnxdomain.version = 10
+onnxdomain.version = 12
 onnxdomain.domain = "" # The empty string ("") or absence of this field implies the operator set that is defined as part of the ONNX specification.
 opsets.append(onnxdomain)
 

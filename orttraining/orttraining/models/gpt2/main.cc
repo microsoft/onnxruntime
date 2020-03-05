@@ -7,6 +7,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/session/environment.h"
+#include "core/framework/random_seed.h"
 #include "orttraining/core/framework/mpi_setup.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/session/training_session.h"
@@ -52,6 +53,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       ("display_loss_steps", "How often to dump loss into tensorboard", cxxopts::value<size_t>()->default_value("1"))
       ("gradient_accumulation_steps", "The number of gradient accumulation steps before performing a backward/update pass.",
         cxxopts::value<int>()->default_value("1"))
+      ("seed", "Random seed.", cxxopts::value<int>()->default_value("-1"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
       ("use_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
       ("allreduce_in_fp16", "Whether to do AllReduce in fp16. If false, AllReduce will be done in fp32", cxxopts::value<bool>()->default_value("true"))
@@ -122,6 +124,12 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
     params.output_dir = ToPathString(flags["output_dir"].as<std::string>());
     if (params.output_dir.empty()) {
       printf("No output directory specified. Trained model files will not be saved.\n");
+    }
+
+    int seed = flags["seed"].as<int>();
+    if (seed > 0) {
+      utils::SetStaticRandomSeed(static_cast<uint32_t>(seed));
+      printf("Random seed is set to %d.\n", seed);
     }
 
     params.use_mixed_precision = flags["use_mixed_precision"].as<bool>();
