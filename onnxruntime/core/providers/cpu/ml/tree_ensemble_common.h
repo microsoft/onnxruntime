@@ -290,15 +290,12 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
                               label_data == NULL ? NULL : (label_data + i));
         }
       } else {
-        ScoreValue<OTYPE> score;
-        size_t j;
-
 #ifdef USE_OPENMP
-#pragma omp parallel for private(j, scores, has_scores)
+#pragma omp parallel for
 #endif
         for (int64_t i = 0; i < N; ++i) {
-          score = {0, 0};
-          for (j = 0; j < static_cast<size_t>(n_trees_); ++j)
+          ScoreValue<OTYPE> score = {0, 0};
+          for (size_t j = 0; j < static_cast<size_t>(n_trees_); ++j)
             agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
           agg.FinalizeScores1(z_data + i * n_targets_or_classes_, score,
                               label_data == NULL ? NULL : (label_data + i));
