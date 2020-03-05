@@ -11,7 +11,7 @@ NcclAllReduce::NcclAllReduce(const OpKernelInfo& info) : NcclKernel(info) {
 
 Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
   cudaStream_t stream = nullptr;  // Default stream
-  ncclComm_t comm = nccl_->Comm();
+  ncclComm_t comm = nccl_->Comm(group_type_);
 
   for (int i = 0; i < context->InputCount(); i++) {
     const Tensor* input_tensor = context->Input<Tensor>(i);
@@ -34,9 +34,9 @@ NcclAllGather::NcclAllGather(const OpKernelInfo& info) : NcclKernel(info) {
 
 Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   cudaStream_t stream = nullptr;  // Default stream
-  ncclComm_t comm = nccl_->Comm();
-  const int rank = nccl_->Rank();
-  const int size = nccl_->Size();
+  ncclComm_t comm = nccl_->Comm(group_type_);
+  const int rank = nccl_->Rank(group_type_);
+  const int size = nccl_->Size(group_type_);
 
   ORT_ENFORCE(context->InputCount() > 0);
   auto onnx_type = context->Input<Tensor>(0)->DataType();
@@ -50,7 +50,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
     total_count += input_tensor->Shape().Size();
   }
 
-  // AllGather requires every rank to receive the same amount of data, and significantly
+  // AllGather requires every rank to receive the same amount of data, and
   // slows down significantly if the data is not aligned.  Nvidia recommends 32-byte alignment,
   // so pad to multiple of 32 and world size.
   // Note: the alignment here needs to be kept in-sync with the alignment in zero_optimizer_graph_builder.cc
@@ -123,9 +123,9 @@ NcclReduceScatter::NcclReduceScatter(const OpKernelInfo& info) : NcclKernel(info
 
 Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   cudaStream_t stream = nullptr;  // Default stream
-  ncclComm_t comm = nccl_->Comm();
-  const int rank = nccl_->Rank();
-  const int size = nccl_->Size();
+  ncclComm_t comm = nccl_->Comm(group_type_);
+  const int rank = nccl_->Rank(group_type_);
+  const int size = nccl_->Size(group_type_);
 
   ORT_ENFORCE(context->InputCount() > 0);
   auto onnx_type = context->Input<Tensor>(0)->DataType();

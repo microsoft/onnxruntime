@@ -128,7 +128,9 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("beta", "Adam/Lamb beta parameter", cxxopts::value<float>()->default_value("0.999"))
       ("lambda", "Adam/Lamb lambda parameter", cxxopts::value<float>()->default_value("0.01"))
       ("epsilon", "Adam/Lamb epsilon parameter", cxxopts::value<float>()->default_value("1e-6"))
-      ("cuda_mem_limit_in_gb", "Max cuda memory ort can use, in GB", cxxopts::value<float>()->default_value("-1.0"));
+      ("cuda_mem_limit_in_gb", "Max cuda memory ort can use, in GB", cxxopts::value<float>()->default_value("-1.0"))
+      ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
+      ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"));
   options
     .add_options("ORT configuration")
       ("ort_log_severity", "ORT minimum logging severity (see onnxruntime::logging::Severity values)",
@@ -315,6 +317,11 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       };
     };
 
+    params.data_parallel_size = flags["data_parallel_size"].as<int>();
+    params.horizontal_parallel_size = flags["horizontal_parallel_size"].as<int>();
+    ORT_RETURN_IF_NOT(params.data_parallel_size > 0, "data_parallel_size must > 0");
+    ORT_RETURN_IF_NOT(params.horizontal_parallel_size > 0, "horizontal_parallel_size must > 0");
+
     ort_params.log_severity = static_cast<logging::Severity>(flags["ort_log_severity"].as<int>());
     ORT_RETURN_IF_NOT(
         logging::Severity::kVERBOSE <= ort_params.log_severity &&
@@ -367,7 +374,21 @@ void setup_training_params(BertParameters& params) {
 
 #ifdef USE_HOROVOD
   params.mpi_context = setup_horovod();
-  params.use_adasum = params.use_adasum && (params.mpi_context.world_size > 1);
+  ORT_ENFORCE(params.horizontal_parallel_size <= params.mpi_context.world_size);
+  ORT_ENFORCE(params.data_parallel_size <= params.mpi_context.world_size);
+  if (params.mpi_context.world_size % params.horizontal_parallel_size != 0) {
+    LOGS_DEFAULT(ERROR) << "Cannot split horizontal parallel group because world_size is not divisible";
+    return;
+  }
+
+  auto data_group_size = params.mpi_context.world_size / params.horizontal_parallel_size;
+  if (data_group_size != params.data_parallel_size) {
+    LOGS_DEFAULT(WARNING) << "WARNING: data_parallel_size is not correct, tuned automatically to "
+                          << data_group_size << std::endl;
+    params.data_parallel_size = data_group_size;
+  }
+
+  params.use_adasum = params.use_adasum && (params.data_parallel_size > 1);
   if (params.use_adasum)
     std::cout << "Use Adsum for allreduce." << std::endl;
 #endif
@@ -548,12 +569,12 @@ static Status RunTraining(const BertParameters& params) {
   BertParameters params_for_phase;
   while (GetParametersForPhase(runner->GetRound(), params, params_for_phase)) {
     ORT_RETURN_IF_ERROR(runner->UpdateParams(params_for_phase));
-
+    auto rank_in_data_parallel_group = params_for_phase.mpi_context.world_rank / params_for_phase.horizontal_parallel_size;
     auto training_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
                                                                      params_for_phase.train_data_dir,
                                                                      max_num_files_preload,
-                                                                     params_for_phase.mpi_context.world_rank,
-                                                                     params_for_phase.mpi_context.world_size);
+                                                                     rank_in_data_parallel_group,
+                                                                     params_for_phase.data_parallel_size);
 
     auto test_data_loader = std::unique_ptr<DataLoader>{};
     // Evaluation is only done in device #0
@@ -584,9 +605,8 @@ int main(int argc, char* argv[]) {
   BertParameters params;
   OrtParameters ort_params{};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
-  setup_training_params(params);
-  
-  // setup logger
+
+  // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
   string default_logger_id{"Default"};
   logging::LoggingManager default_logging_manager{unique_ptr<logging::ISink>{new logging::CLogSink{}},
                                                   ort_params.log_severity,
@@ -594,6 +614,7 @@ int main(int argc, char* argv[]) {
                                                   logging::LoggingManager::InstanceType::Default,
                                                   &default_logger_id,
                                                   ort_params.vlog_level};
+  setup_training_params(params);
 
   // setup profiling
   if (ort_params.max_num_profiling_events > 0) {

@@ -16,9 +16,6 @@ file(GLOB_RECURSE onnxruntime_training_srcs
 add_library(onnxruntime_training ${onnxruntime_training_srcs})
 add_dependencies(onnxruntime_training onnx tensorboard ${onnxruntime_EXTERNAL_DEPENDENCIES})
 onnxruntime_add_include_to_target(onnxruntime_training onnxruntime_common onnx onnx_proto tensorboard protobuf::libprotobuf)
-if(UNIX AND NOT APPLE)
-  target_compile_options(onnxruntime_training PUBLIC "-Wno-maybe-uninitialized")
-endif()
 
 # fix event_writer.cc 4100 warning
 if(WIN32)

@@ -61,7 +61,6 @@ Status parse_arguments(int argc, char* argv[], Parameters& params) {
 }
 
 int main(int argc, char* argv[]) {
-
   Parameters params;
 
   string default_logger_id{"Default"};
@@ -86,20 +85,20 @@ int main(int argc, char* argv[]) {
   // setup onnxruntime env
   std::vector<FreeDimensionOverride> overrides = {};
   SessionOptions so = {
-    ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
-    false,                             //enable_profiling
-    ORT_TSTR(""),                      //optimized_model_filepath
-    true,                              //enable_mem_pattern
-    true,                              //enable_cpu_mem_arena
-    ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
-    "",                                //session_logid
-    -1,                                //session_log_severity_level
-    0,                                 //session_log_verbosity_level
-    5,                                 //max_num_graph_transformation_steps
-    TransformerLevel::Level1,          //graph_optimization_level
-    0,                                 //intra_op_num_threads
-    0,                                 //inter_op_num_threads
-    overrides                          //free_dimension_overrides
+      ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
+      false,                             //enable_profiling
+      ORT_TSTR(""),                      //optimized_model_filepath
+      true,                              //enable_mem_pattern
+      true,                              //enable_cpu_mem_arena
+      ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
+      "",                                //session_logid
+      -1,                                //session_log_severity_level
+      0,                                 //session_log_verbosity_level
+      5,                                 //max_num_graph_transformation_steps
+      TransformerLevel::Level1,          //graph_optimization_level
+      0,                                 //intra_op_num_threads
+      0,                                 //inter_op_num_threads
+      overrides                          //free_dimension_overrides
   };
 
   InferenceSession session_object{so};
@@ -111,20 +110,20 @@ int main(int argc, char* argv[]) {
   Status st;
   if (world_rank == 0) {
     st = session_object.Load(params.model_stage0_name);
-    ORT_ENFORCE(st == Status::OK(), "MPI rank " , world_rank, ": ", st.ErrorMessage());
+    ORT_ENFORCE(st == Status::OK(), "MPI rank ", world_rank, ": ", st.ErrorMessage());
     st = session_object.Initialize();
-    ORT_ENFORCE(st == Status::OK(), "MPI rank " , world_rank, ": ", st.ErrorMessage());
+    ORT_ENFORCE(st == Status::OK(), "MPI rank ", world_rank, ": ", st.ErrorMessage());
 
   } else if (world_rank == 1) {
     st = session_object.Load(params.model_stage1_name);
-    ORT_ENFORCE(st == Status::OK(), "MPI rank " , world_rank, ": ", st.ErrorMessage());
+    ORT_ENFORCE(st == Status::OK(), "MPI rank ", world_rank, ": ", st.ErrorMessage());
     st = session_object.Initialize();
-    ORT_ENFORCE(st == Status::OK(), "MPI rank " , world_rank, ": ", st.ErrorMessage());
+    ORT_ENFORCE(st == Status::OK(), "MPI rank ", world_rank, ": ", st.ErrorMessage());
   } else if (world_rank == 2) {
     st = session_object.Load(params.model_stage2_name);
-    ORT_ENFORCE(st == Status::OK(), "MPI rank " , world_rank, ": ", st.ErrorMessage());
+    ORT_ENFORCE(st == Status::OK(), "MPI rank ", world_rank, ": ", st.ErrorMessage());
     st = session_object.Initialize();
-    ORT_ENFORCE(st == Status::OK(), "MPI rank " , world_rank, ": ", st.ErrorMessage());
+    ORT_ENFORCE(st == Status::OK(), "MPI rank ", world_rank, ": ", st.ErrorMessage());
   }
 
   for (size_t round = 0; round < params.num_steps; ++round) {
@@ -150,11 +149,11 @@ int main(int argc, char* argv[]) {
 
       // Run a model.
       st = session_object.Run(run_options, feeds, output_names, &fetches);
-      ORT_ENFORCE(st == Status::OK(), "MPI rank " , world_rank, ": ", st.ErrorMessage());
+      ORT_ENFORCE(st == Status::OK(), "MPI rank ", world_rank, ": ", st.ErrorMessage());
 
       for (int j = 0; j < 1; ++j) {
         const Tensor& received = fetches[j].Get<Tensor>();
-        const float *received_ptr = received.template Data<float>();
+        const float* received_ptr = received.template Data<float>();
         for (int i = 0; i < received.Shape().Size(); ++i) {
           std::cout << "Round: " << round << ", Rank: " << world_rank << ", Output" << j << ": received[" << i << "]=" << received_ptr[i] << std::endl;
         }
@@ -170,16 +169,16 @@ int main(int argc, char* argv[]) {
 
       // Run a model.
       st = session_object.Run(run_options, feeds, output_names, &fetches);
-      ORT_ENFORCE(st == Status::OK(), "MPI rank " , world_rank, ": ", st.ErrorMessage());
+      ORT_ENFORCE(st == Status::OK(), "MPI rank ", world_rank, ": ", st.ErrorMessage());
 
       for (int j = 0; j < 2; ++j) {
         const Tensor& received = fetches[j].Get<Tensor>();
-        const float *received_ptr = received.template Data<float>();
+        const float* received_ptr = received.template Data<float>();
         for (int i = 0; i < received.Shape().Size(); ++i) {
           std::cout << "Round: " << round << ", Rank: " << world_rank << ", Output" << j << ": received[" << i << "]=" << received_ptr[i] << std::endl;
         }
       }
-    } else if (world_rank ==2) {
+    } else if (world_rank == 2) {
       RunOptions run_options;
       run_options.run_tag = "Session at MPI rank " + std::to_string(world_rank);
 
@@ -190,18 +189,17 @@ int main(int argc, char* argv[]) {
 
       // Run a model.
       st = session_object.Run(run_options, feeds, output_names, &fetches);
-      ORT_ENFORCE(st == Status::OK(), "MPI rank " , world_rank, ": ", st.ErrorMessage());
+      ORT_ENFORCE(st == Status::OK(), "MPI rank ", world_rank, ": ", st.ErrorMessage());
 
       for (int j = 0; j < 1; ++j) {
         const Tensor& received = fetches[j].Get<Tensor>();
-        const float *received_ptr = received.template Data<float>();
+        const float* received_ptr = received.template Data<float>();
         for (int i = 0; i < received.Shape().Size(); ++i) {
           std::cout << "Round: " << round << ", Rank: " << world_rank << ", Output" << j << ": received[" << i << "]=" << received_ptr[i] << std::endl;
         }
       }
     }
   }
-
 
   MPI_Finalize();
 

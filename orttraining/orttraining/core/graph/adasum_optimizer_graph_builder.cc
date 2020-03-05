@@ -24,11 +24,11 @@ ArgDef AdasumOptimizerGraphBuilder::BuildWeightUpdateNode(
 }
 
 Status AdasumOptimizerGraphBuilder::AddWeightUpdateNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
-                            std::vector<ArgDef>& gradient_argdefs,
-                            std::vector<ArgDef>& weight_argdefs,
-                            const ArgDef& adasum_gradient_finite_argdef,
-                            GraphAugmenter::GraphDefs& graph_defs,
-                            std::vector<ArgDef>& output_weight_argdefs) {
+                                                         std::vector<ArgDef>& gradient_argdefs,
+                                                         std::vector<ArgDef>& weight_argdefs,
+                                                         const ArgDef& adasum_gradient_finite_argdef,
+                                                         GraphAugmenter::GraphDefs& graph_defs,
+                                                         std::vector<ArgDef>& output_weight_argdefs) {
   output_weight_argdefs.clear();
   for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
     output_weight_argdefs.push_back(BuildWeightUpdateNode(nodearg_name_generator,
@@ -41,9 +41,9 @@ Status AdasumOptimizerGraphBuilder::AddWeightUpdateNodes(const NodeArgNameGenera
 }
 
 static Status AddReducedGradientScalingNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
-                                      std::vector<ArgDef>& gradient_argdefs,
-                                      GraphAugmenter::GraphDefs& graph_defs,
-                                      const float scale) {
+                                             std::vector<ArgDef>& gradient_argdefs,
+                                             GraphAugmenter::GraphDefs& graph_defs,
+                                             const float scale) {
   for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
     ArgDef& gradient_argdef = gradient_argdefs[i];
     TypeProto* scale_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
@@ -71,7 +71,8 @@ AdasumOptimizerGraphBuilder::AdasumOptimizerGraphBuilder(
     : AllreduceOptimizerGraphBuilder(opt_builder_registry,
                                      opt_graph_config,
                                      weight_names_to_opt_configs) {
-  ORT_ENFORCE(opt_graph_config.world_size > 1, "Adasum optimizer graph builder can only be used for distributed training.");
+  ORT_ENFORCE(opt_graph_config.data_parallel_group_size > 1,
+              "Adasum optimizer graph builder can only be used for distributed training.");
   ORT_ENFORCE(IsHorovodAvailable(), "Distributed training with Adasum needs building with Horovod.");
 }
 
@@ -87,13 +88,13 @@ Status AdasumOptimizerGraphBuilder::BuildOptimizerNode(
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) {
   ORT_RETURN_IF_ERROR(opt_builder->Build(
-    weight_argdefs, gradient_argdefs,
-    global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
-    opt_configs, graph_defs,
-    new_initializers,
-    output_weight_argdefs, output_gradient_argdefs,
-    // Always enable grad clipping for Adasum
-    true /*enable_grad_clipping*/));
+      weight_argdefs, gradient_argdefs,
+      global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
+      opt_configs, graph_defs,
+      new_initializers,
+      output_weight_argdefs, output_gradient_argdefs,
+      // Always enable grad clipping for Adasum
+      true /*enable_grad_clipping*/));
 
   return Status::OK();
 }
@@ -105,7 +106,6 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
     std::vector<ArgDef>& gradient_argdefs,
     std::unordered_set<std::string>& optimizer_state_initializer_names,
     OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
-
   // Set weight update to false for optimizer
   for (auto& opt_config : opt_configs_) {
     opt_config.update_weight = false;
@@ -151,18 +151,18 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   // Perform allreduce on deltas after step() for Adasum
   ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
   // If Adasum GPU hierarchical reduce is used, then scale resulting gradients by local size.
-  if(opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchical) {
-      const float adasum_scale = 1.0f / opt_graph_config_.local_size;
-      ORT_RETURN_IF_ERROR(AddReducedGradientScalingNodes(nodearg_name_generator, gradient_argdefs, graph_defs, adasum_scale));
+  if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchical) {
+    const float adasum_scale = 1.0f / opt_graph_config_.local_size;
+    ORT_RETURN_IF_ERROR(AddReducedGradientScalingNodes(nodearg_name_generator, gradient_argdefs, graph_defs, adasum_scale));
   }
 
   //check if allreduced deltas are finite
   ArgDef adasum_global_grad_finite_argdef;
   if (opt_graph_config_.use_mixed_precision) {
-      ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
-          nodearg_name_generator, gradient_argdefs, graph_defs, adasum_global_grad_finite_argdef,
-          "adasum_all_gradients_finite"));
-      optimizer_graph_outputs[OptimizerOutputKey::DeltaAllIsFinite] = adasum_global_grad_finite_argdef.name;
+    ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
+        nodearg_name_generator, gradient_argdefs, graph_defs, adasum_global_grad_finite_argdef,
+        "adasum_all_gradients_finite"));
+    optimizer_graph_outputs[OptimizerOutputKey::DeltaAllIsFinite] = adasum_global_grad_finite_argdef.name;
   }
   //Add weight update.
   std::vector<ArgDef> output_weight_args;

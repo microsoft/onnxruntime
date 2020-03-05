@@ -82,8 +82,8 @@ static ArgDef BuildHorovodAllReduceNode(const ArgDef& gradient_argdef, GraphAugm
 }
 
 Status AllreduceOptimizerGraphBuilder::AddHorovodAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
-                                              GraphAugmenter::GraphDefs& graph_defs,
-                                              const int64_t horovod_reduce_op) {
+                                                                       GraphAugmenter::GraphDefs& graph_defs,
+                                                                       const int64_t horovod_reduce_op) {
   for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
     gradient_argdefs[i] = BuildHorovodAllReduceNode(gradient_argdefs[i], graph_defs, horovod_reduce_op);
   }
@@ -141,7 +141,7 @@ static std::vector<ArgDef> GetGradientNormInputs(
     const std::vector<ArgDef>& gradient_argdefs,
     ArgDef fused_gradient_argdef) {
   if (!fused_gradient_argdef.name.empty()) {
-    return { fused_gradient_argdef };
+    return {fused_gradient_argdef};
   } else {
     return gradient_argdefs;
   }
@@ -154,7 +154,8 @@ AllreduceOptimizerGraphBuilder::AllreduceOptimizerGraphBuilder(
     : OptimizerGraphBuilder(opt_builder_registry,
                             opt_graph_config,
                             weight_names_to_opt_configs) {
-  ORT_ENFORCE(opt_graph_config.world_size > 1, "Allreduce optimizer graph builder can only be used for distributed training.");
+  ORT_ENFORCE(opt_graph_config.data_parallel_group_size > 1,
+              "Allreduce optimizer graph builder can only be used for distributed training.");
   if (opt_graph_config.use_nccl) {
     ORT_ENFORCE(IsNcclAvailable(), "Distributed training with NCCL is not supported, as NCCL is not enabled in this build.");
   } else {
@@ -169,7 +170,6 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
     std::vector<ArgDef>& gradient_argdefs,
     std::unordered_set<std::string>& optimizer_state_initializer_names,
     OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
-
   auto nodearg_name_generator = [&graph](const std::string& base_name) {
     return graph.GenerateNodeArgName(base_name);
   };
@@ -179,7 +179,8 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
 
   // add gradient scaling
   ArgDef fused_gradient_argdef;
-  const auto total_num_accumulations = opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.world_size;
+  const auto total_num_accumulations =
+      opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
   ORT_RETURN_IF_NOT(total_num_accumulations > 0);
   const float scale = 1.0f / total_num_accumulations;
   const bool fuse_scaling_outputs = !overlap_compute_allreduce;

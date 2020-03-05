@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
+#include "orttraining/core/optimizer/megatron_transformer.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/conv_mul_fusion.h"
@@ -25,6 +27,7 @@
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
+#include "core/optimizer/fast_gelu_fusion.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
@@ -53,6 +56,15 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
 
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(compatible_eps));
+      transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(compatible_eps));
+      auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
+      if (horizontal_parallel_size > 1) {
+        LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
+        transformers.emplace_back(onnxruntime::make_unique<MegatronTransformer>(
+            training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
+            horizontal_parallel_size, compatible_eps));
+      }
+
     } break;
 
     case TransformerLevel::Level2: {

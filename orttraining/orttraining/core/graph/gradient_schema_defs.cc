@@ -642,6 +642,9 @@ void RegisterGradientSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllReduce)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
+      .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
       .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic)
       .TypeConstraint(
@@ -655,6 +658,9 @@ void RegisterGradientSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllGather)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
+      .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be sent", "T", OpSchema::Variadic)
       .Output(0, "output", "gathered tensors", "T", OpSchema::Variadic)
       .TypeConstraint(
@@ -668,6 +674,9 @@ void RegisterGradientSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclReduceScatter)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
+      .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced and scattered", "T", OpSchema::Variadic)
       .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic)
       .TypeConstraint(
@@ -723,7 +732,7 @@ void RegisterGradientSchemas() {
                       "Constrain indices to integer types")
       .SetDoc(R"DOC(SparseSoftmaxCrossEntropyGrad)DOC");
 
-    ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
@@ -1368,6 +1377,9 @@ Return true if all elements are true and false otherwise.
   ONNX_CONTRIB_OPERATOR_SCHEMA(MegatronG)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
+      .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .Input(0, "input", "The input data as Tensor.", "T")
       .Output(0, "output", "The output.", "T")
       .TypeConstraint(

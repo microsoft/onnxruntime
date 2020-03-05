@@ -77,6 +77,8 @@ Status TrainingRunner::Initialize() {
   config.distributed_config.world_size = params_.mpi_context.world_size;
   config.distributed_config.local_size = params_.mpi_context.local_size;
   config.distributed_config.local_rank = params_.mpi_context.local_rank;
+  config.distributed_config.data_parallel_size = params_.data_parallel_size;
+  config.distributed_config.horizontal_parallel_size = params_.horizontal_parallel_size;
 
   if (params_.use_mixed_precision) {
     TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};

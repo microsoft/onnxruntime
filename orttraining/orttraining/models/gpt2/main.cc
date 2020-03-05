@@ -72,7 +72,9 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       ("alpha", "Adam/Lamb alpha parameter", cxxopts::value<float>()->default_value("0.9"))
       ("beta", "Adam/Lamb beta parameter", cxxopts::value<float>()->default_value("0.999"))
       ("lambda", "Adam/Lamb lambda parameter", cxxopts::value<float>()->default_value("0.01"))
-      ("epsilon", "Adam/Lamb epsilon parameter", cxxopts::value<float>()->default_value("1e-8"));
+      ("epsilon", "Adam/Lamb epsilon parameter", cxxopts::value<float>()->default_value("1e-8"))
+      ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
+      ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"));
   options
     .add_options("ORT configuration")
       ("ort_log_severity", "ORT minimum logging severity (see onnxruntime::logging::Severity values)",
@@ -210,6 +212,11 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       };
     };
 
+    params.data_parallel_size = flags["data_parallel_size"].as<int>();
+    params.horizontal_parallel_size = flags["horizontal_parallel_size"].as<int>();
+    ORT_RETURN_IF_NOT(params.data_parallel_size > 0, "data_parallel_size must > 0");
+    ORT_RETURN_IF_NOT(params.horizontal_parallel_size > 0, "horizontal_parallel_size must > 0");
+
     ort_params.log_severity = static_cast<logging::Severity>(flags["ort_log_severity"].as<int>());
     ORT_RETURN_IF_NOT(
         logging::Severity::kVERBOSE <= ort_params.log_severity &&
@@ -220,7 +227,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
   } catch (const std::exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     std::cerr << msg << ": " << e.what() << "\n"
-         << options.help() << "\n";
+              << options.help() << "\n";
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, msg);
   }
   return Status::OK();
@@ -347,11 +354,12 @@ static Status RunTraining(const GPT2Parameters& params) {
   auto runner = onnxruntime::make_unique<TrainingRunner>(params);
   ORT_RETURN_IF_ERROR(runner->Initialize());
 
+  auto rank_in_data_parallel_group = params.mpi_context.world_rank / params.horizontal_parallel_size;
   auto training_data_loader = onnxruntime::make_unique<DataLoader>(params.input_name_map,
-                                                                    params.train_data_dir,
-                                                                    max_num_files_preload,
-                                                                    params.mpi_context.world_rank,
-                                                                    params.mpi_context.world_size);
+                                                                   params.train_data_dir,
+                                                                   max_num_files_preload,
+                                                                   rank_in_data_parallel_group,
+                                                                   params.data_parallel_size);
 
   std::unique_ptr<DataLoader> test_data_loader;
   // Evaluation is only done in device #0
@@ -396,7 +404,21 @@ int main(int argc, char* argv[]) {
 
 #ifdef USE_HOROVOD
   params.mpi_context = setup_horovod();
-  params.use_adasum = params.use_adasum && (params.mpi_context.world_size > 1);
+  ORT_ENFORCE(params.horizontal_parallel_size <= params.mpi_context.world_size);
+  ORT_ENFORCE(params.data_parallel_size <= params.mpi_context.world_size);
+  if (params.mpi_context.world_size % params.horizontal_parallel_size != 0) {
+    LOGS_DEFAULT(ERROR) << "Cannot split horizontal parallel group because world_size is not divisible";
+    return -1;
+  }
+
+  auto data_group_size = params.mpi_context.world_size / params.horizontal_parallel_size;
+  if (data_group_size != params.data_parallel_size) {
+    LOGS_DEFAULT(WARNING) << "WARNING: data_parallel_size is not correct, tuned automatically to "
+                          << data_group_size << std::endl;
+    params.data_parallel_size = data_group_size;
+  }
+
+  params.use_adasum = params.use_adasum && (params.data_parallel_size > 1);
   if (params.use_adasum)
     std::cout << "Use Adsum for allreduce." << std::endl;
 #endif

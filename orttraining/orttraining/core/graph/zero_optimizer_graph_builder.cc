@@ -196,12 +196,12 @@ static Status ModifyParametersForOptimizerPartitioning(
 
   // Compute split points for parameters.
   // Note: the alignment here needs to be kept in-sync with the alignment in nccl_kernels.cc
-  const int world_rank = opt_graph_config.world_rank;
-  const int world_size = opt_graph_config.world_size;
-  const int64_t alignment = world_size * 32;
+  const int data_parallel_group_rank = opt_graph_config.data_parallel_group_rank;
+  const int data_parallel_group_size = opt_graph_config.data_parallel_group_size;
+  const int64_t alignment = data_parallel_group_size * 32;
   const int64_t padded_count = total_count + alignment - (total_count % alignment);
-  const int64_t rank_count = padded_count / world_size;
-  const int64_t rank_start = world_rank * rank_count;
+  const int64_t rank_count = padded_count / data_parallel_group_size;
+  const int64_t rank_start = data_parallel_group_rank * rank_count;
   const int64_t rank_end = rank_start + rank_count;
 
   std::vector<OptimizerNodeConfig> new_opt_configs;
@@ -231,23 +231,23 @@ static Status ModifyParametersForOptimizerPartitioning(
       } else if (offset < rank_start && offset + tensor_count <= rank_end) {
         int64_t size_for_previous_rank = rank_start - offset;
         int64_t size_for_current_rank = offset + tensor_count - rank_start;
-        std::vector<TensorShape> view_shapes = { {size_for_previous_rank}, {size_for_current_rank} };
-        std::vector<bool> enabled = { false, true };
+        std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}};
+        std::vector<bool> enabled = {false, true};
         AddViewForParameters(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs);
       } else if (offset >= rank_start && offset + tensor_count > rank_end) {
         int64_t size_for_current_rank = rank_end - offset;
         int64_t size_for_next_rank = offset + tensor_count - rank_end;
-        std::vector<TensorShape> view_shapes = { {size_for_current_rank}, {size_for_next_rank} };
-        std::vector<bool> enabled = { true, false };
+        std::vector<TensorShape> view_shapes = {{size_for_current_rank}, {size_for_next_rank}};
+        std::vector<bool> enabled = {true, false};
         AddViewForParameters(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs);
       } else {  // offset < rank_start && offset + tensor_count > rank_end
         int64_t size_for_previous_rank = rank_start - offset;
         int64_t size_for_current_rank = rank_end - rank_start;
         int64_t size_for_next_rank = offset + tensor_count - rank_end;
-        std::vector<TensorShape> view_shapes = { {size_for_previous_rank}, {size_for_current_rank}, {size_for_next_rank} };
-        std::vector<bool> enabled = { false, true, false };
+        std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {size_for_next_rank}};
+        std::vector<bool> enabled = {false, true, false};
         AddViewForParameters(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs);
       }
@@ -291,7 +291,7 @@ ZeROOptimizerGraphBuilder::ZeROOptimizerGraphBuilder(
     : OptimizerGraphBuilder(opt_builder_registry,
                             opt_graph_config,
                             weight_names_to_opt_configs) {
-  ORT_ENFORCE(opt_graph_config.world_size > 1, "ZeRO optimizer graph builder can only be used for distributed training.");
+  ORT_ENFORCE(opt_graph_config.data_parallel_group_size > 1, "ZeRO optimizer graph builder can only be used for distributed training.");
   ORT_ENFORCE(opt_graph_config.use_nccl, "Distributed training with ZeRO is only supported with NCCL.");
   ORT_ENFORCE(IsNcclAvailable(), "Distributed training with NCCL is not supported, as NCCL is not enabled in this build.");
 }
@@ -303,7 +303,6 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
     std::vector<ArgDef>& gradient_argdefs,
     std::unordered_set<std::string>& optimizer_state_initializer_names,
     OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
-
   auto nodearg_name_generator = [&graph](const std::string& base_name) {
     return graph.GenerateNodeArgName(base_name);
   };
@@ -314,7 +313,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
 
   // add gradient scaling
   ArgDef fused_gradient_argdef;
-  const auto total_num_accumulations = opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.world_size;
+  const auto total_num_accumulations = opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
   ORT_RETURN_IF_NOT(total_num_accumulations > 0);
   const float scale = 1.0f / total_num_accumulations;
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,

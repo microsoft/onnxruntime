@@ -119,11 +119,9 @@ class TrainingRunner {
       // TODO support more algos when they become available.
       if (!use_adasum) {
         return AdasumReductionType::None;
-      }
-      else if (!use_cuda) {
+      } else if (!use_cuda) {
         return AdasumReductionType::CpuReduction;
-      }
-      else {
+      } else {
         return AdasumReductionType::GpuHierarchical;
       }
     }
@@ -142,6 +140,9 @@ class TrainingRunner {
     size_t checkpoint_period = 0;
     // upper limit on number of checkpoint files to keep
     size_t max_num_checkpoints = 1;
+
+    int data_parallel_size = 1;
+    int horizontal_parallel_size = 1;
   };
 
   TrainingRunner(Parameters params);

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_common.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 #include <nccl.h>
 
 namespace onnxruntime {
@@ -16,19 +17,19 @@ class NcclContext final {
   NcclContext();
   ~NcclContext();
 
-  ncclComm_t Comm() const { return comm_; }
+  ncclComm_t Comm(training::WorkerGroupType group_type);
 
-  int Rank() const { return rank_; }
-  int Size() const { return size_; }
-  int LocalRank() const { return local_rank_; }
-  int LocalSize() const { return local_size_; }
+  int Rank(training::WorkerGroupType group_type) const {
+    return training::DistributedRunContext::RankInGroup(group_type);
+  }
+
+  int Size(training::WorkerGroupType group_type) const {
+    return training::DistributedRunContext::GroupSize(group_type);
+  }
 
  private:
-  ncclComm_t comm_;
-  int rank_ = 0;
-  int size_ = 1;
-  int local_rank_ = 0;
-  int local_size_ = 1;
+  ncclComm_t data_group_comm_;
+  ncclComm_t horizontal_group_comm_;
 };
 
 // -----------------------------------------------------------------------
@@ -40,6 +41,7 @@ class NcclKernel : public CudaKernel {
 
  protected:
   NcclContext* nccl_ = nullptr;
+  training::WorkerGroupType group_type_;
 };
 
 ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type);
