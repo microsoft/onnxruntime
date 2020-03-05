@@ -222,7 +222,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     }
 
     const auto ap_attr = attributes.find("auto_pad");
-    static const std::set<std::string> allowed_pad_modes = {"SAME_UPPER", "NOTSET"};
     if (ap_attr != attributes.end())
     {
       // explicit pad should be symmetric in migraphx
