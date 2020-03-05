@@ -385,7 +385,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                map_optimizer_attributes, world_rank=-1, world_size=1,
                                                gradient_accumulation_steps=1, bind_parameters=False,
                                                use_mixed_precision=False, allreduce_post_accumulation=False,
-                                               loss_scale_input_name='', scaled_loss_output_name=''):
+                                               loss_scale_input_name='', scaled_loss_output_name='',
+                                               partition_optimizer=False):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -401,6 +402,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
         ort_parameters.loss_scale_input_name = loss_scale_input_name
         ort_parameters.scaled_loss_output_name = scaled_loss_output_name
     ort_parameters.allreduce_post_accumulation = allreduce_post_accumulation
+    ort_parameters.partition_optimizer = partition_optimizer
 
     output_types = {}
     for output in model.graph.output:
@@ -438,7 +440,6 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     train_io_binding = session.io_binding()
     eval_io_binding = session.io_binding()
 
-    print(ort_parameters.loss_output_name)
     if bind_parameters:
         for param in torch_params.keys():
             torch_tensor = torch_params[param]
@@ -507,7 +508,7 @@ class ORTTrainer():
     def __init__(self, model, loss_fn, model_desc, training_optimizer_name, map_optimizer_attributes,
                  learning_rate_description, device, gradient_accumulation_steps=1, postprocess_model=None,
                  world_rank=-1, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
-                 global_step=0, get_lr_this_step=None, loss_scaler=None):
+                 global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False):
         super(ORTTrainer, self).__init__()
         """
         Initializes ORTTrainer.
@@ -536,6 +537,7 @@ class ORTTrainer():
             world_size:
             use_mixed_precision:
             allreduce_post_accumulation:
+            partition_optimizer: Whether to partition the optimizer state. (default=False)
         """
         self.is_train = True
 
@@ -598,7 +600,8 @@ class ORTTrainer():
                 self.world_rank, self.world_size,
                 self.gradient_accumulation_steps, bind_parameters=False,
                 use_mixed_precision=use_mixed_precision, allreduce_post_accumulation=allreduce_post_accumulation,
-                loss_scale_input_name=self.loss_scale_input_name, scaled_loss_output_name=self.scaled_loss_output_name)
+                loss_scale_input_name=self.loss_scale_input_name, scaled_loss_output_name=self.scaled_loss_output_name,
+                partition_optimizer=partition_optimizer)
 
         # ORT backend has modified model output dtype from float32 to float16.
         for o_desc in self.model_desc_.outputs_:

@@ -236,6 +236,7 @@ struct TrainingParameters {
   int local_rank = -1;
   int local_size = 1;
   int gradient_accumulation_steps = 1;
+  bool partition_optimizer = false;
 };
 
 template <>
@@ -461,13 +462,13 @@ static void ConfigureSessionForTraining(
     };
     opt.use_fp16_moments = parameters.use_fp16_moments;
     opt.do_all_reduce_in_fp16 = true;
-    // this mapping is temporary.
+    // TODO: this mapping is temporary.
     // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
     // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
     // eventually we will have one all reduce kernel and let opt to have
     // an allreduce_post_accumulation option and remove the use_nccl option.
     opt.use_nccl = parameters.allreduce_post_accumulation;
-    opt.partition_optimizer = false;
+    opt.partition_optimizer = parameters.partition_optimizer;
 
     config.optimizer_config = opt;
   }
@@ -768,7 +769,8 @@ void addObjectMethods(py::module& m) {
       .def_readwrite("loss_scale", &TrainingParameters::loss_scale)
       .def_readwrite("world_rank", &TrainingParameters::world_rank)
       .def_readwrite("world_size", &TrainingParameters::world_size)
-      .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps);
+      .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
+      .def_readwrite("partition_optimizer",  &TrainingParameters::partition_optimizer);
 
   py::class_<SessionOptions>
       sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
