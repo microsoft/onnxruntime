@@ -235,23 +235,23 @@ class BertOnnxModel(OnnxModel):
     """
      Fuse Gelu with Erf into one node:
      Pattern 1:
-                   +-------Mul(B=0.5)-------------------+
+                   +-------Mul(0.5)---------------------+
                    |                                    |
                    |                                    v
                 [root] --> Div -----> Erf  --> Add --> Mul -->
-                          (B=1.4142...)       (B=1)
+                          (B=1.4142...)       (1)
 
       Pattern 2:
                    +------------------------------------+
                    |                                    |
                    |                                    v
                 [root] --> Div -----> Erf  --> Add --> Mul -->Mul -->
-                          (B=1.4142...)       (B=1)           (B=0.5)
+                          (B=1.4142...)       (1)            (0.5)
 
      Note that constant input for Add and Mul could be first or second input: like either A=0.5 or B=0.5 is fine.
     """
     def fuse_gelu_with_elf(self, gelu_op_name):
-        logger.info(f"start fuse_gelu_with_elf({gelu_op_name})")
+        logger.debug(f"start fuse_gelu_with_elf({gelu_op_name})")
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
