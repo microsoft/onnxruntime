@@ -139,7 +139,7 @@ Status Path::Parse(const PathString& original_path_str, Path& path) {
   const PathString path_str = NormalizePathSeparators(original_path_str);
 
   // parse root
-  size_t root_length;
+  size_t root_length = 0;
   ORT_RETURN_IF_ERROR(ParsePathRoot(
       path_str, result.root_name_, result.has_root_dir_, root_length));
 
