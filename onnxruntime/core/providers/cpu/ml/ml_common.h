@@ -3,8 +3,10 @@
 
 #pragma once
 #include "core/common/common.h"
+#include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 namespace ml {  // name space for onnx.ml operators
@@ -250,7 +252,9 @@ static inline float sigmoid_probability(float score, float proba, float probb) {
   return 1 - ComputeLogistic(val);  // ref: https://github.com/arnaudsj/libsvm/blob/eaaefac5ebd32d0e07902e1ae740e038eaaf0826/svm.cpp#L1818
 }
 
-static inline void ComputeSoftmax(std::vector<float>& values) {
+static inline void ComputeSoftmax(const gsl::span<float>& values) {
+  // TODO: Replace this with usage of code in Softmax operator
+
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
   for (float value : values) {
@@ -266,8 +270,13 @@ static inline void ComputeSoftmax(std::vector<float>& values) {
     value /= this_sum;
 }
 
+static inline void ComputeSoftmax(std::vector<float>& values) {
+  auto span = gsl::make_span(values);
+  ComputeSoftmax(span);
+}
+
 //this function skips zero values (since exp(0) is non zero)
-static inline void ComputeSoftmaxZero(std::vector<float>& values) {
+static inline void ComputeSoftmaxZero(const gsl::span<float>& values) {
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
   for (float value : values) {
@@ -286,6 +295,11 @@ static inline void ComputeSoftmaxZero(std::vector<float>& values) {
   }
   for (float& value : values)
     value /= this_sum;
+}
+
+static inline void ComputeSoftmaxZero(std::vector<float>& values) {
+  auto span = gsl::make_span(values);
+  ComputeSoftmaxZero(span);
 }
 
 template <typename T>
@@ -342,5 +356,95 @@ void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, in
   memcpy(out_p, scores.data(), len);
 }
 
+// TODO: Starting with just the pieces needed for LinearRegressor from write_scores.
+//       Will see what can be sensibly added to a batched in-place update of the scores for LinearClassifier, the SVM*
+//       and TreeEnsemble* ops when updating those.
+template <typename T>
+void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches64, int64_t batch_size,
+                                   POST_EVAL_TRANSFORM post_transform, int add_second_class,
+                                   concurrency::ThreadPool* threadpool) {
+  SafeInt<int32_t> num_batches(num_batches64);
+  SafeInt<int32_t> num_scores = num_batches * batch_size;
+  const int32_t num_threads = threadpool->NumThreads();
+
+  ORT_ENFORCE(scores.size() == static_cast<size_t>(num_scores));
+
+  ORT_UNUSED_PARAMETER(add_second_class);  // pending updates to use batched_update_scores_inplace for more ops
+
+  // convert from span to pointer for efficiency. we've checked scores.size() matches num_scores so don't need the
+  // extra checking/overhead from using operator[] for each access
+  T* s = &scores[0];
+
+  // TODO: Refine this to be smarter about how much work is involved so we have a better idea of how many
+  // scores should be processed by each thread.
+  // Eigen may have something that can be used for the cost estimate.
+  auto calc_num_threads_to_use = [batch_size, num_batches, num_threads, num_scores](bool processes_batch_per_call) {
+    // arbitrary initial values of 100 item minimum per thread.
+    if (processes_batch_per_call) {
+      // each function call will process all scores in the batch item, so we need to split
+      // based on the batches rather than the individual items
+      int32_t num_batches_min_100_items = static_cast<int32_t>((100 + batch_size - 1) / batch_size);
+      int32_t num_threads_to_use = (num_batches + num_batches_min_100_items - 1) / num_batches_min_100_items;
+      return std::max(1, std::min(num_threads, num_threads_to_use));
+    } else {
+      return std::max(1, std::min(num_threads, static_cast<int32_t>(num_scores / 100)));
+    }
+  };
+
+  if (batch_size > 1) {
+    switch (post_transform) {
+      case POST_EVAL_TRANSFORM::PROBIT: {
+        concurrency::ThreadPool::TryBatchParallelFor(
+            threadpool, num_scores,
+            [&s](int32_t idx) {
+              s[idx] = ComputeProbit(s[idx]);
+            },
+            calc_num_threads_to_use(false));
+        break;
+      }
+      case POST_EVAL_TRANSFORM::LOGISTIC: {
+        concurrency::ThreadPool::TryBatchParallelFor(
+            threadpool, num_scores,
+            [&s](int32_t idx) {
+              s[idx] = ComputeLogistic(s[idx]);
+            },
+            calc_num_threads_to_use(false));
+        break;
+      }
+      case POST_EVAL_TRANSFORM::SOFTMAX: {
+        concurrency::ThreadPool::TryBatchParallelFor(
+            threadpool, num_batches,
+            [&s, batch_size](int32_t idx) {
+              gsl::span<float> scores_for_batch(&s[idx * batch_size], batch_size);
+              ComputeSoftmax(scores_for_batch);
+            },
+            calc_num_threads_to_use(true));
+        break;
+      }
+      case POST_EVAL_TRANSFORM::SOFTMAX_ZERO: {
+        concurrency::ThreadPool::TryBatchParallelFor(
+            threadpool, num_batches,
+            [&s, batch_size](int32_t idx) {
+              gsl::span<float> scores_for_batch(&s[idx * batch_size], batch_size);
+              ComputeSoftmaxZero(scores_for_batch);
+            },
+            calc_num_threads_to_use(true));
+        break;
+      }
+      case POST_EVAL_TRANSFORM::NONE:
+      default:
+        break;
+    }
+  } else if (batch_size == 1) {  //binary case
+    if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
+      concurrency::ThreadPool::TryBatchParallelFor(
+          threadpool, num_scores,
+          [&s](int32_t idx) {
+            s[idx] = ComputeProbit(s[idx]);
+          },
+          calc_num_threads_to_use(false));
+    }
+  }
+}
 }  // namespace ml
 }  // namespace onnxruntime
