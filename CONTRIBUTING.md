@@ -3,6 +3,9 @@
 We're always looking for your help to fix bugs and improve the product. Create a pull request and we'll be happy to take a look.
 Start by reading the [Engineering Design](docs/HighLevelDesign.md). You can find the doxygen generated documentation [here](https://microsoft.github.io/onnxruntime/).
 
+# Proposing new public APIs
+The ONNX runtime has a collection of [public API's](docs/HighLevelDesign.md).  Some of these API's make their way back into the Windows OS.  We make compatability committments for these API's and follow a structured process when adding to them.  Please use the [Feature Request issue template](issues/new?template=feature_request.md) before starting any PR's that affect any of the public API's.
+
 # Checkin procedure
 1. Fork the repo
 2. git clone your fork
