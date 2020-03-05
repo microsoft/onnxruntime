@@ -101,6 +101,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
       continue;
     }
 
+    bool is_pattern_1 = true;
     const Node* p_mul2_node = graph_utils::FirstParentByType(mul_node, "Mul");
     if (p_mul2_node != nullptr) {
       // Match subgraph pattern 1
@@ -125,6 +126,8 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
         continue;
       }
     } else {
+      is_pattern_1 = false;
+
       // Match subgraph pattern 2
       if (mul_node.GetOutputEdgesCount() != 1) {
         continue;
@@ -168,7 +171,11 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
     // move output definitions and output edges from mul_node (last in list) to gelu_node.
     // remove all the other nodes.
     Node& mul2 = *graph.GetNode(p_mul2_node->Index());
-    graph_utils::FinalizeNodeFusion(graph, {div, erf_node, add_node, mul2, mul_node}, gelu_node);
+    if (is_pattern_1) {
+      graph_utils::FinalizeNodeFusion(graph, {div, erf_node, add_node, mul2, mul_node}, gelu_node);
+    } else {
+      graph_utils::FinalizeNodeFusion(graph, {div, erf_node, add_node, mul_node, mul2}, gelu_node);
+    }
 
     modified = true;
   }
