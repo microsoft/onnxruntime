@@ -114,6 +114,7 @@ jobs:
 
       - task: PublishSymbols@2
         displayName: 'Publish Build Symbols'
+        condition: eq(variables['IsReleaseBuild'], 'true')
         inputs:
           symbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
           searchPattern: '**/*.pdb'
