@@ -79,6 +79,14 @@ ORT_API_STATUS(CreateCustomRegistry, _Out_ IMLOperatorRegistry** registry);
 ORT_API_STATUS(ValueGetDeviceId, _In_ OrtValue* ort_value, _Out_ int16_t* device_id);
 ORT_API_STATUS(SessionGetInputRequiredDeviceId, _In_ OrtSession* session, _In_ const char* const input_name, _Out_ int16_t* device_id);
 
+// Model Building
+ORT_API_STATUS(CreateModel, _Outptr_ OrtModel** out);
+ORT_API_STATUS(ModelAddTensorInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
+ORT_API_STATUS(ModelAddTensorOutput, _In_ OrtModel* model, _In_ const char* const output_name, _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
+ORT_API_STATUS(ModelAddOperator, _In_ OrtModel* model, _In_ const char* const name, _In_ const char* const* input_names, _In_ size_t num_inputs, _In_ const char* const* output_names, _In_ size_t num_outputs);
+// maps and sequences???
+//ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second
+
 }  // namespace Adapter
 }  // namespace MachineLearning
 }  // namespace AI
