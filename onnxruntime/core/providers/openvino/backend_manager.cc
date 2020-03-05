@@ -122,7 +122,7 @@ ONNX_NAMESPACE::ModelProto BackendManager::GetModelProtoFromFusedNode(const onnx
 
 
   const onnxruntime::Graph& node_subgraph = node_function->Body();
-  onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{},
+  onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{}, "",
                            IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap(),
                            std::vector<ONNX_NAMESPACE::FunctionProto>(), logger};
 
