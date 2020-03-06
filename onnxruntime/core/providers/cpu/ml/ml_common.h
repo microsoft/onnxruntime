@@ -382,13 +382,15 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches64, i
     switch (post_transform) {
       case POST_EVAL_TRANSFORM::PROBIT: {
         while (s < s_end) {
-          *s++ = ComputeProbit(*s);
+          *s = ComputeProbit(*s);
+          ++s;
         }
         break;
       }
       case POST_EVAL_TRANSFORM::LOGISTIC: {
         while (s < s_end) {
-          *s++ = ComputeLogistic(*s);
+          *s = ComputeLogistic(*s);
+          ++s;
         }
         break;
       }
@@ -415,7 +417,8 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches64, i
   } else if (batch_size == 1) {  //binary case
     if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
       while (s < s_end) {
-        *s++ = ComputeProbit(*s);
+        *s = ComputeProbit(*s);
+        ++s;
       }
     }
   }
