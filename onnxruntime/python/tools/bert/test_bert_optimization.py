@@ -22,6 +22,7 @@ from OnnxModel import OnnxModel
 BERT_TEST_MODELS = {
     "bert_pytorch_0": 'test_data\\bert_squad_pytorch1.4_opset11\\BertForQuestionAnswering_0.onnx',
     "bert_pytorch_1": 'test_data\\bert_squad_pytorch1.4_opset11\\BertForQuestionAnswering_1.onnx',
+    "bert_squad_pytorch1.4_opset10_fp32": 'test_data\\bert_squad_pytorch1.4_opset10_fp32\\BertForQuestionAnswering.onnx',
     "bert_keras_0": 'test_data\\bert_mrpc_tensorflow2.1_opset10\\TFBertForSequenceClassification_1.onnx'
 }
 
@@ -154,6 +155,13 @@ class TestBertOptimization(unittest.TestCase):
             'BiasGelu': 0
             }
         self.verify_node_count(bert_model, expected_node_count)
+
+    def test_pytorch_model_2_cpu(self):
+        input = BERT_TEST_MODELS['bert_squad_pytorch1.4_opset10_fp32']
+        bert_model = optimize_model(input, 'bert', gpu_only=False,
+                                    num_heads=2, hidden_size=8, sequence_length=10,
+                                    input_int32=False, float16=False)
+        self.assertTrue(bert_model.is_fully_optimized())
 
     def test_keras_model_1_cpu(self):
         input = BERT_TEST_MODELS['bert_keras_0']
