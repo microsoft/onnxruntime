@@ -57,18 +57,20 @@ Additionally, we understand that lightweight devices and local applications may 
 #### Platforms
 |Supported|Future|
 |---|---|
-|Windows 7+|Android (community contribution, in progress)|
-|Linux (various)|iOS|
+|Windows 7+|iOS|
+|Linux (various)| |
 |Mac OS X| |
+|Android (community contribution, Preview)| |
 
 #### Languages
 |Supported|Future|
 |---|---|
-|Python (3.5, 3.6, 3.7)|Java (community contribution, in progress)|
+|Python (3.5, 3.6, 3.7)| |
 |C++| |
 |C#| |
 |C| |
 |Ruby (community project)| |
+|Java | |
 
 
 ### Accelerators and Execution Providers
@@ -77,13 +79,16 @@ To achieve the best performance on a growing set of compute targets across cloud
 
 |Supported|Future|
 |---|---|
-|MLAS (Microsoft Linear Algebra Subprograms)|Android NN API (in progress)|
-|Intel DNNL / MKL-ML|ARM Compute Library (community contribution by NXP, in progress)|
+|MLAS (Microsoft Linear Algebra Subprograms)|AMD GPU|
+|Intel DNNL / MKL-ML|Xilinx FPGA|
 |Intel nGraph| |
 |NVIDIA CUDA| |
 |NVIDIA TensorRT| |
 |Intel OpenVINO| |
 |Nuphar Model Compiler| |
+|Microsoft Direct ML| |
+|Android NN API (Preview)| |
+|ARM Compute Library (Preview)| |
 |Microsoft Direct ML| |
 
 #### CUDA operator coverage
@@ -115,7 +120,6 @@ As more operators are added to the ONNX spec, ONNX Runtime will provide implemen
 A few specific items include:
 * Sparse Tensor support
 * Generic function logic without separate kernels
-* Data processing featurizers for traditional ML  
 
 #### Investments in popular converters
 We work with the OSS and ONNX community to ensure popular frameworks can export or be converted to ONNX format. 
@@ -139,9 +143,10 @@ these. If you've identified any integration ideas or opportunities and have ques
 
 Some of these products include:
 * [AzureML](https://docs.microsoft.com/en-us/azure/machine-learning/service/concept-onnx): simplify the process to train, convert, and deploy ONNX models to Azure
- * [Model Interpretability](https://docs.microsoft.com/en-us/azure/machine-learning/service/machine-learning-interpretability-explainability): explainability for ONNX models
+* [Model Interpretability](https://docs.microsoft.com/en-us/azure/machine-learning/service/machine-learning-interpretability-explainability): explainability for ONNX models
 * [ML.NET](https://docs.microsoft.com/en-us/dotnet/machine-learning/tutorials/object-detection-onnx): inference ONNX models in .NET
 * [PyTorch](https://pytorch.org/docs/stable/onnx.html): improve coverage for exporting trained models to ONNX
 * [Windows](https://docs.microsoft.com/en-us/windows/ai/windows-ml/index): run ONNX models on Windows devices using the built-in Windows ML APIs. Windows ML APIs will be included in the ONNX Runtime builds and binaries to enable Windows developers to get OS-independent updates
+* [SQL Database Edge](https://docs.microsoft.com/en-us/azure/sql-database-edge/deploy-onnx): predict with ONNX models in SQL Database Edge, an optimized relational database engine geared for IoT and IoT Edge deployments 
 
 Have an idea or feature request? [Contribute](https://github.com/microsoft/onnxruntime/blob/master/CONTRIBUTING.md) or [let us know](https://github.com/microsoft/onnxruntime/blob/master/.github/ISSUE_TEMPLATE/feature_request.md)!
