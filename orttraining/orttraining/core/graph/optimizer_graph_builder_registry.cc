@@ -21,10 +21,10 @@ void OptimizerGraphBuilderRegistry::RegisterGraphBuilders() {
 }
 
 std::string OptimizerGraphBuilderRegistry::GetNameFromConfig(const OptimizerGraphConfig& config) const {
-  if (config.world_size > 1) {
+  if (config.data_parallel_group_size > 1) {
     if (config.partition_optimizer) {
       return "ZeRO";
-    } else if (config.adasum_reduction_type != AdasumReductionType::None ) {
+    } else if (config.adasum_reduction_type != AdasumReductionType::None) {
       return "Adasum";
     } else {
       return "Allreduce";

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cmath>
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/gradient_builder.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/graph_augmenter.h"
@@ -888,7 +889,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetMegatronFGradient) {
   return std::vector<NodeDef>{
       NodeDef("NcclAllReduce",
               {GO(0)},
-              {GI(0)})};
+              {GI(0)},
+              {MakeAttribute("group_type", static_cast<int64_t>(training::WorkerGroupType::HorizontalParallel))})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetMegatronGGradient) {
@@ -899,7 +901,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMegatronGGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSliceGradient) {
-  std::vector<ArgDef> inputs {GO(0), IA("I0_shape")};
+  std::vector<ArgDef> inputs{GO(0), IA("I0_shape")};
   for (int i = 1; i < GetSrcNodeInputSize(); i++) {
     inputs.push_back(I(i));
   }

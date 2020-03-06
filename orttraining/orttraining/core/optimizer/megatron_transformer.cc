@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/initializer.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
@@ -344,6 +345,7 @@ Status MegatronTransformer::TransformMLP(Graph& graph, bool& modified, int graph
                                      "MLP MegatronG",
                                      mlp_g_input_defs,
                                      {&mlp_g_out_arg}, {}, kMSDomain);
+    mlp_g_node.AddAttribute("group_type", static_cast<int64_t>(training::WorkerGroupType::HorizontalParallel));
     mlp_g_node.SetExecutionProviderType(node.GetExecutionProviderType());
     graph_utils::ReplaceDownstreamNodeInput(graph, matmul2_node, 0, mlp_g_node, 0);
     modified = true;
@@ -581,6 +583,7 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
                                     "SelfAttention MegatronG",
                                     sa_g_input_defs,
                                     {&sa_g_out_arg}, {}, kMSDomain);
+    sa_g_node.AddAttribute("group_type", static_cast<int64_t>(training::WorkerGroupType::HorizontalParallel));
     sa_g_node.SetExecutionProviderType(node.GetExecutionProviderType());
     graph_utils::ReplaceDownstreamNodeInput(graph, matmul_node, 0, sa_g_node, 0);
     modified = true;

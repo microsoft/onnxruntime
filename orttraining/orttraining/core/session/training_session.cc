@@ -11,6 +11,7 @@
 #include "orttraining/core/framework/checkpointing.h"
 #include "orttraining/core/framework/data_transfer_utils.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/optimizer_graph_builder_registry.h"
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -67,18 +68,19 @@ Status SetupOptimizerParams(
   OptimizerGraphConfig opt_graph_config{};
   opt_graph_config.use_mixed_precision = config.mixed_precision_config.has_value();
   opt_graph_config.loss_scale_input_name = loss_scale_input_name;
-  opt_graph_config.world_rank = config.distributed_config.world_rank;
-  opt_graph_config.world_size = config.distributed_config.world_size;
-  opt_graph_config.local_size = config.distributed_config.local_size;
-  opt_graph_config.local_rank = config.distributed_config.local_rank;
+  opt_graph_config.local_size = DistributedRunContext::RunConfig().local_size;
+  opt_graph_config.local_rank = DistributedRunContext::RunConfig().local_rank;
+  opt_graph_config.data_parallel_group_rank = DistributedRunContext::RankInGroup(WorkerGroupType::DataParallel);
+  opt_graph_config.data_parallel_group_size = DistributedRunContext::GroupSize(WorkerGroupType::DataParallel);
   opt_graph_config.gradient_accumulation_steps = config.gradient_accumulation_steps;
   opt_graph_config.allreduce_in_fp16 = optimizer_config.do_all_reduce_in_fp16;
   opt_graph_config.use_nccl = optimizer_config.use_nccl;
   opt_graph_config.adasum_reduction_type = optimizer_config.adasum_reduction_type;
 #if USE_HOROVOD
-  opt_graph_config.horovod_reduce_op = opt_graph_config.adasum_reduction_type == AdasumReductionType::None ?
-                                                                                 static_cast<int64_t>(hvd::ReduceOp::SUM) :
-                                                                                 static_cast<int64_t>(hvd::ReduceOp::ADASUM);
+  opt_graph_config.horovod_reduce_op =
+      opt_graph_config.adasum_reduction_type == AdasumReductionType::None
+          ? static_cast<int64_t>(hvd::ReduceOp::SUM)
+          : static_cast<int64_t>(hvd::ReduceOp::ADASUM);
 #endif
   opt_graph_config.partition_optimizer = optimizer_config.partition_optimizer;
   opt_node_configs_result = std::move(opt_node_configs);
@@ -102,6 +104,13 @@ Status TrainingSession::ConfigureForTraining(
 
   TrainingConfigurationResult config_result{};
   std::vector<std::string> tensorboard_scalar_names{};
+
+  DistributedRunContext::CreateInstance({config.distributed_config.world_rank,
+                                         config.distributed_config.world_size,
+                                         config.distributed_config.local_rank,
+                                         config.distributed_config.local_size,
+                                         config.distributed_config.data_parallel_size,
+                                         config.distributed_config.horizontal_parallel_size});
 
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph());
 
@@ -324,7 +333,7 @@ Status TrainingSession::ApplyTransformationsToMainGraph() {
 }
 
 // Registers all the pre transformers with transformer manager
-void TrainingSession::AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,                                       
+void TrainingSession::AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
                                                  TransformerLevel graph_optimization_level,
                                                  const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {

@@ -58,6 +58,10 @@ class TrainingSession : public InferenceSession {
       int world_size{1};
       // The number of local ranks on a node.
       int local_size{1};
+      // The number of ranks for data parallel group
+      int data_parallel_size{1};
+      // The number of ranks for horizontal model parallel group
+      int horizontal_parallel_size{1};
     };
     // The distributed training configuration.
     DistributedConfiguration distributed_config{};

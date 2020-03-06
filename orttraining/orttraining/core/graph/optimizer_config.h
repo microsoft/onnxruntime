@@ -28,14 +28,14 @@ struct OptimizerNodeConfig {
   std::string loss_scale_input_name{};
   bool use_fp16_moments{false};
   bool update_weight{true};  // indicates whether Optimizer should do weight update, or output new gradient
-  bool enabled{true};  // indicates whether this weight is included in the Optimizer
+  bool enabled{true};        // indicates whether this weight is included in the Optimizer
 };
 
 // configuration for optimizer portion of graph
 struct OptimizerGraphConfig {
-  int world_rank{0};
+  int data_parallel_group_rank{0};
+  int data_parallel_group_size{1};
   int local_rank{0};
-  int world_size{1};
   int local_size{1};
   bool use_mixed_precision{false};
   bool allreduce_in_fp16{false};

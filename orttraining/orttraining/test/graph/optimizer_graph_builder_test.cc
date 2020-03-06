@@ -48,7 +48,7 @@ Status SetUpBaseGraph(Graph& graph);
 class OptimizerGraphBuilderTest : public testing::Test {
  protected:
   OptimizerGraphBuilderTest() : model_{"test_model", false, onnxruntime::test::DefaultLoggingManager().DefaultLogger()},
-   graph_{model_.MainGraph()} {
+                                graph_{model_.MainGraph()} {
   }
 
   virtual void SetUp() override {
@@ -267,7 +267,7 @@ static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& 
 #ifdef USE_HOROVOD
 TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_NoGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
-  config.world_size = 4;
+  config.data_parallel_group_size = 4;
   config.use_nccl = false;
   config.gradient_accumulation_steps = 1;
   config.use_mixed_precision = false;
@@ -276,7 +276,7 @@ TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_NoGradientAccumulation_NoMix
 
 TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_WithGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
-  config.world_size = 4;
+  config.data_parallel_group_size = 4;
   config.use_nccl = false;
   config.gradient_accumulation_steps = 10;
   config.use_mixed_precision = false;
@@ -285,7 +285,7 @@ TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_WithGradientAccumulation_NoM
 
 TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_NoGradientAccumulation_WithMixedPrecision) {
   OptimizerGraphConfig config;
-  config.world_size = 4;
+  config.data_parallel_group_size = 4;
   config.use_nccl = false;
   config.gradient_accumulation_steps = 1;
   config.use_mixed_precision = true;
@@ -295,7 +295,7 @@ TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_NoGradientAccumulation_WithM
 
 TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_WithGradientAccumulation_WithMixedPrecision) {
   OptimizerGraphConfig config;
-  config.world_size = 4;
+  config.data_parallel_group_size = 4;
   config.use_nccl = false;
   config.gradient_accumulation_steps = 10;
   config.use_mixed_precision = true;
@@ -304,7 +304,7 @@ TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_WithGradientAccumulation_Wit
 }
 TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_NoGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
-  config.world_size = 4;
+  config.data_parallel_group_size = 4;
   config.use_nccl = false;
   config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
   config.gradient_accumulation_steps = 1;
@@ -313,7 +313,7 @@ TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_NoGradientAccumulation_NoMixedP
 }
 TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_WithGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
-  config.world_size = 4;
+  config.data_parallel_group_size = 4;
   config.use_nccl = false;
   config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
   config.gradient_accumulation_steps = 10;
@@ -323,7 +323,7 @@ TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_WithGradientAccumulation_NoMixe
 
 TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_NoGradientAccumulation_WithMixedPrecision) {
   OptimizerGraphConfig config;
-  config.world_size = 4;
+  config.data_parallel_group_size = 4;
   config.use_nccl = false;
   config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
   config.gradient_accumulation_steps = 1;
@@ -334,7 +334,7 @@ TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_NoGradientAccumulation_WithMixe
 
 TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_WithGradientAccumulation_WithMixedPrecision) {
   OptimizerGraphConfig config;
-  config.world_size = 4;
+  config.data_parallel_group_size = 4;
   config.use_nccl = false;
   config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
   config.gradient_accumulation_steps = 10;
@@ -348,7 +348,7 @@ TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_WithGradientAccumulation_WithMi
 #ifdef USE_NCCL
 TEST_F(OptimizerGraphBuilderTest, Allreduce_NoGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
-  config.world_size = 4;
+  config.data_parallel_group_size = 4;
   config.use_nccl = true;
   config.gradient_accumulation_steps = 1;
   config.use_mixed_precision = false;
@@ -357,7 +357,7 @@ TEST_F(OptimizerGraphBuilderTest, Allreduce_NoGradientAccumulation_NoMixedPrecis
 
 TEST_F(OptimizerGraphBuilderTest, Allreduce_WithGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
-  config.world_size = 4;
+  config.data_parallel_group_size = 4;
   config.use_nccl = true;
   config.gradient_accumulation_steps = 10;
   config.use_mixed_precision = false;
@@ -366,7 +366,7 @@ TEST_F(OptimizerGraphBuilderTest, Allreduce_WithGradientAccumulation_NoMixedPrec
 
 TEST_F(OptimizerGraphBuilderTest, Allreduce_NoGradientAccumulation_WithMixedPrecision) {
   OptimizerGraphConfig config;
-  config.world_size = 4;
+  config.data_parallel_group_size = 4;
   config.use_nccl = true;
   config.gradient_accumulation_steps = 1;
   config.use_mixed_precision = true;
@@ -376,7 +376,7 @@ TEST_F(OptimizerGraphBuilderTest, Allreduce_NoGradientAccumulation_WithMixedPrec
 
 TEST_F(OptimizerGraphBuilderTest, Allreduce_WithGradientAccumulation_WithMixedPrecision) {
   OptimizerGraphConfig config;
-  config.world_size = 4;
+  config.data_parallel_group_size = 4;
   config.use_nccl = true;
   config.gradient_accumulation_steps = 10;
   config.use_mixed_precision = true;
@@ -419,7 +419,7 @@ static void TestZeROOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& gr
 
 TEST_F(OptimizerGraphBuilderTest, ZeRO_NoGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
-  config.world_size = 4;
+  config.data_parallel_group_size = 4;
   config.use_nccl = true;
   config.partition_optimizer = true;
   config.gradient_accumulation_steps = 1;
@@ -429,7 +429,7 @@ TEST_F(OptimizerGraphBuilderTest, ZeRO_NoGradientAccumulation_NoMixedPrecision) 
 
 TEST_F(OptimizerGraphBuilderTest, ZeRO_WithGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
-  config.world_size = 4;
+  config.data_parallel_group_size = 4;
   config.use_nccl = true;
   config.partition_optimizer = true;
   config.gradient_accumulation_steps = 10;
@@ -439,7 +439,7 @@ TEST_F(OptimizerGraphBuilderTest, ZeRO_WithGradientAccumulation_NoMixedPrecision
 
 TEST_F(OptimizerGraphBuilderTest, ZeRO_NoGradientAccumulation_WithMixedPrecision) {
   OptimizerGraphConfig config;
-  config.world_size = 4;
+  config.data_parallel_group_size = 4;
   config.use_nccl = true;
   config.partition_optimizer = true;
   config.gradient_accumulation_steps = 1;
@@ -450,7 +450,7 @@ TEST_F(OptimizerGraphBuilderTest, ZeRO_NoGradientAccumulation_WithMixedPrecision
 
 TEST_F(OptimizerGraphBuilderTest, ZeRO_WithGradientAccumulation_WithMixedPrecision) {
   OptimizerGraphConfig config;
-  config.world_size = 4;
+  config.data_parallel_group_size = 4;
   config.use_nccl = true;
   config.partition_optimizer = true;
   config.gradient_accumulation_steps = 10;

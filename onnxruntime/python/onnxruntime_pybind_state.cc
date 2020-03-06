@@ -236,6 +236,8 @@ struct TrainingParameters {
   int local_rank = -1;
   int local_size = 1;
   int gradient_accumulation_steps = 1;
+  int data_parallel_size = 1;
+  int horizontal_parallel_size = 1;
   bool partition_optimizer = false;
 };
 
@@ -415,6 +417,18 @@ static void ConfigureSessionForTraining(
   bool use_nccl = parameters.allreduce_post_accumulation;
   if (!use_nccl && parameters.world_size > 1) {
     auto mpi_context = setup_horovod();
+    ORT_ENFORCE(parameters.horizontal_parallel_size <= mpi_context.world_size);
+    ORT_ENFORCE(parameters.data_parallel_size <= mpi_context.world_size);
+    if (mpi_context.world_size % parameters.horizontal_parallel_size != 0) {
+      throw std::runtime_error("Cannot split horizontal parallel group because world_size is not divisible");
+    }
+
+    auto data_group_size = mpi_context.world_size / parameters.horizontal_parallel_size;
+    if (data_group_size != parameters.data_parallel_size) {
+      std::cout << "WARNING: data_parallel_size is not correct, tuned automatically to "
+                << data_group_size << std::endl;
+      parameters.data_parallel_size = data_group_size;
+    }
     std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
     std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
     std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
@@ -437,6 +451,8 @@ static void ConfigureSessionForTraining(
   config.distributed_config.world_size = parameters.world_size;
   config.distributed_config.local_rank = parameters.local_rank;
   config.distributed_config.local_size = parameters.local_size;
+  config.distributed_config.data_parallel_size = parameters.data_parallel_size;
+  config.distributed_config.horizontal_parallel_size = parameters.horizontal_parallel_size;
 
   if (parameters.use_mixed_precision) {
     training::TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
@@ -566,8 +582,7 @@ void addGlobalMethods(py::module& m) {
   m.def("set_cuda_mem_limit", [](const int64_t limit) {
     cuda_mem_limit = static_cast<size_t>(limit);
   });
-  m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) {
-    arena_extend_strategy = strategy; });
+  m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) { arena_extend_strategy = strategy; });
 #endif
 }
 
@@ -770,7 +785,7 @@ void addObjectMethods(py::module& m) {
       .def_readwrite("world_rank", &TrainingParameters::world_rank)
       .def_readwrite("world_size", &TrainingParameters::world_size)
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
-      .def_readwrite("partition_optimizer",  &TrainingParameters::partition_optimizer);
+      .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer);
 
   py::class_<SessionOptions>
       sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
@@ -1105,9 +1120,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       });
 
   py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())
-    .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)
-    .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
-    .export_values();
+      .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)
+      .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
+      .export_values();
 }
 
 #if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
