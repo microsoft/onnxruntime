@@ -5,6 +5,21 @@ OpenVINO Execution Provider enables deep learning inference on Intel CPUs, Intel
 ## Build
 For build instructions, please see the [BUILD page](../../BUILD.md#openvino).
 
+## Dynamic device selection
+When ONNX Runtime is built with OpenVINO Execution Provider, a target hardware option needs to be provided. This build time option becomes the default target harware the EP schedules inference on. However, this target may be overriden at runtime to schedule inference on a different hardware as shown below.
+
+Note. This dynamic hardware selection is optional. The EP falls back to the build-time default selection if no dynamic hardware option value is specified.
+1. Python API
+```
+import onnxruntime
+onnxruntime.capi._pybind_state.set_openvino_device("<harware_option>")
+# Create session after this
+```
+2. C/C++ API
+```
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "<hardware_option>"));
+```
+
 ## ONNX Layers supported using OpenVINO
 
 The table below shows the ONNX layers supported using OpenVINO Execution Provider and the mapping between ONNX layers and OpenVINO layers. The below table also lists the Intel hardware support for each of the layers. CPU refers to Intel<sup>®</sup>

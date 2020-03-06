@@ -7,7 +7,12 @@
 
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
-  OpenVINOProviderFactory(const char* device) : device_(device) {
+  OpenVINOProviderFactory(const char* device) {
+    if(device == nullptr) {
+      device_ = "";
+    } else {
+      device_ = device;
+    }
   }
   ~OpenVINOProviderFactory() override {
   }
@@ -19,8 +24,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
-  OpenVINOExecutionProviderInfo info;
-  //info.device = device_;
+  OpenVINOExecutionProviderInfo info(device_);
   return std::make_unique<OpenVINOExecutionProvider>(info);
 }
 

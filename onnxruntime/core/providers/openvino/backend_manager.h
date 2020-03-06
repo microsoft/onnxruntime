@@ -18,7 +18,7 @@ namespace openvino_ep {
 // Singleton class that manages all the backends
 class BackendManager {
  public:
-  BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger);
+  BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger, std::string dev_id, std::string prec_str);
   void Compute(Ort::CustomOpApi api, OrtKernelContext* context);
   void ShutdownBackendManager();
 
