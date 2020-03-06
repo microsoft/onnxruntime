@@ -45,9 +45,9 @@ jobs:
       env:
         TELEMETRYGUID: $(TELEMETRYGUID)
     - task: UsePythonVersion@0
-      inputs: 
-        versionSpec: '3.7' 
-        addToPath: true 
+      inputs:
+        versionSpec: '3.7'
+        addToPath: true
         architecture: ${{ parameters.BuildArch }}
 
     - task: BatchScript@1
@@ -58,7 +58,7 @@ jobs:
         workingFolder: '$(Build.BinariesDirectory)'
 
     - script: |
-       python -m pip install -q pyopenssl setuptools wheel numpy     
+       python -m pip install -q pyopenssl setuptools wheel numpy
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Install python modules'
 
@@ -184,6 +184,14 @@ jobs:
         inputs:
           artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
+
+      - task: PublishSymbols@2
+        displayName: 'Publish Build Symbols'
+        condition: eq(variables['IsReleaseBuild'], 'true')
+        inputs:
+          symbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+          searchPattern: '**/*.pdb'
+          symbolServerType: teamServices
 
     # Compliance tasks require logs from Debug Build
     - ${{ if eq(parameters['DoCompliance'], 'true') }}:
