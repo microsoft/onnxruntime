@@ -356,79 +356,56 @@ void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, in
   memcpy(out_p, scores.data(), len);
 }
 
-// TODO: Starting with just the pieces needed for LinearRegressor from write_scores.
+// TODO: Starting with just the pieces needed for LinearRegressor from write_scores (see above).
 //       Will see what can be sensibly added to a batched in-place update of the scores for LinearClassifier, the SVM*
 //       and TreeEnsemble* ops when updating those.
+//       Attempted to parallelize the calculations if the number of scores to process was large, but no clear benefit
+//       was seen from testing with the arbitrary values of 1000 scores per threads.
 template <typename T>
 void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches64, int64_t batch_size,
                                    POST_EVAL_TRANSFORM post_transform, int add_second_class,
                                    concurrency::ThreadPool* threadpool) {
   SafeInt<int32_t> num_batches(num_batches64);
   SafeInt<int32_t> num_scores = num_batches * batch_size;
-  const int32_t num_threads = threadpool->NumThreads();
 
   ORT_ENFORCE(scores.size() == static_cast<size_t>(num_scores));
 
   ORT_UNUSED_PARAMETER(add_second_class);  // pending updates to use batched_update_scores_inplace for more ops
+  ORT_UNUSED_PARAMETER(threadpool);        // TBD whether we need to parallelize code here
 
   // convert from span to pointer for efficiency. we've checked scores.size() matches num_scores so don't need the
   // extra checking/overhead from using operator[] for each access
-  T* s = &scores[0];
-
-  // TODO: Refine this to be smarter about how much work is involved so we have a better idea of how many
-  // scores should be processed by each thread.
-  // Eigen may have something that can be used for the cost estimate.
-  auto calc_num_threads_to_use = [batch_size, num_batches, num_threads, num_scores](bool processes_batch_per_call) {
-    // arbitrary initial values of 100 item minimum per thread.
-    if (processes_batch_per_call) {
-      // each function call will process all scores in the batch item, so we need to split
-      // based on the batches rather than the individual items
-      int32_t num_batches_min_100_items = static_cast<int32_t>((100 + batch_size - 1) / batch_size);
-      int32_t num_threads_to_use = (num_batches + num_batches_min_100_items - 1) / num_batches_min_100_items;
-      return std::max(1, std::min(num_threads, num_threads_to_use));
-    } else {
-      return std::max(1, std::min(num_threads, static_cast<int32_t>(num_scores / 100)));
-    }
-  };
+  T* s = &*scores.begin();
+  const T* s_end = &*scores.cend();
 
   if (batch_size > 1) {
     switch (post_transform) {
       case POST_EVAL_TRANSFORM::PROBIT: {
-        concurrency::ThreadPool::TryBatchParallelFor(
-            threadpool, num_scores,
-            [&s](int32_t idx) {
-              s[idx] = ComputeProbit(s[idx]);
-            },
-            calc_num_threads_to_use(false));
+        while (s < s_end) {
+          *s++ = ComputeProbit(*s);
+        }
         break;
       }
       case POST_EVAL_TRANSFORM::LOGISTIC: {
-        concurrency::ThreadPool::TryBatchParallelFor(
-            threadpool, num_scores,
-            [&s](int32_t idx) {
-              s[idx] = ComputeLogistic(s[idx]);
-            },
-            calc_num_threads_to_use(false));
+        while (s < s_end) {
+          *s++ = ComputeLogistic(*s);
+        }
         break;
       }
       case POST_EVAL_TRANSFORM::SOFTMAX: {
-        concurrency::ThreadPool::TryBatchParallelFor(
-            threadpool, num_batches,
-            [&s, batch_size](int32_t idx) {
-              gsl::span<float> scores_for_batch(&s[idx * batch_size], batch_size);
-              ComputeSoftmax(scores_for_batch);
-            },
-            calc_num_threads_to_use(true));
+        while (s < s_end) {
+          gsl::span<float> scores_for_batch(s, s + batch_size);
+          ComputeSoftmax(scores_for_batch);
+          s += batch_size;
+        }
         break;
       }
       case POST_EVAL_TRANSFORM::SOFTMAX_ZERO: {
-        concurrency::ThreadPool::TryBatchParallelFor(
-            threadpool, num_batches,
-            [&s, batch_size](int32_t idx) {
-              gsl::span<float> scores_for_batch(&s[idx * batch_size], batch_size);
-              ComputeSoftmaxZero(scores_for_batch);
-            },
-            calc_num_threads_to_use(true));
+        while (s < s_end) {
+          gsl::span<float> scores_for_batch(s, s + batch_size);
+          ComputeSoftmaxZero(scores_for_batch);
+          s += batch_size;
+        }
         break;
       }
       case POST_EVAL_TRANSFORM::NONE:
@@ -437,12 +414,9 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches64, i
     }
   } else if (batch_size == 1) {  //binary case
     if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
-      concurrency::ThreadPool::TryBatchParallelFor(
-          threadpool, num_scores,
-          [&s](int32_t idx) {
-            s[idx] = ComputeProbit(s[idx]);
-          },
-          calc_num_threads_to_use(false));
+      while (s < s_end) {
+        *s++ = ComputeProbit(*s);
+      }
     }
   }
 }
