@@ -111,6 +111,7 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       "Shrink",
       "ThresholdedRelu",
       "PRelu",
+      "Round",
       "Selu",
       "Softplus",
       "GlobalLpPool",
