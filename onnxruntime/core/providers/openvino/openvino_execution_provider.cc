@@ -94,27 +94,34 @@ bool IsDimensionSupported(const Node* node, std::string device) {
 //Ops which are not supported by OpenVINO EP
 bool IsUnsupportedOp(std::string name, std::string device) {
   std::set<std::string> unsupported_ops_cpu = {
-      "Where",
+      // "Where",
       "Hardmax",
       "ReduceL1",
       "ReduceL2",
-      "ReduceSumSquare",
-      "ReduceLogSum",
+      // "ReduceSumSquare",
+      // "ReduceLogSum",
       "ReduceLogSumExp",
-      "ReduceMin",
-      "ReduceMax",
-      "ReduceSum",
-      "ReduceMean",
-      "ReduceProd",
+      // "ReduceMin",
+      // "ReduceMax",
+      // "ReduceSum",
+      // "ReduceMean",
+      // "ReduceProd",
       "EyeLike",
       "ConvTranspose",
       "Shrink",
       "ThresholdedRelu",
-      "PRelu",
-      "Selu",
+      "ConstantOfShape",
+      // "PRelu",
+      // "Selu",
       "Softplus",
-      "GlobalLpPool",
+      // "GlobalLpPool",
       "CumSum",
+      "Round",
+      "Gather",
+      "Concat",
+      "Cast",
+      "Unsqueeze",
+      "Squeeze",
       "LogSoftmax",
       "MeanVarianceNormalization",
       "QuantizeLinear",
@@ -265,6 +272,21 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     const bool B_is_float = node->InputDefs()[1]->Type()->find("float") != std::string::npos;
     return (A_is_float && B_is_float) ? false : true;
 
+  } else if (optype == "PRelu") {
+
+    auto slope = node->InputDefs()[1];
+
+    //PRelu slope has to be an initializer or needs to come from a constant node
+    if(initializers.count(slope->Name()))
+      return false;
+    else{
+      for(auto input_node = node->InputNodesBegin(); input_node != node->InputNodesEnd(); ++input_node){
+        if(GetInputCount(graph_viewer.GetNode((*input_node).Index()),initializers) == 0){
+          return false;
+        }
+      }
+    }
+    return true;
   } else if (optype == "Softmax") {
     if (!IsDimensionSupported(node,device_id))
       return true;
@@ -457,6 +479,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
     std::set<int> supported_types_cpu = {
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8,
