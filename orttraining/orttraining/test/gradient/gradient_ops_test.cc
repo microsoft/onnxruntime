@@ -2621,5 +2621,52 @@ TEST(GradientCheckerTest, SliceGrad) {
   }
 }
 
+void record_event(int64_t event_id) {
+  OpTester test_record("RecordEvent", 1, onnxruntime::kMSDomain);
+  test_record.AddInput<int64_t>("EventIdentifier", {}, {event_id});
+  test_record.AddInput<bool>("InputSignal", {}, {true});
+  test_record.AddOutput<bool>("OutputSignal", {}, {true});
+  test_record.Run();
+}
+
+void wait_event(int64_t event_id) {
+  OpTester test_wait("WaitEvent", 1, onnxruntime::kMSDomain);
+  test_wait.AddInput<int64_t>("EventIdentifier", {}, {event_id});
+  test_wait.AddInput<bool>("InputSignal", {}, {true});
+  test_wait.AddOutput<bool>("OutputSignal", {}, {true});
+  test_wait.Run();
+}
+
+TEST(Synchronization, RecordAndWaitEvent) {
+  const int64_t event_id = static_cast<int64_t>(941736);
+  record_event(event_id);
+  wait_event(event_id);
+}
+
+TEST(Synchronization, WaitAndRecordEvent) {
+  const int64_t event_id = static_cast<int64_t>(751228);
+  std::thread waiting_thread(wait_event, event_id);
+  std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  std::thread recording_thread(record_event, event_id);
+
+  waiting_thread.join();
+  recording_thread.join();
+}
+
+TEST(Synchronization, WaitAndRecordEventMany) {
+  const size_t event_count = 16;
+  for (int i = 0; i < 8; ++i) {
+    std::thread thread_pool[2 * event_count];
+    for (int j = 0; j < event_count; ++j) {
+      thread_pool[j] = std::thread(wait_event, j);
+      thread_pool[j + event_count] = std::thread(record_event, j);
+    }
+    for (int j = 0; j < event_count; ++j) {
+      thread_pool[j].join();
+      thread_pool[j + event_count].join();
+    }
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

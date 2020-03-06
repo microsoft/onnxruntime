@@ -1427,6 +1427,93 @@ Return true if all elements are true and false otherwise.
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(RecordEvent)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Record an event.")
+      .Input(
+          0,
+          "EventIdentifier",
+          "Event identifier to record.",
+          "TInt64")
+      .Input(
+          1,
+          "InputSignal",
+          "Input signal.",
+          "TBool")
+      .Output(
+          0,
+          "OutputSignal",
+          "Output signal.",
+          "TBool")
+      .TypeConstraint(
+          "TInt64",
+          {"tensor(int64)"},
+          "Constrain input type to 64-bit integer.")
+      .TypeConstraint(
+          "T",
+          OpSchema::all_tensor_types(),
+          "Allow inputs and outputs to be any kind of tensor.")
+      .TypeConstraint(
+          "TBool",
+          {"tensor(bool)"},
+          "Constrain output type to boolean tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (ctx.getNumInputs() != 2)
+          fail_shape_inference("RecordEvent must have two inputs.");
+        if (ctx.getNumOutputs() != 1)
+          fail_shape_inference("RecordEvent must have one output.");
+
+        auto output_element_type = ctx.getOutputType(0)->mutable_tensor_type();
+        output_element_type->set_elem_type(TensorProto::BOOL);
+        ONNX_NAMESPACE::TensorShapeProto output_shape;
+        updateOutputShape(ctx, 0, {});
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(WaitEvent)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Wait for an event to be recorded.")
+      .Input(
+          0,
+          "EventIdentifier",
+          "Event identifier to record.",
+          "TInt64")
+      .Input(
+          1,
+          "InputSignal",
+          "Input signal.",
+          "TBool")
+      .Output(
+          0,
+          "OutputSignal",
+          "Output signal.",
+          "TBool")
+      .TypeConstraint(
+          "TInt64",
+          {"tensor(int64)"},
+          "Constrain input type to 64-bit integer.")
+      .TypeConstraint(
+          "TBool",
+          {"tensor(bool)"},
+          "Constrain output type to boolean tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (ctx.getNumInputs() != 2)
+          fail_shape_inference("WaitEvent must have two inputs.");
+        if (ctx.getNumOutputs() != 1)
+          fail_shape_inference("WaitEvent can only have one output.");
+
+        auto output_element_type = ctx.getOutputType(0)->mutable_tensor_type();
+        output_element_type->set_elem_type(TensorProto::BOOL);
+        ONNX_NAMESPACE::TensorShapeProto output_shape;
+        updateOutputShape(ctx, 0, {});
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+      });
+
 }
 }  // namespace training
 }  // namespace onnxruntime
