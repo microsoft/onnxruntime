@@ -181,6 +181,12 @@ jobs:
   - NuGet_Test_Linux
   - NuGet_Test_MacOS
   steps:
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+    inputs:
+      artifactName: 'drop-signed-nuget'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package
+
   - task: NuGetCommand@2
     displayName: 'Copy Signed Native NuGet Package to ORT-NIGHTLY'
     condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
