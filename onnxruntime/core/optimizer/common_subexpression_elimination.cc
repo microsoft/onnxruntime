@@ -296,8 +296,8 @@ bool IsNodeSupported(const Node& node) {
   }
 
   const std::string& op = node.OpType();
-  if (op.substr(0, 6) == "Random" && node.GetAttributes().count("seed") == 0) {
-    // a unique seed will be generated, so this node is unique
+  if (op.substr(0, 6) == "Random") {
+    // Random* operators are non-deterministic, even when seed is provided.
     return false;
   }
 
