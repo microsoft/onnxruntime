@@ -185,7 +185,7 @@ jobs:
     displayName: 'Download Pipeline Artifact - Signed NuGet Package'
     inputs:
       artifactName: 'drop-signed-nuget'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
 
   - task: NuGetCommand@2
     displayName: 'Copy Signed Native NuGet Package to ORT-NIGHTLY'
