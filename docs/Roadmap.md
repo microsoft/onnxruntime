@@ -89,7 +89,6 @@ To achieve the best performance on a growing set of compute targets across cloud
 |Microsoft Direct ML| |
 |Android NN API (Preview)| |
 |ARM Compute Library (Preview)| |
-|Microsoft Direct ML| |
 
 #### CUDA operator coverage
 To maximize performance potential, we will be continually adding additional CUDA implementations for supported operators.
