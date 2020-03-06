@@ -479,7 +479,6 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
     std::set<int> supported_types_cpu = {
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
-        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8,

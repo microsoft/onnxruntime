@@ -103,8 +103,6 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(
     return InferenceEngine::Precision::FP16;
   } else if (*type_string == "int32" || *type_string == "tensor(int32)") {
     return InferenceEngine::Precision::I32;
-  } else if (*type_string == "int64" || *type_string == "tensor(int64)") {
-    return InferenceEngine::Precision::FP32;
   } else if (*type_string == "int16" || *type_string == "tensor(int16)") {
     return InferenceEngine::Precision::I16;
   } else if (*type_string == "int8" || *type_string == "tensor(int8)") {
