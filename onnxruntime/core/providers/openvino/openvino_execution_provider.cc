@@ -175,7 +175,7 @@ bool IsUnsupportedOp(std::string name, std::string device) {
     std::merge(unsupported_ops_cpu.begin(), unsupported_ops_cpu.end(),
                unsupported_ops_gpu.begin(), unsupported_ops_gpu.end(),
                std::inserter(unsupported_ops, unsupported_ops.begin()));
-  } else if (device == "VPU") {
+  } else if (device == "MYRIAD" || device == "HDDL") {
     std::merge(unsupported_ops_cpu.begin(), unsupported_ops_cpu.end(),
                unsupported_ops_vpu.begin(), unsupported_ops_vpu.end(),
                std::inserter(unsupported_ops, unsupported_ops.begin()));
@@ -467,7 +467,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
     };
     auto dtype = type_proto->tensor_type().elem_type();
 
-    if(device_id == "CPU" || device_id == "VPU"){
+    if(device_id == "CPU" || device_id == "MYRIAD" || device_id == "HDDL"){
 
       if(supported_types_cpu.find(dtype) != supported_types_cpu.end())
         return true;
