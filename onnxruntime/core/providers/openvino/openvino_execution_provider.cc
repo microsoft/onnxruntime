@@ -154,7 +154,11 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       "Sign",
       "Softsign",
       "Mod",
-      "Sinh"};
+      "Sinh",
+      "ReduceSumSquare",
+      "ReduceLogSum",
+      "ReduceProd"
+  };
 
   std::set<std::string> unsupported_ops_vpu = {
       "Abs",

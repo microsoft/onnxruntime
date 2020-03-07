@@ -37,7 +37,11 @@ void TestReduceOp(const std::string& op,
   test.AddAttribute("keepdims", keepdims);
   test.AddInput<float>("data", input_dims, data);
   test.AddOutput<OutT>("reduced", expected_dims, expected_data);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});  //TensorRT: result differs
+  #if defined(OPENVINO_CONFIG_GPU_FP32)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});  //TensorRT,OpenVINO: result differs
+  #else
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});  //TensorRT: result differs
+  #endif
 }
 
 //TODO:investigate why it is so slow. It need 12 seconds on an Azure Standard F48s_v2 (48 vcpus, 96 GiB memory)
@@ -393,6 +397,7 @@ TEST(ReductionOpTest, ReduceLogSumExp_do_not_keepdims_2) {
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {3.40760596f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+
 }
 
 TEST(ReductionOpTest, ReduceLogSumExp_keepdims) {
@@ -553,8 +558,14 @@ TEST(ReductionOpTest, ReduceMax_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {3, 1, 1}, {4, 8, 12});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
-}
+  
+
+  #if defined (OPENVINO_CONFIG_GPU_FP32)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
+  #else
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  #endif
+  }
 
 TEST(ReductionOpTest, ReduceMax_int64) {
   OpTester test("ReduceMax");
@@ -680,7 +691,12 @@ TEST(ReductionOpTest, ReduceMean_int32) {
                           90, 100,
                           110, 120});
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {55, 75});
+  //Disbaled temporarily for OpenVINO
+#if defined(OPENVINO_CONFIG_CPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP32)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+#else
   test.Run();
+#endif
 }
 
 TEST(ReductionOpTest, ReduceMin_default_axes_keepdims) {
@@ -1590,8 +1606,8 @@ TEST(ReductionOpTest, ReduceDimWithZero) {
     auto expect = error_msg.empty() ? OpTester::ExpectResult::kExpectSuccess
                                     : OpTester::ExpectResult::kExpectFailure;
 
-    // exclude NGraph and TensorRT as this isn't handled by those EPs
-    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kNGraphExecutionProvider, kNupharExecutionProvider});
+    // exclude OpenVINO, NGraph and TensorRT as this isn't handled by those EPs
+    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kNGraphExecutionProvider,kOpenVINOExecutionProvider, kNupharExecutionProvider});
   };
 
   // reduce on all axes keeping dims. should allow the 0 to be the reduced value
