@@ -5,6 +5,7 @@
 #include "onnx/defs/schema.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#include "core/platform/threadpool.h"
 
 #include <functional>
 #include <unordered_set>
@@ -388,7 +389,7 @@ void TfIdfVectorizer::OutputResult(OpKernelContext* ctx, size_t B, const std::ve
   std::vector<int64_t> output_dims;
   if (B == 0) {
     output_dims.push_back(impl.output_size_);
-    B = 1; // For use in the loops below
+    B = 1;  // For use in the loops below
   } else {
     output_dims.push_back(B);
     output_dims.push_back(impl.output_size_);
@@ -443,89 +444,77 @@ void TfIdfVectorizer::OutputResult(OpKernelContext* ctx, size_t B, const std::ve
 }
 
 template <typename T>
-Status TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, size_t B, size_t C, size_t total_items,
-    std::vector<uint32_t>& frequencies) const {
+void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, int32_t row_num, size_t row_size,
+                                  std::vector<uint32_t>& frequencies) const {
   const auto& impl = *impl_;
   auto const set_end = impl.PoolEnd<T>();
 
   auto X = ctx->Input<Tensor>(0);
+  const T* row_begin = X->Data<T>() + row_num * row_size;
+  const T* const row_end = row_begin + row_size;
 
   const auto max_gram_length = impl.max_gram_length_;
   const auto max_skip_distance = impl.max_skip_count_ + 1;  // Convert to distance
   auto start_ngram_size = impl.min_gram_length_;
-  auto const input_data = X->template Data<T>();
-  auto const end_data = input_data + total_items;
   NgramEntry<T> sample;
 
   // Treat 1-grams in a special way
   if (start_ngram_size == 1) {
-    size_t row_num = 0;
-    auto ngram_start = input_data;
-    while (ngram_start < end_data) {
-      auto const ngram_row_end = ngram_start + C;
-      while (ngram_start < ngram_row_end) {
-        sample.Clear();
-        sample.AddItem(*ngram_start);
-        auto hit = impl.PoolFind<T>(sample);
-        if (hit != set_end) {
-          // record frequency
-          auto ngram_id = hit->Id();
-          impl.IncrementCount(ngram_id, row_num, frequencies);
-        }
-        ++ngram_start;
+    auto ngram_start = row_begin;
+    auto const ngram_row_end = row_end;
+
+    while (ngram_start < ngram_row_end) {
+      sample.Clear();
+      sample.AddItem(*ngram_start);
+      auto hit = impl.PoolFind<T>(sample);
+      if (hit != set_end) {
+        // record frequency
+        auto ngram_id = hit->Id();
+        impl.IncrementCount(ngram_id, row_num, frequencies);
       }
-      ++row_num;
-      ngram_start = ngram_row_end;
+      ++ngram_start;
     }
+
     if (++start_ngram_size > max_gram_length) {
-      OutputResult(ctx, B, frequencies);
-      return Status::OK();
+      return;
     }
   }
 
   for (auto skip_distance = 1; skip_distance <= max_skip_distance; ++skip_distance) {
-    auto ngram_start = input_data;
-    size_t row_num = 0;
-    while (ngram_start < end_data) {
-      assert((B == 0) || (row_num < B));
-      auto const ngram_row_end = ngram_start + C;
-      assert(ngram_row_end <= end_data);
-      while (ngram_start < ngram_row_end) {
-        // Check if any n-gram size in [start_ngram_size..max_gram_length] range
-        // fit before the end of the row so we do not waste time adding [1..start_ngram_size)
-        // At least items of start_ngram_size should fit
-        // last row should match end_data
-        auto at_least_this = ngram_start + skip_distance * (start_ngram_size - 1);
-        if (at_least_this >= ngram_row_end) {
-          break;
-        }
-        sample.Clear();
-        auto ngram_item = ngram_start;
-        for (auto ngram_size = 1;
-             ngram_size <= max_gram_length &&
-             ngram_item < ngram_row_end;
-             ++ngram_size, ngram_item += skip_distance) {
-          sample.AddItem(*ngram_item);
+    auto ngram_start = row_begin;
+    auto const ngram_row_end = row_end;
 
-          // Do not test anything before start_ngram_size
-          if (ngram_size >= start_ngram_size) {
-            auto hit = impl.PoolFind<T>(sample);
-            if (hit != set_end) {
-              // record frequency
-              auto ngram_id = hit->Id();
-              impl.IncrementCount(ngram_id, row_num, frequencies);
-            }
+    while (ngram_start < ngram_row_end) {
+      // Check if any n-gram size in [start_ngram_size..max_gram_length] range
+      // fit before the end of the row so we do not waste time adding [1..start_ngram_size)
+      // At least items of start_ngram_size should fit
+      // last row should match end_data
+      auto at_least_this = ngram_start + skip_distance * (start_ngram_size - 1);
+      if (at_least_this >= ngram_row_end) {
+        break;
+      }
+      sample.Clear();
+      auto ngram_item = ngram_start;
+      for (auto ngram_size = 1;
+           ngram_size <= max_gram_length &&
+           ngram_item < ngram_row_end;
+           ++ngram_size, ngram_item += skip_distance) {
+        sample.AddItem(*ngram_item);
+
+        // Do not test anything before start_ngram_size
+        if (ngram_size >= start_ngram_size) {
+          auto hit = impl.PoolFind<T>(sample);
+          if (hit != set_end) {
+            // record frequency
+            auto ngram_id = hit->Id();
+            impl.IncrementCount(ngram_id, row_num, frequencies);
           }
         }
-        // Sliding window shift
-        ++ngram_start;
       }
-      // Next row
-      ngram_start = ngram_row_end;
-      ++row_num;
+      // Sliding window shift
+      ++ngram_start;
     }
   }
-  return Status::OK();
 }
 
 Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
@@ -535,21 +524,21 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
   auto& input_shape = X->Shape();
   const size_t total_items = input_shape.Size();
 
-  size_t b_dim = 0;
+  int32_t num_rows = 0;
   size_t B = 0;
   size_t C = 0;
   auto& input_dims = input_shape.GetDims();
   if (input_dims.empty()) {
-    b_dim = 1;
+    num_rows = 1;
     C = 1;
     assert(total_items == 1);
   } else if (input_dims.size() == 1) {
-    b_dim = 1;
+    num_rows = 1;
     C = input_dims[0];
   } else if (input_dims.size() == 2) {
     B = input_dims[0];
     C = input_dims[1];
-    b_dim = B;
+    num_rows = static_cast<int32_t>(B);
     if (B < 1) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                     "Input shape must have either [C] or [B,C] dimensions with B > 0.");
@@ -559,11 +548,11 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
                   "Input shape must have either [C] or [B,C] dimensions with B > 0.");
   }
 
-  assert((b_dim * C) == total_items);
+  assert((num_rows * C) == total_items);
   // Frequency holder allocate [B..output_size_]
   // and init all to zero
   std::vector<uint32_t> frequencies;
-  frequencies.resize(b_dim * impl_->output_size_, 0);
+  frequencies.resize(num_rows * impl_->output_size_, 0);
 
   if (total_items == 0) {
     // TfidfVectorizer may receive an empty input when it follows a Tokenizer
@@ -575,16 +564,25 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
+  std::function<void(int32_t)> fn;
   if (X->IsDataType<int32_t>()) {
-    s = ComputeImpl<int32_t>(ctx, B, C, total_items, frequencies);
+    fn = [this, ctx, C, &frequencies](int32_t row_num) {
+      ComputeImpl<int32_t>(ctx, row_num, C, frequencies);
+    };
   } else if (X->IsDataType<int64_t>()) {
-    s = ComputeImpl<int64_t>(ctx, B, C, total_items, frequencies);
+    fn = [this, ctx, C, &frequencies](int32_t row_num) {
+      ComputeImpl<int64_t>(ctx, row_num, C, frequencies);
+    };
   } else if (X->IsDataTypeString()) {
-    s = ComputeImpl<std::string>(ctx, B, C, total_items, frequencies);
+    fn = [this, ctx, C, &frequencies](int32_t row_num) {
+      ComputeImpl<std::string>(ctx, row_num, C, frequencies);
+    };
   } else {
     s = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                "Invalid type of the input argument");
   }
+
+  concurrency::ThreadPool::TryParallelFor(ctx->GetOperatorThreadPool(), num_rows, fn);
 
   if (s.IsOK()) {
     OutputResult(ctx, B, frequencies);

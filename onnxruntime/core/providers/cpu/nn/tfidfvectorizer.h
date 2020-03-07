@@ -20,7 +20,7 @@ class TfIdfVectorizer final : public OpKernel {
 
  private:
   template <typename T>
-  Status ComputeImpl(OpKernelContext* ctx, size_t B, size_t C, size_t total_items,
+  void ComputeImpl(OpKernelContext* ctx, int32_t row_num, size_t row_size,
                      std::vector<uint32_t>& frequencies) const;
 
   // Apply weighing criteria and output
