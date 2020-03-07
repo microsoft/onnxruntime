@@ -443,54 +443,12 @@ void TfIdfVectorizer::OutputResult(OpKernelContext* ctx, size_t B, const std::ve
 }
 
 template <typename T>
-Status TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx) const {
+Status TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, size_t B, size_t C, size_t total_items,
+    std::vector<uint32_t>& frequencies) const {
   const auto& impl = *impl_;
   auto const set_end = impl.PoolEnd<T>();
 
   auto X = ctx->Input<Tensor>(0);
-  auto& input_shape = X->Shape();
-  const size_t total_items = input_shape.Size();
-
-  size_t b_dim = 0;
-  size_t B = 0;
-  size_t C = 0;
-  auto& input_dims = input_shape.GetDims();
-  if (input_dims.empty()) {
-    b_dim = 1;
-    C = 1;
-    assert(total_items == 1);
-  } else if (input_dims.size() == 1) {
-    b_dim = 1;
-    C = input_dims[0];
-  } else if (input_dims.size() == 2) {
-    B = input_dims[0];
-    C = input_dims[1];
-    b_dim = B;
-    if (B < 1) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input shape must have either [C] or [B,C] dimensions with B > 0.");
-    }
-  } else {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input shape must have either [C] or [B,C] dimensions with B > 0.");
-  }
-
-  // Frequency holder allocate [B..output_size_]
-  // and init all to zero
-  std::vector<uint32_t> frequencies;
-  frequencies.resize(b_dim * impl.output_size_, 0);
-
-  if (input_shape.Size() == 0) {
-    // TfidfVectorizer may receive an empty input when it follows a Tokenizer
-    // (for example for a string containing only stopwords).
-    // TfidfVectorizer returns a zero tensor of shape
-    // {b_dim, output_size} when b_dim is the number of received observations
-    // and output_size the is the maximum value in ngram_indexes attribute plus 1.
-    OutputResult(ctx, B, frequencies);
-    return Status::OK();
-  }
-
-  assert((b_dim * C) == total_items);
 
   const auto max_gram_length = impl.max_gram_length_;
   const auto max_skip_distance = impl.max_skip_count_ + 1;  // Convert to distance
@@ -567,7 +525,6 @@ Status TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx) const {
       ++row_num;
     }
   }
-  OutputResult(ctx, B, frequencies);
   return Status::OK();
 }
 
@@ -575,16 +532,62 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
   Status s;
 
   auto X = ctx->Input<Tensor>(0);
+  auto& input_shape = X->Shape();
+  const size_t total_items = input_shape.Size();
+
+  size_t b_dim = 0;
+  size_t B = 0;
+  size_t C = 0;
+  auto& input_dims = input_shape.GetDims();
+  if (input_dims.empty()) {
+    b_dim = 1;
+    C = 1;
+    assert(total_items == 1);
+  } else if (input_dims.size() == 1) {
+    b_dim = 1;
+    C = input_dims[0];
+  } else if (input_dims.size() == 2) {
+    B = input_dims[0];
+    C = input_dims[1];
+    b_dim = B;
+    if (B < 1) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                    "Input shape must have either [C] or [B,C] dimensions with B > 0.");
+    }
+  } else {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "Input shape must have either [C] or [B,C] dimensions with B > 0.");
+  }
+
+  assert((b_dim * C) == total_items);
+  // Frequency holder allocate [B..output_size_]
+  // and init all to zero
+  std::vector<uint32_t> frequencies;
+  frequencies.resize(b_dim * impl_->output_size_, 0);
+
+  if (total_items == 0) {
+    // TfidfVectorizer may receive an empty input when it follows a Tokenizer
+    // (for example for a string containing only stopwords).
+    // TfidfVectorizer returns a zero tensor of shape
+    // {b_dim, output_size} when b_dim is the number of received observations
+    // and output_size the is the maximum value in ngram_indexes attribute plus 1.
+    OutputResult(ctx, B, frequencies);
+    return Status::OK();
+  }
 
   if (X->IsDataType<int32_t>()) {
-    s = ComputeImpl<int32_t>(ctx);
+    s = ComputeImpl<int32_t>(ctx, B, C, total_items, frequencies);
   } else if (X->IsDataType<int64_t>()) {
-    s = ComputeImpl<int64_t>(ctx);
+    s = ComputeImpl<int64_t>(ctx, B, C, total_items, frequencies);
   } else if (X->IsDataTypeString()) {
-    s = ComputeImpl<std::string>(ctx);
+    s = ComputeImpl<std::string>(ctx, B, C, total_items, frequencies);
   } else {
     s = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                "Invalid type of the input argument");
+  }
+
+  if (s.IsOK()) {
+    OutputResult(ctx, B, frequencies);
   }
 
   return s;
