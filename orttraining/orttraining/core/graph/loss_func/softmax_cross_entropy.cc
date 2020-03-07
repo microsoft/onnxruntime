@@ -26,7 +26,7 @@ GraphAugmenter::GraphDefs SoftmaxCrossEntropy::operator()(
     ORT_ENFORCE(prediction_arg != nullptr, "Prediction arg ", prediction_name, " is not found in the graph.");
     TypeProto* label_type_proto = graph_defs.CopyTypeProto(prediction_arg);
 
-    new_nodes.emplace_back(NodeDef("SoftmaxCrossEntropy",  // Op
+    new_nodes.emplace_back(NodeDef(OpDef("SoftmaxCrossEntropy", kMSDomain, 1),  // Op
                                    {ArgDef(prediction_name),
                                     ArgDef(label_name, label_type_proto)},  // Inputs
                                    {ArgDef(loss_name),

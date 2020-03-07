@@ -9,7 +9,6 @@
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
-#include "orttraining/core/framework/mpi_setup.h"
 
 #include "orttraining/models/mnist/mnist_data_provider.h"
 #include "orttraining/models/runner/training_runner.h"
@@ -18,6 +17,12 @@
 #include <condition_variable>
 #include <mutex>
 #include <tuple>
+
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
+                                                                               size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
+                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
+}
 
 using namespace onnxruntime;
 using namespace onnxruntime::training;
@@ -53,7 +58,6 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     auto flags = options.parse(argc, argv);
 
     params.model_name = flags["model_name"].as<std::string>();
-    params.use_cuda = flags.count("use_cuda") > 0;
     params.use_gist = flags.count("use_gist") > 0;
     params.lr_params.initial_lr = flags["learning_rate"].as<float>();
     params.num_train_steps = flags["num_train_steps"].as<int>();
@@ -71,6 +75,12 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     params.log_dir.assign(log_dir.begin(), log_dir.end());
     params.use_profiler = flags.count("use_profiler") > 0;
 
+#ifdef USE_CUDA
+    bool use_cuda = flags.count("use_cuda") > 0;
+    if (use_cuda) {
+      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(0));
+    }
+#endif
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"
@@ -93,31 +103,12 @@ void setup_training_params(TrainingRunner::Parameters& params) {
 
   //Gist encode
   params.model_gist_encode_path = ToPathString(params.model_name) + ORT_TSTR("_encode_gist.onnx");
-  params.loss_func_info = LossFunctionInfo(OpDef("SoftmaxCrossEntropy"),
+  params.loss_func_info = LossFunctionInfo(OpDef("SoftmaxCrossEntropy", kMSDomain, 1),
                                            "loss",
                                            {"predictions", "labels"});
   params.fetch_names = {"predictions", "loss"};
 
-  // TODO: simplify provider/optimizer configuration. For now it is fixed to used SGD with CPU and Adam with GPU.
-  if (params.use_cuda) {
-    // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
-    // Adding another cuda kernel call for this division seems wasteful currently.
-    params.training_optimizer_name = "AdamOptimizer";
-    params.optimizer_attributes = [](const std::string&) {
-      return std::unordered_map<std::string, float>{
-          {"alpha", 0.9f},
-          {"beta", 0.999f},
-          {"lambda", 0.0f},
-          {"epsilon", 0.1f},
-      };
-    };
-  } else {
-    params.training_optimizer_name = "SGDOptimizer";
-  }
-
-#ifdef USE_HOROVOD
-  params.mpi_context = setup_horovod();
-#endif
+  params.training_optimizer_name = "SGDOptimizer";
 
   params.error_function = [](const std::vector<std::string>& /*feed_names*/,
                              const std::vector<OrtValue>& feeds,
@@ -204,15 +195,12 @@ int main(int argc, char* args[]) {
     printf("Warning: No data loaded - run cancelled.\n");
     return -1;
   }
+
   // start training session
   auto training_data_loader = std::make_shared<SingleDataLoader>(trainingData, feeds);
   auto test_data_loader = std::make_shared<SingleDataLoader>(testData, feeds);
   auto runner = onnxruntime::make_unique<TrainingRunner>(params);
   RETURN_IF_FAIL(runner->Initialize());
   RETURN_IF_FAIL(runner->Run(training_data_loader.get(), test_data_loader.get()));
-  RETURN_IF_FAIL(runner->EndTraining(test_data_loader.get(), true));
-
-#ifdef USE_HOROVOD
-  shutdown_horovod();
-#endif
+  RETURN_IF_FAIL(runner->EndTraining(test_data_loader.get()));
 }

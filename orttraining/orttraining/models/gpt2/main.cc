@@ -8,6 +8,7 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/session/environment.h"
 #include "core/framework/random_seed.h"
+#include "core/providers/cuda/cuda_allocator.h"
 #include "orttraining/core/framework/mpi_setup.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/session/training_session.h"
@@ -15,6 +16,12 @@
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
 #include "orttraining/models/runner/data_loader.h"
+
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
+                                                                               size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
+                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
+}
 
 using namespace onnxruntime;
 using namespace onnxruntime::training;
@@ -258,6 +265,27 @@ void setup_training_params(GPT2Parameters& params) {
                                            {/*prediction_name*/ "output",
                                             /*label_name*/ "labels"});
 
+#ifdef USE_HOROVOD
+  params.mpi_context = setup_horovod();
+  ORT_ENFORCE(params.horizontal_parallel_size <= params.mpi_context.world_size);
+  ORT_ENFORCE(params.data_parallel_size <= params.mpi_context.world_size);
+  if (params.mpi_context.world_size % params.horizontal_parallel_size != 0) {
+    LOGS_DEFAULT(ERROR) << "Cannot split horizontal parallel group because world_size is not divisible";
+    return;
+  }
+
+  auto data_group_size = params.mpi_context.world_size / params.horizontal_parallel_size;
+  if (data_group_size != params.data_parallel_size) {
+    LOGS_DEFAULT(WARNING) << "WARNING: data_parallel_size is not correct, tuned automatically to "
+                          << data_group_size << std::endl;
+    params.data_parallel_size = data_group_size;
+  }
+
+  params.use_adasum = params.use_adasum && (params.data_parallel_size > 1);
+  if (params.use_adasum)
+    std::cout << "Use Adsum for allreduce." << std::endl;
+#endif
+
   params.fetch_names = {"mlm_loss"};
 
   if (params.EnableTensorboard()) {
@@ -282,7 +310,12 @@ void setup_training_params(GPT2Parameters& params) {
       {"attention_mask", "attention_mask"},
       {"labels", "labels"}};
 
-  params.use_cuda = true;
+#ifdef USE_CUDA
+  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(params.mpi_context.local_rank);
+  params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id));
+  params.input_allocator = std::make_shared<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
+#endif
+
   params.use_nccl = true;
 
   params.error_function = [params](const std::vector<std::string>& /*feed_names*/,
@@ -377,7 +410,7 @@ static Status RunTraining(const GPT2Parameters& params) {
                                                             params.test_data_dir,
                                                             max_num_files_preload);
 
-    ORT_RETURN_IF_ERROR(runner->EndTraining(test_data_loader.get(), false));
+    ORT_RETURN_IF_ERROR(runner->EndTraining(test_data_loader.get()));
   }
 
   return Status::OK();
@@ -387,7 +420,6 @@ int main(int argc, char* argv[]) {
   GPT2Parameters params;
   OrtParameters ort_params{logging::Severity::kWARNING, -1};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
-  setup_training_params(params);
 
   // setup logger
   std::string default_logger_id{"Default"};
@@ -397,31 +429,11 @@ int main(int argc, char* argv[]) {
                                                   logging::LoggingManager::InstanceType::Default,
                                                   &default_logger_id,
                                                   ort_params.vlog_level};
+  setup_training_params(params);
 
   // setup onnxruntime env
   std::unique_ptr<Environment> env;
   RETURN_IF_FAIL(Environment::Create(env));
-
-#ifdef USE_HOROVOD
-  params.mpi_context = setup_horovod();
-  ORT_ENFORCE(params.horizontal_parallel_size <= params.mpi_context.world_size);
-  ORT_ENFORCE(params.data_parallel_size <= params.mpi_context.world_size);
-  if (params.mpi_context.world_size % params.horizontal_parallel_size != 0) {
-    LOGS_DEFAULT(ERROR) << "Cannot split horizontal parallel group because world_size is not divisible";
-    return -1;
-  }
-
-  auto data_group_size = params.mpi_context.world_size / params.horizontal_parallel_size;
-  if (data_group_size != params.data_parallel_size) {
-    LOGS_DEFAULT(WARNING) << "WARNING: data_parallel_size is not correct, tuned automatically to "
-                          << data_group_size << std::endl;
-    params.data_parallel_size = data_group_size;
-  }
-
-  params.use_adasum = params.use_adasum && (params.data_parallel_size > 1);
-  if (params.use_adasum)
-    std::cout << "Use Adsum for allreduce." << std::endl;
-#endif
 
   // start training session
   if (params.is_perf_test) {

@@ -9,6 +9,7 @@
 #include "core/common/profiler.h"
 #include "core/session/environment.h"
 #include "core/framework/random_seed.h"
+#include "core/providers/cuda/cuda_allocator.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/framework/mpi_setup.h"
@@ -16,6 +17,12 @@
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
 #include "orttraining/models/runner/data_loader.h"
+
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
+                                                                               size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
+                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
+}
 
 using namespace onnxruntime;
 using namespace onnxruntime::training;
@@ -30,6 +37,7 @@ struct BertParameters : public TrainingRunner::Parameters {
   float initial_lr_phase2;
   size_t num_train_steps_phase2;
   float warmup_ratio_phase2;
+  float cuda_mem_limit_in_gb = -1;
 
   PathString train_data_dir_phase2;
   PathString test_data_dir_phase2;
@@ -393,6 +401,15 @@ void setup_training_params(BertParameters& params) {
     std::cout << "Use Adsum for allreduce." << std::endl;
 #endif
 
+#ifdef USE_CUDA
+  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(params.mpi_context.local_rank);
+  size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
+  if (params.cuda_mem_limit_in_gb > 0)
+    cuda_mem_limit = static_cast<size_t>(params.cuda_mem_limit_in_gb * 1024 * 1024 * 1024);
+  params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id, cuda_mem_limit));
+  params.input_allocator = std::make_shared<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
+#endif
+
   params.loss_func_info = LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
                                            "total_loss",
                                            {/*prediction_masked_lm*/ "output1",
@@ -432,8 +449,6 @@ void setup_training_params(BertParameters& params) {
       {"masked_lm_ids", "masked_lm_ids"},
       {"masked_lm_weights", "masked_lm_weights"},
       {"next_sentence_label", "next_sentence_labels"}};
-
-  params.use_cuda = true;
 
   params.skip_evaluation = params.is_perf_test;
 
@@ -595,7 +610,7 @@ static Status RunTraining(const BertParameters& params) {
                                                                  params_for_phase.test_data_dir,
                                                                  max_num_files_preload);
 
-    ORT_RETURN_IF_ERROR(runner->EndTraining(test_data_loader.get(), false));
+    ORT_RETURN_IF_ERROR(runner->EndTraining(test_data_loader.get()));
   }
 
   return Status::OK();

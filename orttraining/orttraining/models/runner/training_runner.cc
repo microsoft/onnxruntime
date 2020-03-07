@@ -17,10 +17,6 @@
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/models/runner/training_util.h"
 
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_execution_provider.h"
-#endif
-
 namespace onnxruntime {
 namespace training {
 
@@ -49,7 +45,7 @@ TrainingRunner::TrainingRunner(Parameters params)
       training_data_set_index_(0),
       params_(params),
       session_(SESSION_OPTION),
-      pinned_allocator_(nullptr) {
+      input_allocator_(params.input_allocator ? params.input_allocator : TrainingUtil::GetCpuAllocator()) {
   ORT_ENFORCE(!params_.model_path.empty());
   if (!params.weights_to_train.empty())
     ORT_ENFORCE(params.weights_not_to_train.empty());
@@ -154,18 +150,11 @@ Status TrainingRunner::Initialize() {
   }
   ORT_RETURN_IF_ERROR(session_.OverrideGraphOutputs(fetch_names));
 
-#ifdef USE_CUDA
-  if (params_.use_cuda) {
-    CUDAExecutionProviderInfo xp_info;
-    xp_info.device_id = static_cast<OrtDevice::DeviceId>(params_.mpi_context.local_rank);
-    if (params_.cuda_mem_limit_in_gb > 0) {
-      xp_info.cuda_mem_limit = static_cast<size_t>(params_.cuda_mem_limit_in_gb * 1024 * 1024 * 1024);
-    }
-    auto cuda_xp = onnxruntime::make_unique<CUDAExecutionProvider>(xp_info);
-    pinned_allocator_ = cuda_xp->GetAllocator(0, OrtMemTypeCPUOutput);
-    ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::move(cuda_xp)));
+  for (const auto& factory : params_.providers) {
+    auto provider = factory.second->CreateProvider();
+    ORT_ENFORCE(factory.first == provider->Type());
+    ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::move(provider)));
   }
-#endif
 
   if (params_.use_profiler && !SESSION_OPTION.enable_profiling) {
     // Profiling has not already been enabled, so override from command line options.
@@ -278,16 +267,16 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       // loop through the data
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
-        std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch, pinned_allocator_);
+        std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch, input_allocator_);
         if (loss_scaler_) {
           float loss_scale = loss_scaler_->GetLossScale();
-          TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val, pinned_allocator_);
+          TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val, input_allocator_);
           feeds.push_back(loss_scale_val);
         }
 
         {
           float learning_rate = lr_scheduler->GetLearningRate(step_ + 1);
-          TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{learning_rate}, &lr_ort_val, pinned_allocator_);
+          TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{learning_rate}, &lr_ort_val, input_allocator_);
           feeds.push_back(lr_ort_val);
         }
 
@@ -404,7 +393,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   return Status::OK();
 }
 
-Status TrainingRunner::EndTraining(IDataLoader* data_loader, bool do_load_and_evaluate) {
+Status TrainingRunner::EndTraining(IDataLoader* data_loader) {
   if (params_.use_profiler) {
     // Write profiler data to disk.
     // We do this first in case there are any problems saving the trained model.
@@ -445,12 +434,6 @@ Status TrainingRunner::EndTraining(IDataLoader* data_loader, bool do_load_and_ev
       params_.output_dir + GetPathSep<PathChar>() + model_base_name + ORT_TSTR("_with_cost_trained.onnx");
   ORT_RETURN_IF_ERROR(session_.Save(
       trained_model_with_loss_func_path, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
-
-  // Load and test the trained model.
-  if (data_loader && do_load_and_evaluate) {
-    printf("\nTesting the saved model: %s\n", ToMBString(trained_model_with_loss_func_path).c_str());
-    ORT_RETURN_IF_ERROR(LoadAndEvaluate(trained_model_with_loss_func_path, *data_loader));
-  }
 
   return Status::OK();
 }
@@ -534,17 +517,6 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
   }
 
   return Status::OK();
-}
-
-Status TrainingRunner::LoadAndEvaluate(const PathString& model_path, IDataLoader& data_loader) {
-  InferenceSession s{SessionOptions()};
-#ifdef USE_CUDA
-  CUDAExecutionProviderInfo xp_info{static_cast<OrtDevice::DeviceId>(params_.mpi_context.world_rank)};
-  ORT_RETURN_IF_ERROR(s.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
-#endif
-  ORT_RETURN_IF_ERROR(s.Load(model_path));
-  ORT_RETURN_IF_ERROR(s.Initialize());
-  return Evaluate(s, data_loader);
 }
 
 Status TrainingRunner::SaveCheckpoint(const PathString& checkpoint_path) {

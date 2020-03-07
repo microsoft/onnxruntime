@@ -8,6 +8,7 @@
 
 #include "core/common/path_string.h"
 #include "core/framework/ml_value.h"
+#include "core/providers/providers.h"
 #include "orttraining/core/framework/checkpoint_registry.h"
 #include "orttraining/core/framework/mpi_setup.h"
 #include "orttraining/core/graph/optimizer_config.h"
@@ -75,14 +76,15 @@ class TrainingRunner {
                        const std::string& /*tag*/)>
         post_evaluation_callback;
 
-    // Use CUDA providers or not.
-    // TODO: support a list of providers.
-    bool use_cuda = false;
+    // Allocator to use for allocating inputs from the dataset (optional).
+    AllocatorPtr input_allocator;
+    // List of execution providers to register.
+    std::unordered_map<std::string, std::shared_ptr<IExecutionProviderFactory>> providers;
     // Whether to use NCCL for distributed training.
     bool use_nccl = false;
     // Whether to partition the optimizer state across nodes for distributed training.
     bool partition_optimizer = false;
-    // Use Adasum for allreduce
+    // Use Adasum for allreduce.
     bool use_adasum = false;
     // Use Gist on CPU.
     bool use_gist = false;
@@ -115,11 +117,15 @@ class TrainingRunner {
       return !is_perf_test && !log_dir.empty() && mpi_context.world_rank == 0;
     }
 
+    bool UseCuda() const {
+      return providers.find(kCudaExecutionProvider) != providers.end();
+    }
+
     AdasumReductionType GetAdasumReductionType() const {
       // TODO support more algos when they become available.
       if (!use_adasum) {
         return AdasumReductionType::None;
-      } else if (!use_cuda) {
+      } else if (!UseCuda()) {
         return AdasumReductionType::CpuReduction;
       } else {
         return AdasumReductionType::GpuHierarchical;
@@ -151,7 +157,7 @@ class TrainingRunner {
 
   common::Status Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader);
 
-  common::Status EndTraining(IDataLoader* data_loader, bool do_load_and_evaluate);
+  common::Status EndTraining(IDataLoader* data_loader);
 
   common::Status UpdateParams(Parameters params);
 
@@ -162,7 +168,6 @@ class TrainingRunner {
  private:
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader);
   Status Evaluate(InferenceSession& session, IDataLoader& data_loader);
-  Status LoadAndEvaluate(const PathString& model_path, IDataLoader& data_loader);
 
   Status SaveCheckpoint(const PathString& checkpoint_path);
   Status LoadCheckpoint(const PathString& checkpoint_path);
@@ -179,7 +184,7 @@ class TrainingRunner {
 
   Parameters params_;
   TrainingSession session_;
-  AllocatorPtr pinned_allocator_;
+  AllocatorPtr input_allocator_;
 
   std::unique_ptr<CheckpointRegistry> checkpoint_registry_;
 };

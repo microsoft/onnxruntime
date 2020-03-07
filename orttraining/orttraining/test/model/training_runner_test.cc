@@ -52,8 +52,7 @@ TEST(TrainingRunnerTest, Basic) {
   status = runner.Run(data_loader.get(), data_loader.get());
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  // TODO currently skipping load and evaluation of saved model, ideally that would be enabled
-  status = runner.EndTraining(data_loader.get(), false);
+  status = runner.EndTraining(data_loader.get());
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
 
