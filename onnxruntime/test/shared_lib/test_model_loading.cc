@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_cxx_api.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory.h"
+#endif
 #include <fstream>
 #include "test_fixture.h"
 #include "file_util.h"
@@ -25,6 +28,12 @@ TEST(CApiTest, model_from_array) {
 
   Ort::SessionOptions so;
   Ort::Session session(*ort_env.get(), buffer.data(), buffer.size(), so);
+
+#ifdef USE_CUDA
+  // test with CUDA provider when using onnxruntime as dll
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(so, 0));
+  Ort::Session session_cuda(*ort_env.get(), buffer.data(), buffer.size(), so);
+#endif
 }
 }  // namespace test
 }  // namespace onnxruntime
