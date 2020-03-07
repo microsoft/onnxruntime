@@ -1305,7 +1305,7 @@ std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransf
 
 std::vector<std::unique_ptr<ComputeCapability>>
 CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                     const std::vector<const KernelRegistry*>&) const {
+                                     const std::vector<const KernelRegistry*>& kernel_registries) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   std::unordered_set<const NodeArg*> defs_outside_cuda;
 
@@ -1320,7 +1320,15 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       defs_outside_cuda.insert(node.OutputDefs().cbegin(), node.OutputDefs().cend());
       continue;
     }
-    cuda_kernel_def = GetKernelRegistry()->TryFindKernel(node, Type());
+
+    for (auto registry : kernel_registries) {
+      cuda_kernel_def = registry->TryFindKernel(node, Type());
+
+      // atleast one registry has a CUDA kernel for this node 
+      if (cuda_kernel_def)
+          break;
+    }
+
     if (cuda_kernel_def == nullptr) {
       // node is not in cuda exeuction provider if no kernel def found,
       // or if other execution provider already assigned to it

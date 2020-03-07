@@ -3,6 +3,7 @@
 
 #include <core/common/make_unique.h>
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/graph/constants.h"
 #include "providers.h"
 #include <memory>
 #include <vector>
@@ -185,8 +186,8 @@ TEST(CApiTest, dim_param) {
 }
 
 INSTANTIATE_TEST_SUITE_P(CApiTestWithProviders,
-                        CApiTestWithProvider,
-                        ::testing::Values(0, 1, 2, 3, 4));
+                         CApiTestWithProvider,
+                         ::testing::Values(0, 1, 2, 3, 4));
 
 struct OrtTensorDimensions : std::vector<int64_t> {
   OrtTensorDimensions(Ort::CustomOpApi ort, const OrtValue* value) {
@@ -233,6 +234,11 @@ struct MyCustomKernel {
 struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
   void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) { return new MyCustomKernel(api, info); };
   const char* GetName() const { return "Foo"; };
+
+#ifdef USE_CUDA
+  // Make the kernel run on CUDA for CUDA builds
+  const char* GetExecutionProviderType() const { return onnxruntime::kCudaExecutionProvider; };
+#endif
 
   size_t GetInputTypeCount() const { return 2; };
   ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
