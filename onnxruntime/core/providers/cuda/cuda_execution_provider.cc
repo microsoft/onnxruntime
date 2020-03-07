@@ -1329,6 +1329,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
           break;
     }
 
+    // none of the provided registries has a CUDA kernel for this node  
     if (cuda_kernel_def == nullptr) {
       // node is not in cuda exeuction provider if no kernel def found,
       // or if other execution provider already assigned to it
