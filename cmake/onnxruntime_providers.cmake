@@ -439,6 +439,7 @@ if (onnxruntime_USE_DML)
     if(NOT onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_target_platform STREQUAL "x64")
       message(FATAL_ERROR "Target platform ${onnxruntime_target_platform} is not supported by DML")
     endif()
+
     foreach(file "DirectML.dll" "DirectML.pdb" "DirectML.Debug.dll" "DirectML.Debug.pdb")
       add_custom_command(TARGET onnxruntime_providers_dml
         POST_BUILD
