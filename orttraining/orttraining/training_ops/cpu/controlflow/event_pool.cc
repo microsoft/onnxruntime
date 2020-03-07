@@ -11,7 +11,7 @@ void OrtEventPool::CreateEvent(int64_t id) {
   ORT_ENFORCE(
     pool_.find(id) == pool_.end(),
     "Event pool cannot create duplicated events for event ID ", id, ".");
-  pool_[id] = false;
+  pool_[id].store(false);
 }
 
 void OrtEventPool::RecordEvent(int64_t id) {
@@ -19,7 +19,7 @@ void OrtEventPool::RecordEvent(int64_t id) {
   ORT_ENFORCE(
     pool_.find(id) != pool_.end(),
     "Event pool cannot record event for non-existing event ID ", id, ".");
-  pool_[id] = true;
+  pool_[id].store(true);
 };
 
 void OrtEventPool::DeleteEvent(int64_t id) {
@@ -31,7 +31,7 @@ void OrtEventPool::DeleteEvent(int64_t id) {
 };
 
 bool OrtEventPool::QueryEvent(int64_t id) {
-  return pool_.find(id) != pool_.end() && pool_[id];
+  return pool_.find(id) != pool_.end() && pool_[id].load();
 };
 
 }  // namespace contrib

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
+#include <atomic>
 #include <cstdint>
 #include <mutex>
 #include <memory>
@@ -28,7 +29,7 @@ class OrtEventPool final {
   OrtEventPool(const OrtEventPool&) = delete;
   OrtEventPool& operator=(const OrtEventPool&) = delete;
 
-  std::unordered_map<int64_t, volatile bool> pool_;
+  std::unordered_map<int64_t, std::atomic<bool>> pool_;
   std::mutex mutex_;
 };
 
