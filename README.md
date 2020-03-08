@@ -89,7 +89,7 @@ The list of currently supported accelerators (termed [Execution Providers](./doc
 |[C++](./include/onnxruntime/core/session/onnxruntime_cxx_api.h)| |[Samples](./samples#CC)|
 |[C](docs/C_API.md)| | [Samples](./samples#CC)|
 |[Java](docs/Java_API.md)|8-13|[Samples](./samples#Java)| 
-[Ruby](https://github.com/ankane/onnxruntime) (external project)| 2.5| [Samples](https://ankane.org/tensorflow-ruby)|
+[Ruby](https://github.com/ankane/onnxruntime) (external project)| 2.4-2.7| [Samples](https://ankane.org/tensorflow-ruby)|
 
 The ORT package also includes the Windows Machine Learning APIs, which provide an thin layer on top of the ONNX Runtime API optimized for Windows development.
 * [API Reference](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference)
