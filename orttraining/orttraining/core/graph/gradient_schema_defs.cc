@@ -94,6 +94,16 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
           AttributeProto::FLOATS,
           std::vector<float>(1024, 0.0f))
       .Attr(
+          "ratio_min",
+          "Lower bound on confidence ratio.",
+          AttributeProto::FLOAT,
+          -std::numeric_limits<float>::infinity())
+      .Attr(
+          "ratio_max",
+          "Upper bound on confidence ratio.",
+          AttributeProto::FLOAT,
+          std::numeric_limits<float>::infinity())
+      .Attr(
           "epsilon",
           "Small scalar to avoid dividing by zero.",
           AttributeProto::FLOATS,

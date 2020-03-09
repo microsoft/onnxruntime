@@ -136,6 +136,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("beta", "Adam/Lamb beta parameter", cxxopts::value<float>()->default_value("0.999"))
       ("lambda", "Adam/Lamb lambda parameter", cxxopts::value<float>()->default_value("0.01"))
       ("epsilon", "Adam/Lamb epsilon parameter", cxxopts::value<float>()->default_value("1e-6"))
+      ("ratio_min", "Lamb min ratio parameter", cxxopts::value<float>()->default_value("0.05"))
+      ("ratio_max", "Lamb max ratio parameter", cxxopts::value<float>()->default_value("5.0"))
       ("cuda_mem_limit_in_gb", "Max cuda memory ort can use, in GB", cxxopts::value<float>()->default_value("-1.0"))
       ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"));
@@ -307,8 +309,14 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     float beta = flags["beta"].as<float>();
     float lambda = flags["lambda"].as<float>();
     float epsilon = flags["epsilon"].as<float>();
+    float ratio_min = flags["ratio_min"].as<float>();
+    float ratio_max = flags["ratio_max"].as<float>();
     ORT_RETURN_IF_NOT(alpha >= 0.f && alpha <= 1.f, "alpha is not in valid range [0.0, 1.0]");
     ORT_RETURN_IF_NOT(beta >= 0.f && beta <= 1.f, "alpha is not in valid range [0.0, 1.0]");
+    ORT_RETURN_IF_NOT(epsilon >= 0.f, "epsilon should be non-negative.");
+    ORT_RETURN_IF_NOT(ratio_min >= 0.f, "ratio_min should be non-negative.");
+    ORT_RETURN_IF_NOT(ratio_max >= 0.f, "ratio_max should be non-negative.");
+    ORT_RETURN_IF_NOT(ratio_max >= ratio_min, "ratio_max should be greater than or equal to ratio_min.");
     std::vector<std::string> no_decay{"bias", "gamma", "beta", "LayerNorm"};
 
     params.optimizer_attributes = [=](const std::string& weight) {
@@ -322,6 +330,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
           {"beta", beta},
           {"lambda", zero_lambda ? 0.f : lambda},
           {"epsilon", epsilon},
+          {"ratio_min", ratio_min},
+          {"ratio_max", ratio_max}
       };
     };
 

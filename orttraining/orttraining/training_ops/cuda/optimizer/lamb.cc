@@ -345,6 +345,8 @@ template <typename CudaT1, typename CudaT2, typename CudaT3>
 Status launch_lamb_update(
     const int group_count,
     const CudaT1* eta,
+    const float ratio_min,
+    const float ratio_max,
     std::vector<int>& tensor_sizes,
     std::vector<CudaT2*>& p_w_norms,
     std::vector<CudaT2*>& p_d_norms,
@@ -374,6 +376,8 @@ Status launch_lamb_update(
     if (tensor_sizes[i] > max_tensor_size) {
       LambUpdate(
           eta,
+          ratio_min,
+          ratio_max,
           p_d_norms[i],
           p_w_norms[i],
           p_ws[i],
@@ -406,15 +410,20 @@ Status launch_lamb_update(
 
   // Only launch multi-tensor function if we have at least one tensor in the buckets.
   if (tensor_sizes_in_bucket.size() > 0 && buckets.size() > 0) {
-    typedef LambMultiTensorUpdateFunctor<CudaT1, CudaT2, CudaT3> LambStage2;
+    typedef LambMultiTensorUpdateFunctor<
+      CudaT1, CudaT2, CudaT3> LambStage2;
     LambStage2 lamb_stage2;
 
-    launch_multi_tensor_functor<tensor_count_per_group, LambStage2, const CudaT1*>(
+    launch_multi_tensor_functor<
+      tensor_count_per_group, LambStage2,
+      const CudaT1*, const float, const float>(
         2048 * 32,
         tensor_sizes_in_bucket,
         buckets,
         lamb_stage2,
-        eta);
+        eta,
+        ratio_min,
+        ratio_max);
   }
 
   return Status::OK();
@@ -645,6 +654,8 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
   launch_lamb_update(
       group_count,
       eta_data,
+      ratio_min_,
+      ratio_max_,
       tensor_sizes,
       p_w_norms,
       p_d_norms,

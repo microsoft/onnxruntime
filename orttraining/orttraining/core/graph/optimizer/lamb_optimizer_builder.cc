@@ -91,6 +91,19 @@ Status LambOptimizerBuilder::Build(
   std::vector<float> beta;
   std::vector<float> lambda;
   std::vector<float> epsilon;
+  float ratio_min = -std::numeric_limits<float>::infinity();
+  float ratio_max = std::numeric_limits<float>::infinity();
+
+  {
+    // Read the first weight's min and max ratios.
+    const auto& attrs = opt_configs.front().attributes;
+    auto ratio_min_iter = attrs.find("ratio_min");
+    if (ratio_min_iter != attrs.end())
+      ratio_min = ratio_min_iter->second;
+    auto ratio_max_iter = attrs.find("ratio_max");
+    if (ratio_max_iter != attrs.end())
+      ratio_max = ratio_max_iter->second;
+  }
 
   // Each iteration handles the associated inputs and outputs of a weight tensor.
   // Associated inputs: [w, g, m1, m2, w_fp16].
@@ -134,6 +147,18 @@ Status LambOptimizerBuilder::Build(
         epsilon.emplace_back(epsilon_iter->second);
       else
         epsilon.emplace_back(1e-6f);
+
+      auto ratio_min_iter = attrs.find("ratio_min");
+      if (ratio_min_iter != attrs.end()) {
+        // All weight tensors should have the same min ratio.
+        ORT_ENFORCE(ratio_min_iter->second == ratio_min);
+      }
+
+      auto ratio_max_iter = attrs.find("ratio_max");
+      if (ratio_max_iter != attrs.end()) {
+        // All weight tensors should have the same max ratio.
+        ORT_ENFORCE(ratio_max_iter->second == ratio_max);
+      }
 
       // Extract weight's type and shape information.
       const TypeProto* const weight_type_proto = weight_argdefs[i].type_proto;
@@ -209,6 +234,8 @@ Status LambOptimizerBuilder::Build(
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("beta", beta));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("lambda", lambda));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("epsilon", epsilon));
+  attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("ratio_min", ratio_min));
+  attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("ratio_max", ratio_max));
 
   graph_defs.AddNodeDefs({NodeDef(OpType(),
                                   input_argdefs,

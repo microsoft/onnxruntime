@@ -10,8 +10,14 @@ namespace training {
 
 class LambOptimizerBuilder final : public OptimizerBuilder {
  public:
-  LambOptimizerBuilder() : OptimizerBuilder("LambOptimizer",
-                                            {"alpha", "beta", "lambda", "epsilon"}) {}
+  LambOptimizerBuilder() :
+    OptimizerBuilder("LambOptimizer",
+                     {"alpha",
+                      "beta",
+                      "lambda",
+                      "epsilon",
+                      "ratio_min",
+                      "ratio_max"}) {}
 
   virtual Status Build(
       const std::vector<ArgDef>& weight_argdefs,

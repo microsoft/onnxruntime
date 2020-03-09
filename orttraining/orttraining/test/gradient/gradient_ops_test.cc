@@ -1603,9 +1603,15 @@ void compute_lamb(
     /* updated gradients */ std::vector<float>& g_new,
     /* updated momentum */ std::vector<float>& m_new,
     /* updated 2nd-order momentum */ std::vector<float>& v_new,
-    const int64_t step = 0) {
+    const int64_t step = 0,
+    const float ratio_min = -std::numeric_limits<float>::infinity(),
+    const float ratio_max = std::numeric_limits<float>::infinity()) {
   // Element counts of all vector-typed arguments.
-  const int64_t size = std::accumulate(shape.begin(), shape.end(), (int64_t)1, std::multiplies<int64_t>());
+  const int64_t size = std::accumulate(
+    shape.begin(),
+    shape.end(),
+    (int64_t)1,
+    std::multiplies<int64_t>());
 
   // Buffer to store update direction.
   std::vector<float> r(size, 0.0f);
@@ -1643,7 +1649,17 @@ void compute_lamb(
   r_norm = std::sqrt(r_norm);
   w_norm = std::sqrt(w_norm);
 
-  const float ratio = (w_norm != 0.0f && r_norm != 0.0f) ? eta * w_norm / r_norm : eta;
+  float ratio = (w_norm != 0.0f && r_norm != 0.0f) ? w_norm / r_norm : 1.0f;
+
+  if (ratio > ratio_max) {
+    ratio = ratio_max;
+  }
+
+  if (ratio < ratio_min) {
+    ratio = ratio_min;
+  }
+
+  ratio *= eta;
 
   // Compute the new weight.
   for (int64_t i = 0; i < size; ++i) {
@@ -1671,7 +1687,9 @@ void run_lamb_test_with_baseline(
     const std::vector<MLFloat16>& w_half = {},
     const std::vector<MLFloat16>& w_new_half = {},
     const bool do_update = true,
-    const int64_t step = 0) {
+    const int64_t step = 0,
+    const float ratio_min = -std::numeric_limits<float>::infinity(),
+    const float ratio_max = std::numeric_limits<float>::infinity()) {
   OpTester test("LambOptimizer", 9, onnxruntime::kOnnxDomain, true);
 
   test.AddInput<bool>("update_signal", {1}, {do_update});
@@ -1697,6 +1715,8 @@ void run_lamb_test_with_baseline(
   test.AddAttribute("beta", std::vector<float>(1, beta));
   test.AddAttribute("lambda", std::vector<float>(1, lambda));
   test.AddAttribute("epsilon", std::vector<float>(1, epsilon));
+  test.AddAttribute("ratio_min", ratio_min);
+  test.AddAttribute("ratio_max", ratio_max);
 
   if (step > 0) {
     test.AddOutput<int64_t>("Step_Out", {}, {do_update ? step + 1 : step});
@@ -1745,7 +1765,9 @@ void run_multi_tensor_lamb_test_with_baseline(
     const std::vector<std::vector<MLFloat16>>& w_halfs = {},
     const std::vector<std::vector<MLFloat16>>& w_new_halfs = {},
     const bool do_update = true,
-    const int64_t step = 0) {
+    const int64_t step = 0,
+    const float ratio_min = -std::numeric_limits<float>::infinity(),
+    const float ratio_max = std::numeric_limits<float>::infinity()) {
   OpTester test("LambOptimizer", 9, onnxruntime::kOnnxDomain, true);
 
   ORT_ENFORCE(shapes.size() == ws.size());
@@ -1829,6 +1851,8 @@ void run_multi_tensor_lamb_test_with_baseline(
   test.AddAttribute("beta", betas);
   test.AddAttribute("lambda", lambdas);
   test.AddAttribute("epsilon", epsilons);
+  test.AddAttribute("ratio_min", ratio_min);
+  test.AddAttribute("ratio_max", ratio_max);
 
   test.Run();
 }
@@ -1849,7 +1873,9 @@ void run_multi_tensor_lamb_test(
     const std::vector<float> alphas,
     const std::vector<float> betas,
     const std::vector<float> epsilons,
-    const int64_t step = 0) {
+    const int64_t step = 0,
+    const float ratio_min = -std::numeric_limits<float>::infinity(),
+    const float ratio_max = std::numeric_limits<float>::infinity()) {
   // Check if parallel vectors have the same length.
   ORT_ENFORCE(shapes.size() == ws.size());
   ORT_ENFORCE(shapes.size() == gs.size());
@@ -1879,24 +1905,27 @@ void run_multi_tensor_lamb_test(
         shapes[i], ws[i], gs[i], ms[i], vs[i],
         eta, loss_scale, g_norm,
         lambdas[i], alphas[i], betas[i], epsilons[i],
-        w_news[i], g_news[i], m_news[i], v_news[i], step);
+        w_news[i], g_news[i], m_news[i], v_news[i], step,
+        ratio_min, ratio_max);
   }
 
   // Create tests to make sure the output is correct.
 
   // Output new weights.
   run_multi_tensor_lamb_test_with_baseline(
-      shapes, eta, loss_scale, g_norm,
-      ws, gs, ms, vs,
-      alphas, betas, lambdas, epsilons,
-      w_news, {}, m_news, v_news, {}, {}, true, step);
+    shapes, eta, loss_scale, g_norm,
+    ws, gs, ms, vs,
+    alphas, betas, lambdas, epsilons,
+    w_news, {}, m_news, v_news, {}, {}, true, step,
+    ratio_min, ratio_max);
 
-    // Output new gradients.
-    run_multi_tensor_lamb_test_with_baseline(
-      shapes, eta, loss_scale, g_norm,
-      ws, gs, ms, vs,
-      alphas, betas, lambdas, epsilons,
-      {}, g_news, m_news, v_news, {}, {}, true, step);
+  // Output new gradients.
+  run_multi_tensor_lamb_test_with_baseline(
+    shapes, eta, loss_scale, g_norm,
+    ws, gs, ms, vs,
+    alphas, betas, lambdas, epsilons,
+    {}, g_news, m_news, v_news, {}, {}, true, step,
+    ratio_min, ratio_max);
 }
 
 void run_lamb_mix_precision_test(
@@ -2042,6 +2071,72 @@ TEST(OptimizerTest, LambOptimizerTestVectorWithZeroWeight) {
       {alpha},
       {beta},
       {epsilon});
+}
+
+TEST(OptimizerTest, LambOptimizerRatioMin) {
+  // Input tensors and attributes.
+  const std::vector<int64_t> shape = {2};
+  const float eta = 0.5f;
+  const std::vector<float> w = {-1.0f, 1.0f};
+  const std::vector<float> g = {1.0f, -1.0f};
+  const std::vector<float> m = {-1.0f, -2.0f};
+  const std::vector<float> v = {2.0f, 1.0f};
+  const float lambda = 0.5f;
+  const float alpha = 0.2f;
+  const float beta = 0.8f;
+  const float epsilon = 1e-6f;
+  const float ratio_min = -std::numeric_limits<float>::infinity();
+  const float ratio_max = 0.1f;
+
+  run_multi_tensor_lamb_test(
+      {shape},
+      eta,
+      1.f,
+      1.f,
+      {w},
+      {g},
+      {m},
+      {v},
+      {lambda},
+      {alpha},
+      {beta},
+      {epsilon},
+      0,
+      ratio_min,
+      ratio_max);
+}
+
+TEST(OptimizerTest, LambOptimizerRatioMax) {
+  // Input tensors and attributes.
+  const std::vector<int64_t> shape = {2};
+  const float eta = 0.5f;
+  const std::vector<float> w = {0.0001f, -0.0001f};
+  const std::vector<float> g = {1.0f, -1.0f};
+  const std::vector<float> m = {-1.0f, -2.0f};
+  const std::vector<float> v = {2.0f, 1.0f};
+  const float lambda = 0.5f;
+  const float alpha = 0.2f;
+  const float beta = 0.8f;
+  const float epsilon = 1e-6f;
+  const float ratio_min = 1.0f;
+  const float ratio_max = std::numeric_limits<float>::infinity();
+
+  run_multi_tensor_lamb_test(
+      {shape},
+      eta,
+      1.f,
+      1.f,
+      {w},
+      {g},
+      {m},
+      {v},
+      {lambda},
+      {alpha},
+      {beta},
+      {epsilon},
+      0,
+      ratio_min,
+      ratio_max);
 }
 
 TEST(OptimizerTest, LambOptimizerTestBiasCorrectionFirst) {
@@ -2432,7 +2527,7 @@ TEST(OptimizerTest, LambOptimizerTestLarge) {
   }
 }
 
-TEST(OptimizerTest, LambOptimizerMultiTensor6) {
+TEST(OptimizerTest, LambOptimizerMultiTensorRatio) {
   const int group_count = 127;
   std::random_device random_device;
   std::mt19937 random_engine(0);
@@ -2475,6 +2570,12 @@ TEST(OptimizerTest, LambOptimizerMultiTensor6) {
     lambdas[i] = dist(random_engine);
     epsilons[i] = dist(random_engine);
   }
+
+  run_multi_tensor_lamb_test(
+      shapes, eta, 1.f, 1.f,
+      ws, gs, ms, vs,
+      lambdas, alphas, betas, epsilons,
+      0, 0.3f, 0.7f);
 
   run_multi_tensor_lamb_test(
       shapes, eta, 1.f, 1.f,

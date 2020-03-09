@@ -171,16 +171,19 @@ SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, float)
 
 template <typename T1, typename T2, typename T3>
 __device__ __forceinline__ void _LambUpdateRule(
-    const T1& eta,
-    const T2& r_norm,
-    const T2& w_norm,
-    const T2& w,
-    const T3& d,
+    const T1 eta,
+    const float ratio_min,
+    const float ratio_max,
+    const T2 r_norm,
+    const T2 w_norm,
+    const T2 w,
+    const T3 d,
     T2* w_new,
     T3* g_new,
     half* w_fp16_new) {
   // Confidence coefficeint of this update. 
-  const T2 ratio = (w_norm != T2(0.0f) && r_norm != T2(0.0f)) ? T2(eta) * _Sqrt(w_norm / r_norm) : T2(eta);
+  const T2 ratio = (w_norm != T2(0.0f) && r_norm != T2(0.0f)) ?
+    T2(eta) * _Max(T2(ratio_min), _Min(T2(ratio_max), _Sqrt(w_norm / r_norm))) : T2(eta);
 
   // Compute delta using the saved update direction.
   const T2 delta = -ratio * T2(d);
@@ -212,6 +215,8 @@ __device__ __forceinline__ void _LambUpdateRule(
 template <typename T1, typename T2, typename T3>
 __global__ void _LambUpdateImpl(
     const T1* eta,
+    const float ratio_min,
+    const float ratio_max,
     const T2* r_norm,
     const T2* w_norm,
     const T2* weights,
@@ -224,6 +229,8 @@ __global__ void _LambUpdateImpl(
 
   _LambUpdateRule(
       *eta,
+      ratio_min,
+      ratio_max,
       *r_norm,
       *w_norm,
       weights[id],
@@ -236,6 +243,8 @@ __global__ void _LambUpdateImpl(
 template <typename T1, typename T2, typename T3>
 void LambUpdate(
     const T1* eta,
+    const float ratio_min,
+    const float ratio_max,
     const T2* r_norm,
     const T2* w_norm,
     const T2* weights,
@@ -249,6 +258,8 @@ void LambUpdate(
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   _LambUpdateImpl<T1, T2, T3><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       eta,
+      ratio_min,
+      ratio_max,
       r_norm,
       w_norm,
       weights,
@@ -262,6 +273,8 @@ void LambUpdate(
 #define INSTANTIATE_LAMB_UPDATE(T1, T2, T3) \
   template void LambUpdate(                     \
       const T1* eta,                            \
+      const float ratio_min,                    \
+      const float ratio_max,                    \
       const T2* r_norm,                         \
       const T2* w_norm,                         \
       const T2* weights,                        \
@@ -367,7 +380,9 @@ INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, float)
 template <typename T1, typename T2, typename T3>
 __global__ void LambMultiTensorUpdateImpl(
     ChunkGroup<7> chunk_group,
-    const T1* eta) {
+    const T1* eta,
+    const float ratio_min,
+    const float ratio_max) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
   const int tensor_size = chunk_group.tensor_sizes[group_index];
   const int chunk_size = chunk_group.chunk_size;
@@ -384,6 +399,8 @@ __global__ void LambMultiTensorUpdateImpl(
   for (int i = threadIdx.x; i < chunk_size && i + chunk_start < tensor_size; i += blockDim.x) {
     _LambUpdateRule(
         *eta,
+        ratio_min,
+        ratio_max,
         *r_norm,
         *w_norm,
         w[i],
@@ -397,19 +414,25 @@ __global__ void LambMultiTensorUpdateImpl(
 template <typename T1, typename T2, typename T3>
 void LambMultiTensorUpdateFunctor<T1, T2, T3>::operator()(
     ChunkGroup<7> chunk_group,
-    const T1* eta) {
+    const T1* eta,
+    const float ratio_min,
+    const float ratio_max) {
   const int thread_count = ChunkGroup<7>::thread_count_per_block;
   const int block_count = chunk_group.chunk_count;
 
   LambMultiTensorUpdateImpl<T1, T2, T3><<<block_count, thread_count, 0>>>(
       chunk_group,
-      eta);
+      eta,
+      ratio_min,
+      ratio_max);
 }
 
 #define INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(T1, T2, T3)      \
   template void LambMultiTensorUpdateFunctor<T1, T2, T3>::operator()( \
       ChunkGroup<7> chunk_group,                                      \
-      const T1* eta);                                                 \
+      const T1* eta,                                                  \
+      const float ratio_min,                                          \
+      const float ratio_max);
 
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(double, double, double)

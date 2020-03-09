@@ -18,6 +18,8 @@ class LambOptimizer final : public CudaKernel {
     beta_ = info.GetAttrsOrDefault("beta", std::vector<float>(1024, 0.999f));
     lambda_ = info.GetAttrsOrDefault("lambda", std::vector<float>(1024, 0.0f));
     epsilon_ = info.GetAttrsOrDefault("epsilon", std::vector<float>(1024, 1e-6f));
+    info.GetAttr("ratio_min", &ratio_min_);
+    info.GetAttr("ratio_max", &ratio_max_);
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -27,6 +29,8 @@ class LambOptimizer final : public CudaKernel {
   std::vector<float> beta_;
   std::vector<float> lambda_;
   std::vector<float> epsilon_;
+  float ratio_min_;
+  float ratio_max_;
 };
 
 // Implementation can be found in cuda file, optimizers_impl.cu
@@ -59,6 +63,8 @@ void LambComputeDirection(
 template <typename T1, typename T2, typename T3>
 void LambUpdate(
     const T1* eta,
+    const float ratio_min,
+    const float ratio_max,
     const T2* r_norm,
     const T2* w_norm,
     const T2* weights,
@@ -141,7 +147,9 @@ template <typename T1, typename T2, typename T3>
 struct LambMultiTensorUpdateFunctor {
   void operator()(
       ChunkGroup<7> chunk_group,
-      const T1* eta);
+      const T1* eta,
+      const float ratio_min,
+      const float ratio_max);
 };
 
 }  // namespace cuda
