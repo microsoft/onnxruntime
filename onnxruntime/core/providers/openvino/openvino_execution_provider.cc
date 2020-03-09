@@ -36,8 +36,7 @@ namespace onnxruntime {
 constexpr const char* OpenVINO = "OpenVINO";
 
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider} {
-  ORT_UNUSED_PARAMETER(info);
+    : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider}, info_(info) {
   DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(OpenVINO, OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(device_info));
 }
@@ -178,7 +177,7 @@ bool IsUnsupportedOp(std::string name, std::string device) {
     std::merge(unsupported_ops_cpu.begin(), unsupported_ops_cpu.end(),
                unsupported_ops_gpu.begin(), unsupported_ops_gpu.end(),
                std::inserter(unsupported_ops, unsupported_ops.begin()));
-  } else if (device == "VPU") {
+  } else if (device == "MYRIAD" || device == "HDDL") {
     std::merge(unsupported_ops_cpu.begin(), unsupported_ops_cpu.end(),
                unsupported_ops_vpu.begin(), unsupported_ops_vpu.end(),
                std::inserter(unsupported_ops, unsupported_ops.begin()));
@@ -485,7 +484,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
     };
     auto dtype = type_proto->tensor_type().elem_type();
 
-    if(device_id == "CPU" || device_id == "VPU"){
+    if(device_id == "CPU" || device_id == "MYRIAD" || device_id == "HDDL"){
 
       if(supported_types_cpu.find(dtype) != supported_types_cpu.end())
         return true;
@@ -511,23 +510,13 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
 
 static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& op_map,
                             const onnxruntime::GraphViewer& graph_viewer,
-                            const NodeIndex node_idx) {
+                            const NodeIndex node_idx, std::string& device_id) {
   const auto& node = graph_viewer.GetNode(node_idx);
   const auto& optype = node->OpType();
 
   if (openvino_ep::backend_utils::IsDebugEnabled())
     std::cout << "Node " << optype << std::endl;
   const auto& domain = node->Domain();
-
-  std::string device_id = "CPU";
-
-#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
-  device_id = "GPU";
-#endif
-
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-  device_id = "VPU";
-#endif
 
   /*
   0. Check if node is in the unsupported list
@@ -648,13 +637,13 @@ static std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int 
 }
 
 static std::vector<NodeIndex>
-GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, /*out*/ std::unordered_set<std::string>& ng_required_initializers) {
+GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, std::string device, /*out*/ std::unordered_set<std::string>& ng_required_initializers) {
   const auto ng_supported_ops = GetNgSupportedOps(GetOnnxOpSet(graph_viewer));
 
   std::vector<NodeIndex> unsupported_nodes_idx;
 
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
-    if (IsNodeSupported(ng_supported_ops, graph_viewer, node_idx)) {
+    if (IsNodeSupported(ng_supported_ops, graph_viewer, node_idx, device)) {
       // Collect inputs that are initializers
       graph_viewer.GetNode(node_idx)->ForEachDef([&ng_required_initializers, &graph_viewer](const onnxruntime::NodeArg& node_arg, bool is_input) {
               if(is_input && graph_viewer.GetAllInitializedTensors().count(node_arg.Name())) {
@@ -842,7 +831,7 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
      TODO: Support overridable initializers */
   std::unordered_set<std::string> ng_required_initializers;
 
-  const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, ng_required_initializers);
+  const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, info_.device_id_, ng_required_initializers);
 
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
   if (unsupported_nodes.empty()) {
@@ -910,7 +899,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto& fused_node : fused_nodes) {
     NodeComputeInfo compute_info;
-    std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, *GetLogger());
+    std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, *GetLogger(), info_.device_id_, info_.precision_);
 
     compute_info.create_state_func =
         [backend_manager](ComputeContext* context, FunctionState* state) {

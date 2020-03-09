@@ -80,7 +80,7 @@ void ServerEnvironment::RegisterExecutionProviders(){
   #endif
   
   #ifdef USE_OPENVINO
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(options_, "CPU"));
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(options_, ""));
   #endif
   
 
