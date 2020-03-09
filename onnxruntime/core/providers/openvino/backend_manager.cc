@@ -17,8 +17,6 @@ namespace openvino_ep {
 BackendManager::BackendManager(const onnxruntime::Node* fused_node,
                                 const logging::Logger& logger,std::string dev_id,
                                 std::string prec_str) : device_id_(dev_id), precision_str_(prec_str) {
-  device_id_ = "CPU";
-  std::string precision_str_ = "FP32";
   if(precision_str_ == "FP32") {
     precision_ = InferenceEngine::Precision::FP32;
   } else if (precision_str_ == "FP16")
@@ -27,7 +25,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node,
   } else {
     ORT_THROW("Invalid OpenVINO Precision type: " + precision_str_);
   }
-  
+
 
   // Save the indexes of graph inputs among fused_node's inputDefs
   // (which also contains initializers).

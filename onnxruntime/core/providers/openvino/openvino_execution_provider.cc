@@ -813,7 +813,6 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
-
   //TODO: Handle If and Loop operators
   if (graph_viewer.IsSubgraph()) {
     return result;
@@ -872,12 +871,29 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
 
     const auto connected_clusters = GetConnectedClusters(graph_viewer, ng_clusters);
 
+    size_t max_cluster_size = 0;
+
+    //We can only run one subrgaph on Myriad. We take the subgraph with maximum numnber
+    //of nodes and run that on Myriad.
+    if(info_.device_id_ == "MYRIAD"){
+
+      for(const auto& this_cluster : connected_clusters){
+        if(this_cluster.size() > max_cluster_size)
+          max_cluster_size = this_cluster.size();
+      }
+    }
+
     for (const auto& this_cluster : connected_clusters) {
       std::vector<std::string> cluster_inputs, const_inputs, cluster_outputs;
       //If subgraph only has Identity node, OpenVINO EP doesn't support it.
       if(this_cluster.size() == 1){
         const auto& node = graph_viewer.GetNode(this_cluster[0]);
         if(node->OpType() == "Identity")
+          continue;
+      }
+
+      if(info_.device_id_ == "MYRIAD"){
+        if(this_cluster.size() != max_cluster_size)
           continue;
       }
       GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_inputs, const_inputs, cluster_outputs);
@@ -888,6 +904,8 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
      if (!cluster_inputs.empty() && cluster_inputs.size() > const_inputs.size()) {
         AppendClusterToSubGraph(this_cluster, cluster_inputs, cluster_outputs, result);
       }
+      if(info_.device_id_ == "MYRIAD")
+        break;
     }
   }
 
