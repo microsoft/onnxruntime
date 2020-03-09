@@ -9,7 +9,9 @@ namespace training {
 
 DistributedRunContext::DistributedRunContext(int32_t world_rank, int32_t world_size, int32_t local_rank,
                                              int32_t local_size, int32_t data_parallel_size, int32_t horizontal_parallel_size) {
-  ORT_ENFORCE(world_rank >= 0 && world_size > 0 && local_rank >= 0 && local_size > 0,
+  // We only check world_size and world_rank since local_size and local_rank might not be set if using NCCL.
+  // TODO tix, refactor the mpi related code to populate all fields correctly by default.
+  ORT_ENFORCE(world_rank >= 0 && world_size > 0,
               "Fail to initialize DistributedRunContext due to invalid distributed run config");
 
   ORT_ENFORCE(data_parallel_size > 0 && horizontal_parallel_size > 0 &&

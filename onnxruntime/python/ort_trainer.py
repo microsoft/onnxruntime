@@ -7,6 +7,7 @@ import torch
 import torch.nn
 import torch.onnx
 import onnxruntime as ort
+from distutils.version import LooseVersion
 
 class IODescription():
     def __init__(self, name, shape, dtype, num_classes=None):
@@ -293,6 +294,12 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device):
     # e.g. for models with optional inputs, it requires all inputs be present.
     # this is a problem because the model graph depends on inputs provided.
     model = wrap_for_input_match(model, input_names)
+    
+    # Other export options to use(this is for backward compatibility).
+    other_export_options = {}
+    # This option was added after 1.4 release.
+    if LooseVersion(torch.__version__) > LooseVersion('1.4.0'):
+        other_export_options['enable_onnx_checker'] = 'False'
 
     torch.onnx._export(model, tuple(sample_inputs), f,
                        input_names=input_names, 
@@ -303,7 +310,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device):
                        _retain_param_name=True,
                        example_outputs=tuple(sample_outputs),
                        do_constant_folding=False,
-                       enable_onnx_checker=False)
+                       **other_export_options)
 
     model = onnx.load_model_from_string(f.getvalue())
 

@@ -410,6 +410,19 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
 // TODO: this method does not handle parallel optimization.
 static void ConfigureSessionForTraining(
     training::TrainingSession* sess, TrainingParameters& parameters) {
+    //TODO tix, refactor the mpi related code to populate all fields correctly by default.
+    ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size);
+    ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size);
+    if (parameters.world_size % parameters.horizontal_parallel_size != 0) {
+      throw std::runtime_error("Cannot split horizontal parallel group because world_size is not divisible");
+    }
+
+    auto data_group_size = parameters.world_size / parameters.horizontal_parallel_size;
+    if (data_group_size != parameters.data_parallel_size) {
+      std::cout << "WARNING: data_parallel_size is not correct, tuned automatically to "
+                << data_group_size << std::endl;
+      parameters.data_parallel_size = data_group_size;
+    }
 #ifdef USE_HOROVOD
   // this condition block is temporary.
   // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
@@ -417,18 +430,6 @@ static void ConfigureSessionForTraining(
   bool use_nccl = parameters.allreduce_post_accumulation;
   if (!use_nccl && parameters.world_size > 1) {
     auto mpi_context = setup_horovod();
-    ORT_ENFORCE(parameters.horizontal_parallel_size <= mpi_context.world_size);
-    ORT_ENFORCE(parameters.data_parallel_size <= mpi_context.world_size);
-    if (mpi_context.world_size % parameters.horizontal_parallel_size != 0) {
-      throw std::runtime_error("Cannot split horizontal parallel group because world_size is not divisible");
-    }
-
-    auto data_group_size = mpi_context.world_size / parameters.horizontal_parallel_size;
-    if (data_group_size != parameters.data_parallel_size) {
-      std::cout << "WARNING: data_parallel_size is not correct, tuned automatically to "
-                << data_group_size << std::endl;
-      parameters.data_parallel_size = data_group_size;
-    }
     std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
     std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
     std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
