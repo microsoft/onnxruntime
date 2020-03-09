@@ -187,13 +187,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
                 }
 
-                // Run the inference
+                ReadOnlySpan<int> expectedOutputDimensions = new int[] { 1, 1000, 1, 1 };
+                string[] expectedOutputNames = new string[] { "softmaxout_1" };
+
+                // Run the inference with named inputs and empty outputs
                 using (var results = session.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
                 {
                     validateRunResults(results);
                 }
 
-                // Run Inference with RunOptions
+                // Run inference with named inputs, empty outputs and RunOptions
                 using (var runOptions = new RunOptions())
                 {
                     runOptions.LogId = "CsharpTest";
@@ -206,32 +209,108 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         validateRunResults(results);
                     }
                 }
+
+                // Run inference with pinned inputs and empty outputs
+                using (var pinnedInputs = new DisposableList<PinnedOnnxValue>())
+                {
+                    var inputNames = container.Select(i => i.Name).ToArray();
+                    pinnedInputs.AddRange(container.Select(i => PinnedOnnxValue.CreateFromTensor(i.AsTensor<float>())));
+
+                    // output names not specified
+                    using (var results = session.Run(inputNames, pinnedInputs))  // results is an IReadOnlyList<NamedOnnxValue> container
+                    {
+                        validateRunResults(results);
+                    }
+
+                    // output names specified explicitly
+                    using (var results = session.Run(inputNames, pinnedInputs, expectedOutputNames))  // results is an IReadOnlyList<NamedOnnxValue> container
+                    {
+                        validateRunResults(results);
+                    }
+                }
+
+                // Run inference with named inputs and named outputs
+                {
+                    // correct pre-allocated outputs
+                    var expectedOutputValues = new List<NamedOnnxValue>()
+                    {
+                        NamedOnnxValue.CreateFromTensor("softmaxout_1", new DenseTensor<float>(expectedOutputDimensions))
+                    };
+                    session.Run(container, expectedOutputValues);
+                    validateRunResultData(expectedOutputValues[0].AsTensor<float>());
+                }
+
+                // Run inference with pinned inputs and named outputs
+                using (var pinnedInputs = new DisposableList<PinnedOnnxValue>())
+                {
+                    var inputNames = container.Select(i => i.Name).ToArray();
+                    pinnedInputs.AddRange(container.Select(i => PinnedOnnxValue.CreateFromTensor(i.AsTensor<float>())));
+
+                    // expected inputs and outputs
+                    var expectedOutputValues = new List<NamedOnnxValue>()
+                    {
+                        NamedOnnxValue.CreateFromTensor("softmaxout_1", new DenseTensor<float>(expectedOutputDimensions))
+                    };
+                    session.Run(inputNames, pinnedInputs, expectedOutputValues);
+                    validateRunResultData(expectedOutputValues[0].AsTensor<float>());
+                }
+
+                // Run inference with named inputs and pinned outputs
+                {
+                    // correct pre-allocated outputs
+                    using (var pinnedOutputs = new DisposableList<PinnedOnnxValue>())
+                    {
+                        var outputTensor = new DenseTensor<float>(expectedOutputDimensions);
+                        pinnedOutputs.Add(PinnedOnnxValue.CreateFromTensor(outputTensor));
+                        session.Run(container, expectedOutputNames, pinnedOutputs);
+                        validateRunResultData(outputTensor);
+                    }
+                }
+
+                // Run inference with pinned inputs and pinned outputs
+                using (DisposableList<PinnedOnnxValue> pinnedInputs = new DisposableList<PinnedOnnxValue>(),
+                                                       pinnedOutputs = new DisposableList<PinnedOnnxValue>())
+                {
+                    var inputNames = container.Select(i => i.Name).ToArray();
+                    pinnedInputs.AddRange(container.Select(i => PinnedOnnxValue.CreateFromTensor(i.AsTensor<float>())));
+
+                    var outputTensor = new DenseTensor<float>(expectedOutputDimensions);
+                    pinnedOutputs.Add(PinnedOnnxValue.CreateFromTensor(outputTensor));
+
+                    session.Run(inputNames, pinnedInputs, expectedOutputNames, pinnedOutputs);
+                    validateRunResultData(outputTensor);
+                }
             }
         }
 
-        private void validateRunResults(IDisposableReadOnlyCollection<DisposableNamedOnnxValue> results)
+        private void validateRunResults(IReadOnlyCollection<NamedOnnxValue> results)
         {
-            float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
             // validate the results
             foreach (var r in results)
             {
                 Assert.Equal(1, results.Count);
                 Assert.Equal("softmaxout_1", r.Name);
 
-                var resultTensor = r.AsTensor<float>();
-                int[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
-                Assert.Equal(expectedDimensions.Length, resultTensor.Rank);
-
-                var resultDimensions = resultTensor.Dimensions;
-                for (int i = 0; i < expectedDimensions.Length; i++)
-                {
-                    Assert.Equal(expectedDimensions[i], resultDimensions[i]);
-                }
-
-                var resultArray = r.AsTensor<float>().ToArray();
-                Assert.Equal(expectedOutput.Length, resultArray.Length);
-                Assert.Equal(expectedOutput, resultArray, new floatComparer());
+                validateRunResultData(r.AsTensor<float>());
             }
+        }
+
+        private void validateRunResultData(Tensor<float> resultTensor)
+        {
+            float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
+
+            int[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
+            Assert.Equal(expectedDimensions.Length, resultTensor.Rank);
+
+            var resultDimensions = resultTensor.Dimensions;
+            for (int i = 0; i < expectedDimensions.Length; i++)
+            {
+                Assert.Equal(expectedDimensions[i], resultDimensions[i]);
+            }
+
+            var resultArray = resultTensor.ToArray();
+            Assert.Equal(expectedOutput.Length, resultArray.Length);
+            Assert.Equal(expectedOutput, resultArray, new floatComparer());
         }
 
 
@@ -284,6 +363,101 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
             Assert.StartsWith("[ErrorCode:InvalidArgument] Invalid Feed Input Name", ex.Message);
             session.Dispose();
+        }
+
+        [Fact]
+        private void ThrowInconsistentPinnedInputs()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var tensor = tuple.Item3;
+
+            using (var inputs = new DisposableList<PinnedOnnxValue>())
+            {
+                inputs.Add(PinnedOnnxValue.CreateFromTensor(tensor));
+                var ex = Assert.Throws<ArgumentException>(() => session.Run(new string[0], inputs));
+                Assert.StartsWith("Length of inputNames (0) must match that of inputValues (1).", ex.Message);
+            }
+        }
+
+        [Fact]
+        private void ThrowWrongOutputName()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
+            var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 2 });
+            var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("bad_output_name", outputTensor) };
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, outputs));
+            Assert.Contains("Invalid Output Name", ex.Message);
+            session.Dispose();
+        }
+
+        [Fact]
+        private void ThrowWrongOutputType()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
+            var outputTensor = new DenseTensor<int>((ReadOnlySpan<int>)new[] { 1, 1000, 1, 1 });
+            var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("softmaxout_1", outputTensor) };
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, outputs));
+            // TODO: check exception message
+            // InferenceSession::ValidateOutputs() does not check type so far. Currently this will finally trigger an error in Softmax.
+            session.Dispose();
+        }
+
+        [Fact]
+        private void ThrowWrongOutputDimension()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
+            var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 1001, 1, 1 });
+            var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("softmaxout_1", outputTensor) };
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, outputs));
+            // TODO: check exception message
+            // InferenceSession::ValidateOutputs() does not check dims so far. Currently this will finally trigger an error in Softmax.
+            session.Dispose();
+        }
+
+        [Fact]
+        private void ThrowNoOutput()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
+            var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 1000, 1, 1 });
+            var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("softmaxout_1", outputTensor) };
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, new NamedOnnxValue[0]));
+            Assert.Contains("[ErrorCode:InvalidArgument] At least one output should be requested.", ex.Message);
+            session.Dispose();
+        }
+
+        [Fact]
+        private void ThrowInconsistentPinnedOutputs()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
+            var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 1000, 1, 1 });
+
+            using (var outputs = new DisposableList<PinnedOnnxValue>())
+            {
+                var ex = Assert.Throws<ArgumentException>(() => session.Run(inputs, new string[] { "softmaxout_1" }, outputs));
+                Assert.StartsWith("Length of outputNames (1) must match that of outputValues (0).", ex.Message);
+            }
         }
 
         [Fact]
