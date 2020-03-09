@@ -14,31 +14,20 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-BackendManager::BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger) {
+BackendManager::BackendManager(const onnxruntime::Node* fused_node,
+                                const logging::Logger& logger,std::string dev_id,
+                                std::string prec_str) : device_id_(dev_id), precision_str_(prec_str) {
   device_id_ = "CPU";
-  precision_ = InferenceEngine::Precision::FP32;
   std::string precision_str_ = "FP32";
-
-#ifdef OPENVINO_CONFIG_CPU_FP32
-#endif
-#ifdef OPENVINO_CONFIG_GPU_FP32
-  device_id_ = "GPU";
-#endif
-#ifdef OPENVINO_CONFIG_GPU_FP16
-  device_id_ = "GPU";
-  precision_ = InferenceEngine::Precision::FP16;
-  precision_str_ = "FP16";
-#endif
-#ifdef OPENVINO_CONFIG_MYRIAD
-  device_id_ = "MYRIAD";
-  precision_ = InferenceEngine::Precision::FP16;
-  precision_str_ = "FP16";
-#endif
-#ifdef OPENVINO_CONFIG_VAD_M
-  device_id_ = "HDDL";
-  precision_ = InferenceEngine::Precision::FP16;
-  precision_str_ = "FP16";
-#endif
+  if(precision_str_ == "FP32") {
+    precision_ = InferenceEngine::Precision::FP32;
+  } else if (precision_str_ == "FP16")
+  {
+    precision_ = InferenceEngine::Precision::FP16;
+  } else {
+    ORT_THROW("Invalid OpenVINO Precision type: " + precision_str_);
+  }
+  
 
   // Save the indexes of graph inputs among fused_node's inputDefs
   // (which also contains initializers).

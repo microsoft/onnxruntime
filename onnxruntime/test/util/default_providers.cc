@@ -34,7 +34,7 @@ std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 #ifdef USE_OPENVINO
-   return CreateExecutionProviderFactory_OpenVINO("CPU")->CreateProvider();
+   return CreateExecutionProviderFactory_OpenVINO("")->CreateProvider();
 #else
    return nullptr;
 #endif
