@@ -120,6 +120,14 @@ else()
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /d2FH4-")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /d2FH4-")
   endif()
+  if(WINDOWS_STORE)
+    # protobuf and FeaturizersLibrary use Win32 desktop APIs; this must be fixed!
+    # See https://dev.azure.com/onnxruntime/2a773b67-e88b-4c7f-9fc0-87d31fea8ef2/_apis/build/builds/119296/logs/25
+    # add_compile_definitions(WINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP)
+    add_definitions(/DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP)
+    # set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP")
+    # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP")
+  endif()
 endif()
 
 if(onnxruntime_USE_OPENMP)
