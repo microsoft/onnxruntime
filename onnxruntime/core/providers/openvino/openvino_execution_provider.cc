@@ -797,12 +797,6 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
-std::string device_id = "CPU";
-
-#if defined(OPENVINO_CONFIG_MYRIAD)
-  device_id = "MYRIAD";
-#endif
-
   //TODO: Handle If and Loop operators
   if (graph_viewer.IsSubgraph()) {
     return result;
@@ -863,13 +857,14 @@ std::string device_id = "CPU";
 
     size_t max_cluster_size = 0;
 
-    if(device_id == "MYRIAD"){
+    //We can only run one subrgaph on Myriad. We take the subgraph with maximum numnber
+    //of nodes and run that on Myriad.
+    if(info_.device_id_ == "MYRIAD"){
 
       for(const auto& this_cluster : connected_clusters){
         if(this_cluster.size() > max_cluster_size)
           max_cluster_size = this_cluster.size();
       }
-      std::cout << "Max cluster size is " << max_cluster_size << std::endl;
     }
 
     for (const auto& this_cluster : connected_clusters) {
@@ -881,7 +876,7 @@ std::string device_id = "CPU";
           continue;
       }
 
-      if(device_id == "MYRIAD"){
+      if(info_.device_id_ == "MYRIAD"){
         if(this_cluster.size() != max_cluster_size)
           continue;
       }
@@ -893,7 +888,7 @@ std::string device_id = "CPU";
      if (!cluster_inputs.empty() && cluster_inputs.size() > const_inputs.size()) {
         AppendClusterToSubGraph(this_cluster, cluster_inputs, cluster_outputs, result);
       }
-      if(device_id == "MYRIAD")
+      if(info_.device_id_ == "MYRIAD")
         break;
     }
   }
