@@ -120,3 +120,4 @@ python bert_perf_test.py --model optimized_model_gpu.onnx --batch_size 1 --seque
 ```
 
 After test is finished, a file like perf_results_CPU_B1_S128_<date_time>.txt or perf_results_GPU_B1_S128_<date_time>.txt will be output to the model directory.
+
