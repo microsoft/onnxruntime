@@ -41,8 +41,7 @@ Once the docs and samples are updated we'll close the issue.
    * git push origin HEAD
    * To request merge into master, send a pull request from the [web ui](https://github.com/Microsoft/onnxruntime).
   * Add 'Microsoft/onnxruntime' as a reviewer.
-* Binaries: We periodically produce signed prerelease binaries from the master branch to validate new features and APIs.  
-After the feature has been sufficiently validated as part of a prerelease package we will include it in the next stable binary release.
+* Binaries: We periodically produce signed prerelease binaries from the master branch to validate new features and APIs.  After the feature has been sufficiently validated as part of a prerelease package we will include it in the next stable binary release.
 * Note: After creating a pull request, you might not see a build getting triggered right away. One of the
 onnxruntime team members will trigger the build for you.
 
