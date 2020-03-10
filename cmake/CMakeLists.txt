@@ -6,7 +6,6 @@
 cmake_minimum_required(VERSION 3.13)
 cmake_policy(SET CMP0069 NEW)
 if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.15")
-  cmake_policy(SET CMP0091 NEW)
   cmake_policy(SET CMP0092 NEW)
 endif()
 
@@ -345,7 +344,7 @@ else()
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
   if(TARGET libprotoc)
     set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
-    if(MSVC)
+    if(WINDOWS_STORE)
       # protobuf and FeaturizersLibrary use Win32 desktop APIs; this must be fixed!
       # See https://dev.azure.com/onnxruntime/2a773b67-e88b-4c7f-9fc0-87d31fea8ef2/_apis/build/builds/119296/logs/25
       # target_compile_options(libprotoc PRIVATE "-DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP")
