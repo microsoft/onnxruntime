@@ -125,20 +125,33 @@ def launch_test(latency_results, model_path, all_inputs, batch_size, sequence_le
     process.join()
 
 def run_perf_tests(average_latency, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, all_inputs, test_all, extra_latency):
-    # test a setting without any setting
+    # Test a setting without any setting as baseline 1.
     launch_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, None, None, None, extra_latency)
 
     candidates = list(set([1, psutil.cpu_count(logical=True), psutil.cpu_count(logical=False)]))
 
     for intra_op_num_threads in candidates:
-        # test a setting without environment variable
-        launch_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, intra_op_num_threads, None, None, extra_latency)
+        # Test a setting without environment variable as baseline 2.
+        if intra_op_num_threads == 1:
+            launch_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, intra_op_num_threads, None, None, extra_latency)
+
         for omp_num_threads in candidates:
+            # skip settings that are very slow
+            if intra_op_num_threads == 1 and omp_num_threads == 1 and psutil.cpu_count(logical=True) != 1:
+                continue
+
+            # When logical and physical cores are not the same, there are many combinations.
+            # Remove some settings are not good normally.
+            if psutil.cpu_count(logical=True) > psutil.cpu_count(logical=False):
+                if omp_num_threads == psutil.cpu_count(logical=True) and intra_op_num_threads != 1:
+                    continue
+                if intra_op_num_threads == psutil.cpu_count(logical=True) and omp_num_threads != 1:
+                    continue
+
             if not test_all:
                 if intra_op_num_threads != 1 and omp_num_threads != 1:
                     continue
-                if intra_op_num_threads == 1 and omp_num_threads == 1 and psutil.cpu_count(logical=True) != 1:
-                    continue
+
             for omp_wait_policy in ['ACTIVE', 'PASSIVE']:
                 launch_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, intra_op_num_threads, omp_num_threads, omp_wait_policy, extra_latency)
 
@@ -193,7 +206,7 @@ def parse_arguments():
     parser.add_argument('--inclusive', required=False, action='store_true', help="include the latency of converting array to contiguous")
     parser.set_defaults(inclusive=False)
 
-    parser.add_argument('--all', required=False, action='store_true', help="test all settings")
+    parser.add_argument('--all', required=False, action='store_true', help="test all candidate settings")
     parser.set_defaults(all=False)
 
     args = parser.parse_args()

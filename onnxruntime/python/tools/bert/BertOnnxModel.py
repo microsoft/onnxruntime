@@ -940,7 +940,7 @@ class BertOnnxModel(OnnxModel):
                 normalize_node = onnx.helper.make_node('LayerNormalization',
                     inputs=[node.input[0], weight_input, bias_input],
                     outputs=[last_add_node.output[0]])
-                normalize_node.attribute.extend([onnx.helper.make_attribute("epsilon", add_weight)])
+                normalize_node.attribute.extend([onnx.helper.make_attribute("epsilon", float(add_weight))])
                 layernorm_nodes.extend([normalize_node])
 
         self.remove_nodes(nodes_to_remove)
