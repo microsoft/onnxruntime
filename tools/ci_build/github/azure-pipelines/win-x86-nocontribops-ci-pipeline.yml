@@ -59,9 +59,9 @@ jobs:
       createLogFile: true
     continueOnError: true
 
-  - script: |
+  - pwsh: |
       tree /f '$(Build.BinariesDirectory)\$(BuildConfig)'
-      dumpbin /IMPORTS:'$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\protoc.exe'
+      dumpbin.exe /IMPORTS:'$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\protoc.exe'
       sleep 9999999999
 
   - task: PythonScript@0

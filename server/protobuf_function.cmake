@@ -131,6 +131,8 @@ function(onnxruntime_protobuf_generate)
     if (onnxruntime_USE_FULL_PROTOBUF)
       add_custom_command(
         OUTPUT ${_generated_srcs}
+        COMMAND  dumpbin.exe
+        ARGS /IMPORTS:${PROTOC_EXECUTABLE}
         COMMAND  ${PROTOC_EXECUTABLE}
         ARGS --${onnxruntime_protobuf_generate_LANGUAGE}_out ${_dll_export_decl}${CMAKE_CURRENT_BINARY_DIR} ${_protobuf_include_path} ${_abs_file}
         DEPENDS ${_abs_file} ${PROTOC_DEPS}
@@ -139,6 +141,8 @@ function(onnxruntime_protobuf_generate)
     else()
       add_custom_command(
         OUTPUT ${_generated_srcs}
+        COMMAND  dumpbin.exe
+        ARGS /IMPORTS:${PROTOC_EXECUTABLE}
         COMMAND  ${PROTOC_EXECUTABLE}
         ARGS --${onnxruntime_protobuf_generate_LANGUAGE}_out lite:${_dll_export_decl}${CMAKE_CURRENT_BINARY_DIR} ${_protobuf_include_path} ${_abs_file}
         DEPENDS ${_abs_file} ${PROTOC_DEPS}
