@@ -22,29 +22,28 @@ Any code already written for the Windows.AI.MachineLearning API can be easily mo
 
 ## Activation and Side-by-Side
 
-Since the Windows.AI.MachineLearning ships inside the Windows OS as **system32\Windows.AI.MachineLearning.dll** , your application needs to take care in selecting which binary it wants to load and use.
+Because Windows.AI.MachineLearning ships inside the OS, default object activation is going to use those OS binaries.  Applications must explicitly code to enable the use of the redist binaries when creating WinML objects (Like [LearningModelSession](https://docs.microsoft.com/en-us/uwp/api/windows.ai.machinelearning.learningmodelsession)).
 
-Normal WinRT activation would use [RoActivateInstance](https://docs.microsoft.com/en-us/windows/win32/api/roapi/nf-roapi-roactivateinstance).  Applications must explicitly choose which binary they want to use when including a redist version.
+Read up [here](HighLevelDesign.md#the-onnx-runtime-and-windows-os-integration) in how to decide when to use the OS binaries and when to use redist binaries.
 
-Read up [here](HighLevelDesign.md#the-onnx-runtime-and-windows-os-integration) in how to decide which binary to us.
+To create objects using the redist binaries, you have several choices depending on how you are consuming the WinRT:
 
-Once you have chosen redist versus system32, you must always use that binary.   Mix and match of system32 and redist binaries are not supported.
-
-To activate inbox objects, continue to use RoActivateInstance.    To active redist objects, you have several choices depending on how you are consuming WinRT:
-
-* cpp/winrt:  You can use WINRT_RoGetActivationFactory hooking to allow using the redist instead of system32.   Look [here](https://github.com/microsoft/Windows-Machine-Learning/blob/master/Samples/SqueezeNetObjectDetection/Desktop/cpp/dllload.cpp) for a sample on how.
+* cpp/winrt:  You can use WINRT_RoGetActivationFactory hooking as shown [here](https://github.com/microsoft/Windows-Machine-Learning/blob/master/Samples/SqueezeNetObjectDetection/Desktop/cpp/dllload.cpp) in our sample projects.
 * WRL: (coming soon)
 * Raw C++:  Simply use the similar code to the cpp/winrt sample to load and use the activation factory in your redist binary.
 
 ## Deciding which header files to use
 
-The best way to use the API is to use the header files that come with the Windows SDK.  You can download Windows SDK's either using Visual Studio or by going [here](https://developer.microsoft.com/en-US/windows/downloads/windows-10-sdk/).
+The best way to use the API is to use the header files that come with the Windows SDK.  
 
-You use contract targeting just like you would with any WinRT API.
+* For Visual Studio they are included in as an optional feature.
+* For Visual Studio Code you can download them  going [here](https://developer.microsoft.com/en-US/windows/downloads/windows-10-sdk/).
 
-You need to take care to make sure you contract targets work with the OS or redist binaries that you choose to deploy with.    Using this combination you can know when the OS has the contract you need, or you can fallback to your redist package if needed.  Use the [IsApiContractPresent](https://docs.microsoft.com/en-us/uwp/api/windows.foundation.metadata.apiinformation.isapicontractpresent) method to do this.  This can be called from UWP and not UWP apps easily.
+This [tutorial](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-desktop) is a great place to get started.
 
-Note:  new contracts versions are always backward compatibile.
+To detect if an OS already has Windows.AI.MachineLearning, you can use the [IsApiContractPresent](https://docs.microsoft.com/en-us/uwp/api/windows.foundation.metadata.apiinformation.isapicontractpresent) method.  This can be called from both UWP and native apps easily.
+
+If the OS does not have the runtime you need, you can then switch to use the redist binaries instead.
 
 |Release|API contract version|
 |--|--|

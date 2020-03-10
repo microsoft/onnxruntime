@@ -84,12 +84,9 @@ transform](../include/onnxruntime/core/optimizer/graph_transformer.h)
 
 ## The ONNX Runtime and Windows OS integration
 
-The ONNX runtime shipped embedded into the windows operating system in build 1809 (RS5).
-
-The runtime was included inside the Windows.AI.MachineLearning.dll and was exposed via that WinRT API (WinML for short).  It had CPU support and included a DirectML execution provider for GPU support.   Since then it has continued to ship in every version of Windows.
+The ONNX runtime shipped with the Windows operating system in build 1809 (RS5).  The runtime was embedded inside the Windows.AI.MachineLearning.dll and was exposed via that WinRT API (WinML for short).  It includes CPU support and a DirectML execution provider for GPU support.   Since then it has continued to ship in every version of Windows.
 
 Starting with the 1.2 release nuget we are bringing a new layered architecture to the ONNX Runtime and Windows ML.
-
 *Note:  This feature is preview as of the 1.2 release*
 
 The high level design looks like this
@@ -104,9 +101,9 @@ Developers can now choose which API works best for their scenario.
 
 ||WinRT|C API|
 |--|--|--|
-|Type system| Integration with <br>Windows RT types| Platform neutral types|
+|Type system| Integration with Windows RT types| Platform neutral types|
 |Lanugage support| Language support via WinRT Projections| Language support via per language projections|
-|Tensorization| Accepts VideoFrame's and converts to Tensors (support for CPU and GPU)| Accepts tensors|
+|Tensorization| Accepts VideoFrame's and converts to tensors (support for CPU and GPU)| Accepts tensors|
 
 ### Distribution choice
 
@@ -114,7 +111,8 @@ You can also choose to use runtimes included in the Windows OS, or use the redis
 
 |Distribution|Inbox|App nuget|
 |--|--|--|
-|Disk footprint| Included in the OS| App includes it|
+|Disk footprint| Included in the OS| Included in the App|
 |Servicing fixes| Serviced by OS updates| Serviced by the App|
-|Execution Providers| Tested against supported GPU's and CPU's, includes DirectML EP| App chosen EP and testing matrix|
+|Execution Providers| CPU & DirectML EP | App chosen EP|
+|Compatability| Tested with OS flights against supported GPU's and CPU's | App performs compatability testing|
 |Opset| Refreshed in OS updates| App chooses|
