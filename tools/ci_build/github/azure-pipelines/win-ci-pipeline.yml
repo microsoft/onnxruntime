@@ -71,6 +71,10 @@ jobs:
       logProjectEvents: false
       workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
       createLogFile: true
+    continueOnError: true
+
+  - script: |
+      sleep 9999999999
 
   - task: PythonScript@0
     displayName: 'Build wheel'

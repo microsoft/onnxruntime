@@ -87,6 +87,10 @@ jobs:
         logProjectEvents: true
         workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
         createLogFile: true
+      continueOnError: true
+
+    - script: |
+       sleep 9999999999
 
     # Build RelWithDebInfo -- this variable required to build C#
     - script: |
