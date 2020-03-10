@@ -66,7 +66,8 @@ void TestInference(Ort::Env& env, T model_uri,
                    const std::vector<OutT>& expected_values_y,
                    int provider_type,
                    OrtCustomOpDomain* custom_op_domain_ptr,
-                   const char* custom_op_library_filename) {
+                   const char* custom_op_library_filename,
+                   bool test_session_creation_only = false) {
   Ort::SessionOptions session_options;
 
   if (provider_type == 1) {
@@ -102,29 +103,35 @@ void TestInference(Ort::Env& env, T model_uri,
     Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle);
   }
 
+  // if session creation passes, model loads fine
   Ort::Session session(env, model_uri, session_options);
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
-  // Now run
-  //without preallocated output tensor
-  RunSession<OutT>(default_allocator.get(),
-                   session,
-                   inputs,
-                   output_name,
-                   expected_dims_y,
-                   expected_values_y,
-                   nullptr);
-  //with preallocated output tensor
-  Ort::Value value_y = Ort::Value::CreateTensor<float>(default_allocator.get(), expected_dims_y.data(), expected_dims_y.size());
 
-  //test it twice
-  for (int i = 0; i != 2; ++i)
+  // caller wants to test running the model (not just loading the model)
+  if (!test_session_creation_only) {
+    // Now run
+    auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+
+    //without preallocated output tensor
     RunSession<OutT>(default_allocator.get(),
                      session,
                      inputs,
                      output_name,
                      expected_dims_y,
                      expected_values_y,
-                     &value_y);
+                     nullptr);
+    //with preallocated output tensor
+    Ort::Value value_y = Ort::Value::CreateTensor<float>(default_allocator.get(), expected_dims_y.data(), expected_dims_y.size());
+
+    //test it twice
+    for (int i = 0; i != 2; ++i)
+      RunSession<OutT>(default_allocator.get(),
+                       session,
+                       inputs,
+                       output_name,
+                       expected_dims_y,
+                       expected_values_y,
+                       &value_y);
+  }
 }
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
@@ -236,7 +243,7 @@ struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
   const char* GetName() const { return "Foo"; };
 
 #ifdef USE_CUDA
-  // Make the kernel run on CUDA for CUDA builds
+  // Make the kernel run on CUDA for CUDA-enabled builds
   const char* GetExecutionProviderType() const { return onnxruntime::kCudaExecutionProvider; };
 #endif
 
@@ -265,11 +272,18 @@ TEST(CApiTest, custom_op_handler) {
   custom_op_domain.Add(&custom_op);
 
 #ifdef USE_CUDA
-  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr);
+  // The custom op kernel has a Compute() method that doesn't really use CUDA and can't be used as is
+  // because it uses the contents of the inputs and writes to the output of the node
+  // (not possible as is because they are on the device).
+  // For the purpose of this exercise, it is not really needed to have a Compute() method that uses CUDA.
+  // We only need to verify if model load succeeds == session creation succeeds == the node is assigned to the CUDA EP.
+  // It is enough to test for successful session creation because if the custom node wasn't assigned an EP,
+  // the session creation would fail. Since the custom node is only tied to the CUDA EP (in CUDA-enabled builds),
+  // if the session creation succeeds, it is assumed that the node got assigned to the CUDA EP.
+  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, true);
 #else
   TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
 #endif
-
 }
 
 TEST(CApiTest, DISABLED_test_custom_op_library) {
