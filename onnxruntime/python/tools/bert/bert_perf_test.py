@@ -8,7 +8,6 @@
 import sys
 import argparse
 import os
-import onnxruntime
 from pathlib import Path
 import timeit
 import statistics
@@ -16,25 +15,32 @@ import psutil
 import csv
 import numpy as np
 from datetime import datetime
+import multiprocessing
 from bert_test_data import get_bert_inputs, generate_test_data
 
-def create_session(model_path, use_gpu, use_openmp, graph_optimization_level, num_threads, wait_policy):
-    execution_providers = ['CPUExecutionProvider'] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
-    sess_options = onnxruntime.SessionOptions()
-    sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
-    sess_options.graph_optimization_level = graph_optimization_level
-    if not use_openmp:
-        sess_options.intra_op_num_threads=num_threads
-        if "OMP_NUM_THREADS" in os.environ:
-            del os.environ["OMP_NUM_THREADS"]
-        if "OMP_WAIT_POLICY" in os.environ:
-            del os.environ["OMP_WAIT_POLICY"]
-    else:
-        sess_options.intra_op_num_threads=1
-        os.environ["OMP_NUM_THREADS"] = str(num_threads)
-        os.environ["OMP_WAIT_POLICY"] = wait_policy
+def create_session(model_path, use_gpu, intra_op_num_threads, graph_optimization_level=None):
+    # Import onnxruntime shall be after OpenMP environment variable setting.
+    # So we put the import in function to delay importing instead of top of this script.
+    import onnxruntime
 
-    session = onnxruntime.InferenceSession(model_path, sess_options, providers=execution_providers)
+    if use_gpu and ('CUDAExecutionProvider' not in onnxruntime.get_available_providers()):
+        print("Warning: Please install onnxruntime-gpu package instead of onnxruntime, and use a machine with GPU for testing gpu performance.")
+    elif (not use_gpu) and ('CUDAExecutionProvider' in onnxruntime.get_available_providers()):
+        print("Warning: Please install onnxruntime package instead of onnxruntime-gpu to get best cpu performance.")
+
+    if intra_op_num_threads is None and graph_optimization_level is None:
+        session = onnxruntime.InferenceSession(model_path)
+    else:
+        execution_providers = ['CPUExecutionProvider'] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        sess_options = onnxruntime.SessionOptions()
+        sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
+        if graph_optimization_level is None:
+            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+        else:
+            sess_options.graph_optimization_level = graph_optimization_level
+        sess_options.intra_op_num_threads = intra_op_num_threads
+        session = onnxruntime.InferenceSession(model_path, sess_options, providers=execution_providers)
+
     if use_gpu:
         assert 'CUDAExecutionProvider' in session.get_providers()
     return session
@@ -76,11 +82,27 @@ def to_string(model_path, session, test_setting):
     option += ",{}".format(test_setting)
     return option
 
-def run_one_test(latency_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, use_openmp, contiguous, num_threads, wait_policy):
+def setup_openmp_environ(omp_num_threads, omp_wait_policy):
+    if omp_num_threads is None:
+        if "OMP_NUM_THREADS" in os.environ:
+            del os.environ["OMP_NUM_THREADS"]
+    else:
+        os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
+
+    if omp_wait_policy is None:
+        if "OMP_WAIT_POLICY" in os.environ:
+            del os.environ["OMP_WAIT_POLICY"]
+    else:
+        assert omp_wait_policy in ["ACTIVE", "PASSIVE"]
+        os.environ["OMP_WAIT_POLICY"] = omp_wait_policy
+
+def run_one_test(latency_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, intra_op_num_threads, omp_num_threads, omp_wait_policy, extra_latency):
+    # Environment variable shall be set before import onnxruntime.
+    setup_openmp_environ(omp_num_threads, omp_wait_policy)
+
     test_setting =  "batch_size={},sequence_length={},test_cases={},test_times={},contiguous={},use_gpu={}".format(batch_size,sequence_length,test_cases,test_times,contiguous,use_gpu)
 
-    graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-    session = create_session(model_path, use_gpu, use_openmp, graph_optimization_level, num_threads, wait_policy)
+    session = create_session(model_path, use_gpu, intra_op_num_threads)
     output_names = [output.name for output in session.get_outputs()]
 
     key = to_string(model_path, session, test_setting)
@@ -91,26 +113,36 @@ def run_one_test(latency_results, model_path, all_inputs, batch_size, sequence_l
         results, latency_list = onnxruntime_inference(session, all_inputs, output_names)
         all_latency_list.extend(latency_list)
 
-    average_latency = statistics.mean(all_latency_list) * 1000
+    average_latency = statistics.mean(all_latency_list) * 1000 + extra_latency
     print("Average latency is {} ms".format(format(average_latency, '.2f')))
     latency_results[key] = average_latency
 
-def run_perf_tests(average_latency, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, seed, verbose, contiguous, input_ids, segment_ids, input_mask, all_inputs, run_all_settings):
-    if use_gpu or run_all_settings:
-        run_one_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, use_openmp=False, contiguous=contiguous, num_threads=psutil.cpu_count(logical=True), wait_policy='ACTIVE')
 
-    # onnxruntime-gpu package is not built with OpenMP, so skip openmp test for gpu.
-    if not use_gpu:
-        run_one_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, use_openmp=True, contiguous=contiguous, num_threads=psutil.cpu_count(logical=True), wait_policy='ACTIVE')
-        
-        if run_all_settings:
-            run_one_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, use_openmp=True, contiguous=contiguous, num_threads=psutil.cpu_count(logical=True), wait_policy='PASSIVE')
 
-            if psutil.cpu_count(logical=True) != psutil.cpu_count(logical=False):
-                run_one_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, use_openmp=True, contiguous=contiguous, num_threads=psutil.cpu_count(logical=False), wait_policy='ACTIVE')
-                run_one_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, use_openmp=True, contiguous=contiguous, num_threads=psutil.cpu_count(logical=False), wait_policy='PASSIVE')
+def launch_test(latency_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, intra_op_num_threads, omp_num_threads, omp_wait_policy, extra_latency):
+    process = multiprocessing.Process(target=run_one_test, args=(latency_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, intra_op_num_threads, omp_num_threads, omp_wait_policy, extra_latency))
+    process.start()
+    process.join()
 
-def run_performance(average_latency, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, seed, verbose, run_all_settings):
+def run_perf_tests(average_latency, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, all_inputs, test_all, extra_latency):
+    # test a setting without any setting
+    launch_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, None, None, None, extra_latency)
+
+    candidates = list(set([1, psutil.cpu_count(logical=True), psutil.cpu_count(logical=False)]))
+
+    for intra_op_num_threads in candidates:
+        # test a setting without environment variable
+        launch_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, intra_op_num_threads, None, None, extra_latency)
+        for omp_num_threads in candidates:
+            if not test_all:
+                if intra_op_num_threads != 1 and omp_num_threads != 1:
+                    continue
+                if intra_op_num_threads == 1 and omp_num_threads == 1 and psutil.cpu_count(logical=True) != 1:
+                    continue
+            for omp_wait_policy in ['ACTIVE', 'PASSIVE']:
+                launch_test(average_latency, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, intra_op_num_threads, omp_num_threads, omp_wait_policy, extra_latency)
+
+def run_performance(average_latency, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, seed, verbose, inclusive, test_all):
     # Try deduce input names from model.
     input_ids, segment_ids, input_mask = get_bert_inputs(model_path)
 
@@ -119,17 +151,18 @@ def run_performance(average_latency, model_path, batch_size, sequence_length, us
     all_inputs = generate_test_data(batch_size, sequence_length, test_cases, seed, verbose, input_ids, segment_ids, input_mask, random_mask_length=False)
 
     contiguous = False
-    if run_all_settings:
-        run_perf_tests(average_latency, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, seed, verbose, contiguous, input_ids, segment_ids, input_mask, all_inputs, run_all_settings)
+    run_perf_tests(average_latency, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, all_inputs, test_all, extra_latency=0)
+
+    # only test contiguous array when the --all flag is set.
+    if not test_all:
+        return
 
     # Convert inputs to contiguous array, which could improve inference performance
     all_inputs, contiguous_latency = get_contiguous_inputs(all_inputs)
     print("Extra latency for converting inputs to contiguous: {} ms".format(format(contiguous_latency, '.2f')))
 
     contiguous = True
-    run_perf_tests(average_latency, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, seed, verbose, contiguous, input_ids, segment_ids, input_mask, all_inputs, run_all_settings)
-
-    return contiguous_latency
+    run_perf_tests(average_latency, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, all_inputs, test_all, extra_latency=contiguous_latency if inclusive else 0)
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -172,32 +205,27 @@ def main():
     if args.test_times == 0:
         args.test_times = max(1, int(1000 / args.samples))
 
-    if args.use_gpu and ('CUDAExecutionProvider' not in onnxruntime.get_available_providers()):
-        print("Please install onnxruntime-gpu package instead of onnxruntime, and use a machine with GPU for testing gpu performance.")
-        return
-    elif (not args.use_gpu) and ('CUDAExecutionProvider' in onnxruntime.get_available_providers()):
-        print("Warning: Please install onnxruntime package instead of onnxruntime-gpu to get best cpu performance.")
+    manager = multiprocessing.Manager()
+    return_dict = manager.dict()
+    run_performance(return_dict, args.model, args.batch_size, args.sequence_length, args.use_gpu, args.samples, args.test_times, args.seed, args.verbose, args.inclusive, args.all)
 
-    average_latency = {}
-    contiguous_latency = run_performance(average_latency, args.model, args.batch_size, args.sequence_length, args.use_gpu, args.samples, args.test_times, args.seed, args.verbose, args.all)
-
+    average_latency = return_dict
     if average_latency is None:
         return
 
+    # Sort the results so that the first one has smallest latency.
+    sorted_results = sorted(return_dict.items(), reverse=False, key=lambda x: x[1])
+ 
     summary_file = os.path.join(Path(args.model).parent, "perf_results_{}_B{}_S{}_{}.txt".format('GPU' if args.use_gpu else 'CPU', args.batch_size, args.sequence_length, datetime.now().strftime("%Y%m%d-%H%M%S")))
     with open(summary_file, 'w+', newline='') as tsv_file:
         tsv_writer = csv.writer(tsv_file, delimiter='\t', lineterminator='\n')
         headers = None
-        for key, latency in average_latency.items():
+        for (key, latency) in sorted_results:
             params = key.split(',')
             if headers is None:
                 headers = ["Latency(ms)", "Throughput(QPS)"]
                 headers.extend([x.split('=')[0] for x in params])
                 tsv_writer.writerow(headers)
-
-            # include the extra latency of array conversion if required.
-            if args.inclusive and 'contiguous=True' in params:
-                latency += contiguous_latency
 
             throughput = args.batch_size * (1000 / latency)
             values = [format(latency, '.2f'), format(throughput, '.2f')]
