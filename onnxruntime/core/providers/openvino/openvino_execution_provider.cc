@@ -834,7 +834,7 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     const auto& nodes = graph_viewer.GetNodesInTopologicalOrder();
     if(nodes.size() == 1){
       const auto& node = graph_viewer.GetNode(nodes[0]);
-      if(node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType == "Dropout")
+      if(node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType() == "Dropout")
         return result;
     }
 
