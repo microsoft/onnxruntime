@@ -169,25 +169,9 @@ using IntegerPoolSet = std::unordered_set<NgramEntry<int64_t>>;
 // to search by string references that point to the current input.
 using StringPoolSet = std::unordered_set<NgramEntry<std::string>>;
 
-template <class T>
-inline const void* AdvanceElementPtr(const void* p, size_t elemens) {
-  return reinterpret_cast<const T*>(p) + elemens;
-}
-
-const void* AdvanceElementPtr(const void* p, size_t elements, int32_t elem_type) {
-  switch (elem_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      return AdvanceElementPtr<int32_t>(p, elements);
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      return AdvanceElementPtr<int64_t>(p, elements);
-    case ONNX_NAMESPACE::TensorProto_DataType_STRING:
-      return AdvanceElementPtr<std::string>(p, elements);
-      break;
-    default:
-      assert(false);
-      break;
-  }
-  return nullptr;
+inline
+const void* AdvanceElementPtr(const void* p, size_t elements, size_t element_size) {
+  return reinterpret_cast<const uint8_t*>(p) + elements * element_size;
 }
 
 // The weighting criteria.
@@ -238,7 +222,7 @@ struct TfIdfVectorizer::Impl {
   Impl& operator=(const Impl&) = delete;
 
   std::pair<bool, size_t> CheckPresent(const NgramEntry<int64_t>& e) const {
-    std::pair<bool, size_t> result;
+    std::pair<bool, size_t> result(false, 0);
     auto hit = int64_set_.find(e);
     result.first = (hit != int64_set_.end());
     if (result.first) {
@@ -248,7 +232,7 @@ struct TfIdfVectorizer::Impl {
   }
 
   std::pair<bool, size_t> CheckPresent(const NgramEntry<std::string>& e) const {
-    std::pair<bool, size_t> result;
+    std::pair<bool, size_t> result(false, 0);
     auto hit = str_set_.find(e);
     result.first = hit != str_set_.end();
     if (result.first) {
@@ -430,11 +414,13 @@ void TfIdfVectorizer::OutputResult(OpKernelContext* ctx, size_t B, const std::ve
 
 void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, int32_t row_num, size_t row_size,
                                   std::vector<uint32_t>& frequencies) const {
+
   auto X = ctx->Input<Tensor>(0);
   const auto elem_type = X->GetElementType();
+  const auto elem_size = X->DataType()->Size();
 
-  const void* row_begin = AdvanceElementPtr(X->DataRaw(), row_num * row_size, elem_type);
-  const void* const row_end = AdvanceElementPtr(row_begin, row_size, elem_type);
+  const void* row_begin = AdvanceElementPtr(X->DataRaw(), row_num * row_size, elem_size);
+  const void* const row_end = AdvanceElementPtr(row_begin, row_size, elem_size);
 
   const auto& impl = *impl_;
   const auto max_gram_length = impl.max_gram_length_;
@@ -456,7 +442,8 @@ void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, int32_t row_num, size_t 
         found = impl.CheckPresent(sample_str);
       } else {
         sample_int.Clear();
-        int64_t val = (elem_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) ? int64_t{*reinterpret_cast<const int32_t*>(ngram_start)} : *reinterpret_cast<const int64_t*>(ngram_start);
+        int64_t val = (elem_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) ? 
+          int64_t{*reinterpret_cast<const int32_t*>(ngram_start)} : *reinterpret_cast<const int64_t*>(ngram_start);
         sample_int.AddItem(val);
         found = impl.CheckPresent(sample_int);
       }
@@ -464,7 +451,7 @@ void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, int32_t row_num, size_t 
         // record frequency
         impl.IncrementCount(found.second, row_num, frequencies);
       }
-      ngram_start = AdvanceElementPtr(ngram_start, 1, elem_type);
+      ngram_start = AdvanceElementPtr(ngram_start, 1, elem_size);
     }
 
     if (++start_ngram_size > max_gram_length) {
@@ -481,7 +468,7 @@ void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, int32_t row_num, size_t 
       // fit before the end of the row so we do not waste time adding [1..start_ngram_size)
       // At least items of start_ngram_size should fit
       // last row should match end_data
-      auto at_least_this = AdvanceElementPtr(ngram_start, skip_distance * (start_ngram_size - 1), elem_type);
+      auto at_least_this = AdvanceElementPtr(ngram_start, skip_distance * (start_ngram_size - 1), elem_size);
       if (at_least_this >= ngram_row_end) {
         break;
       }
@@ -503,7 +490,8 @@ void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, int32_t row_num, size_t 
             found = impl.CheckPresent(sample_str);
           }
         } else {
-          int64_t val = (elem_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) ? int64_t{*reinterpret_cast<const int32_t*>(ngram_item)} : *reinterpret_cast<const int64_t*>(ngram_item);
+          int64_t val = (elem_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) ? 
+            int64_t{*reinterpret_cast<const int32_t*>(ngram_item)} : *reinterpret_cast<const int64_t*>(ngram_item);
           sample_int.AddItem(val);
           // Do not test anything before start_ngram_size
           if (ngram_size >= start_ngram_size) {
@@ -513,10 +501,10 @@ void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, int32_t row_num, size_t 
         if (found.first) {
           impl.IncrementCount(found.second, row_num, frequencies);
         }
-        ngram_item = AdvanceElementPtr(ngram_item, skip_distance, elem_type);
+        ngram_item = AdvanceElementPtr(ngram_item, skip_distance, elem_size);
       }
       // Sliding window shift
-      ngram_start = AdvanceElementPtr(ngram_start, 1, elem_type);
+      ngram_start = AdvanceElementPtr(ngram_start, 1, elem_size);
     }
   }
 }
@@ -566,16 +554,9 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  std::function<void(int32_t)> fn;
-  fn = [this, ctx, C, &frequencies](int32_t row_num) {
+  std::function<void(int32_t)> fn = [this, ctx, C, &frequencies](int32_t row_num) {
     ComputeImpl(ctx, row_num, C, frequencies);
   };
-
-  if (!X->IsDataType<int32_t>() &&
-      !X->IsDataType<int64_t>() &&
-      !X->IsDataTypeString()) {
-    ORT_THROW("Invalid type of the input argument: ", X->GetElementType());
-  }
 
   // Processing strings is more expensive than integers. So we batch integers 3 rows per thread
   // and we give each row of strings its own thread
