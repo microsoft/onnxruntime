@@ -105,8 +105,6 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       // "ReduceSum",
       // "ReduceMean",
       // "ReduceProd",
-      "EyeLike",
-      "ConvTranspose",
       "Shrink",
       "ThresholdedRelu",
       "ConstantOfShape",
@@ -242,14 +240,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
         return true;
     }
-  } else if (optype == "Dropout") {
-    auto graph_inputs = graph_viewer.GetInputs();
-    for (const auto& input : node->InputDefs()) {
-      auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
-      if (it != graph_inputs.end()) {
-        return true;
-      }
-    }
   } else if (optype == "Max" || optype == "Min" || optype == "Mean" || optype == "Sum") {
     if (GetInputCount(node, initializers) == 1)
       return true;
@@ -257,7 +247,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     //nGraph OneHot op currently requires depth info available in advance.
     const auto& depth_arg = node->InputDefs()[1];
     return initializers.find(depth_arg->Name()) == initializers.end();
-  } else if (optype == "Conv") {
+  } else if (optype == "Conv" || optype == "ConvTranspose") {
     if (GetInputCount(node, initializers) > 1)
       return true;
   } else if (optype == "TopK") {
@@ -851,11 +841,11 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
       return result;
     }
 
-    //If subgraph only has Identity node, OpenVINO EP doesn't support it.
+    //If subgraph only has Identity node, EyeLike or Dropout, OpenVINO EP doesn't support it.
     const auto& nodes = graph_viewer.GetNodesInTopologicalOrder();
     if(nodes.size() == 1){
       const auto& node = graph_viewer.GetNode(nodes[0]);
-      if(node->OpType() == "Identity")
+      if(node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType == "Dropout")
         return result;
     }
 
@@ -888,11 +878,12 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     }
 
     for (const auto& this_cluster : connected_clusters) {
+
       std::vector<std::string> cluster_inputs, const_inputs, cluster_outputs;
-      //If subgraph only has Identity node, OpenVINO EP doesn't support it.
+    //If subgraph only has Identity node, EyeLike or Dropout, OpenVINO EP doesn't support it.
       if(this_cluster.size() == 1){
         const auto& node = graph_viewer.GetNode(this_cluster[0]);
-        if(node->OpType() == "Identity")
+        if(node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType() == "Dropout")
           continue;
       }
 
