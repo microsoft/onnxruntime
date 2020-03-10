@@ -61,8 +61,6 @@ jobs:
 
   - pwsh: |
       tree /f '$(Build.BinariesDirectory)\$(BuildConfig)'
-      dumpbin.exe /IMPORTS:'$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\protoc.exe'
-      sleep 9999999999
 
   - task: PythonScript@0
     displayName: 'Build wheel'
