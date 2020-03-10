@@ -88,7 +88,7 @@ The ONNX runtime shipped embedded into the windows operating system in build 180
 
 The runtime was included inside the Windows.AI.MachineLearning.dll and was exposed via that WinRT API (WinML for short).  It had CPU support and included a DirectML execution provider for GPU support.   Since then it has continued to ship in every version of Windows.
 
-Starting with the 1.2 release nuget we are bringing a new layered architecture to the ONNX Runtime and Windows ML.   
+Starting with the 1.2 release nuget we are bringing a new layered architecture to the ONNX Runtime and Windows ML.
 
 *Note:  This feature is preview as of the 1.2 release*
 

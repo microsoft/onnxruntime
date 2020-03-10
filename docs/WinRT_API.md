@@ -3,11 +3,11 @@ New in the ONNX Runtime Nuget package is the ability to use the full [Windows.AI
 
 This allows scenarios such as passing a [Windows.Media.VideoFrame](https://docs.microsoft.com/en-us/uwp/api/Windows.Media.VideoFrame) from your connected camera directly into the runtime for realtime inference.
 
-The Windows.AI.MachineLearning API is a WinRT API that shipped inside the windows OS starting with build 1809 (RS5).   It embedded a version of the ONNX runtime.
+The Windows.AI.MachineLearning API is a WinRT API that shipped inside the Windows OS starting with build 1809 (RS5).   It embedded a version of the ONNX Runtime.
 
-Many customers have asked for a way to use this API (and embedded ONNX runtime) as an application redistributable package.
+Many customers have asked for a way to use this offering as an application redistributable package.
 
-With our new [layered architecture]() you can now do this, with some limitations.
+With our new [layered architecture](docs/HighLevelDesign.md#the-onnx-runtime-and-windows-os-integration) you can now do this, with some limitations.
 
 ## NuGet Package
 The Microsoft.ML.OnnxRuntime Nuget package includes the precompiled binaries for using the ONNX runtime with the WinRT API.   Support is compiled directly into *onnxruntime.dll*
@@ -39,4 +39,15 @@ The best way to use the API is to use the header files that come with the Window
 
 You use contract targeting just like you would with any WinRT API.
 
-You need to take care to make sure you contract targets work with the OS or redist binaries that you choose to deploy with.    Using this combination you can know when the OS has the contract you need, or you can fallback to your redist package if needed.  Use the [IsApiContractPresent](https://docs.microsoft.com/en-us/uwp/api/windows.foundation.metadata.apiinformation.isapicontractpresent) method to do this.  This can be called from UWP and not UWP apps easily.
+You need to take care to make sure you contract targets work with the OS or redist binaries that you choose to deploy with.    Using this combination you can know when the OS has the contract you need, or you can fallback to your redist package if needed.  Use the [IsApiContractPresent](https://docs.microsoft.com/en-us/uwp/api/windows.foundation.metadata.apiinformation.isapicontractpresent) method to do this.  This can be called from UWP and not UWP apps easily.   
+
+Note:  new contracts versions are always backward compatibile.
+
+|Release|API contract version|
+|--|--|--|
+|Windows OS 1809| 1|
+|Windows OS 1903| 2|
+|Windows OS 1909| 2|
+|ORT release 1.2| 3|
+
+See [here](https://docs.microsoft.com/en-us/windows/ai/windows-ml/onnx-versions) for more about opsets and ONNX version details in Windows OS distributons.
