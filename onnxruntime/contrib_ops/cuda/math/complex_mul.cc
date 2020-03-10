@@ -53,6 +53,8 @@ Status ComplexMul<T>::ComputeInternal(OpKernelContext* context) const {
       prepare.fdm_C,
       reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
       prepare.output_tensor->Shape().Size(),
+      prepare.lhs_tensor->Shape().Size(),
+      prepare.rhs_tensor->Shape().Size(),
       false);
   return Status::OK();
 }
@@ -79,6 +81,8 @@ Status ComplexMulConj<T>::ComputeInternal(OpKernelContext* context) const {
       prepare.fdm_C,
       reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
       prepare.output_tensor->Shape().Size(),
+      prepare.lhs_tensor->Shape().Size(),
+      prepare.rhs_tensor->Shape().Size(),
       true);
   return Status::OK();
 }
