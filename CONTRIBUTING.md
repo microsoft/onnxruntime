@@ -27,33 +27,23 @@ All new public APIs must be reviewed before merging.
 For making changes to the C API, refer to guidance [here](onnxruntime/core/session/onnxruntime_c_api.cc#L1326).
 For making changes to the WinRT API, please work directly with the owner assigned in step3.
 
-5. **Implementation**  
-A feature can be implemented by you, the ONNX Runtime team, or other community members.  
-Code contributions are greatly appreciated: feel free to work on any reviewed feature you proposed, or choose one in the backlog and send us a PR. If you are new to the project and want to work on an existing issue, we recommend starting with issues that are tagged with “good first issue”. Please let us know in the issue comments if you are actively working on implementing a feature so we can ensure it's assigned to you.  
-<br>
-New code *must* be accompanied by unit tests.
-<br><br>
-**Documentation and sample updates**<br>
-The feature owner updates the documentation and if applicable add a sample to the samples repository.
+5. **Implementation**
+* A feature can be implemented by you, the ONNX Runtime team, or other community members.  Code contributions are greatly appreciated: feel free to work on any reviewed feature you proposed, or choose one in the backlog and send us a PR. If you are new to the project and want to work on an existing issue, we recommend starting with issues that are tagged with “good first issue”. Please let us know in the issue comments if you are actively working on implementing a feature so we can ensure it's assigned to you.  
+* New code *must* be accompanied by unit tests.
+* Documentation and sample updates: The feature owner updates the documentation and if applicable add a sample to the samples repository.
 Once the docs and samples are updated we'll close the issue.
-<br><br>
-**Checkin Procedure**<br>
-Once a feature is complete and tested according to the contribution guidelines follow these steps:
-<br>
- * Fork the repo
- * git clone your fork
- * Create feature branch
- * Make and checkin your changes along with unit tests
- * git commit your changes
- * git push origin HEAD
- * To request merge into master, send a pull request from the [web ui](https://github.com/Microsoft/onnxruntime).
- * Add 'Microsoft/onnxruntime' as a reviewer.
-<br><br>
-**Binaries**<br>
-We periodically produce signed prerelease binaries from the master branch to validate new features and APIs.  
+* Checkin Procedure.  Once a feature is complete and tested according to the contribution guidelines follow these steps:
+   * Fork the repo
+   * git clone your fork
+   * Create feature branch
+   * Make and checkin your changes along with unit tests
+   * git commit your changes
+   * git push origin HEAD
+   * To request merge into master, send a pull request from the [web ui](https://github.com/Microsoft/onnxruntime).
+  * Add 'Microsoft/onnxruntime' as a reviewer.
+* Binaries: We periodically produce signed prerelease binaries from the master branch to validate new features and APIs.  
 After the feature has been sufficiently validated as part of a prerelease package we will include it in the next stable binary release.
-<br>
-*Note*: After creating a pull request, you might not see a build getting triggered right away. One of the
+* Note: After creating a pull request, you might not see a build getting triggered right away. One of the
 onnxruntime team members will trigger the build for you.
 
 # Build
