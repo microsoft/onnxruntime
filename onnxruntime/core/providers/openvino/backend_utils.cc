@@ -39,22 +39,19 @@ void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::stri
   outfile.close();
 }
 
-std::shared_ptr<InferenceEngine::CNNNetwork> CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, InferenceEngine::Precision precision) {
+std::shared_ptr<InferenceEngine::CNNNetwork>
+CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto,
+                 InferenceEngine::Precision precision) {
+
   std::istringstream model_stream{model_proto.SerializeAsString()};
   std::shared_ptr<ngraph::Function> ng_function;
   try {
     ng_function = ngraph::onnx_import::import_onnx_model(model_stream);
     LOGS_DEFAULT(INFO) << "ONNX Import Done";
   } catch (const std::exception& exp) {
-    LOGS_DEFAULT(FATAL) << "[NGRAPHCustomOp] "
-                        << "Exception while importing model to nGraph: " << std::string(exp.what());
-    // << " - " << name_ << " - "
-    throw;
+    ORT_THROW("[NGRAPHCustomOp] Exception while importing model to nGraph: " + std::string(exp.what()));
   } catch (...) {
-    LOGS_DEFAULT(FATAL) << "[NGRAPHCustomOp] "
-                        << "Unknown exception while importing model to nGraph";
-    // << " - " << name_ << " - "
-    throw;
+    ORT_THROW("[NGRAPHCustomOp] Unknown exception while importing model to nGraph");
   }
 
   //Serializing nGraph function
@@ -84,18 +81,15 @@ std::shared_ptr<InferenceEngine::CNNNetwork> CreateCNNNetwork(const ONNX_NAMESPA
     out_pm << json_string_pm;
   }
 
-  //IE wrapper for nGraph function
-  // InferenceEngine::CNNNetwork network(ng_function);
-
-  //Serialize CNNNetwork
-  //network.serialize("IR.xml", "IR.bin");
-
-  return std::make_shared<InferenceEngine::CNNNetwork>(ng_function);
+  try {
+    return std::make_shared<InferenceEngine::CNNNetwork>(ng_function);
+  } catch (...) {
+    ORT_THROW("[OpenVINO EP] Exception thrown while making IE::CNNNetwork");
+  }
 }
 
 
-InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(
-    const ONNX_NAMESPACE::TypeProto& onnx_type) {
+InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO( const ONNX_NAMESPACE::TypeProto& onnx_type) {
   ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
   if (*type_string == "float" || *type_string == "tensor(float)") {
     return InferenceEngine::Precision::FP32;
@@ -116,7 +110,8 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(
   }
 }
 
-void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto, std::shared_ptr<InferenceEngine::CNNNetwork> network) {
+void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
+               std::shared_ptr<InferenceEngine::CNNNetwork> network) {
   // Configure input & output
   // Prepare input blobs
   if (network) {
@@ -184,10 +179,13 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto, std::shared_ptr<In
   }
 }
 
-std::vector<const OrtValue*> GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context,
-                                 std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network, std::vector<int> input_indexes) {
+std::vector<const OrtValue*>
+GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, 
+                std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network,
+                std::vector<int> input_indexes) {
 
   std::vector<const OrtValue*> input_tensors;
+
   size_t input_count = ie_cnn_network->getInputsInfo().size();
 
   for (size_t i = 0; i < input_count; i++) {
@@ -196,9 +194,15 @@ std::vector<const OrtValue*> GetInputTensors(Ort::CustomOpApi& ort, OrtKernelCon
   return input_tensors;
 }
 
-std::vector<OrtValue*> GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_size, InferenceEngine::InferRequest::Ptr infer_request,
-                                  std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network, std::unordered_map<std::string, int> output_names) {
+std::vector<OrtValue*> 
+GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_size,
+                 InferenceEngine::InferRequest::Ptr infer_request,
+                 std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network,
+                 std::unordered_map<std::string, int> output_names) {
+
   std::vector<OrtValue*> output_tensors;
+
+  //TODO: Replace this with output_indexes
   auto graph_output_info = ie_cnn_network->getOutputsInfo();
 
   size_t i = 0;

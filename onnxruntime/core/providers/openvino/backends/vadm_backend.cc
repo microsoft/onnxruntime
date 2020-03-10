@@ -21,12 +21,13 @@ namespace openvino_ep {
 
 using namespace backend_utils;
 
-#define NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE 500
-
-VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::unordered_map<std::string, int> output_names,std::string device_id, InferenceEngine::Precision precision)
+VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
+                         const std::vector<int>& input_indexes,
+                         const std::unordered_map<std::string, int>& output_names,
+                         std::string device_id, InferenceEngine::Precision precision)
     : input_indexes_{input_indexes} , output_names_{output_names} {
+  ORT_UNUSED_PARAMETER(device_id);
 
-  (void) device_id;
   // Infer Request class represents OpenVINO's logical hardware instance. These logical
   // instances are bound to physical hardware instances at runtime depending
   // on the physical hardware availability. If multiple Infer Requests are mapped to
@@ -39,12 +40,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vec
   // In VAD-M (HDDL) accelerator, there are 8 parallel execution units. So, creating 8 instances
   // of Infer Requests only if the VAD-M accelerator is being used.
   // sets number of maximum parallel inferences
-  // num_inf_reqs_ = (device_id_ == "HDDL") ? 8 : 1;
   num_inf_reqs_ = 8;
-
-// TODO: Move to base constructor
-  // precision_ = precision;
-  // input_indexes_ = input_indexes;
 
   InferenceEngine::Core ie;
   ie_cnn_network_ = CreateCNNNetwork(model_proto, precision);
@@ -52,12 +48,22 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vec
   SetIODefs(model_proto, ie_cnn_network_);
 
   // Loading model to the plugin
-  InferenceEngine::ExecutableNetwork exe_network_ = ie.LoadNetwork(*ie_cnn_network_, "HDDL");
+  InferenceEngine::ExecutableNetwork exe_network;
+  try {
+    exe_network = ie.LoadNetwork(*ie_cnn_network_, "HDDL");
+  } catch (...) {
+    ORT_THROW(log_tag + " Exception while Loading Network." );
+  }
   LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
 
   // Create infer request
   for (size_t i = 0; i < num_inf_reqs_; i++) {
-    auto infRequest = exe_network_.CreateInferRequestPtr();
+    InferenceEngine::InferRequest::Ptr infRequest;
+    try {
+      infRequest = exe_network.CreateInferRequestPtr();
+    } catch (...) {
+      ORT_THROW(log_tag + "Exception while creating InferRequest object.");
+    }
 
     infer_requests_.push_back(infRequest);
   }
@@ -77,7 +83,13 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const O
   for (auto input_info_iter = graph_input_info.begin();
        input_info_iter != graph_input_info.end(); ++input_info_iter, ++i) {
     // Get OpenVINO's input buffer
-    auto graph_input_blob = infer_request->GetBlob(input_info_iter->first);
+    InferenceEngine::Blob::Ptr graph_input_blob;
+    try {
+      graph_input_blob = infer_request->GetBlob(input_info_iter->first);
+    } catch (...) {
+      ORT_THROW( log_tag + " Cannot access IE Blob for input: " + input_info_iter->first);
+    }
+
     auto graph_input_buffer =
         graph_input_blob->buffer().as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
 
@@ -90,7 +102,11 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const O
   }
 
   // Start Async inference
-  infer_request->StartAsync();
+  try {
+    infer_request->StartAsync();
+  } catch (...) {
+    ORT_THROW(log_tag + " Couldn't start Inferenece");
+  }
 }
 
 // Wait for asynchronous inference completion on an Infer Request object indexed by infer_req_idx
@@ -102,14 +118,23 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtV
   auto infer_request = infer_requests[infer_req_idx];
 
   // Wait for Async inference completion
-  infer_request->Wait(InferenceEngine::IInferRequest::WaitMode::RESULT_READY);
+  try {
+    infer_request->Wait(InferenceEngine::IInferRequest::WaitMode::RESULT_READY);
+  } catch (...) {
+    ORT_THROW(log_tag + " Exception with completing Inference");
+  }
   auto graph_output_info = ie_cnn_network->getOutputsInfo();
 
   size_t i = 0;
   for (auto output_info_iter = graph_output_info.begin();
        output_info_iter != graph_output_info.end(); ++output_info_iter, ++i) {
     // Get OpenVINO's output blob
-    auto graph_output_blob = infer_request->GetBlob(output_info_iter->first);
+    InferenceEngine::Blob::Ptr graph_output_blob;
+    try {
+      graph_output_blob = infer_request->GetBlob(output_info_iter->first);
+    } catch(...) {
+      ORT_THROW( log_tag + " Cannot access IE Blob for output: " + output_info_iter->first);
+    }
     auto graph_output_buffer =
         graph_output_blob->buffer().as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
 

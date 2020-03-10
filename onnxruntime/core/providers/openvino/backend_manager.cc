@@ -14,18 +14,16 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-BackendManager::BackendManager(const onnxruntime::Node* fused_node,
-                                const logging::Logger& logger,std::string dev_id,
-                                std::string prec_str) : device_id_(dev_id), precision_str_(prec_str) {
+BackendManager::BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger,
+                               std::string dev_id, std::string prec_str)
+  : device_id_{dev_id}, precision_str_{prec_str} {
   if(precision_str_ == "FP32") {
     precision_ = InferenceEngine::Precision::FP32;
-  } else if (precision_str_ == "FP16")
-  {
+  } else if (precision_str_ == "FP16") {
     precision_ = InferenceEngine::Precision::FP16;
   } else {
     ORT_THROW("Invalid OpenVINO Precision type: " + precision_str_);
   }
-
 
   // Save the indexes of graph inputs among fused_node's inputDefs
   // (which also contains initializers).
@@ -58,20 +56,24 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node,
   model_proto_ = GetModelProtoFromFusedNode(fused_node, logger);
 
   if (ModelHasSymbolicInputDims(fused_node)) {
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims. Defering backend initialization";
+    LOGS_DEFAULT(INFO) <<
+      "[OpenVINO-EP] Model has symbolic input dims. Defering backend initialization";
     has_dynamic_input_shape_ = true;
   } else {
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has concreate input dims. Initializing backend";
+    LOGS_DEFAULT(INFO) <<
+      "[OpenVINO-EP] Model has concreate input dims. Initializing backend";
     has_dynamic_input_shape_ = false;
-    concrete_backend_ = BackendFactory::MakeBackend(model_proto_, input_indexes_, output_names_, device_id_, precision_);
+    concrete_backend_ = BackendFactory::MakeBackend(model_proto_, input_indexes_,
+                                                    output_names_, device_id_,
+                                                    precision_);
   }
 }
 
 //Save ONNX Model
-static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto, const std::string& file_path) {
+static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto,
+                                const std::string& file_path) {
   int fd;
   Status status = Env::Default().FileOpenWr(file_path, fd);
-
   google::protobuf::io::FileOutputStream output(fd);
   const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
   if (result)
@@ -101,12 +103,12 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::Node* fused_no
   return has_sym_dims;
 }
 
-ONNX_NAMESPACE::ModelProto BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node, const logging::Logger& logger) const {
+ONNX_NAMESPACE::ModelProto
+BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node,
+                                           const logging::Logger& logger) const {
   const auto* node_function = fused_node->GetFunctionBody();
   const std::string& name = fused_node->Name();
-
   ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", name);
-
 
   const onnxruntime::Graph& node_subgraph = node_function->Body();
   onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{}, "",
@@ -125,7 +127,8 @@ ONNX_NAMESPACE::ModelProto BackendManager::GetModelProtoFromFusedNode(const onnx
   return model_proto;
 }
 
-std::vector<std::vector<int64_t>> GetInputTensorShapes(Ort::CustomOpApi& api, OrtKernelContext* context) {
+std::vector<std::vector<int64_t>> GetInputTensorShapes(Ort::CustomOpApi& api,
+                                                       OrtKernelContext* context) {
   std::vector<std::vector<int64_t>> input_shapes;
   for (size_t i = 0; i < api.KernelContext_GetInputCount(context); i++) {
     auto input_tensor = api.KernelContext_GetInput(context, i);
@@ -137,7 +140,8 @@ std::vector<std::vector<int64_t>> GetInputTensorShapes(Ort::CustomOpApi& api, Or
   return input_shapes;
 }
 
-std::string MakeMapKeyString(std::vector<std::vector<int64_t>>& shapes, std::string& device_id) {
+std::string MakeMapKeyString(std::vector<std::vector<int64_t>>& shapes,
+                             std::string& device_id) {
   std::string key;
   key += device_id;
   key += "|";  //separator
@@ -153,8 +157,9 @@ std::string MakeMapKeyString(std::vector<std::vector<int64_t>>& shapes, std::str
   return key;
 }
 
-std::shared_ptr<ONNX_NAMESPACE::ModelProto> ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto,
-                                                                  std::vector<std::vector<int64_t>> input_shapes) {
+std::shared_ptr<ONNX_NAMESPACE::ModelProto>
+ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto,
+                      std::vector<std::vector<int64_t>> input_shapes) {
   auto model_copy = std::make_shared<ONNX_NAMESPACE::ModelProto>();
   std::string proto_str;
   model_proto.SerializeToString(&proto_str);
@@ -162,7 +167,8 @@ std::shared_ptr<ONNX_NAMESPACE::ModelProto> ReWriteInputShapeInfo(const ONNX_NAM
   auto graph_proto = model_copy->mutable_graph();
 
   for (size_t i = 0; i < input_shapes.size(); i++) {
-    auto g_in_shape = graph_proto->mutable_input((int)i)->mutable_type()->mutable_tensor_type()->mutable_shape();
+    auto g_in_shape = graph_proto->mutable_input((int)i)->
+                        mutable_type()->mutable_tensor_type()->mutable_shape();
     g_in_shape->clear_dim();
     auto shape = input_shapes[i];
     for (size_t dim = 0; dim < shape.size(); dim++) {
@@ -183,7 +189,9 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
                          << "Creating concrete backend for key: " << key;
       auto modelproto_with_concrete_shapes = ReWriteInputShapeInfo(model_proto_, tensor_shapes);
-      dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,input_indexes_,output_names_, device_id_, precision_);
+      dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
+                                                    input_indexes_,output_names_,
+                                                    device_id_, precision_);
       backend_map_.insert({key, dynamic_backend});
     } else {
       dynamic_backend = search->second;
