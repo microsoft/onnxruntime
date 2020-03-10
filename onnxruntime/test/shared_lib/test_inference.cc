@@ -185,8 +185,8 @@ TEST(CApiTest, dim_param) {
 }
 
 INSTANTIATE_TEST_SUITE_P(CApiTestWithProviders,
-                        CApiTestWithProvider,
-                        ::testing::Values(0, 1, 2, 3, 4));
+                         CApiTestWithProvider,
+                         ::testing::Values(0, 1, 2, 3, 4));
 
 struct OrtTensorDimensions : std::vector<int64_t> {
   OrtTensorDimensions(Ort::CustomOpApi ort, const OrtValue* value) {

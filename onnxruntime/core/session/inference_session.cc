@@ -160,30 +160,46 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 }
 
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
-                                         logging::LoggingManager* logging_manager) {
+                                         const Environment& session_env) {
   auto status = FinalizeSessionOptions(session_options, model_proto_.get(), session_options_);
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
 
   graph_transformation_mgr_ = onnxruntime::make_unique<GraphTransformerManager>(
       session_options_.max_num_graph_transformation_steps);
-  logging_manager_ = logging_manager;
 
-  thread_pool_ = concurrency::CreateThreadPool("intra_op_thread_pool",
-                                               session_options_.intra_op_num_threads);
+  use_per_session_threads_ = session_options.use_per_session_threads;
 
-  inter_op_thread_pool_ = session_options_.execution_mode == ExecutionMode::ORT_PARALLEL
-                              ? concurrency::CreateThreadPool("inter_op_thread_pool",
-                                                              session_options_.inter_op_num_threads)
-                              : nullptr;
+  if (use_per_session_threads_) {
+    thread_pool_ = concurrency::CreateThreadPool("intra_op_thread_pool",
+                                                 session_options_.intra_op_num_threads);
+
+    inter_op_thread_pool_ = session_options_.execution_mode == ExecutionMode::ORT_PARALLEL
+                                ? concurrency::CreateThreadPool("inter_op_thread_pool",
+                                                                session_options_.inter_op_num_threads)
+                                : nullptr;
+  } else {
+    intra_op_thread_pool_from_env_ = session_env.GetIntraOpThreadPool();
+    inter_op_thread_pool_from_env_ = session_env.GetInterOpThreadPool();
+
+    ORT_ENFORCE(intra_op_thread_pool_from_env_,
+                "Since use_per_session_threads is false, this must be non-nullptr"
+                " You probably didn't create the env using the CreateEnvWithGlobalThreadPools API");
+    ORT_ENFORCE(inter_op_thread_pool_from_env_,
+                "Since use_per_session_threads is false, this must be non-nullptr"
+                " You probably didn't create the env using the CreateEnvWithGlobalThreadPools API");
+    ORT_ENFORCE(thread_pool_ == nullptr, "Since use_per_session_threads is false per session threadpools should be nullptr");
+    ORT_ENFORCE(inter_op_thread_pool_ == nullptr, "Since use_per_session_threads is false per session threadpools should be nullptr");
+  }
 
   session_state_ = onnxruntime::make_unique<SessionState>(execution_providers_,
                                                           session_options_.enable_mem_pattern &&
                                                               session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
-                                                          thread_pool_.get(),
-                                                          inter_op_thread_pool_.get());
+                                                          use_per_session_threads_ ? thread_pool_.get() : intra_op_thread_pool_from_env_,
+                                                          use_per_session_threads_ ? inter_op_thread_pool_.get() : inter_op_thread_pool_from_env_);
 
-  InitLogger(logging_manager);
+  logging_manager_ = session_env.GetLoggingManager();
+  InitLogger(logging_manager_);
 
   session_state_->SetDataTransferMgr(&data_transfer_mgr_);
   session_profiler_.Initialize(session_logger_);
@@ -198,15 +214,15 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
-                                   logging::LoggingManager* logging_manager)
+                                   const Environment& session_env)
     : insert_cast_transformer_("CastFloat16Transformer") {
   // Initialize assets of this session instance
-  ConstructorCommon(session_options, logging_manager);
+  ConstructorCommon(session_options, session_env);
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    const std::string& model_uri,
-                                   logging::LoggingManager* logging_manager)
+                                   const Environment& session_env)
     : insert_cast_transformer_("CastFloat16Transformer") {
   model_location_ = ToWideString(model_uri);
   model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
@@ -215,13 +231,13 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
               status.ErrorMessage());
 
   // Finalize session options and initialize assets of this session instance
-  ConstructorCommon(session_options, logging_manager);
+  ConstructorCommon(session_options, session_env);
 }
 
 #ifdef _WIN32
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    const std::wstring& model_uri,
-                                   logging::LoggingManager* logging_manager)
+                                   const Environment& session_env)
     : insert_cast_transformer_("CastFloat16Transformer") {
   model_location_ = ToWideString(model_uri);
   model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
@@ -230,13 +246,13 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
               status.ErrorMessage());
 
   // Finalize session options and initialize assets of this session instance
-  ConstructorCommon(session_options, logging_manager);
+  ConstructorCommon(session_options, session_env);
 }
 #endif
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    std::istream& model_istream,
-                                   logging::LoggingManager* logging_manager)
+                                   const Environment& session_env)
     : insert_cast_transformer_("CastFloat16Transformer") {
   google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
   model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
@@ -244,20 +260,20 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
 
   // Finalize session options and initialize assets of this session instance
-  ConstructorCommon(session_options, logging_manager);
+  ConstructorCommon(session_options, session_env);
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    const void* model_data,
                                    int model_data_len,
-                                   logging::LoggingManager* logging_manager)
+                                   const Environment& session_env)
     : insert_cast_transformer_("CastFloat16Transformer") {
   model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
   const bool result = model_proto_->ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
 
   // Finalize session options and initialize assets of this session instance
-  ConstructorCommon(session_options, logging_manager);
+  ConstructorCommon(session_options, session_env);
 }
 
 InferenceSession::~InferenceSession() {

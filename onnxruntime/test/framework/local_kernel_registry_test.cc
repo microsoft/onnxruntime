@@ -229,7 +229,7 @@ TEST(CustomKernelTests, CustomKernelWithBuildInSchema) {
   // Register a foo kernel which is doing Add, but bind to Mul.
   std::shared_ptr<CustomRegistry> registry = std::make_shared<CustomRegistry>();
 
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   EXPECT_TRUE(session_object.RegisterCustomRegistry(registry).IsOK());
   auto def = FooKernelDef("Mul");
 
@@ -261,7 +261,7 @@ TEST(CustomKernelTests, CustomKernelWithCustomSchema) {
 
   std::shared_ptr<CustomRegistry> registry = std::make_shared<CustomRegistry>();
 
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   EXPECT_TRUE(session_object.RegisterCustomRegistry(registry).IsOK());
 
   //register foo schema
@@ -307,7 +307,7 @@ TEST(CustomKernelTests, CustomKernelWithOptionalOutput) {
   //Register a foo kernel which is doing Add, but bind to Mul.
   EXPECT_TRUE(registry->RegisterCustomKernel(def, CreateOptionalOpKernel).IsOK());
 
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   EXPECT_TRUE(session_object.RegisterCustomRegistry(registry).IsOK());
   EXPECT_TRUE(session_object.Load(OPTIONAL_MODEL1_URI).IsOK());
   EXPECT_TRUE(session_object.Initialize().IsOK());

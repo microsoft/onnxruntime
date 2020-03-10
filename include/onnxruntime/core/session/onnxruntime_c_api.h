@@ -212,6 +212,14 @@ typedef enum OrtMemType {
   OrtMemTypeDefault = 0,                // the default allocator for execution provider
 } OrtMemType;
 
+typedef struct ThreadingOptions {
+  // number of threads used to parallelize execution of an op
+  int intra_op_num_threads = 0;  // default value
+
+  // number of threads used to parallelize execution across ops
+  int inter_op_num_threads = 0;  // default value
+} ThreadingOptions;
+
 struct OrtApi;
 typedef struct OrtApi OrtApi;
 
@@ -747,6 +755,22 @@ struct OrtApi {
   OrtStatus*(ORT_API_CALL* ModelMetadataGetVersion)(_In_ const OrtModelMetadata* model_metadata, _Out_ int64_t* value)NO_EXCEPTION;
 
   ORT_CLASS_RELEASE(ModelMetadata);
+
+  /*
+  * Creates an environment with global threadpools that will be shared across sessions.
+  * Use this in conjunction with DisablePerSessionThreads API or else by default the session will use
+  * its own thread pools.
+  */
+  OrtStatus*(ORT_API_CALL* CreateEnvWithGlobalThreadPools)(OrtLoggingLevel default_logging_level, _In_ const char* logid,
+                                                           _In_ ThreadingOptions t_options, _Outptr_ OrtEnv** out)
+      NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+
+  // TODO: Should there be a version of CreateEnvWithGlobalThreadPools with custom logging function?
+
+  /*
+* Calling this API will make the session use the global threadpools shared across sessions.
+*/
+  OrtStatus*(ORT_API_CALL* DisablePerSessionThreads)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
 };
 
 /*

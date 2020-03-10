@@ -64,5 +64,9 @@ struct SessionOptions {
   // For models with free input dimensions (most commonly batch size), specifies a set of values to override those
   // free dimensions with, keyed by dimension denotation.
   std::vector<FreeDimensionOverride> free_dimension_overrides;
+
+  // By default the session uses it's own set of threadpools, unless this is set to false.
+  // Use this in conjunction with the CreateEnvWithGlobalThreadPools API.
+  bool use_per_session_threads = true;
 };
 }  // namespace onnxruntime

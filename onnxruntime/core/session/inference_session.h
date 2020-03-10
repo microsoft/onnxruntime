@@ -31,6 +31,7 @@
 
 namespace onnxruntime {  // forward declarations
 class GraphTransformer;
+class Environment;
 }  // namespace onnxruntime
 
 namespace ONNX_NAMESPACE {
@@ -104,8 +105,8 @@ class InferenceSession {
     for logging. This will use the default logger id in messages.
     See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
     */
-  explicit InferenceSession(const SessionOptions& session_options,
-                            logging::LoggingManager* logging_manager = nullptr);
+  InferenceSession(const SessionOptions& session_options,
+                   const Environment& session_env);
 
   /**
     Create a new InferenceSession
@@ -121,11 +122,11 @@ class InferenceSession {
     */
   InferenceSession(const SessionOptions& session_options,
                    const std::string& model_uri,
-                   logging::LoggingManager* logging_manager = nullptr);
+                   const Environment& session_env);
 #ifdef _WIN32
   InferenceSession(const SessionOptions& session_options,
                    const std::wstring& model_uri,
-                   logging::LoggingManager* logging_manager = nullptr);
+                   const Environment& session_env);
 #endif
 
   /**
@@ -142,7 +143,7 @@ class InferenceSession {
     */
   InferenceSession(const SessionOptions& session_options,
                    std::istream& model_istream,
-                   logging::LoggingManager* logging_manager = nullptr);
+                   const Environment& session_env);
 
   /**
     Create a new InferenceSession
@@ -160,7 +161,7 @@ class InferenceSession {
   InferenceSession(const SessionOptions& session_options,
                    const void* model_data,
                    int model_data_len,
-                   logging::LoggingManager* logging_manager = nullptr);
+                   const Environment& session_env);
 
   virtual ~InferenceSession();
 
@@ -388,7 +389,7 @@ class InferenceSession {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
 
   void ConstructorCommon(const SessionOptions& session_options,
-                         logging::LoggingManager* logging_manager);
+                         const Environment& session_env);
 
   bool HasLocalSchema() const {
     return !custom_schema_registries_.empty();
@@ -469,6 +470,9 @@ class InferenceSession {
   // Threadpool for this session
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
+  onnxruntime::concurrency::ThreadPool* intra_op_thread_pool_from_env_{};
+  onnxruntime::concurrency::ThreadPool* inter_op_thread_pool_from_env_{};
+  bool use_per_session_threads_;  // initialized from session options
 
   KernelRegistryManager kernel_registry_manager_;
   std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;
@@ -510,20 +514,20 @@ class InferenceSession {
   InterOpDomains interop_domains_;
 #endif
   // used to support platform telemetry
-  static std::atomic<uint32_t> global_session_id_;                  // a monotonically increasing session id
-  uint32_t session_id_;                                             // the current session's id
+  static std::atomic<uint32_t> global_session_id_;  // a monotonically increasing session id
+  uint32_t session_id_;                             // the current session's id
 
   struct Telemetry {
     Telemetry() : time_sent_last_(), time_sent_last_evalutation_start_() {}
-    uint32_t total_runs_since_last_ = 0;                                           // the total number of Run() calls since the last report
-    long long total_run_duration_since_last_ = 0;                                  // the total duration (us) of Run() calls since the last report
-    std::string event_name_;                                                       // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
+    uint32_t total_runs_since_last_ = 0;           // the total number of Run() calls since the last report
+    long long total_run_duration_since_last_ = 0;  // the total duration (us) of Run() calls since the last report
+    std::string event_name_;                       // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
 
-    TimePoint time_sent_last_;                                                     // the TimePoint of the last report
+    TimePoint time_sent_last_;  // the TimePoint of the last report
     TimePoint time_sent_last_evalutation_start_;
-                                                                                   // Event Rate per provider < 20 peak events per second
-    constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;    // duration in (us).  send a report every 10 mins
-    constexpr static long long kDurationBetweenSendingEvaluationStart = 1000 * 50; // duration in (us). send a EvaluationStop Event every 50 ms;
+    // Event Rate per provider < 20 peak events per second
+    constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;     // duration in (us).  send a report every 10 mins
+    constexpr static long long kDurationBetweenSendingEvaluationStart = 1000 * 50;  // duration in (us). send a EvaluationStop Event every 50 ms;
 
     bool isEvaluationStart = false;
   } telemetry_;
