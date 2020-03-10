@@ -49,12 +49,13 @@ Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
 
 namespace onnxruntime {
 void DmlConfigureProviderFactoryDefaultRoundingMode(onnxruntime::IExecutionProviderFactory* factory, AllocatorRoundingMode rounding_mode);
+void DmlConfigureProviderFactoryMetacommandsEnabled(IExecutionProviderFactory* factory, bool metacommandsEnabled);
 }
 
 #endif  // USE_DML
 
 ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
-                    ID3D12Device* d3d_device, ID3D12CommandQueue* queue) {
+                    ID3D12Device* d3d_device, ID3D12CommandQueue* queue, bool metacommands_enabled) {
   API_IMPL_BEGIN
 #ifdef USE_DML
   auto dml_device = CreateDmlDevice(d3d_device);
@@ -68,6 +69,8 @@ ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_
   // lifetime and can be large, so shouldn't be rounded.
   // So we create the provider with rounding disabled, and expect the caller to enable it after.
   onnxruntime::DmlConfigureProviderFactoryDefaultRoundingMode(factory, AllocatorRoundingMode::Disabled);
+  
+  onnxruntime::DmlConfigureProviderFactoryMetacommandsEnabled(factory, metacommands_enabled);
 #endif  // USE_DML
   return nullptr;
   API_IMPL_END
