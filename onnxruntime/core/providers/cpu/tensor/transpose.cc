@@ -269,18 +269,20 @@ template <typename T>
 static void SimpleTransposeSingleAxisOutwards(const T* input_data, T* output_data,
                                               int64_t num_loops, int64_t num_writers,
                                               int64_t writes_per_loop, int64_t writes_per_writer_per_loop) {
-  std::vector<T*> writers;
-  writers.resize(num_writers);
-
   for (int64_t l = 0; l < num_loops; ++l) {
-    for (auto w = 0; w < num_writers; ++w) {
-      writers[w] = (output_data + (w * writes_per_writer_per_loop));
-    }
+    T* output_for_first_writer = output_data;
 
     for (auto wwpl = 0; wwpl < writes_per_writer_per_loop; ++wwpl) {
+      T* output_for_current_writer = output_for_first_writer;
+
       for (int64_t w = 0; w < num_writers; ++w) {
-        *(writers[w]++) = *input_data++;
+        *output_for_current_writer = *input_data++;
+
+        // skip to output position for next writer
+        output_for_current_writer += writes_per_writer_per_loop;
       }
+
+      ++output_for_first_writer;
     }
 
     output_data += writes_per_loop;
@@ -332,20 +334,20 @@ static void TranposeSingleAxisOutwards(const std::vector<size_t>& permutations, 
     }
     default: {
       // we need to use memcpy for each block
-      std::vector<uint8_t*> writers;
-      writers.resize(num_writers);
-
       for (int64_t l = 0; l < num_loops; ++l) {
-        for (auto w = 0; w < num_writers; ++w) {
-          writers[w] = (output_data + (w * writes_per_writer_per_loop * bytes_per_write));
-        }
+        uint8_t* output_for_first_writer = output_data;
 
         for (auto wwpl = 0; wwpl < writes_per_writer_per_loop; ++wwpl) {
+          uint8_t* output_for_current_writer = output_for_first_writer;
+
           for (int64_t w = 0; w < num_writers; ++w) {
-            memcpy(writers[w], input_data, bytes_per_write);
-            writers[w] += bytes_per_write;
+            memcpy(output_for_current_writer, input_data, bytes_per_write);
+            // skip to output position for next writer
+            output_for_current_writer += (writes_per_writer_per_loop * bytes_per_write);
             input_data += bytes_per_write;
           }
+
+          output_for_first_writer += bytes_per_write;
         }
 
         output_data += writes_per_loop * bytes_per_write;
@@ -358,18 +360,19 @@ template <typename T>
 static void SimpleTransposeSingleAxisInwards(const T* input_data, T* output_data,
                                              int64_t num_loops, int64_t num_readers,
                                              int64_t reads_per_loop, int64_t reads_per_reader_per_loop) {
-  std::vector<const T*> readers;
-  readers.resize(num_readers);
-
   for (int64_t l = 0; l < num_loops; ++l) {
-    for (auto r = 0; r < num_readers; ++r) {
-      readers[r] = (input_data + (r * reads_per_reader_per_loop));
-    }
+    const T* input_for_first_reader = input_data;
 
     for (auto rrpl = 0; rrpl < reads_per_reader_per_loop; ++rrpl) {
+      const T* input_for_current_reader = input_for_first_reader;
+
       for (int64_t r = 0; r < num_readers; ++r) {
-        *output_data++ = *(readers[r]++);
+        *output_data++ = *input_for_current_reader;
+        // skip to input position for next reader
+        input_for_current_reader += reads_per_reader_per_loop;
       }
+
+      ++input_for_first_reader;
     }
 
     input_data += reads_per_loop;
@@ -422,20 +425,21 @@ static void TranposeSingleAxisInwards(const std::vector<size_t>& permutations, c
     }
     default: {
       // we need to use memcpy for each block
-      std::vector<const uint8_t*> readers;
-      readers.resize(num_readers);
-
       for (int64_t l = 0; l < num_loops; ++l) {
-        for (auto r = 0; r < num_readers; ++r) {
-          readers[r] = (input_data + (r * reads_per_reader_per_loop * bytes_per_read));
-        }
+        const uint8_t* input_for_first_reader = input_data;
 
         for (auto rrpl = 0; rrpl < reads_per_reader_per_loop; ++rrpl) {
+          const uint8_t* input_for_current_reader = input_for_first_reader;
+
           for (int64_t r = 0; r < num_readers; ++r) {
-            memcpy(output_data, readers[r], bytes_per_read);
-            readers[r] += bytes_per_read;
+            memcpy(output_data, input_for_current_reader, bytes_per_read);
             output_data += bytes_per_read;
+
+            // skip to input position for next reader
+            input_for_current_reader += (reads_per_reader_per_loop * bytes_per_read);
           }
+
+          input_for_first_reader += bytes_per_read;
         }
 
         input_data += reads_per_loop * bytes_per_read;
