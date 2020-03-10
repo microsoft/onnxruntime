@@ -90,7 +90,7 @@ The list of currently supported accelerators (termed [Execution Providers](./doc
 |[C](docs/C_API.md)| | [Samples](./samples#CC)|
 |[WinRT](docs/WinRT_API.md) | [Windows.AI.MachineLearning](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference)| [Samples](https://github.com/microsoft/windows-Machine-Learning)|
 |[Java](docs/Java_API.md)|8-13|[Samples](./samples#Java)| 
-[Ruby](https://github.com/ankane/onnxruntime) (external project)| 2.5| [Samples](https://ankane.org/tensorflow-ruby)|
+[Ruby](https://github.com/ankane/onnxruntime) (external project)| 2.4-2.7| [Samples](https://ankane.org/tensorflow-ruby)|
 
 ## Builds and Packages
 
