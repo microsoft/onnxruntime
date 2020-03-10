@@ -107,6 +107,7 @@ void LearningModelSession::Initialize() {
 
   if (device_impl->IsCpuDevice() == false) {
     engine_builder->SetD3D12Resources(device_impl->GetD3DDevice(), device_impl->GetDeviceQueue());
+    engine_builder->SetMetacommandsEnabled(device_impl->MetacommandsEnabled());
   }
 
   // Make onnxruntime apply the batch size override, if any

@@ -14,6 +14,9 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(SetD3D12Resources)
   (ID3D12Device* device, ID3D12CommandQueue* queue);
 
+  STDMETHOD(SetMetacommandsEnabled)
+  (int enabled);
+
   STDMETHOD(GetD3D12Device)
   (_Outptr_ ID3D12Device** device);
 
@@ -30,6 +33,7 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
   Microsoft::WRL::ComPtr<ID3D12Device> device_ = nullptr;
   Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue_ = nullptr;
+  bool metacommands_enabled_ = true;
   std::optional<uint32_t> batch_size_override_;
 };
 
