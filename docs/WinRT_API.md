@@ -8,7 +8,7 @@ The Windows.AI.MachineLearning API is a WinRT API that shipped inside the Window
 
 Many customers have asked for a way to use this offering as an application redistributable package.
 
-With our new [layered architecture](docs/HighLevelDesign.md#the-onnx-runtime-and-windows-os-integration) you can now do this, with some limitations.
+With our new [layered architecture](HighLevelDesign.md#the-onnx-runtime-and-windows-os-integration) you can now do this, with some limitations.
 
 ## NuGet Package
 
@@ -24,9 +24,9 @@ Any code already written for the Windows.AI.MachineLearning API can be easily mo
 
 Since the Windows.AI.MachineLearning ships inside the Windows OS as **system32\Windows.AI.MachineLearning.dll** , your application needs to take care in selecting which binary it wants to load and use.
 
-Normal WinRT activation would use [RoActivateInstance](https://docs.microsoft.com/en-us/windows/win32/api/roapi/nf-roapi-roactivateinstance).  Applications must explicityly choose which binary they want to use when including a redist version.
+Normal WinRT activation would use [RoActivateInstance](https://docs.microsoft.com/en-us/windows/win32/api/roapi/nf-roapi-roactivateinstance).  Applications must explicitly choose which binary they want to use when including a redist version.
 
-Read up [here](docs/HighLevelDesign.md#the-onnx-runtime-and-windows-os-integration) in how to decide which binary to us.
+Read up [here](HighLevelDesign.md#the-onnx-runtime-and-windows-os-integration) in how to decide which binary to us.
 
 Once you have chosen redist versus system32, you must always use that binary.   Mix and match of system32 and redist binaries are not supported.
 
@@ -47,7 +47,7 @@ You need to take care to make sure you contract targets work with the OS or redi
 Note:  new contracts versions are always backward compatibile.
 
 |Release|API contract version|
-|--|--|--|
+|--|--|
 |Windows OS 1809| 1|
 |Windows OS 1903| 2|
 |Windows OS 1909| 2|
