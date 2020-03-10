@@ -124,6 +124,7 @@ else()
   endif()
   if(WINDOWS_STORE)
     # https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=120569&view=logs&j=5b022bb4-70a7-5401-8766-a8a7802c7150&t=6438fe7e-45d9-513a-6e28-04f80e2e9baa&l=3065
+    # onnxruntime/core/platform/windows/env.cc
     add_compile_options("/FI ${CMAKE_CURRENT_SOURCE_DIR}\\set_winapi_family.h")
     # add_compile_definitions(WINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP)
     # add_compile_options("-DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP")
