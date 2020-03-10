@@ -15,15 +15,15 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     EnvSetupScript: setup_env.bat
     buildArch: x64
-    setVcvars: true    
+    setVcvars: true
   timeoutInMinutes: 90
   workspace:
     clean: all
-  steps:    
+  steps:
   - task: UsePythonVersion@0
-    inputs: 
-      versionSpec: '3.7' 
-      addToPath: true 
+    inputs:
+      versionSpec: '3.7'
+      addToPath: true
       architecture: $(buildArch)
 
   - task: BatchScript@1

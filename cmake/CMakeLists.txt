@@ -350,7 +350,7 @@ else()
       # See https://dev.azure.com/onnxruntime/2a773b67-e88b-4c7f-9fc0-87d31fea8ef2/_apis/build/builds/119296/logs/25
       # target_compile_options(libprotoc PRIVATE "-DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP")
       target_compile_options(libprotoc PRIVATE "/FI ${CMAKE_CURRENT_SOURCE_DIR}\\set_winapi_family.h")
-      target_link_libraries(libprotoc PRIVATE kernel32.lib)
+      target_link_libraries(libprotoc kernel32.lib)
     endif()
     add_executable(protobuf::protoc ALIAS protoc)
   endif()
