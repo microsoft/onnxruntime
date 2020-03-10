@@ -88,5 +88,6 @@ One of the first versions of the ONNX runtime actually shipped embedded into the
 
 The runtime was included inside the Windows.AI.MachinneLearning.dll and was introduced to the world as Windows ML (WinML for short).  It had full CPU support and included the DirectML execution provider for full GPU support.
 
-Starting with the 1.2 release, we are bringing a new layered architecture to the ONNX Runtime and Windows.   The design looks like this:
+Starting with the 1.2 release, we are bringing a new layered architecture to the ONNX Runtime and Windows.   The design looks like this
 
+![ONNX + WinML layered architecture](images/layered-architecture.png)
