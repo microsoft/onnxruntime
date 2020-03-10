@@ -7,9 +7,13 @@ cmake_minimum_required(VERSION 3.13)
 cmake_policy(SET CMP0069 NEW)
 message(STATUS "CMAKE_VERSION=${CMAKE_VERSION}")
 if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.15")
-  cmake_policy(SET CMP0091 NEW)
+  message(STATUS "onnxruntime_USE_CUDA=${onnxruntime_USE_CUDA}")
+  if (NOT onnxruntime_USE_CUDA)
+    # https://gitlab.kitware.com/cmake/cmake/issues/19428
+    cmake_policy(SET CMP0091 NEW)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+  endif()
   cmake_policy(SET CMP0092 NEW)
-  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 endif()
 
 # Project

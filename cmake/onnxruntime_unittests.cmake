@@ -243,7 +243,7 @@ endif()
 if(onnxruntime_USE_FEATURIZERS)
    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers)
    list(APPEND onnxruntime_test_providers_libs onnxruntime_featurizers re2)
-   list(APPEND TEST_INC_DIR ${RE2_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/external/FeaturizersLibrary/src/Featurizers)
+   list(APPEND TEST_INC_DIR ${RE2_INCLUDE_DIR})
 endif()
 
 if(onnxruntime_USE_DML)
@@ -389,6 +389,9 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
   # the default logger tests conflict with the need to have an overall default logger
   # so skip in this type of
   target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
+  if (onnxruntime_USE_FEATURIZERS)
+    target_include_directories(onnxruntime_test_all PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/external/FeaturizersLibrary/src)
+  endif()
 
   if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
     target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)

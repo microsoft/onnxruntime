@@ -65,7 +65,7 @@ jobs:
       solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
       platform: 'x64'
       configuration: $(BuildConfig)
-      msbuildArgs: $(MsbuildArguments) -v:d
+      msbuildArgs: $(MsbuildArguments)
       msbuildArchitecture: $(buildArch)
       maximumCpuCount: true
       logProjectEvents: false
