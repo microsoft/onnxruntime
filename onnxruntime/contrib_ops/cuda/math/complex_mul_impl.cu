@@ -35,6 +35,8 @@ __global__ void _ElementWiseWithStrideTwo(
     const TArray<fast_divmod> fdm_output_strides,
     T* output_data,
     CUDA_LONG N,
+    int64_t lhs_size,
+    int64_t rhs_size,
     bool is_conj) {
   CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   T a[NumElementsPerThread];
@@ -66,10 +68,11 @@ __global__ void _ElementWiseWithStrideTwo(
         }
         offset = r;
       }
-      a[i] = lhs_data[2 * lhs_index];
-      b[i] = lhs_data[2 * lhs_index + 1];
-      c[i] = rhs_data[2 * rhs_index];
-      d[i] = rhs_data[2 * rhs_index + 1];
+
+      a[i] = lhs_data[(2 * lhs_index) % lhs_size];
+      b[i] = lhs_data[(2 * lhs_index + 1) % lhs_size];
+      c[i] = rhs_data[(2 * rhs_index) % rhs_size];
+      d[i] = rhs_data[(2 * rhs_index + 1) % rhs_size];
 
       id += NumThreadsPerBlock;
     }
@@ -97,6 +100,8 @@ void ComplexMul_Impl(
     const onnxruntime::cuda::fast_divmod& fdm_C,
     T* output_data,
     int64_t count,
+    int64_t lhs_size,
+    int64_t rhs_size,
     bool is_conj) {
   if (count == 0)  // special case where there's a dim value of 0 in the output shape
     return;
@@ -114,6 +119,8 @@ void ComplexMul_Impl(
         *fdm_output_strides,
         output_data,
         N,
+        lhs_size,
+        rhs_size,
         is_conj);
   else if (lhs_padded_strides && lhs_padded_strides->size_)
     _ElementWiseWithStrideTwo<T, true, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
@@ -125,6 +132,8 @@ void ComplexMul_Impl(
         *fdm_output_strides,
         output_data,
         N,
+        lhs_size,
+        rhs_size,
         is_conj);
   else
     _ElementWiseWithStrideTwo<T, false, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
@@ -136,6 +145,8 @@ void ComplexMul_Impl(
         *fdm_output_strides,
         output_data,
         N,
+        lhs_size,
+        rhs_size,
         is_conj);
 };
 
@@ -151,6 +162,8 @@ void ComplexMul_Impl(
       const onnxruntime::cuda::fast_divmod& fdm_C,                      \
       T* output_data,                                                   \
       int64_t count,                                                    \
+      int64_t lhs_size,                                                 \
+      int64_t rhs_size,                                                 \
       bool is_conj);
 
 SPECIALIZE_STACKEDCOMPLEXMUL_IMPL(float)

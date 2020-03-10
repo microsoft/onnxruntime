@@ -23,6 +23,8 @@ void ComplexMul_Impl(
     const onnxruntime::cuda::fast_divmod& fdm_C,
     T* output_data,
     int64_t count,
+    int64_t lhs_size,
+    int64_t rhs_size,
     bool is_conj);
 
 }  // namespace cuda

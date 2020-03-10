@@ -117,11 +117,11 @@ TEST(BiasGeluTest, Two_One_Dim) {
 TEST(MathOpTest, ComplexMul) {
   if (HasCudaEnvironment(0)) {
     std::vector<float> input_a_data = {
-        0.8f, -0.5f, 0.0f, 1.f,
-        0.5f, 0.2f, 0.3f, -0.6f};
+        -0.5f, 0.6f};
 
     std::vector<float> input_b_data = {
-        -0.5f, 0.6f};
+        0.8f, -0.5f, 0.0f, 1.f,
+        0.5f, 0.2f, 0.3f, -0.6f};
 
     std::vector<float> output_data = {
         -0.10f, 0.73f,
@@ -130,8 +130,8 @@ TEST(MathOpTest, ComplexMul) {
         0.21f, 0.48f};
 
     OpTester tester("ComplexMul", 1, onnxruntime::kMSDomain);
-    tester.AddInput<float>("A", {4, 2}, input_a_data);
-    tester.AddInput<float>("B", {1, 2}, input_b_data);
+    tester.AddInput<float>("A", {1, 2}, input_a_data);
+    tester.AddInput<float>("B", {4, 2}, input_b_data);
     tester.AddOutput<float>("C", {4, 2}, output_data);
 
     tester.Run();
@@ -141,21 +141,21 @@ TEST(MathOpTest, ComplexMul) {
 TEST(MathOpTest, ComplexMulConj) {
   if (HasCudaEnvironment(0)) {
     std::vector<float> input_a_data = {
+        -0.5f, 0.6f};
+
+    std::vector<float> input_b_data = {
         0.8f, -0.5f, 0.0f, 1.f,
         0.5f, 0.2f, 0.3f, -0.6f};
 
-    std::vector<float> input_b_data = {
-        -0.5f, 0.6f};
-
     std::vector<float> output_data = {
-        -0.70f, -0.23f,
-        0.60f, -0.50f,
-        -0.13f, -0.40f,
-        -0.51f, 0.12f};
+        -0.70f, 0.23f,
+        0.60f, 0.50f,
+        -0.13f, 0.40f,
+        -0.51f, -0.12f};
 
     OpTester tester("ComplexMulConj", 1, onnxruntime::kMSDomain);
-    tester.AddInput<float>("A", {4, 2}, input_a_data);
-    tester.AddInput<float>("B", {1, 2}, input_b_data);
+    tester.AddInput<float>("A", {1, 2}, input_a_data);
+    tester.AddInput<float>("B", {4, 2}, input_b_data);
     tester.AddOutput<float>("C", {4, 2}, output_data);
 
     tester.Run();
