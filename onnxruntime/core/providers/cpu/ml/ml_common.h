@@ -3,8 +3,10 @@
 
 #pragma once
 #include "core/common/common.h"
+#include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 namespace ml {  // name space for onnx.ml operators
@@ -250,7 +252,9 @@ static inline float sigmoid_probability(float score, float proba, float probb) {
   return 1 - ComputeLogistic(val);  // ref: https://github.com/arnaudsj/libsvm/blob/eaaefac5ebd32d0e07902e1ae740e038eaaf0826/svm.cpp#L1818
 }
 
-static inline void ComputeSoftmax(std::vector<float>& values) {
+static inline void ComputeSoftmax(const gsl::span<float>& values) {
+  // TODO: Replace this with usage of code in Softmax operator
+
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
   for (float value : values) {
@@ -266,8 +270,13 @@ static inline void ComputeSoftmax(std::vector<float>& values) {
     value /= this_sum;
 }
 
+static inline void ComputeSoftmax(std::vector<float>& values) {
+  auto span = gsl::make_span(values);
+  ComputeSoftmax(span);
+}
+
 //this function skips zero values (since exp(0) is non zero)
-static inline void ComputeSoftmaxZero(std::vector<float>& values) {
+static inline void ComputeSoftmaxZero(const gsl::span<float>& values) {
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
   for (float value : values) {
@@ -286,6 +295,11 @@ static inline void ComputeSoftmaxZero(std::vector<float>& values) {
   }
   for (float& value : values)
     value /= this_sum;
+}
+
+static inline void ComputeSoftmaxZero(std::vector<float>& values) {
+  auto span = gsl::make_span(values);
+  ComputeSoftmaxZero(span);
 }
 
 template <typename T>
@@ -342,5 +356,115 @@ void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, in
   memcpy(out_p, scores.data(), len);
 }
 
+// TODO: Starting with just the pieces needed for LinearRegressor from write_scores (see above).
+//       Will see what can be sensibly added to a batched in-place update of the scores for LinearClassifier, the SVM*
+//       and TreeEnsemble* ops when updating those.
+//       Attempted to parallelize the calculations if the number of scores to process was large, but no clear benefit
+//       was seen from testing with the arbitrary values of 1000 scores per threads.
+template <typename T>
+void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, int64_t batch_size,
+                                   POST_EVAL_TRANSFORM post_transform, int add_second_class,
+                                   concurrency::ThreadPool* threadpool) {
+  if (batch_size < 1)
+    return;
+
+  SafeInt<int32_t> num_batches(num_batches_in);
+  SafeInt<int32_t> num_scores = num_batches * batch_size;
+  SafeInt<int32_t> expected_num_scores = num_scores * (batch_size == 1 && add_second_class >= 0 ? 2 : 1);
+  ORT_ENFORCE(scores.size() == static_cast<size_t>(expected_num_scores));
+
+  ORT_UNUSED_PARAMETER(threadpool);  // TBD whether we need to parallelize code here
+
+  // convert from span to pointer for efficiency. we've checked scores.size() matches num_scores so don't need the
+  // extra checking/overhead from using operator[] for each access
+  T* s = scores.data();
+  const T* s_end = s + static_cast<int32_t>(num_scores);
+
+  if (batch_size > 1) {
+    switch (post_transform) {
+      case POST_EVAL_TRANSFORM::PROBIT: {
+        while (s < s_end) {
+          *s = ComputeProbit(*s);
+          ++s;
+        }
+        break;
+      }
+      case POST_EVAL_TRANSFORM::LOGISTIC: {
+        while (s < s_end) {
+          *s = ComputeLogistic(*s);
+          ++s;
+        }
+        break;
+      }
+      case POST_EVAL_TRANSFORM::SOFTMAX: {
+        while (s < s_end) {
+          gsl::span<float> scores_for_batch(s, s + batch_size);
+          ComputeSoftmax(scores_for_batch);
+          s += batch_size;
+        }
+        break;
+      }
+      case POST_EVAL_TRANSFORM::SOFTMAX_ZERO: {
+        while (s < s_end) {
+          gsl::span<float> scores_for_batch(s, s + batch_size);
+          ComputeSoftmaxZero(scores_for_batch);
+          s += batch_size;
+        }
+        break;
+      }
+      case POST_EVAL_TRANSFORM::NONE:
+      default:
+        break;
+    }
+  } else {  // binary case
+    if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
+      while (s < s_end) {
+        *s = ComputeProbit(*s);
+        ++s;
+      }
+    } else if (add_second_class >= 0) {
+      // in this case we have a buffer that holds 2x scores. the actual scores are at the start of the buffer,
+      // and for each score we need 2 entries.
+      // process the scores from the back to the front so we don't need a separate buffer.
+      std::function<void(const float score, float* output)> update_scores;
+
+      switch (add_second_class) {
+        case 0:
+        case 1:
+          update_scores = [](const float score, float* output) {
+            *output++ = 1.f - score;
+            *output = score;
+          };
+          break;
+
+        case 2:  //2 = mixed weights, winning class is positive
+        case 3:  //3 = mixed weights, winning class is negative
+          if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
+            update_scores = [](const float score, float* output) {
+              *output++ = ComputeLogistic(-score);
+              *output = ComputeLogistic(score);
+            };
+          } else {
+            update_scores = [](const float score, float* output) {
+              *output++ = -score;
+              *output = score;
+            };
+          }
+          break;
+
+        default:
+          ORT_THROW("Unexpected value for 'add_second_class' of ", add_second_class);
+      }
+
+      const float* cur_in = s_end;
+      float* cur_out = &*scores.end();
+      while (cur_in > s) {
+        --cur_in;
+        cur_out -= 2;
+        update_scores(*cur_in, cur_out);
+      }
+    }
+  }
+}
 }  // namespace ml
 }  // namespace onnxruntime
