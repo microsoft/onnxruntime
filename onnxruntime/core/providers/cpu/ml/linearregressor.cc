@@ -36,7 +36,7 @@ LinearRegressor::LinearRegressor(const OpKernelInfo& info)
 // Output: X * coefficients_^T + intercepts_: [num_batches, num_targets]
 template <typename T>
 static Status ComputeImpl(const Tensor& input, int64_t num_batches, int64_t num_features, int64_t num_targets,
-                          const std::vector<float> coefficients,
+                          const std::vector<float>& coefficients,
                           const std::vector<float>* intercepts, Tensor& output,
                           POST_EVAL_TRANSFORM post_transform,
                           concurrency::ThreadPool* threadpool) {
@@ -97,6 +97,7 @@ Status LinearRegressor::Compute(OpKernelContext* ctx) const {
     case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
       // TODO: Add support for 'double' to the scoring functions in ml_common.h
       // once that is done we can just call ComputeImpl<double>...
+      // Alternatively we could cast the input to float.
     }
     default:
       status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported data type of ", element_type);
