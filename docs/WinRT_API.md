@@ -26,7 +26,7 @@ Because Windows.AI.MachineLearning ships inside the OS, default object activatio
 
 Read up [here](HighLevelDesign.md#the-onnx-runtime-and-windows-os-integration) in how to decide when to use the OS binaries and when to use redist binaries.
 
-To create objects using the redist binaries, you have several choices depending on how you are consuming the WinRT:
+To create objects using the redist binaries you have several choices depending on how you are consuming the WinRT:
 
 * cpp/winrt:  You can use WINRT_RoGetActivationFactory hooking as shown [here](https://github.com/microsoft/Windows-Machine-Learning/blob/master/Samples/SqueezeNetObjectDetection/Desktop/cpp/dllload.cpp) in our sample projects.
 * WRL: (coming soon)
@@ -36,14 +36,14 @@ To create objects using the redist binaries, you have several choices depending 
 
 The best way to use the API is to use the header files that come with the Windows SDK.  
 
-* For Visual Studio they are included in as an optional feature.
-* For Visual Studio Code you can download them  going [here](https://developer.microsoft.com/en-US/windows/downloads/windows-10-sdk/).
+* For Visual Studio they are included as an optional feature.
+* For Visual Studio Code you can download them [here](https://developer.microsoft.com/en-US/windows/downloads/windows-10-sdk/).
 
 This [tutorial](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-desktop) is a great place to get started.
 
-To detect if an OS already has Windows.AI.MachineLearning, you can use the [IsApiContractPresent](https://docs.microsoft.com/en-us/uwp/api/windows.foundation.metadata.apiinformation.isapicontractpresent) method.  This can be called from both UWP and native apps easily.
+To detect if an OS already has Windows.AI.MachineLearning you can use the [IsApiContractPresent](https://docs.microsoft.com/en-us/uwp/api/windows.foundation.metadata.apiinformation.isapicontractpresent) method.  This can be called from either UWP or native apps.
 
-If the OS does not have the runtime you need, you can then switch to use the redist binaries instead.
+If the OS does not have the runtime you need you can switch to use the redist binaries instead.
 
 |Release|API contract version|
 |--|--|
