@@ -81,3 +81,12 @@ their subgraph.
 * [Add a new graph
 transform](../include/onnxruntime/core/optimizer/graph_transformer.h)
 * [Add a new rewrite rule](../include/onnxruntime/core/optimizer/rewrite_rule.h)
+
+## The ONNX Runtime and Windows OS integration
+
+One of the first versions of the ONNX runtime actually shipped embedded into the windows operating system in build 1809 (RS5).
+
+The runtime was included inside the Windows.AI.MachinneLearning.dll and was introduced to the world as Windows ML (WinML for short).  It had full CPU support and included the DirectML execution provider for full GPU support.
+
+Starting with the 1.2 release, we are bringing a new layered architecture to the ONNX Runtime and Windows.   The design looks like this:
+

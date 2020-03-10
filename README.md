@@ -24,7 +24,7 @@ ONNX Runtime stays up to date with the ONNX standard and supports all operators 
     * [Performance Tuning](./docs/ONNX_Runtime_Perf_Tuning.md)
   * [Extensibility Options](#extensibility-options)
 * **[Installation](#installation)**
-  * [API Documentation](#apis-documentation)
+  * [API Documentation](#api-documentation)
   * [Builds and Packages](#Builds-and-Packages)
 * **[Usage](#usage)**
   * [Samples and Tutorials](./samples)
@@ -88,13 +88,9 @@ The list of currently supported accelerators (termed [Execution Providers](./doc
 |[C#](docs/CSharp_API.md)| | [Samples](./samples#C)|
 |[C++](./include/onnxruntime/core/session/onnxruntime_cxx_api.h)| |[Samples](./samples#CC)|
 |[C](docs/C_API.md)| | [Samples](./samples#CC)|
+|[WinRT](docs/WinRT_API.md) | [Windows.AI.MachineLearning](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference)| [Samples](https://github.com/microsoft/windows-Machine-Learning)|
 |[Java](docs/Java_API.md)|8-13|[Samples](./samples#Java)| 
 [Ruby](https://github.com/ankane/onnxruntime) (external project)| 2.5| [Samples](https://ankane.org/tensorflow-ruby)|
-
-The ORT package also includes the Windows Machine Learning APIs, which provide an thin layer on top of the ONNX Runtime API optimized for Windows development.
-* [API Reference](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference)
-* Compatibility: Windows 8.1 - CPU, RS3 (1709) - GPU
-* [Samples](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-desktop)
 
 ## Builds and Packages
 
