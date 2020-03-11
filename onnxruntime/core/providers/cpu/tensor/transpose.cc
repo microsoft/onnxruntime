@@ -289,8 +289,8 @@ static void SimpleTransposeSingleAxisOutwards(const T* input_data, T* output_dat
   }
 }
 
-static void TranposeSingleAxisOutwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
-                                       int64_t from, int64_t to) {
+static void TransposeSingleAxisOutwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                                        int64_t from, int64_t to) {
   ORT_UNUSED_PARAMETER(permutations);
 
   const auto& input_shape = input.Shape();
@@ -450,14 +450,8 @@ static void TranposeSingleAxisInwards(const std::vector<size_t>& permutations, c
 
 static void SingleAxisTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
                                 size_t from, size_t to) {
-  // TODO: We may want to fall back to the default implementation if the size of the axis being moved is large
-  // compared to the other axes.
-  // e.g. transpose {3, 2048} with permutation of {1, 0} would result in 2048 writers being created
-  //   (std::vector<uint8_t*> of size 2048) but only used in 3 loops. however that may still be cheaper than
-  //   calling ComputeOffset and IncrementIndex 6K times.
-
   if (from > to) {
-    TranposeSingleAxisOutwards(permutations, input, output, from, to);
+    TransposeSingleAxisOutwards(permutations, input, output, from, to);
   } else {
     TranposeSingleAxisInwards(permutations, input, output, from, to);
   }
