@@ -15,15 +15,15 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     EnvSetupScript: setup_env.bat
     buildArch: x64
-    setVcvars: true
+    setVcvars: true    
   timeoutInMinutes: 60
   workspace:
     clean: all
-  steps:
+  steps:    
   - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.7'
-      addToPath: true
+    inputs: 
+      versionSpec: '3.7' 
+      addToPath: true 
       architecture: $(buildArch)
 
   - task: BatchScript@1
@@ -34,10 +34,10 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy
+     python -m pip install -q pyopenssl setuptools wheel numpy     
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
-
+    
   - task: PythonScript@0
     displayName: 'Generate cmake config'
     inputs:
@@ -57,10 +57,6 @@ jobs:
       logProjectEvents: false
       workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
       createLogFile: true
-    continueOnError: true
-
-  - script: |
-      tree /f '$(Build.BinariesDirectory)\$(BuildConfig)'
 
   - task: PythonScript@0
     displayName: 'Build wheel'
@@ -74,9 +70,9 @@ jobs:
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 4.9
     inputs:
-      versionSpec: 4.9.4
+      versionSpec: 4.9.4  
 
-
+   
 
   - task: PythonScript@0
     displayName: 'Download test data'
@@ -92,32 +88,33 @@ jobs:
       projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
       configuration: '$(BuildConfig)'
       arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId)'
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'      
 
   - task: DotNetCoreCLI@2
-    displayName: 'Build C#'
+    displayName: 'Build C#'    
     inputs:
       command: build
       projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-      configuration: '$(BuildConfig)'
+      configuration: '$(BuildConfig)'          
       arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - script: |
-     mklink  /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models $(Build.BinariesDirectory)\models
+     mklink  /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models $(Build.BinariesDirectory)\models  
      DIR dist\ /S /B > wheel_filename_file
      set /p WHEEL_FILENAME=<wheel_filename_file
      del wheel_filename_file
      python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
      set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig);%PATH%
      python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_contrib_ops --enable_msvc_static_runtime --enable_onnx_tests
-
+   
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run tests'
-
+ 
 
   - template: templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
 
   - template: templates/clean-agent-build-directory-step.yml
+   

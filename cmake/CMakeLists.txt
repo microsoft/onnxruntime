@@ -5,11 +5,9 @@
 # Minimum CMake required
 cmake_minimum_required(VERSION 3.13)
 cmake_policy(SET CMP0069 NEW)
-message(STATUS "CMAKE_VERSION=${CMAKE_VERSION}")
 if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.15")
-  message(STATUS "onnxruntime_USE_CUDA=${onnxruntime_USE_CUDA}")
   if (NOT onnxruntime_USE_CUDA)
-    # https://gitlab.kitware.com/cmake/cmake/issues/19428
+    # Work around https://gitlab.kitware.com/cmake/cmake/issues/19428
     cmake_policy(SET CMP0091 NEW)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
   endif()
@@ -127,14 +125,9 @@ else()
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /d2FH4-")
   endif()
   if(WINDOWS_STORE)
-    # https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=120569&view=logs&j=5b022bb4-70a7-5401-8766-a8a7802c7150&t=6438fe7e-45d9-513a-6e28-04f80e2e9baa&l=3065
-    # onnxruntime/core/platform/windows/env.cc
-    add_compile_options("/FI ${CMAKE_CURRENT_SOURCE_DIR}\\set_winapi_family.h")
-    # add_compile_definitions(WINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP)
-    # add_compile_options("-DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP")
-    # add_definitions("-DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP")
-    # set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP")
-    # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP")
+    # cmake/external/protobuf/src/google/protobuf/compiler/subprocess.cc and onnxruntime/core/platform/windows/env.cc call a bunch of Win32 APIs.
+    # For now, we'll set the API family to desktop globally to expose Win32 symbols in headers; this must be fixed!
+    add_compile_options("/FI ${CMAKE_CURRENT_SOURCE_DIR}\\set_winapi_family_desktop.h")
   endif()
 endif()
 
@@ -354,26 +347,10 @@ else()
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
   if(TARGET libprotoc)
     set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
-    if(WINDOWS_STORE)
-      # protobuf and FeaturizersLibrary use Win32 desktop APIs; this must be fixed!
-      # See https://dev.azure.com/onnxruntime/2a773b67-e88b-4c7f-9fc0-87d31fea8ef2/_apis/build/builds/119296/logs/25
-      # target_compile_options(libprotoc PRIVATE "-DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP")
-      target_compile_options(libprotoc PRIVATE "/FI ${CMAKE_CURRENT_SOURCE_DIR}\\set_winapi_family.h")
-      target_link_libraries(libprotoc kernel32.lib)
-      set_target_properties(libprotoc PROPERTIES VS_GLOBAL_AppContainerApplication "false")
-    endif()
     add_executable(protobuf::protoc ALIAS protoc)
   endif()
   if(TARGET protoc)
     set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
-    if(WINDOWS_STORE)
-      # protobuf and FeaturizersLibrary use Win32 desktop APIs; this must be fixed!
-      # See https://dev.azure.com/onnxruntime/2a773b67-e88b-4c7f-9fc0-87d31fea8ef2/_apis/build/builds/119296/logs/25
-      # target_compile_options(protoc PRIVATE "-DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP")
-      target_compile_options(protoc PRIVATE "/FI ${CMAKE_CURRENT_SOURCE_DIR}\\set_winapi_family.h")
-      target_link_libraries(protoc kernel32.lib)
-      set_target_properties(protoc PROPERTIES VS_GLOBAL_AppContainerApplication "false")
-    endif()
   endif()
   if (onnxruntime_USE_FULL_PROTOBUF)
     add_library(protobuf::libprotobuf ALIAS libprotobuf)
@@ -905,9 +882,3 @@ if (onnxruntime_BUILD_CSHARP)
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
   include(onnxruntime_csharp.cmake)
 endif()
-
-get_cmake_property(_variableNames VARIABLES)
-list (SORT _variableNames)
-foreach (_variableName ${_variableNames})
-    message(STATUS "${_variableName}=${${_variableName}}")
-endforeach()

@@ -15,15 +15,15 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     EnvSetupScript: setup_env.bat
     buildArch: x64
-    setVcvars: true
+    setVcvars: true    
   timeoutInMinutes: 90
   workspace:
     clean: all
-  steps:
+  steps:    
   - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.7'
-      addToPath: true
+    inputs: 
+      versionSpec: '3.7' 
+      addToPath: true 
       architecture: $(buildArch)
 
   - task: BatchScript@1
@@ -34,7 +34,7 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy
+     python -m pip install -q pyopenssl setuptools wheel numpy     
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
@@ -71,10 +71,6 @@ jobs:
       logProjectEvents: false
       workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
       createLogFile: true
-    continueOnError: true
-
-  - script: |
-      tree /f '$(Build.BinariesDirectory)\$(BuildConfig)'
 
   - task: PythonScript@0
     displayName: 'Build wheel'
@@ -99,14 +95,14 @@ jobs:
       projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
       configuration: '$(BuildConfig)'
       arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId)'
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'      
 
   - task: DotNetCoreCLI@2
-    displayName: 'Build C#'
+    displayName: 'Build C#'    
     inputs:
       command: build
       projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-      configuration: '$(BuildConfig)'
+      configuration: '$(BuildConfig)'          
       arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
@@ -116,22 +112,22 @@ jobs:
     inputs:
       command: test
       projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj'
-      configuration: '$(BuildConfig)'
+      configuration: '$(BuildConfig)'          
       arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - script: |
-     mklink  /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models $(Build.BinariesDirectory)\models
+     mklink  /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models $(Build.BinariesDirectory)\models  
      DIR dist\ /S /B > wheel_filename_file
      set /p WHEEL_FILENAME=<wheel_filename_file
      del wheel_filename_file
      python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
      set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig);%PATH%
      python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019"  --use_dnnl --build_wheel --enable_onnx_tests
-
+   
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run tests'
-
+ 
 
   - template: templates/component-governance-component-detection-steps.yml
     parameters :
