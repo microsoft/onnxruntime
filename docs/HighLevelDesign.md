@@ -86,7 +86,7 @@ transform](../include/onnxruntime/core/optimizer/graph_transformer.h)
 
 The ONNX runtime shipped with the Windows operating system in build 1809 (RS5).  The runtime was embedded inside the Windows.AI.MachineLearning.dll and was exposed via that WinRT API (WinML for short).  It includes CPU support and a DirectML execution provider for GPU support.   Since then it has continued to ship in every version of Windows.
 
-Starting with the 1.2 release nuget we are bringing a new layered architecture to the ONNX Runtime and Windows ML.
+Starting with the 1.2 release we are bringing a new layered architecture to the ONNX Runtime and Windows ML.
 *Note:  This feature is preview as of the 1.2 release*
 
 The high level design looks like this
