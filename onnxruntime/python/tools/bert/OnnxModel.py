@@ -563,3 +563,13 @@ class OnnxModel:
         else:
             with open(output_path, "wb") as out:
                 out.write(self.model.SerializeToString())
+
+    def get_graph_inputs_excluding_initializers(self):
+        """
+        Returns real graph inputs (excluding initializers from older onnx model).
+        """
+        graph_inputs = []
+        for input in self.model.graph.input:
+            if self.get_initializer(input.name) is None:
+                graph_inputs.append(input)
+        return graph_inputs

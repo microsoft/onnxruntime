@@ -92,10 +92,10 @@ def parse_arguments():
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
 
     parser.add_argument('--num_heads', required=False, type=int, default=12,
-                        help="number of attention heads")
+                        help="number of attention heads. 12 for bert-base model and 16 for bert-large")
 
     parser.add_argument('--hidden_size', required=False, type=int, default=768,
-                        help="bert model hidden size. 768 for base model and 1024 for large")
+                        help="bert model hidden size. 768 for bert-base model and 1024 for bert-large")
 
     parser.add_argument('--sequence_length', required=False, type=int, default=128,
                         help="max sequence length")
@@ -120,7 +120,7 @@ def parse_arguments():
     return args
 
 def optimize_model(input, model_type, gpu_only, num_heads, hidden_size, sequence_length, input_int32, float16):
-    (optimizer_class, framework, run_onnxruntime) = MODEL_CLASSES[model_type]
+    (optimizer_class, producer, run_onnxruntime) = MODEL_CLASSES[model_type]
 
     input_model_path = input
     if run_onnxruntime:
@@ -130,6 +130,9 @@ def optimize_model(input, model_type, gpu_only, num_heads, hidden_size, sequence
     model = ModelProto()
     with open(input_model_path, "rb") as f:
         model.ParseFromString(f.read())
+
+    if model.producer_name and producer != model.producer_name:
+        logger.warning(f"Model producer not matched: Expect {producer},  Got {model.producer_name} {model.producer_version}. Please specify correct --model_type parameter.")
 
     bert_model = optimizer_class(model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only)
     bert_model.optimize()
@@ -154,6 +157,11 @@ def main():
     bert_model = optimize_model(args.input, args.model_type, args.gpu_only, args.num_heads, args.hidden_size, args.sequence_length, args.input_int32, args.float16)
 
     bert_model.save_model_to_file(args.output)
+
+    if bert_model.is_fully_optimized():
+        logger.info("The output model is fully optimized.")
+    else:
+        logger.warning("The output model is not fully optimized. It might not be usable.")
 
 if __name__ == "__main__":
     main()
