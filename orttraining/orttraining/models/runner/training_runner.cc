@@ -39,12 +39,17 @@ static SessionOptions SESSION_OPTION = {
 };
 
 TrainingRunner::TrainingRunner(Parameters params)
+    : TrainingRunner(params, SESSION_OPTION) {
+}
+
+TrainingRunner::TrainingRunner(Parameters params, SessionOptions session_options)
     : step_(0),
       round_(0),
       weight_update_step_count_(0),
       training_data_set_index_(0),
       params_(params),
-      session_(SESSION_OPTION),
+      session_options_(session_options),
+      session_(session_options),
       input_allocator_(params.input_allocator ? params.input_allocator : TrainingUtil::GetCpuAllocator()) {
   ORT_ENFORCE(!params_.model_path.empty());
   if (!params.weights_to_train.empty())
@@ -156,9 +161,9 @@ Status TrainingRunner::Initialize() {
     ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::move(provider)));
   }
 
-  if (params_.use_profiler && !SESSION_OPTION.enable_profiling) {
+  if (params_.use_profiler && !session_options_.enable_profiling) {
     // Profiling has not already been enabled, so override from command line options.
-    session_.StartProfiling(SESSION_OPTION.profile_file_prefix);
+    session_.StartProfiling(session_options_.profile_file_prefix);
   }
 
   ORT_RETURN_IF_ERROR(session_.Initialize());

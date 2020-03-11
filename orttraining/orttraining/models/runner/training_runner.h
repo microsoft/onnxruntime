@@ -152,6 +152,7 @@ class TrainingRunner {
   };
 
   TrainingRunner(Parameters params);
+  TrainingRunner(Parameters params, SessionOptions session_options);
 
   common::Status Initialize();
 
@@ -183,6 +184,7 @@ class TrainingRunner {
   std::unique_ptr<LossScaler> loss_scaler_ = nullptr;
 
   Parameters params_;
+  const SessionOptions session_options_;
   TrainingSession session_;
   AllocatorPtr input_allocator_;
 
