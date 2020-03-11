@@ -62,8 +62,7 @@ TEST(GraphTransformationTests, IdentityElimination) {
 
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   rule_transformer_L1->Register(onnxruntime::make_unique<EliminateIdentity>());
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 
@@ -82,8 +81,7 @@ TEST(GraphTransformationTests, DropoutElimination) {
 
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   rule_transformer_L1->Register(onnxruntime::make_unique<EliminateDropout>());
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 
@@ -108,8 +106,7 @@ TEST(GraphTransformationTests, SliceElimination) {
 
     auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
     rule_transformer_L1->Register(onnxruntime::make_unique<EliminateSlice>());
-    onnxruntime::GraphTransformerManager graph_transformation_mgr;
-    graph_transformation_mgr.Init(5);
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
     graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
     ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 
@@ -127,8 +124,7 @@ TEST(GraphTransformationTests, ConstantFolding) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(), TransformerLevel::Level1);
 
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
@@ -145,8 +141,7 @@ TEST(GraphTransformationTests, ConstantFoldingNodesOnDifferentEP) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(), TransformerLevel::Level1);
 
   // assign all nodes to CUDA. the constant folding should override this to perform the constant folding on cpu
@@ -228,8 +223,7 @@ TEST(GraphTransformationTests, ConstantFoldingSubgraph) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 2);  // one in each subgraph
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(), TransformerLevel::Level1);
 
   status = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
@@ -248,8 +242,7 @@ TEST(GraphTransformationTests, ShapeToInitializer) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Shape"] == 4);
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
   rule_transformer_L1->Register(onnxruntime::make_unique<ShapeToInitializer>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
@@ -304,8 +297,7 @@ TEST(GraphTransformationTests, FuseConvBNNoBias) {
     }
   }
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvBNFusion>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
@@ -339,8 +331,7 @@ TEST(GraphTransformationTests, DontFuseConvWithBNWithOptionalOutputs) {
     }
   }
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvBNFusion>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
@@ -362,8 +353,7 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
     ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()));
     Graph& graph = p_model->MainGraph();
 
-    onnxruntime::GraphTransformerManager graph_transformation_mgr;
-    graph_transformation_mgr.Init(5);
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
     auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
     rule_transformer_L1->Register(onnxruntime::make_unique<UnsqueezeElimination>());
     rule_transformer_L1->Register(onnxruntime::make_unique<ConvAddFusion>());
@@ -399,8 +389,7 @@ TEST(GraphTransformationTests, FuseConvActivation) {
     ASSERT_TRUE(op_to_count[model.second] >= 1);
 
     // Apply transformer
-    onnxruntime::GraphTransformerManager graph_transformation_mgr;
-    graph_transformation_mgr.Init(5);
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
     graph_transformation_mgr.Register(onnxruntime::make_unique<ConvActivationFusion>(), TransformerLevel::Level2);
     ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger()).IsOK());
 
@@ -420,8 +409,7 @@ TEST(GraphTransformationTests, FuseConvClip11Activation) {
   ASSERT_EQ(op_to_count["Clip"], 3);
 
   // Apply transformer
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<ConvActivationFusion>(), TransformerLevel::Level2);
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger()).IsOK());
 
@@ -456,8 +444,7 @@ TEST(GraphTransformationTests, FuseConvMulNoBias) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   rule_transformer_L1->Register(onnxruntime::make_unique<UnsqueezeElimination>());
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvMulFusion>());
@@ -477,8 +464,7 @@ TEST(GraphTransformationTests, FuseConvAddNoBias) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   rule_transformer_L1->Register(onnxruntime::make_unique<UnsqueezeElimination>());
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvAddFusion>());
@@ -500,8 +486,7 @@ TEST(GraphTransformationTests, NegativeFuseConvAddNoBias) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   rule_transformer_L1->Register(onnxruntime::make_unique<UnsqueezeElimination>());
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvAddFusion>());
@@ -523,8 +508,7 @@ TEST(GraphTransformationTests, FuseConvAddMul3D) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvAddFusion>());
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvMulFusion>());
@@ -544,8 +528,7 @@ TEST(GraphTransformationTests, FuseConvAddMul3D_2) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvAddFusion>());
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvMulFusion>());
@@ -565,8 +548,7 @@ TEST(GraphTransformationTests, MatMulAddFusion_two_input) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<MatMulAddFusion>(), TransformerLevel::Level1);
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 
@@ -583,8 +565,7 @@ TEST(GraphTransformationTests, MatMulAddFusion_three_input) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<MatMulAddFusion>(), TransformerLevel::Level1);
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 
@@ -605,8 +586,7 @@ TEST(GraphTransformationTests, MatMulAddFusion_negitive_case) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<MatMulAddFusion>(), TransformerLevel::Level1);
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 
@@ -624,8 +604,7 @@ TEST(GraphTransformationTests, Gemm_Relu_three_input) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
   std::map<std::string, int> op_to_count1 = CountOpsInGraph(graph);
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<GemmActivationFusion>(), TransformerLevel::Level2);
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger()).IsOK());
 
@@ -640,8 +619,7 @@ TEST(GraphTransformationTests, Gemm_LeakyRelu_Fusion) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
   std::map<std::string, int> op_to_count1 = CountOpsInGraph(graph);
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<GemmActivationFusion>(), TransformerLevel::Level2);
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger()).IsOK());
 
@@ -763,8 +741,7 @@ TEST(GraphTransformationTests, ReluClip6Fusion) {
 
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   rule_transformer_L1->Register(onnxruntime::make_unique<FuseReluClip>());
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 
@@ -852,8 +829,7 @@ TEST(GraphTransformationTests, ReluClip11Fusion) {
 
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   rule_transformer_L1->Register(onnxruntime::make_unique<FuseReluClip>());
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
   status = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(status.IsOK()) << status;
@@ -908,8 +884,7 @@ TEST(GraphTransformationTests, ReshapeFusionTest) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -946,8 +921,7 @@ TEST(GraphTransformationTests, ReshapeFusionOneConstTest) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1097,8 +1071,7 @@ TEST(GraphTransformationTests, AttentionFusionInt32Test) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<AttentionFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1122,8 +1095,7 @@ TEST(GraphTransformationTests, AttentionFusionInt64Test) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<AttentionFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1146,8 +1118,64 @@ TEST(GraphTransformationTests, GeluFusionTest) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Erf"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["Gelu"] == 1);
+}
+
+TEST(GraphTransformationTests, GeluFusionTestSwitchOrderFormat2) {
+  auto model_uri = MODEL_FOLDER "fusion/gelu_format2_0.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Erf"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["Gelu"] == 1);
+}
+
+TEST(GraphTransformationTests, GeluFusionTestFormat2) {
+  auto model_uri = MODEL_FOLDER "fusion/gelu_format2_1.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Erf"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["Gelu"] == 1);
+}
+
+TEST(GraphTransformationTests, GeluFusionTestFormat2GraphInput) {
+  auto model_uri = MODEL_FOLDER "fusion/gelu_format2_1_use_graph_input.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1166,8 +1194,7 @@ TEST(GraphTransformationTests, BiasGeluTest) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(), TransformerLevel::Level2);
   graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGelu>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
@@ -1188,8 +1215,7 @@ TEST(GraphTransformationTests, GeluApproximation_Gelu) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<GeluApproximation>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1206,8 +1232,7 @@ TEST(GraphTransformationTests, GeluApproximation_Gelu_Add_Bias) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<GeluApproximation>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1224,8 +1249,7 @@ TEST(GraphTransformationTests, GeluApproximation_Gelu_Add_MatMul) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<GeluApproximation>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1243,8 +1267,7 @@ TEST(GraphTransformationTests, FastGeluFusionTest) {
   ASSERT_TRUE(load_ret.IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1264,8 +1287,7 @@ TEST(GraphTransformationTests, FastGeluUseGraphInputFusionTest) {
   ASSERT_TRUE(load_ret.IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1284,8 +1306,7 @@ TEST(GraphTransformationTests, FastGeluWithBiasFusionTest) {
   ASSERT_TRUE(load_ret.IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
   graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGelu>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
@@ -1305,8 +1326,7 @@ TEST(GraphTransformationTests, FastGeluWithBiasUseGraphInputFusionTest) {
   ASSERT_TRUE(load_ret.IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
   graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGelu>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
@@ -1326,8 +1346,7 @@ TEST(GraphTransformationTests, FastGeluFusionTest2) {
   ASSERT_TRUE(load_ret.IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1346,8 +1365,7 @@ TEST(GraphTransformationTests, FastGeluUseGraphInputFusionTest2) {
   ASSERT_TRUE(load_ret.IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1366,8 +1384,7 @@ TEST(GraphTransformationTests, FastGeluWithBiasFusionTest2) {
   ASSERT_TRUE(load_ret.IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
   graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGelu>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
@@ -1387,8 +1404,7 @@ TEST(GraphTransformationTests, FastGeluWithBiasUseGraphInputFusionTest2) {
   ASSERT_TRUE(load_ret.IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
   graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGelu>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
@@ -1407,8 +1423,7 @@ TEST(GraphTransformationTests, LayerNormFusionTest) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<LayerNormFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1444,8 +1459,7 @@ TEST(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<LayerNormFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1480,8 +1494,7 @@ static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_pat
   ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<LayerNormFusion>(), TransformerLevel::Level2);
   graph_transformation_mgr.Register(onnxruntime::make_unique<SkipLayerNormFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
@@ -1513,8 +1526,7 @@ TEST(GraphTransformationTests, EmbedLayerNormFusionFormat1) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1534,8 +1546,7 @@ TEST(GraphTransformationTests, EmbedLayerNormFusionFormat2) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1562,8 +1573,7 @@ TEST(GraphTransformationTests, EmbedLayerNormFusionFormat3) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1589,8 +1599,7 @@ TEST(GraphTransformationTests, EmbedLayerNormFusionFormat4) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
@@ -1618,8 +1627,7 @@ TEST(GraphTransformationTests, EmbedLayerNormFusionFormat5) {
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());

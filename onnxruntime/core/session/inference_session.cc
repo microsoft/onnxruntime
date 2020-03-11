@@ -166,7 +166,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
 
-  graph_transformation_mgr_.Init(session_options_.max_num_graph_transformation_steps);
+  // Update the number of steps for the graph transformer manager using the "finalized" session options
+  graph_transformation_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps);
 
   logging_manager_ = logging_manager;
 
@@ -200,7 +201,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    logging::LoggingManager* logging_manager)
-    : insert_cast_transformer_("CastFloat16Transformer") {
+    : insert_cast_transformer_("CastFloat16Transformer"), 
+      graph_transformation_mgr_(session_options.max_num_graph_transformation_steps) {
   // Initialize assets of this session instance
   ConstructorCommon(session_options, logging_manager);
 }
@@ -208,7 +210,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    const std::string& model_uri,
                                    logging::LoggingManager* logging_manager)
-    : insert_cast_transformer_("CastFloat16Transformer") {
+    : insert_cast_transformer_("CastFloat16Transformer"),
+      graph_transformation_mgr_(session_options.max_num_graph_transformation_steps) {
   model_location_ = ToWideString(model_uri);
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
@@ -222,7 +225,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    const std::wstring& model_uri,
                                    logging::LoggingManager* logging_manager)
-    : insert_cast_transformer_("CastFloat16Transformer") {
+    : insert_cast_transformer_("CastFloat16Transformer"),
+      graph_transformation_mgr_(session_options.max_num_graph_transformation_steps) {
   model_location_ = ToWideString(model_uri);
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
@@ -236,7 +240,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    std::istream& model_istream,
                                    logging::LoggingManager* logging_manager)
-    : insert_cast_transformer_("CastFloat16Transformer") {
+    : insert_cast_transformer_("CastFloat16Transformer"),
+      graph_transformation_mgr_(session_options.max_num_graph_transformation_steps) {
   google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
   const bool result = model_proto_.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
@@ -249,7 +254,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    const void* model_data,
                                    int model_data_len,
                                    logging::LoggingManager* logging_manager)
-    : insert_cast_transformer_("CastFloat16Transformer") {
+    : insert_cast_transformer_("CastFloat16Transformer"),
+      graph_transformation_mgr_(session_options.max_num_graph_transformation_steps) {
   const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
   model_loaded_ = true;

@@ -42,8 +42,7 @@ TEST(RuleBasedGraphTransformerTest, TestCompatibleProviders) {
 
   graph_transformer1->Register(std::move(dummy_rule1));
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr;
-  graph_transformation_mgr.Init(5);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(graph_transformer), TransformerLevel::Level2);
   graph_transformation_mgr.Register(std::move(graph_transformer1), TransformerLevel::Level2);
 
@@ -57,5 +56,17 @@ TEST(RuleBasedGraphTransformerTest, TestCompatibleProviders) {
   ASSERT_TRUE(dummy_rule1_ptr->IsRewriteRuleInvoked());
 }
 
+TEST(RuleBasedGraphTransformerTest, TestSettingStepsInGraphTransformerManager) {
+  // steps provided at object construction time
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  unsigned steps_queried;
+  graph_transformation_mgr.GetSteps(steps_queried);
+  ASSERT_EQ(steps_queried, 5);
+
+  // steps upadted
+  graph_transformation_mgr.SetSteps(10);
+  graph_transformation_mgr.GetSteps(steps_queried);
+  ASSERT_EQ(steps_queried, 10);
+}
 }  // namespace test
 }  // namespace onnxruntime
