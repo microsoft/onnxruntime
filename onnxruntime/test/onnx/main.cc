@@ -480,7 +480,27 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"},
-  };
+      {"averagepool_2d_ceil", "shape mismatch", {"onnx150", "onnxtip"}},
+      {"batchnorm_epsilon_training_mode", "Training_mode is not a scalar boolean", {"onnxtip"}},
+      {"batchnorm_example_training_mode", "Training_mode is not a scalar boolean", {"onnxtip"}},
+      {"cast_FLOAT_to_STRING", "result differs", {"onnx141", "onnx150", "onnxtip"}},
+      {"cast_STRING_to_FLOAT", "the pre-allocate size does not match the size in proto", {"onnx141"}},
+      {"convtranspose_3d", "Non-zero status code returned while running ConvTranspose node", {"onnx130", "onnx141", "onnx150", "onnxtip"}},
+      {"cumsum_1d_reverse_exclusive", "result differs", {"onnxtip"}},
+      {"dropout_default", "result differs", {"onnxtip"}},
+      {"maxpool_2d_ceil", "shape mismatch", {"onnx150", "onnxtip"}},
+      {"maxpool_2d_dilations", "shape mismatch", {"onnx150", "onnxtip"}},
+      {"maxpool_2d_uint8", "result differs", {"onnxtip"}},
+      {"maxpool_with_argmax_2d_precomputed_strides", "Could not find an implementation for the node MaxPool(12)", {"onnx150"}},
+      {"maxunpool_export_with_output_shape", "result differs", {"onnx141", "onnx150", "onnxtip"}},
+      {"range_float_type_positive_delta_expanded", "Non-zero status code returned while running DnnlCustomOp1 node", {"onnxtip"}},
+      {"range_int32_type_negative_delta_expanded", "Non-zero status code returned while running DnnlCustomOp1 node", {"onnxtip"}},
+      {"resize_downsample_scales_cubic_align_corners", "result differs", {"onnxtip"}},
+      {"resize_downsample_scales_linear_align_corners", "result differs", {"onnxtip"}},
+      {"sequence_model8", "Invalid value of attribute", {"onnxtip"}},
+      {"shrink", "Invalid rank for input", {"onnx141"}},
+      {"split_zero_size_splits", "Invalid value", {"onnxtip"}},
+      {"dropout_random", "result differs", {"onnxtip"}}};
 
   if (enable_ngraph) {
     broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
@@ -498,7 +518,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
     broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
     broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
-    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});    
+    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.0_224", "Results mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});

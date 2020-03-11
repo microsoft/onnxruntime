@@ -27,8 +27,8 @@ __global__ void _UnaryElementWise(
     }
   }
 
-id = start;
-#pragma unroll
+  id = start;
+  #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
       output_data[id] = functor(value[i]);

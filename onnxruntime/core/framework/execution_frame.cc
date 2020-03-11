@@ -207,7 +207,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
 
     //if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
-      mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes);
+      mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes, feed_mlvalue_idxs);
       // if no existing patterns, generate one in this executionframe
       if (!mem_patterns_) {
         planner_ = onnxruntime::make_unique<OrtValuePatternPlanner>(*session_state.GetExecutionPlan());
@@ -221,6 +221,9 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                              ? alloc->Alloc(mem_patterns_->patterns[i].PeakSize())
                              : nullptr;
           buffers_[mem_patterns_->locations[i]] = BufferUniquePtr(buffer, alloc);
+
+          // comment out following line to see the size of activation
+          // printf("Allocated memory for activations, size: %zu\n", mem_patterns_->patterns[i].PeakSize());
         }
       }
     }
@@ -340,7 +343,8 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
 
     // be generous and use the buffer if it's large enough. log a warning though as it indicates a bad model
     if (buffer_num_elements >= required_num_elements) {
-      LOGS(session_state_.Logger(), WARNING) << message;
+      // Todo: View Operator is reusing the buffer bigger than the required size. Disabling warming message for now.
+      //LOGS_DEFAULT(WARNING) << message;
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
     }
@@ -448,6 +452,14 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       }
       case AllocKind::kReuse: {
         int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
+        
+        // In case OrtRunOptions.only_execute_path_to_fetches == true, it is possible that 'reuse_value'
+        // is not allocated (its upstream op is not executed due to the option).
+        // In this case we need to allocate 'reuse_value' and then let 'ort_value' to reuse it. 
+        OrtValue& reuse_value = GetMutableMLValue(reuse_mlvalue_index);
+        if (!reuse_value.IsAllocated()) {
+         ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(reuse_value, reuse_mlvalue_index, shape, nnz));
+        }
         ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
             ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
         break;

@@ -3,6 +3,9 @@
 
 set(TEST_SRC_DIR ${ONNXRUNTIME_ROOT}/test)
 set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
+if (onnxruntime_ENABLE_TRAINING)
+  list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
+endif()
 if (onnxruntime_USE_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
@@ -24,11 +27,13 @@ function(AddTest)
   endif(_UT_DEPENDS)
 
   add_executable(${_UT_TARGET} ${_UT_SOURCES})
+
+  source_group(TREE ${REPO_ROOT} FILES ${_UT_SOURCES})
   if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     #TODO: fix the warnings, they are dangerous
     target_compile_options(${_UT_TARGET} PRIVATE "/wd4244")
   endif()
-  source_group(TREE ${TEST_SRC_DIR} FILES ${_UT_SOURCES})
+  #source_group(TREE ${TEST_SRC_DIR} FILES ${_UT_SOURCES})
   set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest")
 
   if (_UT_DEPENDS)
@@ -111,6 +116,14 @@ set(onnxruntime_test_framework_src_patterns
   "${TEST_SRC_DIR}/platform/*.cc"
   )
 
+file(GLOB onnxruntime_test_training_src
+  "${ORTTRAINING_SOURCE_DIR}/test/model/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/gradient/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/graph/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/optimizer/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/framework/*.cc"
+  )
+
 if(WIN32)
   list(APPEND onnxruntime_test_framework_src_patterns
     "${TEST_SRC_DIR}/platform/windows/*.cc"
@@ -148,6 +161,29 @@ file(GLOB_RECURSE onnxruntime_test_providers_cpu_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/providers/cpu/*"
   )
 list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cpu_src})
+
+if (onnxruntime_USE_CUDA)
+  file(GLOB_RECURSE onnxruntime_test_providers_cuda_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/cuda/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_src})
+endif()
+
+if (onnxruntime_ENABLE_TRAINING)
+  file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
+    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/function_op_test_utils.cc"
+    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
+
+  if (onnxruntime_USE_CUDA)
+    file(GLOB_RECURSE orttraining_test_trainingops_cuda_src CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cuda/*"
+      )
+    list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cuda_src})
+  endif()
+endif()
 
 if (onnxruntime_USE_NGRAPH)
   file(GLOB_RECURSE onnxruntime_test_providers_ngraph_src CONFIGURE_DEPENDS
@@ -271,10 +307,6 @@ if(onnxruntime_USE_ACL)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_acl)
 endif()
 
-if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
-  include(onnxruntime_unittests_internal.cmake)
-endif()
-
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   set(ONNXRUNTIME_INTEROP_TEST_LIBS PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
@@ -302,6 +334,10 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_common
     onnxruntime_mlas
 )
+
+if (onnxruntime_ENABLE_TRAINING)
+  set(ONNXRUNTIME_TEST_LIBS onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_TEST_LIBS})
+endif()
 
 set(onnxruntime_test_providers_libs
     onnxruntime_test_utils
@@ -357,6 +393,15 @@ if(NOT TARGET onnxruntime)
   list(APPEND all_tests ${onnxruntime_shared_lib_test_SRC})
 endif()
 set(all_dependencies ${onnxruntime_test_providers_dependencies} )
+
+  if (onnxruntime_ENABLE_TRAINING)
+    if(${CMAKE_BUILD_TYPE} MATCHES "Debug" AND NOT onnxruntime_USE_CUDA)
+      file(GLOB grad_test_src "${ORTTRAINING_SOURCE_DIR}/test/gradient/*.cc")
+      list(REMOVE_ITEM onnxruntime_test_training_src ${grad_test_src})
+    endif()
+
+    list(APPEND all_tests ${onnxruntime_test_training_src})
+  endif()
 
   if (onnxruntime_USE_TVM)
     list(APPEND all_tests ${onnxruntime_test_tvm_src})
@@ -453,7 +498,7 @@ add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if(WIN32)
-  target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100" "/wd4267")  
+  target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100" "/wd4267")
 else()
   if(HAS_UNUSED_PARAMETER)
     target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-parameter")
@@ -461,7 +506,7 @@ else()
   if(HAS_UNUSED_VARIABLE)
     target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-variable")
   endif()
-  if(HAS_UNUSED_BUT_SET_VARIABLE)    
+  if(HAS_UNUSED_BUT_SET_VARIABLE)
     target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-but-set-variable")
   endif()
 endif()

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/environment.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/framework/allocatormgr.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
@@ -21,6 +22,14 @@
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
+#endif
+
+#ifdef ENABLE_TRAINING
+#include "orttraining/core/graph/gradient_schema_defs.h"
+#include "orttraining/core/graph/gradient_builder_registry.h"
+#include "orttraining/core/graph/loss_function_registry.h"
+#include "orttraining/core/graph/optimizer_builder.h"
+#include "orttraining/core/graph/optimizer_graph_builder_registry.h"
 #endif
 
 namespace onnxruntime {
@@ -60,6 +69,15 @@ Status Environment::Initialize() {
 #endif
       RegisterOnnxOperatorSetSchema();
       RegisterOnnxMLOperatorSetSchema();
+
+#ifdef ENABLE_TRAINING
+      // preserve this order: this depends on operatorsetschema registration.
+      training::RegisterGradientSchemas();
+      training::GradientBuilderRegistry::GetInstance().RegisterGradientBuilders();
+      training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();
+      training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
+      training::OptimizerGraphBuilderRegistry::GetInstance().RegisterGraphBuilders();
+#endif
     });
 
     // Register MemCpy schema;

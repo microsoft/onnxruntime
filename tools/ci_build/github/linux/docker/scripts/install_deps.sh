@@ -7,6 +7,7 @@ do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
 d) DEVICE_TYPE=${OPTARG};;
+x) BUILD_EXTR_PAR=${OPTARG};;
 esac
 done
 
@@ -97,15 +98,20 @@ cd /tmp/src
 unzip gradle-6.2-bin.zip
 mv /tmp/src/gradle-6.2 /usr/local/gradle
 
-
 if ! [ -x "$(command -v protoc)" ]; then
   source ${0/%install_deps\.sh/install_protobuf\.sh}
 fi
+
 
 #Don't update 'wheel' to the latest version. see: https://github.com/pypa/auditwheel/issues/102
 ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
 if [ $DEVICE_TYPE = "Normal" ]; then
     ${PYTHON_EXE} -m pip install sympy==1.1.1
+elif [ $DEVICE_TYPE = "gpu" ]; then
+    ${PYTHON_EXE} -m pip install sympy==1.1.1
+    if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
+      ${PYTHON_EXE} -m pip install torch
+    fi
 fi
 
 

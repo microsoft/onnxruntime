@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/onnx_protobuf.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/allocator.h"
 #include "core/optimizer/insert_cast_transformer.h"

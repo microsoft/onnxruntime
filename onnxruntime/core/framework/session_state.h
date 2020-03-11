@@ -16,6 +16,7 @@
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/feeds_fetches_manager.h"
+#include "core/framework/framework_common.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ml_value.h"
@@ -115,6 +116,24 @@ class SessionState {
    */
   const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
 
+  /**
+  Get some initialized tensors (weights).
+  @param interested_weights The names of the weights to retrieve.
+  @param allow_missing_weights Whether to allow names in interested_weights
+         with no corresponding weight.
+  @param[out] retrieved_weights The retrieved weights.
+  @return The status of the operation.
+  */
+  Status GetInitializedTensors(
+      const std::unordered_set<std::string>& interested_weights,
+      bool allow_missing_weights, NameMLValMap& retrieved_weights) const;
+
+  /**
+  Get some initialized tensors (weights).
+  Any names in interested_weights with no corresponding weight are ignored.
+  */
+  NameMLValMap GetInitializedTensors(const std::unordered_set<std::string>& interested_weights) const;
+
   // execution plan
   void SetExecutionPlan(std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan);
   const SequentialExecutionPlan* GetExecutionPlan() const;
@@ -145,7 +164,8 @@ class SessionState {
   Get cached memory pattern based on input shapes
   */
   const MemoryPatternGroup* GetMemoryPatternGroup(
-      const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes) const;
+      const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
+      const std::vector<int>& feed_mlvalue_idxs) const;
 
   /**
   Set generated memory pattern with a given input shapes.
@@ -158,6 +178,12 @@ class SessionState {
   Get enable memory pattern flag
   */
   bool GetEnableMemoryPattern() const;
+
+  /**
+  Update enable_mem_pattern_ flag according to the presence of graph inputs' shape
+  If any one of the graph input is shapeless, enable_mem_pattern_ will be set to false
+  */
+  void ResolveMemoryPatternFlag();
 
   struct NodeInfo {
     /**
@@ -217,8 +243,16 @@ class SessionState {
   std::vector<BufferUniquePtr>& GetMutableWeightsBuffers() { return weights_buffers_; }
   const NodeIndexInfo& GetNodeIndexInfo() const;
 
+  void UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs);
+  const std::unordered_set<NodeIndex>* GetToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) const;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
+
+  Status GeneratePatternGroupCache(
+      const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
+      const std::vector<int>& feed_mlvalue_idxs,
+      MemoryPatternGroup* output) const;
 
   // cache of the constructed kernels to avoid spending construction
   // time per executor
@@ -243,7 +277,7 @@ class SessionState {
   profiling::Profiler* profiler_ = nullptr;
 
   // switch for enable memory pattern optimization or not.
-  const bool enable_mem_pattern_;
+  bool enable_mem_pattern_;
   // lock for the mem_patterns_
   mutable OrtMutex mem_patterns_lock_;
   // cache for the generated mem_patterns. key is calculated based on input shapes.
@@ -268,18 +302,19 @@ class SessionState {
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
+  std::map<std::vector<int>, std::unordered_set<NodeIndex>> to_be_executed_nodes_;
+
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   SessionState* parent_ = nullptr;
   //Assign each graph in each session an unique id.
   int graph_id_ = 0;
   int next_graph_id_ = 1;
-  
-  void GenerateGraphId() {
-	SessionState* p = this;
-    while (p->parent_ != nullptr) p = p->parent_;
-	graph_id_ = p->next_graph_id_ ++;
-  }
 
+  void GenerateGraphId() {
+    SessionState* p = this;
+    while (p->parent_ != nullptr) p = p->parent_;
+    graph_id_ = p->next_graph_id_++;
+  }
 #endif
 };
 

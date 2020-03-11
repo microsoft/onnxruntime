@@ -144,8 +144,5 @@ const float Consts<half>::Zero = 0;
 
 const float Consts<half>::One = 1;
 
-std::vector<cudaDeviceProp> DeviceProp::s_cachedDeviceProps;
-std::once_flag DeviceProp::s_cachedDevicePropsInitFlag;
-
 }  // namespace cuda
 }  // namespace onnxruntime

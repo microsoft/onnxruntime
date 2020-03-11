@@ -159,7 +159,6 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
         var_data,
         epsilon_));
   }
-
   return Status::OK();
 }
 

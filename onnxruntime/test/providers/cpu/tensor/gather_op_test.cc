@@ -66,7 +66,7 @@ TEST(GatherOpTest, Gather_invalid_axis) {
 }
 
 TEST(GatherOpTest, Gather_invalid_index_cpu) {
-  OpTester test("Gather", 11);  // added check in opset 11
+  OpTester test("Gather", 12);  // added check in opset 11
   // Invalid index 3. data[3] does not exist.
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<float>("data", {3, 4},

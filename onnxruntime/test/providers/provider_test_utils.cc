@@ -197,7 +197,7 @@ void Check<MLFloat16>(const OpTester::Data& expected_data,
   }
 
   float threshold = 0.001f;
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING)
   threshold = 0.005f;
 #endif
   for (int i = 0; i < size; ++i) {
@@ -239,7 +239,7 @@ void Check<BFloat16>(const OpTester::Data& expected_data,
     else {
       // the default for existing tests
       const float max_value = fmax(fabs(f_expected[i]), fabs(f_output[i]));
-      if (max_value != 0) { // max_value = 0 means output and expected are 0s.
+      if (max_value != 0) {  // max_value = 0 means output and expected are 0s.
         const float rel_error = fabs(f_expected[i] - f_output[i]) / max_value;
         EXPECT_NEAR(0, rel_error, threshold) << "provider_type: "
                                              << provider_type;
@@ -461,7 +461,7 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
   std::vector<onnxruntime::NodeArg*> node_input_defs;
   std::vector<onnxruntime::NodeArg*> output_defs;
 
-  for (size_t i = 0; i < input_data_.size(); ++i) {
+  for (auto i = 0; i < input_data_.size(); ++i) {
     node_input_defs.push_back(&input_data_[i].def_);
   }
 
@@ -470,13 +470,17 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
   }
 
   // Create a simple model
-  std::unordered_map<std::string, int> domain_to_version(
-      extra_domain_to_version.begin(), extra_domain_to_version.end());
+  std::unordered_map<std::string, int> domain_to_version(extra_domain_to_version);
   if (domain_to_version.count(domain_) == 0) {
     domain_to_version.insert({domain_, opset_version_});
   } else {
-    ORT_ENFORCE(extra_domain_to_version.find(domain_)->second ==
-                opset_version_);
+    auto key_val = extra_domain_to_version.find(domain_);
+
+    ORT_ENFORCE(key_val->second <= opset_version_);
+
+    if (key_val->second < opset_version_) {
+      domain_to_version[domain_] = opset_version_;
+    }
   }
 
   auto p_model = onnxruntime::make_unique<onnxruntime::Model>(
@@ -826,8 +830,8 @@ template std::vector<MLValue> OpTester::ExecuteModel<training::TrainingSession>(
     Model& model, training::TrainingSession& session_object,
     ExpectResult expect_result, const std::string& expected_failure_string,
     const RunOptions* run_options,
-    std::unordered_map<std::string, MLValue> feeds,
-    std::vector<std::string> output_names, const std::string& provider_type,
+    const std::unordered_map<std::string, MLValue>& feeds,
+    const std::vector<std::string>& output_names, const std::string& provider_type,
     const CustomOutputVerifierFn& custom_output_verifier);
 #endif
 

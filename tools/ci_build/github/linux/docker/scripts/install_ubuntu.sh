@@ -47,6 +47,7 @@ if [ "$OS_VERSION" = "16.04" ]; then
         libicu55 \
         libtinfo-dev \
         libtool \
+        mpich libmpich-dev \
         aria2 \
         bzip2 \
         unzip \

@@ -31,5 +31,5 @@ ADD_TYPED_DYNAMIC_SLICE_OP(MLFloat16);
 ADD_TYPED_DYNAMIC_SLICE_OP(bool);
 ADD_TYPED_DYNAMIC_SLICE_OP(string);
 
-}  // namespace contrib_ops
+}  // namespace contrib
 }  // namespace onnxruntime

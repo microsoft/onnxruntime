@@ -299,8 +299,10 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   std::unordered_map<std::string, int> domain_to_version;
   //TODO: set correct domain and version
   domain_to_version[onnxruntime::kOnnxDomain] = static_cast<int>(onnx_func_proto_.since_version());
-
   auto& function_body_graph = body_.MainGraph();
+  std::vector<const NodeArg*> graph_inputs(onnx_func_proto_.input_size(), nullptr),
+      graph_outputs(onnx_func_proto_.output_size(), nullptr);
+
   // Add node and node args into subgraph
   // The subgraph preserved the input/output tensor names
   // in the parent graph for later inlining purpose
@@ -330,6 +332,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
         auto& n_input = function_body_graph.GetOrCreateNodeArg(
             function_op_node_proto.input().Get(iter->second), node_arg->TypeAsProto());
         inputs.push_back(&n_input);
+        graph_inputs[iter->second] = &n_input;
       } else {
         auto& n_input = function_body_graph.GetOrCreateNodeArg(
             tensor_name + "_" + std::to_string(node_index), nullptr);
@@ -346,6 +349,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
         auto& n_output = function_body_graph.GetOrCreateNodeArg(
             function_op_node_proto.output().Get(iter->second), node_arg->TypeAsProto());
         outputs.push_back(&n_output);
+        graph_outputs[iter->second] = &n_output;
       } else {
         auto& n_output = function_body_graph.GetOrCreateNodeArg(
             tensor_name + "_" + std::to_string(node_index), nullptr);
@@ -376,7 +380,10 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                                 (*node).doc_string(), inputs, outputs, &new_attr_map, (*node).domain());
   }
 
+  function_body_graph.SetInputs(graph_inputs);
+  function_body_graph.SetOutputs(graph_outputs);
   auto status = function_body_graph.Resolve();
+
   ORT_ENFORCE(status.IsOK(), "Resolve subgraph failed:", status.ErrorMessage());
 }  // namespace onnxruntime
 
