@@ -30,9 +30,10 @@ For making changes to the WinRT API someone from the ONNX Runtime team will work
 
 1. **Implementation**
 * A feature can be implemented by you, the ONNX Runtime team, or other community members.  Code contributions are greatly appreciated: feel free to work on any reviewed feature you proposed, or choose one in the backlog and send us a PR. If you are new to the project and want to work on an existing issue, we recommend starting with issues that are tagged with “good first issue”. Please let us know in the issue comments if you are actively working on implementing a feature so we can ensure it's assigned to you.  
-* New code *must* be accompanied by unit tests.
-* Documentation and sample updates: If the PR affects any of the documentation or samples include those updates in the same PR.
-* Checkin Procedure.  Once a feature is complete and tested according to the contribution guidelines follow these steps:
+* Unit tests: New code *must* be accompanied by unit tests.
+* Documentation and sample updates: If the PR affects any of the documentation or samples then include those updates in the same PR.
+* Build instructions are [here](BUILD.md).
+* Checkin Procedure:  Once a feature is complete and tested according to the contribution guidelines follow these steps:
    * Fork the repo
    * git clone your fork
    * Create feature branch
@@ -44,10 +45,6 @@ For making changes to the WinRT API someone from the ONNX Runtime team will work
 * Binaries: We periodically produce signed prerelease binaries from the master branch to validate new features and APIs.  After the feature has been sufficiently validated as part of a prerelease package we will include it in the next stable binary release.
 * Note: After creating a pull request, you might not see a build getting triggered right away. One of the
 onnxruntime team members will trigger the build for you.
-
-## Build
-
-[Build](BUILD.md)
 
 ## Coding guidelines
 
