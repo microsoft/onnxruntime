@@ -18,6 +18,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     int8_t,
     kCudaExecutionProvider,
     KernelDefBuilder()
+        .InputMemoryType<OrtMemTypeCPUInput>(2)
+        .InputMemoryType<OrtMemTypeCPUInput>(3)
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
@@ -58,19 +60,19 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
   int32_t* output_ptr = Y->template MutableData<int32_t>();
 
   // validate zero points
-  const int8_t* a_offset = nullptr;
-  const int8_t* b_offset = nullptr;
+  int8_t a_offset = 0;
+  int8_t b_offset = 0;
   if (has_a_zero_point_) {
     auto a_zero_point = ctx->Input<Tensor>(2);
     ORT_ENFORCE(IsScalarOr1ElementVector(a_zero_point),
                 "MatmulInteger : input1 zero point must be a scalar or 1D tensor of size 1");
-    a_offset = a_zero_point->template Data<int8_t>();
+    a_offset = *(a_zero_point->template Data<int8_t>());
   }
   if (has_b_zero_point_) {
     auto b_zero_point = ctx->Input<Tensor>(3);
     ORT_ENFORCE(IsScalarOr1ElementVector(b_zero_point),
                 "MatmulInteger : input2 zero point must be a scalar or 1D tensor of size 1");
-    b_offset = b_zero_point->template Data<int8_t>();
+    b_offset = *(b_zero_point->template Data<int8_t>());
   }
 
   // offset output c[i,j] to
@@ -81,20 +83,20 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
   // ReduceColSumOnMatrixB computes the a_offset * (b[0,j] + b[1,j] ... + b[k,j]) part
   // OffsetOutput computes gets the final result
   IAllocatorUniquePtr<int32_t> a_row_buf;
-  if (has_b_zero_point_) {
+  if (b_offset != 0) {
     a_row_buf = GetScratchBuffer<int32_t>(helper.OutputShape().Size() / helper.N());
     ORT_RETURN_IF_ERROR(ReduceRowSumOnMatrixA(a_ptr, a_row_buf.get(), b_offset, helper));
   }
 
   IAllocatorUniquePtr<int32_t> b_col_buf;
-  if (has_a_zero_point_) {
+  if (a_offset != 0) {
     b_col_buf = GetScratchBuffer<int32_t>(helper.OutputShape().Size() / helper.M());
     ORT_RETURN_IF_ERROR(ReduceColSumOnMatrixB(b_ptr, b_col_buf.get(), a_offset, helper));
   }
 
   int alpha = 1;
   int beta = 0;
-  if (has_a_zero_point_ || has_b_zero_point_) {
+  if (a_offset != 0 || b_offset != 0) {
     OffsetOutput(a_row_buf.get(),
                  b_col_buf.get(),
                  output_ptr,
