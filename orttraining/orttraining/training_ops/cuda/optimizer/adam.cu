@@ -5,6 +5,7 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "orttraining/training_ops/cuda/optimizer/common.cuh"
 #include "adam.h"
+#include "common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -21,6 +22,8 @@ __global__ void _AdamOptimizer(
     const T4 beta,
     const T4 lambda,
     const T4 epsilon,
+    const T4 alpha_correction,
+    const T4 beta_correction,
     T4* moment_1_out,
     T4* moment_2_out,
     T3* weights_out,
@@ -37,13 +40,15 @@ __global__ void _AdamOptimizer(
 
   // Compute exponentially-averaged historical gradient.
   const T4 m1o = alpha * moment_1[id] + (one - alpha) * g;
+  const T4 m1o_corrected = m1o / alpha_correction;
 
   // Compute exponentially-averaged historical squared gradient.
   const T4 m2o = beta * moment_2[id] + (one - beta) * g * g;
+  const T4 m2o_corrected = m2o / beta_correction;
 
   // Compute weight update.
-  const T4 denom = _Sqrt(m2o) + epsilon;
-  const T4 update = (m1o / denom) + (lambda * T4(weights[id]));
+  const T4 denom = _Sqrt(m2o_corrected) + epsilon;
+  const T4 update = (m1o_corrected / denom) + (lambda * T4(weights[id]));
   const T4 delta = -T4(*eta) * update;
 
   // Compute the new gradient.
@@ -67,7 +72,7 @@ __global__ void _AdamOptimizer(
 template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
 void AdamOptimizerImpl(
     const T1* eta,
-    const T2 /*update_count*/,
+    const T2 update_count,
     const T3* weights,
     const T_GRAD* grads,
     const T4* moment_1,
@@ -86,6 +91,8 @@ void AdamOptimizerImpl(
     size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
+  T4 alpha_correction = compute_bias_correction_coefficient(alpha, update_count);
+  T4 beta_correction = compute_bias_correction_coefficient(beta, update_count);
   _AdamOptimizer<T1, T3, T4, T_GRAD, T_GRAD_NORM><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       eta,
       weights,
@@ -98,6 +105,8 @@ void AdamOptimizerImpl(
       beta,
       lambda,
       epsilon,
+      alpha_correction,
+      beta_correction,
       moment_1_out,
       moment_2_out,
       weights_out,

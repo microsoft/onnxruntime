@@ -161,16 +161,6 @@ Status copy_inputs_to_outputs(
   return Status::OK();
 }
 
-float compute_bias_correction_coefficient(
-  const float momentum_update_coefficient,
-  const int64_t step) {
-  if (step > 0) {
-    return 1.f - std::pow(momentum_update_coefficient, static_cast<float>(step));
-  } else {
-    return 1.f;
-  }
-}
-
 template <typename CudaT2, typename CudaT3, typename CudaT4, typename CudaT_GRAD_NORM>
 Status launch_lamb_compute_direction(
     const int64_t update_count,
