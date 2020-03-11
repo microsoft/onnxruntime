@@ -65,7 +65,7 @@ Additionally, we understand that lightweight devices and local applications may 
 #### Languages
 |Supported|Future|
 |---|---|
-|Python (3.5, 3.6, 3.7)| |
+|Python (3.5, 3.6, 3.7)| Javascript |
 |C++| |
 |C#| |
 |C| |
