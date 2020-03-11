@@ -197,9 +197,7 @@ def _add_initializer_if_not_present(graph, name, value, shape, type):
     '''
     if _find_by_name(name, graph.initializer) is None:
         initializer = onnx.helper.make_tensor(name, type, shape, value)
-        value_info = onnx.helper.make_tensor_value_info(name, type, shape)
         graph.initializer.extend([initializer])
-        graph.input.extend([value_info])
 
 def _get_qrange_for_qType(qType):
     '''
@@ -354,15 +352,6 @@ class ONNXQuantizer:
         zero_initializer = onnx.helper.make_tensor(zero_point_name, zero_point_type, zero_scale_shape, weight.zero_points)
 
         self.model.graph.initializer.extend([packed_weight_initializer, scale_initializer, zero_initializer])
-
-        # Create input for initialized scale and zeros
-        packed_weight_value_info = onnx.helper.make_tensor_value_info(packed_weight_name, weight.qType,
-                                        weight.initializer.dims)
-        scale_value_info = onnx.helper.make_tensor_value_info(scale_name, onnx_proto.TensorProto.FLOAT, zero_scale_shape)
-        zero_point_value_info = onnx.helper.make_tensor_value_info(zero_point_name,
-            zero_point_type, zero_scale_shape) # zero_point is int for dequantize operator
-
-        self.model.graph.input.extend([packed_weight_value_info, scale_value_info, zero_point_value_info])
 
         self._quantized_weights.append(weight)
 
@@ -779,9 +768,6 @@ class ONNXQuantizer:
             bias_np_data = np.asarray(quantized_data, dtype=np.int32).reshape(bias_initializer.dims)
             packed_bias_initializer = onnx.numpy_helper.from_array(bias_np_data, quantized_bias_name)
             self.model.graph.initializer.extend([packed_bias_initializer])
-
-            bias_value_info = onnx.helper.make_tensor_value_info(quantized_bias_name, onnx_proto.TensorProto.INT32, bias_initializer.dims)
-            self.model.graph.input.extend([bias_value_info])
 
             # log entries for this quantized bias value
             quantized_bias_entry = QuantizedInitializer(bias_name, bias_initializer, [0], [0], [0], [bias_scale],
@@ -1221,7 +1207,7 @@ def check_opset_version(org_model, force_fusions):
     return fuse_dynamic_quant
 
 def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMode.IntegerOps,
-    static=False, force_fusions=False, asymmetric_input_types=False, 
+    static=False, force_fusions=False, symmetric_activation=False, symmetric_weight=False,
     quantization_params=None, nodes_to_quantize=None):
     '''
         Given an onnx model, create a quantized onnx model and save it into a file
@@ -1243,9 +1229,12 @@ def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMo
         True: Fuses nodes added for dynamic quantization
         False: No fusion is applied for nodes which are added for dynamic quantization.
         Should be only used in cases where backends want to apply special fusion routines
-    :param asymmetric_input_types:
-        True: Weights are quantized into signed integers and inputs/activations into unsigned integers.
-        False: Weights and inputs/activations are quantized into unsigned integers.
+    :param symmetric_activation:
+        True: activations are quantized into signed integers.
+        False: activations are quantized into unsigned integers.
+    :param symmetric_weight:
+        True: weights are quantized into signed integers.
+        False: weights are quantized into unsigned integers.
     :param quantization_params:
         Dictionary to specify the zero point and scale values for inputs to conv and matmul nodes.
         Should be specified when static is set to True.
@@ -1270,8 +1259,8 @@ def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMo
         ]
     '''
     if nbits == 8:
-        input_qType = onnx_proto.TensorProto.UINT8
-        weight_qType = onnx_proto.TensorProto.INT8 if asymmetric_input_types else onnx_proto.TensorProto.UINT8
+        input_qType = onnx_proto.TensorProto.INT8 if symmetric_activation else onnx_proto.TensorProto.UINT8
+        weight_qType = onnx_proto.TensorProto.INT8 if symmetric_weight else onnx_proto.TensorProto.UINT8
         mode = quantization_mode
         copy_model = onnx_proto.ModelProto()
         copy_model.CopyFrom(model)
