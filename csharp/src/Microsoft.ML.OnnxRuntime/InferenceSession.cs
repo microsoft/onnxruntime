@@ -140,6 +140,13 @@ namespace Microsoft.ML.OnnxRuntime
             int inputIndex = 0;
             foreach (var input in inputs)
             {
+                // guard against accidental DisposableNamedOnnxValue inputs flowing through
+                // as the code is not equipped to handle that
+                if (input is DisposableNamedOnnxValue)
+                {
+                    throw new NotSupportedException("Input of type 'DisposableNamedOnnxValue' is not supported");
+                }
+
                 inputNames[inputIndex] = input.Name;
 
                 // create Tensor from the input if feasible, else throw notsupported exception for now

@@ -732,6 +732,40 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
+        private void TestReusingRunOutput()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_BOOL.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<bool>(new bool[] { true, false, true, false, true }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                var res = session.Run(container);
+
+                bool succeeded = false;
+
+                try
+                {
+                    // We feed in the output of one Run() as the input to another Run()
+                    // This causes problems as Run() tries to pin underlying managed memory of
+                    // DisposableNamedOnnxValue.
+                    // Run() should fail with a user friendly error message.
+                    session.Run(res);
+                }
+
+                catch(System.NotSupportedException e)
+                {
+                    Assert.True(e.Message.Contains("Input of type 'DisposableNamedOnnxValue' is not supported"));
+                    succeeded = true;
+                }
+
+                Assert.True(succeeded);
+            }
+        }
+
+        [Fact]
         private void TestModelInputINT32()
         {
             // model takes 1x5 input of fixed type, echoes back
