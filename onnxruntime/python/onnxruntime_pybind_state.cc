@@ -231,9 +231,9 @@ struct TrainingParameters {
   bool use_mixed_precision = false;
   bool allreduce_post_accumulation = false;
   float loss_scale = 0.0f;
-  int world_rank = -1;
+  int world_rank = 0;
   int world_size = 1;
-  int local_rank = -1;
+  int local_rank = 0;
   int local_size = 1;
   int gradient_accumulation_steps = 1;
   int data_parallel_size = 1;

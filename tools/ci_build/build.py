@@ -651,6 +651,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
 
             run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
 
+            if args.enable_training and args.use_cuda:
+                run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd, dll_path=dll_path)
+
             try:
                 import onnx
                 import scipy  # gen_test_models.py used by onnx_test has a dependency on scipy

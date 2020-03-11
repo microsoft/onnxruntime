@@ -514,7 +514,7 @@ class ORTTrainer():
 
     def __init__(self, model, loss_fn, model_desc, training_optimizer_name, map_optimizer_attributes,
                  learning_rate_description, device, gradient_accumulation_steps=1, postprocess_model=None,
-                 world_rank=-1, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
+                 world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
                  global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False):
         super(ORTTrainer, self).__init__()
         """
@@ -553,13 +553,11 @@ class ORTTrainer():
         if isinstance(model, torch.nn.Module):
             self.torch_model_ = model
             self.loss_fn_ = loss_fn
-        elif isinstance(model, onnx.onnx_ml_pb2.ModelProto):
+        else:
+            self.onnx_model_ = model
             if loss_fn is not None:
                 print("loss_fn is not used when creating ORTTrainer because an ONNX model is provided.")
             # TODO: accept loss_fn as an onnx model. build self.onnx_model_ with model and loss_fn
-            self.onnx_model_ = model
-        else:
-            raise RuntimeError("Creating ORTTrainer with unknown model type. Only ONNX or PyTorch models are accepted.")
 
         self.model_desc_ = model_desc
         self.input_desc_with_lr = [*self.model_desc_.inputs_, learning_rate_description]

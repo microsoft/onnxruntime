@@ -7,6 +7,7 @@ do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
 d) DEVICE_TYPE=${OPTARG};;
+x) BUILD_EXTR_PAR=${OPTARG};;
 esac
 done
 
@@ -106,6 +107,11 @@ fi
 ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
 if [ $DEVICE_TYPE = "Normal" ]; then
     ${PYTHON_EXE} -m pip install sympy==1.1.1
+elif [ $DEVICE_TYPE = "gpu" ]; then
+    ${PYTHON_EXE} -m pip install sympy==1.1.1
+    if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
+      ${PYTHON_EXE} -m pip install torch
+    fi
 fi
 
 
