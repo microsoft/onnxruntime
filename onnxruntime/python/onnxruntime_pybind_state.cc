@@ -16,6 +16,7 @@
 #include "core/framework/TensorSeq.h"
 #include "core/framework/session_options.h"
 #include "core/framework/bfc_arena.h"
+#include "core/framework/random_seed.h"
 
 #if USE_CUDA
 #define BACKEND_PROC "GPU"
@@ -239,6 +240,7 @@ struct TrainingParameters {
   int data_parallel_size = 1;
   int horizontal_parallel_size = 1;
   bool partition_optimizer = false;
+  int seed = -1;
 };
 
 template <>
@@ -488,6 +490,11 @@ static void ConfigureSessionForTraining(
     opt.partition_optimizer = parameters.partition_optimizer;
 
     config.optimizer_config = opt;
+  }
+
+  if (parameters.seed > 0) {
+    utils::SetStaticRandomSeed(static_cast<uint32_t>(parameters.seed));
+    std::cout << "Random seed is set to " << parameters.seed << std::endl;
   }
 
   training::TrainingSession::TrainingConfigurationResult config_result{};
