@@ -120,9 +120,18 @@ def run_one_test(perf_results, model_path, all_inputs, batch_size, sequence_leng
         results, latency_list = onnxruntime_inference(session, all_inputs, output_names)
         all_latency_list.extend(latency_list)
 
-    average_latency = statistics.mean(all_latency_list) * 1000 + extra_latency
+    # latency in miliseconds
+    latency_ms = np.array(all_latency_list) * 1000 + extra_latency
+
+    average_latency = statistics.mean(latency_ms)
+    latency_50 = np.percentile(latency_ms, 50)
+    latency_75 = np.percentile(latency_ms, 75)
+    latency_90 = np.percentile(latency_ms, 90)
+    latency_95 = np.percentile(latency_ms, 95)
+    latency_99 = np.percentile(latency_ms, 99)
     throughput = batch_size * (1000.0 / average_latency)
-    perf_results[key] = (average_latency, throughput)
+
+    perf_results[key] = (average_latency, latency_50, latency_75, latency_90, latency_95, latency_99, throughput)
 
     print("Average latency {} ms, and throughput {} QPS".format(format(average_latency, '.2f'), format(throughput, '.2f')))
 def launch_test(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, intra_op_num_threads, omp_num_threads, omp_wait_policy, extra_latency):
@@ -248,13 +257,11 @@ def main():
         for (key, perf_result) in sorted_results:
             params = key.split(',')
             if headers is None:
-                headers = ["Latency(ms)", "Throughput(QPS)"]
+                headers = ["Latency(ms)", "Latency_P50", "Latency_P75", "Latency_P90", "Latency_P95", "Latency_P99", "Throughput(QPS)"]
                 headers.extend([x.split('=')[0] for x in params])
                 tsv_writer.writerow(headers)
 
-            (latency, throughput) = perf_result
-            values = [format(latency, '.2f'), format(throughput, '.2f')]
-
+            values = [format(x, '.2f') for x in perf_result]
             values.extend([x.split('=')[1] for x in params])
             tsv_writer.writerow(values)
 
