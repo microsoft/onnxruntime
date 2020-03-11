@@ -3,7 +3,7 @@ trigger: none
 jobs:
 - template: templates/linux-ci.yml
   parameters:
-    AgentPool : 'AI-Linux-CPU'
+    AgentPool : 'Linux-CPU'
     JobName: 'Onnxruntime_Linux_CPU_Training'
     SubmoduleCheckoutMode: 'recursive'
     BuildCommand: >

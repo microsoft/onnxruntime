@@ -188,7 +188,7 @@ int main(int argc, char* args[]) {
   std::vector<string> feeds{"X", "labels"};
   auto trainingData = std::make_shared<DataSet>(feeds);
   auto testData = std::make_shared<DataSet>(feeds);
-  std::string mnist_data_path(params.train_data_dir.begin(), params.train_data_dir.end());
+  std::string mnist_data_path = ToMBString(params.train_data_dir);
   PrepareMNISTData(mnist_data_path, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData, params.mpi_context.world_rank /* shard_to_load */, device_count /* total_shards */);
 
   if (testData->NumSamples() == 0) {
