@@ -13,7 +13,8 @@
 #include "core/framework/execution_frame.h"
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/framework/utils.h"
+
+// #define TRACE_EXECUTION
 
 // Define this symbol to create Concurrency Visualizer markers.
 // See https://docs.microsoft.com/en-us/visualstudio/profiling/concurrency-visualizer-sdk
@@ -43,6 +44,69 @@ LARGE_INTEGER perf_freq = OrtGetPerformanceFrequency();
 
 namespace onnxruntime {
 
+static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context,
+                                      size_t& total_output_sizes, const std::string& node_name) {
+  // Calculate total output sizes for this operation.
+  total_output_sizes = 0;
+  ORT_UNUSED_PARAMETER(node_name);
+  for (auto i = 0; i < op_kernel_context->OutputCount(); i++) {
+    const OrtValue* p_output = op_kernel_context->GetOutputMLValue(i);
+    if (p_output->IsTensor()) {
+      const auto& tensor = p_output->Get<Tensor>();
+      size_t tensor_size = tensor.SizeInBytes();
+#if defined(TRACE_EXECUTION)
+      const TensorShape& tensor_shape = tensor.Shape();
+      std::cout << node_name << " output[" << i << "]"
+                << " size=" << tensor_size
+                << " shape=" << tensor_shape.ToString()
+                << " element_size=" << tensor.DataType()->Size()
+                << "\n";
+#endif
+      total_output_sizes += tensor_size;
+    }
+  }
+
+}
+
+static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_context,
+                                     const onnxruntime::OpKernel* p_op_kernel,
+                                     size_t& input_activation_sizes, size_t& input_parameter_sizes,
+                                     const std::string& node_name) {
+  // Calculate total input sizes for this operation.
+  input_activation_sizes = 0;
+  input_parameter_sizes = 0;
+  ORT_UNUSED_PARAMETER(node_name);
+  const int input_count = op_kernel_context->InputCount();
+  for (auto i = 0; i < input_count; i++) {
+    const OrtValue* p_input = op_kernel_context->GetInputMLValue(i);
+    if (p_input->IsTensor()) {
+      const OpKernelInfo& op_kernel_info = p_op_kernel->Info();
+      const Tensor* p_tensor = nullptr;
+      bool is_param = op_kernel_info.TryGetConstantInput(i, &p_tensor);
+      if (!is_param) {
+        p_tensor = &(p_input->Get<Tensor>());
+      }
+      size_t tensor_size = p_tensor->SizeInBytes();
+
+#if defined(TRACE_EXECUTION)
+      const TensorShape& tensor_shape = p_tensor->Shape();
+      size_t element_size = p_tensor->DataType()->Size();
+      std::cout << node_name << " input[" << i << "]"
+                << " is_param=" << is_param
+                << " size=" << tensor_size
+                << " shape=" << tensor_shape.ToString()
+                << " element_size=" << element_size
+                << "\n";
+#endif
+      if (is_param) {
+        input_parameter_sizes += tensor_size;
+      } else {
+        input_activation_sizes += tensor_size;
+      }
+    }
+  }
+}
+
 static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan& seq_exec_plan,
                                   const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
@@ -57,6 +121,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   TimePoint tp;
   TimePoint sync_time_begin;
   TimePoint kernel_begin_time;
+  size_t input_activation_sizes = 0;
+  size_t input_parameter_sizes = 0;
+  size_t total_output_sizes = 0;
 
   if (is_profiler_enabled) {
     tp = session_state.Profiler().StartTime();
@@ -64,13 +131,23 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
   ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
 
+  const std::unordered_set<NodeIndex>* to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
+  const bool only_execute_path_to_fetches = only_execute_path_to_fetches_ && (to_be_executed_nodes != nullptr);
+
+  if (only_execute_path_to_fetches) {
+    VLOGS(logger, 1) << to_be_executed_nodes->size() << " nodes to be executed\n";
+  }
+
   LOGS(logger, INFO) << "Begin execution";
   const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
   const auto& exec_plan_vec = seq_exec_plan.execution_plan;
   VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
 
-  // uncomment the line below to dump execution plan
-  //std::cout << std::make_pair(p_seq_exec_plan, &session_state) << "\n";
+// Enable TRACE_EXECUTION compile flag to dump execution plan
+#if defined(TRACE_EXECUTION)
+  std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
+#endif
+
   const auto* graph_viewer = session_state.GetGraphViewer();
 
 #ifdef CONCURRENCY_VISUALIZER
@@ -91,6 +168,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     auto node_index = node_exec_plan.node_index;
+
+    // If it is not necessary to execute the node.
+    if (only_execute_path_to_fetches && to_be_executed_nodes->count(node_index) == 0) {
+      continue;
+    }
+
     const auto& node = *graph_viewer->GetNode(node_exec_plan.node_index);
 
 #ifdef CONCURRENCY_VISUALIZER
@@ -103,6 +186,13 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     if (p_op_kernel == nullptr)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
                              node.Name());
+
+    std::string node_name = node.Name();
+    if (node_name.empty()) {
+      // Node name field is often blank in execution graph, so derive something meaningful for profile traces and logs.
+      node_name = node.OpType() + "_" + std::to_string(node_index);
+    }
+
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     LARGE_INTEGER kernel_start;
     QueryPerformanceCounter(&kernel_start);
@@ -153,14 +243,20 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     if (is_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     p_op_kernel->Node().Name() + "_fence_before",
+                                                     node_name + "_fence_before",
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
 
       // call compute on the kernel
-      VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
+      VLOGS(logger, 1) << "Computing kernel: " << node_name;
 
       kernel_begin_time = session_state.Profiler().StartTime();
+    }
+
+    if (is_profiler_enabled) {
+      // Calculate total input sizes for this operation.
+      CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
+                               input_activation_sizes,input_parameter_sizes, node_name);
     }
 
 #ifdef CONCURRENCY_VISUALIZER
@@ -189,10 +285,35 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 
     if (is_profiler_enabled) {
+      // Calculate total output sizes for this operation.
+      CalculateTotalOutputSizes(&op_kernel_context, total_output_sizes, node_name);
+
+#if defined(TRACE_EXECUTION)
+      // Trace execution step.
+      const Node& node = p_op_kernel->Node();
+      std::cout << "Executed op kernel node " << node_name
+                << " Index=" << node.Index()
+                << " OpType=" << node.OpType()
+                << " Name=" << node.Name()
+                << " Activation_Size=" << input_activation_sizes
+                << " Parameter_Size=" << input_parameter_sizes
+                << " Output_Size=" << total_output_sizes
+                << "\n";
+#endif
+
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     p_op_kernel->Node().Name() + "_kernel_time",
+                                                     node_name + "_kernel_time",
                                                      kernel_begin_time,
-                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}, {"provider", p_op_kernel->KernelDef().Provider()}});
+                                                     // Log additional operation args / info.
+                                                     {
+                                                         {"op_name", p_op_kernel->KernelDef().OpName()},
+                                                         {"provider", p_op_kernel->KernelDef().Provider()},
+                                                         {"graph_index", std::to_string(p_op_kernel->Node().Index())},
+                                                         {"exec_plan_index", std::to_string(node_index)},
+                                                         {"activation_size", std::to_string(input_activation_sizes)},
+                                                         {"parameter_size", std::to_string(input_parameter_sizes)},
+                                                         {"output_size", std::to_string(total_output_sizes)},
+                                                     });
 
       sync_time_begin = session_state.Profiler().StartTime();
     }
@@ -229,13 +350,13 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     elapsed.QuadPart /= perf_freq.QuadPart;
     // Log an event
     TraceLoggingWrite(telemetry_provider_handle,  // handle to my provider
-                      "OpEnd",       // Event Name that should uniquely identify your event.
+                      "OpEnd",                    // Event Name that should uniquely identify your event.
                       TraceLoggingValue(p_op_kernel->KernelDef().OpName().c_str(), "op_name"),
                       TraceLoggingValue(elapsed.QuadPart, "time"));
 #endif
     if (is_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     p_op_kernel->Node().Name() + "_fence_after",
+                                                     node_name + "_fence_after",
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
@@ -245,7 +366,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 
     // free ml-values corresponding to this node
-    VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << p_op_kernel->Node().Name();
+    VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << node_name;
     ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
   }
 

@@ -67,7 +67,7 @@ else
         if [ $CUDA_VER = "cuda9.1-cudnn7.1" ]; then
         DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
         fi
-        docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
+        docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg BUILD_EXTR_PAR="${BUILD_EXTR_PAR}" -f $DOCKER_FILE .
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
         # TensorRT container release 20.01
         IMAGE="$BUILD_OS-cuda10.2-cudnn7.6-tensorrt7.0"

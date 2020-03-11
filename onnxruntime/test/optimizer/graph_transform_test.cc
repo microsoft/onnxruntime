@@ -1,5 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4244)
+#endif
+
 #include "core/graph/onnx_protobuf.h"
 
 #include "core/session/inference_session.h"
@@ -26,6 +31,7 @@
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/shape_to_initializer.h"
@@ -95,7 +101,7 @@ TEST(GraphTransformationTests, DropoutElimination) {
 }
 
 TEST(GraphTransformationTests, SliceElimination) {
-  std::vector<std::basic_string<ORTCHAR_T> > model_names = {ORT_TSTR("slice-v1-elim.onnx"), ORT_TSTR("slice-v11-elim.onnx")};
+  std::vector<std::basic_string<ORTCHAR_T>> model_names = {ORT_TSTR("slice-v1-elim.onnx"), ORT_TSTR("slice-v11-elim.onnx")};
   for (const auto& model_name : model_names) {
     auto model_uri = MODEL_FOLDER + model_name;
     std::shared_ptr<Model> model;
@@ -343,9 +349,9 @@ TEST(GraphTransformationTests, DontFuseConvWithBNWithOptionalOutputs) {
 }
 
 TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
-  std::vector<std::basic_string<ORTCHAR_T> > test_models = {ORT_TSTR("fusion/fuse-conv-bn-mul-add-unsqueeze.onnx"),
-                                                            ORT_TSTR("fusion/fuse-conv-bn-mul-add-unsqueeze.negative_axes.onnx"),
-                                                            ORT_TSTR("fusion/fuse-conv-bn-mul-add-unsqueeze-no-bias.onnx")};
+  std::vector<std::basic_string<ORTCHAR_T>> test_models = {ORT_TSTR("fusion/fuse-conv-bn-mul-add-unsqueeze.onnx"),
+                                                           ORT_TSTR("fusion/fuse-conv-bn-mul-add-unsqueeze.negative_axes.onnx"),
+                                                           ORT_TSTR("fusion/fuse-conv-bn-mul-add-unsqueeze-no-bias.onnx")};
   for (const auto& model : test_models) {
     auto model_uri = MODEL_FOLDER + model;
 
@@ -610,6 +616,23 @@ TEST(GraphTransformationTests, Gemm_Relu_three_input) {
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Relu"] == 0);
+}
+
+TEST(GraphTransformationTests, TransposeMatmulFusion) {
+  auto model_uri = MODEL_FOLDER "fusion/transpose_matmul_4d_fusion.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Transpose"] == 0);
+  ASSERT_TRUE(op_to_count["MatMul"] == 0);
+  ASSERT_TRUE(op_to_count["TransposeMatMul"] == 1);
 }
 
 TEST(GraphTransformationTests, Gemm_LeakyRelu_Fusion) {
@@ -1502,22 +1525,22 @@ static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_pat
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Div"] == 0);
-  ASSERT_TRUE(op_to_count["Add"] == add_count );
+  ASSERT_TRUE(op_to_count["Add"] == add_count);
   ASSERT_TRUE(op_to_count["Sub"] == 0);
   ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
   ASSERT_TRUE(op_to_count["Pow"] == 0);
   ASSERT_TRUE(op_to_count["Sqrt"] == 0);
-  ASSERT_TRUE(op_to_count["LayerNormalization"] == ln_count );
-  ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == skip_ln_count );
+  ASSERT_TRUE(op_to_count["LayerNormalization"] == ln_count);
+  ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == skip_ln_count);
 }
 
 TEST(GraphTransformationTests, SkipLayerNormFusionTest) {
   TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1.onnx", 0, 0, 1);
-  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2.onnx", 0, 0, 1 );
-  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3.onnx", 0, 0, 1 );
-  TestSkipLayerNormFusion( MODEL_FOLDER "fusion/skip_layer_norm_format1_partial.onnx", 1, 0, 1 );
-  TestSkipLayerNormFusion( MODEL_FOLDER "fusion/skip_layer_norm_format2_partial.onnx", 1, 0, 1 );
-  TestSkipLayerNormFusion( MODEL_FOLDER "fusion/skip_layer_norm_format3_no_fusion.onnx", 1, 1, 0 );
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2.onnx", 0, 0, 1);
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3.onnx", 0, 0, 1);
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1_partial.onnx", 1, 0, 1);
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2_partial.onnx", 1, 0, 1);
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3_no_fusion.onnx", 1, 1, 0);
 }
 
 TEST(GraphTransformationTests, EmbedLayerNormFusionFormat1) {

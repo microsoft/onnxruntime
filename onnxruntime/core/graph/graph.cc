@@ -1071,9 +1071,20 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
   }
 
   // now build connections within this Graph instance
+  node_arg_to_producer_node_.clear();
+  node_arg_to_consumer_nodes_.clear();
   for (auto& node : Nodes()) {
     // Need mutable input defs to be able to set any outer scope NodeArg implicit inputs
     auto& input_args = node.MutableInputDefs();
+    auto& output_args = node.MutableOutputDefs();
+
+    if (!output_args.empty()) {
+      for (const auto* output_arg : output_args) {
+        if (output_arg->Exists()) {
+          node_arg_to_producer_node_.insert({output_arg->Name(), node.Index()});
+        }
+      }
+    }
 
     if (!input_args.empty()) {
       // This node needs inputs.
@@ -1086,6 +1097,7 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
           continue;
         }
 
+        node_arg_to_consumer_nodes_[input_arg->Name()].insert(node.Index());
         const auto& input_arg_name = input_arg->Name();
         auto output_arg_iter = resolve_context_.output_args.find(input_arg_name);
         if (resolve_context_.output_args.end() != output_arg_iter) {
@@ -1149,7 +1161,12 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
   while (!stack.empty()) {
     const WorkEntry last_entry = stack.back();
     stack.pop_back();
+
+    if (last_entry.first == nullptr) {
+      continue;
+    }
     const Node& n = *last_entry.first;
+
     if (last_entry.second) {
       // leave node
       leave(&n);
@@ -1498,7 +1515,9 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
 
   // now that we have handled the input types, do the type/shape inferencing for the subgraph
   // to flow the type/shape info through it
-  status = subgraph.PerformTypeAndShapeInferencing();
+  // TODO: Handle override-type option correctly for subgraphs.
+  Graph::ResolveOptions options;
+  status = subgraph.PerformTypeAndShapeInferencing(options);
   ORT_RETURN_IF_ERROR(status);
 
   auto& subgraph_outputs = subgraph.GetOutputs();
@@ -1511,7 +1530,7 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
 
 // Implementation of type-inference and type-checking for a single node
 GSL_SUPPRESS(f .23)  // spurious warning about inferred_type never being checked for null
-Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
+Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const ResolveOptions& options) {
   auto& node_name = node.Name();
 
   // if we're building a graph we permit outer scope node args to have no type
@@ -1655,10 +1674,27 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
 
     if ((existing_type != inferred_type) && (existing_type != nullptr)) {
       // A type exists for this output but does not match the inferred type.
-      return Status(ONNXRUNTIME, FAIL,
-                    "Type Error: Type (" + *existing_type + ") of output arg (" +
-                        output_def->Name() + ") of node (" + node_name +
-                        ") does not match expected type (" + *inferred_type + ").");
+
+      if (options.override_types) {
+        // Replace existing type by inferred type: for use after graph-transformations
+        // that change types of variables such as mixed-precision transformation.
+        // Note: This reuses the original shape, with inferred type. Transformations
+        // that can affect the shape are not yet supported.
+
+        // The "SetType" call will override the shape information to empty.
+        // If the original tensor has shape information, need to set it back.
+        if (output_def->Shape()) {
+          auto old_shape = *output_def->Shape();
+          output_def->SetType(inferred_type);
+          output_def->SetShape(old_shape);
+        } else {
+          output_def->SetType(inferred_type);
+        }
+      } else
+        return Status(ONNXRUNTIME, FAIL,
+                      "Type Error: Type (" + *existing_type + ") of output arg (" +
+                          output_def->Name() + ") of node (" + node_name +
+                          ") does not match expected type (" + *inferred_type + ").");
     }
 
     if (existing_type == nullptr)
@@ -1760,7 +1796,7 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   return Status::OK();
 }
 
-Status Graph::VerifyNodeAndOpMatch() {
+Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   CheckerContext ctx;
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
   ctx.set_opset_imports(DomainToVersionMap());
@@ -1858,7 +1894,7 @@ Status Graph::VerifyNodeAndOpMatch() {
       }
     }
 
-    NO_CHANGE_ON_SYNC_FLAG(ORT_RETURN_IF_ERROR(InferAndVerifyTypeMatch(node, *p_op)));
+    NO_CHANGE_ON_SYNC_FLAG(ORT_RETURN_IF_ERROR(InferAndVerifyTypeMatch(node, *p_op, options)));
 
     // Accumulate output names of the iterated Node
     for (auto& output_name : node_proto.output()) {
@@ -1925,7 +1961,7 @@ Status Graph::InitInputsInitializersOutputs() {
   return Status::OK();
 }
 
-Status Graph::PerformTypeAndShapeInferencing() {
+Status Graph::PerformTypeAndShapeInferencing(const ResolveOptions& options) {
   ORT_RETURN_IF_ERROR(TypeCheckInputsAndInitializers());
 
   // type/shape inferencing on the nodes is done recursively as we need subgraph outputs
@@ -1940,7 +1976,7 @@ Status Graph::PerformTypeAndShapeInferencing() {
   //        for all nodes in the subgraph. This leads to recursively handling all subgraphs contained in the node.
   //      - once we finish processing the subgraph/s we apply resultant type/shape information to the outputs
   //        of the node that contains the subgraph.
-  ORT_RETURN_IF_ERROR(VerifyNodeAndOpMatch());
+  ORT_RETURN_IF_ERROR(VerifyNodeAndOpMatch(options));
 
   return Status::OK();
 }
@@ -1957,15 +1993,11 @@ Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::
   return status;
 }
 
-Status Graph::Resolve() {
-  return Resolve(false);
-}
-
-Status Graph::Resolve(bool no_proto_sync_required) {
+Status Graph::Resolve(const ResolveOptions& options) {
   if (parent_graph_) {
     // Resolve must start at the top level graph in-order to handle outer scope
     // connections correctly, so recurse up to that level to start
-    return parent_graph_->Resolve(no_proto_sync_required);
+    return parent_graph_->Resolve(options);
   }
 
   // find all subgraphs including nested ones.
@@ -2002,16 +2034,16 @@ Status Graph::Resolve(bool no_proto_sync_required) {
   // type/shape validation and inferencing on this and any subgraphs
   // recurses into subgraphs via the ONNX checker, which descends into the GraphProto in node attributes
   // which define a subgraph.
-  ORT_RETURN_IF_ERROR(PerformTypeAndShapeInferencing());
+  ORT_RETURN_IF_ERROR(PerformTypeAndShapeInferencing(options));
 
   // perform the final steps for this graph and all subgraphs
-  auto finalize_func = [&no_proto_sync_required](Graph& graph) {
-            graph.CleanUnusedInitializers();
+  auto finalize_func = [&options](Graph& graph) {
+            graph.CleanUnusedInitializers(options.initializer_names_to_preserve);
             graph.GraphResolveNeeded(false);
 
             // if we are resolving immediately after loading from a GraphProto, we don't need to
             // do a proto sync
-            if (no_proto_sync_required) {
+            if (options.no_proto_sync_required) {
                 graph.GraphProtoSyncNeeded(false);
             }
 
@@ -2386,7 +2418,7 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   }
 }
 
-void Graph::CleanUnusedInitializers() {
+void Graph::CleanUnusedInitializers(const std::unordered_set<std::string>* initializer_names_to_preserve) {
   std::unordered_set<std::string> used_args;
 
   const auto& inputs = GetInputs();
@@ -2414,7 +2446,9 @@ void Graph::CleanUnusedInitializers() {
   auto end = used_args.end();
   for (const auto& pv : name_to_initial_tensor_) {
     const std::string& name = pv.first;
-    if (used_args.find(name) == end) {
+    if (used_args.find(name) == end &&
+        (initializer_names_to_preserve == nullptr ||
+         initializer_names_to_preserve->find(name) == initializer_names_to_preserve->cend())) {
       // on the first call to Graph::Resolve we are removing unnecessary initializers that should be removed
       // from the model.
       // on later calls we are removing initializers that optimizations have made redundant.
@@ -2462,7 +2496,7 @@ Status Graph::SetGraphInputsOutputs() {
   // and outputs will be inferred.
   const bool loaded_from_model_file = GraphLoadedFromModelFile(graph_proto_);
 
-  if (loaded_from_model_file) {
+  if (loaded_from_model_file && !graph_inputs_manually_set_ && !graph_outputs_manually_set_) {
     // Reset graph inputs excluding initializers/value_info.
     graph_inputs_excluding_initializers_.clear();
     value_info_.clear();
@@ -2539,7 +2573,6 @@ Status Graph::SetGraphInputsOutputs() {
       const auto* node_arg = GetNodeArg(name);
       value_info_.push_back(node_arg);
     }
-
   } else {
     // Reset value_info.
     value_info_.clear();
@@ -2646,7 +2679,9 @@ Status Graph::SetGraphInputsOutputs() {
           // Remove the output arg name from graph outputs since it's
           // the input of this node, which we call it intermediate result
           // and store it in <m_valueinfo>.
-          value_info_.push_back(input_arg);
+          if (std::find(value_info_.begin(), value_info_.end(), input_arg) == value_info_.end()) {
+            value_info_.push_back(input_arg);
+          }
         }
       }
     }
@@ -2658,6 +2693,7 @@ Status Graph::SetGraphInputsOutputs() {
       for (const auto& output_arg : graph_output_args) {
         graph_output_args_index.push_back(output_arg.second);
       }
+
       std::sort(graph_output_args_index.begin(), graph_output_args_index.end());
       for (auto& output_arg_index : graph_output_args_index) {
         graph_outputs_.push_back(output_node_args_in_order[output_arg_index]);
@@ -2779,29 +2815,65 @@ Status Graph::InlineFunction(Node& node) {
   for (auto output_edge : output_edges) {
     RemoveEdge(node.Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
   }
+  std::unordered_map<std::string, NodeArg*> remap_input_output;
+  if (node.MutableInputDefs().size() != subgraph.GetInputsIncludingInitializers().size())
+    return Status(ONNXRUNTIME, FAIL, "Node " + node.Name() + "'s number of inputs is different from function body graph's number of input.");
+  for (size_t i = 0; i < subgraph.GetInputsIncludingInitializers().size(); ++i) {
+    auto* input = subgraph.GetInputsIncludingInitializers()[i];
+    if (input->Name() != node.MutableInputDefs()[i]->Name())
+      remap_input_output[input->Name()] = node.MutableInputDefs()[i];
+  }
+
+  ORT_ENFORCE(node.MutableOutputDefs().size() == subgraph.GetOutputs().size(),
+              "Node ", node.Name(), "'s number of outputs is different from function body graph's number of outputs.");
+  for (size_t i = 0; i < subgraph.GetOutputs().size(); ++i) {
+    auto* output = subgraph.GetOutputs()[i];
+    if (output->Name() != node.MutableOutputDefs()[i]->Name())
+      remap_input_output[output->Name()] = node.MutableOutputDefs()[i];
+  }
+
   RemoveNode(node.Index());
   for (const auto& subgraph_node : subgraph.Nodes()) {
-    AddNode(subgraph_node);
+    if (subgraph_node.OpType() == kConstant) {
+      // Copy constant nodes _value to name_to_initial_tensor_
+      const gsl::not_null<TensorProto*>
+          tensor{graph_proto_->add_initializer()};
+      *tensor = subgraph_node.GetAttributes().at("value").t();
+      *(tensor->mutable_name()) = subgraph_node.OutputDefs()[0]->Name();
+      name_to_initial_tensor_[tensor->name()] = tensor;
+    } else {
+      std::vector<NodeArg *> inputs, outputs;
+      for (auto* input : subgraph_node.InputDefs()) {
+        auto it = remap_input_output.find(input->Name());
+        if (it != remap_input_output.end())
+          inputs.push_back(it->second);
+        else
+          inputs.push_back(const_cast<NodeArg*>(input));
+      }
+      for (auto* output : subgraph_node.OutputDefs()) {
+        auto it = remap_input_output.find(output->Name());
+        if (it != remap_input_output.end())
+          outputs.push_back(it->second);
+        else
+          outputs.push_back(const_cast<NodeArg*>(output));
+      }
+      AddNode(subgraph_node.Name(), subgraph_node.OpType(), subgraph_node.Description(),
+              inputs,
+              outputs,
+              &subgraph_node.GetAttributes(),
+              subgraph_node.Domain());
+    }
   }
   ORT_RETURN_IF_ERROR(this->Resolve());
   return Status::OK();
 }
 
 void Graph::SetInputs(const std::vector<const NodeArg*>& inputs) {
-  if (GraphLoadedFromModelFile(graph_proto_)) {
-    // TODO: add this support.
-    ORT_THROW("This API is not supported when model is loaded from proto file right now.");
-  }
-
   graph_inputs_including_initializers_ = inputs;
   graph_inputs_manually_set_ = true;
 }
 
 void Graph::SetOutputs(const std::vector<const NodeArg*>& outputs) {
-  if (GraphLoadedFromModelFile(graph_proto_)) {
-    // TODO: add this support.
-    ORT_THROW("This API is not supported when model is loaded from proto file right now.");
-  }
   graph_outputs_ = outputs;
   graph_outputs_manually_set_ = true;
 }
@@ -2810,8 +2882,44 @@ void Graph::AddFunction(const ONNX_NAMESPACE::FunctionProto* func_proto) {
   this->model_functions_[func_proto->name()] = func_proto;
 }
 
+void Graph::SetNodeArgType(NodeArg& arg, const onnx::TypeProto& type_proto) {
+  arg.SetType(type_proto);
+  graph_resolve_needed_ = true;
+}
+
 Graph::~Graph() {
   // nothing to do, but we put it here so we don't need to fully define types in Graph that are held in unique_ptr
   // such as   std::unique_ptr<FunctionContainer> function_container_;
 }
+
+std::ostream& operator<<(std::ostream& out, const Graph& graph) {
+  out << "Inputs:\n";
+  for (auto* x : graph.GetInputs()) {
+    out << "   " << x->Name() << " : " << *x->Type() << std::endl;
+  }
+  out << "Nodes:\n";
+  for (auto& node : graph.Nodes()) {
+    out << "   " << node.Name() << ": " << node.OpType() << " (";
+    for (auto* x : node.InputDefs()) {
+      if (x->Exists()) {
+        out << x->Name() << ": " << *x->Type();
+      }
+      out << ", ";
+    }
+    out << ") -> ";
+    for (auto* x : node.OutputDefs()) {
+      if (x->Exists()) {
+        out << x->Name() << ": " << *x->Type();
+      }
+      out << ", ";
+    }
+    out << std::endl;
+  }
+  out << "Outputs:\n";
+  for (auto* x : graph.GetOutputs()) {
+    out << "   " << x->Name() << " : " << *x->Type() << std::endl;
+  }
+  return out;
+}
+
 }  // namespace onnxruntime

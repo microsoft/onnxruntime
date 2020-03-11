@@ -82,19 +82,18 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   cudnnDataType_t cudnn_type_X = CudnnTensor::GetDataType<CudaT>();
   const auto rank = input_shape.NumDimensions();
 
-// Block of fast matrix row reduction.
+  // Block of fast matrix row reduction.
   const auto stride = input_shape[input_shape.NumDimensions() - 1];
   const auto reduction_size = input_shape.Size() / stride;
   if (fast_reduction_ && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
       is_matrix_row_reduction(cudnn_reduce_op,
-        static_cast<int>(reduction_size),
-        static_cast<int>(stride), rank, axes_)) {
-
+                              static_cast<int>(reduction_size),
+                              static_cast<int>(stride), rank, axes_)) {
     reduce_matrix_rows(
-      reinterpret_cast<const CudaT*>(X),
-      reinterpret_cast<CudaT*>(Y),
-      static_cast<int>(reduction_size),
-      static_cast<int>(stride));
+        reinterpret_cast<const CudaT*>(X),
+        reinterpret_cast<CudaT*>(Y),
+        static_cast<int>(reduction_size),
+        static_cast<int>(stride));
     return Status::OK();
   }
 
@@ -396,14 +395,13 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   const auto reduction_size = input_count / stride;
   if (fast_reduction_ && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
       is_matrix_row_reduction(cudnn_reduce_op,
-        static_cast<int>(reduction_size),
-        static_cast<int>(stride), rank, axes_)) {
-
+                              static_cast<int>(reduction_size),
+                              static_cast<int>(stride), rank, axes_)) {
     reduce_matrix_rows(
-      reinterpret_cast<const CudaT*>(X->template Data<T>()),
-      reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
-      static_cast<int>(reduction_size),
-      static_cast<int>(stride));
+        reinterpret_cast<const CudaT*>(X->template Data<T>()),
+        reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+        static_cast<int>(reduction_size),
+        static_cast<int>(stride));
     return Status::OK();
   }
 

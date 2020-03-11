@@ -1,5 +1,6 @@
 parameters:
   JobName: 'MacOS_CI_Dev'
+  SubmoduleCheckoutMode: ''
   BuildCommand: ''
   DoNugetPack: 'false'
   NuPackScript: ''
@@ -14,6 +15,9 @@ jobs:
   variables:
     BuildCommand: ${{ parameters.BuildCommand }}
   steps:
+    - checkout: self
+      ${{ if ne(parameters.SubmoduleCheckoutMode, '') }}:
+        submodules: ${{ parameters.SubmoduleCheckoutMode }}
     - template: mac-set-variables-and-download.yml
     - script: |
         export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-11.jdk/Contents/Home

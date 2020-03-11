@@ -15,6 +15,8 @@
 #include "core/common/logging/severity.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/session_options.h"
+#include "core/framework/bfc_arena.h"
+#include "core/framework/random_seed.h"
 
 #if USE_CUDA
 #define BACKEND_PROC "GPU"
@@ -85,8 +87,19 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/cpu_provider_factory.h"
 
+#ifdef ENABLE_TRAINING
+#include "core/session/IOBinding.h"
+#include "orttraining/core/session/training_session.h"
+#include "orttraining/core/graph/optimizer_config.h"
+#include "orttraining/core/framework/mpi_setup.h"
+#include "orttraining/core/framework/data_transfer_utils.h"
+#endif
+
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
+int cuda_device_id = 0;
+size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
+onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
@@ -104,19 +117,17 @@
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 std::string nuphar_settings;
 #endif
-#ifdef USE_BRAINSLICE
-#include "core/providers/brainslice/brainslice_provider_factory.h"
-#endif
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
+                                                                               size_t cuda_mem_limit,
+                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t ip, int, int, bool, const char*, const char*, const char*);
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -130,6 +141,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainS
 #endif  // _MSC_VER
 
 namespace onnxruntime {
+using namespace training;
 namespace python {
 
 namespace py = pybind11;
@@ -151,7 +163,7 @@ void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
 
-void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj) {
+void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransferManager* data_transfer_manager = nullptr) {
   std::vector<npy_intp> npy_dims;
   const TensorShape& shape = rtensor.Shape();
 
@@ -168,7 +180,18 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj) {
       PyArray_DATA(reinterpret_cast<PyArrayObject*>(obj.ptr())));
 
   if (numpy_type != NPY_OBJECT) {
-    memcpy(outPtr, rtensor.DataRaw(dtype), dtype->Size() * shape.Size());
+    //if it is not cpu tensor, need to copy to host
+    if (rtensor.Location().device.Type() != OrtDevice::CPU) {
+      if (!data_transfer_manager)
+        throw std::runtime_error("GetPyObjFromTensor: data transfer manager is needed when convert non-CPU tensor to numpy array");
+      static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
+      std::vector<char> tensor_data_buffer{};
+      tensor_data_buffer.resize(rtensor.SizeInBytes());
+      ORT_THROW_IF_ERROR(CopyTensorDataToByteSpan(
+          *data_transfer_manager, rtensor, cpu_alloc_info, gsl::make_span(tensor_data_buffer)));
+      memcpy(outPtr, tensor_data_buffer.data(), dtype->Size() * shape.Size());
+    } else
+      memcpy(outPtr, rtensor.DataRaw(dtype), dtype->Size() * shape.Size());
   } else {
     // Handle string type.
     py::object* outObj = static_cast<py::object*>(outPtr);
@@ -178,6 +201,47 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj) {
     }
   }
 }
+
+static std::string GetDeviceName(const OrtDevice& device) {
+  switch (device.Type()) {
+    case OrtDevice::CPU:
+      return CPU;
+    case OrtDevice::GPU:
+      return CUDA;
+    case OrtDevice::FPGA:
+      return "FPGA";
+    default:
+      throw std::runtime_error("Unknow device type:" + std::to_string(device.Type()));
+  }
+}
+
+struct TrainingParameters {
+  std::string loss_output_name;
+  std::unordered_set<std::string> weights_to_train;
+  std::unordered_set<std::string> weights_not_to_train;
+  onnxruntime::training::TrainingSession::ImmutableWeights immutable_weights;
+
+  // optimizer
+  std::string training_optimizer_name;
+  std::string loss_scale_input_name;
+  std::string scaled_loss_output_name;
+  std::string lr_params_feed_name = "Learning_Rate";
+  std::unordered_map<std::string, std::unordered_map<std::string, float>> optimizer_attributes_map;
+  bool use_fp16_moments = false;
+
+  bool use_mixed_precision = false;
+  bool allreduce_post_accumulation = false;
+  float loss_scale = 0.0f;
+  int world_rank = 0;
+  int world_size = 1;
+  int local_rank = 0;
+  int local_size = 1;
+  int gradient_accumulation_steps = 1;
+  int data_parallel_size = 1;
+  int horizontal_parallel_size = 1;
+  bool partition_optimizer = false;
+  int seed = -1;
+};
 
 template <>
 void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
@@ -265,7 +329,7 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
 const std::vector<std::string>& GetAllProviders() {
   static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kDnnlExecutionProvider,
                                                    kNGraphExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider,
-                                                   kBrainSliceExecutionProvider, kCpuExecutionProvider};
+                                                   kCpuExecutionProvider};
   return all_providers;
 }
 
@@ -290,9 +354,6 @@ const std::vector<std::string>& GetAvailableProviders() {
 #ifdef USE_NUPHAR
     available_providers.push_back(kNupharExecutionProvider);
 #endif
-#ifdef USE_BRAINSLICE
-    available_providers.push_back(kBrainSliceExecutionProvider);
-#endif
     return available_providers;
   };
   static std::vector<std::string> available_providers = InitializeProviders();
@@ -309,8 +370,10 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #endif
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      // device id??
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(0));
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit, arena_extend_strategy));
+      cuda_device_id = 0;
+      cuda_mem_limit = static_cast<size_t>(INT_MAX);
+      arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
     } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
@@ -329,10 +392,6 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));
       nuphar_settings.clear();  // clear nuphar_settings after use to avoid it being accidentally passed on to next session
 #endif
-    } else if (type == kBrainSliceExecutionProvider) {
-#ifdef USE_BRAINSLICE
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_BrainSlice(0, -1, -1, false, "", "", ""));
-#endif
     } else {
       // unknown provider
       throw std::runtime_error("Unknown Provider Type: " + type);
@@ -348,6 +407,99 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
     RegisterExecutionProviders(sess, provider_types);
   }
   OrtPybindThrowIfError(sess->Initialize());
+}
+
+// TODO: this method does not handle parallel optimization.
+static void ConfigureSessionForTraining(
+    training::TrainingSession* sess, TrainingParameters& parameters) {
+    //TODO tix, refactor the mpi related code to populate all fields correctly by default.
+    ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size);
+    ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size);
+    if (parameters.world_size % parameters.horizontal_parallel_size != 0) {
+      throw std::runtime_error("Cannot split horizontal parallel group because world_size is not divisible");
+    }
+
+    auto data_group_size = parameters.world_size / parameters.horizontal_parallel_size;
+    if (data_group_size != parameters.data_parallel_size) {
+      std::cout << "WARNING: data_parallel_size is not correct, tuned automatically to "
+                << data_group_size << std::endl;
+      parameters.data_parallel_size = data_group_size;
+    }
+#ifdef USE_HOROVOD
+  // this condition block is temporary.
+  // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
+  // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
+  bool use_nccl = parameters.allreduce_post_accumulation;
+  if (!use_nccl && parameters.world_size > 1) {
+    auto mpi_context = setup_horovod();
+    std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
+    std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
+    std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
+    std::cout << "mpi_context.local_size: " << mpi_context.local_size << std::endl;
+    parameters.local_size = mpi_context.local_size;
+    parameters.local_rank = mpi_context.local_rank;
+  }
+#endif
+
+  training::TrainingSession::TrainingConfiguration config{};
+  config.weight_names_to_train = parameters.weights_to_train;
+  config.weight_names_to_not_train = parameters.weights_not_to_train;
+  config.immutable_weights = parameters.immutable_weights;
+
+  config.set_gradients_as_graph_outputs = true;
+
+  config.gradient_accumulation_steps = parameters.gradient_accumulation_steps;
+
+  config.distributed_config.world_rank = parameters.world_rank;
+  config.distributed_config.world_size = parameters.world_size;
+  config.distributed_config.local_rank = parameters.local_rank;
+  config.distributed_config.local_size = parameters.local_size;
+  config.distributed_config.data_parallel_size = parameters.data_parallel_size;
+  config.distributed_config.horizontal_parallel_size = parameters.horizontal_parallel_size;
+
+  if (parameters.use_mixed_precision) {
+    training::TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
+    mp.add_loss_scaling = false;
+    mp.use_fp16_initializers = true;
+
+    config.mixed_precision_config = mp;
+  }
+
+  config.loss_name =
+      parameters.use_mixed_precision ? parameters.scaled_loss_output_name : parameters.loss_output_name;
+
+  if (!parameters.training_optimizer_name.empty()) {
+    training::TrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
+    opt.name = parameters.training_optimizer_name;
+    opt.learning_rate_input_name = parameters.lr_params_feed_name;
+    opt.weight_attributes_generator = [&parameters](const std::string& weight_name) {
+      const auto it = parameters.optimizer_attributes_map.find(weight_name);
+      ORT_ENFORCE(
+          it != parameters.optimizer_attributes_map.end(),
+          "Failed to find attribute map for weight ", weight_name);
+      return it->second;
+    };
+    opt.use_fp16_moments = parameters.use_fp16_moments;
+    opt.do_all_reduce_in_fp16 = true;
+    // TODO: this mapping is temporary.
+    // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
+    // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
+    // eventually we will have one all reduce kernel and let opt to have
+    // an allreduce_post_accumulation option and remove the use_nccl option.
+    opt.use_nccl = parameters.allreduce_post_accumulation;
+    opt.partition_optimizer = parameters.partition_optimizer;
+
+    config.optimizer_config = opt;
+  }
+
+  if (parameters.seed > 0) {
+    utils::SetStaticRandomSeed(static_cast<uint32_t>(parameters.seed));
+    std::cout << "Random seed is set to " << parameters.seed << std::endl;
+  }
+
+  training::TrainingSession::TrainingConfigurationResult config_result{};
+
+  OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
 }
 
 void addGlobalMethods(py::module& m) {
@@ -432,6 +584,14 @@ void addGlobalMethods(py::module& m) {
       },
       "Return a vector of KernelDef for all registered OpKernels");
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
+
+#ifdef USE_CUDA
+  m.def("set_cuda_device_id", [](const int id) { cuda_device_id = id; });
+  m.def("set_cuda_mem_limit", [](const int64_t limit) {
+    cuda_mem_limit = static_cast<size_t>(limit);
+  });
+  m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) { arena_extend_strategy = strategy; });
+#endif
 }
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
@@ -557,6 +717,84 @@ void addObjectMethods(py::module& m) {
       .value("ORT_SEQUENTIAL", ExecutionMode::ORT_SEQUENTIAL)
       .value("ORT_PARALLEL", ExecutionMode::ORT_PARALLEL);
 
+  py::class_<OrtDevice> device(m, "OrtDevice", R"pbdoc(ONNXRuntime device informaion.)pbdoc");
+  device.def(py::init<OrtDevice::DeviceType, OrtDevice::MemoryType, OrtDevice::DeviceId>())
+      .def("device_id", &OrtDevice::Id, R"pbdoc(Device Id.)pbdoc")
+      .def("device_type", &OrtDevice::Type, R"pbdoc(Device Type.)pbdoc")
+      .def_static("cpu", []() { return OrtDevice::CPU; })
+      .def_static("cuda", []() { return OrtDevice::GPU; })
+      .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
+
+  py::class_<SessionIOBinding> binding(m, "SessionIOBinding");
+  binding
+      .def(py::init<InferenceSession*>())
+      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
+        PyArray_Descr* dtype;
+        if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
+          throw std::runtime_error("Not a valid numpy type");
+        int type_num = dtype->type_num;
+        Py_DECREF(dtype);
+
+        std::string device_name = GetDeviceName(device);
+
+        OrtMemoryInfo info(device_name.c_str(), OrtDeviceAllocator, device);
+
+        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
+        OrtValue mlvalue;
+        mlvalue.Init(p_tensor.release(),
+                     DataTypeImpl::GetType<Tensor>(),
+                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+        auto status = io_binding->Get()->BindInput(name, mlvalue);
+        if (!status.IsOK())
+          throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
+      })
+      .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
+        PyArray_Descr* dtype;
+        if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
+          throw std::runtime_error("Not a valid numpy type");
+        int type_num = dtype->type_num;
+        Py_DECREF(dtype);
+
+        std::string device_name = GetDeviceName(device);
+
+        OrtMemoryInfo info(device_name.c_str(), OrtDeviceAllocator, device);
+
+        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
+        OrtValue mlvalue;
+        mlvalue.Init(p_tensor.release(),
+                     DataTypeImpl::GetType<Tensor>(),
+                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+        auto status = io_binding->Get()->BindOutput(name, mlvalue);
+        if (!status.IsOK())
+          throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
+      })
+      .def("clear_binding_inputs", [](SessionIOBinding* io_binding) -> void {
+        io_binding->Get()->ClearInputs();
+      })
+      .def("clear_binding_outputs", [](SessionIOBinding* io_binding) -> void {
+        io_binding->Get()->ClearOutputs();
+      });
+
+  py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
+  parameters.def(py::init())
+      .def_readwrite("loss_output_name", &TrainingParameters::loss_output_name)
+      .def_readwrite("immutable_weights", &TrainingParameters::immutable_weights)
+      .def_readwrite("weights_not_to_train", &TrainingParameters::weights_not_to_train)
+      .def_readwrite("weights_to_train", &TrainingParameters::weights_to_train)
+      .def_readwrite("loss_scale_input_name", &TrainingParameters::loss_scale_input_name)
+      .def_readwrite("scaled_loss_output_name", &TrainingParameters::scaled_loss_output_name)
+      .def_readwrite("training_optimizer_name", &TrainingParameters::training_optimizer_name)
+      .def_readwrite("lr_params_feed_name", &TrainingParameters::lr_params_feed_name)
+      .def_readwrite("optimizer_attributes_map", &TrainingParameters::optimizer_attributes_map)
+      .def_readwrite("use_fp16_moments", &TrainingParameters::use_fp16_moments)
+      .def_readwrite("use_mixed_precision", &TrainingParameters::use_mixed_precision)
+      .def_readwrite("allreduce_post_accumulation", &TrainingParameters::allreduce_post_accumulation)
+      .def_readwrite("loss_scale", &TrainingParameters::loss_scale)
+      .def_readwrite("world_rank", &TrainingParameters::world_rank)
+      .def_readwrite("world_size", &TrainingParameters::world_size)
+      .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
+      .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer);
+
   py::class_<SessionOptions>
       sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
   sess
@@ -638,7 +876,9 @@ Applies to a particular Run() invocation. Default is 0.)pbdoc")
                      "To identify logs generated by a particular Run() invocation.")
       .def_readwrite("terminate", &RunOptions::terminate,
                      R"pbdoc(Set to True to terminate any currently executing calls that are using this
-RunOptions instance. The individual calls will exit gracefully and return an error status.)pbdoc");
+RunOptions instance. The individual calls will exit gracefully and return an error status.)pbdoc")
+      .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
+                     R"pbdoc(Only execute the nodes needed by fetch list)pbdoc");
 
   py::class_<ModelMetadata>(m, "ModelMetadata", R"pbdoc(Pre-defined and custom metadata about the model.
 It is usually used to identify the model used to run the prediction and
@@ -658,57 +898,55 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             return *(na.Type());
           },
           "node type")
-      .def(
-          "__str__", [](const onnxruntime::NodeArg& na) -> std::string {
-            std::ostringstream res;
-            res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
-            auto shape = na.Shape();
-            std::vector<py::object> arr;
-            if (shape == nullptr || shape->dim_size() == 0) {
-              res << "[]";
+      .def("__str__", [](const onnxruntime::NodeArg& na) -> std::string {
+        std::ostringstream res;
+        res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
+        auto shape = na.Shape();
+        std::vector<py::object> arr;
+        if (shape == nullptr || shape->dim_size() == 0) {
+          res << "[]";
+        } else {
+          res << "[";
+          for (int i = 0; i < shape->dim_size(); ++i) {
+            if (utils::HasDimValue(shape->dim(i))) {
+              res << shape->dim(i).dim_value();
+            } else if (utils::HasDimParam(shape->dim(i))) {
+              res << "'" << shape->dim(i).dim_param() << "'";
             } else {
-              res << "[";
-              for (int i = 0; i < shape->dim_size(); ++i) {
-                if (utils::HasDimValue(shape->dim(i))) {
-                  res << shape->dim(i).dim_value();
-                } else if (utils::HasDimParam(shape->dim(i))) {
-                  res << "'" << shape->dim(i).dim_param() << "'";
-                } else {
-                  res << "None";
-                }
-
-                if (i < shape->dim_size() - 1) {
-                  res << ", ";
-                }
-              }
-              res << "]";
-            }
-            res << ")";
-
-            return std::string(res.str());
-          },
-          "converts the node into a readable string")
-      .def_property_readonly(
-          "shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
-            auto shape = na.Shape();
-            std::vector<py::object> arr;
-            if (shape == nullptr || shape->dim_size() == 0) {
-              return arr;
+              res << "None";
             }
 
-            arr.resize(shape->dim_size());
-            for (int i = 0; i < shape->dim_size(); ++i) {
-              if (utils::HasDimValue(shape->dim(i))) {
-                arr[i] = py::cast(shape->dim(i).dim_value());
-              } else if (utils::HasDimParam(shape->dim(i))) {
-                arr[i] = py::cast(shape->dim(i).dim_param());
-              } else {
-                arr[i] = py::none();
-              }
+            if (i < shape->dim_size() - 1) {
+              res << ", ";
             }
-            return arr;
-          },
-          "node shape (assuming the node holds a tensor)");
+          }
+          res << "]";
+        }
+        res << ")";
+
+        return std::string(res.str());
+      },
+           "converts the node into a readable string")
+      .def_property_readonly("shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
+        auto shape = na.Shape();
+        std::vector<py::object> arr;
+        if (shape == nullptr || shape->dim_size() == 0) {
+          return arr;
+        }
+
+        arr.resize(shape->dim_size());
+        for (int i = 0; i < shape->dim_size(); ++i) {
+          if (utils::HasDimValue(shape->dim(i))) {
+            arr[i] = py::cast(shape->dim(i).dim_value());
+          } else if (utils::HasDimParam(shape->dim(i))) {
+            arr[i] = py::cast(shape->dim(i).dim_param());
+          } else {
+            arr[i] = py::none();
+          }
+        }
+        return arr;
+      },
+                             "node shape (assuming the node holds a tensor)");
 
   py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
   py::class_<InferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
@@ -808,7 +1046,91 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         auto res = sess->GetModelMetadata();
         OrtPybindThrowIfError(res.first);
         return *(res.second);
+      })
+      .def("run_with_iobinding", [](InferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
+        Status status;
+        if (!run_options)
+          status = sess->Run(*io_binding.Get());
+        else
+          status = sess->Run(*run_options, *io_binding.Get());
+        if (!status.IsOK())
+          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       });
+
+  py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
+  training_session.def(py::init<SessionOptions, SessionObjectInitializer>())
+      .def(py::init<SessionObjectInitializer, SessionObjectInitializer>())
+      .def("finalize", [](py::object) {
+#ifdef USE_HOROVOD
+        shutdown_horovod();
+#endif
+      })
+      .def("load_model", [](onnxruntime::training::TrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
+        OrtPybindThrowIfError(sess->Load(path));
+
+        ConfigureSessionForTraining(sess, parameters);
+
+        std::vector<std::string> provider_types = {};
+        InitializeSession(sess, provider_types);
+      })
+      .def("read_bytes", [](onnxruntime::training::TrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
+        std::istringstream buffer(serialized_model);
+        OrtPybindThrowIfError(sess->Load(buffer));
+
+        ConfigureSessionForTraining(sess, parameters);
+
+        std::vector<std::string> provider_types = {};
+        InitializeSession(sess, provider_types);
+      })
+      .def("get_state", [](onnxruntime::training::TrainingSession* sess) {
+        NameMLValMap state_tensors;
+        ORT_THROW_IF_ERROR(sess->GetStateTensors(state_tensors));
+        auto& data_transfer_manager = sess->GetDataTransferManager();
+        //convert to numpy array
+        std::map<std::string, py::object> rmap;
+        for (auto& kv : state_tensors) {
+          if (kv.second.IsTensor()) {
+            py::object obj;
+            const Tensor& rtensor = kv.second.Get<Tensor>();
+            GetPyObjFromTensor(rtensor, obj, &data_transfer_manager);
+            rmap.insert({kv.first, obj});
+          } else {
+            throw std::runtime_error("Non tensor type in session state tensors is not expected.");
+          }
+        }
+        return rmap;
+      })
+      .def("load_state", [](onnxruntime::training::TrainingSession* sess, std::unordered_map<std::string, py::object>& state, bool strict) {
+        NameMLValMap state_tensors;
+        for (auto initializer : state) {
+          OrtValue ml_value;
+          auto px = sess->GetModelInputs();
+          if (!px.first.IsOK() || !px.second) {
+            throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+          }
+          CreateGenericMLValue(px.second, GetAllocator(), initializer.first, initializer.second, &ml_value);
+          if (PyErr_Occurred()) {
+            PyObject *ptype, *pvalue, *ptraceback;
+            PyErr_Fetch(&ptype, &pvalue, &ptraceback);
+
+            PyObject* pStr = PyObject_Str(ptype);
+            std::string sType = py::reinterpret_borrow<py::str>(pStr);
+            Py_XDECREF(pStr);
+            pStr = PyObject_Str(pvalue);
+            sType += ": ";
+            sType += py::reinterpret_borrow<py::str>(pStr);
+            Py_XDECREF(pStr);
+            throw std::runtime_error(sType);
+          }
+          state_tensors.insert(std::make_pair(initializer.first, ml_value));
+        }
+        ORT_THROW_IF_ERROR(sess->SetStateTensors(state_tensors, strict));
+      });
+
+  py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())
+      .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)
+      .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
+      .export_values();
 }
 
 #if defined(USE_MIMALLOC_ARENA_ALLOCATOR)

@@ -233,8 +233,8 @@ class InferenceSession {
   common::Status Load(const void* model_data, int model_data_len);
 
   /**
-    * Load an ONNX model from the member model_proto_. 
-    * To be called only in conjunction with a ctor that takes in a model path/ model stream/ model array  
+    * Load an ONNX model from the member model_proto_.
+    * To be called only in conjunction with a ctor that takes in a model path/ model stream/ model array
     * @return OK if success.
     */
   common::Status Load();
@@ -383,6 +383,8 @@ class InferenceSession {
 
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   std::basic_string<ORTCHAR_T> model_location_;
+  
+  SessionOptions session_options_;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
@@ -417,9 +419,9 @@ class InferenceSession {
 
   common::Status InitializeSubgraphSessions(Graph& graph, SessionState& session_state);
 
-  void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                 TransformerLevel graph_optimization_level,
-                                 const std::vector<std::string>& custom_list);
+  virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                         TransformerLevel graph_optimization_level,
+                                         const std::vector<std::string>& custom_list);
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
@@ -438,8 +440,6 @@ class InferenceSession {
 
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
-
-  SessionOptions session_options_;
 
   std::unique_ptr<onnxruntime::GraphTransformerManager> graph_transformation_mgr_;
 
@@ -461,6 +461,7 @@ class InferenceSession {
   ExecutionProviders execution_providers_;
 
  protected:
+  bool IsInitialized() const;
   // Immutable state for each op in the model. Shared by all executors.
   // It has a dependency on execution_providers_.
   std::unique_ptr<SessionState> session_state_;
@@ -499,7 +500,6 @@ class InferenceSession {
   mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
   bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
   bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
-
   InsertCastTransformer insert_cast_transformer_;
 
   //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
@@ -536,4 +536,15 @@ class InferenceSession {
   // used to hold the ModelProto parsed in an applicable ctor to be used while calling parameter-less Load()
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_;
 };
+
+struct SessionIOBinding {
+ public:
+  SessionIOBinding(InferenceSession* session);
+
+  IOBinding* Get();
+
+ private:
+  std::unique_ptr<IOBinding> binding_;
+};
+
 }  // namespace onnxruntime

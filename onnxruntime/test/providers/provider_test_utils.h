@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/graph/onnx_protobuf.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/customregistry.h"
@@ -444,7 +445,7 @@ class OpTester {
 
   // storing p_model as cache
   void SetModelCache(std::shared_ptr<onnxruntime::Model> model) {
-     cached_model_ = model;
+    cached_model_ = model;
   }
 
   std::shared_ptr<onnxruntime::Model> GetModelCache() {

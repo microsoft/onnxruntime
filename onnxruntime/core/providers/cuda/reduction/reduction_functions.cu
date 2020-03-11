@@ -171,7 +171,7 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
     is_last_block_done = (count == (num_blocks_in_grid - 1));
   }
 
-  // All threads in each block see if they belong the last active block 
+  // All threads in each block see if they belong the last active block
   // (i.e., the value of is_last_block_done).
   __syncthreads();
 

@@ -364,6 +364,8 @@ struct WritableSliceIterator {
     return *input_;
   }
 
+  bool SolitaryInnerStep() const { return inner_step_ == 1; }
+
   // spliting the function that copies the innermost dimension into 2 separate methods,
   // as this is most likely being called within a loop
   // and we want to avoid the check inside to avoid overhead
@@ -378,6 +380,14 @@ struct WritableSliceIterator {
     return output;
   }
 
+  T* CopyFromInnermostAxisSolitaryInnerStep(T* src) {
+    std::copy(src, src + inner_extent_, input_);
+    input_ += inner_extent_;
+    src += inner_extent_;
+    AdvanceOverInnerExtent();
+    return src;
+  }
+
   // Assumes generic inner_step_
   T* CopyInnermostAxisNonSolitaryInnerStep(T* output) {
     for (size_t i = 0; i < inner_extent_; ++i) {
@@ -385,6 +395,14 @@ struct WritableSliceIterator {
       input_ += inner_step_;
     }
     return output;
+  }
+
+  T* CopyFromInnermostAxisNonSolitaryInnerStep(T* src) {
+    for (size_t i = 0; i < inner_extent_; ++i) {
+      *input_ = *src++;
+      IncrementInnerDimension();
+    }
+    return src;
   }
 
  private:

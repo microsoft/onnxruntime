@@ -1,8 +1,18 @@
-#include "test_utils.h"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include <string>
 
 #include "gtest/gtest.h"
-#include "core/framework/path_lib.h"
-#include <string>
+
+#include "core/platform/env.h"
+#include "test/framework/test_utils.h"
+#include "core/framework/path_lib.h"  // TODO fix include order dependency, path_lib.h should be first
+#include "test/util/include/gtest_utils.h"
+#include "test/util/include/temp_dir.h"
+
+namespace onnxruntime {
+namespace test {
 
 #define PATH_EXPECT(X, Y)                                            \
   {                                                                  \
@@ -61,3 +71,7 @@ TEST(PathTest, dot_dot) {
   PATH_EXPECT(".", "..");
 }
 
+#undef PATH_EXPECT
+
+}  // namespace test
+}  // namespace onnxruntime

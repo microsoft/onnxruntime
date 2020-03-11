@@ -203,7 +203,7 @@ class PlannerImpl {
     symplan.reused_buffer = original;
   }
 
-  // Find if there exists some input tensor that we can use in-place for output_arg
+  // Find if there exists some input tensor that we can use in-place for output_arg_num-th input in the node.
   bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, OrtValueIndex* reusable_input) {
     auto p_output_arg = node.OutputDefs()[output_arg_num];
     const KernelCreateInfo* ci;
@@ -548,17 +548,26 @@ class PlannerImpl {
     // set AllocationInfo for each weight
     ORT_RETURN_IF_ERROR(GeneratePlanForWeights());
 
+    // Cached graph outputs.
+    const auto& graph_outputs = graph_viewer_.GetOutputs();
     for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
       SequentialExecutionPlan::NodeExecutionPlan step = execution_plan[program_counter];
-      auto pnode = graph_viewer_.GetNode(step.node_index);
-      // graph outputs
-      auto& graph_outputs = graph_viewer_.GetOutputs();
-      // determine allocation for outputs of pnode
-      int output_arg_num = 0;
-      for (auto node_output : pnode->OutputDefs()) {
+      // the node (aka operator) which carries the considered program (aka computation).
+      const auto* pnode = graph_viewer_.GetNode(step.node_index);
+      // node outputs.
+      const auto& output_defs = pnode->OutputDefs();
+      // output_arg_def_index is the index of ArgDefs in pnode's output list.
+      // At the i-th iteration, we build the allocation plan for the i-th
+      // NodeArg in pnode's output list. Allocation plan remains untouched for
+      // optional-missing outputs (aka values with empty names).
+      for (size_t output_arg_def_index = 0, end = output_defs.size(); output_arg_def_index < end; ++output_arg_def_index) {
+        const auto& node_output = output_defs[output_arg_def_index];
         if (!node_output->Exists()) continue;
-        auto current = Index(node_output->Name());
+        // OrtValue index of the considered output NodeArg.
+        const auto current = Index(node_output->Name());
         AllocPlan(current).value_type = utils::GetMLDataType(*node_output);
+        // Declare OrtValue index of the reused buffer.
+        // The the OrtValue indexed by current may reuse the memory in the OrtValue indexed by reused.
         OrtValueIndex reused;
         if (std::find(graph_outputs.begin(), graph_outputs.end(), node_output) != graph_outputs.end()) {
           // node_output is graph's output, so we can't reuse intermediate buffer
@@ -579,18 +588,19 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
-        } else if (FindReusableInput(*pnode, output_arg_num, &reused)) {
+        } else if (FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
           Reuse(reused, current, AllocKind::kReuse);
-        } else if (!context_.IsParallelExecutionEnabled() && FindReusableTensor(*node_output, &reused)) {
+        } else if (!context_.IsParallelExecutionEnabled() &&
+                   FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
           Reuse(reused, current, AllocKind::kReuse);
         } else {
           // otherwise: allocate a new buffer for this output
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
         }
-        output_arg_num++;
       }
+
       // determine if inputs of *pnode can be freed:
       for (auto node_input : pnode->InputDefs()) {
         if (node_input->Exists()) {

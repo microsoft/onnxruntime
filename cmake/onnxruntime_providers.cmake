@@ -93,6 +93,24 @@ if (onnxruntime_USE_FEATURIZERS)
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_featurizers_cc_srcs})
 endif()
 
+if (onnxruntime_ENABLE_TRAINING)
+  file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu_training_kernels.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu_training_kernels.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.cc"
+  )
+
+  if (NOT onnxruntime_USE_HOROVOD)
+    list(REMOVE_ITEM onnxruntime_cpu_training_ops_srcs
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/collective/horovod_kernels.cc"
+    )
+  endif()
+
+  source_group(TREE ${ORTTRAINING_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
+  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
+endif()
+
 add_library(onnxruntime_providers ${onnxruntime_providers_src})
 if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
    target_compile_options(onnxruntime_providers PRIVATE "/wd4244")
@@ -119,6 +137,17 @@ endif()
 
 target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${gemmlowp_src} ${RE2_INCLUDE_DIR})
 add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+
+if (onnxruntime_ENABLE_TRAINING)
+  target_include_directories(onnxruntime_providers PRIVATE ${ORTTRAINING_ROOT})
+  add_dependencies(onnxruntime_providers tensorboard)
+  onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
+
+  if (onnxruntime_USE_HOROVOD)
+    target_include_directories(onnxruntime_providers PRIVATE ${HOROVOD_INCLUDE_DIRS})
+  endif()
+endif()
+
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cpu  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 set_target_properties(onnxruntime_providers PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
@@ -132,15 +161,52 @@ if (onnxruntime_USE_CUDA)
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
   )
+
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
-  source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
+  set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
 
   # disable contrib ops conditionally
-  if(onnxruntime_DISABLE_CONTRIB_OPS)
-    add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
-  else()
-    add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs} ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
+  if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
+    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
+    list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
   endif()
+
+  if (onnxruntime_ENABLE_TRAINING)
+    file(GLOB_RECURSE onnxruntime_cuda_training_ops_cc_srcs CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda_training_kernels.h"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda_training_kernels.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cc"
+    )
+
+    file(GLOB_RECURSE onnxruntime_cuda_training_ops_cu_srcs CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cu"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cuh"
+    )
+
+    if (NOT onnxruntime_USE_HOROVOD)
+      list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/horovod_kernels.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/ready_event.cc"
+      )
+    endif()
+
+    # NCCL is not support in Windows build
+    if (WIN32)
+      list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_common.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_kernels.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/megatron.cc"
+      )
+    endif()
+
+    source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
+    list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
+  endif()
+
+  add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src})
+
   if (UNIX)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
@@ -150,11 +216,23 @@ if (onnxruntime_USE_CUDA)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /d2FH4->")
   endif()
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  if (onnxruntime_ENABLE_TRAINING)
+    onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_training)
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_training)
+  endif()
   add_dependencies(onnxruntime_providers_cuda ${onnxruntime_EXTERNAL_DEPENDENCIES} ${onnxruntime_tvm_dependencies})
   target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${PROJECT_SOURCE_DIR}/external/cub ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cuda  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES LINKER_LANGUAGE CUDA)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES FOLDER "ONNXRuntime")
+
+  if (onnxruntime_ENABLE_TRAINING)
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${ORTTRAINING_ROOT})
+    if (onnxruntime_USE_HOROVOD)
+      target_include_directories(onnxruntime_providers_cuda PRIVATE ${HOROVOD_INCLUDE_DIRS})
+    endif()
+  endif()
+
   if (WIN32)
     # *.cu cannot use PCH
     foreach(src_file ${onnxruntime_providers_cuda_cc_srcs})
@@ -178,6 +256,11 @@ if (onnxruntime_USE_CUDA)
     if (onnxruntime_USE_TVM)
       target_compile_options(onnxruntime_providers_cuda PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
     endif()
+    set(onnxruntime_providers_cuda_static_library_flags
+        -IGNORE:4221 # LNK4221: This object file does not define any previously undefined public symbols, so it will not be used by any link operation that consumes this library
+    )
+    set_target_properties(onnxruntime_providers_cuda PROPERTIES
+        STATIC_LIBRARY_FLAGS "${onnxruntime_providers_cuda_static_library_flags}")
   endif()
 endif()
 
@@ -487,8 +570,4 @@ if (onnxruntime_USE_ACL)
   target_include_directories(onnxruntime_providers_acl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${ACL_INCLUDE_DIR})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/acl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_acl PROPERTIES LINKER_LANGUAGE CXX)
-endif()
-
-if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
-  include(onnxruntime_providers_internal.cmake)
 endif()

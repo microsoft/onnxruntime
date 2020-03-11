@@ -283,7 +283,7 @@ class Node {
     return !attr_to_subgraph_map_.empty();
   }
 
-  /** Get the const subgraphs from a node. 
+  /** Get the const subgraphs from a node.
   @remarks Creates a new vector so calling ContainsSubgraphs first is preferred. */
   std::vector<gsl::not_null<const Graph*>> GetSubgraphs() const;
 
@@ -301,7 +301,7 @@ class Node {
   /** Sets the execution ProviderType that this Node will be executed by. */
   void SetExecutionProviderType(ProviderType execution_provider_type);
 
-  /** Gets the NodeProto representation of this Node. 
+  /** Gets the NodeProto representation of this Node.
   @param update_subgraphs Update the GraphProto values for any subgraphs in the returned NodeProto.
                           If graph optimization has been run this is most likely required
                           to ensure the complete Graph is valid.
@@ -471,19 +471,6 @@ and the edges connecting the nodes.
 */
 class Graph {
  public:
-  /**
-  Resolve this Graph to ensure it is completely valid, fully initialized, and able to be executed.
-  1. Run through all validation rules.
-      a. Node name and node output's names should be unique.
-      b. Attribute match between node and op definition.
-      c. Input/Output match between node and op definition.
-      d. Graph is acyclic and sort nodes in topological order.
-  2. Check & Setup inner nodes' dependency.
-  3. Cleanup function definition lists.
-  @returns common::Status with success or error information.
-  */
-  common::Status Resolve();
-
   /** Gets the Graph name. */
   const std::string& Name() const noexcept;
   /** Sets the Graph name. */
@@ -539,7 +526,7 @@ class Graph {
   }
 
   /** Gets the Graph inputs that are initializers
-  These are overridable initializers. This is a difference between 
+  These are overridable initializers. This is a difference between
   graph_inputs_including_initializers_ and graph_inputs_excluding_initializers_
   @remarks Contains no nullptr values. */
   const std::vector<const NodeArg*>& GetOverridableInitializers() const {
@@ -795,6 +782,97 @@ class Graph {
   /** Returns the mutable parent graph if this is a subgraph */
   Graph* MutableParentGraph() { return parent_graph_; }
 
+  /** Sets the type of a NodeArg, replacing existing type/shape if any */
+  void SetNodeArgType(NodeArg& arg, const onnx::TypeProto& type_proto);
+
+  const Node* GetProducerNode(const std::string& node_arg_name) const {
+    auto iter = node_arg_to_producer_node_.find(node_arg_name);
+
+    if (iter != node_arg_to_producer_node_.end()) {
+      auto node_index = iter->second;
+      return GetNode(node_index);
+    }
+    return nullptr;
+  }
+
+  Node* GetMutableProducerNode(const std::string& node_arg_name) {
+    return const_cast<Node*>(GetProducerNode(node_arg_name));
+  }
+
+  void UpdateProducerNode(const std::string& node_arg_name, NodeIndex node_index) {
+    auto iter = node_arg_to_producer_node_.find(node_arg_name);
+
+    if (iter != node_arg_to_producer_node_.end()) {
+      iter->second = node_index;
+    } else {
+      node_arg_to_producer_node_[node_arg_name] = node_index;
+    }
+  }
+
+  std::vector<const Node*> GetConsumerNodes(const std::string& node_arg_name) const {
+    std::vector<const Node*> results;
+    auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
+    if (iter != node_arg_to_consumer_nodes_.end()) {
+      for (auto node_index : iter->second) {
+        results.push_back(GetNode(node_index));
+      }
+    }
+    return results;
+  }
+
+  std::vector<Node*> GetMutableConsumerNodes(const std::string& node_arg_name) {
+    std::vector<Node*> results;
+    auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
+    if (iter != node_arg_to_consumer_nodes_.end()) {
+      for (auto node_index : iter->second) {
+        results.push_back(GetNode(node_index));
+      }
+    }
+    return results;
+  }
+
+  void UpdateConsumerNodes(const std::string& node_arg_name, const std::vector<Node*>& nodes) {
+    auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
+    if (iter != node_arg_to_consumer_nodes_.end()) {
+      node_arg_to_consumer_nodes_.erase(node_arg_name);
+    }
+    for (Node* node : nodes) {
+      node_arg_to_consumer_nodes_[node_arg_name].insert(node->Index());
+    }
+  }
+
+  // Options to control Graph::Resolve.
+  struct ResolveOptions {
+    bool override_types = false;
+    const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr;
+    bool no_proto_sync_required = false;
+  };
+
+  /**
+  Resolve this Graph to ensure it is completely valid, fully initialized, and able to be executed.
+  1. Run through all validation rules.
+  a. Node name and node output's names should be unique.
+  b. Attribute match between node and op definition.
+  c. Input/Output match between node and op definition.
+  d. Graph is acyclic and sort nodes in topological order.
+  2. Check & Setup inner nodes' dependency.
+  3. Cleanup function definition lists.
+  Note: the weights for training can't be cleaned during resolve.
+  @returns common::Status with success or error information.
+  */
+  common::Status Resolve(const ResolveOptions& options);
+
+  common::Status Resolve() {
+    ResolveOptions default_options;
+    return Resolve(default_options);
+  }
+
+  common::Status ResolveAfterTypeTransformation() {
+    ResolveOptions options;
+    options.override_types = true;
+    return Resolve(options);
+  }
+
   /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
   const Node* ParentNode() const { return parent_node_; }
 
@@ -912,9 +990,7 @@ class Graph {
   // order if <Status> returned is "OK", otherwise it's undefined.
   common::Status PerformTopologicalSortAndCheckIsAcyclic();
 
-  common::Status PerformTypeAndShapeInferencing();
-
-  common::Status Resolve(bool no_proto_sync_required);
+  common::Status PerformTypeAndShapeInferencing(const ResolveOptions& options);
 
   // Recursively find all subgraphs including nested subgraphs
   void FindAllSubgraphs(std::vector<Graph*>& subgraphs);
@@ -922,7 +998,7 @@ class Graph {
   // Iterate this Graph instance and all subgraphs, calling the provided function for each.
   common::Status ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func);
 
-  common::Status InferAndVerifyTypeMatch(Node& node, const ONNX_NAMESPACE::OpSchema& op);
+  common::Status InferAndVerifyTypeMatch(Node& node, const ONNX_NAMESPACE::OpSchema& op, const ResolveOptions& options);
 
   // perform type and shape inferencing on the subgraph and Resolve to validate
   static common::Status InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
@@ -937,13 +1013,13 @@ class Graph {
 
   // Infer and set type information across <*this> graph if needed, and verify type/attribute
   // information matches between node and op.
-  common::Status VerifyNodeAndOpMatch();
+  common::Status VerifyNodeAndOpMatch(const ResolveOptions& options);
 
   // Set graph inputs/outputs when resolving a graph..
   common::Status SetGraphInputsOutputs();
 
   // Clear all unused initializers
-  void CleanUnusedInitializers();
+  void CleanUnusedInitializers(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
 
   gsl::not_null<Node*> AllocateNode();
 
@@ -1025,6 +1101,12 @@ class Graph {
   // All node args owned by <*this> graph. Key is node arg name.
   std::unordered_map<std::string, std::unique_ptr<NodeArg>> node_args_;
 
+  // node arg to its producer node
+  std::unordered_map<std::string, NodeIndex> node_arg_to_producer_node_;
+
+  // node arg to its consumer nodes
+  std::unordered_map<std::string, std::unordered_set<NodeIndex>> node_arg_to_consumer_nodes_;
+
   const std::unordered_map<std::string, int> domain_to_version_;
 
   std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_functions_;
@@ -1053,5 +1135,7 @@ class Graph {
 
   const logging::Logger& logger_;
 };
+
+std::ostream& operator<<(std::ostream& out, const Graph& graph);
 
 }  // namespace onnxruntime

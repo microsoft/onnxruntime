@@ -97,6 +97,11 @@ class IExecutionProvider {
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const;
 
   /**
+     Get the device id of current excution provider
+  */
+  virtual int GetDeviceId() const { return -1; };
+
+  /**
      Returns an opaque handle whose exact type varies based on the provider
      and is interpreted accordingly by the corresponding kernel implementation.
      For Direct3D operator kernels, this may return an IUnknown supporting

@@ -371,7 +371,7 @@ will be calculated.)DOC";
       });
 
   static const char* FastGelu_ver1_doc = R"DOC(
-GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X))) with an optional input of bias that will be added to X before GELU.)DOC";
+GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X)) with an optional input of bias that will be added to X before GELU.)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FastGelu)
       .SetDomain(kMSDomain)
@@ -1480,6 +1480,142 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
         matmulShapeInference(ctx, 0, 1);
       });
 
+  static const char* TransposeMatMul_doc = R"DOC(
+Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TransposeMatMul)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("TransposeMatMul")
+      .Input(0, "A", "N-dimensional matrix A", "T")
+      .Input(1, "B", "N-dimensional matrix B", "T")
+      .Attr(
+          "transA",
+          "Whether A should be transposed on the last two dimensions before doing multiplication",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "transB",
+          "Whether B should be transposed on the last two dimensions before doing multiplication",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Output(0, "Y", "Matrix multiply results", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .SetDoc(TransposeMatMul_doc)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        auto transAAttr = ctx.getAttribute("transA");
+        bool transa = transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
+        auto transBAttr = ctx.getAttribute("transB");
+        bool transb = transBAttr ? static_cast<int>(transBAttr->i()) != 0 : false;
+        int input1Idx = 0;
+        int input2Idx = 1;
+        if (!hasInputShape(ctx, input1Idx) || !hasInputShape(ctx, input2Idx)) {
+          return;
+        }
+
+        const auto shape0_raw = getInputShape(ctx, input1Idx);
+        const auto shape1_raw = getInputShape(ctx, input2Idx);
+
+        if (shape0_raw.dim_size() == 0 || shape1_raw.dim_size() == 0) {
+          fail_shape_inference("Input tensors of wrong rank (0).");
+        }
+
+        // numpy transpose on a vector does not change anything.
+        if (shape0_raw.dim_size() == 1) {
+          transa = false;
+        }
+        if (shape1_raw.dim_size() == 1) {
+          transb = false;
+        }
+
+        ONNX_NAMESPACE::TensorShapeProto shape0, shape1;
+        auto rank0 = shape0_raw.dim_size();
+        if (rank0 == 1) {
+          // for vector input, transa does not make impact on the dim.
+          shape0 = shape0_raw;
+        } else {
+          for (int i = 0; i < rank0 - 2; ++i) {
+            *shape0.add_dim() = shape0_raw.dim(i);
+          }
+          *shape0.add_dim() = shape0_raw.dim(transa ? rank0 - 1 : rank0 - 2);
+          *shape0.add_dim() = shape0_raw.dim(transa ? rank0 - 2 : rank0 - 1);
+        }
+
+        auto rank1 = shape1_raw.dim_size();
+        if (rank1 == 1) {
+          // for vector input, transb does not make impact on the dim.
+          shape1 = shape1_raw;
+        } else {
+          for (int i = 0; i < rank1 - 2; ++i) {
+            *shape1.add_dim() = shape1_raw.dim(i);
+          }
+          *shape1.add_dim() = shape1_raw.dim(transb ? rank1 - 1 : rank1 - 2);
+          *shape1.add_dim() = shape1_raw.dim(transb ? rank1 - 2 : rank1 - 1);
+        }
+
+        ONNX_NAMESPACE::TensorShapeProto shapeL, shapeR;
+
+        // First promote each shape to at least rank-2. This logic is
+        // specific to matmul, not generic broadcasting.
+        {
+          if (shape0.dim_size() == 1) {
+            shapeL.add_dim()->set_dim_value(1);
+            *shapeL.add_dim() = shape0.dim(0);
+          } else {
+            *shapeL.mutable_dim() = shape0.dim();
+          }
+          if (shape1.dim_size() == 1) {
+            *shapeR.add_dim() = shape1.dim(0);
+            shapeR.add_dim()->set_dim_value(1);
+          } else {
+            *shapeR.mutable_dim() = shape1.dim();
+          }
+        }
+
+        // Check for compatible matrix multiply dimensions
+        {
+          auto dimL = shapeL.dim(shapeL.dim_size() - 1);
+          auto dimR = shapeR.dim(shapeR.dim_size() - 2);
+          if (dimL.has_dim_value() && dimR.has_dim_value() &&
+              dimL.dim_value() != dimR.dim_value()) {
+            fail_shape_inference("Incompatible dimensions for matrix multiplication");
+          }
+        }
+
+        ONNX_NAMESPACE::TensorShapeProto resultShape;
+
+        // Now call out to generic multidimensional broadcasting for
+        // the broadcastable prefixes.
+        {
+          ONNX_NAMESPACE::TensorShapeProto prefixShapeL, prefixShapeR;
+          for (int i = 0; i < shapeL.dim_size() - 2; ++i) {
+            *prefixShapeL.add_dim() = shapeL.dim(i);
+          }
+          for (int i = 0; i < shapeR.dim_size() - 2; ++i) {
+            *prefixShapeR.add_dim() = shapeR.dim(i);
+          }
+          bidirectionalBroadcastShapeInference(
+              prefixShapeL, prefixShapeR, resultShape);
+        }
+
+        // Back to matmul-specific. Add the trailing dimensions back in.
+        {
+          if (shape0.dim_size() != 1) {
+            *resultShape.add_dim() = shapeL.dim(shapeL.dim_size() - 2);
+          }
+          if (shape1.dim_size() != 1) {
+            *resultShape.add_dim() = shapeR.dim(shapeR.dim_size() - 1);
+          }
+        }
+        updateOutputShape(ctx, 0, resultShape);
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceSumInteger)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -1871,6 +2007,77 @@ Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
           fail_shape_inference("both data and indices tensor need to have rank larger than zero.");
         }
         auto last_indice_dimension = indices_shape.dim(indices_rank - 1).dim_value();
+        if (last_indice_dimension > data_rank) {
+          fail_shape_inference("last dimension of indices must not be larger and rank of data tensor");
+        }
+        for (int i = 0; i < indices_rank - 1; ++i) {
+          *ctx.getOutputType(0)
+               ->mutable_tensor_type()
+               ->mutable_shape()
+               ->add_dim() = indices_shape.dim(i);
+        }
+        for (int i = static_cast<int>(last_indice_dimension); i < data_rank; ++i) {
+          *ctx.getOutputType(0)
+               ->mutable_tensor_type()
+               ->mutable_shape()
+               ->add_dim() = data_shape.dim(i);
+        }
+      })
+      .SetDoc(R"DOC(
+Given `data` tensor of rank r >= 1, and `indices` tensor of rank q >= 1, gather
+slices of `data` into an output tensor of rank q - 1 + r - indices[-1].
+Example 1:
+  data    = [[0,1],[2,3]]
+  indices = [[0,0],[1,1]]
+  output  = [0,3]
+Example 2:
+  data    = [[0,1],[2,3]]
+  indices = [[1],[0]]
+  output  = [[2,3],[0,1]]
+Example 3:
+  data    = [[[0,1],[2,3]],[[4,5],[6,7]]]
+  indices = [[0,1],[1,0]]
+  output  = [[2,3],[4,5]]
+Example 4:
+  data    = [[[0,1],[2,3]],[[4,5],[6,7]]]
+  indices = [[[0,1]],[[1,0]]]
+  output  = [[[2,3]],[[4,5]]]
+)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(1)
+      .Attr(
+          "axis",
+          "The number of batch dims. The gather of indexing starts from dimension of data[axis:]",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Input(0, "data", "Tensor of rank r >= 1.", "T")
+      .Input(1, "indices", "Tensor of rank q >= 1.", "Tind")
+      .Output(0, "output", "Tensor of rank q-1+r-indices[-1].", "T")
+      .TypeConstraint(
+          "T",
+          OpSchema::all_tensor_types(),
+          "Constrain input and output types to any tensor type.")
+      .TypeConstraint(
+          "Tind",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain indice type to int32 or int64")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasNInputShapes(ctx, 2)) {
+          return;
+        }
+        auto& data_shape = ctx.getInputType(0)->tensor_type().shape();
+        auto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
+        auto data_rank = data_shape.dim_size();
+        auto indices_rank = indices_shape.dim_size();
+        auto axis = ctx.getAttribute("axis");
+        int64_t axis_data = axis ? static_cast<int>(axis->i()) : 0;
+        if (data_rank < 1 || indices_rank < 1) {
+          fail_shape_inference("both data and indices tensor need to have rank larger than zero.");
+        }
+        auto last_indice_dimension = indices_shape.dim(indices_rank - 1).dim_value() + axis_data;
         if (last_indice_dimension > data_rank) {
           fail_shape_inference("last dimension of indices must not be larger and rank of data tensor");
         }
@@ -2325,7 +2532,6 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   RegisterBertSchemas();
-
 }
 }  // namespace contrib
 }  // namespace onnxruntime
