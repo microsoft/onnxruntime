@@ -144,7 +144,8 @@ namespace Microsoft.ML.OnnxRuntime
                 // as the code is not equipped to handle that
                 if (input is DisposableNamedOnnxValue)
                 {
-                    throw new NotSupportedException("Input of type 'DisposableNamedOnnxValue' is not supported");
+                    throw new NotSupportedException(
+                    "Input type 'DisposableNamedOnnxValue' is not supported. Use 'NamedOnnxValue' type instead.");
                 }
 
                 inputNames[inputIndex] = input.Name;

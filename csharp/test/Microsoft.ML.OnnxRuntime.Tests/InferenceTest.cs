@@ -757,7 +757,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 catch(System.NotSupportedException e)
                 {
-                    Assert.True(e.Message.Contains("Input of type 'DisposableNamedOnnxValue' is not supported"));
+                    var errorString = string.Concat("Input type 'DisposableNamedOnnxValue' is not supported. ",
+                                                    "Use 'NamedOnnxValue' type instead.");
+
+                    Assert.True(e.Message.Contains(errorString));
+
                     succeeded = true;
                 }
 
