@@ -194,7 +194,7 @@ class Tensor final {
    * Get the byte offset with respect to the p_data
    * @warning this is a temporary solution for reusing the buffer bigger than needed.
    */
-  inline int64_t ByteOffset() const {
+  inline ptrdiff_t ByteOffset() const {
     return byte_offset_;
   }
 
@@ -202,7 +202,7 @@ class Tensor final {
    * Set the byte offset with respect to the p_data
    * @warning this is a temporary solution for reusing the buffer bigger than needed.
    */
-  inline void SetByteOffset(int64_t byte_offset) {
+  inline void SetByteOffset(ptrdiff_t byte_offset) {
     byte_offset_ = byte_offset;
   }
 
