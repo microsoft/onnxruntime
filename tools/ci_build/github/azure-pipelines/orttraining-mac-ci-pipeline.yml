@@ -3,8 +3,7 @@ trigger: none
 jobs:
 - template: templates/mac-ci.yml
   parameters:
-    AgentPool : 'Hosted macOS High Sierra'
-    JobName: 'Onnxruntime_Mac_CPU_Training'
+    JobName: 'Mac_CPU_Training'
     SubmoduleCheckoutMode: 'recursive'
     BuildCommand: >
       python3 $(Build.SourcesDirectory)/tools/ci_build/build.py

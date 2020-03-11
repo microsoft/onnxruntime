@@ -3,7 +3,7 @@ trigger: none
 jobs:
 - template: templates/linux-ci.yml
   parameters:
-    AgentPool : 'AI-Linux-GPU'
+    AgentPool : 'Linux-GPU-CUDA10'
     JobName: 'Onnxruntime_Linux_GPU_Training'
     SubmoduleCheckoutMode: 'recursive'
     # TODO --skip_onnx_tests is used to disable onnx_test_runner test.
