@@ -375,11 +375,6 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
     // all steps complete, mark the model as loaded.
     is_model_loaded_ = true;
 
-    // model_proto_ should either - 1) always have been a nullptr if the ModelProto was never parsed in the ctor (or)
-    // 2) should have become a nullptr by passing on the ownership of the ModelProto resource it was pointing to,
-    // to the Model instance
-    // ORT_ENFORCE(model_proto_ == nullptr, "Failed to clear up model_proto_ in Inference Session");
-
     telemetry_.event_name_ = event_name;
 
   } catch (const std::exception& ex) {

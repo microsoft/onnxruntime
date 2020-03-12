@@ -61,12 +61,12 @@ TEST(RuleBasedGraphTransformerTest, TestSettingStepsInGraphTransformerManager) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   unsigned steps_queried;
   graph_transformation_mgr.GetSteps(steps_queried);
-  ASSERT_EQ(steps_queried, 5);
+  ASSERT_EQ(steps_queried, static_cast<unsigned>(5));
 
   // steps upadted
   graph_transformation_mgr.SetSteps(10);
   graph_transformation_mgr.GetSteps(steps_queried);
-  ASSERT_EQ(steps_queried, 10);
+  ASSERT_EQ(steps_queried, static_cast<unsigned> (10));
 }
 }  // namespace test
 }  // namespace onnxruntime
