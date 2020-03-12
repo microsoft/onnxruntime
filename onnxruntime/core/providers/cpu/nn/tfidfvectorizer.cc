@@ -28,16 +28,20 @@ ONNX_CPU_OPERATOR_KERNEL(
 namespace ngram_details {
 
 template <class T>
-struct NgramPart {
-  size_t id_;  // 0 - means no entry, search for a bigger N
-  std::unordered_map<T, NgramPart<T>> leafs_;
-  explicit NgramPart(size_t id) : id_(id) {}
-};
+struct NgramPart;
 
 using IntMap = std::unordered_map<int64_t, NgramPart<int64_t>>;
 
 using StrMap = std::unordered_map<std::reference_wrapper<const std::string>, NgramPart<std::string>,
                                   std::hash<std::string>, std::equal_to<std::string>>;
+
+template <>
+struct NgramPart<int64_t> {
+  size_t id_;  // 0 - means no entry, search for a bigger N
+  IntMap leafs_;
+  explicit NgramPart(size_t id) : id_(id) {}
+};
+
 
 template <>
 struct NgramPart<std::string> {
