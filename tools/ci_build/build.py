@@ -418,8 +418,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 # String = 191101-2300.1.master.0bce7ae
                 cmake_args += ["-DVERSION_MAJOR_PART={}".format(ort_major),
                             "-DVERSION_MINOR_PART={}".format(ort_minor),
-                            "-DVERSION_BUILD_PART={}{}".format(YY, MM),
-                            "-DVERSION_PRIVATE_PART={}".format(DD),
+                            "-DVERSION_BUILD_PART={}".format(YY),
+                            "-DVERSION_PRIVATE_PART={}{}".format(MM, DD),
                             "-DVERSION_STRING={}.{}.{}.{}".format(ort_major, ort_minor, build_number, source_version[0:7])]
     
     for config in configs:                
