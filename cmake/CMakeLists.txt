@@ -127,7 +127,7 @@ else()
   if(WINDOWS_STORE)
     # cmake/external/protobuf/src/google/protobuf/compiler/subprocess.cc and onnxruntime/core/platform/windows/env.cc call a bunch of Win32 APIs.
     # For now, we'll set the API family to desktop globally to expose Win32 symbols in headers; this must be fixed!
-    add_compile_options("/FI ${CMAKE_CURRENT_SOURCE_DIR}\\set_winapi_family_desktop.h")
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/FI ${CMAKE_CURRENT_SOURCE_DIR}\\set_winapi_family_desktop.h>")
   endif()
 endif()
 
