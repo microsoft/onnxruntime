@@ -112,12 +112,16 @@ def run_one_test(perf_results, model_path, all_inputs, batch_size, sequence_leng
     # Environment variable shall be set before import onnxruntime.
     setup_openmp_environ(omp_num_threads, omp_wait_policy)
 
-    test_setting = "batch_size={},sequence_length={},test_cases={},test_times={},contiguous={},use_gpu={},warmup=".format(batch_size, sequence_length, test_cases, test_times, contiguous, use_gpu, not no_warmup)
+    test_setting = "batch_size={},sequence_length={},test_cases={},test_times={},contiguous={},use_gpu={},warmup={}".format(batch_size, sequence_length, test_cases, test_times, contiguous, use_gpu, not no_warmup)
 
     session = create_session(model_path, use_gpu, intra_op_num_threads)
     output_names = [output.name for output in session.get_outputs()]
 
     key = to_string(model_path, session, test_setting)
+    if key in perf_results:
+        print("skip duplicated test:", key)
+        return
+
     print("Running test:", key)
 
     all_latency_list = []
@@ -146,31 +150,43 @@ def launch_test(perf_results, model_path, all_inputs, batch_size, sequence_lengt
     process.join()
 
 def run_perf_tests(perf_results, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, all_inputs, test_all, no_warmup, extra_latency):
+    cpu_count = psutil.cpu_count(logical=False)
+    logical_cores = psutil.cpu_count(logical=True)
+
     # Test a setting without any setting as baseline 1.
     launch_test(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, None, None, None, no_warmup, extra_latency)
 
-    # Only test default setting for GPU without --all flag.
+    if not use_gpu:
+        # For CPU: intra_op_num_threads = 1, omp_num_threads=None, omp_wait_policy=None
+        # Another setting without environment variable as baseline 2.
+        launch_test(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, 1, None, None, no_warmup, extra_latency)
+    else:
+        # For GPU, we test two more settings by default:
+        # (1) intra_op_num_threads = 1, omp_num_threads=cpu_count, omp_wait_policy=PASSIVE
+        # (2) intra_op_num_threads = logical_cores, omp_num_threads=1, omp_wait_policy=ACTIVE
+        launch_test(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, 1, cpu_count, 'PASSIVE', no_warmup, extra_latency)
+        
+        launch_test(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, logical_cores, 1, 'ACTIVE', no_warmup, extra_latency)
+
+    # GPU latency is not sensitive to these settings. No need to test many combinations.
+    # Skip remaining settings for GPU without --all flag.
     if use_gpu and not test_all:
         return
 
-    candidates = list(set([1, psutil.cpu_count(logical=True), psutil.cpu_count(logical=False)]))
+    candidates = list(set([1, logical_cores, cpu_count]))
 
     for intra_op_num_threads in candidates:
-        # Test a setting without environment variable as baseline 2.
-        if intra_op_num_threads == 1:
-            launch_test(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, intra_op_num_threads, None, None, no_warmup, extra_latency)
-
         for omp_num_threads in candidates:
             # skip settings that are very slow
-            if intra_op_num_threads == 1 and omp_num_threads == 1 and psutil.cpu_count(logical=True) != 1:
+            if intra_op_num_threads == 1 and omp_num_threads == 1 and logical_cores != 1:
                 continue
 
             # When logical and physical cores are not the same, there are many combinations.
             # Remove some settings are not good normally.
-            if psutil.cpu_count(logical=True) > psutil.cpu_count(logical=False):
-                if omp_num_threads == psutil.cpu_count(logical=True) and intra_op_num_threads != 1:
+            if logical_cores > cpu_count:
+                if omp_num_threads == logical_cores and intra_op_num_threads != 1:
                     continue
-                if intra_op_num_threads == psutil.cpu_count(logical=True) and omp_num_threads != 1:
+                if intra_op_num_threads == logical_cores and omp_num_threads != 1:
                     continue
 
             if not test_all:
@@ -259,7 +275,7 @@ def main():
     # Sort the results so that the first one has smallest latency.
     sorted_results = sorted(perf_results.items(), reverse=False, key=lambda x: x[1])
  
-    summary_file = os.path.join(Path(args.model).parent, "perf_results_{}_B{}_S{}_{}.txt".format('GPU' if args.use_gpu else 'CPU', "-".join([str(x) for x in batch_size_set]), args.sequence_length, datetime.now().strftime("%Y%m%d-%H%M%S")))
+    summary_file = os.path.join(Path(args.model).parent, "perf_results_{}_B{}_S{}_{}.txt".format('GPU' if args.use_gpu else 'CPU', "-".join([str(x) for x in sorted(list(batch_size_set))]), args.sequence_length, datetime.now().strftime("%Y%m%d-%H%M%S")))
     with open(summary_file, 'w+', newline='') as tsv_file:
         tsv_writer = csv.writer(tsv_file, delimiter='\t', lineterminator='\n')
         headers = None
