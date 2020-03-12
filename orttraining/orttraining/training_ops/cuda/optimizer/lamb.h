@@ -18,8 +18,8 @@ class LambOptimizer final : public CudaKernel {
     beta_ = info.GetAttrsOrDefault("beta", std::vector<float>(1024, 0.999f));
     lambda_ = info.GetAttrsOrDefault("lambda", std::vector<float>(1024, 0.0f));
     epsilon_ = info.GetAttrsOrDefault("epsilon", std::vector<float>(1024, 1e-6f));
-    info.GetAttr("ratio_min", &ratio_min_);
-    info.GetAttr("ratio_max", &ratio_max_);
+    ORT_ENFORCE(info.GetAttr<float>("ratio_min", &ratio_min_).IsOK(), "Missing/Invalid 'ratio_min' attribute value");
+    ORT_ENFORCE(info.GetAttr<float>("ratio_max", &ratio_max_).IsOK(), "Missing/Invalid 'ratio_max' attribute value");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;

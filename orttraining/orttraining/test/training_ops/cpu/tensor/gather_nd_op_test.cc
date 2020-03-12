@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -231,8 +232,9 @@ TEST(GatherNDOpTest, GatherNDGrad_slice_float_int64_t_axis_1) {
 #endif
 
 #ifdef USE_CUDA
-#if __CUDA_ARCH__ >= 600
 TEST(GatherNDOpTest, GatherNDGrad_slice_double_int32_t_axis_3) {
+  if (!HasCudaEnvironment(600 /*min_cuda_architecture*/)) return;
+
   OpTester test("GatherNDGrad", 1, onnxruntime::kOnnxDomain);
   test.AddAttribute<int64_t>("axis", 1);
   test.AddInput<int64_t>("shape", {3}, {2LL, 2LL, 3LL});
@@ -243,6 +245,8 @@ TEST(GatherNDOpTest, GatherNDGrad_slice_double_int32_t_axis_3) {
 }
 
 TEST(GatherNDOpTest, GatherND_slice_double_int64_t_axis_3) {
+  if (!HasCudaEnvironment(600 /*min_cuda_architecture*/)) return;
+
   OpTester test("GatherND", 1, onnxruntime::kOnnxDomain);
   test.AddAttribute<int64_t>("axis", 1);
   test.AddInput<double>("data", {2, 2, 2}, ValueRange(8, 0.0, 0.1));
@@ -250,10 +254,10 @@ TEST(GatherNDOpTest, GatherND_slice_double_int64_t_axis_3) {
   test.AddOutput<double>("output", {2, 1, 2}, {0.2f, 0.3f, 0.4f, 0.5f});
   test.Run();
 }
-#endif
 
-#if __CUDA_ARCH__ >= 700
 TEST(GatherNDOpTest, GatherNDGrad_slice_half_int32_t_axis_3) {
+  if (!HasCudaEnvironment(600 /*min_cuda_architecture*/)) return;
+
   OpTester test("GatherNDGrad", 1, onnxruntime::kOnnxDomain);
   test.AddAttribute<int64_t>("axis", 1);
   test.AddInput<int64_t>("shape", {3}, {2LL, 2LL, 3LL});
@@ -270,6 +274,8 @@ TEST(GatherNDOpTest, GatherNDGrad_slice_half_int32_t_axis_3) {
 }
 
 TEST(GatherNDOpTest, GatherND_slice_half_int32_t) {
+  if (!HasCudaEnvironment(600 /*min_cuda_architecture*/)) return;
+
   OpTester test("GatherND", 1, onnxruntime::kOnnxDomain);
   std::vector<float> data_f({0.0f, 0.1f, 0.2f, 0.3f});
   std::vector<float> outputs_f({0.2f, 0.3f, 0.0f, 0.1f});
@@ -282,7 +288,6 @@ TEST(GatherNDOpTest, GatherND_slice_half_int32_t) {
   test.AddOutput<MLFloat16>("output", {2, 2}, outputs);
   test.Run();
 }
-#endif
 #endif
 
 #ifdef USE_CUDA
