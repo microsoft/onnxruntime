@@ -12,7 +12,13 @@ using System.Threading;
 
 namespace Microsoft.ML.OnnxRuntime
 {
-    internal class NativeOnnxTensorMemory<T> : MemoryManager<T>
+    public interface NativeMemoryHandler : IDisposable
+    {
+        IntPtr GetNativeMemoryHandle();
+
+    }
+
+    internal class NativeOnnxTensorMemory<T> : MemoryManager<T>, NativeMemoryHandler
     {
         private bool _disposed;
         private int _referenceCount;
@@ -120,6 +126,11 @@ namespace Microsoft.ML.OnnxRuntime
                     NativeMethods.OrtReleaseTensorTypeAndShapeInfo(typeAndShape);
                 }
             }
+        }
+
+        public IntPtr GetNativeMemoryHandle()
+        {
+            return _onnxValueHandle;
         }
 
         ~NativeOnnxTensorMemory()

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Runtime.InteropServices;
@@ -58,13 +59,28 @@ namespace Microsoft.ML.OnnxRuntime
         #endregion
     }
 
-    public class DisposableNamedOnnxValue : NamedOnnxValue, IDisposable
+    public class DisposableNamedOnnxValue : NamedOnnxValue
     {
-        protected IDisposable _nativeMemoryManager;
-        protected DisposableNamedOnnxValue(string name, Object value, IDisposable nativeMemoryManager)
+        protected NativeMemoryHandler _nativeMemoryManager;
+        protected DisposableNamedOnnxValue(string name, Object value, NativeMemoryHandler nativeMemoryManager)
             : base(name, value)
         {
             _nativeMemoryManager = nativeMemoryManager;
+        }
+
+        internal override void ToNativeOnnxValue(out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle)
+        {
+            if (disposedValue)
+            {
+
+            }
+
+            if (_nativeMemoryManager == null)
+            {
+
+            }
+
+            onnxValue = _nativeMemoryManager.GetNativeMemoryHandle();
         }
 
         internal static DisposableNamedOnnxValue CreateTensorFromOnnxValue(string name, IntPtr nativeOnnxValue)
