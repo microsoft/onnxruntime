@@ -313,13 +313,13 @@ void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, int32_t row_num, size_t 
     auto ngram_start = row_begin;
     auto const ngram_row_end = row_end;
 
-    // We went far enough so no n-grams of any size can be gathered
-    auto at_least_this = AdvanceElementPtr(ngram_start, skip_distance * (start_ngram_size - 1), elem_size);
-    if (at_least_this >= ngram_row_end) {
-      break;
-    }
-
     while (ngram_start < ngram_row_end) {
+      // We went far enough so no n-grams of any size can be gathered
+      auto at_least_this = AdvanceElementPtr(ngram_start, skip_distance * (start_ngram_size - 1), elem_size);
+      if (at_least_this >= ngram_row_end) {
+        break;
+      }
+
       auto ngram_item = ngram_start;
       if (X->IsDataTypeString()) {
         const std::string* str_item = reinterpret_cast<const std::string*>(ngram_item);
