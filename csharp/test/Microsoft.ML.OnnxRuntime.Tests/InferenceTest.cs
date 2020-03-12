@@ -757,6 +757,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                 }
 
+                /*
                 // Dispose the result tensor
                 res1.First().Dispose();
 
@@ -779,6 +780,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
 
                 Assert.True(succeeded);
+                */
             }
         }
 
@@ -808,6 +810,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                 }
 
+                /*
                 // Dispose the result tensor
                 res1.First().Dispose();
 
@@ -830,6 +833,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
 
                 Assert.True(succeeded);
+                */
             }
 
         }
