@@ -1450,14 +1450,20 @@ Return true if all elements are true and false otherwise.
           "TInt64")
       .Input(
           1,
-          "InputSignal",
-          "Input signal.",
-          "TBool")
+          "InputData",
+          "Input data.",
+          "T",
+          OpSchema::Variadic,
+          /*is_homogeneous*/ false,
+          /*min_arity*/ 1)
       .Output(
           0,
-          "OutputSignal",
-          "Output signal.",
-          "TBool")
+          "OutputData",
+          "Output data.",
+          "T",
+          OpSchema::Variadic,
+          /*is_homogeneous*/ false,
+          /*min_arity*/ 0)
       .TypeConstraint(
           "TInt64",
           {"tensor(int64)"},
@@ -1466,21 +1472,17 @@ Return true if all elements are true and false otherwise.
           "T",
           OpSchema::all_tensor_types(),
           "Allow inputs and outputs to be any kind of tensor.")
-      .TypeConstraint(
-          "TBool",
-          {"tensor(bool)"},
-          "Constrain output type to boolean tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        if (ctx.getNumInputs() != 2)
-          fail_shape_inference("RecordEvent must have two inputs.");
-        if (ctx.getNumOutputs() != 1)
-          fail_shape_inference("RecordEvent must have one output.");
+        if (ctx.getNumInputs() < ctx.getNumOutputs() + 1)
+          fail_shape_inference("WaitEvent must have at least (num_outputs + 1) inputs.");
 
-        auto output_element_type = ctx.getOutputType(0)->mutable_tensor_type();
-        output_element_type->set_elem_type(TensorProto::BOOL);
-        ONNX_NAMESPACE::TensorShapeProto output_shape;
-        updateOutputShape(ctx, 0, {});
-        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+        // note: if num_input > num_output + 1,
+        // the additional inputs (idx >= num_ouput + 1) are regarded as dependencies
+        // which are only used for maintain topological order
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          propagateElemTypeFromInputToOutput(ctx, i + 1, i);
+          propagateShapeFromInputToOutput(ctx, i + 1, i);
+        }
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(WaitEvent)
@@ -1495,35 +1497,42 @@ Return true if all elements are true and false otherwise.
           "TInt64")
       .Input(
           1,
-          "InputSignal",
-          "Input signal.",
-          "TBool")
+          "InputData",
+          "Input data.",
+          "T",
+          OpSchema::Variadic,
+          /*is_homogeneous*/ false,
+          /*min_arity*/ 1)
       .Output(
           0,
-          "OutputSignal",
-          "Output signal.",
-          "TBool")
+          "OutputData",
+          "Output data.",
+          "T",
+          OpSchema::Variadic,
+          /*is_homogeneous*/ false,
+          /*min_arity*/ 1)
       .TypeConstraint(
           "TInt64",
           {"tensor(int64)"},
           "Constrain input type to 64-bit integer.")
       .TypeConstraint(
-          "TBool",
-          {"tensor(bool)"},
-          "Constrain output type to boolean tensor.")
+          "T",
+          OpSchema::all_tensor_types(),
+          "Allow inputs and outputs to be any kind of tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        if (ctx.getNumInputs() != 2)
-          fail_shape_inference("WaitEvent must have two inputs.");
-        if (ctx.getNumOutputs() != 1)
-          fail_shape_inference("WaitEvent can only have one output.");
+        if (ctx.getNumInputs() < ctx.getNumOutputs() + 1)
+          fail_shape_inference("WaitEvent must have at least (num_outputs + 1) inputs.");
+        if (ctx.getNumOutputs() < 1)
+          fail_shape_inference("WaitEvent must have at least 1 output.");
 
-        auto output_element_type = ctx.getOutputType(0)->mutable_tensor_type();
-        output_element_type->set_elem_type(TensorProto::BOOL);
-        ONNX_NAMESPACE::TensorShapeProto output_shape;
-        updateOutputShape(ctx, 0, {});
-        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+        // note: if num_input > num_output + 1,
+        // the additional inputs (idx >= num_ouput + 1) are regarded as dependencies
+        // which are only used for maintain topological order
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          propagateElemTypeFromInputToOutput(ctx, i + 1, i);
+          propagateShapeFromInputToOutput(ctx, i + 1, i);
+        }
       });
-
 }
 }  // namespace training
 }  // namespace onnxruntime
