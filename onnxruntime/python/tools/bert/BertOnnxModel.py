@@ -685,7 +685,8 @@ class BertOnnxModel(OnnxModel):
                     break
 
         if normalize_node is None:
-            logger.info("Failed to find embedding layer")
+            if len(self.get_nodes_by_op_type("EmbedLayerNormalization")) == 0:
+                logger.info("Failed to find embedding layer")
             return
 
         # Here we assume the order of embedding is word_embedding +
