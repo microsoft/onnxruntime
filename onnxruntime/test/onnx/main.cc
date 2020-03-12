@@ -500,7 +500,29 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"sequence_model8", "Invalid value of attribute", {"onnxtip"}},
       {"shrink", "Invalid rank for input", {"onnx141"}},
       {"split_zero_size_splits", "Invalid value", {"onnxtip"}},
-      {"dropout_random", "result differs", {"onnxtip"}}};
+      {"dropout_random", "result differs", {"onnxtip"}},
+      {"adagrad", "invalid model", {"onnxtip"}},
+      {"adagrad_multiple", "invalid model", {"onnxtip"}},
+      {"celu", "invalid model", {"onnxtip"}},
+      {"celu_expanded", "invalid model", {"onnxtip"}},
+      {"gradient_of_add", "invalid model", {"onnxtip"}},
+      {"gradient_of_add_and_mul", "invalid model", {"onnxtip"}},
+      {"max_float16", "invalid model", {"onnxtip"}},
+      {"mean_square_distance_mean_3d_expanded", "invalid model", {"onnxtip"}},
+      {"mean_square_distance_mean_4d_expanded", "invalid model", {"onnxtip"}},
+      {"mean_square_distance_mean_expanded", "invalid model", {"onnxtip"}},
+      {"mean_square_distance_none_expanded", "invalid model", {"onnxtip"}},
+      {"mean_square_distance_none_weights_expanded", "invalid model", {"onnxtip"}},
+      {"mean_square_distance_sum_expanded", "invalid model", {"onnxtip"}},
+      {"min_float16", "invalid model", {"onnxtip"}},
+      {"sequence_model4", "invalid model", {"onnxtip"}},
+      {"softmax_cross_entropy_mean", "invalid model", {"onnxtip"}},
+      {"softmax_cross_entropy_mean_3d", "invalid model", {"onnxtip"}},
+      {"softmax_cross_entropy_mean_weight", "invalid model", {"onnxtip"}},
+      {"softmax_cross_entropy_none", "invalid model", {"onnxtip"}},
+      {"softmax_cross_entropy_none_weights", "invalid model", {"onnxtip"}},
+      {"softmax_cross_entropy_sum", "invalid model", {"onnxtip"}},
+  };
 
   if (enable_ngraph) {
     broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
