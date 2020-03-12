@@ -109,7 +109,7 @@ Abstract:
 // Define the maximum number of threads supported by this implementation.
 //
 
-#define MLAS_MAXIMUM_THREAD_COUNT                   16
+#define MLAS_MAXIMUM_THREAD_COUNT                   64
 
 //
 // Define the default strides to step through slices of the input matrices.
