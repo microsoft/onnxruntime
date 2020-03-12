@@ -396,7 +396,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     build_number = os.getenv('Build_BuildNumber')
     source_version = os.getenv('Build_SourceVersion')
     if build_number and source_version:
-        build_matches = re.match(r"^(\d\d)(\d\d)(\d\d)(\d\d)\.(\d)$", build_number)
+        build_matches = re.fullmatch(r"(\d\d)(\d\d)(\d\d)(\d\d)\.(\d+)", build_number)
         if build_matches:
             YY = build_matches.group(2)
             MM = build_matches.group(3)
