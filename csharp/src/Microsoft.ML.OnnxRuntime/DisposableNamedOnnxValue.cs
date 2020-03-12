@@ -61,8 +61,8 @@ namespace Microsoft.ML.OnnxRuntime
 
     public class DisposableNamedOnnxValue : NamedOnnxValue, IDisposable
     {
-        protected IDisposable _nativeMemoryManager;
-        protected DisposableNamedOnnxValue(string name, Object value, IDisposable nativeMemoryManager)
+        protected NativeMemoryHandler _nativeMemoryManager;
+        protected DisposableNamedOnnxValue(string name, Object value, NativeMemoryHandler nativeMemoryManager)
             : base(name, value)
         {
             _nativeMemoryManager = nativeMemoryManager;
@@ -76,16 +76,14 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new Exception("This instance of DisposableNamedOnnxValue has been disposed");
             }
 
-            // If not disposed,_nativeMemoryManager can only be null
+            // If not already disposed, _nativeMemoryManager can only be null
             // for Map and SequenceTensor types
             if (_nativeMemoryManager == null)
             {
                 throw new NotSupportedException("TODO");
             }
 
-            // After the checks, this is a no-op for DisposableNamedOnnxValue as
-            // it is still holding onto its _onnxValue from when this instance 
-            // was created
+            _onnxValue = _nativeMemoryManager.GetOnnxValue();
         }
 
         public override void UnpinBufferAndReleaseNativeValue()
