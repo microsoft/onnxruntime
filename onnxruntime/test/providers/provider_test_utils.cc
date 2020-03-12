@@ -197,7 +197,7 @@ void Check<MLFloat16>(const OpTester::Data& expected_data,
   }
 
   float threshold = 0.001f;
-#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING)
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA)
   threshold = 0.005f;
 #endif
   for (int i = 0; i < size; ++i) {
