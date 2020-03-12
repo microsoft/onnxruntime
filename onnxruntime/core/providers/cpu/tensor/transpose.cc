@@ -380,8 +380,8 @@ static void SimpleTransposeSingleAxisInwards(const T* input_data, T* output_data
 }
 
 // moving a single axis inwards where the read/write size is a power of 2 and between 8 and 64 bits.
-static void TranposeSingleAxisInwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
-                                      int64_t from, int64_t to) {
+static void TransposeSingleAxisInwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                                       int64_t from, int64_t to) {
   ORT_UNUSED_PARAMETER(permutations);
 
   const auto& input_shape = input.Shape();
@@ -453,7 +453,7 @@ static void SingleAxisTranspose(const std::vector<size_t>& permutations, const T
   if (from > to) {
     TransposeSingleAxisOutwards(permutations, input, output, from, to);
   } else {
-    TranposeSingleAxisInwards(permutations, input, output, from, to);
+    TransposeSingleAxisInwards(permutations, input, output, from, to);
   }
 }
 
