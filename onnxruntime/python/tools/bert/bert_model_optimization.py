@@ -35,6 +35,10 @@ from BertOnnxModel import BertOnnxModel
 from BertOnnxModelTF import BertOnnxModelTF
 from BertOnnxModelKeras import BertOnnxModelKeras
 
+# When we run this script in two cells of a Juypter Notebook, logging of first cell might overflow to the second cell.
+# Reset logger handlers as work around: https://github.com/ipython/ipython/issues/8282
+logger = logging.getLogger()
+logger.handlers = []
 logger = logging.getLogger('')
 
 # Map model type to tuple: optimizer class, export tools (pytorch, tf2onnx, keras2onnx) and whether OnnxRuntime has the optimization.
