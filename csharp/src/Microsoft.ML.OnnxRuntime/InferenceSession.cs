@@ -135,24 +135,16 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var inputNames = new string[inputs.Count];
             var inputTensors = new IntPtr[inputs.Count];
-            var pinnedBufferHandles = new System.Buffers.MemoryHandle[inputs.Count];
 
             int inputIndex = 0;
             foreach (var input in inputs)
             {
-                // guard against accidental DisposableNamedOnnxValue inputs flowing through
-                // as the code is not equipped to handle that
-                if (input is DisposableNamedOnnxValue)
-                {
-                    throw new NotSupportedException(
-                    "Input type 'DisposableNamedOnnxValue' is not supported. Use 'NamedOnnxValue' type instead.");
-                }
 
                 inputNames[inputIndex] = input.Name;
 
                 // create Tensor from the input if feasible, else throw notsupported exception for now
-                input.ToNativeOnnxValue(out inputTensors[inputIndex], out pinnedBufferHandles[inputIndex]);
-
+                input.ToNativeOnnxValue();
+                inputTensors[inputIndex] = input.GetOnnxValue();
                 inputIndex++;
             }
 
@@ -196,14 +188,11 @@ namespace Microsoft.ML.OnnxRuntime
             finally
             {
                 // always unpin the input buffers, and delete the native Onnx value objects
-                for (int i = 0; i < inputs.Count; i++)
+                foreach (var input in inputs)
                 {
-                    NativeMethods.OrtReleaseValue(inputTensors[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
-                                                                    // For string tensors, this releases the native memory allocated for the tensor, including the buffer
-                    pinnedBufferHandles[i].Dispose();
+                    input.UnpinBufferAndReleaseNativeValue();
                 }
             }
-
         }
 
         //TODO: kept internal until implemented

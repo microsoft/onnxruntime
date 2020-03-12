@@ -742,23 +742,36 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var tensorIn = new DenseTensor<bool>(new bool[] { true, false, true, false, true }, new int[] { 1, 5 });
                 var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
                 container.Add(nov);
-                var res = session.Run(container);
+                var res1 = session.Run(container);
+
+                // change the name of the DisposableNamedOnnxValue
+                res1.First().Name = "input";
+
+                // Run inferencing 2 times using the output of the first Run()
+                for(int i=0; i<2; ++i)
+                { 
+                    using (var res2 = session.Run(res1))
+                    {
+                        var tensorOut = res2.First().AsTensor<bool>();
+                        Assert.True(tensorOut.SequenceEqual(tensorIn));
+                    }
+                }
+
+                // Dispose the result
+                res1.Dispose();
 
                 bool succeeded = false;
 
+                // Now try using the disposed output as input to another Run()
                 try
                 {
-                    // We feed in the output of one Run() as the input to another Run()
-                    // This causes problems as Run() tries to pin underlying managed memory of
-                    // DisposableNamedOnnxValue.
                     // Run() should fail with a user friendly error message.
-                    session.Run(res);
+                    session.Run(res1);
                 }
 
-                catch(System.NotSupportedException e)
+                catch(Exception e)
                 {
-                    var errorString = string.Concat("Input type 'DisposableNamedOnnxValue' is not supported. ",
-                                                    "Use 'NamedOnnxValue' type instead.");
+                    var errorString = "This instance of DisposableNamedOnnxValue has been disposed";
 
                     Assert.True(e.Message.Contains(errorString));
 

@@ -16,11 +16,14 @@ namespace Microsoft.ML.OnnxRuntime
     {
         protected Object _value;
         protected string _name;
+        protected IntPtr _onnxValue;
+        protected MemoryHandle _pinnedMemoryHandle;
 
         protected NamedOnnxValue(string name, Object value)
         {
             _name = name;
             _value = value;
+            _onnxValue = IntPtr.Zero;
         }
 
         public static NamedOnnxValue CreateFromTensor<T>(string name, Tensor<T> value)
@@ -28,7 +31,7 @@ namespace Microsoft.ML.OnnxRuntime
             return new NamedOnnxValue(name, value);
         }
 
-        public string Name { get { return _name; } }
+        public string Name { get { return _name; } set { _name = value; } }
 
         /// <summary>
         /// Try-get value as a Tensor&lt;T&gt;.
@@ -69,9 +72,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// contains a default value in that case.
         /// Attempts to infer the type of the value while creating the OnnxValue
         /// </summary>
-        /// <param name="onnxValue"></param>
-        /// <param name="pinnedMemoryHandle"></param>
-        internal virtual void ToNativeOnnxValue(out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle)
+        internal virtual void ToNativeOnnxValue()
         {
             //try to cast _value to Tensor<T>
             TensorElementType nativeElementType = TensorElementType.DataTypeMax; //invalid
@@ -79,9 +80,8 @@ namespace Microsoft.ML.OnnxRuntime
             int dataBufferLength = 0;
             ReadOnlySpan<int> shape = null;
             int rank = 0;
-            onnxValue = IntPtr.Zero;
 
-            if (TryPinAsTensor<float>(out pinnedMemoryHandle,
+            if (TryPinAsTensor<float>(out _pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -90,7 +90,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<double>(out pinnedMemoryHandle,
+            else if (TryPinAsTensor<double>(out _pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -99,7 +99,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<int>(out pinnedMemoryHandle,
+            else if (TryPinAsTensor<int>(out _pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -108,7 +108,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<uint>(out pinnedMemoryHandle,
+            else if (TryPinAsTensor<uint>(out _pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -117,7 +117,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<long>(out pinnedMemoryHandle,
+            else if (TryPinAsTensor<long>(out _pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -126,7 +126,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<ulong>(out pinnedMemoryHandle,
+            else if (TryPinAsTensor<ulong>(out _pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -135,7 +135,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<short>(out pinnedMemoryHandle,
+            else if (TryPinAsTensor<short>(out _pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -144,7 +144,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<ushort>(out pinnedMemoryHandle,
+            else if (TryPinAsTensor<ushort>(out _pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -153,7 +153,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<byte>(out pinnedMemoryHandle,
+            else if (TryPinAsTensor<byte>(out _pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -162,7 +162,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<sbyte>(out pinnedMemoryHandle,
+            else if (TryPinAsTensor<sbyte>(out _pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -171,7 +171,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<bool>(out pinnedMemoryHandle,
+            else if (TryPinAsTensor<bool>(out _pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -253,8 +253,8 @@ namespace Microsoft.ML.OnnxRuntime
                     }
                 }
 
-                onnxValue = nativeTensor; // set the output
-                pinnedMemoryHandle = default; // dummy value for the output
+                _onnxValue = nativeTensor; // set the output
+                _pinnedMemoryHandle = default; // dummy value for the output
             }
             else
             {
@@ -274,7 +274,7 @@ namespace Microsoft.ML.OnnxRuntime
                         longShape,
                         (UIntPtr)rank,
                         nativeElementType,
-                        out onnxValue
+                        out _onnxValue
                     );
                 try
                 {
@@ -282,11 +282,31 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 catch (OnnxRuntimeException e)
                 {
-                    pinnedMemoryHandle.Dispose();
+                    _pinnedMemoryHandle.Dispose();
                     throw e;
                 }
 
             }
+
+        }
+
+        public IntPtr GetOnnxValue()
+        {
+            return _onnxValue;
+        }
+
+        /// <summary>
+        /// Will unpin the memory buffer and delete the underlying native OrtValue 
+        /// </summary>
+        public virtual void UnpinBufferAndReleaseNativeValue()
+        {
+            if (_onnxValue != IntPtr.Zero)
+            {
+                NativeMethods.OrtReleaseValue(_onnxValue); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
+                                                                // For string tensors, this releases the native memory allocated for the tensor, including the buffer
+            }
+
+            _pinnedMemoryHandle.Dispose();
 
         }
 

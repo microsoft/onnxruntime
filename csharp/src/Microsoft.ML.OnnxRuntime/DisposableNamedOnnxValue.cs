@@ -59,28 +59,40 @@ namespace Microsoft.ML.OnnxRuntime
         #endregion
     }
 
-    public class DisposableNamedOnnxValue : NamedOnnxValue
+    public class DisposableNamedOnnxValue : NamedOnnxValue, IDisposable
     {
-        protected NativeMemoryHandler _nativeMemoryManager;
-        protected DisposableNamedOnnxValue(string name, Object value, NativeMemoryHandler nativeMemoryManager)
+        protected IDisposable _nativeMemoryManager;
+        protected DisposableNamedOnnxValue(string name, Object value, IDisposable nativeMemoryManager)
             : base(name, value)
         {
             _nativeMemoryManager = nativeMemoryManager;
         }
 
-        internal override void ToNativeOnnxValue(out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle)
+        internal override void ToNativeOnnxValue()
         {
+            // make sure that this instance hasn't been disposed yet
             if (disposedValue)
             {
-
+                throw new Exception("This instance of DisposableNamedOnnxValue has been disposed");
             }
 
+            // If not disposed,_nativeMemoryManager can only be null
+            // for Map and SequenceTensor types
             if (_nativeMemoryManager == null)
             {
-
+                throw new NotSupportedException("TODO");
             }
 
-            onnxValue = _nativeMemoryManager.GetNativeMemoryHandle();
+            // After the checks, this is a no-op for DisposableNamedOnnxValue as
+            // it is still holding onto its _onnxValue from when this instance 
+            // was created
+        }
+
+        public override void UnpinBufferAndReleaseNativeValue()
+        {
+            // This is a no-op for DisposableNamedOnnxValue as
+            // 1) This doesn't maintain a pinned memory buffer
+            // 2) The OrtValue will be released when this instance is disposed
         }
 
         internal static DisposableNamedOnnxValue CreateTensorFromOnnxValue(string name, IntPtr nativeOnnxValue)
