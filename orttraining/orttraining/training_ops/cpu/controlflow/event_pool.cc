@@ -6,32 +6,29 @@
 namespace onnxruntime {
 namespace contrib {
 
-void OrtEventPool::CreateEvent(int64_t id) { 
-  std::lock_guard<std::mutex> guard(mutex_);
-  ORT_ENFORCE(
-    pool_.find(id) == pool_.end(),
-    "Event pool cannot create duplicated events for event ID ", id, ".");
-  pool_[id].store(false);
+void OrtEventPool::SignalEvent(int64_t id) {
+  ORT_ENFORCE(id >= 0 && id < MaxNumItems);
+  std::unique_lock<std::mutex> lock(pool_[id].mutex);
+  pool_[id].signaled.store(true);
+  lock.unlock();
+  pool_[id].cv.notify_all();
+};
+
+void OrtEventPool::ResetEvent(int64_t id) {
+  ORT_ENFORCE(id >= 0 && id < MaxNumItems);
+  std::lock_guard<std::mutex> guard(pool_[id].mutex);
+  pool_[id].signaled.store(false);
+};
+
+bool OrtEventPool::QueryEvent(int64_t id) const {
+  ORT_ENFORCE(id >= 0 && id < MaxNumItems);
+  return pool_[id].signaled.load();
 }
 
-void OrtEventPool::RecordEvent(int64_t id) {
-  std::lock_guard<std::mutex> guard(mutex_);
-  ORT_ENFORCE(
-    pool_.find(id) != pool_.end(),
-    "Event pool cannot record event for non-existing event ID ", id, ".");
-  pool_[id].store(true);
-};
-
-void OrtEventPool::DeleteEvent(int64_t id) {
-  std::lock_guard<std::mutex> guard(mutex_);
-  ORT_ENFORCE(
-    pool_.find(id) != pool_.end(),
-    "Event pool cannot delete event for non-existing event ID ", id, ".");
-  pool_.erase(id);
-};
-
-bool OrtEventPool::QueryEvent(int64_t id) {
-  return pool_.find(id) != pool_.end() && pool_[id].load();
+void OrtEventPool::WaitEvent(int64_t id) const {
+  ORT_ENFORCE(id >= 0 && id < MaxNumItems);
+  std::unique_lock<std::mutex> lock(pool_[id].mutex);
+  pool_[id].cv.wait(lock, [this, id] { return pool_[id].signaled.load(); });
 };
 
 }  // namespace contrib

@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <mutex>
 #include <memory>
+#include <condition_variable>
 
 namespace onnxruntime {
 namespace contrib {
@@ -18,10 +19,14 @@ class OrtEventPool final {
     static OrtEventPool instance_;
     return instance_;
   }
-  void CreateEvent(int64_t id);
-  void RecordEvent(int64_t id);
-  void DeleteEvent(int64_t id);
-  bool QueryEvent(int64_t id);
+  void SignalEvent(int64_t id);
+  void ResetEvent(int64_t id);
+  bool QueryEvent(int64_t id) const;
+  void WaitEvent(int64_t id) const;
+
+  size_t GetPoolSize() const {
+    return MaxNumItems;
+  }
 
  private:
   OrtEventPool() = default;
@@ -29,8 +34,19 @@ class OrtEventPool final {
   OrtEventPool(const OrtEventPool&) = delete;
   OrtEventPool& operator=(const OrtEventPool&) = delete;
 
-  std::unordered_map<int64_t, std::atomic<bool>> pool_;
-  std::mutex mutex_;
+  struct Item {
+    std::atomic<bool> signaled;
+    mutable std::mutex mutex;
+    mutable std::condition_variable cv;
+
+    Item() {
+      signaled.store(false);
+    }
+  };
+  enum {
+    MaxNumItems = 4096
+  };
+  Item pool_[MaxNumItems];
 };
 
 }  // namespace contrib
