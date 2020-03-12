@@ -9,6 +9,7 @@
 
 #include <functional>
 #include <unordered_set>
+#include <unordered_map>
 #include <ostream>
 #include <iterator>
 
@@ -26,124 +27,45 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 namespace ngram_details {
 
-class NgramEntryBase {
-  size_t id_;  // Id in the pool
- protected:
-  NgramEntryBase(size_t id) : id_(id), hash_(0) {}
-  ~NgramEntryBase() = default;
-
- protected:
-  size_t hash_;
-
- public:
-  size_t Id() const { return id_; }
-  size_t Hash() const { return hash_; }
-};
-
 template <class T>
-class NgramEntry;
-
-template <>
-class NgramEntry<int64_t> : public NgramEntryBase {
-  std::vector<int64_t> items_;
-
-  void RunningHash(int64_t v) {
-    std::hash<int64_t> hf;
-    hash_ ^= hf(v) + 0x9e3779b9 + (hash_ << 6) + (hash_ >> 2);
-  }
-
- public:
-  template <typename ForwardIter>
-  NgramEntry(size_t id, ForwardIter first, ForwardIter last) : NgramEntryBase(id) {
-    while (first != last) {
-      RunningHash(*first);
-      items_.push_back(*first);
-      ++first;
-    }
-    assert(!items_.empty());
-  }
-  // For sampling
-  NgramEntry() : NgramEntryBase(0) {}
-
-  void AddItem(int64_t v) {
-    items_.push_back(v);
-    RunningHash(v);
-  }
-
-  void DebugPrint() const {
-    std::copy(items_.cbegin(), items_.cend(), std::ostream_iterator<int64_t>(std::cout, ","));
-    std::cout << std::endl;
-  }
-
-  void Clear() {
-    items_.clear();
-    hash_ = 0;
-  }
-
-  bool operator==(const NgramEntry& o) const {
-    return items_ == o.items_;
-  }
+struct NgramPart {
+  size_t id_;  // 0 - means no entry, search for a bigger N
+  std::unordered_map<T, NgramPart<T>> leafs_;
+  explicit NgramPart(size_t id) : id_(id) {}
 };
 
+using IntMap = std::unordered_map<int64_t, NgramPart<int64_t>>;
+
+using StrMap = std::unordered_map<std::reference_wrapper<const std::string>, NgramPart<std::string>,
+                                  std::hash<std::string>, std::equal_to<std::string>>;
+
 template <>
-class NgramEntry<std::string> : public NgramEntryBase {
- private:
-  std::vector<std::reference_wrapper<const std::string>> items_;
-
-  void RunningHash(const std::string& s) {
-    std::hash<std::string> hf;
-    hash_ ^= hf(s) + 0x9e3779b9 + (hash_ << 6) + (hash_ >> 2);
-  }
-
- public:
-  template <typename ForwardIter>
-  NgramEntry(size_t id, ForwardIter first, ForwardIter last) : NgramEntryBase(id) {
-    while (first != last) {
-      RunningHash(*first);
-      items_.push_back(std::cref(*first));
-      ++first;
-    }
-    assert(!items_.empty());
-  }
-
-  NgramEntry() : NgramEntryBase(0) {}
-
-  void AddItem(const std::string& s) {
-    items_.push_back(std::cref(s));
-    RunningHash(s);
-  }
-
-  void DebugPrint() const {
-    std::copy(items_.cbegin(), items_.cend(), std::ostream_iterator<std::string>(std::cout, ","));
-    std::cout << std::endl;
-  }
-
-  void Clear() {
-    items_.clear();
-    hash_ = 0;
-  }
-
-  bool operator==(const NgramEntry& o) const {
-    if (items_.size() == o.items_.size()) {
-      std::equal_to<std::string> pred;
-      for (size_t i = 0; i < items_.size(); ++i) {
-        if (!pred(items_[i], o.items_[i])) {
-          return false;
-        }
-      }
-      return true;
-    }
-    return false;
-  }
+struct NgramPart<std::string> {
+  size_t id_;  // 0 - means no entry, search for a bigger N
+  StrMap leafs_;
+  explicit NgramPart(size_t id) : id_(id) {}
 };
 
-template <typename ForwardIter, typename Cont>
-inline void Emplace(ForwardIter first, size_t ngrams, size_t ngram_size, size_t& ngram_id, Cont& c) {
+// Returns next ngram_id
+template <class ForwardIter, class Map>
+inline size_t PopulateGrams(ForwardIter first, size_t ngrams, size_t ngram_size, size_t ngram_id, Map& c) {
   for (; ngrams > 0; --ngrams) {
-    c.emplace(ngram_id, first, first + ngram_size);
-    first += ngram_size;
-    ++ngram_id;
+    size_t n = 1;
+    Map* m = &c;
+    while (true) {
+      auto p = m->emplace(*first, 0);
+      ++first;
+      if (n == ngram_size) {
+        ORT_ENFORCE(p.first->second.id_ == 0, "Duplicate ngram detected, size: ", ngram_size, " id: ", ngram_id);
+        p.first->second.id_ = ngram_id;
+        ++ngram_id;
+        break;
+      }
+      ++n;
+      m = &p.first->second.leafs_;
+    }
   }
+  return ngram_id;
 }
 
 }  // namespace ngram_details
@@ -151,26 +73,9 @@ inline void Emplace(ForwardIter first, size_t ngrams, size_t ngram_size, size_t&
 
 using namespace onnxruntime::ngram_details;
 
-namespace std {
-template <typename T>
-struct hash<NgramEntry<T>> {
-  typedef NgramEntry<T> argument_type;
-  typedef size_t result_type;
-  result_type operator()(const argument_type& a) const {
-    return a.Hash();
-  }
-};
-}  // namespace std
-
 namespace onnxruntime {
 
-using IntegerPoolSet = std::unordered_set<NgramEntry<int64_t>>;
-// Does not own strings, contains references to them. This helps
-// to search by string references that point to the current input.
-using StringPoolSet = std::unordered_set<NgramEntry<std::string>>;
-
-inline
-const void* AdvanceElementPtr(const void* p, size_t elements, size_t element_size) {
+inline const void* AdvanceElementPtr(const void* p, size_t elements, size_t element_size) {
   return reinterpret_cast<const uint8_t*>(p) + elements * element_size;
 }
 
@@ -209,11 +114,12 @@ struct TfIdfVectorizer::Impl {
   std::vector<float> weights_;
 
   std::vector<std::string> pool_strings_;
-  // This set contains references to pool_string_ entries
+  // This map contains references to pool_string_ entries
   // of pool_strings attribute
-  StringPoolSet str_set_;
-  // This set contains pool_int64s entries
-  IntegerPoolSet int64_set_;
+  StrMap str_map_;
+  // This map contains pool_int64s entries
+  IntMap int64_map_;
+
   size_t output_size_ = 0;
 
   Impl() = default;
@@ -221,28 +127,10 @@ struct TfIdfVectorizer::Impl {
   Impl(const Impl&) = delete;
   Impl& operator=(const Impl&) = delete;
 
-  std::pair<bool, size_t> CheckPresent(const NgramEntry<int64_t>& e) const {
-    std::pair<bool, size_t> result(false, 0);
-    auto hit = int64_set_.find(e);
-    result.first = (hit != int64_set_.end());
-    if (result.first) {
-      result.second = hit->Id();
-    }
-    return result;
-  }
-
-  std::pair<bool, size_t> CheckPresent(const NgramEntry<std::string>& e) const {
-    std::pair<bool, size_t> result(false, 0);
-    auto hit = str_set_.find(e);
-    result.first = hit != str_set_.end();
-    if (result.first) {
-      result.second = hit->Id();
-    }
-    return result;
-  }
-
   void IncrementCount(size_t ngram_id, size_t row_num,
                       std::vector<uint32_t>& frequencies) const {
+    assert(ngram_id != 0);
+    --ngram_id;
     assert(ngram_id < ngram_indexes_.size());
     auto output_idx = row_num * output_size_ + ngram_indexes_[ngram_id];
     assert(static_cast<size_t>(output_idx) < frequencies.size());
@@ -317,7 +205,7 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
 
   // Iterator via the pool. Insert 1 item for 1-grams, 2 items for 2-grams, etc.
   const auto total_items = (impl_->pool_strings_.empty()) ? pool_int64s.size() : impl_->pool_strings_.size();
-  size_t ngram_id = 0;
+  size_t ngram_id = 1;  // start with 1, 0 - means no n-gram
   // Load into dictionary only required gram sizes
   const size_t min_gram_length = impl_->min_gram_length_;
   const size_t max_gram_length = impl_->max_gram_length_;
@@ -335,13 +223,9 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
       // Skip loading into hash_set ngrams that are not in the range of [min_gram_length-max_gram_length]
       if (ngram_size >= min_gram_length && ngram_size <= max_gram_length) {
         if (impl_->pool_strings_.empty()) {
-          auto before_insert = impl_->int64_set_.size();
-          Emplace(pool_int64s.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->int64_set_);
-          ORT_ENFORCE((before_insert + ngrams) == impl_->int64_set_.size(), "pool_int64s duplicate ", std::to_string(ngram_size), "-grams detected");
+          ngram_id = PopulateGrams(pool_int64s.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->int64_map_);
         } else {
-          auto before_insert = impl_->str_set_.size();
-          Emplace(impl_->pool_strings_.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->str_set_);
-          ORT_ENFORCE((before_insert + ngrams) == impl_->str_set_.size(), "pool_strings duplicate ", std::to_string(ngram_size), "-grams detected");
+          ngram_id = PopulateGrams(impl_->pool_strings_.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->str_map_);
         }
       } else {
         ngram_id += ngrams;
@@ -414,9 +298,7 @@ void TfIdfVectorizer::OutputResult(OpKernelContext* ctx, size_t B, const std::ve
 
 void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, int32_t row_num, size_t row_size,
                                   std::vector<uint32_t>& frequencies) const {
-
   auto X = ctx->Input<Tensor>(0);
-  const auto elem_type = X->GetElementType();
   const auto elem_size = X->DataType()->Size();
 
   const void* row_begin = AdvanceElementPtr(X->DataRaw(), row_num * row_size, elem_size);
@@ -426,82 +308,54 @@ void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, int32_t row_num, size_t 
   const auto max_gram_length = impl.max_gram_length_;
   const auto max_skip_distance = impl.max_skip_count_ + 1;  // Convert to distance
   auto start_ngram_size = impl.min_gram_length_;
-  NgramEntry<int64_t> sample_int;
-  NgramEntry<std::string> sample_str;
-
-  // Treat 1-grams in a special way
-  if (start_ngram_size == 1) {
-    auto ngram_start = row_begin;
-    auto const ngram_row_end = row_end;
-
-    while (ngram_start < ngram_row_end) {
-      std::pair<bool, size_t> found(false, 0);
-      if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
-        sample_str.Clear();
-        sample_str.AddItem(*reinterpret_cast<const std::string*>(ngram_start));
-        found = impl.CheckPresent(sample_str);
-      } else {
-        sample_int.Clear();
-        int64_t val = (elem_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) ? 
-          int64_t{*reinterpret_cast<const int32_t*>(ngram_start)} : *reinterpret_cast<const int64_t*>(ngram_start);
-        sample_int.AddItem(val);
-        found = impl.CheckPresent(sample_int);
-      }
-      if (found.first) {
-        // record frequency
-        impl.IncrementCount(found.second, row_num, frequencies);
-      }
-      ngram_start = AdvanceElementPtr(ngram_start, 1, elem_size);
-    }
-
-    if (++start_ngram_size > max_gram_length) {
-      return;
-    }
-  }
 
   for (auto skip_distance = 1; skip_distance <= max_skip_distance; ++skip_distance) {
     auto ngram_start = row_begin;
     auto const ngram_row_end = row_end;
 
+    // We went far enough so no n-grams of any size can be gathered
+    auto at_least_this = AdvanceElementPtr(ngram_start, skip_distance * (start_ngram_size - 1), elem_size);
+    if (at_least_this >= ngram_row_end) {
+      break;
+    }
+
     while (ngram_start < ngram_row_end) {
-      // Check if any n-gram size in [start_ngram_size..max_gram_length] range
-      // fit before the end of the row so we do not waste time adding [1..start_ngram_size)
-      // At least items of start_ngram_size should fit
-      // last row should match end_data
-      auto at_least_this = AdvanceElementPtr(ngram_start, skip_distance * (start_ngram_size - 1), elem_size);
-      if (at_least_this >= ngram_row_end) {
-        break;
-      }
-
-      sample_str.Clear();
-      sample_int.Clear();
-
       auto ngram_item = ngram_start;
-      for (auto ngram_size = 1;
-           ngram_size <= max_gram_length &&
-           ngram_item < ngram_row_end;
-           ++ngram_size) {
 
-        std::pair<bool, size_t> found(false, 0);
-        if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
-          sample_str.AddItem(*reinterpret_cast<const std::string*>(ngram_item));
-          // Do not test anything before start_ngram_size
-          if (ngram_size >= start_ngram_size) {
-            found = impl.CheckPresent(sample_str);
+      if (X->IsDataTypeString()) {
+        const std::string* str_item = reinterpret_cast<const std::string*>(ngram_item);
+        const StrMap* str_map = &impl.str_map_;
+        for (auto ngram_size = 1;
+             ngram_size <= max_gram_length &&
+             str_item < ngram_row_end;
+             ++ngram_size, str_item += skip_distance) {
+          auto hit = str_map->find(*str_item);
+          if (hit == str_map->end()) {
+            break;
           }
-        } else {
-          int64_t val = (elem_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) ? 
-            int64_t{*reinterpret_cast<const int32_t*>(ngram_item)} : *reinterpret_cast<const int64_t*>(ngram_item);
-          sample_int.AddItem(val);
-          // Do not test anything before start_ngram_size
-          if (ngram_size >= start_ngram_size) {
-            found = impl.CheckPresent(sample_int);
+          if (ngram_size >= start_ngram_size && hit->second.id_ != 0) {
+            impl.IncrementCount(hit->second.id_, row_num, frequencies);
           }
+          str_map = &hit->second.leafs_;
         }
-        if (found.first) {
-          impl.IncrementCount(found.second, row_num, frequencies);
+      } else {
+        const IntMap* int_map = &impl.int64_map_;
+        for (auto ngram_size = 1;
+             ngram_size <= max_gram_length &&
+             ngram_item < ngram_row_end;
+             ++ngram_size) {
+          int64_t val = (X->IsDataType<int32_t>()) ? int64_t{*reinterpret_cast<const int32_t*>(ngram_item)} :
+            *reinterpret_cast<const int64_t*>(ngram_item);
+          auto hit = int_map->find(val);
+          if (hit == int_map->end()) {
+            break;
+          }
+          if (ngram_size >= start_ngram_size && hit->second.id_ != 0) {
+            impl.IncrementCount(hit->second.id_, row_num, frequencies);
+          }
+          int_map = &hit->second.leafs_;
+          ngram_item = AdvanceElementPtr(ngram_item, skip_distance, elem_size);
         }
-        ngram_item = AdvanceElementPtr(ngram_item, skip_distance, elem_size);
       }
       // Sliding window shift
       ngram_start = AdvanceElementPtr(ngram_start, 1, elem_size);
@@ -544,7 +398,9 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
   std::vector<uint32_t> frequencies;
   frequencies.resize(num_rows * impl_->output_size_, 0);
 
-  if (total_items == 0) {
+  if (total_items == 0 ||
+      (X->IsDataTypeString() && impl_->str_map_.empty()) ||
+      ((X->IsDataType<int32_t>() || X->IsDataType<int64_t>()) && impl_->int64_map_.empty())) {
     // TfidfVectorizer may receive an empty input when it follows a Tokenizer
     // (for example for a string containing only stopwords).
     // TfidfVectorizer returns a zero tensor of shape
