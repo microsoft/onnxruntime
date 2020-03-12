@@ -418,13 +418,7 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
     ComputeImpl(ctx, row_num, C, frequencies);
   };
 
-  // Processing strings is more expensive than integers. So we batch integers 3 rows per thread
-  // and we give each row of strings its own thread
-  if (X->IsDataTypeString()) {
-    concurrency::ThreadPool::TryParallelFor(ctx->GetOperatorThreadPool(), num_rows, std::move(fn));
-  } else {
-    concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(), num_rows, std::move(fn), num_rows / 3);
-  }
+  concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(), num_rows, std::move(fn), num_rows / 3);
 
   OutputResult(ctx, B, frequencies);
 
