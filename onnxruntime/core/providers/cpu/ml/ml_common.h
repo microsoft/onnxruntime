@@ -390,10 +390,9 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
         break;
       }
       case POST_EVAL_TRANSFORM::LOGISTIC: {
-        while (s < s_end) {
-          *s = ComputeLogistic(*s);
-          ++s;
-        }
+        // in-place update using Eigen::logistic
+        auto map = EigenVectorArrayMap<float>(scores.data(), scores.length());
+        map = map.logistic();
         break;
       }
       case POST_EVAL_TRANSFORM::SOFTMAX: {
