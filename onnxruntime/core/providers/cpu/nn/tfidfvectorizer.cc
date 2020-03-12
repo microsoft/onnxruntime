@@ -321,11 +321,11 @@ void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, int32_t row_num, size_t 
 
     while (ngram_start < ngram_row_end) {
       auto ngram_item = ngram_start;
-
       if (X->IsDataTypeString()) {
         const std::string* str_item = reinterpret_cast<const std::string*>(ngram_item);
         const StrMap* str_map = &impl.str_map_;
         for (auto ngram_size = 1;
+             !str_map->empty() &&
              ngram_size <= max_gram_length &&
              str_item < ngram_row_end;
              ++ngram_size, str_item += skip_distance) {
@@ -341,11 +341,11 @@ void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, int32_t row_num, size_t 
       } else {
         const IntMap* int_map = &impl.int64_map_;
         for (auto ngram_size = 1;
+             !int_map->empty() &&
              ngram_size <= max_gram_length &&
              ngram_item < ngram_row_end;
-             ++ngram_size) {
-          int64_t val = (X->IsDataType<int32_t>()) ? int64_t{*reinterpret_cast<const int32_t*>(ngram_item)} :
-            *reinterpret_cast<const int64_t*>(ngram_item);
+             ++ngram_size, ngram_item = AdvanceElementPtr(ngram_item, skip_distance, elem_size)) {
+          int64_t val = (X->IsDataType<int32_t>()) ? int64_t{*reinterpret_cast<const int32_t*>(ngram_item)} : *reinterpret_cast<const int64_t*>(ngram_item);
           auto hit = int_map->find(val);
           if (hit == int_map->end()) {
             break;
@@ -354,11 +354,15 @@ void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, int32_t row_num, size_t 
             impl.IncrementCount(hit->second.id_, row_num, frequencies);
           }
           int_map = &hit->second.leafs_;
-          ngram_item = AdvanceElementPtr(ngram_item, skip_distance, elem_size);
         }
       }
       // Sliding window shift
       ngram_start = AdvanceElementPtr(ngram_start, 1, elem_size);
+    }
+    // We count UniGrams only once since they are not affected
+    // by skip distance
+    if (start_ngram_size == 1 && ++start_ngram_size > max_gram_length) {
+      break;
     }
   }
 }
