@@ -475,6 +475,7 @@ TEST(TopKOperator, SortedSelection) {
   RunTest(11, 5, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 0);  // smallest values
 }
 
+// test dimension in range (GridDim::maxThreadsPerBlock, GridDim::maxThreadsPerBlock * 2], ie. [257, 512]
 TEST(TopKOperator, SmallArrayTopKSorted) {
   std::vector<float> input_vals(400, 0.0f);
   std::iota(input_vals.begin(), input_vals.end(), 0.0f);
