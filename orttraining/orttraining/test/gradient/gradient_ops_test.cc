@@ -1608,10 +1608,10 @@ void compute_lamb(
     const float ratio_max = std::numeric_limits<float>::infinity()) {
   // Element counts of all vector-typed arguments.
   const int64_t size = std::accumulate(
-    shape.begin(),
-    shape.end(),
-    (int64_t)1,
-    std::multiplies<int64_t>());
+      shape.begin(),
+      shape.end(),
+      (int64_t)1,
+      std::multiplies<int64_t>());
 
   // Buffer to store update direction.
   std::vector<float> r(size, 0.0f);
@@ -1621,10 +1621,8 @@ void compute_lamb(
     g_scale *= g_norm / loss_scale;
   }
 
-  const float alpha_correction = step > 0 ?
-    1.f - std::pow(alpha, static_cast<float>(step)) : 1.f;
-  const float beta_correction = step > 0 ?
-    1.f - std::pow(beta, static_cast<float>(step)) : 1.f;
+  const float alpha_correction = step > 0 ? 1.f - std::pow(alpha, static_cast<float>(step)) : 1.f;
+  const float beta_correction = step > 0 ? 1.f - std::pow(beta, static_cast<float>(step)) : 1.f;
 
   // Compute new 1st-, 2nd-order momentums, and the update direction.
   for (int i = 0; i < size; ++i) {
@@ -1913,19 +1911,19 @@ void run_multi_tensor_lamb_test(
 
   // Output new weights.
   run_multi_tensor_lamb_test_with_baseline(
-    shapes, eta, loss_scale, g_norm,
-    ws, gs, ms, vs,
-    alphas, betas, lambdas, epsilons,
-    w_news, {}, m_news, v_news, {}, {}, true, step,
-    ratio_min, ratio_max);
+      shapes, eta, loss_scale, g_norm,
+      ws, gs, ms, vs,
+      alphas, betas, lambdas, epsilons,
+      w_news, {}, m_news, v_news, {}, {}, true, step,
+      ratio_min, ratio_max);
 
   // Output new gradients.
   run_multi_tensor_lamb_test_with_baseline(
-    shapes, eta, loss_scale, g_norm,
-    ws, gs, ms, vs,
-    alphas, betas, lambdas, epsilons,
-    {}, g_news, m_news, v_news, {}, {}, true, step,
-    ratio_min, ratio_max);
+      shapes, eta, loss_scale, g_norm,
+      ws, gs, ms, vs,
+      alphas, betas, lambdas, epsilons,
+      {}, g_news, m_news, v_news, {}, {}, true, step,
+      ratio_min, ratio_max);
 }
 
 void run_lamb_mix_precision_test(
@@ -2153,19 +2151,19 @@ TEST(OptimizerTest, LambOptimizerTestBiasCorrectionFirst) {
   const float epsilon = 1e-6f;
 
   run_multi_tensor_lamb_test(
-    {shape},
-    eta,
-    1.f,
-    1.f,
-    {w},
-    {g},
-    {m},
-    {v},
-    {lambda},
-    {alpha},
-    {beta},
-    {epsilon},
-    1);
+      {shape},
+      eta,
+      1.f,
+      1.f,
+      {w},
+      {g},
+      {m},
+      {v},
+      {lambda},
+      {alpha},
+      {beta},
+      {epsilon},
+      1);
 }
 
 TEST(OptimizerTest, LambOptimizerTestBiasCorrectionThird) {
@@ -2182,19 +2180,19 @@ TEST(OptimizerTest, LambOptimizerTestBiasCorrectionThird) {
   const float epsilon = 1e-6f;
 
   run_multi_tensor_lamb_test(
-    {shape},
-    eta,
-    1.f,
-    1.f,
-    {w},
-    {g},
-    {m},
-    {v},
-    {lambda},
-    {alpha},
-    {beta},
-    {epsilon},
-    3);
+      {shape},
+      eta,
+      1.f,
+      1.f,
+      {w},
+      {g},
+      {m},
+      {v},
+      {lambda},
+      {alpha},
+      {beta},
+      {epsilon},
+      3);
 }
 
 // A optimizer test with an 2-by-1-by-1-by-1 tensor.
@@ -2698,7 +2696,7 @@ TEST(GradientCheckerTest, SliceGrad) {
     TensorInfo y_info({1, 2}, true);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, start_info, end_info, axes_info, steps_info},
-        {y_info}, &max_error, x_datas);
+                                          {y_info}, &max_error, x_datas);
 
     EXPECT_IS_TINY(max_error);
   }
@@ -2710,13 +2708,12 @@ TEST(GradientCheckerTest, SliceGrad) {
     TensorInfo end_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
     TensorInfo axes_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
     TensorInfo steps_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8}, {1, 0}, {2, 3},
-      {0, 1}, {1, 2}};
+    std::vector<std::vector<float>> x_datas = {{1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8}, {1, 0}, {2, 3}, {0, 1}, {1, 2}};
 
     TensorInfo y_info({1, 2, 2}, true);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, start_info, end_info, axes_info, steps_info}, {y_info},
-        &max_error, x_datas);
+                                          &max_error, x_datas);
 
     EXPECT_IS_TINY(max_error);
   }
@@ -2739,13 +2736,13 @@ void wait_event(int64_t event_id) {
 }
 
 TEST(Synchronization, RecordAndWaitEvent) {
-  const int64_t event_id = static_cast<int64_t>(941736);
+  const int64_t event_id = static_cast<int64_t>(1736);
   record_event(event_id);
   wait_event(event_id);
 }
 
 TEST(Synchronization, WaitAndRecordEvent) {
-  const int64_t event_id = static_cast<int64_t>(751228);
+  const int64_t event_id = static_cast<int64_t>(1228);
   std::thread waiting_thread(wait_event, event_id);
   std::this_thread::sleep_for(std::chrono::milliseconds(5));
   std::thread recording_thread(record_event, event_id);
