@@ -782,7 +782,8 @@ TEST(GraphTransformationTests, ReluClip6Fusion) {
 
 // test handling of Clip 11
 TEST(GraphTransformationTests, ReluClip11Fusion) {
-  Model model("ReluClip6Fusion", false, DefaultLoggingManager().DefaultLogger());  //, true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 11}}, {});
+  Model model("ReluClip6Fusion", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 11}},
+              {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;
