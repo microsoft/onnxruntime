@@ -771,7 +771,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 catch(Exception e)
                 {
-                    var errorString = "This instance of DisposableNamedOnnxValue has been disposed";
+                    var errorString = "This instance of DisposableNamedOnnxValue has already been disposed";
 
                     Assert.True(e.Message.Contains(errorString));
 
@@ -822,7 +822,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 catch (Exception e)
                 {
-                    var errorString = "This instance of DisposableNamedOnnxValue has been disposed";
+                    var errorString = "This instance of DisposableNamedOnnxValue has already been disposed";
 
                     Assert.True(e.Message.Contains(errorString));
 

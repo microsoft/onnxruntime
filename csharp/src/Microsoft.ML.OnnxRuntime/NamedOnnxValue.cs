@@ -290,7 +290,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         }
 
-        public IntPtr GetOnnxValue()
+        internal IntPtr GetOnnxValue()
         {
             return _onnxValue;
         }
@@ -298,7 +298,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Will unpin the memory buffer and delete the underlying native OrtValue 
         /// </summary>
-        public virtual void UnpinBufferAndReleaseNativeValue()
+        internal virtual void UnpinBufferAndReleaseNativeValue()
         {
             if (_onnxValue != IntPtr.Zero)
             {

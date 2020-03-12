@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Runtime.InteropServices;
@@ -73,20 +72,22 @@ namespace Microsoft.ML.OnnxRuntime
             // make sure that this instance hasn't been disposed yet
             if (disposedValue)
             {
-                throw new Exception("This instance of DisposableNamedOnnxValue has been disposed");
+                throw new Exception("This instance of DisposableNamedOnnxValue has already been disposed");
             }
 
             // If not already disposed, _nativeMemoryManager can only be null
-            // for Map and SequenceTensor types
+            // for Maps and SequenceTensors
             if (_nativeMemoryManager == null)
             {
-                throw new NotSupportedException("TODO");
+                throw new NotSupportedException("Use of Maps and SequenceTensors is not yet supported");
             }
 
             _onnxValue = _nativeMemoryManager.GetOnnxValue();
         }
 
-        public override void UnpinBufferAndReleaseNativeValue()
+        // Call Dispose() to dispose the native OrtValue
+        // This method is kept as a no-op override to the base class method 
+        internal override void UnpinBufferAndReleaseNativeValue()
         {
             // This is a no-op for DisposableNamedOnnxValue as
             // 1) This doesn't maintain a pinned memory buffer
