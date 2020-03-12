@@ -556,7 +556,7 @@ class ONNXQuantizer:
         Create initializers and inputs in the graph for zero point and scale of output.
         Zero point and scale values are obtained from self.quantization_params if specified.
 
-            parameter output_name: Name of the output.
+            parameter param_name: Name of the quantization parameter.
             return: scale_name, zero_point_name, scale_shape, zero_point_shape.
         '''        
         if self.quantization_params is None or param_name not in self.quantization_params:
@@ -593,8 +593,8 @@ class ONNXQuantizer:
     def _get_quantize_input_nodes(self, node, input_index, qType):
         '''
         Given a input for a node (which is not a initializer), this function
-            - add elements to graph to compute zero point and scale for this input.
-            - add new QuantizeLinear nodes to quantize the input.
+            - add nodes to compute zero point and scale for this input if they don't exist.
+            - add new QuantizeLinear node to quantize the input.
 
             parameter node: node being quantized in NodeProto format.
             parameter input_index: index of input in node.input.
@@ -614,13 +614,13 @@ class ONNXQuantizer:
 
             qlinear_node = onnx.helper.make_node("QuantizeLinear", [input_name, scale_name, zp_name], 
                 [output_name], input_name + "_QuantizeLinear")
-            
             return [qlinear_node]
             
         else:
             if data_found == True:
                 qlinear_node = onnx.helper.make_node("QuantizeLinear", [input_name, scale_name, zp_name], 
                     [output_name], input_name + "_QuantizeLinear")
+                return [qlinear_node]
             else:
                 # Scale and Zero Points not available for this input. Add nodes to dynamically compute it
                 if self.fuse_dynamic_quant and qType == onnx_proto.TensorProto.UINT8:
