@@ -72,7 +72,9 @@ void TestQLinearConvOp(OpTester& test,
                        const std::vector<int64_t>& W_shape,
                        const QuantizedBiasTensor* B,
                        const QuantizedTensor& Y,
-                       const std::vector<int64_t>& Y_shape) {
+                       const std::vector<int64_t>& Y_shape,
+                       const std::unordered_set<std::string>& excluded_provider_types = {}) {
+
   test.AddInput<uint8_t>("x", X_shape, X.quantized_);
   test.AddInput<float>("x_scale", {}, {X.scale_});
   test.AddInput<uint8_t>("x_zero_point", {}, {X.zero_point_});
@@ -91,7 +93,7 @@ void TestQLinearConvOp(OpTester& test,
 
   test.AddOutput<uint8_t>("y", Y_shape, Y.quantized_);
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
 }
 
 TEST(QLinearConvTest, Conv2DTest) {
@@ -195,11 +197,13 @@ TEST(QLinearConvTest, WithBias_2D) {
   OpTester test("QLinearConv", 10);
   test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
 
+  // TODO: nGraph fails to handle the optional bias vector correctly.
   TestQLinearConvOp(test,
                     X, {1, 2, 5, 5},
                     W, {4, 2, 3, 3},
                     &B,
-                    Y, {1, 4, 5, 5});
+                    Y, {1, 4, 5, 5},
+                    {kNGraphExecutionProvider});
 }
 
 TEST(QLinearConvTest, WithGroup_2D) {
@@ -226,11 +230,13 @@ TEST(QLinearConvTest, WithGroup_2D) {
   test.AddAttribute("pads", std::vector<int64_t>{0, 0, 1, 1});
   test.AddAttribute("strides", std::vector<int64_t>{2, 2});
 
+  // TODO: nGraph rejects grouped convolutions with bias.
   TestQLinearConvOp(test,
                     X, {1, 6, 3, 5},
                     W, {6, 2, 2, 2},
                     &B,
-                    Y, {1, 6, 2, 3});
+                    Y, {1, 6, 2, 3},
+                    {kNGraphExecutionProvider});
 }
 
 }  // namespace
