@@ -394,12 +394,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     build_number = os.getenv('Build_BuildNumber')
     source_version = os.getenv('Build_SourceVersion')
     if build_number and source_version:
-        build_matches = re.match(r"^(\d\d)(\d\d)(\d\d)-(\d\d)(\d\d)\.(\d)\.(\S+)$", build_number)
+        build_matches = re.fullmatch(r"(\d\d)(\d\d)(\d\d)(\d\d)\.(\d+)", build_number)
         if build_matches:
-            YY = build_matches.group(1)
-            MM = build_matches.group(2)
-            DD = build_matches.group(3)
-            HH = build_matches.group(4)
+            YY = build_matches.group(2)
+            MM = build_matches.group(3)
+            DD = build_matches.group(4)
 
             # Get ORT major and minor number
             with open(os.path.join(source_dir, 'VERSION_NUMBER')) as f:
@@ -417,8 +416,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 # String = 191101-2300.1.master.0bce7ae
                 cmake_args += ["-DVERSION_MAJOR_PART={}".format(ort_major),
                             "-DVERSION_MINOR_PART={}".format(ort_minor),
-                            "-DVERSION_BUILD_PART={}{}".format(YY, MM),
-                            "-DVERSION_PRIVATE_PART={}{}".format(DD, HH),
+                            "-DVERSION_BUILD_PART={}".format(YY),
+                            "-DVERSION_PRIVATE_PART={}{}".format(MM, DD),
                             "-DVERSION_STRING={}.{}.{}.{}".format(ort_major, ort_minor, build_number, source_version[0:7])]
 
     for config in configs:
