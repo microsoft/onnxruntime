@@ -221,8 +221,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
-                                   const std::string& model_uri,
-                                   const Environment& session_env)
+                                   const Environment& session_env,
+                                   const std::string& model_uri)
     : insert_cast_transformer_("CastFloat16Transformer") {
   model_location_ = ToWideString(model_uri);
   model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
@@ -236,8 +236,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 
 #ifdef _WIN32
 InferenceSession::InferenceSession(const SessionOptions& session_options,
-                                   const std::wstring& model_uri,
-                                   const Environment& session_env)
+                                   const Environment& session_env,
+                                   const std::wstring& model_uri)
     : insert_cast_transformer_("CastFloat16Transformer") {
   model_location_ = ToWideString(model_uri);
   model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
@@ -251,8 +251,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 #endif
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
-                                   std::istream& model_istream,
-                                   const Environment& session_env)
+                                   const Environment& session_env,
+                                   std::istream& model_istream)
     : insert_cast_transformer_("CastFloat16Transformer") {
   google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
   model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
@@ -264,9 +264,9 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
+                                   const Environment& session_env,
                                    const void* model_data,
-                                   int model_data_len,
-                                   const Environment& session_env)
+                                   int model_data_len)
     : insert_cast_transformer_("CastFloat16Transformer") {
   model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
   const bool result = model_proto_->ParseFromArray(model_data, model_data_len);

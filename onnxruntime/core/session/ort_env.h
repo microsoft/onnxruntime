@@ -52,9 +52,8 @@ struct OrtEnv {
     return *(value_.get());
   }
 
-  // onnxruntime::logging::LoggingManager* GetLoggingManager() const;
-
-  // void SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager);
+  onnxruntime::logging::LoggingManager* GetLoggingManager() const;
+  void SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager);
 
  private:
   static OrtEnv* p_instance_;

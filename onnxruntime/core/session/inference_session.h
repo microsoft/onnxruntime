@@ -121,12 +121,12 @@ class InferenceSession {
     This ctor will throw on encountering model parsing issues.
     */
   InferenceSession(const SessionOptions& session_options,
-                   const std::string& model_uri,
-                   const Environment& session_env);
+                   const Environment& session_env,
+                   const std::string& model_uri);
 #ifdef _WIN32
   InferenceSession(const SessionOptions& session_options,
-                   const std::wstring& model_uri,
-                   const Environment& session_env);
+                   const Environment& session_env,
+                   const std::wstring& model_uri);
 #endif
 
   /**
@@ -142,8 +142,8 @@ class InferenceSession {
     This ctor will throw on encountering model parsing issues.
     */
   InferenceSession(const SessionOptions& session_options,
-                   std::istream& model_istream,
-                   const Environment& session_env);
+                   const Environment& session_env,
+                   std::istream& model_istream);
 
   /**
     Create a new InferenceSession
@@ -159,9 +159,9 @@ class InferenceSession {
     This ctor will throw on encountering model parsing issues.
     */
   InferenceSession(const SessionOptions& session_options,
+                   const Environment& session_env,
                    const void* model_data,
-                   int model_data_len,
-                   const Environment& session_env);
+                   int model_data_len);
 
   virtual ~InferenceSession();
 

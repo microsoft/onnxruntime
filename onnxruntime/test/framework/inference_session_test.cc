@@ -1536,7 +1536,7 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
   SessionOptions so;
   so.execution_mode = ExecutionMode::ORT_PARALLEL;
   so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
-  InferenceSession session_object{so};
+  InferenceSession session_object{so, GetEnvironment()};
 
   CUDAExecutionProviderInfo epi;
   epi.device_id = 0;
@@ -1624,7 +1624,7 @@ TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
   std::string model_path = "testdata/model_with_valid_ort_config_json.onnx";
 
   // Create session
-  InferenceSession session_object_1{so, model_path, GetEnvironment()};
+  InferenceSession session_object_1{so, GetEnvironment(), model_path};
 
   // Load() and Initialize() the session
   Status st;
@@ -1662,7 +1662,7 @@ TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
   so.intra_op_num_threads = 2;
 
   // Create session
-  InferenceSession session_object_2{so, model_path, GetEnvironment()};
+  InferenceSession session_object_2{so, GetEnvironment(), model_path};
 
   // Load() and Initialize() the session
   ASSERT_TRUE((st = session_object_2.Load()).IsOK()) << st.ErrorMessage();
@@ -1691,7 +1691,7 @@ TEST(InferenceSessionTests, LoadModelWithInValidOrtConfigJson) {
 
   // Create session (should throw as the json within the model is invalid/improperly formed)
   try {
-    InferenceSession session_object_1{so, model_path, GetEnvironment()};
+    InferenceSession session_object_1{so, GetEnvironment(), model_path};
   } catch (const std::exception& e) {
     std::string e_message(std::string(e.what()));
     ASSERT_TRUE(e_message.find("Could not finalize session options while constructing the inference session. Error Message:") != std::string::npos);
@@ -1710,7 +1710,7 @@ TEST(InferenceSessionTests, LoadModelWithInValidOrtConfigJson) {
   so.intra_op_num_threads = 2;
 
   // Create session
-  InferenceSession session_object_2{so, model_path, GetEnvironment()};
+  InferenceSession session_object_2{so, GetEnvironment(), model_path};
 
   // Load() and Initialize() the session
   Status st;
@@ -1740,7 +1740,7 @@ TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
   std::string model_path = "testdata/transform/abs-id-max.onnx";
 
   // Create session
-  InferenceSession session_object_1{so, model_path, GetEnvironment()};
+  InferenceSession session_object_1{so, GetEnvironment(), model_path};
 
   // Load() and Initialize() the session
   Status st;
@@ -1761,7 +1761,7 @@ TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
 #endif
 
   // Create session
-  InferenceSession session_object_2{so, model_path, GetEnvironment()};  // so has inter_op_num_threads set to 2
+  InferenceSession session_object_2{so, GetEnvironment(), model_path};  // so has inter_op_num_threads set to 2
 
   // Load() and Initialize() the session
   ASSERT_TRUE((st = session_object_2.Load()).IsOK()) << st.ErrorMessage();
@@ -1785,7 +1785,7 @@ TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
 
   // Create session (should throw because of the unsupported value for the env var - ORT_LOAD_CONFIG_FROM_MODEL)
   try {
-    InferenceSession session_object_1{so, model_path, GetEnvironment()};
+    InferenceSession session_object_1{so, GetEnvironment(), model_path};
   } catch (const std::exception& e) {
     std::string e_message(std::string(e.what()));
     ASSERT_TRUE(e_message.find("Could not finalize session options while constructing the inference session. Error Message:") != std::string::npos);

@@ -37,7 +37,7 @@ typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 
 class FenceCudaTestInferenceSession : public InferenceSession {
  public:
-  FenceCudaTestInferenceSession(const SessionOptions& so) : InferenceSession(so) {}
+  FenceCudaTestInferenceSession(const SessionOptions& so, const Environment& env) : InferenceSession(so, env) {}
   Status LoadModel(onnxruntime::Model& model) {
     auto model_proto = model.ToProto();
     auto st = Load(model_proto);
@@ -117,7 +117,7 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   SessionOptions so;
-  FenceCudaTestInferenceSession session(so);
+  FenceCudaTestInferenceSession session(so, GetEnvironment());
   LoadInferenceSessionFromModel(session, *model);
   CUDAExecutionProviderInfo xp_info;
   session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info));

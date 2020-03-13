@@ -214,10 +214,10 @@ typedef enum OrtMemType {
 
 typedef struct ThreadingOptions {
   // number of threads used to parallelize execution of an op
-  int intra_op_num_threads = 0;  // default value
+  int intra_op_num_threads;  // use 0 if you want onnxruntime to choose a value for you
 
   // number of threads used to parallelize execution across ops
-  int inter_op_num_threads = 0;  // default value
+  int inter_op_num_threads;  // use 0 if you want onnxruntime to choose a value for you
 } ThreadingOptions;
 
 struct OrtApi;

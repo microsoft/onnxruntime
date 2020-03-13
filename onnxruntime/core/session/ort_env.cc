@@ -83,3 +83,11 @@ void OrtEnv::Release(OrtEnv* env_ptr) {
     p_instance_ = nullptr;
   }
 }
+
+onnxruntime::logging::LoggingManager* OrtEnv::GetLoggingManager() const {
+  return value_->GetLoggingManager();
+}
+
+void OrtEnv::SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager) {
+  value_->SetLoggingManager(std::move(logging_manager));
+}

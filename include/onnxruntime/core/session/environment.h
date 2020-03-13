@@ -30,6 +30,10 @@ class Environment {
     return logging_manager_.get();
   }
 
+  void SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager) {
+    logging_manager_ = std::move(logging_manager);
+  }
+
   onnxruntime::concurrency::ThreadPool* GetIntraOpThreadPool() const {
     return intra_op_thread_pool_.get();
   }
