@@ -1,3 +1,10 @@
+#-------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.
+#--------------------------------------------------------------------------
+
+# It is used to dump machine information for Notebooks
+
 import argparse
 import logging
 from typing import List, Dict, Union, Tuple
@@ -10,15 +17,16 @@ from os import environ
 from py3nvml.py3nvml import nvmlInit, nvmlSystemGetDriverVersion, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, \
                             nvmlDeviceGetMemoryInfo, nvmlDeviceGetName, nvmlShutdown, NVMLError
 
+
 class MachineInfo():
     """ Class encapsulating Machine Info logic. """
-
     def __init__(self, silent=False, logger=None):
         self.silent = silent
 
         if logger is None:
             logging.basicConfig(
-                format="%(asctime)s - %(name)s - %(levelname)s: %(message)s", level=logging.INFO)
+                format="%(asctime)s - %(name)s - %(levelname)s: %(message)s",
+                level=logging.INFO)
             self.logger = logging.getLogger(__name__)
         else:
             self.logger = logger
@@ -38,7 +46,7 @@ class MachineInfo():
             "gpu": gpu_info,
             "cpu": self.get_cpu_info(),
             "memory": self.get_memory_info(),
-            "python": cpuinfo.get_cpu_info()["python_version"], #sys.version,
+            "python": cpuinfo.get_cpu_info()["python_version"],  #sys.version,
             "os": platform.platform(),
             "onnxruntime": self.get_onnxruntime_info(),
             "pytorch": self.get_pytorch_info(),
@@ -49,10 +57,7 @@ class MachineInfo():
     def get_memory_info(self) -> Dict:
         """Get memory info"""
         mem = psutil.virtual_memory()
-        return {
-            "total": mem.total,
-            "available": mem.available
-        }
+        return {"total": mem.total, "available": mem.available}
 
     def get_cpu_info(self) -> Dict:
         """Get CPU info"""
@@ -62,8 +67,8 @@ class MachineInfo():
             "cores": psutil.cpu_count(logical=False),
             "logical_cores": psutil.cpu_count(logical=True),
             "hz": cpu_info["hz_actual"],
-            "l2_cache":cpu_info["l2_cache_size"],
-            "l3_cache":cpu_info["l3_cache_size"],
+            "l2_cache": cpu_info["l2_cache_size"],
+            "l3_cache": cpu_info["l3_cache_size"],
             "processor": platform.uname().processor
         }
 
@@ -86,11 +91,11 @@ class MachineInfo():
             nvmlShutdown()
         except NVMLError as error:
             if not self.silent:
-                self.logger.error("Error fetching GPU information using nvml: %s", error)
+                self.logger.error(
+                    "Error fetching GPU information using nvml: %s", error)
             return None
 
-        result = {"driver_version" : driver_version,
-                  "devices": gpu_info_list }
+        result = {"driver_version": driver_version, "devices": gpu_info_list}
 
         if 'CUDA_VISIBLE_DEVICES' in environ:
             result["cuda_visible"] = environ['CUDA_VISIBLE_DEVICES']
@@ -100,8 +105,11 @@ class MachineInfo():
         try:
             import onnxruntime
             return {
-                "version": onnxruntime.__version__,
-                "support_gpu":  'CUDAExecutionProvider' in onnxruntime.get_available_providers()
+                "version":
+                onnxruntime.__version__,
+                "support_gpu":
+                'CUDAExecutionProvider' in
+                onnxruntime.get_available_providers()
             }
         except ImportError as error:
             if not self.silent:
@@ -117,7 +125,7 @@ class MachineInfo():
             import torch
             return {
                 "version": torch.__version__,
-                "support_gpu":  torch.cuda.is_available()
+                "support_gpu": torch.cuda.is_available()
             }
         except ImportError as error:
             if not self.silent:
@@ -133,8 +141,8 @@ class MachineInfo():
             import tensorflow as tf
             return {
                 "version": tf.version.VERSION,
-                "git_version":  tf.version.GIT_VERSION,
-                "support_gpu":  tf.test.is_built_with_cuda()
+                "git_version": tf.version.GIT_VERSION,
+                "support_gpu": tf.test.is_built_with_cuda()
             }
         except ImportError as error:
             if not self.silent:
@@ -145,14 +153,19 @@ class MachineInfo():
                 self.logger.exception(error)
             return None
 
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--silent', required=False, action='store_true', help="Do not print error message")
+    parser.add_argument('--silent',
+                        required=False,
+                        action='store_true',
+                        help="Do not print error message")
     parser.set_defaults(silent=False)
 
     args = parser.parse_args()
     return args
+
 
 if __name__ == '__main__':
     args = parse_arguments()
