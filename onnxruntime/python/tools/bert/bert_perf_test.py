@@ -142,7 +142,7 @@ def run_one_test(perf_results, model_path, all_inputs, batch_size, sequence_leng
 
     perf_results[key] = (average_latency, latency_50, latency_75, latency_90, latency_95, latency_99, throughput)
 
-    print("Average latency {} ms, and throughput {} QPS".format(format(average_latency, '.2f'), format(throughput, '.2f')))
+    print("Average latency = {} ms, Throughput = {} QPS".format(format(average_latency, '.2f'), format(throughput, '.2f')))
 
 def launch_test(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, intra_op_num_threads, omp_num_threads, omp_wait_policy, no_warmup, extra_latency):
     process = multiprocessing.Process(target=run_one_test, args=(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous, intra_op_num_threads, omp_num_threads, omp_wait_policy, no_warmup, extra_latency))
