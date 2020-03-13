@@ -305,57 +305,78 @@ static inline void ComputeSoftmaxZero(std::vector<float>& values) {
 }
 
 template <typename T>
-void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
-                  int add_second_class) {
+static void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform,
+                         T* Z, int add_second_class) {
   if (scores.size() >= 2) {
     switch (post_transform) {
       case POST_EVAL_TRANSFORM::PROBIT:
-        for (float& score : scores)
-          score = ComputeProbit(score);
+        for (auto it = scores.cbegin(); it != scores.cend(); ++it, ++Z)
+          *Z = static_cast<T>(ComputeProbit(static_cast<float>(*it)));
         break;
       case POST_EVAL_TRANSFORM::LOGISTIC:
-        for (float& score : scores)
-          score = ComputeLogistic(score);
+        for (auto it = scores.cbegin(); it != scores.cend(); ++it, ++Z)
+          *Z = static_cast<T>(ComputeLogistic(static_cast<float>(*it)));
         break;
       case POST_EVAL_TRANSFORM::SOFTMAX:
         ComputeSoftmax(scores);
+        memcpy(Z, scores.data(), scores.size() * sizeof(T));
         break;
       case POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
         ComputeSoftmaxZero(scores);
+        memcpy(Z, scores.data(), scores.size() * sizeof(T));
         break;
       default:
       case POST_EVAL_TRANSFORM::NONE:
+        memcpy(Z, scores.data(), scores.size() * sizeof(T));
         break;
     }
   } else if (scores.size() == 1) {  //binary case
     if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
-      scores[0] = ComputeProbit(scores[0]);
+      scores[0] = static_cast<T>(ComputeProbit(static_cast<float>(scores[0])));
+      *Z = scores[0];
     } else {
       switch (add_second_class) {
-        case 0:
-        case 1:
+        case 0:  //0=all positive weights, winning class is positive
           scores.push_back(scores[0]);
-          scores[0] = 1.f - scores[0];
+          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
+          *Z = scores[0];
+          *(Z + 1) = scores[1];
           break;
-        case 2:  //2 = mixed weights, winning class is positive
-        case 3:  //3 = mixed weights, winning class is negative
+        case 1:  //1 = all positive weights, winning class is negative
+          scores.push_back(scores[0]);
+          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
+          *Z = scores[0];
+          *(Z + 1) = scores[1];
+          break;
+        case 2:
+        case 3:  //2 = mixed weights, winning class is positive
           if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-            scores.push_back(ComputeLogistic(scores[0]));  //ml_logit(scores[k]);
-            scores[0] = ComputeLogistic(-scores[0]);
+            scores.push_back(static_cast<T>(ComputeLogistic(static_cast<float>(scores[0]))));
+            scores[0] = static_cast<T>(ComputeLogistic(static_cast<float>(-scores[0])));
           } else {
             scores.push_back(scores[0]);
             scores[0] = -scores[0];
           }
+          *Z = scores[0];
+          *(Z + 1) = scores[1];
+          break;
+        default:
+          *Z = scores[0];
           break;
       }
     }
   }
+}
+
+template <typename T>
+static void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
+                         int add_second_class) {
   T* out_p = Z->template MutableData<T>() + write_index;
   size_t len;
   if (!IAllocator::CalcMemSizeForArray(scores.size(), sizeof(T), &len)) {
     ORT_THROW("length overflow");
   }
-  memcpy(out_p, scores.data(), len);
+  write_scores(scores, post_transform, out_p, add_second_class);
 }
 
 // TODO: Starting with just the pieces needed for LinearRegressor from write_scores (see above).
