@@ -13,7 +13,7 @@ jobs:
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-    EnvSetupScript: setup_env.bat
+    EnvSetupScript: setup_env_trt.bat
     buildArch: x64
     setVcvars: true
   timeoutInMinutes: 120

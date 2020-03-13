@@ -1085,8 +1085,7 @@ protected:
         MLAS_ACTIVATION Activation;
         Activation.ActivationKind = MlasIdentityActivation;
 
-        MlasNchwcConv(2,
-                      InputShape,
+        MlasNchwcConv(InputShape,
                       KernelShape,
                       DilationShape,
                       Padding,
@@ -1503,7 +1502,6 @@ protected:
         MlasReorderInput(InputShape, Input, NchwcInput);
 
         MlasNchwcPool(PoolingKind,
-                      2,
                       NchwcInputShape,
                       KernelShape,
                       nullptr,

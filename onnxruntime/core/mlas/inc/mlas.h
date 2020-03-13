@@ -376,7 +376,6 @@ MlasNchwcGetBlockSize(
 void
 MLASCALL
 MlasNchwcConv(
-    size_t Dimensions,
     const int64_t* InputShape,
     const int64_t* KernelShape,
     const int64_t* DilationShape,
@@ -397,7 +396,6 @@ void
 MLASCALL
 MlasNchwcPool(
     MLAS_POOLING_KIND PoolingKind,
-    size_t Dimensions,
     const int64_t* InputShape,
     const int64_t* KernelShape,
     const int64_t* DilationShape,
@@ -407,6 +405,15 @@ MlasNchwcPool(
     const float* Input,
     float* Output,
     MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasNchwcUpsample(
+    const int64_t* InputShape,
+    const int64_t* Scales,
+    const float* Input,
+    float* Output
     );
 
 //

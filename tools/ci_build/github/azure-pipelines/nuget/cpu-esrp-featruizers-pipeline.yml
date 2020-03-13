@@ -6,6 +6,9 @@ schedules:
     - master
   always: true
 
+variables:
+  PackageName: 'Microsoft.ML.ORTFeaturizers'
+
 jobs: 
 - template: templates/cpu-featurizers.yml
   parameters:

@@ -216,7 +216,7 @@ jobs:
   timeoutInMinutes:  60  
   variables:
     CUDA_VERSION: '10.1'
-    EnvSetupScript: setup_env.bat
+    EnvSetupScript: setup_env_cuda.bat
   strategy:
     matrix:
       Python35:

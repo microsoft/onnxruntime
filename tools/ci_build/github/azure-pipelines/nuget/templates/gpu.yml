@@ -11,7 +11,7 @@ jobs:
     BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --use_telemetry --cmake_generator "Visual Studio 16 2019" --use_cuda --cuda_version=10.1 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.1" --cudnn_home="C:\local\cudnn-10.1-windows10-x64-v7.6.5.32\cuda"
     BuildArch: 'x64'
     msbuildArchitecture: 'amd64'
-    EnvSetupScript: 'setup_env.bat'    
+    EnvSetupScript: 'setup_env_cuda.bat'    
     sln_platform: 'x64'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
@@ -23,6 +23,51 @@ jobs:
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+     mkdir $(Build.ArtifactStagingDirectory)\testdata
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+
+- template: ../../templates/win-ci-2019.yml
+  parameters:
+    AgentPool : 'Win-GPU-2019'
+    ArtifactName: 'drop-nuget-dml'    
+    JobName: 'Windows_CI_GPU_DML_Dev'
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
+    BuildArch: 'x64'
+    msbuildArchitecture: 'amd64'
+    EnvSetupScript: 'setup_env_cuda.bat'    
+    sln_platform: 'x64'
+    DoDebugBuild: 'false'
+    DoNugetPack : 'true'
+    DoCompliance: 'false'
+    DoEsrp: ${{ parameters.DoEsrp }}    
+    CudaVersion: '10.0'
+    OrtPackageId: 'Microsoft.ML.OnnxRuntime.DirectML'
+    NuPackScript: |
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML
+     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+     mkdir $(Build.ArtifactStagingDirectory)\testdata
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+
+- template: ../../templates/win-ci-2019.yml
+  parameters:
+    AgentPool : 'Win-GPU-2019'
+    ArtifactName: 'drop-win-dml-x86-zip'
+    JobName: 'Windows_CI_GPU_DML_Dev_x86'
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --x86 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
+    BuildArch: 'x86'
+    EnvSetupScript: 'setup_env_x86.bat'
+    sln_platform: 'Win32'
+    DoDebugBuild: 'false'
+    DoNugetPack : 'true'
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    RunTests: 'false'
+    NuPackScript: |
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML
+     cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
+     ren Microsoft.ML.OnnxRuntime.DirectML.* win-dml-x86.zip
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-x86.zip $(Build.ArtifactStagingDirectory)
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
@@ -68,14 +113,28 @@ jobs:
   pool: 'Win-GPU-2019'
   dependsOn:
   - Windows_CI_GPU_CUDA_Dev
+  - Windows_CI_GPU_DML_Dev
+  - Windows_CI_GPU_DML_Dev_x86
   - Linux_CI_GPU_Dev
   condition: succeeded()
   steps:  
   - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet'
+    displayName: 'Download Pipeline Artifact - NuGet CUDA'
     inputs:
       artifactName: 'drop-nuget'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet DirectML'
+    inputs:
+      artifactName: 'drop-nuget-dml'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-dml'
+      
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet DirectML x86'
+    inputs:
+      artifactName: 'drop-win-dml-x86-zip'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-dml'
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Linux'
@@ -110,6 +169,40 @@ jobs:
      copy $(Build.BinariesDirectory)\nuget-artifact\*.nupkg $(Build.ArtifactStagingDirectory)
     displayName: 'Bundle Native NuGet and other binaries'
 
+  - script: |
+     pushd $(Build.BinariesDirectory)\nuget-artifact-dml
+     dir
+     powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
+     powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
+     set PATH=%CD%;%PATH%
+     FOR /R %%i IN (*.nupkg) do ( 
+         rename %%~ni.nupkg %%~ni.zip
+         unzip %%~ni.zip -d %%~ni
+         del /Q %%~ni.zip
+
+         unzip win-dml-x86.zip -d win-x86
+         mkdir %%~ni\runtimes\win-x86
+         mkdir %%~ni\runtimes\win-x86\native
+
+         move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
+         move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
+         move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
+
+         move win-x86\runtimes\win-x86\native\windows.ai.machinelearning.dll %%~ni\runtimes\win-x86\native\windows.ai.machinelearning.dll
+         move win-x86\runtimes\win-x86\native\windows.ai.machinelearning.lib %%~ni\runtimes\win-x86\native\windows.ai.machinelearning.lib
+         move win-x86\runtimes\win-x86\native\windows.ai.machinelearning.pdb %%~ni\runtimes\win-x86\native\windows.ai.machinelearning.pdb
+
+         move win-x86\runtimes\win-x86\native\directml.dll %%~ni\runtimes\win-x86\native\directml.dll
+
+         pushd %%~ni
+         zip -r ..\%%~ni.zip .
+         popd
+         move %%~ni.zip %%~ni.nupkg
+     )
+     popd
+     copy $(Build.BinariesDirectory)\nuget-artifact-dml\Microsoft.ML.OnnxRuntime.DirectML*nupkg $(Build.ArtifactStagingDirectory)
+    displayName: 'Bundle DML NuGet and other binaries'
+
   - template: ../../templates/esrp_nuget.yml
     parameters:
       DisplayName: 'ESRP - sign NuGet package'
@@ -119,7 +212,15 @@ jobs:
   - template: ../../templates/validate-nuget.yml
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)'
+      NugetPackage: 'Microsoft.ML.OnnxRuntime.Gpu*nupkg'
       PlatformsSupported: 'win-x64,linux-x64'
+      VerifyNugetSigning: ${{ parameters.DoEsrp }}
+
+  - template: ../../templates/validate-nuget.yml
+    parameters:
+      NugetPath: '$(Build.ArtifactStagingDirectory)'
+      NugetPackage: 'Microsoft.ML.OnnxRuntime.DirectML*nupkg'
+      PlatformsSupported: 'win-x64,win-x86'
       VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
   - task: PublishPipelineArtifact@0
