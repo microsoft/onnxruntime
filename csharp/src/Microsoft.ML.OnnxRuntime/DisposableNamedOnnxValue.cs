@@ -69,7 +69,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Overrides the base class method. Since the instance already has acccess to the 
+        /// Overrides the base class method. Since the instance already has access to the 
         /// underlying OrtValue handle (if this instance hasn't been disposed), it just assigns
         /// that to the output onnxValue. With respect to pinnedMemoryHandle, it has no operation
         /// to do, as this class doesn't maintain a managed buffer. It doesn't have to maintain it
@@ -82,10 +82,6 @@ namespace Microsoft.ML.OnnxRuntime
                                                  out MemoryHandle pinnedMemoryHandle,
                                                  out bool disposeOnnxValueAfterUse)
         {
-            // 'disposeOnnxValueAfterUse' is always 'false' for DisposableNamedOnnxValue as the onus
-            // to dispose the onnxValue after use is on the user, not the internal caller
-            disposeOnnxValueAfterUse = false;
-
             // Make sure that this instance hasn't been disposed yet
             if (disposedValue)
             {
@@ -99,6 +95,11 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new NotSupportedException("Use of Maps and SequenceTensors is not yet supported");
             }
 
+            // 'disposeOnnxValueAfterUse' is always 'false' for DisposableNamedOnnxValue as the onus
+            // to dispose the onnxValue after use is on the user, not the internal caller
+            disposeOnnxValueAfterUse = false;
+
+            // Assign the onnxValue by querying this instance's NativeOnnxTensorMemory instance
             onnxValue = _nativeMemoryManager.GetOnnxValue();
         }
 
