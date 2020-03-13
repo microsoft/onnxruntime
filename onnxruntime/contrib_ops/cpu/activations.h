@@ -43,7 +43,7 @@ class Gelu : public OpKernel {
     if (nullptr != tp) {
       const T* input = X->template Data<T>();
       T* output = Y->template MutableData<T>();
-      int task_count = tp->NumThreads() + 1;
+      int task_count = tp->NumThreads();
       int64_t elem_count = X->Shape().Size();
       if (elem_count > task_count) {
         tp->ParallelFor(task_count, [input,
