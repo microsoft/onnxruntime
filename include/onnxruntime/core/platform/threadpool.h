@@ -64,13 +64,14 @@ class ThreadPool {
   // void SetStealPartitions(const std::vector<std::pair<unsigned, unsigned>>& partitions);
 
   /**
-  Tries to call the given function in parallel, with calls split into (num_batches) batches.
-  **/
+   * Tries to call the given function in parallel, with calls split into (num_batches) batches.
+   * If tp is NULL and OpenMP is enabled, no grouping
+   */
   template <typename F>
   inline static void TryBatchParallelFor(concurrency::ThreadPool* tp, int32_t total, F&& fn, int32_t num_batches = 0) {
     if (tp != nullptr) {
       if (num_batches <= 0) {
-        num_batches = tp->NumThreads() + 1;
+        num_batches = std::min(total, tp->NumThreads());
       }
       tp->BatchParallelFor(total, std::forward<F>(fn), num_batches);
     } else {
