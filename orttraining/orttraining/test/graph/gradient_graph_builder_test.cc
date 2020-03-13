@@ -8,6 +8,8 @@
 #include "core/session/environment.h"
 #include "orttraining/models/runner/training_runner.h"
 
+#include "orttraining/training_ops/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
+
 #ifdef USE_CUDA
 #include "bert_toy_fetches.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
@@ -798,6 +800,159 @@ class PipelineSplitter {
   }
 };
 
+// TODO: move to a proper location for pipeline training
+struct PipelineBatchInfo {
+  std::vector<std::pair<int64_t, int64_t>> events;
+  int64_t retired_batch;  // index of retired batch, so its data could be reused
+};
+
+class PipelineBatchPlanner {
+ private:
+  int64_t max_id_;
+
+ public:
+  PipelineBatchPlanner()
+      : max_id_(::onnxruntime::contrib::OrtEventPool::GetPoolSize() - 1) {
+  }
+
+  void CreatePlan(const std::vector<int64_t>& start_ids,
+                  size_t num_batches,
+                  std::vector<PipelineBatchInfo>& plan) {
+    size_t num_stages = start_ids.size();
+
+    // generate timeline
+    Timeline timeline = GenerateTimeline(num_stages, num_batches);
+
+    // fill in plan
+    plan.resize(num_batches);
+    for (size_t batch = 0; batch < num_batches; ++batch) {
+      auto& info = plan[batch];
+      info.events.resize(2 * num_stages - 1);  // two pairs for each stage except for last stage, which only need one
+      info.retired_batch = -1;
+    }
+
+    // each stage requires 2 pair of wait/record events for FW/BW
+    // except for last stage, which only need one pair of wait/record
+    for (size_t s = 0; s < num_stages; ++s) {
+      int64_t prev_event_id = -1;
+      int64_t event_id = start_ids[s];
+      int64_t retired_batch = -1;
+      for (size_t t = 0; t < timeline.GetNumSlots(); ++t) {
+        const auto& slot = timeline.Get(s, t);
+        if (!slot.bits.used)
+          continue;
+
+        ORT_ENFORCE(event_id < max_id_);
+        if (slot.bits.bw) {
+          if (s < num_stages - 1) {
+            // dont update wait event for last stage's bw
+            plan[slot.bits.batch_id].events[2 * num_stages - 2 - s].first = prev_event_id;
+            prev_event_id = event_id;
+          }
+          plan[slot.bits.batch_id].events[2 * num_stages - 2 - s].second = event_id++;
+          retired_batch = slot.bits.batch_id;
+        } else {
+          if (s == 0) {
+            // update retired batch when starting a new batch (s == 0 && !bw)
+            plan[slot.bits.batch_id].retired_batch = retired_batch;
+          }
+          plan[slot.bits.batch_id].events[s].first = prev_event_id;
+          prev_event_id = event_id;
+          if (s < num_stages - 1) {
+            // dont update record event for last stage's fw
+            plan[slot.bits.batch_id].events[s].second = event_id++;
+          }
+        }
+      }
+    }
+  }
+
+ private:
+  class Timeline {
+   public:
+    union Slot {
+      uint32_t u32;
+      struct {
+        uint32_t batch_id : 30;
+        uint32_t bw : 1;
+        uint32_t used : 1;
+      } bits;
+    };
+
+    Timeline(size_t stages, size_t num_slots) : slots_(stages) {
+      for (size_t s = 0; s < stages; ++s) {
+        slots_[s].resize(num_slots, 0);
+      }
+    }
+
+    bool IsOccupied(size_t s, size_t t) const {
+      return slots_[s][t] != 0;
+    }
+
+    const Slot& Get(size_t s, size_t t) const {
+      return *(Slot*)(&slots_[s][t]);
+    }
+
+    size_t GetNumSlots() const {
+      return slots_[0].size();
+    }
+
+    void Occupy(size_t s, size_t t, size_t batch, bool bw) {
+      Slot slot;
+      slot.bits.used = true;
+      slot.bits.bw = bw;
+      ORT_ENFORCE(batch < (1 << 30));
+      slot.bits.batch_id = gsl::narrow<int>(batch);
+      slots_[s][t] = slot.u32;
+    }
+
+   private:
+    std::vector<std::vector<uint32_t>> slots_;
+  };
+
+  Timeline GenerateTimeline(size_t num_stages, size_t num_batches) {
+    // 2 slots for FW/BW in each batch, plus 2 * (num_stages - 1) gaps
+    size_t num_slots = num_batches * 2 + 2 * (num_stages - 1);
+    Timeline timeline(num_stages, num_slots);
+    std::vector<size_t> t(num_stages);
+    std::vector<size_t> t_bw(num_stages);
+    for (size_t s = 0; s < num_stages; ++s) {
+      t[s] = 0;
+      t_bw[s] = 0;
+    }
+
+    // generate timeline
+    for (size_t batch = 0; batch < num_batches; ++batch) {
+      // plan for FW
+      for (size_t s = 0; s < num_stages; ++s) {
+        while (timeline.IsOccupied(s, t[s])) {
+          ++t[s];
+        }
+        // after find a slot, update t[s+1..] if needed
+        for (size_t ss = s + 1; ss < num_stages; ++ss) {
+          t[ss] = std::max(t[ss], t[s] + (ss - s));
+        }
+        // occupy slot in timeline
+        timeline.Occupy(s, t[s]++, batch, /*bw*/ false);
+      }
+      // plan for BW
+      for (int s = gsl::narrow<int>(num_stages - 1); s >= 0; --s) {
+        t_bw[s] = std::max(t[s], t_bw[s]);
+        while (timeline.IsOccupied(s, t_bw[s])) {
+          t_bw[s]++;
+        }
+        // after find a slot, update t_bw[s-1..]
+        for (int ss = s - 1; ss >= 0; --ss) {
+          t_bw[ss] = std::max(t_bw[ss], t_bw[s] + (s - ss));
+        }
+        // occupy slot in timeline
+        timeline.Occupy(s, t_bw[s], batch, /*bw*/ true);
+      }
+    }
+    return timeline;
+  }
+};
+
 TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   auto config = MakeBasicTrainingConfig();
   //config.set_gradients_as_graph_outputs = true;
@@ -1000,12 +1155,12 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
     EXPECT_TRUE(subs[sub_id].sess->Run(subs[sub_id].run_options, input_names, input_values, output_names, &output_values).IsOK());
   };
 
-  struct EventsPerBatch {
-    std::vector<int64_t> record_data;
-    std::vector<std::pair<int64_t, int64_t>> wait_record_pipeline;
-  };
+  const int num_batches = 6;
+  std::vector<PipelineBatchInfo> plan(num_batches);
+  PipelineBatchPlanner planner;
+  planner.CreatePlan({100, 200, 300}, num_batches, plan);
 
-  // TODO: create this from generator
+  // Ground truth for plan
   // sub 0: F0 F1 F2 F3 F4 B0 F5 B1    B2    B3    B4    B5
   // sub 1:    F0 F1 F2 B0 F3 B1 F4 B2 F5 B3    B4    B5
   // sub 2:       F0 B0 F1 B1 F2 B2 F3 B3 F4 B4 F5 B5
@@ -1015,50 +1170,69 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   // 100 -> 199: sub 0
   // 200 -> 299: sub 1
   // 300 -> 399: sub 2
-
-  const std::vector<EventsPerBatch> events = {
+  const std::vector<PipelineBatchInfo> expected_plan = {
       // batch 0
-      {{0, 1, 2, 3},
-       {{-1, 100}, {-1, 200}, {-1, 300}, {202, 203}, {104, 105}}},
+      {{{-1, 100}, {-1, 200}, {-1, 300}, {202, 203}, {104, 105}}, -1},
       // batch 1
-      {{4, 5, 6, 7},
-       {{100, 101}, {200, 201}, {300, 301}, {204, 205}, {106, 107}}},
+      {{{100, 101}, {200, 201}, {300, 301}, {204, 205}, {106, 107}}, -1},
       // batch 2
-      {{8, 9, 10, 11},
-       {{101, 102}, {201, 202}, {301, 302}, {206, 207}, {107, 108}}},
+      {{{101, 102}, {201, 202}, {301, 302}, {206, 207}, {107, 108}}, -1},
       // batch 3
-      {{12, 13, 14, 15},
-       {{102, 103}, {203, 204}, {302, 303}, {208, 209}, {108, 109}}},
+      {{{102, 103}, {203, 204}, {302, 303}, {208, 209}, {108, 109}}, -1},
       //batch 4
-      {{16, 17, 18, 19},
-       {{103, 104}, {205, 206}, {303, 304}, {209, 210}, {109, 110}}},
+      {{{103, 104}, {205, 206}, {303, 304}, {209, 210}, {109, 110}}, -1},
       // batch 5
-      {{20, 21, 22, 23},
-       {{105, 106}, {207, 208}, {304, 305}, {210, 211}, {110, 111}}},
+      {{{105, 106}, {207, 208}, {304, 305}, {210, 211}, {110, 111}}, 0},
   };
-
-  const int num_batches = (int)events.size();
-
-  std::vector<std::thread> workers;
-  //TODO: recycle pipeline data during batch loop
-  std::vector<PipelineData> pd;
-  pd.resize(num_batches);
   for (int batch = 0; batch < num_batches; ++batch) {
-    std::vector<float> x(784);
-    std::vector<float> label(10);
-    pd[batch].SetInputs(x, label);
-    pd[batch].SetEvents(events[batch].record_data, events[batch].wait_record_pipeline);
-
-    for (int sub_id = 0; sub_id < num_subs; ++sub_id) {
-      workers.emplace_back([&worker, &pd, batch, sub_id]() {
-        worker(sub_id, pd[batch]);
-      });
+    EXPECT_TRUE(expected_plan[batch].retired_batch == plan[batch].retired_batch);
+    EXPECT_TRUE(expected_plan[batch].events.size() == plan[batch].events.size());
+    for (int evt_id = 0; evt_id < expected_plan[batch].events.size(); ++evt_id) {
+      EXPECT_TRUE(expected_plan[batch].events[evt_id] == plan[batch].events[evt_id]);
     }
   }
 
-  //TODO: join workers during batch loop
-  for (auto& w : workers)
-    w.join();
+  struct BatchContext {
+    PipelineData data;
+    std::vector<std::thread> workers;
+  };
+  std::unordered_map<int64_t, std::shared_ptr<BatchContext>> batch_ctx_pool;
+  for (int batch = 0; batch < num_batches; ++batch) {
+    std::vector<float> x(784);
+    std::vector<float> label(10);
+    std::shared_ptr<BatchContext> batch_ctx;
+    auto iter = batch_ctx_pool.find(plan[batch].retired_batch);
+    if (iter != batch_ctx_pool.end()) {
+      batch_ctx = iter->second;
+      // clean up retired batch, and reclaim data for reuse
+      for (auto& w : batch_ctx->workers) {
+        w.join();
+      }
+      batch_ctx->workers.resize(0);
+      batch_ctx_pool.erase(plan[batch].retired_batch);
+    } else {
+      batch_ctx = std::make_shared<BatchContext>();
+    }
+
+    // set inputs
+    batch_ctx->data.SetInputs(x, label);
+    batch_ctx->data.SetEvents({batch * 4, batch * 4 + 1, batch * 4 + 2, batch * 4 + 3}, plan[batch].events);
+
+    for (int sub_id = 0; sub_id < num_subs; ++sub_id) {
+      auto* pd = &(batch_ctx->data);
+      batch_ctx->workers.emplace_back([&worker, pd, sub_id]() {
+        worker(sub_id, *pd);
+      });
+    }
+    batch_ctx_pool.emplace(batch, batch_ctx);
+  }
+
+  // wait until all workers done
+  for (auto& pair : batch_ctx_pool) {
+    for (auto& w : pair.second->workers) {
+      w.join();
+    }
+  }
 
   // finish profiler
   for (int sub_id = 0; sub_id < num_subs; ++sub_id) {
