@@ -38,9 +38,9 @@ HRESULT GetDXGIHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, IDX
     RETURN_IF_FAILED(CreateDXGIFactory1(IID_PPV_ARGS(spFactory.put())));
    
     while (spFactory->EnumAdapters1(i, spAdapter.put()) != DXGI_ERROR_NOT_FOUND) {
-      bool* isWarpAdapter;
-      RETURN_IF_FAILED(IsWarpAdapter(spAdapter.get(), isWarpAdapter));
-      if (!(*isWarpAdapter)) {
+      bool isWarpAdapter = false;
+      RETURN_IF_FAILED(IsWarpAdapter(spAdapter.get(), &isWarpAdapter));
+      if (!isWarpAdapter) {
         spAdapter.copy_to(ppAdapter);
         return S_OK;
       }
@@ -53,7 +53,7 @@ HRESULT GetDXGIHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, IDX
     RETURN_IF_FAILED(CreateDXGIFactory1(IID_PPV_ARGS(spFactory.put())));
 
     while (spFactory->EnumAdapterByGpuPreference(i, preference, IID_PPV_ARGS(spAdapter.put())) != DXGI_ERROR_NOT_FOUND) {
-      bool* isWarpAdapter;
+      bool* isWarpAdapter = false;
       RETURN_IF_FAILED(IsWarpAdapter(spAdapter.get(), isWarpAdapter));
       if (!*isWarpAdapter) {
         spAdapter.copy_to(ppAdapter);
