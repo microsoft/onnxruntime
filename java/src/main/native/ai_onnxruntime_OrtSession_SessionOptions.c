@@ -258,10 +258,10 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addNup
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addMIGraphX
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceNum) {
     (void)jobj;
-  #ifdef USE_TENSORRT
+  #ifdef USE_MIGRAPHX
     checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_MIGraphX((OrtSessionOptions*) handle, deviceNum));
   #else
-    (void)apiHandle;(void)handle;(void)deviceNum; // Parameters used when TensorRT is defined.
+    (void)apiHandle;(void)handle;(void)deviceNum; // Parameters used when MIGraphX is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with MIGraphX support.");
   #endif
 }
