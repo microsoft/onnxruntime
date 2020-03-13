@@ -602,8 +602,7 @@ Status MegatronTransformer::TransformDropout(Graph& graph, bool& modified, int g
       continue;
     }
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", opset_v12) &&
-        !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TrainableDropout", opset_v9, kOnnxDomain)) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", opset_v12)) {
       continue;
     }
 
