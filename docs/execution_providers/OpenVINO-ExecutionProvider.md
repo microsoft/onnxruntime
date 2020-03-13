@@ -27,7 +27,7 @@ Atom, Core, and Xeon processors. GPU refers to the Intel Integrated Graphics. VP
 VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidius <sup>TM</sup> MyriadX VPU.
 
 | **ONNX Layers** | **CPU** | **GPU** | **VPU** |
-| --- | --- | --- | --- | --- |
+| --- | --- | --- | --- |
 | Add | Yes | Yes | Yes |
 | ArgMax | Yes | Yes | Yes |
 | AveragePool | Yes | Yes | Yes |
