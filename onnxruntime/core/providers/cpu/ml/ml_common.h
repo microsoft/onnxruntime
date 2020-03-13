@@ -5,7 +5,9 @@
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
+#include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 
 namespace onnxruntime {
@@ -390,10 +392,7 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
         break;
       }
       case POST_EVAL_TRANSFORM::LOGISTIC: {
-        while (s < s_end) {
-          *s = ComputeLogistic(*s);
-          ++s;
-        }
+        MlasComputeLogistic(s, s, scores.size());
         break;
       }
       case POST_EVAL_TRANSFORM::SOFTMAX: {
