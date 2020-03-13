@@ -7,7 +7,25 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-
+namespace {
+void SetFFTState(FFTState* state,
+                 int64_t signal_ndim,
+                 const std::vector<int64_t>& signal_dims,
+                 cudaDataType itype,
+                 cudaDataType otype,
+                 int64_t batch_size,
+                 cudaDataType exec_type) {
+  memset(state, 0, sizeof(FFTState));
+  state->signal_ndim = signal_ndim;
+  for (int32_t i = 0; i < signal_dims.size(); ++i) {
+    state->signal_dims[i] = signal_dims[i];
+  }
+  state->itype = itype;
+  state->otype = otype;
+  state->batch_size = batch_size;
+  state->exec_type = exec_type;
+}
+}  // namespace
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Rfft,                                                       \
@@ -118,24 +136,6 @@ Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex
   }
 
   return Status::OK();
-}
-
-void SetFFTState(FFTState* state,
-                 int64_t signal_ndim,
-                 const std::vector<int64_t>& signal_dims,
-                 cudaDataType itype,
-                 cudaDataType otype,
-                 int64_t batch_size,
-                 cudaDataType exec_type) {
-  memset(state, 0, sizeof(FFTState));
-  state->signal_ndim = signal_ndim;
-  for (int32_t i = 0; i < signal_dims.size(); ++i) {
-    state->signal_dims[i] = signal_dims[i];
-  }
-  state->itype = itype;
-  state->otype = otype;
-  state->batch_size = batch_size;
-  state->exec_type = exec_type;
 }
 
 template <typename T>
