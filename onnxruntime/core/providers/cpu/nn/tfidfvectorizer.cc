@@ -433,21 +433,7 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
     ComputeImpl(ctx, row_num, C, frequencies);
   };
 
-  auto tp = ctx->GetOperatorThreadPool();
-  // If tp is nullptr it means we are openmp
-  // and it will run row per thread anyway
-  // if we have our own tp then it does not make sense
-  // to schedule more batches than we have threads + calling thread.
-  if (tp != nullptr) {
-    if (num_rows <= (tp->NumThreads() + 1)) {
-      concurrency::ThreadPool::TryBatchParallelFor(tp, num_rows, std::move(fn));
-    } else {
-      auto batches = num_rows / (tp->NumThreads() + 1);
-      concurrency::ThreadPool::TryBatchParallelFor(tp, num_rows, std::move(fn), batches);
-    }
-  } else {
-    concurrency::ThreadPool::TryBatchParallelFor(nullptr, num_rows, std::move(fn));
-  }
+  concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(), num_rows, std::move(fn));
 
   OutputResult(ctx, B, frequencies);
 
