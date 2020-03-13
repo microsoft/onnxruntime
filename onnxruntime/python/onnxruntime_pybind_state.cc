@@ -385,7 +385,6 @@ void addGlobalMethods(py::module& m) {
 #endif
 
 #ifdef USE_OPENVINO
-  std::cout << "=================================== hit openvino =======================";
   m.def("set_openvino_device", [](const std::string& device) {
     openvino_device = device;} ,
     "Set the prefered OpenVINO device(s) to be used. If left unset, all available devices will be used." 
