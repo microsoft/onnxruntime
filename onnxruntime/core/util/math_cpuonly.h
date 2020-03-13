@@ -41,13 +41,11 @@
 // warning C4324: structure was padded due to alignment specifier
 // unsupported\eigen\cxx11\src\Tensor\TensorUInt128.h(150,0): Warning C4245: 'initializing': conversion from '__int64'
 // to 'uint64_t', signed/unsigned mismatch
-// cmake\external\eigen\eigen\src/Core/functors/UnaryFunctors.h(935): warning C4305: 'argument': truncation from 'double' to 'const float'
 #pragma warning(push)
 #pragma warning(disable : 4554)
 #pragma warning(disable : 4324)
 #pragma warning(disable : 4245)
 #pragma warning(disable : 4127)
-#pragma warning(disable : 4305)
 #endif
 #include "Eigen/Core"
 
