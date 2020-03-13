@@ -164,7 +164,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_dml", action='store_true', help="Build with DirectML.")
     parser.add_argument("--use_winml", action='store_true', help="Build with WinML.")
     parser.add_argument("--use_telemetry", action='store_true', help="Only official builds can set this flag to enable telemetry.")
-    parser.add_argument("--win32", action='store_true', help="Build for Win32 instead of Windows Core OS APIs")
+    parser.add_argument("--enable_wcos", action='store_true', help="Build for Windows Core OS.")
     parser.add_argument("--enable_lto", action='store_true', help="Enable Link Time Optimization")
     return parser.parse_args()
 
@@ -964,7 +964,7 @@ def main():
                 if (args.cuda_version):
                     toolset += ',cuda=' + args.cuda_version
                 cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
-            if not args.win32:
+            if args.enable_wcos:
                 cmake_extra_args.append('-DCMAKE_TOOLCHAIN_FILE=' + os.path.join(source_dir, 'cmake', 'wcos_toolchain.cmake'))
         if args.android:
             # Cross-compiling for Android
