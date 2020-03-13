@@ -44,7 +44,6 @@ const OpInfo div_info = OpInfo("Div", opset_v7);
 const OpInfo mul_info = OpInfo("Mul", opset_v7);
 const OpInfo sub_info = OpInfo("Sub", opset_v7);
 const OpInfo softmax_info = OpInfo("Softmax", opset_v1_11);
-const OpInfo trainable_dropout_info = OpInfo("TrainableDropout", opset_v9, kOnnxDomain);
 const OpInfo dropout_info = OpInfo("Dropout", opset_v12);
 
 struct NodeInfo {
