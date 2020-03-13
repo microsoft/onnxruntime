@@ -392,6 +392,7 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
         NodeInfo({mul_info}),
         NodeInfo({sub_info}),
         NodeInfo({softmax_info}),
+        NodeInfo({dropout_info}, false),  // -6
         NodeInfo({matmul_info}),
         NodeInfo({transpose_info}),
         NodeInfo({reshape_info}),

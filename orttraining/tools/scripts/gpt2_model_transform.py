@@ -223,8 +223,8 @@ def process_dropout(model):
     for node in model.graph.node:
         if node.op_type == 'Dropout':
             new_dropout = model.graph.node.add()
-            new_dropout.op_type = 'TrainableDropout'
-            new_dropout.name = 'TrainableDropout_%d' % index
+            new_dropout.op_type = 'Dropout'
+            new_dropout.name = 'Dropout_%d' % index
             #make ratio node
             ratio = np.asarray([node.attribute[0].f], dtype=np.float32)
             print(ratio.shape)
