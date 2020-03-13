@@ -128,9 +128,7 @@ Status Normalizer::Normalize(OpKernelContext* context) const {
                            x_shape.NumDimensions());
   }
 
-  const auto data_size = x_shape.Size();
   const auto& x_dims = x_shape.GetDims();
-
   int64_t num_batches = x_dims.size() == 1 ? 1 : x_dims[0];
   int64_t batch_size = x_dims.size() == 1 ? x_dims[0] : x_dims[1];
 
