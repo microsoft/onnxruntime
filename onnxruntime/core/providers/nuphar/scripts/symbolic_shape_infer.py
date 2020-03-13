@@ -1246,7 +1246,7 @@ class SymbolicShapeInference:
 def parse_arguments():
   parser = argparse.ArgumentParser()
   parser.add_argument('--input', required=True, help='The input model file')
-  parser.add_argument('--output', help='The input model file')
+  parser.add_argument('--output', help='The output model file')
   parser.add_argument('--auto_merge', help='Automatically merge symbolic dims when confliction happens', action='store_true', default=False)
   parser.add_argument('--int_max', help='maximum value for integer to be treated as boundless for ops like slice', type=int, default=2**31 - 1)
   parser.add_argument('--guess_output_rank', help='guess output rank to be the same as input 0 for unknown ops', action='store_true', default=False)
