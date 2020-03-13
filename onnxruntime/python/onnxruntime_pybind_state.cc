@@ -793,7 +793,8 @@ void addObjectMethods(py::module& m) {
       .def_readwrite("world_rank", &TrainingParameters::world_rank)
       .def_readwrite("world_size", &TrainingParameters::world_size)
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
-      .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer);
+      .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer)
+      .def_readwrite("seed", &TrainingParameters::seed);
 
   py::class_<SessionOptions>
       sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");

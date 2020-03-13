@@ -61,7 +61,8 @@ def runBertTrainingTest(gradient_accumulation_steps, use_mixed_precision, allred
                        gradient_accumulation_steps=gradient_accumulation_steps,
                        world_rank=0, world_size=1,
                        use_mixed_precision=use_mixed_precision,
-                       allreduce_post_accumulation=allreduce_post_accumulation)
+                       allreduce_post_accumulation=allreduce_post_accumulation,
+                       seed=1)
 
     loss_scaler = LossScaler(model.loss_scale_input_name, True)
 
@@ -123,9 +124,9 @@ class TestOrtTrainer(unittest.TestCase):
     def testBertTrainingBasic(self):
         torch.manual_seed(1)
         expected_losses = [
-            11.050175666809082, 11.16925048828125, 11.017821311950684, 11.052311897277832,
-            10.89547061920166, 10.996326446533203, 11.079578399658203, 10.966521263122559]
-        expected_eval_loss = [11.05634880065918]
+            10.997675895690918, 11.120766639709473, 10.990262985229492, 11.077146530151367,
+            10.906590461730957, 10.941630363464355, 11.067346572875977, 10.988700866699219]
+        expected_eval_loss = [10.982779502868652]
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=1, use_mixed_precision=False, allreduce_post_accumulation=False)
 
@@ -134,21 +135,20 @@ class TestOrtTrainer(unittest.TestCase):
         # print('eval_loss', actual_eval_loss)
         # import pdb; pdb.set_trace()
 
-        rtol = 1e-01
-        assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
-        assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
+        assert_allclose(expected_losses, actual_losses, err_msg="loss mismatch")
+        assert_allclose(expected_eval_loss, actual_eval_loss, err_msg="evaluation loss mismatch")
 
     def testBertTrainingGradientAccumulation(self):
         torch.manual_seed(1)
         # this commented expected results are for runing test individually (pytest with -k). 
         # expected_losses = [
-        #     11.050175666809082, 11.16925048828125, 11.017815589904785, 11.0523099899292, 
-        #     10.895469665527344, 10.996331214904785, 11.079588890075684, 10.966512680053711]
-        # expected_eval_loss = [11.05636978149414]
+        #     10.997675895690918, 11.120766639709473, 10.990259170532227, 11.07714557647705,
+        #     10.90658950805664, 10.941636085510254, 11.06735897064209, 10.98868179321289]
+        # expected_eval_loss = [10.982769966125488]
         expected_losses = [
-            11.041119575500488, 11.142148971557617, 11.022183418273926, 11.047553062438965,
-            10.866510391235352, 10.95550537109375, 11.083690643310547, 11.002318382263184]
-        expected_eval_loss = [10.977485656738281]
+            11.049327850341797, 11.124876022338867, 10.99004077911377, 11.031144142150879,
+            10.881563186645508, 10.973114013671875, 11.097383499145508, 10.992847442626953]
+        expected_eval_loss = [10.999550819396973]
         
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=4, use_mixed_precision=False, allreduce_post_accumulation=False)
@@ -158,9 +158,8 @@ class TestOrtTrainer(unittest.TestCase):
         # print('eval_loss', actual_eval_loss)
         # import pdb; pdb.set_trace()
 
-        rtol = 1e-01
-        assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
-        assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
+        assert_allclose(expected_losses, actual_losses, err_msg="loss mismatch")
+        assert_allclose(expected_eval_loss, actual_eval_loss, err_msg="evaluation loss mismatch")
 
 
 if __name__ == '__main__':
