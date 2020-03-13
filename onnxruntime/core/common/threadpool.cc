@@ -22,6 +22,28 @@
 
 using Eigen::Barrier;
 
+namespace {
+//Copied from MlasPartitionWork
+inline void PartitionWork(
+    int32_t ThreadId,
+    int32_t ThreadCount,
+    int32_t TotalWork,
+    int32_t* WorkIndex,
+    int32_t* WorkRemaining) {
+  const int32_t WorkPerThread = TotalWork / ThreadCount;
+  const int32_t WorkPerThreadExtra = TotalWork % ThreadCount;
+
+  if (ThreadId < WorkPerThreadExtra) {
+    *WorkIndex = (WorkPerThread + 1) * ThreadId;
+    *WorkRemaining = WorkPerThread + 1;
+  } else {
+    *WorkIndex = WorkPerThread * ThreadId + WorkPerThreadExtra;
+    *WorkRemaining = WorkPerThread;
+  }
+}
+
+}  // namespace
+
 namespace onnxruntime {
 
 namespace concurrency {
@@ -78,8 +100,9 @@ void ThreadPool::BatchParallelFor(int32_t total, std::function<void(int32_t)> fn
   }
 
   ParallelFor(num_batches, [&](int batch_index) {
-    int start = batch_index * total / num_batches;
-    int end = (batch_index + 1) * total / num_batches;
+    int start, work_remaining;
+    PartitionWork(batch_index, num_batches, total, &start, &work_remaining);
+    int end = start + work_remaining;
     for (int i = start; i < end; i++) {
       fn(i);
     }
