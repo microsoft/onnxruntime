@@ -22,7 +22,8 @@ __global__ void DropoutKernel(
     const T* X_data,
     T* Y_data,
     bool* mask_data) {
-  const T scale = T(1.0f / (1.0f - ratio));
+  const float p = 1.0f - ratio;
+  const T scale = T(1.0f / p);
 
   CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
   CUDA_LONG step_size = gridDim.x * blockDim.x * UNROLL;
@@ -43,7 +44,7 @@ __global__ void DropoutKernel(
     for (CUDA_LONG i = 0; i < UNROLL; i++) {
       CUDA_LONG li = id + gridDim.x * blockDim.x * i;
       if (li < N) {
-        mask_data[li] = (&rand.x)[i] > ratio;
+        mask_data[li] = (&rand.x)[i] < p;
         Y_data[li] = X_data[li] * T(mask_data[li]) * scale;
       }
     }
