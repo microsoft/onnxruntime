@@ -105,8 +105,8 @@ class InferenceSession {
     for logging. This will use the default logger id in messages.
     See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
     */
-  InferenceSession(const SessionOptions& session_options,
-                   const Environment& session_env);
+  explicit InferenceSession(const SessionOptions& session_options,
+                            const Environment& session_env);
 
   /**
     Create a new InferenceSession
@@ -442,7 +442,7 @@ class InferenceSession {
 
   SessionOptions session_options_;
 
-  std::unique_ptr<onnxruntime::GraphTransformerManager> graph_transformation_mgr_;
+  onnxruntime::GraphTransformerManager graph_transformation_mgr_;
 
   // List of transformers to run. When this list is not empty only the transformers in this list
   // will be run regardless of the level set.
@@ -538,6 +538,8 @@ class InferenceSession {
 #endif
 
   // used to hold the ModelProto parsed in an applicable ctor to be used while calling parameter-less Load()
-  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_;
+  ONNX_NAMESPACE::ModelProto model_proto_;
+
+  bool model_loaded_ = false;
 };
 }  // namespace onnxruntime

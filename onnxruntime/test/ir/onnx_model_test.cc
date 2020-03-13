@@ -142,8 +142,8 @@ TEST_P(ONNXModelsTest1, LoadFromProtobuf) {
   std::unique_ptr<ZeroCopyInputStream> raw_input(new FileInputStream(fd));
   std::unique_ptr<CodedInputStream> coded_input(new CodedInputStream(raw_input.get()));
   coded_input->SetTotalBytesLimit(INT_MAX);
-  std::unique_ptr<ModelProto> model_proto = onnxruntime::make_unique<ModelProto>();
-  bool result = model_proto->ParseFromCodedStream(coded_input.get());
+  ModelProto model_proto;
+  bool result = model_proto.ParseFromCodedStream(coded_input.get());
   coded_input.reset();
   raw_input.reset();
   ASSERT_TRUE(result);
