@@ -8,10 +8,7 @@
 #include "core/platform/threadpool.h"
 
 #include <functional>
-#include <unordered_set>
 #include <unordered_map>
-#include <ostream>
-#include <iterator>
 
 namespace onnxruntime {
 
@@ -27,12 +24,26 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 namespace ngram_details {
 
+// NgrampPart implements a Trie like structure
+// for a unigram (1) it would insert into a root map with a valid id.
+// for (1,2,3) node 2 would be a child of 1 but have id == 0
+// because (1,2) does not exists. Node 3 would have a valid id.
 template <class T>
 struct NgramPart;
 
-using IntMap = std::unordered_map<int64_t, NgramPart<int64_t>>;
+template <>
+struct NgramPart<int64_t>;
 
-using StrMap = std::unordered_map<std::reference_wrapper<const std::string>, NgramPart<std::string>,
+template <>
+struct NgramPart<std::string>;
+
+using NgramPartInt = NgramPart<int64_t>;
+using NgramPartString = NgramPart<std::string>;
+
+// Avoid recursive class definitions using unique_ptr + forward declaration
+using IntMap = std::unordered_map<int64_t, std::unique_ptr<NgramPartInt>>;
+
+using StrMap = std::unordered_map<std::reference_wrapper<const std::string>, std::unique_ptr<NgramPartString>,
                                   std::hash<std::string>, std::equal_to<std::string>>;
 
 template <>
@@ -42,7 +53,6 @@ struct NgramPart<int64_t> {
   explicit NgramPart(size_t id) : id_(id) {}
 };
 
-
 template <>
 struct NgramPart<std::string> {
   size_t id_;  // 0 - means no entry, search for a bigger N
@@ -51,22 +61,23 @@ struct NgramPart<std::string> {
 };
 
 // Returns next ngram_id
-template <class ForwardIter, class Map>
-inline size_t PopulateGrams(ForwardIter first, size_t ngrams, size_t ngram_size, size_t ngram_id, Map& c) {
+template <class K, class ForwardIter, class Map>
+inline size_t PopulateGrams(ForwardIter first, size_t ngrams, size_t ngram_size, size_t ngram_id,
+                            Map& c) {
   for (; ngrams > 0; --ngrams) {
     size_t n = 1;
     Map* m = &c;
     while (true) {
-      auto p = m->emplace(*first, 0);
+      auto p = m->emplace(*first, new NgramPart<K>(0));
       ++first;
       if (n == ngram_size) {
-        ORT_ENFORCE(p.first->second.id_ == 0, "Duplicate ngram detected, size: ", ngram_size, " id: ", ngram_id);
-        p.first->second.id_ = ngram_id;
+        ORT_ENFORCE(p.first->second->id_ == 0, "Duplicate ngram detected, size: ", ngram_size, " id: ", ngram_id);
+        p.first->second->id_ = ngram_id;
         ++ngram_id;
         break;
       }
       ++n;
-      m = &p.first->second.leafs_;
+      m = &p.first->second->leafs_;
     }
   }
   return ngram_id;
@@ -227,9 +238,9 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
       // Skip loading into hash_set ngrams that are not in the range of [min_gram_length-max_gram_length]
       if (ngram_size >= min_gram_length && ngram_size <= max_gram_length) {
         if (impl_->pool_strings_.empty()) {
-          ngram_id = PopulateGrams(pool_int64s.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->int64_map_);
+          ngram_id = PopulateGrams<int64_t>(pool_int64s.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->int64_map_);
         } else {
-          ngram_id = PopulateGrams(impl_->pool_strings_.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->str_map_);
+          ngram_id = PopulateGrams<std::string>(impl_->pool_strings_.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->str_map_);
         }
       } else {
         ngram_id += ngrams;
@@ -337,10 +348,10 @@ void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, int32_t row_num, size_t 
           if (hit == str_map->end()) {
             break;
           }
-          if (ngram_size >= start_ngram_size && hit->second.id_ != 0) {
-            impl.IncrementCount(hit->second.id_, row_num, frequencies);
+          if (ngram_size >= start_ngram_size && hit->second->id_ != 0) {
+            impl.IncrementCount(hit->second->id_, row_num, frequencies);
           }
-          str_map = &hit->second.leafs_;
+          str_map = &hit->second->leafs_;
         }
       } else {
         const IntMap* int_map = &impl.int64_map_;
@@ -354,10 +365,10 @@ void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, int32_t row_num, size_t 
           if (hit == int_map->end()) {
             break;
           }
-          if (ngram_size >= start_ngram_size && hit->second.id_ != 0) {
-            impl.IncrementCount(hit->second.id_, row_num, frequencies);
+          if (ngram_size >= start_ngram_size && hit->second->id_ != 0) {
+            impl.IncrementCount(hit->second->id_, row_num, frequencies);
           }
-          int_map = &hit->second.leafs_;
+          int_map = &hit->second->leafs_;
         }
       }
       // Sliding window shift
@@ -422,7 +433,21 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
     ComputeImpl(ctx, row_num, C, frequencies);
   };
 
-  concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(), num_rows, std::move(fn), num_rows / 3);
+  auto tp = ctx->GetOperatorThreadPool();
+  // If tp is nullptr it means we are openmp
+  // and it will run row per thread anyway
+  // if we have our own tp then it does not make sense
+  // to schedule more batches than we have threads + calling thread.
+  if (tp != nullptr) {
+    if (num_rows <= (tp->NumThreads() + 1)) {
+      concurrency::ThreadPool::TryBatchParallelFor(tp, num_rows, std::move(fn));
+    } else {
+      auto batches = num_rows / (tp->NumThreads() + 1);
+      concurrency::ThreadPool::TryBatchParallelFor(tp, num_rows, std::move(fn), batches);
+    }
+  } else {
+    concurrency::ThreadPool::TryBatchParallelFor(nullptr, num_rows, std::move(fn));
+  }
 
   OutputResult(ctx, B, frequencies);
 
