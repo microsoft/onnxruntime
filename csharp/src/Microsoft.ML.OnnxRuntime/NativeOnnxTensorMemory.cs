@@ -12,7 +12,7 @@ using System.Threading;
 
 namespace Microsoft.ML.OnnxRuntime
 {
-    public interface NativeMemoryHandler : IDisposable
+    internal interface NativeMemoryHandler : IDisposable
     {
         IntPtr GetOnnxValue();
     }

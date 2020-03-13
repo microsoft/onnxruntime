@@ -752,6 +752,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { 
                     using (var res2 = session.Run(res1))
                     {
+                        GC.Collect();
                         var tensorOut = res2.First().AsTensor<bool>();
                         Assert.True(tensorOut.SequenceEqual(tensorIn));
                     }

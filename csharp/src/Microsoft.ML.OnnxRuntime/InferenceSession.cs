@@ -135,16 +135,19 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var inputNames = new string[inputs.Count];
             var inputTensors = new IntPtr[inputs.Count];
+            var pinnedBufferHandles = new System.Buffers.MemoryHandle[inputs.Count];
+            var disposeOnnxValues = new bool[inputs.Count];
 
             int inputIndex = 0;
             foreach (var input in inputs)
             {
-
                 inputNames[inputIndex] = input.Name;
 
                 // create Tensor from the input if feasible, else throw notsupported exception for now
-                input.ToNativeOnnxValue();
-                inputTensors[inputIndex] = input.GetOnnxValue();
+                input.ToNativeOnnxValue(out inputTensors[inputIndex], 
+                                        out pinnedBufferHandles[inputIndex], 
+                                        out disposeOnnxValues[inputIndex]);
+
                 inputIndex++;
             }
 
@@ -187,10 +190,16 @@ namespace Microsoft.ML.OnnxRuntime
             }
             finally
             {
-                // always unpin the input buffers, and delete the native Onnx value objects
-                foreach (var input in inputs)
+                // For NamedOnnxValue, always unpin the input buffers, and delete the native Onnx value objects
+                // For DisposableNamedOnnxValue, the user needs to do this by invoking Dispose
+                for (int i = 0; i < inputs.Count; i++)
                 {
-                    input.UnpinBufferAndReleaseNativeValue();
+                    if (disposeOnnxValues[i])
+                    {
+                        NativeMethods.OrtReleaseValue(inputTensors[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
+                                                                        // For string tensors, this releases the native memory allocated for the tensor, including the buffer
+                        pinnedBufferHandles[i].Dispose();
+                    }
                 }
             }
 
@@ -427,7 +436,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             if (valueType != OnnxValueType.ONNX_TYPE_TENSOR && valueType != OnnxValueType.ONNX_TYPE_SPARSETENSOR)
             {
-                return new NodeMetadata(valueType, new int[] { }, new string[] { },  typeof(NamedOnnxValue));
+                return new NodeMetadata(valueType, new int[] { }, new string[] { }, typeof(NamedOnnxValue));
             }
 
             IntPtr tensorInfo;
@@ -465,7 +474,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 symbolicDimensions[i] = Marshal.PtrToStringAnsi(dimensionNamePtrs[i]); //assumes charset = ANSI
             }
-          
+
             return new NodeMetadata(valueType, intDimensions, symbolicDimensions, dotnetType);
         }
 

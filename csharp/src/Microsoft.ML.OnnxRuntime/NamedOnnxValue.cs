@@ -16,14 +16,11 @@ namespace Microsoft.ML.OnnxRuntime
     {
         protected Object _value;
         protected string _name;
-        protected IntPtr _onnxValue;
-        protected MemoryHandle _pinnedMemoryHandle;
 
         protected NamedOnnxValue(string name, Object value)
         {
             _name = name;
             _value = value;
-            _onnxValue = IntPtr.Zero;
         }
 
         public static NamedOnnxValue CreateFromTensor<T>(string name, Tensor<T> value)
@@ -72,16 +69,26 @@ namespace Microsoft.ML.OnnxRuntime
         /// contains a default value in that case.
         /// Attempts to infer the type of the value while creating the OnnxValue
         /// </summary>
-        internal virtual void ToNativeOnnxValue()
+        /// <param name="onnxValue"></param>
+        /// <param name="pinnedMemoryHandle"></param>
+        /// <param name="disposeOnnxValueAfterUse"></param>
+        internal virtual void ToNativeOnnxValue(out IntPtr onnxValue, 
+                                                out MemoryHandle pinnedMemoryHandle,
+                                                out bool disposeOnnxValueAfterUse)
         {
+            // 'disposeOnnxValueAfterUse' is always 'true' for NamedOnnxValue as the onus
+            // to dispose the onnxValue after use is on the internal caller
+            disposeOnnxValueAfterUse = true;
+
             //try to cast _value to Tensor<T>
             TensorElementType nativeElementType = TensorElementType.DataTypeMax; //invalid
             IntPtr dataBufferPointer = IntPtr.Zero;
             int dataBufferLength = 0;
             ReadOnlySpan<int> shape = null;
             int rank = 0;
+            onnxValue = IntPtr.Zero;
 
-            if (TryPinAsTensor<float>(out _pinnedMemoryHandle,
+            if (TryPinAsTensor<float>(out pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -90,7 +97,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<double>(out _pinnedMemoryHandle,
+            else if (TryPinAsTensor<double>(out pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -99,7 +106,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<int>(out _pinnedMemoryHandle,
+            else if (TryPinAsTensor<int>(out pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -108,7 +115,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<uint>(out _pinnedMemoryHandle,
+            else if (TryPinAsTensor<uint>(out pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -117,7 +124,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<long>(out _pinnedMemoryHandle,
+            else if (TryPinAsTensor<long>(out pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -126,7 +133,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<ulong>(out _pinnedMemoryHandle,
+            else if (TryPinAsTensor<ulong>(out pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -135,7 +142,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<short>(out _pinnedMemoryHandle,
+            else if (TryPinAsTensor<short>(out pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -144,7 +151,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<ushort>(out _pinnedMemoryHandle,
+            else if (TryPinAsTensor<ushort>(out pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -153,7 +160,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<byte>(out _pinnedMemoryHandle,
+            else if (TryPinAsTensor<byte>(out pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -162,7 +169,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<sbyte>(out _pinnedMemoryHandle,
+            else if (TryPinAsTensor<sbyte>(out pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -171,7 +178,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-            else if (TryPinAsTensor<bool>(out _pinnedMemoryHandle,
+            else if (TryPinAsTensor<bool>(out pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
                                       out shape,
@@ -253,8 +260,8 @@ namespace Microsoft.ML.OnnxRuntime
                     }
                 }
 
-                _onnxValue = nativeTensor; // set the output
-                _pinnedMemoryHandle = default; // dummy value for the output
+                onnxValue = nativeTensor; // set the output
+                pinnedMemoryHandle = default; // dummy value for the output
             }
             else
             {
@@ -274,7 +281,7 @@ namespace Microsoft.ML.OnnxRuntime
                         longShape,
                         (UIntPtr)rank,
                         nativeElementType,
-                        out _onnxValue
+                        out onnxValue
                     );
                 try
                 {
@@ -282,31 +289,11 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 catch (OnnxRuntimeException e)
                 {
-                    _pinnedMemoryHandle.Dispose();
+                    pinnedMemoryHandle.Dispose();
                     throw e;
                 }
 
             }
-
-        }
-
-        internal IntPtr GetOnnxValue()
-        {
-            return _onnxValue;
-        }
-
-        /// <summary>
-        /// Will unpin the memory buffer and delete the underlying native OrtValue 
-        /// </summary>
-        internal virtual void UnpinBufferAndReleaseNativeValue()
-        {
-            if (_onnxValue != IntPtr.Zero)
-            {
-                NativeMethods.OrtReleaseValue(_onnxValue); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
-                                                                // For string tensors, this releases the native memory allocated for the tensor, including the buffer
-            }
-
-            _pinnedMemoryHandle.Dispose();
 
         }
 
