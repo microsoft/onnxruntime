@@ -520,7 +520,7 @@ class ONNXQuantizer:
     def _get_dynamic_input_quantization_params_int8(self, input_name,
                                                     nodes_list):
         '''
-        Create nodes for dynamic quantization of input to nit8 and add them to nodes_list        
+        Create nodes for dynamic quantization of input to int8 and add them to nodes_list
             parameter input_name: Name of the input.
             parameter nodes_list: new nodes are appended to this list.
             return: scale_name, zero_point_name, scale_shape, zero_point_shape.
@@ -874,7 +874,7 @@ class ONNXQuantizer:
 
     def _quantize_bias(self, node, new_node_list):
         '''
-        Quantized the bias. Zero Point == 0 and Scale == Input_Scale * Weight_Scale 
+        Quantized the bias. Zero Point == 0 and Scale == Input_Scale * Weight_Scale
         '''
 
         # get scale for weight
@@ -1027,8 +1027,8 @@ class ONNXQuantizer:
 
     def _handle_other_ops(self, node, new_nodes_list):
         '''
-        Given a node which does not support quantization(Conv, Matmul, Gather), this method 
-        checks whether the input to this node is quantized and adds a DequantizeLinear node 
+        Given a node which does not support quantization(Conv, Matmul, Gather), this method
+        checks whether the input to this node is quantized and adds a DequantizeLinear node
         to dequantize this input back to FP32
 
             parameter node: Current node
@@ -1065,8 +1065,8 @@ class ONNXQuantizer:
 
     def _handle_activation_ops(self, node, new_node_list):
         '''
-        Checks whether the give activation op can be removed from the graph. When mode is QLinearOps, 
-        the output quatization params are calculated based on outputs from activation nodes, 
+        Checks whether the give activation op can be removed from the graph. When mode is QLinearOps,
+        the output quantization params are calculated based on outputs from activation nodes,
         therefore these nodes can be removed from the graph if they follow a quantized op.
 
             parameter node: Current node
@@ -1076,7 +1076,7 @@ class ONNXQuantizer:
         assert (node.op_type == "Relu" or node.op_type == 'Clip')
         if self.mode is not QuantizationMode.QLinearOps:
             return [node]
-        # When mode is QLinearOps, the output quatization params are calculated based on outputs from
+        # When mode is QLinearOps, the output quantization params are calculated based on outputs from
         # activation nodes, therefore these nodes can be removed from the graph if they follow a quantized op.
         # If input to this node is not quantized then keep this node
         if node.input[0] not in self.quantized_value_map:
@@ -1461,14 +1461,14 @@ def quantize(model,
             {
                 'resnet_model/Relu_1:0': [np.uint8(0), np.float32(0.019539741799235344)],
                 'resnet_model/Relu_2:0': [np.uint8(0), np.float32(0.011359662748873234)]
-            }    
+            }
     :return: ModelProto with quantization
     :param nodes_to quantize:
         List of nodes names to quantize. When this list is not None only the nodes in this list
         are quantized.
-        exmaple:
+        example:
         [
-            'Cov__224',
+            'Conv__224',
             'Conv__252'
         ]
     '''
