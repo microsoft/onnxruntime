@@ -30,11 +30,12 @@ struct SparseValue {
 
 template <typename T>
 struct ScoreValue {
-  unsigned char has_score;
   T score;
+  unsigned char has_score;
   operator float() const { return has_score ? static_cast<float>(score) : 0; }
   ScoreValue<T>& operator=(float v) {
     this->score = v;
+    this->has_score = 1;
     return *this;
   }
 };
@@ -385,20 +386,19 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
     int write_additional_scores = -1;
     if (this->base_values_.size() == 2) {
       // add base_values
-      scores[1] = this->base_values_[1] + prediction.score;
+      prediction.score += this->base_values_[1];
+      scores[1] = prediction.score;
       scores[0] = -scores[1];
       //has_score = true;
       has_scores[1] = 1;
     } else if (this->base_values_.size() == 1) {
       // ONNX is vague about two classes and only one base_values.
-      scores[0] = prediction.score + this->base_values_[0];
-      //if (!has_scores[1])
-      //scores.pop_back();
+      prediction.score += this->base_values_[0];
       scores[0] = prediction.score;
+      scores.pop_back();
     } else if (this->base_values_.size() == 0) {
-      //if (!has_score)
-      //  scores.pop_back();
       scores[0] = prediction.score;
+      scores.pop_back();
     }
 
     *Y = _set_score_binary(write_additional_scores, scores[0], has_scores[0], scores[1], has_scores[1]);
@@ -447,7 +447,7 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
         if (!predictions[1].has_score)
           predictions.pop_back();
       } else if (this->base_values_.size() == 0) {
-        // ONNX is vague about two classes and only one base_values.
+        write_additional_scores = 3;
         if (!predictions[1].has_score)
           predictions.pop_back();
       }
@@ -455,8 +455,8 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
       *Y = _set_score_binary(write_additional_scores, predictions);
     }
     write_scores(predictions, this->post_transform_, Z, write_additional_scores);
-	if (predictions.size() == 1)
-		predictions.resize(2);
+    if (predictions.size() == 1)
+      predictions.resize(2);
   }
 };
 
