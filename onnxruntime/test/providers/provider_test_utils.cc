@@ -733,10 +733,6 @@ void OpTester::Run(
           so.enable_mem_pattern = false;
           so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
         }
-        InferenceSession session_object{so};
-
-        for (auto& custom_session_registry : custom_session_registries_)
-          session_object.RegisterCustomRegistry(custom_session_registry);
 
         std::unique_ptr<IExecutionProvider> execution_provider;
         if (provider_type == onnxruntime::kCpuExecutionProvider)
@@ -795,6 +791,10 @@ void OpTester::Run(
 
         if (!valid)
           continue;
+
+        InferenceSession session_object{so};
+        for (auto& custom_session_registry : custom_session_registries_)
+          session_object.RegisterCustomRegistry(custom_session_registry);
 
         has_run = true;
 
