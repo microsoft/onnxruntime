@@ -185,6 +185,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_DropOut = 10;
         static const int sc_sinceVer_RoiAlign = 10;
         static const int sc_sinceVer_TopK = 10;
+        static const int sc_sinceVer_ReverseSequence = 10;
     } // namespace OnnxOperatorSet10
 
     namespace OnnxOperatorSet11
@@ -221,7 +222,6 @@ namespace OperatorHelper
         static const int sc_sinceVer_ReduceSum = 11;
         static const int sc_sinceVer_ReduceSumSquare = 11;
         static const int sc_sinceVer_Resize = 11;
-        static const int sc_sinceVer_ReverseSequence = 11;
         static const int sc_sinceVer_Round = 11;
         static const int sc_sinceVer_Scan = 11;
         static const int sc_sinceVer_ScatterElements = 11;
