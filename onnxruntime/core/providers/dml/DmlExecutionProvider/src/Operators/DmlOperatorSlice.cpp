@@ -71,11 +71,12 @@ public:
     }
 };
 
-void CALLBACK QuerySlice(IMLOperatorSupportQueryContextPrivate* context, bool *isSupported)
+void CALLBACK QuerySlice(IMLOperatorSupportQueryContextPrivate* context, bool* isSupported)
 {
     *isSupported = (context->GetInputCount() <= 4);
 }
 
 DML_OP_DEFINE_CREATION_FUNCTION(Slice7,  DmlOperatorSliceTemplate<7>);
 DML_OP_DEFINE_CREATION_FUNCTION(Slice10, DmlOperatorSliceTemplate<10>);
+DML_OP_DEFINE_CREATION_FUNCTION(Slice11, DmlOperatorSliceTemplate<11>);
 } // namespace Dml

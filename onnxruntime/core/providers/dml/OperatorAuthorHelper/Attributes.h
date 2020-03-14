@@ -22,14 +22,18 @@ namespace AttrName
     static constexpr const char* CeilMode = "ceil_mode";
     static constexpr const char* Clip = "clip";
     static constexpr const char* CountIncludePad = "count_include_pad";
+    static constexpr const char* DetectPositive = "detect_negative";
+    static constexpr const char* DetectNegative = "detect_negative ";
     static constexpr const char* Dilations = "dilations";
     static constexpr const char* Direction = "direction";
     static constexpr const char* Dtype = "dtype";
     static constexpr const char* Ends = "ends";
     static constexpr const char* Epsilon = "epsilon";
     static constexpr const char* Exponent = "exponent";
+    static constexpr const char* Fmod = "fmod";
     static constexpr const char* Gamma = "gamma";
     static constexpr const char* Group = "group";
+    static constexpr const char* Exclusive = "exclusive";
     static constexpr const char* HeightScale = "height_scale";
     static constexpr const char* HiddenSize = "hidden_size";
     static constexpr const char* High = "high";
@@ -50,6 +54,7 @@ namespace AttrName
     static constexpr const char* OutputPadding = "output_padding";
     static constexpr const char* Pads = "pads";
     static constexpr const char* PooledShape = "pooled_shape";
+    static constexpr const char* Reverse = "reverse";
     static constexpr const char* SampleSize = "sample_size";
     static constexpr const char* Scale = "scale";
     static constexpr const char* Scales = "scales";
@@ -64,6 +69,7 @@ namespace AttrName
     static constexpr const char* StorageOrder = "storage_order";
     static constexpr const char* Strides = "strides";
     static constexpr const char* Tiles = "tiles";
+    static constexpr const char* TimeAxis = "time_axis";
     static constexpr const char* To = "to";
     static constexpr const char* TransA = "transA";
     static constexpr const char* TransB = "transB";

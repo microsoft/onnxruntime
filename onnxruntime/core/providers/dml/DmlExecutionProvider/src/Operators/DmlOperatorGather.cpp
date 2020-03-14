@@ -44,5 +44,8 @@ public:
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(Gather, DmlOperatorGather);
+// TODO:::
+DML_OP_DEFINE_CREATION_FUNCTION(GatherElements, DmlOperatorGather);
+DML_OP_DEFINE_CREATION_FUNCTION(GatherND, DmlOperatorGather);
 
 } // namespace Dml
