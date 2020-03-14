@@ -6,14 +6,14 @@
 ;
 ; Module Name:
 ;
-;   QgemmU8S8KernelAvx512BW.asm
+;   QgemmU8S8KernelAvx512Core.asm
 ;
 ; Abstract:
 ;
 ;   This module implements the kernels for the quantized integer matrix/matrix
 ;   multiply operation (QGEMM).
 ;
-;   This implementation uses AVX512BW instructions.
+;   This implementation uses AVX512 core instructions (BW/DQ/VL).
 ;
 ;--
 
@@ -125,6 +125,6 @@ ENDIF
 ; Generate the GEMM kernel.
 ;
 
-GemmU8X8KernelAvx512Function U8S8, Avx512BW
+GemmU8X8KernelAvx512Function U8S8, Avx512Core
 
         END
