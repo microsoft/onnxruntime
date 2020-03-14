@@ -219,8 +219,8 @@ else()
       endif()
       check_cxx_source_compiles("
         int main() {
-          asm(\"vpmaddwd %zmm0,%zmm0,%zmm0\");
-          asm(\"vpmulld %xmm1,%xmm1,%xmm1\");
+          asm(\"vpmaddwd %zmm0,%zmm0,%zmm0\"); // AVX512BW feature
+          asm(\"vandnps %xmm31,%xmm31,%xmm31\"); // AVX512DQ/AVX512VL feature
           return 0;
         }"
         COMPILES_AVX512CORE
