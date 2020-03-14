@@ -1363,7 +1363,7 @@ Return Value:
         }
     }
 
-    if (WorkBlock.TargetThreadCount >= TotalChannelCount) {
+    if (WorkBlock.TargetThreadCount > int32_t(TotalChannelCount)) {
       WorkBlock.TargetThreadCount = int32_t(TotalChannelCount);
     }
     MlasExecuteThreaded(MlasPoolThreaded, &WorkBlock, int32_t(WorkBlock.TargetThreadCount), ThreadPool);
