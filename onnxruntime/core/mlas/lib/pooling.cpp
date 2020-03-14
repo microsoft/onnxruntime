@@ -15,6 +15,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+
 //
 // Define the prototype of the pooling kernel routine.
 //
@@ -1177,10 +1178,29 @@ static const PMLAS_POOL_KERNEL_ROUTINE MlasPoolVectorKernels[][2] =
     },
 };
 
-static void
+void
 MlasPoolThreaded(
     void* Context,
-    int32_t Index) {
+    int32_t Index
+    )
+/*++
+
+Routine Description:
+
+    This routine is invoked from a worker thread to execute a segment of a
+    pooling operation.
+Arguments:
+
+    Context - Supplies the pointer to the context for the threaded operation.
+
+    Index - Supplies the current index of the threaded operation.
+
+Return Value:
+
+    None.
+
+--*/
+{
     MLAS_WORK_BLOCK* WorkBlock = (MLAS_WORK_BLOCK*)Context;
     size_t WorkIndex, WorkRemain;
     MlasPartitionWork(Index, WorkBlock->TargetThreadCount, WorkBlock->TotalChannelCount, &WorkIndex, &WorkRemain);
@@ -1250,8 +1270,7 @@ Return Value:
     // and output shapes over the batch and channel counts.
     //
 
-    //TODO: use a safeint here and make sure the result value can fit into int32_t
-    int32_t TotalChannelCount = int32_t(InputShape[0] * InputShape[1]);
+    size_t TotalChannelCount = size_t(InputShape[0]) * size_t(InputShape[1]);
     
     InputShape += 2;
     OutputShape += 2;
