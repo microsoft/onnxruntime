@@ -391,17 +391,23 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
       scores[0] = -scores[1];
       //has_score = true;
       has_scores[1] = 1;
+      *Y = _set_score_binary(write_additional_scores, scores[0], has_scores[0], scores[1], has_scores[1]);
     } else if (this->base_values_.size() == 1) {
       // ONNX is vague about two classes and only one base_values.
       prediction.score += this->base_values_[0];
       scores[0] = prediction.score;
       scores.pop_back();
+      *Y = _set_score_binary(write_additional_scores, scores[0], has_scores[0], 0, 0);
     } else if (this->base_values_.size() == 0) {
       scores[0] = prediction.score;
       scores.pop_back();
+      *Y = _set_score_binary(write_additional_scores, scores[0], has_scores[0], 0, 0);
+    } else {
+      scores[0] = prediction.score;
+      scores.pop_back();
+      *Y = _set_score_binary(write_additional_scores, scores[0], has_scores[0], 0, 0);
     }
 
-    *Y = _set_score_binary(write_additional_scores, scores[0], has_scores[0], scores[1], has_scores[1]);
     write_scores(scores, this->post_transform_, Z, write_additional_scores);
   }
 
