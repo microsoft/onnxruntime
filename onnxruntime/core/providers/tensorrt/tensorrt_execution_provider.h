@@ -3,6 +3,7 @@
 
 #pragma once
 #include <ctime>
+#include <fstream> //slx
 #include "core/common/logging/logging.h"
 #include "core/framework/op_kernel.h"
 #include "NvInfer.h"
@@ -17,253 +18,8 @@ static const std::string kMaxPartitionIterations = "ORT_TENSORRT_MAX_PARTITION_I
 static const std::string kMinSubgraphSize = "ORT_TENSORRT_MIN_SUBGRAPH_SIZE";
 static const std::string kMaxWorkspaceSize = "ORT_TENSORRT_MAX_WORKSPACE_SIZE";
 static const std::string kFP16Enable = "ORT_TENSORRT_FP16_ENABLE";
+static const std::string kINT8Enable = "ORT_TENSORRT_INT8_ENABLE";
 }  // namespace tensorrt_env_vars
-
-//slx INT8
-inline int64_t volume(const nvinfer1::Dims& d)
-{
-    return std::accumulate(d.d, d.d + d.nbDims, 1, std::multiplies<int64_t>());
-}
-
-class IBatchStream
-{
-public:
-    virtual void reset(int firstBatch) = 0;
-    virtual bool next() = 0;
-    virtual void skip(int skipCount) = 0;
-    virtual float* getBatch() = 0;
-    virtual float* getLabels() = 0;
-    virtual int getBatchesRead() const = 0;
-    virtual int getBatchSize() const = 0;
-    virtual nvinfer1::Dims getDims() const = 0;
-};
-
-class BatchStream : public IBatchStream
-{
-public:
-    BatchStream(int batchSize, int maxBatches, nvinfer1::Dims dims)
-        : mBatchSize{batchSize}
-        , mMaxBatches{maxBatches}
-        , mDims{dims} //!< We already know the dimensions of MNIST images.
-    {
-        //readDataFile(locateFile(dataFile, directories));
-        //readLabelsFile(locateFile(labelsFile, directories));
-    }
-
-    void reset(int firstBatch) override
-    {
-        mBatchCount = firstBatch;
-    }
-
-    bool next() override
-    {
-        if (mBatchCount >= mMaxBatches)
-        {
-            return false;
-        }
-        ++mBatchCount;
-        return true;
-    }
-
-    void skip(int skipCount) override
-    {
-        mBatchCount += skipCount;
-    }
-
-    float* getBatch() override
-    {
-        return mData.data() + (mBatchCount * mBatchSize * volume(mDims));
-    }
-
-    float* getLabels() override
-    {
-        return mLabels.data() + (mBatchCount * mBatchSize);
-    }
-
-    int getBatchesRead() const override
-    {
-        return mBatchCount;
-    }
-
-    int getBatchSize() const override
-    {
-        return mBatchSize;
-    }
-
-    nvinfer1::Dims getDims() const override
-    {
-        return nvinfer1::Dims{4, {mBatchSize, mDims.d[0], mDims.d[1], mDims.d[2]}, {}};
-    }
-
-private:
-/*
-    void readDataFile(const std::string& dataFilePath)
-    {
-        std::ifstream file{dataFilePath.c_str(), std::ios::binary};
-
-        int magicNumber, numImages, imageH, imageW;
-        file.read(reinterpret_cast<char*>(&magicNumber), sizeof(magicNumber));
-        // All values in the MNIST files are big endian.
-        magicNumber = samplesCommon::swapEndianness(magicNumber);
-        assert(magicNumber == 2051 && "Magic Number does not match the expected value for an MNIST image set");
-
-        // Read number of images and dimensions
-        file.read(reinterpret_cast<char*>(&numImages), sizeof(numImages));
-        file.read(reinterpret_cast<char*>(&imageH), sizeof(imageH));
-        file.read(reinterpret_cast<char*>(&imageW), sizeof(imageW));
-
-        numImages = samplesCommon::swapEndianness(numImages);
-        imageH = samplesCommon::swapEndianness(imageH);
-        imageW = samplesCommon::swapEndianness(imageW);
-
-        // The MNIST data is made up of unsigned bytes, so we need to cast to float and normalize.
-        int numElements = numImages * imageH * imageW;
-        std::vector<uint8_t> rawData(numElements);
-        file.read(reinterpret_cast<char*>(rawData.data()), numElements * sizeof(uint8_t));
-        mData.resize(numElements);
-        std::transform(
-            rawData.begin(), rawData.end(), mData.begin(), [](uint8_t val) { return static_cast<float>(val) / 255.f; });
-    }
-
-    void readLabelsFile(const std::string& labelsFilePath)
-    {
-        std::ifstream file{labelsFilePath.c_str(), std::ios::binary};
-        int magicNumber, numImages;
-        file.read(reinterpret_cast<char*>(&magicNumber), sizeof(magicNumber));
-        // All values in the MNIST files are big endian.
-        magicNumber = samplesCommon::swapEndianness(magicNumber);
-        assert(magicNumber == 2049 && "Magic Number does not match the expected value for an MNIST labels file");
-
-        file.read(reinterpret_cast<char*>(&numImages), sizeof(numImages));
-        numImages = samplesCommon::swapEndianness(numImages);
-
-        std::vector<uint8_t> rawLabels(numImages);
-        file.read(reinterpret_cast<char*>(rawLabels.data()), numImages * sizeof(uint8_t));
-        mLabels.resize(numImages);
-        std::transform(
-            rawLabels.begin(), rawLabels.end(), mLabels.begin(), [](uint8_t val) { return static_cast<float>(val); });
-    }
-*/
-    int mBatchSize{0};
-    int mBatchCount{0}; //!< The batch that will be read on the next invocation of next()
-    int mMaxBatches{0};
-    nvinfer1::Dims mDims{};
-    std::vector<float> mData{};
-    std::vector<float> mLabels{};
-};
-
-//! \class EntropyCalibratorImpl
-//!
-//! \brief Implements common functionality for Entropy calibrators.
-//!
-template <typename TBatchStream>
-class EntropyCalibratorImpl
-{
-public:
-    EntropyCalibratorImpl(
-        TBatchStream stream, int firstBatch, std::string networkName, const char* inputBlobName, bool readCache = true)
-        : mStream{stream}
-        , mCalibrationTableName("CalibrationTable" + networkName)
-        , mInputBlobName(inputBlobName)
-        , mReadCache(readCache)
-    {
-        nvinfer1::Dims dims = mStream.getDims();
-        mInputCount = volume(dims);
-        cudaMalloc(&mDeviceInput, mInputCount * sizeof(float));//CUDA_RETURN_IF_ERROR
-        mStream.reset(firstBatch);
-    }
-
-    virtual ~EntropyCalibratorImpl()
-    {
-        cudaFree(mDeviceInput);//CUDA_RETURN_IF_ERROR
-    }
-
-    int getBatchSize() const
-    {
-        return mStream.getBatchSize();
-    }
-
-    bool getBatch(void* bindings[], const char* names[], int nbBindings)
-    {
-        std::cout << "nbBindings: " << nbBindings << std::endl;//slx
-        if (!mStream.next())
-        {
-            return false;
-        }
-        cudaMemcpy(mDeviceInput, mStream.getBatch(), mInputCount * sizeof(float), cudaMemcpyHostToDevice);//CHECK
-        assert(!strcmp(names[0], mInputBlobName));
-        bindings[0] = mDeviceInput;
-        return true;
-    }
-
-    const void* readCalibrationCache(size_t& length)
-    {
-        mCalibrationCache.clear();
-        std::istringstream input(mCalibrationTableName, std::ios::binary);//ifstream
-        input >> std::noskipws;
-        if (mReadCache && input.good())
-        {
-            std::copy(std::istream_iterator<char>(input), std::istream_iterator<char>(),
-                std::back_inserter(mCalibrationCache));
-        }
-        length = mCalibrationCache.size();
-        return length ? mCalibrationCache.data() : nullptr;
-    }
-
-    void writeCalibrationCache(const void* cache, size_t length)
-    {
-        std::ostringstream output(mCalibrationTableName, std::ios::binary);//ofstream
-        output.write(reinterpret_cast<const char*>(cache), length);
-    }
-
-private:
-    TBatchStream mStream;
-    size_t mInputCount;
-    std::string mCalibrationTableName;
-    const char* mInputBlobName;
-    bool mReadCache{true};
-    void* mDeviceInput{nullptr};
-    std::vector<char> mCalibrationCache;
-};
-
-//! \class Int8EntropyCalibrator2
-//!
-//! \brief Implements Entropy calibrator 2.
-//!  CalibrationAlgoType is kENTROPY_CALIBRATION_2.
-//!
-template <typename TBatchStream>
-class Int8EntropyCalibrator2 : public nvinfer1::IInt8EntropyCalibrator2
-{
-public:
-    Int8EntropyCalibrator2(
-        TBatchStream stream, int firstBatch, const char* networkName, const char* inputBlobName, bool readCache = true)
-        : mImpl(stream, firstBatch, networkName, inputBlobName, readCache)
-    {
-    }
-
-    int getBatchSize() const override
-    {
-        return mImpl.getBatchSize();
-    }
-
-    bool getBatch(void* bindings[], const char* names[], int nbBindings) override
-    {
-        return mImpl.getBatch(bindings, names, nbBindings);
-    }
-
-    const void* readCalibrationCache(size_t& length) override
-    {
-        return mImpl.readCalibrationCache(length);
-    }
-
-    void writeCalibrationCache(const void* cache, size_t length) override
-    {
-        mImpl.writeCalibrationCache(cache, length);
-    }
-
-private:
-    EntropyCalibratorImpl<TBatchStream> mImpl;
-};
 
 //! \class Int8EntropyCalibrator2
 //!
@@ -276,7 +32,7 @@ public:
                              const std::string networkName, const char* inputBlobName, bool readCache = true)
         : _batchSize(batchSize)
         , _maxBatches(maxBatches)
-        //, _currentBatch(0)
+        , _currentBatch(0)
         , input_bindings_(input_bindings)
         , _networkName(networkName)
         , _calibrationTableName("CalibrationTable" + networkName)
@@ -299,29 +55,40 @@ public:
         cudaMemcpy(_deviceInput, _stream.getBatch(), _inputCount * sizeof(float), cudaMemcpyHostToDevice);
         bindings[0] = _deviceInput;
         */
-        std::cout << "nbBindings: " << nbBindings << std::endl;
+        std::cout << "MyInt8EntropyCalibrator2:getBatch:nbBindings: " << nbBindings << std::endl;
+		std::cout << "MyInt8EntropyCalibrator2:getBatch:names: " << names[0] << ", _inputBlobName:" << _inputBlobName << std::endl;
+		std::cout << "_currentBatch: " << _currentBatch << ", _maxBatches: " << _maxBatches << std::endl;
         if (_currentBatch == _maxBatches)
             return false;
-        assert(!strcmp(names[0], _inputBlobName));//??
+        //assert(!strcmp(names[0], _inputBlobName));//??
         bindings[0] = input_bindings_;
         _currentBatch++;
         return true;
     }
 
     const void* readCalibrationCache(size_t& length) {
+		//std::cout << "readCalibrationCache: _calibrationTableName: " << _calibrationTableName << std::endl;
         _calibrationCache.clear();
-        std::istringstream input(_calibrationTableName, std::ios::binary);
+        std::ifstream input(_calibrationTableName, std::ios::binary);
         input >> std::noskipws;
+		//std::cout << "_readCache: " << _readCache << ", input.good(): " << input.good() << std::endl;
         if (_readCache && input.good())
             std::copy(std::istream_iterator<char>(input), std::istream_iterator<char>(),
                       std::back_inserter(_calibrationCache));
 
         length = _calibrationCache.size();
+		/*
+		std::cout << "length: " << length << ", &_calibrationCache[0]: " << &_calibrationCache[0] << std::endl;
+		for (int i = 0; i < static_cast<int>(length); ++i) {
+			std::cout << "i: " << _calibrationCache[i] << std::endl;
+		}
+		*/
         return length ? &_calibrationCache[0] : nullptr;
     }
 
     void writeCalibrationCache(const void* cache, size_t length) {
-        std::ostringstream output(_calibrationTableName, std::ios::binary);
+		//std::cout << "writeCalibrationCache: _calibrationTableName: " << _calibrationTableName << ", cache: " << cache << std::endl;
+        std::ofstream output(_calibrationTableName, std::ios::binary);
         output.write(reinterpret_cast<const char*>(cache), length);
     }
 /* //??
@@ -332,7 +99,7 @@ public:
 private:
     int _batchSize;
     int _maxBatches;
-    int _currentBatch = 0;
+    int _currentBatch;/// = 0;
     void* input_bindings_ {nullptr};//[]
     const std::string _networkName;
     std::string _calibrationTableName;
@@ -388,6 +155,8 @@ struct TensorrtFuncState {
   std::vector<std::vector<int64_t>> output_shapes;
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool* fp16_enable_ptr = nullptr;
+  bool* int8_enable_ptr = nullptr;
+  bool* int8_calibration_ptr = nullptr;  
   size_t* max_workspace_size_ptr = nullptr;
 };
 
@@ -416,6 +185,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int max_partition_iterations_ = 1000;
   int min_subgraph_size_ = 1;
   bool fp16_enable_ = false;
+  bool int8_enable_ = false; 
+  bool int8_calibration_ = false;  
 
   struct InferDeleter {
     template <typename T>
