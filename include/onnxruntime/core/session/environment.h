@@ -20,11 +20,19 @@ class Environment {
  public:
   /**
      Create and initialize the runtime environment.
+    @param logging manager instance that will enable per session logger output using
+    session_options.session_logid as the logger id in messages.
+    If nullptr, the default LoggingManager MUST have been created previously as it will be used
+    for logging. This will use the default logger id in messages.
+    See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    @param tp_options optional set of parameters controlling the number of intra and inter op threads for the global
+    threadpools.
+    @param create_global_thread_pools determine if this function will create the global threadpools or not.
   */
   static Status Create(std::unique_ptr<logging::LoggingManager> logging_manager,
                        std::unique_ptr<Environment>& environment,
                        const ThreadingOptions* tp_options = nullptr,
-                       bool create_thread_pool = false);
+                       bool create_global_thread_pools = false);
 
   logging::LoggingManager* GetLoggingManager() const {
     return logging_manager_.get();
@@ -48,7 +56,7 @@ class Environment {
   Environment() = default;
   Status Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
                     const ThreadingOptions* tp_options = nullptr,
-                    bool create_global_thread_pool = false);
+                    bool create_global_thread_pools = false);
 
   std::unique_ptr<logging::LoggingManager> logging_manager_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> intra_op_thread_pool_;

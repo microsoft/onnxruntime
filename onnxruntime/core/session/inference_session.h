@@ -78,7 +78,15 @@ struct ModelMetadata {
  *  CPUExecutionProviderInfo epi;
  *  ProviderOption po{"CPUExecutionProvider", epi};
  *  SessionOptions so(vector<ProviderOption>{po});
- *  InferenceSession session_object{so};
+ *  string log_id = "Foo";
+ *  auto logging_manager = std::make_unique<LoggingManager>
+                (std::unique_ptr<ISink>{new CLogSink{}},
+                                  static_cast<Severity>(lm_info.default_warning_level),
+                                  false,
+                                  LoggingManager::InstanceType::Default,
+                                  &log_id)
+ *  Environment::Create(std::move(logging_manager), env)
+ *  InferenceSession session_object{so,env};
  *  common::Status status = session_object.Load(MODEL_URI);
  *  common::Status status = session_object.Initialize();
  *
@@ -98,12 +106,7 @@ class InferenceSession {
   /**
     Create a new InferenceSession
     @param session_options Session options.
-    @param logging_manager
-    Optional logging manager instance that will enable per session logger output using
-    session_options.session_logid as the logger id in messages.
-    If nullptr, the default LoggingManager MUST have been created previously as it will be used
-    for logging. This will use the default logger id in messages.
-    See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    @param session_env This represents the context for the session and contains the logger and the global threadpools.
     */
   explicit InferenceSession(const SessionOptions& session_options,
                             const Environment& session_env);
@@ -112,12 +115,7 @@ class InferenceSession {
     Create a new InferenceSession
     @param session_options Session options.
     @param model_uri absolute path of the model file.
-    @param logging_manager
-    Optional logging manager instance that will enable per session logger output using
-    session_options.session_logid as the logger id in messages.
-    If nullptr, the default LoggingManager MUST have been created previously as it will be used
-    for logging. This will use the default logger id in messages.
-    See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    @param session_env This represents the context for the session and contains the logger and the global threadpools.
     This ctor will throw on encountering model parsing issues.
     */
   InferenceSession(const SessionOptions& session_options,
@@ -133,12 +131,7 @@ class InferenceSession {
     Create a new InferenceSession
     @param session_options Session options.
     @param istream object of the model.
-    @param logging_manager
-    Optional logging manager instance that will enable per session logger output using
-    session_options.session_logid as the logger id in messages.
-    If nullptr, the default LoggingManager MUST have been created previously as it will be used
-    for logging. This will use the default logger id in messages.
-    See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    @param session_env This represents the context for the session and contains the logger and the global threadpools.
     This ctor will throw on encountering model parsing issues.
     */
   InferenceSession(const SessionOptions& session_options,
@@ -150,12 +143,7 @@ class InferenceSession {
     @param session_options Session options.
     @param model_data Model data buffer.
     @param model_data_len Model data buffer size.
-    @param logging_manager
-    Optional logging manager instance that will enable per session logger output using
-    session_options.session_logid as the logger id in messages.
-    If nullptr, the default LoggingManager MUST have been created previously as it will be used
-    for logging. This will use the default logger id in messages.
-    See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    @param session_env This represents the context for the session and contains the logger and the global threadpools.
     This ctor will throw on encountering model parsing issues.
     */
   InferenceSession(const SessionOptions& session_options,
@@ -467,12 +455,20 @@ class InferenceSession {
   std::unique_ptr<SessionState> session_state_;
 
  private:
-  // Threadpool for this session
+  // Threadpools per session. These are initialized and used for the entire duration of the session
+  // when use_per_session_threads is true.
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
+
+  // Global threadpools. These are intialized and used when use_per_session_threads is false *and*
+  // the environment is created with create_global_thread_pools = true.
   onnxruntime::concurrency::ThreadPool* intra_op_thread_pool_from_env_{};
   onnxruntime::concurrency::ThreadPool* inter_op_thread_pool_from_env_{};
-  bool use_per_session_threads_;  // initialized from session options
+
+  // initialized from session options
+  // Determines which threadpools will be intialized and used for the duration of this session.
+  // If true, use the per session ones, or else the global threadpools.
+  bool use_per_session_threads_;
 
   KernelRegistryManager kernel_registry_manager_;
   std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;

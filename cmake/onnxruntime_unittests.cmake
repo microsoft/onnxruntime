@@ -164,7 +164,7 @@ if (onnxruntime_USE_NNAPI)
 endif()
 
 set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/shared_lib")
-
+set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/global_thread_pools")
 
 set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
@@ -177,6 +177,11 @@ set (onnxruntime_shared_lib_test_SRC
 if(onnxruntime_RUN_ONNX_TESTS)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_io_types.cc)
 endif() 
+
+set (onnxruntime_global_thread_pools_test_SRC
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
+          ${ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR}/test_main.cc
+          ${ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR}/test_inference.cc)
 
 # tests from lowest level library up.
 # the order of libraries should be maintained, with higher libraries being added first in the list
@@ -355,6 +360,7 @@ set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest"
 set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src} ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src})
 if(NOT TARGET onnxruntime)
   list(APPEND all_tests ${onnxruntime_shared_lib_test_SRC})
+  list(APPEND all_tests ${onnxruntime_global_thread_pools_test_SRC})
 endif()
 set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
@@ -668,6 +674,14 @@ if (onnxruntime_BUILD_SHARED_LIB)
   AddTest(DYN
           TARGET onnxruntime_shared_lib_test
           SOURCES ${onnxruntime_shared_lib_test_SRC} ${TEST_SRC_DIR}/providers/test_main.cc
+          LIBS ${onnxruntime_shared_lib_test_LIBS}
+          DEPENDS ${all_dependencies}
+  )
+
+  # test inference using global threadpools
+  AddTest(DYN
+          TARGET onnxruntime_global_thread_pools_test
+          SOURCES ${onnxruntime_global_thread_pools_test_SRC}
           LIBS ${onnxruntime_shared_lib_test_LIBS}
           DEPENDS ${all_dependencies}
   )

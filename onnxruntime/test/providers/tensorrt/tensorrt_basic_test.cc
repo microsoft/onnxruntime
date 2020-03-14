@@ -315,7 +315,7 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
 
-  InferenceSession session_object{so};
+  InferenceSession session_object{so, GetEnvironment()};
 
   TensorrtExecutionProviderInfo epi;
   epi.device_id = 0;

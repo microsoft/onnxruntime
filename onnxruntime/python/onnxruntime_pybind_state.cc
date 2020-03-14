@@ -238,7 +238,7 @@ class SessionObjectInitializer {
  public:
   typedef const SessionOptions& Arg1;
   // typedef logging::LoggingManager* Arg2;
-  static std::string default_logger_id;
+  static const std::string default_logger_id;
   operator Arg1() {
     return GetDefaultCPUSessionOptions();
   }
@@ -255,7 +255,7 @@ class SessionObjectInitializer {
   }
 };
 
-std::string SessionObjectInitializer::default_logger_id = "Default";
+const std::string SessionObjectInitializer::default_logger_id = "Default";
 
 inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
   auto p = f.CreateProvider();
@@ -874,7 +874,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       import_array1();
     })();
 
-    OrtPybindThrowIfError(Environment::Create(std::make_unique<LoggingManager>(
+    OrtPybindThrowIfError(Environment::Create(onnxruntime::make_unique<LoggingManager>(
                                                   std::unique_ptr<ISink>{new CErrSink{}},
                                                   Severity::kWARNING, false, LoggingManager::InstanceType::Default,
                                                   &SessionObjectInitializer::default_logger_id),

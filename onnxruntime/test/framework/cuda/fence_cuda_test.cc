@@ -171,7 +171,7 @@ TEST(CUDAFenceTests, TileWithInitializer) {
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   SessionOptions so;
-  FenceCudaTestInferenceSession session(so);
+  FenceCudaTestInferenceSession session(so, GetEnvironment());
   LoadInferenceSessionFromModel(session, *model);
   CUDAExecutionProviderInfo xp_info;
   session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info));
@@ -236,7 +236,7 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   SessionOptions so;
-  FenceCudaTestInferenceSession session(so);
+  FenceCudaTestInferenceSession session(so, GetEnvironment());
   LoadInferenceSessionFromModel(session, *model);
   CUDAExecutionProviderInfo xp_info;
   session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info));

@@ -33,21 +33,21 @@ std::once_flag schemaRegistrationOnceFlag;
 Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_manager,
                            std::unique_ptr<Environment>& environment,
                            const ThreadingOptions* tp_options,
-                           bool create_global_thread_pool) {
+                           bool create_global_thread_pools) {
   environment = std::unique_ptr<Environment>(new Environment());
-  auto status = environment->Initialize(std::move(logging_manager), tp_options, create_global_thread_pool);
+  auto status = environment->Initialize(std::move(logging_manager), tp_options, create_global_thread_pools);
   return status;
 }
 
 Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
                                const ThreadingOptions* tp_options,
-                               bool create_global_thread_pool) {
+                               bool create_global_thread_pools) {
   auto status = Status::OK();
 
   logging_manager_ = std::move(logging_manager);
 
   // create thread pools
-  if (create_global_thread_pool) {
+  if (create_global_thread_pools) {
     intra_op_thread_pool_ = concurrency::CreateThreadPool("env_global_intra_op_thread_pool",
                                                           tp_options->intra_op_num_threads);
     inter_op_thread_pool_ = concurrency::CreateThreadPool("env_global_inter_op_thread_pool",
