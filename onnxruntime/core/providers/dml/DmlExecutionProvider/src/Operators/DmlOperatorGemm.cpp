@@ -36,7 +36,7 @@ public:
         DML_GEMM_OPERATOR_DESC gemmDesc = {};
         gemmDesc.ATensor = &inputDescs[0];
         gemmDesc.BTensor = &inputDescs[1];
-        gemmDesc.CTensor = &inputDescs[2];
+        gemmDesc.CTensor = kernelInfo.IsInputValid(2) ? &inputDescs[2] : nullptr;
         gemmDesc.OutputTensor = &outputDescs[0];
         gemmDesc.TransA = (m_transA ? DML_MATRIX_TRANSFORM_TRANSPOSE : DML_MATRIX_TRANSFORM_NONE);
         gemmDesc.TransB = (m_transB ? DML_MATRIX_TRANSFORM_TRANSPOSE : DML_MATRIX_TRANSFORM_NONE);

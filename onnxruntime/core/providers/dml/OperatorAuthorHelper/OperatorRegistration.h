@@ -189,8 +189,8 @@ namespace OperatorHelper
 
     namespace OnnxOperatorSet11
     {
-        static const int sc_sinceVer_Argmax = 11;
-        static const int sc_sinceVer_Argmin = 11;
+        static const int sc_sinceVer_ArgMax = 11;
+        static const int sc_sinceVer_ArgMin = 11;
         static const int sc_sinceVer_AveragePool = 11;
         static const int sc_sinceVer_BitShift = 11;
         static const int sc_sinceVer_Clip = 11;
@@ -206,6 +206,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Gemm = 11;
         static const int sc_sinceVer_Hardmax = 11;
         static const int sc_sinceVer_LogSoftmax = 11;
+        static const int sc_sinceVer_MaxPool = 11;
         static const int sc_sinceVer_OneHot = 11;
         static const int sc_sinceVer_Pad = 11;
         static const int sc_sinceVer_Range = 11;

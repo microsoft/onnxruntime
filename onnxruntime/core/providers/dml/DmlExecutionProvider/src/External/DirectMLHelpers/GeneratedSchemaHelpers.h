@@ -738,6 +738,90 @@ inline std::vector<OperatorField> GetFields(const DML_RESAMPLE_OPERATOR_DESC& de
         OperatorField(&DML_RESAMPLE_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const FLOAT*>(desc.Scales), desc.ScaleCount)),
     };
 }
+inline std::vector<OperatorField> GetFields(const DML_ELEMENT_WISE_BIT_SHIFT_LEFT_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_ELEMENT_WISE_BIT_SHIFT_LEFT_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.ATensor))),
+        OperatorField(&DML_ELEMENT_WISE_BIT_SHIFT_LEFT_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.BTensor))),
+        OperatorField(&DML_ELEMENT_WISE_BIT_SHIFT_LEFT_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_ELEMENT_WISE_BIT_SHIFT_RIGHT_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_ELEMENT_WISE_BIT_SHIFT_RIGHT_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.ATensor))),
+        OperatorField(&DML_ELEMENT_WISE_BIT_SHIFT_RIGHT_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.BTensor))),
+        OperatorField(&DML_ELEMENT_WISE_BIT_SHIFT_RIGHT_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_ELEMENT_WISE_ROUND_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_ELEMENT_WISE_ROUND_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_ELEMENT_WISE_ROUND_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_ELEMENT_WISE_ROUND_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.RoundingMode))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_ELEMENT_WISE_IS_INFINITY_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_ELEMENT_WISE_IS_INFINITY_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_ELEMENT_WISE_IS_INFINITY_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_ELEMENT_WISE_IS_INFINITY_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.InfinityMode))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_ELEMENT_WISE_MODULUS_TRUNCATE_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_ELEMENT_WISE_MODULUS_TRUNCATE_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.ATensor))),
+        OperatorField(&DML_ELEMENT_WISE_MODULUS_TRUNCATE_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.BTensor))),
+        OperatorField(&DML_ELEMENT_WISE_MODULUS_TRUNCATE_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_ELEMENT_WISE_MODULUS_FLOOR_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_ELEMENT_WISE_MODULUS_FLOOR_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.ATensor))),
+        OperatorField(&DML_ELEMENT_WISE_MODULUS_FLOOR_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.BTensor))),
+        OperatorField(&DML_ELEMENT_WISE_MODULUS_FLOOR_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_FILL_VALUE_CONSTANT_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_FILL_VALUE_CONSTANT_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_FILL_VALUE_CONSTANT_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<UINT>(desc.ValueDataType))),
+        OperatorField(&DML_FILL_VALUE_CONSTANT_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<DML_SCALAR_UNION>(desc.Value))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_FILL_VALUE_SEQUENCE_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_FILL_VALUE_SEQUENCE_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_FILL_VALUE_SEQUENCE_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<UINT>(desc.ValueDataType))),
+        OperatorField(&DML_FILL_VALUE_SEQUENCE_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<DML_SCALAR_UNION>(desc.ValueStart))),
+        OperatorField(&DML_FILL_VALUE_SEQUENCE_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<DML_SCALAR_UNION>(desc.ValueDelta))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_CUMULATIVE_SUMMATION_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_CUMULATIVE_SUMMATION_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_CUMULATIVE_SUMMATION_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_CUMULATIVE_SUMMATION_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.Axis))),
+        OperatorField(&DML_CUMULATIVE_SUMMATION_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<UINT>(desc.HasExclusiveSum))),
+        OperatorField(&DML_CUMULATIVE_SUMMATION_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<UINT>(desc.AxisDirection))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_REVERSE_SUBSEQUENCES_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_REVERSE_SUBSEQUENCES_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_REVERSE_SUBSEQUENCES_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.SequenceLengthsTensor))),
+        OperatorField(&DML_REVERSE_SUBSEQUENCES_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_REVERSE_SUBSEQUENCES_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<UINT>(desc.Axis))),
+    };
+}
 inline std::vector<OperatorField> GetFields(const DML_ACTIVATION_ELU_OPERATOR_DESC& desc)
 {
     return {
@@ -970,6 +1054,16 @@ inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
     case DML_OPERATOR_SCATTER: return DML_SCATTER_OPERATOR_SCHEMA;
     case DML_OPERATOR_ONE_HOT: return DML_ONE_HOT_OPERATOR_SCHEMA;
     case DML_OPERATOR_RESAMPLE: return DML_RESAMPLE_OPERATOR_SCHEMA;
+    case DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_LEFT: return DML_ELEMENT_WISE_BIT_SHIFT_LEFT_OPERATOR_SCHEMA;
+    case DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_RIGHT: return DML_ELEMENT_WISE_BIT_SHIFT_RIGHT_OPERATOR_SCHEMA;
+    case DML_OPERATOR_ELEMENT_WISE_ROUND: return DML_ELEMENT_WISE_ROUND_OPERATOR_SCHEMA;
+    case DML_OPERATOR_ELEMENT_WISE_IS_INFINITY: return DML_ELEMENT_WISE_IS_INFINITY_OPERATOR_SCHEMA;
+    case DML_OPERATOR_ELEMENT_WISE_MODULUS_TRUNCATE: return DML_ELEMENT_WISE_MODULUS_TRUNCATE_OPERATOR_SCHEMA;
+    case DML_OPERATOR_ELEMENT_WISE_MODULUS_FLOOR: return DML_ELEMENT_WISE_MODULUS_FLOOR_OPERATOR_SCHEMA;
+    case DML_OPERATOR_FILL_VALUE_CONSTANT: return DML_FILL_VALUE_CONSTANT_OPERATOR_SCHEMA;
+    case DML_OPERATOR_FILL_VALUE_SEQUENCE: return DML_FILL_VALUE_SEQUENCE_OPERATOR_SCHEMA;
+    case DML_OPERATOR_CUMULATIVE_SUMMATION: return DML_CUMULATIVE_SUMMATION_OPERATOR_SCHEMA;
+    case DML_OPERATOR_REVERSE_SUBSEQUENCES: return DML_REVERSE_SUBSEQUENCES_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_ELU: return DML_ACTIVATION_ELU_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_HARDMAX: return DML_ACTIVATION_HARDMAX_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_HARD_SIGMOID: return DML_ACTIVATION_HARD_SIGMOID_OPERATOR_SCHEMA;
@@ -989,6 +1083,7 @@ inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
     case DML_OPERATOR_ACTIVATION_TANH: return DML_ACTIVATION_TANH_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_THRESHOLDED_RELU: return DML_ACTIVATION_THRESHOLDED_RELU_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_SHRINK: return DML_ACTIVATION_SHRINK_OPERATOR_SCHEMA;
+
     default: THROW_HR(E_INVALIDARG);
     }
 }
@@ -1305,6 +1400,46 @@ inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
         return AbstractOperatorDesc(
             &DML_RESAMPLE_OPERATOR_SCHEMA,
             GetFields(*static_cast<const DML_RESAMPLE_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_LEFT:
+        return AbstractOperatorDesc(
+            &DML_ELEMENT_WISE_BIT_SHIFT_LEFT_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_ELEMENT_WISE_BIT_SHIFT_LEFT_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_RIGHT:
+        return AbstractOperatorDesc(
+            &DML_ELEMENT_WISE_BIT_SHIFT_RIGHT_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_ELEMENT_WISE_BIT_SHIFT_RIGHT_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_ELEMENT_WISE_ROUND:
+        return AbstractOperatorDesc(
+            &DML_ELEMENT_WISE_ROUND_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_ELEMENT_WISE_ROUND_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_ELEMENT_WISE_IS_INFINITY:
+        return AbstractOperatorDesc(
+            &DML_ELEMENT_WISE_IS_INFINITY_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_ELEMENT_WISE_IS_INFINITY_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_ELEMENT_WISE_MODULUS_TRUNCATE:
+        return AbstractOperatorDesc(
+            &DML_ELEMENT_WISE_MODULUS_TRUNCATE_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_ELEMENT_WISE_MODULUS_TRUNCATE_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_ELEMENT_WISE_MODULUS_FLOOR:
+        return AbstractOperatorDesc(
+            &DML_ELEMENT_WISE_MODULUS_FLOOR_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_ELEMENT_WISE_MODULUS_FLOOR_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_FILL_VALUE_CONSTANT:
+        return AbstractOperatorDesc(
+            &DML_FILL_VALUE_CONSTANT_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_FILL_VALUE_CONSTANT_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_FILL_VALUE_SEQUENCE:
+        return AbstractOperatorDesc(
+            &DML_FILL_VALUE_SEQUENCE_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_FILL_VALUE_SEQUENCE_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_CUMULATIVE_SUMMATION:
+        return AbstractOperatorDesc(
+            &DML_CUMULATIVE_SUMMATION_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_CUMULATIVE_SUMMATION_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_REVERSE_SUBSEQUENCES:
+        return AbstractOperatorDesc(
+            &DML_REVERSE_SUBSEQUENCES_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_REVERSE_SUBSEQUENCES_OPERATOR_DESC*>(opDesc.Desc)));
     case DML_OPERATOR_ACTIVATION_ELU:
         return AbstractOperatorDesc(
             &DML_ACTIVATION_ELU_OPERATOR_SCHEMA,

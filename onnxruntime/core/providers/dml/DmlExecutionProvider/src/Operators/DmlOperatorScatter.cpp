@@ -38,13 +38,10 @@ public:
             assert(inputDescs.size() == 1);
             assert(outputDescs.size() == 1);
 
-            DML_SCALE_BIAS scaleBias = {};
-            scaleBias.Scale = 1.0f;
-
             DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC operatorDesc = {};
             operatorDesc.InputTensor = &inputDescs[0];
             operatorDesc.OutputTensor = outputDescs.data();
-            operatorDesc.ScaleBias = &scaleBias;
+            operatorDesc.ScaleBias = nullptr;
 
             DML_OPERATOR_DESC opDesc = { DML_OPERATOR_ELEMENT_WISE_IDENTITY, &operatorDesc };
             SetDmlOperatorDesc(opDesc, kernelCreationContext);
@@ -78,5 +75,8 @@ public:
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(Scatter, DmlOperatorScatter);
+// TODO:::
+DML_OP_DEFINE_CREATION_FUNCTION(ScatterElements, DmlOperatorScatter);
+DML_OP_DEFINE_CREATION_FUNCTION(ScatterND, DmlOperatorScatter);
 
 } // namespace Dml

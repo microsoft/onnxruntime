@@ -528,6 +528,7 @@ public:
         {
             ends.push_back(gsl::narrow_cast<int32_t>(endsData[i]));
         }
+
         uint32_t inputCount = operatorInfo.GetInputCount();
         if (inputCount > 3)
         {
@@ -1193,6 +1194,7 @@ using ShapeInferenceHelper_Transpose = TransposeHelper;
 using ShapeInferenceHelper_Concat = ConcatHelper;
 using ShapeInferenceHelper_Slice7 = SliceHelper;
 using ShapeInferenceHelper_Slice10 = Slice10Helper;
+using ShapeInferenceHelper_Slice11 = Slice10Helper; // 11 and 10 are identical.
 using ShapeInferenceHelper_Pad = PaddingHelper;
 using ShapeInferenceHelper_SpaceToDepth = SpaceToDepthHelper;
 using ShapeInferenceHelper_DepthToSpace = DepthToSpaceHelper;
@@ -1250,6 +1252,10 @@ using ShapeInferenceHelper_Asinh = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Acosh = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Atanh = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Where = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_IsInf = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_Mod = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_BitShift= GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_Round = GetBroadcastedOutputShapeHelper;
 
 using ShapeInferenceHelper_ReduceSum = ReduceHelper;
 using ShapeInferenceHelper_ReduceMean = ReduceHelper;
@@ -1301,6 +1307,10 @@ using ShapeInferenceHelper_RandomUniformLike = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_RandomNormal = RandomNormalHelper;
 using ShapeInferenceHelper_RandomNormalLike = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Multinomial = MultinomialHelper;
+
+using ShapeInferenceHelper_ReverseSequence = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_CumSum = GetOutputShapeAsInputShapeHelper;
+// TODO::: using ShapeInferenceHelper_ShapeInferenceHelper_Range = ...
 
 using ShapeInferenceHelper_FusedConv = ConvHelper;
 using ShapeInferenceHelper_FusedConvTranspose = ConvTransposeHelper;
