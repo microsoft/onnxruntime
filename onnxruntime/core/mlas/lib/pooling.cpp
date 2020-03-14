@@ -19,12 +19,12 @@ Abstract:
 //
 // Define the prototype of the pooling kernel routine.
 //
-struct MLAS_WORK_BLOCK;
+struct MLAS_POOL_WORK_BLOCK;
 
 typedef
 void
 (MLAS_POOL_KERNEL_ROUTINE)(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -37,7 +37,7 @@ typedef MLAS_POOL_KERNEL_ROUTINE* PMLAS_POOL_KERNEL_ROUTINE;
 // threads.
 //
 
-struct MLAS_WORK_BLOCK {
+struct MLAS_POOL_WORK_BLOCK {
     MLAS_POOLING_KIND PoolingKind;
     size_t InputShape[3];
     size_t InputSize;
@@ -279,7 +279,7 @@ struct MLAS_AVERAGE_POOLING
 template<typename PoolingType>
 void
 MlasPool1DKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -349,7 +349,7 @@ Return Value:
 template<typename PoolingType>
 void
 MlasPool2DKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -437,7 +437,7 @@ Return Value:
 template<typename PoolingType>
 void
 MlasPool2DVectorKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -661,7 +661,7 @@ Return Value:
 template<typename PoolingType>
 void
 MlasPool3DKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -766,7 +766,7 @@ Return Value:
 template<typename PoolingType>
 void
 MlasPool3DVectorKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -1034,7 +1034,7 @@ Return Value:
 template<typename PoolingType>
 void
 MlasPoolGlobalKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -1201,7 +1201,7 @@ Return Value:
 
 --*/
 {
-    MLAS_WORK_BLOCK* WorkBlock = (MLAS_WORK_BLOCK*)Context;
+    MLAS_POOL_WORK_BLOCK* WorkBlock = (MLAS_POOL_WORK_BLOCK*)Context;
     size_t WorkIndex, WorkRemain;
     MlasPartitionWork(Index, WorkBlock->TargetThreadCount, WorkBlock->TotalChannelCount, &WorkIndex, &WorkRemain);
     for (size_t i = 0; i != WorkRemain; ++i) {
@@ -1261,7 +1261,7 @@ Return Value:
 
 --*/
 {
-    MLAS_WORK_BLOCK WorkBlock;
+    MLAS_POOL_WORK_BLOCK WorkBlock;
     WorkBlock.Input = Input;
     WorkBlock.PoolingKind = PoolingKind;
 
@@ -1364,7 +1364,7 @@ Return Value:
     }
 
     if (WorkBlock.TargetThreadCount >= TotalChannelCount) {
-      WorkBlock.TargetThreadCount = TotalChannelCount;
+      WorkBlock.TargetThreadCount = int32_t(TotalChannelCount);
     }
     MlasExecuteThreaded(MlasPoolThreaded, &WorkBlock, int32_t(WorkBlock.TargetThreadCount), ThreadPool);
 }
