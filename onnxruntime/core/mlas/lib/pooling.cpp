@@ -15,25 +15,10 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-
-//
-// Define the parameters to execute segments of a pooling operation on worker
-// threads.
-//
-
-struct MLAS_WORK_BLOCK {
-    MLAS_POOLING_KIND PoolingKind;
-    size_t InputShape[3];
-    size_t InputSize;
-    size_t OutputShape[3];
-    int64_t KernelShape[3];
-    int64_t Padding[6];
-    int64_t StrideShape[3];
-};
-
 //
 // Define the prototype of the pooling kernel routine.
 //
+struct MLAS_WORK_BLOCK;
 
 typedef
 void
@@ -45,6 +30,27 @@ void
     );
 
 typedef MLAS_POOL_KERNEL_ROUTINE* PMLAS_POOL_KERNEL_ROUTINE;
+
+//
+// Define the parameters to execute segments of a pooling operation on worker
+// threads.
+//
+
+struct MLAS_WORK_BLOCK {
+    MLAS_POOLING_KIND PoolingKind;
+    size_t InputShape[3];
+    size_t InputSize;
+    size_t OutputSize;
+    size_t OutputShape[3];
+    int64_t KernelShape[3];
+    int64_t Padding[6];
+    int64_t StrideShape[3];
+    const float* Input;
+    float* Output;
+    int32_t TargetThreadCount;
+    size_t TotalChannelCount;
+    PMLAS_POOL_KERNEL_ROUTINE PoolKernelRoutine;
+};
 
 //
 // Define the number of elements to allocate on the stack for the reduction
@@ -1171,6 +1177,20 @@ static const PMLAS_POOL_KERNEL_ROUTINE MlasPoolVectorKernels[][2] =
     },
 };
 
+static void
+MlasPoolThreaded(
+    void* Context,
+    int32_t Index) {
+    MLAS_WORK_BLOCK* WorkBlock = (MLAS_WORK_BLOCK*)Context;
+    size_t WorkIndex, WorkRemain;
+    MlasPartitionWork(Index, WorkBlock->TargetThreadCount, WorkBlock->TotalChannelCount, &WorkIndex, &WorkRemain);
+    for (size_t i = 0; i != WorkRemain; ++i) {
+        size_t StartIndex = WorkIndex + i;
+        WorkBlock->PoolKernelRoutine(WorkBlock, 1, WorkBlock->Input + StartIndex * WorkBlock->InputSize,
+                                 WorkBlock->Output + StartIndex * WorkBlock->OutputSize);
+    }
+}
+
 void
 MLASCALL
 MlasPool(
@@ -1222,7 +1242,7 @@ Return Value:
 --*/
 {
     MLAS_WORK_BLOCK WorkBlock;
-
+    WorkBlock.Input = Input;
     WorkBlock.PoolingKind = PoolingKind;
 
     //
@@ -1231,9 +1251,8 @@ Return Value:
     //
 
     //TODO: use a safeint here and make sure the result value can fit into int32_t
-    size_t TotalChannelCount = size_t(InputShape[0]) * size_t(InputShape[1]);
+    int32_t TotalChannelCount = int32_t(InputShape[0] * InputShape[1]);
     
-
     InputShape += 2;
     OutputShape += 2;
 
@@ -1284,6 +1303,10 @@ Return Value:
     }
 
     WorkBlock.InputSize = InputSize;
+    WorkBlock.Output = Output;
+    WorkBlock.OutputSize = OutputSize;
+    WorkBlock.TargetThreadCount = size_t(MlasGetMaximumThreadCount(ThreadPool));
+    WorkBlock.TotalChannelCount = TotalChannelCount;
 
     //
     // Determine which pooling kernel routine to use.
@@ -1294,11 +1317,11 @@ Return Value:
     // in the reduction buffer.
     //
 
-    PMLAS_POOL_KERNEL_ROUTINE PoolKernelRoutine = MlasPoolGenericKernels[PoolingKind][Dimensions - 1];
+    WorkBlock.PoolKernelRoutine = MlasPoolGenericKernels[PoolingKind][Dimensions - 1];
 
     if (InputAndKernelShapeMatch && AllStridesAreOne && AllPaddingIsZero) {
 
-        PoolKernelRoutine = MlasPoolGlobalKernels[PoolingKind];
+        WorkBlock.PoolKernelRoutine = MlasPoolGlobalKernels[PoolingKind];
 
     } else if (Dimensions >= 2 && WorkBlock.StrideShape[Dimensions - 1] <= 2 && AllKernelsAreSmall) {
 
@@ -1317,35 +1340,12 @@ Return Value:
         }
 
         if (ReductionBufferRemaining >= int64_t(WorkBlock.InputShape[Dimensions - 1])) {
-            PoolKernelRoutine = MlasPoolVectorKernels[PoolingKind][Dimensions - 2];
+            WorkBlock.PoolKernelRoutine = MlasPoolVectorKernels[PoolingKind][Dimensions - 2];
         }
     }
 
-#ifdef MLAS_NO_ONNXRUNTIME_THREADPOOL
-    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
-    //
-    // Execute the pooling kernel routine.
-    //
-
-#if defined(_OPENMP)
-
-#pragma omp parallel for
-    for (int64_t c = 0; c < int64_t(TotalChannelCount); c++) {
-      PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize);
+    if (WorkBlock.TargetThreadCount >= TotalChannelCount) {
+      WorkBlock.TargetThreadCount = TotalChannelCount;
     }
-
-#else
-
-    PoolKernelRoutine(&WorkBlock, TotalChannelCount, Input, Output);
-
-#endif
-#else
-    //
-    // Use an external thread pool if one is provided.
-    // TODO: change to use MlasExecuteThreaded
-    onnxruntime::concurrency::ThreadPool::TryBatchParallelFor(ThreadPool, static_cast<int32_t>(TotalChannelCount), [&](int32_t c) {
-      PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize);
-    });
-    return;
-#endif    
+    MlasExecuteThreaded(MlasPoolThreaded, &WorkBlock, int32_t(WorkBlock.TargetThreadCount), ThreadPool);
 }
