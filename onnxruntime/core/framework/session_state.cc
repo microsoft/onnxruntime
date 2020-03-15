@@ -254,7 +254,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
             len *= dim.dim_value();
           }
         }
-        if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(len, ml_data_type->Size(), &size)) {
+        if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(static_cast<size_t>(len), ml_data_type->Size(), &size)) {
           return Status(ONNXRUNTIME, FAIL, "Size overflow");
         }
         mem_planner.TraceAllocation(ml_value_idx, size);
