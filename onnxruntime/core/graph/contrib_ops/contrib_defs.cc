@@ -305,6 +305,23 @@ void RegisterBertSchemas() {
       .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(AttentionDynamicQuant)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Quantization of Multi-Head Self Attention")
+      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "T1")
+      .Input(1, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T2")
+      .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T1")
+      .Input(3, "mask_index", "Attention mask index with shape (batch_size)", "M")
+      .Input(4, "scale", "Weight scale. It's a scalar, which means a per-tensor/layer quantization.", "T1")
+      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T1")
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("T2", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
   static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
 The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
@@ -2325,7 +2342,6 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   RegisterBertSchemas();
-
 }
 }  // namespace contrib
 }  // namespace onnxruntime
