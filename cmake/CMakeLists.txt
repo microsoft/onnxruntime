@@ -60,7 +60,6 @@ option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_MKLML "Build DNNL with MKL-ML binary dependency" OFF)
-option(onnxruntime_USE_GEMMLOWP "Build with gemmlowp for quantized gemm" OFF)
 option(onnxruntime_USE_FEATURIZERS "Build ML Featurizers support" OFF)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
@@ -206,7 +205,7 @@ if (MSVC)
     set(gtest_force_shared_crt ON CACHE BOOL "Use shared (DLL) run-time lib for gtest" FORCE)
   endif()
   #Always enable exception handling, even for Windows ARM
-  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")  
+  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
   if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
@@ -235,7 +234,7 @@ else()
     string(APPEND CMAKE_C_FLAGS_RELEASE " -march=native -mtune=native")
     string(APPEND CMAKE_CXX_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
     string(APPEND CMAKE_C_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
-  endif()  
+  endif()
 endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -295,7 +294,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
     # We will not need to install benchmark since we link it statically.
     set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Disable benchmark install to avoid overwriting vendor install.")
     add_subdirectory(${PROJECT_SOURCE_DIR}/external/onnx/third_party/benchmark EXCLUDE_FROM_ALL)
-  endif()  
+  endif()
 endif()
 
 if(NOT WIN32)
@@ -321,16 +320,16 @@ if(Protobuf_FOUND OR Protobuf_FOUND)
   message("Use protobuf from preinstalled system lib")
   if (onnxruntime_USE_FULL_PROTOBUF)
     set(PROTOBUF_LIB protobuf::libprotobuf)
-    #We have a check here but most of the cmake users don't know the Protobuf_USE_STATIC_LIBS 
+    #We have a check here but most of the cmake users don't know the Protobuf_USE_STATIC_LIBS
     # variable exists and may leave it in a wrong state.
     if(NOT Protobuf_USE_STATIC_LIBS)
-      #Indeed here should be a warning, not a fatal error. ONNX Runtime itself can work in such a 
+      #Indeed here should be a warning, not a fatal error. ONNX Runtime itself can work in such a
       #setting but it may cause compatibility issue when ONNX Runtime is integrated with the other ONNX ecosystem softwares.
       message(FATAL_ERROR "Please enable Protobuf_USE_STATIC_LIBS")
     endif()
   else()
     set(PROTOBUF_LIB protobuf::libprotobuf-lite)
-  endif()  
+  endif()
 else()
   message("Use protobuf from submodule")
   # use protobuf as a submodule
@@ -397,11 +396,11 @@ set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
 
 if(onnxruntime_PREFER_SYSTEM_LIB)
-  find_package(re2)  
+  find_package(re2)
 endif()
 
 set(SAFEINT_INCLUDE_DIR ${REPO_ROOT}/cmake/external/SafeInt)
-add_library(safeint_interface INTERFACE) 
+add_library(safeint_interface INTERFACE)
 target_include_directories(safeint_interface INTERFACE ${SAFEINT_INCLUDE_DIR})
 
 if(NOT TARGET re2::re2)
@@ -501,8 +500,8 @@ if (onnxruntime_USE_TVM)
 endif()
 
 if (APPLE)
-  #onnx/onnx/proto_utils.h:34:16: error: 'SetTotalBytesLimit' is deprecated: Please use the single 
-  #parameter version of SetTotalBytesLimit(). The second parameter is ignored. 
+  #onnx/onnx/proto_utils.h:34:16: error: 'SetTotalBytesLimit' is deprecated: Please use the single
+  #parameter version of SetTotalBytesLimit(). The second parameter is ignored.
   #  coded_stream.SetTotalBytesLimit((2048LL << 20) - 1, 512LL << 20);
   #TODO: fix the warning in ONNX and re-enable this flag
   string(APPEND CMAKE_CXX_FLAGS " -Wno-deprecated")
@@ -540,7 +539,7 @@ if (WIN32)
             # disable warning because there are many occurrences from test macros
             " /wd6326 " # potential comparison of a constant with another constant
         )
-    endif()  
+    endif()
 
     # Treat warning as error if onnxruntime_DEV_MODE is ON
     # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
@@ -629,10 +628,6 @@ include_directories(
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
 
-if(onnxruntime_USE_GEMMLOWP)
-  add_definitions(-DUSE_GEMMLOWP=1)
-endif()
-
 if (onnxruntime_USE_MKLML)
   add_definitions(-DUSE_MKLML=1 -DUSE_MKLML_FOR_BLAS=1)
   if (WIN32 OR APPLE)
@@ -693,7 +688,6 @@ if(onnxruntime_USE_OPENVINO)
     endif()
 
 endif()
-
 
 if (onnxruntime_USE_OPENBLAS)
   add_definitions(-DUSE_OPENBLAS=1)
@@ -812,7 +806,7 @@ foreach(provider_name ${ONNXRUNTIME_PROVIDER_NAMES})
       target_compile_options(onnxruntime_providers_${provider_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
     else()
       target_compile_definitions(onnxruntime_providers_${provider_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
-      target_include_directories(onnxruntime_providers_${provider_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")      
+      target_include_directories(onnxruntime_providers_${provider_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
     endif()
   endif()
 endforeach()
@@ -827,11 +821,11 @@ if(WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES Shlwapi)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES debug Dbghelp)
 else()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)  
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
 endif()
 
-# Default version parts for Windows.AI.MachineLearning.dll and onnxruntime.dll in non-ADO pipeline local builds 
+# Default version parts for Windows.AI.MachineLearning.dll and onnxruntime.dll in non-ADO pipeline local builds
 set(VERSION_MAJOR_PART   0 CACHE STRING "First part of numeric file/product version.")
 set(VERSION_MINOR_PART   0 CACHE STRING "Second part of numeric file/product version.")
 set(VERSION_BUILD_PART       0 CACHE STRING "Third part of numeric file/product version.")
@@ -839,11 +833,11 @@ set(VERSION_PRIVATE_PART     0 CACHE STRING "Fourth part of numeric file/product
 set(VERSION_STRING       "Internal Build" CACHE STRING "String representation of file/product version.")
 
 if (onnxruntime_USE_WINML)
-  # WINML uses and depends on the shared lib.  Note:  You can build WINML without DML and you will get a 
+  # WINML uses and depends on the shared lib.  Note:  You can build WINML without DML and you will get a
   # CPU only WINML
   if (NOT onnxruntime_BUILD_SHARED_LIB)
     message(
-        FATAL_ERROR 
+        FATAL_ERROR
         "Option onnxruntime_USE_WINML can only be used when onnxruntime_BUILD_SHARED_LIB is also enabled")
   endif()
   include(wil.cmake)
