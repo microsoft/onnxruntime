@@ -758,18 +758,19 @@ struct OrtApi {
 
   /*
   * Creates an environment with global threadpools that will be shared across sessions.
-  * Use this in conjunction with DisablePerSessionThreads API or else by default the session will use
+  * Use this in conjunction with DisablePerSessionThreads API or else the session will use
   * its own thread pools.
   */
   OrtStatus*(ORT_API_CALL* CreateEnvWithGlobalThreadPools)(OrtLoggingLevel default_logging_level, _In_ const char* logid,
                                                            _In_ ThreadingOptions t_options, _Outptr_ OrtEnv** out)
       NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
-  // TODO: Should there be a version of CreateEnvWithGlobalThreadPools with custom logging function?
+  /* TODO: Should there be a version of CreateEnvWithGlobalThreadPools with custom logging function? */
 
   /*
-* Calling this API will make the session use the global threadpools shared across sessions.
-*/
+  * Calling this API will make the session use the global threadpools shared across sessions.
+  * This API should be used in conjunction with CreateEnvWithGlobalThreadPools API.
+  */
   OrtStatus*(ORT_API_CALL* DisablePerSessionThreads)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
 };
 

@@ -800,7 +800,6 @@ void OpTester::Run(
         if (!valid)
           continue;
 
-        InferenceSession session_object{so};
         for (auto& custom_session_registry : custom_session_registries_)
           session_object.RegisterCustomRegistry(custom_session_registry);
 
