@@ -103,6 +103,14 @@ const char* PyOpLibProxy::GetLastErrorMessage(std::string& err) {
     return err.c_str();
 }
 
+int32_t PyOpLibProxy::GetGil() const {
+    return PyGILState_Ensure();
+}
+
+void PyOpLibProxy::PutGil(int32_t state) const {
+   PyGILState_Release((PyGILState_STATE)state);
+}
+
 PyObject* MakePyObj(const void* data, int32_t type, const vector<int64_t>& dim) {
     std::vector<npy_intp> np_dim;
     for (auto d: dim) {
@@ -224,8 +232,6 @@ bool PyOpLibProxy::InvokePythonFunc(void*                            raw_inst,
     return true;
 }//bool InvokePythonFunc
 
-//////////////////////////////////////////////////////////////////
-
 PyCustomKernel::PyCustomKernel(Ort::CustomOpApi ort,
                                const OnnxAttrs& attrs,
                                const std::string& module,
@@ -233,14 +239,18 @@ PyCustomKernel::PyCustomKernel(Ort::CustomOpApi ort,
                                const std::string& compute,
                                PyOpLogFunc logging_func) : ort_(ort), attrs_(attrs), module_(module), class_name_(class_name), compute_(compute), logging_func_(logging_func) {
   std::string err;
+  auto state = PyOpLibProxy::GetInstance().GetGil();
   ORT_ENFORCE(PyOpLibProxy::GetInstance().Initialized(), "Py library not properly initialized.");
   instance_ = PyOpLibProxy::GetInstance().NewInstance(module.c_str(), class_name_.c_str(), attrs_);
+  PyOpLibProxy::GetInstance().PutGil(state);
   ORT_ENFORCE(nullptr != instance_, PyOpLibProxy::GetInstance().GetLastErrorMessage(err));
 }
 
 PyCustomKernel::~PyCustomKernel() {
   if (nullptr != instance_) {
+    auto state = PyOpLibProxy::GetInstance().GetGil();
     PyOpLibProxy::GetInstance().ReleaseInstance(instance_);
+    PyOpLibProxy::GetInstance().PutGil(state);
     instance_ = nullptr;
   }
 }
@@ -264,10 +274,12 @@ void PyCustomKernel::Compute(OrtKernelContext* context) {
   }
 
   std::string err;
+  auto state = PyOpLibProxy::GetInstance().GetGil();
   ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonFunc(instance_, compute_.c_str(), inputs, inputs_type,
                                                            inputs_dim, outputs, outputs_elem_size,
                                                            outputs_dim, logging_func_),
               PyOpLibProxy::GetInstance().GetLastErrorMessage(err));  //ORT_ENFORCE
+  PyOpLibProxy::GetInstance().PutGil(state);
 
   for (size_t i = 0; i < outputs.size(); ++i) {
     auto ort_output = ort_.KernelContext_GetOutput(context, i, outputs_dim[i].data(), outputs_dim[i].size());
