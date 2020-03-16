@@ -27,14 +27,6 @@ static const GUID WINML_PIX_EVAL_CAPTURABLE_WORK_GUID = __uuidof(guid_details::W
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 
-// Bug 23595718: DML does bad things when called at the same time from multiple sessions
-// there are several issues/bugs when the DML EP does work with the GPU at the same time.
-// even acrosss multiple sessions.
-// until we can fix all of these issues, we are making the lock global for queueing GPU work.
-// you can still pipeline work (queue, go do cpu work, queue some more gpu) - 
-// you just can't queue multuple things concurrently until we fix it all
-CWinMLLock LearningModelSession::dml_ep_lock_;
-
 LearningModelSession::LearningModelSession(
     winml::LearningModel const& model) try : LearningModelSession(model,
                                                                   make<LearningModelDevice>(LearningModelDeviceKind::Default)) {}
