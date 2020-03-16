@@ -151,6 +151,6 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   }
 }
 
-INSTANTIATE_TEST_CASE_P(SessionStateTests, SessionStateTestP, testing::ValuesIn(param_list));
+INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStateTestP, testing::ValuesIn(param_list));
 }  // namespace test
 }  // namespace onnxruntime
