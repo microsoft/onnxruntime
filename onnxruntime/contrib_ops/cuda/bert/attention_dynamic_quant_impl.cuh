@@ -9,7 +9,7 @@ namespace contrib {
 namespace cuda {
 
 template <class Tin>
-Status CudaQuantizeLinear(const Tin* input, int8_t* output, float scale, size_t num_of_element);
+Status CudaQuantizeLinear(const Tin* input, int8_t* output, float scale, int num_of_element);
 
 template <class Tin>
 Status CudaDequantizeWithBias(const int32_t* quantize, const Tin* bias, Tin* output, Tin scale, int m, int n);
