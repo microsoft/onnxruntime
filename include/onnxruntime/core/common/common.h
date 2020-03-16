@@ -79,7 +79,7 @@ using common::Status;
 
 std::vector<std::string> GetStackTrace();
 // these is a helper function that gets defined by platform/Telemetry
-void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
+void LogRuntimeError(HRESULT hr, uint32_t session_id, const common::Status& status, const char* file,
                      const char* function, uint32_t line);
 
 // __PRETTY_FUNCTION__ isn't a macro on gcc, so use a check for _MSC_VER
@@ -152,25 +152,25 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(TypeName);           \
   ORT_DISALLOW_MOVE(TypeName)
 
-#define ORT_RETURN_IF_ERROR_SESSIONID(expr, session_id)  \
-  do {                                       \
-    auto _status = (expr);                   \
-    if ((!_status.IsOK())) {                 \
-      ::onnxruntime::LogRuntimeError(session_id, _status, __FILE__, __FUNCTION__, __LINE__); \
-      return _status;                        \
-    }                                        \
+#define ORT_RETURN_IF_ERROR_SESSIONID(expr, session_id)                                                                                                                           \
+  do {                                                                                                                                                                            \
+    auto _status = (expr);                                                                                                                                                        \
+    if ((!_status.IsOK())) {                                                                                                                                                      \
+      ::onnxruntime::LogRuntimeError(StatusCodeToHRESULT(static_cast<::onnxruntime::common::StatusCode>(_status.Code())), session_id, _status, __FILE__, __FUNCTION__, __LINE__); \
+      return _status;                                                                                                                                                             \
+    }                                                                                                                                                                             \
   } while (0)
 
 #define ORT_RETURN_IF_ERROR_SESSIONID_(expr) ORT_RETURN_IF_ERROR_SESSIONID(expr, session_id_)
 #define ORT_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR_SESSIONID(expr, 0)
 
-#define ORT_THROW_IF_ERROR(expr)               \
-  do {                                         \
-    auto _status = (expr);                     \
-    if ((!_status.IsOK())) {                   \
-      ::onnxruntime::LogRuntimeError(0, _status, __FILE__, __FUNCTION__, __LINE__); \
-      ORT_THROW(_status);                      \
-    }                                          \
+#define ORT_THROW_IF_ERROR(expr)                                                                                                                                         \
+  do {                                                                                                                                                                   \
+    auto _status = (expr);                                                                                                                                               \
+    if ((!_status.IsOK())) {                                                                                                                                             \
+      ::onnxruntime::LogRuntimeError(StatusCodeToHRESULT(static_cast<::onnxruntime::common::StatusCode>(_status.Code())), 0, _status, __FILE__, __FUNCTION__, __LINE__); \
+      ORT_THROW(_status);                                                                                                                                                \
+    }                                                                                                                                                                    \
   } while (0)
 
 // use this macro when cannot early return

@@ -213,7 +213,7 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                     TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
 }
 
-void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
+void WindowsTelemetry::LogRuntimeError(HRESULT hr, uint32_t session_id, const common::Status& status, const char* file,
                                        const char* function, uint32_t line) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
@@ -225,6 +225,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingHResult(hr, "hResult"),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
@@ -240,6 +241,7 @@ void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_s
 
   TraceLoggingWrite(telemetry_provider_handle,
                     "RuntimePerf",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     // Telemetry info

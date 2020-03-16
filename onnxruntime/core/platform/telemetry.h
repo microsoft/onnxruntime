@@ -53,7 +53,7 @@ class Telemetry {
                                   const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids,
                                   bool use_fp16) const;
 
-  virtual void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
+  virtual void LogRuntimeError(HRESULT hr, uint32_t session_id, const common::Status& status, const char* file,
                                const char* function, uint32_t line) const;
 
   virtual void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last) const;
