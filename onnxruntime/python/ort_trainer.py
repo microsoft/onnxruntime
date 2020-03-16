@@ -125,7 +125,7 @@ def FuseSofmaxNLLToSoftmaxCE(onnx_model):
         nll_loss_node = None
         nll_loss_node_index = 0
         for nll_loss_node_index, node in enumerate(onnx_model.graph.node):
-            if node.op_type == "nll_loss":
+            if node.op_type == "nll_loss" or node.op_type == "NegativeLogLikelihoodLoss":
                 nll_loss_node = node
                 break
 
@@ -253,7 +253,7 @@ def wrap_for_input_match(model, input_names):
     model = WrapModel(model, input_names)
     return model
 
-def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device):
+def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, opset_version):
     # example: {input0:{0:'batch'}, input1:{0:'batch'}}
     dynamic_axes = {}
     for input in model_desc.inputs_:
@@ -304,7 +304,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device):
     torch.onnx._export(model, tuple(sample_inputs), f,
                        input_names=input_names, 
                        output_names=output_names,
-                       opset_version=10,
+                       opset_version=opset_version,
                        dynamic_axes=dynamic_axes,
                        training=True,
                        _retain_param_name=True,
@@ -515,7 +515,7 @@ class ORTTrainer():
     def __init__(self, model, loss_fn, model_desc, training_optimizer_name, map_optimizer_attributes,
                  learning_rate_description, device, gradient_accumulation_steps=1, postprocess_model=None,
                  world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
-                 global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False):
+                 global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False, opset_version=10):
         super(ORTTrainer, self).__init__()
         """
         Initializes ORTTrainer.
@@ -586,7 +586,7 @@ class ORTTrainer():
             print("It is experimental to use learning rate scheduler and loss scaler inside ORTTrainer.")
 
         if self.torch_model_ is not None:
-            self.onnx_model_ = convert_model_loss_fn_to_onnx(self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'))
+            self.onnx_model_ = convert_model_loss_fn_to_onnx(self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), opset_version)
 
             if self.post_process_model_fn_:
                 self.post_process_model_fn_(self.onnx_model_)
