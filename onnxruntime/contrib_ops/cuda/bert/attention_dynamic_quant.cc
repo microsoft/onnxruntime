@@ -105,7 +105,7 @@ Status AttentionDynamicQuant<T>::ComputeInternal(OpKernelContext* context) const
 
   // quantize input
   auto quantize_buffer = GetScratchBuffer<int8_t>(input_size);
-  CudaQuantizeLinear(input->template Data<T>(),
+  CudaQuantizeLinearSimple(input->template Data<T>(),
                      quantize_buffer.get(),
                      input_scale,
                      input_size);
