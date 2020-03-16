@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
   try {
     ::testing::InitGoogleTest(&argc, argv);
     ThreadingOptions tp_options{0, 0};
-    ort_env.reset(new Ort::Env(tp_options, ORT_LOGGING_LEVEL_WARNING, "Default"));  // this is the only change from test/providers/test_main.cc
+    ort_env.reset(new Ort::Env(tp_options, ORT_LOGGING_LEVEL_VERBOSE, "Default"));  // this is the only change from test/providers/test_main.cc
     status = RUN_ALL_TESTS();
   } catch (const std::exception& ex) {
     std::cerr << ex.what();

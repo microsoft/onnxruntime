@@ -54,10 +54,10 @@ static void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
   auto type_info = output_tensor->GetTensorTypeAndShapeInfo();
   ASSERT_EQ(type_info.GetShape(), dims_y);
   //size_t total_len = type_info.GetElementCount();
-  ASSERT_EQ(values_y.size(), 5);
+  ASSERT_EQ(values_y.size(), static_cast<size_t>(5));
 
   OutT* f = output_tensor->GetTensorMutableData<OutT>();
-  for (size_t i = 0; i != 5; ++i) {
+  for (size_t i = 0; i != static_cast<size_t>(5); ++i) {
     ASSERT_TRUE(abs(values_y[i] - f[i]) < 1e-6);
   }
 }
@@ -93,8 +93,7 @@ static Ort::Session GetSessionObj(Ort::Env& env, T model_uri, int provider_type)
   }
 
   // if session creation passes, model loads fine
-  Ort::Session foo(env, model_uri, session_options);
-  return std::move(foo);
+  return Ort::Session(env, model_uri, session_options);
 }
 
 template <typename T, typename OutT>
