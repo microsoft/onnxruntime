@@ -43,7 +43,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
   // Create buffers
   int tensor_num = static_cast<int> (element_types_.size());
-  // TODO move the following 3 variables to member variables for extending life-time
+  // TODO move the following variables to member variables for extending life-time
   // if we want to make the entire call async
   std::vector<size_t> prefix_tensor_shape_sizes(tensor_num);
   std::vector<int64_t> aggregated_tensor_shapes;
@@ -53,7 +53,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   // Start communication
   int world_rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-  ORT_ENFORCE(world_rank != src, "Receive data from rank ", src, " on the on rank ", world_rank, ".");
+  ORT_ENFORCE(world_rank != src, "Receive data from rank ", src, " on the rank ", world_rank, ".");
 
 
   // Enqueue communication functions to a GPU stream.

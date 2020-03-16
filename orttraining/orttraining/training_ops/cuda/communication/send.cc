@@ -42,7 +42,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 
   // Create buffers
   int tensor_num = static_cast<int>(element_types_.size());
-  // TODO move the following 3 variables to member variables for extending life-time
+  // TODO move the following variables to member variables for extending life-time
   // if we want to make the entire call async
   std::vector<size_t> prefix_tensor_shape_sizes;
   std::vector<int64_t> aggregated_tensor_shapes;
@@ -71,7 +71,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   // Start communication
   int world_rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-  ORT_ENFORCE(world_rank != dst, "Sending data to rank ", dst, " on the on rank ", world_rank, ".");
+  ORT_ENFORCE(world_rank != dst, "Sending data to rank ", dst, " on the rank ", world_rank, ".");
 
   IAllocatorUniquePtr<char> buffer = AllocateBufferOnCPUPinned<char>(
       static_cast<size_t>(aggregated_aligned_tensor_bytes));
