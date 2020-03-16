@@ -3,8 +3,8 @@
 
 #ifdef USE_HOROVOD
 
-#include "send.h"
-#include "common.h"
+#include "orttraining/training_ops/cuda/communication/send.h"
+#include "orttraining/training_ops/cuda/communication/common.h"
 #include <mpi.h>
 
 namespace onnxruntime {
@@ -76,8 +76,8 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   IAllocatorUniquePtr<char> buffer = AllocateBufferOnCPUPinned<char>(
       static_cast<size_t>(aggregated_aligned_tensor_bytes));
 
-  // Keep Wei-Sheng's sync copy
-  // Note: they can be moved to async call after global stream becoming accessible 
+  // Keep the sync copy in the previous design
+  // TODO they can be moved to async call after global stream becoming accessible 
   for (int i = 0; i < tensor_num; ++i) {
     const Tensor* x_tensor = ctx->Input<Tensor>(i + 2);
     ORT_ENFORCE(cudaMemcpy(buffer.get() + tensor_offsets_in_bytes[i], x_tensor->Data<void>(),
@@ -104,8 +104,8 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 
 
   // Enqueue communication functions to a GPU stream.
-  // Keep Wei-Sheng's local stream
-  // Note they can be moved to a new global stream after global streams becoming accessible
+  // Keep the local stream in the previous design
+  // TODO they can be moved to a new global stream after global streams becoming accessible
   cudaStream_t commStream;
   cudaStreamCreate(&commStream);
 

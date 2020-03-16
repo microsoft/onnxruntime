@@ -3,8 +3,8 @@
 
 #ifdef USE_HOROVOD
 
-#include "recv.h"
-#include "common.h"
+#include "orttraining/training_ops/cuda/communication/recv.h"
+#include "orttraining/training_ops/cuda/communication/common.h"
 #include <mpi.h>
 
 namespace onnxruntime {
@@ -22,7 +22,6 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("TBool", DataTypeImpl::GetTensorType<bool>()), 
     Recv);
-
 
 void CUDART_CB HostRecv(void* args) {
   CommInfo_t* info = reinterpret_cast<CommInfo_t*>(args);
@@ -57,8 +56,8 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
 
   // Enqueue communication functions to a GPU stream.
-  // Keep Wei-Sheng's local stream
-  // Note they can be moved to a new global stream after global streams becoming accessible
+  // Keep the local stream in the previous design
+  // TODO they can be moved to a new global stream after global streams becoming accessible
   cudaStream_t commStream;  // TODO change this
   cudaStreamCreate(&commStream);
 
@@ -104,8 +103,8 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
     // handle alignment requirement
     tensor_offset_in_bytes = (tensor_offset_in_bytes + alignment - 1) / alignment * alignment;
 
-    // Keep Wei-Sheng's sync copy
-    // Note: they can be moved to async call after global stream becoming accessible 
+    // Keep the sync copy in the previous design
+    // TODO they can be moved to async call after global stream becoming accessible 
     ORT_ENFORCE(cudaMemcpy(x_tensor->MutableData<void>(), buffer.get() + tensor_offset_in_bytes,
                            x_tensor->SizeInBytes(), cudaMemcpyHostToDevice) == cudaSuccess);
     tensor_offset_in_bytes += x_tensor->SizeInBytes();
