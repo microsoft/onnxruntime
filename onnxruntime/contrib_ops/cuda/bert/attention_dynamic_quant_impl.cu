@@ -74,8 +74,8 @@ Status CudaDequantizeWithBias(const int32_t* quantize, const T* bias, T* output,
   return Status::OK();
 }
 
-template Status CudaQuantizeLinear(const float* input, int8_t* output, float scale, int num_of_element);
-template Status CudaDequantizeWithBias(const int32_t* quantize, const float* bias, float* output, float scale, int m, int n);
+template Status CudaQuantizeLinear<float>(const float* input, int8_t* output, float scale, int num_of_element);
+template Status CudaDequantizeWithBias<float>(const int32_t* quantize, const float* bias, float* output, float scale, int m, int n);
 
 }  // namespace cuda
 }  // namespace contrib
