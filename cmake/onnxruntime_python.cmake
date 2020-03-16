@@ -145,6 +145,9 @@ file(GLOB onnxruntime_backend_srcs CONFIGURE_DEPENDS
 file(GLOB onnxruntime_python_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/*.py"
 )
+file(GLOB onnxruntime_training_python_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/*.py"
+)
 file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/*.py"
 )
@@ -191,6 +194,9 @@ add_custom_command(
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/backend/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_srcs}
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_training_python_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   COMMAND ${CMAKE_COMMAND} -E copy
       $<TARGET_FILE:onnxruntime_pybind11_state>

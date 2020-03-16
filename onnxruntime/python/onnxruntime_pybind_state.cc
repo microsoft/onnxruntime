@@ -93,6 +93,9 @@
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/mpi_setup.h"
 #include "orttraining/core/framework/data_transfer_utils.h"
+#else
+#include "core/session/IOBinding.h"
+#include "../orttraining/orttraining/core/framework/data_transfer_utils.h"
 #endif
 
 #ifdef USE_CUDA
@@ -141,7 +144,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar
 #endif  // _MSC_VER
 
 namespace onnxruntime {
+#ifdef ENABLE_TRAINING
 using namespace training;
+#endif
 namespace python {
 
 namespace py = pybind11;
@@ -187,7 +192,7 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransf
       static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
       std::vector<char> tensor_data_buffer{};
       tensor_data_buffer.resize(rtensor.SizeInBytes());
-      ORT_THROW_IF_ERROR(CopyTensorDataToByteSpan(
+      ORT_THROW_IF_ERROR(onnxruntime::CopyTensorDataToByteSpan(
           *data_transfer_manager, rtensor, cpu_alloc_info, gsl::make_span(tensor_data_buffer)));
       memcpy(outPtr, tensor_data_buffer.data(), dtype->Size() * shape.Size());
     } else
@@ -215,6 +220,7 @@ static std::string GetDeviceName(const OrtDevice& device) {
   }
 }
 
+#ifdef ENABLE_TRAINING
 struct TrainingParameters {
   std::string loss_output_name;
   std::unordered_set<std::string> weights_to_train;
@@ -242,6 +248,7 @@ struct TrainingParameters {
   bool partition_optimizer = false;
   int seed = -1;
 };
+#endif
 
 template <>
 void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
@@ -409,6 +416,7 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
   OrtPybindThrowIfError(sess->Initialize());
 }
 
+#ifdef ENABLE_TRAINING
 // TODO: this method does not handle parallel optimization.
 static void ConfigureSessionForTraining(
     training::TrainingSession* sess, TrainingParameters& parameters) {
@@ -501,6 +509,7 @@ static void ConfigureSessionForTraining(
 
   OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
 }
+#endif
 
 void addGlobalMethods(py::module& m) {
   m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
