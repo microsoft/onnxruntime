@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+/* Modifications Copyright (c) Microsoft. */
+
 #pragma once
 #include "test/providers/provider_test_utils.h"
 #include "orttraining/core/session/training_session.h"
