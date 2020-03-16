@@ -70,6 +70,32 @@ void AddRepeatedOutputs(
   }
 }
 
+static void propagateRecvOutputTensorElemTypes(
+    InferenceContext& ctx,
+    const std::string& attributeName,
+    size_t outputSize) {
+  auto attr_proto = ctx.getAttribute(attributeName);
+  if (nullptr == attr_proto) {  // attribute not present
+      fail_type_inference("Value of attribute ", attributeName, " not specified");
+  }
+
+  size_t tensor_num = static_cast<size_t>(attr_proto->ints_size());
+
+  if (tensor_num != outputSize) {
+    fail_type_inference("Attribute ", attributeName, " has a wrong size");
+  }
+
+  const int64_t* elem_types = attr_proto->ints().data();
+
+  for (size_t i = 0; i < tensor_num; ++i) {
+    auto elem_type = static_cast<::ONNX_NAMESPACE::TensorProto_DataType>(elem_types[i]);
+    if (!TensorProto_DataType_IsValid(elem_type)) {
+      fail_type_inference("Attribute ", attributeName, " does not specify a valid type.");
+    }
+    updateOutputElemType(ctx, i+1, elem_type);
+  }
+}
+
 // TODO: This is copied from onnx schemas. When the change is in and we update this can be removed.
 // For Brevity documentation was not copied
 OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
@@ -1300,30 +1326,26 @@ Return true if all elements are true and false otherwise.
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Send data tensor to the specified destination.")
-      .Input(0, "InputSignal", "Input control signal.", "TBool")
-      .Input(1, "Data", "Tensor to send.", "T")
+      .Input(0, "Remote", "Remote dst rank.", "TInt64")
+      .Input(1, "InputSignal", "Input control signal.", "TBool")
+      .Input(2, "Data", "Tensors to send.", "V", OpSchema::Variadic, false)
       .Output(0, "OutputSignal", "Output control signal.", "TBool")
-      .Attr("src",
-            "Abstractive memory ID of Data's source.",
-            AttributeProto::INT)
-      .Attr("dst",
-            "Abstractive memory ID of Data's destination.",
-            AttributeProto::INT)
       .Attr("tag", "The tag of the message carrying Data.",
             AttributeProto::INT)
-      .Attr("element_type", "Element type of the sent tensor.",
-            AttributeProto::INT)
+      .Attr("element_types", "Element types of the sent tensors.",
+            AttributeProto::INTS)
       .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input types to float tensors.")
+          "TInt64",
+          {"tensor(int64)"},
+          "Constrain input type to 64-bit integer.")
       .TypeConstraint(
           "TBool",
           {"tensor(bool)"},
           "Constrain types to boolean tensors.")
+      .TypeConstraint("V", OpSchema::all_tensor_types(), "All Tensor types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        if (ctx.getNumInputs() != 2)
-          fail_shape_inference("Send must have two inputs.");
+        if (ctx.getNumInputs() >= 3)
+          fail_shape_inference("Send must have at least three inputs.");
         if (ctx.getNumOutputs() != 1)
           fail_shape_inference("Send must have one output.");
 
@@ -1339,36 +1361,32 @@ Return true if all elements are true and false otherwise.
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Receive a tensor from the the specified source.")
-      .Input(0, "InputSignal", "Input control signal.", "TBool")
+      .Input(0, "Remote", "Remote src rank.", "TInt64")
+      .Input(1, "InputSignal", "Input control signal.", "TBool")
       .Output(0, "OutputSignal", "Output control signal.", "TBool")
-      .Output(1, "Data", "The Received tensor.", "T")
-      .Attr("src",
-            "Abstractive memory ID of Data's source.",
-            AttributeProto::INT)
-      .Attr("dst",
-            "Abstractive memory ID of Data's destination.",
-            AttributeProto::INT)
+      .Output(1, "Data", "The Received tensors.", "V", OpSchema::Variadic, false)
       .Attr("tag", "The tag of the message carrying Data.",
             AttributeProto::INT)
-      .Attr("element_type", "Element type of the received tensor.",
-            AttributeProto::INT)
+      .Attr("element_types", "Element types of the received tensors.",
+            AttributeProto::INTS)
       .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input types to float tensors.")
+          "TInt64",
+          {"tensor(int64)"},
+          "Constrain input type to 64-bit integer.")
       .TypeConstraint(
           "TBool",
           {"tensor(bool)"},
           "Constrain types to boolean tensors.")
+      .TypeConstraint("V", OpSchema::all_tensor_types(), "All Tensor types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        if (ctx.getNumInputs() != 1)
-          fail_shape_inference("Recv must have one inputs.");
-        if (ctx.getNumOutputs() != 2)
-          fail_shape_inference("Recv must have two output.");
+        if (ctx.getNumInputs() != 2)
+          fail_shape_inference("Recv must have two inputs.");
+        if (ctx.getNumOutputs() >= 2)
+          fail_shape_inference("Recv must have at least two outputs.");
 
         updateOutputShape(ctx, 0, {});
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
-        propagateElemTypeFromAttributeToOutput(ctx, "element_type", 1);
+        propagateRecvOutputTensorElemTypes(ctx, "element_types", ctx.getNumOutputs()-1);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MegatronF)

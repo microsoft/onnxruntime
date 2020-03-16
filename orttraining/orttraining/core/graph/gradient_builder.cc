@@ -921,35 +921,32 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSendGradient) {
-  NodeAttributes new_attrs;
-  const auto& old_attrs = SrcNodeAttributes();
- 
-  new_attrs["src"] = MakeAttribute("src", old_attrs.at("dst").i());
-  new_attrs["dst"] = MakeAttribute("dst", old_attrs.at("src").i());
-  new_attrs["tag"] = MakeAttribute("tag", old_attrs.at("tag").i());  // keep tag the same for now
-  new_attrs["element_type"] = MakeAttribute("element_type", old_attrs.at("element_type").i());
+  std::vector<ArgDef> out_args;
+  for (int i = 1; i < GetSrcNodeInputSize(); ++i) {
+    out_args.push_back(GI(i));  // i=1 for Signal, the rest Data
+  }
 
   return std::vector<NodeDef>{
       NodeDef("Recv",
-              {O(0)},
-              {GI(0), GI(1)},
-              new_attrs)};
+              {I(0),O(0)},  // {Remote, Signal} 
+              out_args,
+              SrcNodeAttributes())};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetRecvGradient) {
-  NodeAttributes new_attrs;
-  const auto& old_attrs = SrcNodeAttributes();
+  std::vector<ArgDef> in_args;
+  in_args.push_back(I(0)); // Remote
+  in_args.push_back(O(0)); // Signal
 
-  new_attrs["src"] = MakeAttribute("src", old_attrs.at("dst").i());
-  new_attrs["dst"] = MakeAttribute("dst", old_attrs.at("src").i());
-  new_attrs["tag"] = MakeAttribute("tag", old_attrs.at("tag").i());  // keep tag the same for now
-  new_attrs["element_type"] = MakeAttribute("element_type", old_attrs.at("element_type").i());
+  for (int i = 1; i < GetSrcNodeOutputSize(); ++i) {
+    in_args.push_back(GO(i));  // Data
+  }
 
   return std::vector<NodeDef>{
       NodeDef("Send",
-              {O(0), GO(1)},
-              {GI(0)},
-              new_attrs)};
+              in_args,
+              {GI(0)},  // Signal
+              SrcNodeAttributes())};
 }
 
 }  // namespace training

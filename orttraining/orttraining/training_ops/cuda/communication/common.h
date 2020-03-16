@@ -12,7 +12,7 @@ typedef struct {
   // It should be removed once we enable CUDA-aware MPI.
   void* buffer;
   // The size of buffer's content in bytes.
-  size_t size;
+  int size;
   // Dst rank for Send and src rank for Recv.
   int rank;
   // Message's tag.
