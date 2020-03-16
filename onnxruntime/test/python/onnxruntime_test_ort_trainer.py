@@ -28,7 +28,6 @@ def bert_model_description():
                                           num_classes=vocab_size)
     next_sentence_labels_desc = IODescription('next_sentence_labels', ['batch', ], torch.int64, num_classes=2)
     loss_desc = IODescription('loss', [], torch.float32)
-    # probability_desc = IODescription('probability', ['batch', 10], torch.float32)
 
     return ModelDescription([input_ids_desc, segment_ids_desc, input_mask_desc, masked_lm_labels_desc,
                              next_sentence_labels_desc], [loss_desc])
