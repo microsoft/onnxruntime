@@ -1,5 +1,10 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+//
+// Copyright (c) 2017, NVIDIA CORPORATION. All rights reserved.
+// NVIDIA/apex is licensed under the
+// BSD 3 - Clause "New" or "Revised" License
+//
+
+/* Modifications Copyright (c) Microsoft. */
 
 #pragma once
 #include <vector>
@@ -19,6 +24,7 @@ constexpr int MAX_BLOCK_THREAD_COUNTS[8] = {256, 512, 512, 512, 512, 512, 512, 5
 // element-wise addition, it should be 2. The value 0 is reserved for implementing
 // kernels to handle a single large tensor.
 template <int TensorGroupSize>
+
 struct ChunkGroup {
   // Number of chunks in this ChunkGroup.
   // It's the effective size of block_index_to_tensor_group_index and

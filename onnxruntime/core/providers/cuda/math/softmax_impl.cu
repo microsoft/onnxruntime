@@ -14,6 +14,8 @@
 * limitations under the License.
 */
 
+/* Modifications Copyright (c) Microsoft. */
+
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
 
 #include "core/providers/cuda/cu_inc/common.cuh"
