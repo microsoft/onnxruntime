@@ -123,9 +123,9 @@ class TestOrtTrainer(unittest.TestCase):
     def testBertTrainingBasic(self):
         torch.manual_seed(1)
         expected_losses = [
-            10.997675895690918, 11.120766639709473, 10.990262985229492, 11.077146530151367,
-            10.906590461730957, 10.941630363464355, 11.067346572875977, 10.988700866699219]
-        expected_eval_loss = [10.982779502868652]
+            11.032349586486816, 11.165414810180664, 11.018411636352539, 11.050261497497559,
+            10.855696678161621, 10.947556495666504, 11.083847045898438, 10.978367805480957]
+        expected_eval_loss = [10.97208023071289]
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=1, use_mixed_precision=False, allreduce_post_accumulation=False)
 
@@ -141,13 +141,13 @@ class TestOrtTrainer(unittest.TestCase):
         torch.manual_seed(1)
         # this commented expected results are for runing test individually (pytest with -k). 
         # expected_losses = [
-        #     10.997675895690918, 11.120766639709473, 10.990259170532227, 11.07714557647705,
-        #     10.90658950805664, 10.941636085510254, 11.06735897064209, 10.98868179321289]
-        # expected_eval_loss = [10.982769966125488]
+        #     11.032349586486816, 11.165414810180664, 11.01840591430664, 11.050259590148926,
+        #     10.855696678161621, 10.94755744934082, 11.083860397338867, 10.978363990783691]
+        # expected_eval_loss = [10.972085952758789]
         expected_losses = [
-            11.049327850341797, 11.124876022338867, 10.99004077911377, 11.031144142150879,
-            10.881563186645508, 10.973114013671875, 11.097383499145508, 10.992847442626953]
-        expected_eval_loss = [10.999550819396973]
+            11.026690483093262, 11.117761611938477, 11.010371208190918, 11.068782806396484,
+            10.89488697052002, 10.923206329345703, 11.060373306274414, 11.008779525756836]
+        expected_eval_loss = [11.01189136505127]
         
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=4, use_mixed_precision=False, allreduce_post_accumulation=False)
