@@ -48,6 +48,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 
   // create thread pools
   if (create_global_thread_pools) {
+    create_global_thread_pools_ = true;
     intra_op_thread_pool_ = concurrency::CreateThreadPool("env_global_intra_op_thread_pool",
                                                           tp_options->intra_op_num_threads);
     inter_op_thread_pool_ = concurrency::CreateThreadPool("env_global_inter_op_thread_pool",

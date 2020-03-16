@@ -166,11 +166,17 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
 
+  // The call to InitLogger depends on the final state of session_options_. Hence it should be invoked
+  // after the invocation of FinalizeSessionOptions.
+  logging_manager_ = session_env.GetLoggingManager();
+  InitLogger(logging_manager_);  // this sets session_logger_ so that it can be used for logging after this point.
+
   // Update the number of steps for the graph transformer manager using the "finalized" session options
   graph_transformation_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps);
   use_per_session_threads_ = session_options.use_per_session_threads;
 
   if (use_per_session_threads_) {
+    LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
     thread_pool_ = concurrency::CreateThreadPool("intra_op_thread_pool",
                                                  session_options_.intra_op_num_threads);
 
@@ -181,15 +187,10 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   } else {
     intra_op_thread_pool_from_env_ = session_env.GetIntraOpThreadPool();
     inter_op_thread_pool_from_env_ = session_env.GetInterOpThreadPool();
-
-    ORT_ENFORCE(intra_op_thread_pool_from_env_,
-                "Since use_per_session_threads is false, this must be non-nullptr"
-                " You probably didn't create the env using the CreateEnvWithGlobalThreadPools API");
-    ORT_ENFORCE(inter_op_thread_pool_from_env_,
-                "Since use_per_session_threads is false, this must be non-nullptr"
-                " You probably didn't create the env using the CreateEnvWithGlobalThreadPools API");
-    ORT_ENFORCE(thread_pool_ == nullptr, "Since use_per_session_threads is false per session threadpools should be nullptr");
-    ORT_ENFORCE(inter_op_thread_pool_ == nullptr, "Since use_per_session_threads is false per session threadpools should be nullptr");
+    ORT_ENFORCE(session_env.EnvCreatedWithGlobalThreadPools() == true,
+                "When the session is not configured to use per session"
+                "threadpools, the env must be created with the the CreateEnvWithGlobalThreadPools API.");
+    LOGS(*session_logger_, INFO) << "Using global/env threadpools since use_per_session_threads_ is false";
   }
 
   session_state_ = onnxruntime::make_unique<SessionState>(execution_providers_,
@@ -198,9 +199,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                                           use_per_session_threads_ ? thread_pool_.get() : intra_op_thread_pool_from_env_,
                                                           use_per_session_threads_ ? inter_op_thread_pool_.get() : inter_op_thread_pool_from_env_);
 
-  logging_manager_ = session_env.GetLoggingManager();
-  InitLogger(logging_manager_);
-
+  session_state_->SetLogger(*session_logger_);
   session_state_->SetDataTransferMgr(&data_transfer_mgr_);
   session_profiler_.Initialize(session_logger_);
   session_state_->SetProfiler(session_profiler_);
@@ -1422,8 +1421,6 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
   } else {
     session_logger_ = &logging::LoggingManager::DefaultLogger();
   }
-
-  session_state_->SetLogger(*session_logger_);
 }
 
 // Registers all the predefined transformers with transformer manager

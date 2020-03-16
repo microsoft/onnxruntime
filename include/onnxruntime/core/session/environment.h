@@ -50,6 +50,10 @@ class Environment {
     return inter_op_thread_pool_.get();
   }
 
+  bool EnvCreatedWithGlobalThreadPools() const {
+    return create_global_thread_pools_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
 
@@ -61,5 +65,6 @@ class Environment {
   std::unique_ptr<logging::LoggingManager> logging_manager_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> intra_op_thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
+  bool create_global_thread_pools_{false};
 };
 }  // namespace onnxruntime
