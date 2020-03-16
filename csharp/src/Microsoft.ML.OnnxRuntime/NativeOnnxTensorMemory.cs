@@ -12,9 +12,12 @@ using System.Threading;
 
 namespace Microsoft.ML.OnnxRuntime
 {
+    /// <summary>
+    /// A non-public interface detailing the contract to be honored by NativeOnnxTensorMemory
+    /// </summary>
     internal interface NativeMemoryHandler : IDisposable
     {
-        IntPtr GetOnnxValue();
+        IntPtr Handle { get;}
     }
 
     internal class NativeOnnxTensorMemory<T> : MemoryManager<T>, NativeMemoryHandler 
@@ -131,6 +134,8 @@ namespace Microsoft.ML.OnnxRuntime
         {
             return _onnxValueHandle;
         }
+
+        public IntPtr Handle { get { return _onnxValueHandle; } }
 
         ~NativeOnnxTensorMemory()
         {

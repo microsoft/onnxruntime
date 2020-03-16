@@ -752,13 +752,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { 
                     using (var res2 = session.Run(res1))
                     {
-                        GC.Collect();
                         var tensorOut = res2.First().AsTensor<bool>();
                         Assert.True(tensorOut.SequenceEqual(tensorIn));
                     }
                 }
 
-                /*
                 // Dispose the result tensor
                 res1.First().Dispose();
 
@@ -771,7 +769,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     session.Run(res1);
                 }
 
-                catch(Exception e)
+                catch(ObjectDisposedException e)
                 {
                     var errorString = "This instance of DisposableNamedOnnxValue has already been disposed";
 
@@ -781,7 +779,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
 
                 Assert.True(succeeded);
-                */
             }
         }
 
@@ -811,7 +808,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                 }
 
-                /*
                 // Dispose the result tensor
                 res1.First().Dispose();
 
@@ -824,7 +820,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     session.Run(res1);
                 }
 
-                catch (Exception e)
+                catch (ObjectDisposedException e)
                 {
                     var errorString = "This instance of DisposableNamedOnnxValue has already been disposed";
 
@@ -834,7 +830,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
 
                 Assert.True(succeeded);
-                */
             }
 
         }

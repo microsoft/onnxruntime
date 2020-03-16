@@ -85,7 +85,8 @@ namespace Microsoft.ML.OnnxRuntime
             // Make sure that this instance hasn't been disposed yet
             if (disposedValue)
             {
-                throw new Exception("This instance of DisposableNamedOnnxValue has already been disposed");
+                throw new ObjectDisposedException(nameof(DisposableNamedOnnxValue),
+                                                  "This instance of DisposableNamedOnnxValue has already been disposed");
             }
 
             // If not already disposed, _nativeMemoryManager can only be null
@@ -100,7 +101,7 @@ namespace Microsoft.ML.OnnxRuntime
             disposeOnnxValueAfterUse = false;
 
             // Assign the onnxValue by querying this instance's NativeOnnxTensorMemory instance
-            onnxValue = _nativeMemoryManager.GetOnnxValue();
+            onnxValue = _nativeMemoryManager.Handle;
         }
 
         internal static DisposableNamedOnnxValue CreateTensorFromOnnxValue(string name, IntPtr nativeOnnxValue)
