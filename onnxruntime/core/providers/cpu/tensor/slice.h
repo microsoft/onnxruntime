@@ -52,10 +52,10 @@ class SliceBase {
   std::vector<int64_t> attr_starts_, attr_ends_, attr_axes_;
 };
 
-template <typename T, bool dynamic>
+template <bool dynamic>
 struct Slice final : public OpKernel, public SliceBase {
   Slice(const OpKernelInfo& info) : OpKernel(info), SliceBase(info, dynamic) {}
   Status Compute(OpKernelContext* context) const override;
-};  // namespace onnxruntime
+};
 
 }  // namespace onnxruntime
