@@ -945,7 +945,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetRecvGradient) {
   return std::vector<NodeDef>{
       NodeDef("Send",
               in_args,
-              {GI(0)},  // Signal
+              {GI(1)},  // Signal
               SrcNodeAttributes())};
 }
 
