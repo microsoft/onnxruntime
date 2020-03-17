@@ -233,11 +233,11 @@ static void TestSoftmaxCrossEntropyLossGrad(const std::vector<int64_t>& dY_dims,
   RandomValueGenerator random{};
   std::vector<float> dY_data = random.Uniform<float>(dY_dims, -10.0f, 10.0f);
   std::vector<float> log_prob_data = random.Uniform<float>(log_prob_dims, -10.0f, 10.0f);
-  std::vector<int64_t> index_data = random.Uniform<int64_t>(index_dims, 0.0f, static_cast<float>(dX_dims.back()));
+  std::vector<float> index_data = random.Uniform<float>(index_dims, 0.0f, static_cast<float>(dX_dims.back()));
 
   test.AddInput<float>("dY", dY_dims, dY_data);
   test.AddInput<float>("log_prob", log_prob_dims, log_prob_data);
-  test.AddInput<int64_t>("index", index_dims, index_data);
+  test.AddInput<float>("index", index_dims, index_data);
 
   std::vector<float> dX_data = FillZeros<float>(dX_dims);
 
