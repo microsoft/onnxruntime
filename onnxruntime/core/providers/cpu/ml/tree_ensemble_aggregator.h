@@ -30,8 +30,14 @@ struct SparseValue {
 
 template <typename T>
 struct ScoreValue {
-  unsigned char has_score;
   T score;
+  unsigned char has_score;
+  operator float() const { return has_score ? static_cast<float>(score) : 0; }
+  ScoreValue<T>& operator=(float v) {
+    this->score = v;
+    this->has_score = 1;
+    return *this;
+  }
 };
 
 enum MissingTrack {
@@ -95,14 +101,13 @@ class TreeAggregator {
   void FinalizeScores(std::vector<ScoreValue<OTYPE>>& predictions, OTYPE* Z, int add_second_class, int64_t*) const {
     ORT_ENFORCE(predictions.size() == (size_t)n_targets_or_classes_);
     OTYPE val;
-    std::vector<OTYPE> scores(predictions.size(), 0);
     auto it = predictions.begin();
     for (int64_t jt = 0; jt < n_targets_or_classes_; ++jt, ++it) {
       val = use_base_values_ ? base_values_[jt] : 0.f;
       val += it->has_score ? it->score : 0;
-      scores[jt] = val;
+      it->score = val;
     }
-    write_scores(scores, post_transform_, Z, add_second_class);
+    write_scores(predictions, post_transform_, Z, add_second_class);
   }
 };
 
@@ -155,18 +160,13 @@ class TreeAggregatorSum : public TreeAggregator<ITYPE, OTYPE> {
   }
 
   void FinalizeScores(std::vector<ScoreValue<OTYPE>>& predictions, OTYPE* Z, int add_second_class, int64_t*) const {
-    std::vector<OTYPE> scores(predictions.size());
-    auto its = scores.begin();
     auto it = predictions.begin();
     if (this->use_base_values_) {
       auto it2 = this->base_values_.cbegin();
-      for (; it != predictions.end(); ++it, ++it2, ++its)
-        *its = it->score + *it2;
-    } else {
-      for (; it != predictions.end(); ++it, ++its)
-        *its = it->score;
+      for (; it != predictions.end(); ++it, ++it2)
+        it->score = it->score + *it2;
     }
-    write_scores(scores, this->post_transform_, Z, add_second_class);
+    write_scores(predictions, this->post_transform_, Z, add_second_class);
   }
 };
 
@@ -186,20 +186,18 @@ class TreeAggregatorAverage : public TreeAggregatorSum<ITYPE, OTYPE> {
   }
 
   void FinalizeScores(std::vector<ScoreValue<OTYPE>>& predictions, OTYPE* Z, int add_second_class, int64_t*) const {
-    std::vector<OTYPE> scores(predictions.size(), 0);
-    auto its = scores.begin();
     if (this->use_base_values_) {
       ORT_ENFORCE(this->base_values_.size() == predictions.size());
       auto it = predictions.begin();
       auto it2 = this->base_values_.cbegin();
-      for (; it != predictions.end(); ++it, ++it2, ++its)
-        *its = it->score / this->n_trees_ + *it2;
+      for (; it != predictions.end(); ++it, ++it2)
+        it->score = it->score / this->n_trees_ + *it2;
     } else {
       auto it = predictions.begin();
-      for (; it != predictions.end(); ++it, ++its)
-        *its = it->score / this->n_trees_;
+      for (; it != predictions.end(); ++it)
+        it->score /= this->n_trees_;
     }
-    write_scores(scores, this->post_transform_, Z, add_second_class);
+    write_scores(predictions, this->post_transform_, Z, add_second_class);
   }
 };
 
@@ -348,7 +346,7 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
 
   int64_t _set_score_binary(int& write_additional_scores, const std::vector<ScoreValue<OTYPE>>& classes) const {
     ORT_ENFORCE(classes.size() == 2 || classes.size() == 1);
-    return classes.size() == 2
+    return (classes.size() == 2 && classes[1].has_score)
                ? _set_score_binary(write_additional_scores, classes[0].score, classes[0].has_score, classes[1].score, classes[1].has_score)
                : _set_score_binary(write_additional_scores, classes[0].score, classes[0].has_score, 0, 0);
   }
@@ -388,23 +386,28 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
     int write_additional_scores = -1;
     if (this->base_values_.size() == 2) {
       // add base_values
-      scores[1] = this->base_values_[1] + prediction.score;
+      prediction.score += this->base_values_[1];
+      scores[1] = prediction.score;
       scores[0] = -scores[1];
       //has_score = true;
       has_scores[1] = 1;
+      *Y = _set_score_binary(write_additional_scores, scores[0], has_scores[0], scores[1], has_scores[1]);
     } else if (this->base_values_.size() == 1) {
       // ONNX is vague about two classes and only one base_values.
-      scores[0] = prediction.score + this->base_values_[0];
-      //if (!has_scores[1])
-      //scores.pop_back();
+      prediction.score += this->base_values_[0];
       scores[0] = prediction.score;
+      scores.pop_back();
+      *Y = _set_score_binary(write_additional_scores, scores[0], has_scores[0], 0, 0);
     } else if (this->base_values_.size() == 0) {
-      //if (!has_score)
-      //  scores.pop_back();
       scores[0] = prediction.score;
+      scores.pop_back();
+      *Y = _set_score_binary(write_additional_scores, scores[0], has_scores[0], 0, 0);
+    } else {
+      scores[0] = prediction.score;
+      scores.pop_back();
+      *Y = _set_score_binary(write_additional_scores, scores[0], has_scores[0], 0, 0);
     }
 
-    *Y = _set_score_binary(write_additional_scores, scores[0], has_scores[0], scores[1], has_scores[1]);
     write_scores(scores, this->post_transform_, Z, write_additional_scores);
   }
 
@@ -415,7 +418,6 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
     int64_t maxclass = -1;
 
     int write_additional_scores = -1;
-    std::vector<OTYPE> preds;
     if (this->n_targets_or_classes_ > 2) {
       // add base values
       for (int64_t k = 0, end = static_cast<int64_t>(this->base_values_.size()); k < end; ++k) {
@@ -428,10 +430,6 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
       }
       get_max_weight(predictions, maxclass, maxweight);
       *Y = class_labels_[maxclass];
-      preds.resize(predictions.size());
-      auto it2 = predictions.cbegin();
-      for (auto it = preds.begin(); it != preds.end(); ++it, ++it2)
-        *it = it2->has_score ? it2->score : 0;
     } else {  // binary case
       ORT_ENFORCE(predictions.size() == 2);
       if (this->base_values_.size() == 2) {
@@ -449,41 +447,22 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
           predictions[1].score += this->base_values_[1];
           predictions[0].score += this->base_values_[0];
         }
-        preds.resize(2);
-        preds[0] = predictions[0].score;
-        preds[1] = predictions[1].score;
       } else if (this->base_values_.size() == 1) {
         // ONNX is vague about two classes and only one base_values.
         predictions[0].score += this->base_values_[0];
-        if (!predictions[1].has_score) {
-          preds.resize(1);
-          preds[0] = predictions[0].score;
-        } else {
-          preds.resize(2);
-          preds[0] = predictions[0].score;
-          preds[1] = predictions[1].score;
-        }
+        if (!predictions[1].has_score)
+          predictions.pop_back();
       } else if (this->base_values_.size() == 0) {
-        if (!predictions[1].has_score) {
-          preds.resize(1);
-          preds[0] = predictions[0].score;
-        } else {
-          preds.resize(2);
-          preds[0] = predictions[0].score;
-          preds[1] = predictions[1].score;
-        }
-      }
-      if (preds.size() == 0) {
-        ORT_ENFORCE(predictions.size() == 2);
-        preds.resize(2);
-        preds[0] = predictions[0].score;
-        preds[1] = predictions[1].score;
+        write_additional_scores = 3;
+        if (!predictions[1].has_score)
+          predictions.pop_back();
       }
 
       *Y = _set_score_binary(write_additional_scores, predictions);
     }
-
-    write_scores(preds, this->post_transform_, Z, write_additional_scores);
+    write_scores(predictions, this->post_transform_, Z, write_additional_scores);
+    if (predictions.size() == 1)
+      predictions.resize(2);
   }
 };
 
