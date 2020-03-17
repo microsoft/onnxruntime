@@ -1326,10 +1326,10 @@ Return true if all elements are true and false otherwise.
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Send data tensor to the specified destination.")
-      .Input(0, "Remote", "Remote dst rank. It mush be a scalar.", "TInt64")
-      .Input(1, "InputSignal", "Input control signal. It mush be a scalar.", "TBool")
+      .Input(0, "Remote", "Remote dst rank. It must be a scalar.", "TInt64")
+      .Input(1, "InputSignal", "Input control signal. It must be a scalar.", "TBool")
       .Input(2, "Data", "Tensors to send.", "V", OpSchema::Variadic, false)
-      .Output(0, "OutputSignal", "Output control signal. It mush be a scalar.", "TBool")
+      .Output(0, "OutputSignal", "Output control signal. It must be a scalar.", "TBool")
       .Attr("tag", "The tag of the message carrying Data.",
             AttributeProto::INT)
       .Attr("element_types", "Element types of the sent tensors.",
@@ -1373,9 +1373,9 @@ Return true if all elements are true and false otherwise.
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Receive a tensor from the the specified source.")
-      .Input(0, "Remote", "Remote src rank. It mush be a scalar.", "TInt64")
-      .Input(1, "InputSignal", "Input control signal. It mush be a scalar.", "TBool")
-      .Output(0, "OutputSignal", "Output control signal. It mush be a scalar.", "TBool")
+      .Input(0, "Remote", "Remote src rank. It must be a scalar.", "TInt64")
+      .Input(1, "InputSignal", "Input control signal. It must be a scalar.", "TBool")
+      .Output(0, "OutputSignal", "Output control signal. It must be a scalar.", "TBool")
       .Output(1, "Data", "The Received tensors.", "V", OpSchema::Variadic, false)
       .Attr("tag", "The tag of the message carrying Data.",
             AttributeProto::INT)
