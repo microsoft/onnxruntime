@@ -784,6 +784,7 @@ void addObjectMethods(py::module& m) {
         io_binding->Get()->ClearOutputs();
       });
 
+#ifdef ENABLE_TRAINING
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
   parameters.def(py::init())
       .def_readwrite("loss_output_name", &TrainingParameters::loss_output_name)
@@ -873,6 +874,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             }
           },
           R"pbdoc(Graph optimization level for this session.)pbdoc");
+#endif
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
@@ -1066,6 +1068,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       });
 
+#ifdef ENABLE_TRAINING
   py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
   training_session.def(py::init<SessionOptions, SessionObjectInitializer>())
       .def(py::init<SessionObjectInitializer, SessionObjectInitializer>())
@@ -1135,6 +1138,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         }
         ORT_THROW_IF_ERROR(sess->SetStateTensors(state_tensors, strict));
       });
+#endif
 
   py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())
       .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)

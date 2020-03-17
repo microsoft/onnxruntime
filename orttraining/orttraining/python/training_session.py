@@ -7,7 +7,7 @@ import sys
 import os
 
 from onnxruntime.capi import _pybind_state as C
-from onnxruntime.capi import InferenceSession, IOBinding
+from onnxruntime.capi.session import Session, InferenceSession, IOBinding
 
 
 class TrainingSession(InferenceSession):

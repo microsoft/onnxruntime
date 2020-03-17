@@ -142,12 +142,18 @@ endif()
 file(GLOB onnxruntime_backend_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/backend/*.py"
 )
-file(GLOB onnxruntime_python_srcs CONFIGURE_DEPENDS
+
+if (onnxruntime_ENABLE_TRAINING)
+  file(GLOB onnxruntime_python_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/*.py"
-)
-file(GLOB onnxruntime_training_python_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/*.py"
-)
+  )
+else()
+  file(GLOB onnxruntime_training_python_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/*.py"
+  )
+endif()
+
 file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/*.py"
 )
@@ -195,11 +201,6 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
-if (onnxruntime_ENABLE_TRAINING)
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_training_python_srcs}
-      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
-#endif
   COMMAND ${CMAKE_COMMAND} -E copy
       $<TARGET_FILE:onnxruntime_pybind11_state>
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
