@@ -81,7 +81,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       ("lambda", "Adam/Lamb lambda parameter", cxxopts::value<float>()->default_value("0.01"))
       ("epsilon", "Adam/Lamb epsilon parameter", cxxopts::value<float>()->default_value("1e-8"))
       ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
-      ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"));
+      ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("enable_gradient_clip", "Specify whether to enable gradient clipping for optimizers.",
         cxxopts::value<bool>()->default_value("true"));
   options

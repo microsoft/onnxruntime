@@ -140,7 +140,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("ratio_max", "Lamb max ratio parameter", cxxopts::value<float>()->default_value("5.0"))
       ("cuda_mem_limit_in_gb", "Max cuda memory ort can use, in GB", cxxopts::value<float>()->default_value("-1.0"))
       ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
-      ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"));
+      ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("enable_gradient_clip", "Specify whether to enable gradient clipping for optimizers.",
         cxxopts::value<bool>()->default_value("true"));
   options
