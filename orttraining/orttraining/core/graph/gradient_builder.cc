@@ -801,16 +801,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient) {
               SrcNodeAttributes())};
 }
 
-IMPLEMENT_GRADIENT_BUILDER(GetSparseSoftmaxCrossEntropyGradient) {
+IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossGradient) {
   if (GetSrcNodeInputSize() == 2) {
     return std::vector<NodeDef>{
-        NodeDef(OpDef{"SparseSoftmaxCrossEntropyGrad"},
+        NodeDef(OpDef{"SoftmaxCrossEntropyLossGrad", kMSDomain, 1},
                 {GO(0), O(1), I(1)},
                 {GI(0)},
                 SrcNodeAttributes())};
   } else if (GetSrcNodeInputSize() == 3) {
     return std::vector<NodeDef>{
-        NodeDef(OpDef{"SparseSoftmaxCrossEntropyGrad"},
+        NodeDef(OpDef{"SoftmaxCrossEntropyLossGrad", kMSDomain, 1},
                 {GO(0), O(1), I(1), I(2)},
                 {GI(0)},
                 SrcNodeAttributes())};

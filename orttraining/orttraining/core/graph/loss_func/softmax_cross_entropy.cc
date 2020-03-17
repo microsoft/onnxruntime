@@ -40,11 +40,11 @@ GraphAugmenter::GraphDefs SoftmaxCrossEntropy::operator()(
   return graph_defs;
 }
 
-GraphAugmenter::GraphDefs SparseSoftmaxCrossEntropy::operator()(
+GraphAugmenter::GraphDefs SoftmaxCrossEntropyLoss::operator()(
     const Graph& graph,
     const LossFunctionInfo& loss_func_info) {
   const VectorString& args = loss_func_info.loss_builder_args;
-  ORT_ENFORCE(args.size() == 2 || args.size() == 3, " Invalid loss_func_info for SparseSoftmaxCrossEntropy.");
+  ORT_ENFORCE(args.size() == 2 || args.size() == 3, " Invalid loss_func_info for SoftmaxCrossEntropyLoss.");
   const std::string& prediction_name = args[0];
   const std::string& label_name = args[1];
   const std::string& loss_name = loss_func_info.loss_name;
@@ -66,7 +66,7 @@ GraphAugmenter::GraphDefs SparseSoftmaxCrossEntropy::operator()(
       TypeProto* weight_type_proto = GetSparseTypeProto(prediction_arg,
                                                         ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
                                                         graph_defs);
-      new_nodes.emplace_back(NodeDef("SparseSoftmaxCrossEntropy",  // Op
+      new_nodes.emplace_back(NodeDef("SoftmaxCrossEntropyLoss",  // Op
                                      {ArgDef(prediction_name),
                                       ArgDef(label_name, label_type_proto),
                                       ArgDef(weight_name, weight_type_proto)},  // Inputs
@@ -76,7 +76,7 @@ GraphAugmenter::GraphDefs SparseSoftmaxCrossEntropy::operator()(
                                      "SoftmaxCrossEntropy"  // name
                                      ));
     } else {
-      new_nodes.emplace_back(NodeDef("SparseSoftmaxCrossEntropy",  // Op
+      new_nodes.emplace_back(NodeDef("SoftmaxCrossEntropyLoss",  // Op
                                      {ArgDef(prediction_name),
                                       ArgDef(label_name, label_type_proto)},  // Inputs
                                      {ArgDef(loss_name),

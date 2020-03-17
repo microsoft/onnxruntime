@@ -17,7 +17,7 @@ namespace training {
 // low-precision (FP16) arithmetic as appropriate/required. Currently, the plan is to use
 // FP16, by default, and use FP32 only in the following exceptional situations:
 // (a) Due to the unavailability of FP16 ops or kernels for some ops such as Trainable/Dropout.
-// (b) Due to the usefulness of full-precision in some ops such as SparseSoftmaxCrossEntropy.
+// (b) Due to the usefulness of full-precision in some ops such as SoftmaxCrossEntropyLoss.
 // Note that in the long term, it may be useful to extend ops such as ReduceSum with
 // an attribute to indicate that it should use a higher-precision accumulator internally
 // (e.g., to indicate that a FP16 ReduceSum should internally use 32bit precision).
@@ -33,8 +33,8 @@ namespace training {
 // The following is a list of ops, as well as functions, that will
 // continue to use 32-bit precision. Others will used reduced precision.
 static const std::unordered_set<std::string> FP32_Nodes = {
-    "SparseSoftmaxCrossEntropy",
-    "SparseSoftmaxCrossEntropyGrad"};
+    "SoftmaxCrossEntropyLoss",
+    "SoftmaxCrossEntropyLossGrad"};
 
 static bool IsFP32Node(const Node* node) {
   return FP32_Nodes.find(node->OpType()) != FP32_Nodes.cend();
@@ -53,8 +53,8 @@ static const std::unordered_map<std::string, std::vector<int>> stage2_fp32_node_
     {"TrainableDropoutGrad", {2}},
     {"Dropout", {1}},
     {"DropoutGrad", {2}},
-    {"SparseSoftmaxCrossEntropy", {0, 2}},
-    {"SparseSoftmaxCrossEntropyGrad", {0, 1, 3}},
+    {"SoftmaxCrossEntropyLoss", {0, 2}},
+    {"SoftmaxCrossEntropyLossGrad", {0, 1, 3}},
 };
 
 bool IsFP32(const std::unordered_map<std::string, std::vector<int>>& map, std::string opname, int argnum) {
@@ -235,7 +235,7 @@ Status TransformConstants(Graph& graph) {
 }
 
 // Stage 2 transformation: Introduce conversions from FP16 back to FP32 for ops such
-// as SparseSoftmaxCrossEntropy where FP32 precision is required.
+// as SoftmaxCrossEntropyLoss where FP32 precision is required.
 // Converts fp16 tensor --> Op --> fp16 tensor to
 // fp16 tensor --> Cast --> fp32 tensor --> Op --> fp32 tensor --> Cast --> fp16 tensor
 Status TransformStage2(Graph& graph) {

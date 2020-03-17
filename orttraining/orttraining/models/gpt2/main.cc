@@ -260,7 +260,7 @@ void setup_training_params(GPT2Parameters& params) {
   params.model_with_training_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw.onnx");
   params.model_actual_running_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw_running.onnx");
 
-  params.loss_func_info = LossFunctionInfo(OpDef("SparseSoftmaxCrossEntropy", kOnnxDomain),
+  params.loss_func_info = LossFunctionInfo(OpDef("SoftmaxCrossEntropyLoss", kOnnxDomain, 12),
                                            "mlm_loss",
                                            {/*prediction_name*/ "output",
                                             /*label_name*/ "labels"});

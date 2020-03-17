@@ -694,33 +694,9 @@ void RegisterGradientSchemas() {
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain to float, float16 and double tensors.");
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSoftmaxCrossEntropy)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
-      .Attr("reduction",
-            reduction_doc,
-            AttributeProto::STRING,
-            std::string("mean"))
-      .Input(0, "logits", "Unscaled log probabilities, (N+1)-D input of shape (-1, num_classes).", "T")
-      .Input(1, "label",
-             "label is N-D input whose shape should match that of logits. "
-             "It is a tensor of nonnegative integers, "
-             "where each element is the nonnegative integer label for the element of the batch.",
-             "Tind")
-      .Input(2, "weight", "weight for each sample. The shape is the same as label's", "T", OpSchema::Optional)
-      .Output(0, "Y", "loss.", "T")
-      .Output(1, "log_prob", "logsoftmax(logits)", "T", OpSchema::Optional)
-      .TypeConstraint("T",
-                      {"tensor(float16)", "tensor(float)", "tensor(double)"},
-                      "Constrain to float, float16 and double tensors.")
-      .TypeConstraint("Tind",
-                      {"tensor(int32)", "tensor(int64)"},
-                      "Constrain indices to integer types")
-      .SetDoc(R"DOC(SparseSoftmaxCrossEntropy)DOC");
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSoftmaxCrossEntropyGrad)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyLossGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Attr("reduction",
             reduction_doc,
             AttributeProto::STRING,
@@ -731,16 +707,13 @@ void RegisterGradientSchemas() {
              "label is N-D input whose shape should match that of logits. "
              "It is a tensor of nonnegative integers, "
              "where each element is the nonnegative integer label for the element of the batch.",
-             "Tind")
+             "T")
       .Input(3, "weight", "weight for each sample. The shape is the same as label's", "T", OpSchema::Optional)
       .Output(0, "d_logits", "gradient of logits", "T")
       .TypeConstraint("T",
                       {"tensor(float16)", "tensor(float)", "tensor(double)"},
                       "Constrain to float, float16 and double tensors.")
-      .TypeConstraint("Tind",
-                      {"tensor(int32)", "tensor(int64)"},
-                      "Constrain indices to integer types")
-      .SetDoc(R"DOC(SparseSoftmaxCrossEntropyGrad)DOC");
+      .SetDoc(R"DOC(SoftmaxCrossEntropyLossGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
       .SetDomain(kOnnxDomain)

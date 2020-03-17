@@ -45,27 +45,27 @@ class SoftmaxCrossEntropyGrad final : public LossBase {
 };
 
 template <typename T>
-class SparseSoftmaxCrossEntropy final : public LossBase {
+class SoftmaxCrossEntropyLoss final : public LossBase {
  public:
-  explicit SparseSoftmaxCrossEntropy(const OpKernelInfo& info) : LossBase(info) {
+  explicit SoftmaxCrossEntropyLoss(const OpKernelInfo& info) : LossBase(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SparseSoftmaxCrossEntropy);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SoftmaxCrossEntropyLoss);
 };
 
 template <typename T>
-class SparseSoftmaxCrossEntropyGrad final : public LossBase {
+class SoftmaxCrossEntropyLossGrad final : public LossBase {
  public:
-  explicit SparseSoftmaxCrossEntropyGrad(const OpKernelInfo& info) : LossBase(info) {
+  explicit SoftmaxCrossEntropyLossGrad(const OpKernelInfo& info) : LossBase(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SparseSoftmaxCrossEntropyGrad);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SoftmaxCrossEntropyLossGrad);
 };
 
 }  // namespace contrib

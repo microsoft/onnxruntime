@@ -57,7 +57,7 @@ void LossFunctionRegistry::RegisterNonOperatorLossFunctions() {
   REGISTER_NON_OPERATOR_LOSS_FUNCTION(MeanSquaredError);
   REGISTER_NON_OPERATOR_LOSS_FUNCTION(BertLoss);
   REGISTER_NON_OPERATOR_LOSS_FUNCTION(SoftmaxCrossEntropy);
-  REGISTER_NON_OPERATOR_LOSS_FUNCTION(SparseSoftmaxCrossEntropy);
+  REGISTER_NON_OPERATOR_LOSS_FUNCTION(SoftmaxCrossEntropyLoss);
 }
 }  // namespace training
 }  // namespace onnxruntime

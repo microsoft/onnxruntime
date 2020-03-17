@@ -26,21 +26,21 @@ void SoftMaxCrossEntropyGradImpl(
     T* output_data,
     size_t count);
 
-template <typename T, typename Tin>
-void SparseSoftmaxCrossEntropyImpl(
+template <typename T>
+void SoftmaxCrossEntropyLossImpl(
     const T* log_prob,
-    const Tin* label,
+    const T* label,
     const T* weight,
     const T* normalize_factor,
     T* output_data,
     size_t count,
     size_t label_depth);
 
-template <typename T, typename Tin>
-void SparseSoftmaxCrossEntropyGradImpl(
+template <typename T>
+void SoftmaxCrossEntropyLossGradImpl(
     const T* dY,
     const T* log_prob,
-    const Tin* label,
+    const T* label,
     const T* weight,
     const T* normalize_factor,
     T* output_data,
@@ -81,19 +81,19 @@ class SoftmaxCrossEntropyGrad final : public LossBase {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-template <typename T, typename Tin>
-class SparseSoftmaxCrossEntropy final : public LossBase {
+template <typename T>
+class SoftmaxCrossEntropyLoss final : public LossBase {
  public:
-  SparseSoftmaxCrossEntropy(const OpKernelInfo& info) : LossBase(info) {
+  SoftmaxCrossEntropyLoss(const OpKernelInfo& info) : LossBase(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-template <typename T, typename Tin>
-class SparseSoftmaxCrossEntropyGrad final : public LossBase {
+template <typename T>
+class SoftmaxCrossEntropyLossGrad final : public LossBase {
  public:
-  SparseSoftmaxCrossEntropyGrad(const OpKernelInfo& info) : LossBase(info) {
+  SoftmaxCrossEntropyLossGrad(const OpKernelInfo& info) : LossBase(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;

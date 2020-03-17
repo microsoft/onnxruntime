@@ -34,7 +34,7 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"TrainableDropout", {1}},
         {"Dropout", {1}},
         {"Slice", {1, 2, 3, 4}},
-        {"SparseSoftmaxCrossEntropy", {1, 2}},
+        {"SoftmaxCrossEntropyLoss", {1, 2}},
         {"ConstantOfShape", {0}},
         {"Scatter", {1}}};
 
