@@ -1344,7 +1344,7 @@ Return true if all elements are true and false otherwise.
           "Constrain types to boolean tensors.")
       .TypeConstraint("V", OpSchema::all_tensor_types(), "All Tensor types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        if (ctx.getNumInputs() >= 3)
+        if (ctx.getNumInputs() < 3)
           fail_shape_inference("Send must have at least three inputs.");
         if (ctx.getNumOutputs() != 1)
           fail_shape_inference("Send must have one output.");
@@ -1381,7 +1381,7 @@ Return true if all elements are true and false otherwise.
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         if (ctx.getNumInputs() != 2)
           fail_shape_inference("Recv must have two inputs.");
-        if (ctx.getNumOutputs() >= 2)
+        if (ctx.getNumOutputs() < 2)
           fail_shape_inference("Recv must have at least two outputs.");
 
         updateOutputShape(ctx, 0, {});
