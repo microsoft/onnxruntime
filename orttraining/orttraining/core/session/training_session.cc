@@ -5,11 +5,11 @@
 
 #include "orttraining/core/session/training_session.h"
 
+#include "core/framework/data_transfer_utils.h"
 #include "core/graph/model.h"
 #include "orttraining/core/graph/loss_function_builder.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/framework/checkpointing.h"
-#include "orttraining/core/framework/data_transfer_utils.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/optimizer_graph_builder_registry.h"
