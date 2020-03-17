@@ -121,8 +121,6 @@ def runBertTrainingTest(gradient_accumulation_steps, use_mixed_precision, allred
         return actual_losses, eval_loss
 
 class TestOrtTrainer(unittest.TestCase):
-    # testMNISTTrainingAndTesting depends on nll_loss which is not in pytorch yet. it also depends on torchvision plus its dependencies 
-    # disable testMNISTTrainingAndTesting until nll_loss is in pytorch.
     def testMNISTTrainingAndTesting(self):
         class NeuralNet(nn.Module):
             def __init__(self, input_size, hidden_size, num_classes):
