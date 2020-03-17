@@ -9,7 +9,8 @@ namespace onnxruntime {
 
 class SliceBase {
  protected:
-  SliceBase(const OpKernelInfo& info, bool dynamic = false) {
+  SliceBase(const OpKernelInfo& info, bool dynamic = false)
+      : dynamic_(dynamic) {
     if (!dynamic) {
       auto has_starts = info.GetAttrs("starts", attr_starts_).IsOK();
       auto has_ends = info.GetAttrs("ends", attr_ends_).IsOK();
@@ -49,13 +50,21 @@ class SliceBase {
                             std::vector<int64_t>& input_axes,
                             std::vector<int64_t>& input_steps) const;
 
+  Status Compute(OpKernelContext* context) const;
+
+ private:
+  bool dynamic_;
   std::vector<int64_t> attr_starts_, attr_ends_, attr_axes_;
 };
 
-template <bool dynamic>
-struct Slice final : public OpKernel, public SliceBase {
-  Slice(const OpKernelInfo& info) : OpKernel(info), SliceBase(info, dynamic) {}
-  Status Compute(OpKernelContext* context) const override;
+struct Slice1 final : public OpKernel, public SliceBase {
+  Slice1(const OpKernelInfo& info) : OpKernel(info), SliceBase(info, false) {}
+  Status Compute(OpKernelContext* context) const override { return SliceBase::Compute(context); }
+};
+
+struct Slice10 final : public OpKernel, public SliceBase {
+  Slice10(const OpKernelInfo& info) : OpKernel(info), SliceBase(info, true) {}
+  Status Compute(OpKernelContext* context) const override { return SliceBase::Compute(context); }
 };
 
 }  // namespace onnxruntime

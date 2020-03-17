@@ -15,7 +15,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
-    Slice<true>);
+    Slice10);
 
 }  // namespace contrib
 }  // namespace onnxruntime

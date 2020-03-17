@@ -15,7 +15,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
     1, 9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
-    Slice<false>);
+    Slice1);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
@@ -24,7 +24,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),
                                  DataTypeImpl::GetTensorType<int64_t>()}),
-    Slice<true>);
+    Slice10);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Slice,
@@ -33,7 +33,7 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),
                                  DataTypeImpl::GetTensorType<int64_t>()}),
-    Slice<true>);
+    Slice10);
 
 namespace {
 // std::clamp doesn't exist until C++17 so create a local version
@@ -319,8 +319,7 @@ static Status SliceImpl(OpKernelContext* ctx,
   return Status::OK();
 }
 
-template <bool dynamic>
-Status Slice<dynamic>::Compute(OpKernelContext* ctx) const {
+Status SliceBase::Compute(OpKernelContext* ctx) const {
   const auto* input_tensor_ptr = ctx->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor_ptr != nullptr, "Missing input tensor to be processed");
   const auto& input_tensor = *input_tensor_ptr;
@@ -335,7 +334,7 @@ Status Slice<dynamic>::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t>* p_flattened_output_dims = &flattened_output_dims;
 
   // Slice V10 & DynamicSlice
-  if (dynamic) {
+  if (dynamic_) {
     std::vector<int64_t> input_starts;
     std::vector<int64_t> input_ends;
     std::vector<int64_t> input_axes;
