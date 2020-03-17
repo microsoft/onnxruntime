@@ -461,7 +461,7 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
   std::vector<onnxruntime::NodeArg*> node_input_defs;
   std::vector<onnxruntime::NodeArg*> output_defs;
 
-  for (auto i = 0; i < input_data_.size(); ++i) {
+  for (size_t i = 0; i < input_data_.size(); ++i) {
     node_input_defs.push_back(&input_data_[i].def_);
   }
 

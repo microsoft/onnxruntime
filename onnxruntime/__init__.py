@@ -9,7 +9,14 @@ For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://ak
 __version__ = "1.2.0"
 __author__ = "Microsoft"
 
-from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, RunOptions, SessionOptions, set_default_logger_severity, NodeArg, ModelMetadata, GraphOptimizationLevel, ExecutionMode, OrtDevice, SessionIOBinding, TrainingParameters
-from onnxruntime.capi.session import InferenceSession, IOBinding, TrainingSession
+from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, RunOptions, SessionOptions, set_default_logger_severity, NodeArg, ModelMetadata, GraphOptimizationLevel, ExecutionMode, OrtDevice, SessionIOBinding
+from onnxruntime.capi.session import InferenceSession, IOBinding
 from onnxruntime.capi import onnxruntime_validation
+
+try:
+    from onnxruntime.capi._pybind_state import TrainingParameters
+    from onnxruntime.capi.session import TrainingSession
+except ImportError:
+    print("ONNX Runtime Training identifiers are unavailable.")
+
 onnxruntime_validation.check_distro_info()

@@ -1,22 +1,25 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "onnxruntime_pybind_exceptions.h"
-#include "onnxruntime_pybind_mlvalue.h"
+// needs to be included first to get around onnxruntime\cmake\external\onnx\onnx/common/constants.h(14): error C2513: 'bool': no variable declared before '='
+#include "core/framework/tensorprotoutils.h"
+
+#include "python/onnxruntime_pybind_exceptions.h"
+#include "python/onnxruntime_pybind_mlvalue.h"
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
 
+#include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/session_options.h"
 #include "core/framework/bfc_arena.h"
-#include "core/framework/random_seed.h"
+#include "core/session/IOBinding.h"
 
 #if USE_CUDA
 #define BACKEND_PROC "GPU"
@@ -88,16 +91,15 @@
 #include "core/providers/cpu/cpu_provider_factory.h"
 
 #ifdef ENABLE_TRAINING
-#include "core/session/IOBinding.h"
+#include "core/framework/random_seed.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/mpi_setup.h"
-#include "orttraining/core/framework/data_transfer_utils.h"
-#endif
+#endif  // ENABLE_TRAINING
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
-int cuda_device_id = 0;
+OrtDevice::DeviceId cuda_device_id = 0;
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
@@ -141,7 +143,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar
 #endif  // _MSC_VER
 
 namespace onnxruntime {
-using namespace training;
 namespace python {
 
 namespace py = pybind11;
@@ -214,34 +215,6 @@ static std::string GetDeviceName(const OrtDevice& device) {
       throw std::runtime_error("Unknow device type:" + std::to_string(device.Type()));
   }
 }
-
-struct TrainingParameters {
-  std::string loss_output_name;
-  std::unordered_set<std::string> weights_to_train;
-  std::unordered_set<std::string> weights_not_to_train;
-  onnxruntime::training::TrainingSession::ImmutableWeights immutable_weights;
-
-  // optimizer
-  std::string training_optimizer_name;
-  std::string loss_scale_input_name;
-  std::string scaled_loss_output_name;
-  std::string lr_params_feed_name = "Learning_Rate";
-  std::unordered_map<std::string, std::unordered_map<std::string, float>> optimizer_attributes_map;
-  bool use_fp16_moments = false;
-
-  bool use_mixed_precision = false;
-  bool allreduce_post_accumulation = false;
-  float loss_scale = 0.0f;
-  int world_rank = 0;
-  int world_size = 1;
-  int local_rank = 0;
-  int local_size = 1;
-  int gradient_accumulation_steps = 1;
-  int data_parallel_size = 1;
-  int horizontal_parallel_size = 1;
-  bool partition_optimizer = false;
-  int seed = -1;
-};
 
 template <>
 void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
@@ -409,99 +382,6 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
   OrtPybindThrowIfError(sess->Initialize());
 }
 
-// TODO: this method does not handle parallel optimization.
-static void ConfigureSessionForTraining(
-    training::TrainingSession* sess, TrainingParameters& parameters) {
-    //TODO tix, refactor the mpi related code to populate all fields correctly by default.
-    ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size);
-    ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size);
-    if (parameters.world_size % parameters.horizontal_parallel_size != 0) {
-      throw std::runtime_error("Cannot split horizontal parallel group because world_size is not divisible");
-    }
-
-    auto data_group_size = parameters.world_size / parameters.horizontal_parallel_size;
-    if (data_group_size != parameters.data_parallel_size) {
-      std::cout << "WARNING: data_parallel_size is not correct, tuned automatically to "
-                << data_group_size << std::endl;
-      parameters.data_parallel_size = data_group_size;
-    }
-#ifdef USE_HOROVOD
-  // this condition block is temporary.
-  // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
-  // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
-  bool use_nccl = parameters.allreduce_post_accumulation;
-  if (!use_nccl && parameters.world_size > 1) {
-    auto mpi_context = setup_horovod();
-    std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
-    std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
-    std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
-    std::cout << "mpi_context.local_size: " << mpi_context.local_size << std::endl;
-    parameters.local_size = mpi_context.local_size;
-    parameters.local_rank = mpi_context.local_rank;
-  }
-#endif
-
-  training::TrainingSession::TrainingConfiguration config{};
-  config.weight_names_to_train = parameters.weights_to_train;
-  config.weight_names_to_not_train = parameters.weights_not_to_train;
-  config.immutable_weights = parameters.immutable_weights;
-
-  config.set_gradients_as_graph_outputs = true;
-
-  config.gradient_accumulation_steps = parameters.gradient_accumulation_steps;
-
-  config.distributed_config.world_rank = parameters.world_rank;
-  config.distributed_config.world_size = parameters.world_size;
-  config.distributed_config.local_rank = parameters.local_rank;
-  config.distributed_config.local_size = parameters.local_size;
-  config.distributed_config.data_parallel_size = parameters.data_parallel_size;
-  config.distributed_config.horizontal_parallel_size = parameters.horizontal_parallel_size;
-
-  if (parameters.use_mixed_precision) {
-    training::TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
-    mp.add_loss_scaling = false;
-    mp.use_fp16_initializers = true;
-
-    config.mixed_precision_config = mp;
-  }
-
-  config.loss_name =
-      parameters.use_mixed_precision ? parameters.scaled_loss_output_name : parameters.loss_output_name;
-
-  if (!parameters.training_optimizer_name.empty()) {
-    training::TrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
-    opt.name = parameters.training_optimizer_name;
-    opt.learning_rate_input_name = parameters.lr_params_feed_name;
-    opt.weight_attributes_generator = [&parameters](const std::string& weight_name) {
-      const auto it = parameters.optimizer_attributes_map.find(weight_name);
-      ORT_ENFORCE(
-          it != parameters.optimizer_attributes_map.end(),
-          "Failed to find attribute map for weight ", weight_name);
-      return it->second;
-    };
-    opt.use_fp16_moments = parameters.use_fp16_moments;
-    opt.do_all_reduce_in_fp16 = true;
-    // TODO: this mapping is temporary.
-    // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
-    // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
-    // eventually we will have one all reduce kernel and let opt to have
-    // an allreduce_post_accumulation option and remove the use_nccl option.
-    opt.use_nccl = parameters.allreduce_post_accumulation;
-    opt.partition_optimizer = parameters.partition_optimizer;
-
-    config.optimizer_config = opt;
-  }
-
-  if (parameters.seed > 0) {
-    utils::SetStaticRandomSeed(static_cast<uint32_t>(parameters.seed));
-    std::cout << "Random seed is set to " << parameters.seed << std::endl;
-  }
-
-  training::TrainingSession::TrainingConfigurationResult config_result{};
-
-  OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
-}
-
 void addGlobalMethods(py::module& m) {
   m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
@@ -586,7 +466,7 @@ void addGlobalMethods(py::module& m) {
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
 #ifdef USE_CUDA
-  m.def("set_cuda_device_id", [](const int id) { cuda_device_id = id; });
+  m.def("set_cuda_device_id", [](const int id) { cuda_device_id = static_cast<OrtDevice::DeviceId>(id); });
   m.def("set_cuda_mem_limit", [](const int64_t limit) {
     cuda_mem_limit = static_cast<size_t>(limit);
   });
@@ -774,26 +654,6 @@ void addObjectMethods(py::module& m) {
       .def("clear_binding_outputs", [](SessionIOBinding* io_binding) -> void {
         io_binding->Get()->ClearOutputs();
       });
-
-  py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
-  parameters.def(py::init())
-      .def_readwrite("loss_output_name", &TrainingParameters::loss_output_name)
-      .def_readwrite("immutable_weights", &TrainingParameters::immutable_weights)
-      .def_readwrite("weights_not_to_train", &TrainingParameters::weights_not_to_train)
-      .def_readwrite("weights_to_train", &TrainingParameters::weights_to_train)
-      .def_readwrite("loss_scale_input_name", &TrainingParameters::loss_scale_input_name)
-      .def_readwrite("scaled_loss_output_name", &TrainingParameters::scaled_loss_output_name)
-      .def_readwrite("training_optimizer_name", &TrainingParameters::training_optimizer_name)
-      .def_readwrite("lr_params_feed_name", &TrainingParameters::lr_params_feed_name)
-      .def_readwrite("optimizer_attributes_map", &TrainingParameters::optimizer_attributes_map)
-      .def_readwrite("use_fp16_moments", &TrainingParameters::use_fp16_moments)
-      .def_readwrite("use_mixed_precision", &TrainingParameters::use_mixed_precision)
-      .def_readwrite("allreduce_post_accumulation", &TrainingParameters::allreduce_post_accumulation)
-      .def_readwrite("loss_scale", &TrainingParameters::loss_scale)
-      .def_readwrite("world_rank", &TrainingParameters::world_rank)
-      .def_readwrite("world_size", &TrainingParameters::world_size)
-      .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
-      .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer);
 
   py::class_<SessionOptions>
       sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
@@ -1057,12 +917,170 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       });
 
+  py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())
+      .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)
+      .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
+      .export_values();
+}
+
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
+static struct {
+  PyMemAllocatorEx mem;
+  PyMemAllocatorEx raw;
+  PyMemAllocatorEx obj;
+} allocators;
+#endif
+
+#ifdef ENABLE_TRAINING
+namespace {
+struct TrainingParameters {
+  std::string loss_output_name;
+  std::unordered_set<std::string> weights_to_train;
+  std::unordered_set<std::string> weights_not_to_train;
+  onnxruntime::training::TrainingSession::ImmutableWeights immutable_weights;
+
+  // optimizer
+  std::string training_optimizer_name;
+  std::string loss_scale_input_name;
+  std::string scaled_loss_output_name;
+  std::string lr_params_feed_name = "Learning_Rate";
+  std::unordered_map<std::string, std::unordered_map<std::string, float>> optimizer_attributes_map;
+  bool use_fp16_moments = false;
+
+  bool use_mixed_precision = false;
+  bool allreduce_post_accumulation = false;
+  float loss_scale = 0.0f;
+  int world_rank = 0;
+  int world_size = 1;
+  int local_rank = 0;
+  int local_size = 1;
+  int gradient_accumulation_steps = 1;
+  int data_parallel_size = 1;
+  int horizontal_parallel_size = 1;
+  bool partition_optimizer = false;
+  int seed = -1;
+};
+
+// TODO: this method does not handle parallel optimization.
+void ConfigureSessionForTraining(
+    training::TrainingSession* sess, TrainingParameters& parameters) {
+  //TODO tix, refactor the mpi related code to populate all fields correctly by default.
+  ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size);
+  ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size);
+  if (parameters.world_size % parameters.horizontal_parallel_size != 0) {
+    throw std::runtime_error("Cannot split horizontal parallel group because world_size is not divisible");
+  }
+
+  auto data_group_size = parameters.world_size / parameters.horizontal_parallel_size;
+  if (data_group_size != parameters.data_parallel_size) {
+    std::cout << "WARNING: data_parallel_size is not correct, tuned automatically to "
+              << data_group_size << std::endl;
+    parameters.data_parallel_size = data_group_size;
+  }
+#ifdef USE_HOROVOD
+  // this condition block is temporary.
+  // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
+  // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
+  bool use_nccl = parameters.allreduce_post_accumulation;
+  if (!use_nccl && parameters.world_size > 1) {
+    auto mpi_context = training::setup_horovod();
+    std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
+    std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
+    std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
+    std::cout << "mpi_context.local_size: " << mpi_context.local_size << std::endl;
+    parameters.local_size = mpi_context.local_size;
+    parameters.local_rank = mpi_context.local_rank;
+  }
+#endif
+
+  training::TrainingSession::TrainingConfiguration config{};
+  config.weight_names_to_train = parameters.weights_to_train;
+  config.weight_names_to_not_train = parameters.weights_not_to_train;
+  config.immutable_weights = parameters.immutable_weights;
+
+  config.set_gradients_as_graph_outputs = true;
+
+  config.gradient_accumulation_steps = parameters.gradient_accumulation_steps;
+
+  config.distributed_config.world_rank = parameters.world_rank;
+  config.distributed_config.world_size = parameters.world_size;
+  config.distributed_config.local_rank = parameters.local_rank;
+  config.distributed_config.local_size = parameters.local_size;
+  config.distributed_config.data_parallel_size = parameters.data_parallel_size;
+  config.distributed_config.horizontal_parallel_size = parameters.horizontal_parallel_size;
+
+  if (parameters.use_mixed_precision) {
+    training::TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
+    mp.add_loss_scaling = false;
+    mp.use_fp16_initializers = true;
+
+    config.mixed_precision_config = mp;
+  }
+
+  config.loss_name =
+      parameters.use_mixed_precision ? parameters.scaled_loss_output_name : parameters.loss_output_name;
+
+  if (!parameters.training_optimizer_name.empty()) {
+    training::TrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
+    opt.name = parameters.training_optimizer_name;
+    opt.learning_rate_input_name = parameters.lr_params_feed_name;
+    opt.weight_attributes_generator = [&parameters](const std::string& weight_name) {
+      const auto it = parameters.optimizer_attributes_map.find(weight_name);
+      ORT_ENFORCE(
+          it != parameters.optimizer_attributes_map.end(),
+          "Failed to find attribute map for weight ", weight_name);
+      return it->second;
+    };
+    opt.use_fp16_moments = parameters.use_fp16_moments;
+    opt.do_all_reduce_in_fp16 = true;
+    // TODO: this mapping is temporary.
+    // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
+    // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
+    // eventually we will have one all reduce kernel and let opt to have
+    // an allreduce_post_accumulation option and remove the use_nccl option.
+    opt.use_nccl = parameters.allreduce_post_accumulation;
+    opt.partition_optimizer = parameters.partition_optimizer;
+
+    config.optimizer_config = opt;
+  }
+
+  if (parameters.seed > 0) {
+    utils::SetStaticRandomSeed(static_cast<uint32_t>(parameters.seed));
+    std::cout << "Random seed is set to " << parameters.seed << std::endl;
+  }
+
+  training::TrainingSession::TrainingConfigurationResult config_result{};
+
+  OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
+}
+
+void addObjectMethodsForTraining(py::module& m) {
+  py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
+  parameters.def(py::init())
+      .def_readwrite("loss_output_name", &TrainingParameters::loss_output_name)
+      .def_readwrite("immutable_weights", &TrainingParameters::immutable_weights)
+      .def_readwrite("weights_not_to_train", &TrainingParameters::weights_not_to_train)
+      .def_readwrite("weights_to_train", &TrainingParameters::weights_to_train)
+      .def_readwrite("loss_scale_input_name", &TrainingParameters::loss_scale_input_name)
+      .def_readwrite("scaled_loss_output_name", &TrainingParameters::scaled_loss_output_name)
+      .def_readwrite("training_optimizer_name", &TrainingParameters::training_optimizer_name)
+      .def_readwrite("lr_params_feed_name", &TrainingParameters::lr_params_feed_name)
+      .def_readwrite("optimizer_attributes_map", &TrainingParameters::optimizer_attributes_map)
+      .def_readwrite("use_fp16_moments", &TrainingParameters::use_fp16_moments)
+      .def_readwrite("use_mixed_precision", &TrainingParameters::use_mixed_precision)
+      .def_readwrite("allreduce_post_accumulation", &TrainingParameters::allreduce_post_accumulation)
+      .def_readwrite("loss_scale", &TrainingParameters::loss_scale)
+      .def_readwrite("world_rank", &TrainingParameters::world_rank)
+      .def_readwrite("world_size", &TrainingParameters::world_size)
+      .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
+      .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer);
+
   py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
   training_session.def(py::init<SessionOptions, SessionObjectInitializer>())
       .def(py::init<SessionObjectInitializer, SessionObjectInitializer>())
       .def("finalize", [](py::object) {
 #ifdef USE_HOROVOD
-        shutdown_horovod();
+        training::shutdown_horovod();
 #endif
       })
       .def("load_model", [](onnxruntime::training::TrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
@@ -1126,20 +1144,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         }
         ORT_THROW_IF_ERROR(sess->SetStateTensors(state_tensors, strict));
       });
-
-  py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())
-      .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)
-      .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
-      .export_values();
 }
-
-#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
-static struct {
-  PyMemAllocatorEx mem;
-  PyMemAllocatorEx raw;
-  PyMemAllocatorEx obj;
-} allocators;
-#endif
+}  // namespace
+#endif  // ENABLE_TRAINING
 
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
@@ -1209,6 +1216,10 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
   addGlobalMethods(m);
   addObjectMethods(m);
+
+#ifdef ENABLE_TRAINING
+  addObjectMethodsForTraining(m);
+#endif  // ENABLE_TRAINING
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
   addOpSchemaSubmodule(m);

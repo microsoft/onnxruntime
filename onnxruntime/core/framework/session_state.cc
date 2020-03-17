@@ -6,6 +6,7 @@
 #include <sstream>
 
 #include "core/common/logging/logging.h"
+#include "core/common/safeint.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/utils.h"
@@ -242,12 +243,12 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         if (!arg->Shape())
           continue;
         size_t size = 0;
-        int64_t len = 1;
+        SafeInt<size_t> len = 1;
         for (auto& dim : arg->Shape()->dim()) {
           if (dim.has_dim_param()) {
             auto it = map.find(dim.dim_param());
             if (it == map.end()) {
-              return Status(ONNXRUNTIME, FAIL, "Unknow shape found in memory pattern compute");
+              return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute");
             }
             len *= it->second;
           } else {
