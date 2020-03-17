@@ -195,9 +195,11 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+if (onnxruntime_ENABLE_TRAINING)
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_training_python_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+#endif
   COMMAND ${CMAKE_COMMAND} -E copy
       $<TARGET_FILE:onnxruntime_pybind11_state>
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
