@@ -612,7 +612,7 @@ public:
                             :  detectPositive                    ? DML_IS_INFINITY_MODE_POSITIVE
                             :                                      DML_IS_INFINITY_MODE_NEGATIVE;
 
-        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_CLIP, &opDesc}, kernelInfo);
+        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_IS_INFINITY, &opDesc}, kernelInfo);
     }
 };
 

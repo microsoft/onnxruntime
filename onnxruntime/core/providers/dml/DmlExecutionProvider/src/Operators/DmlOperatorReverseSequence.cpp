@@ -9,14 +9,13 @@
 namespace Dml
 {
 
-class DmlOperatorReverseSequence : public DmlOperator, OneHotHelper
+class DmlOperatorReverseSequence : public DmlOperator
 {
 public:
     using Self = DmlOperatorReverseSequence;
 
     DmlOperatorReverseSequence(const MLOperatorKernelCreationContext& kernelCreationContext)
-    :   DmlOperator(kernelCreationContext), 
-        OneHotHelper(kernelCreationContext, kernelCreationContext.GetTensorShapeDescription())
+    :   DmlOperator(kernelCreationContext)
     {
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == 2);
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1);
@@ -24,21 +23,23 @@ public:
 
         std::vector<uint32_t> inputDimensions = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0);
         std::vector<uint32_t> sequenceLengthDimensions = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(1);
+        const uint32_t inputRank = static_cast<uint32_t>(inputDimensions.size());
 
         // Read axis.
-        int32_t onnxAxis = kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::TimeAxis, 0);
-        onnxAxis = HandleNegativeAxis(onnxAxis, static_cast<uint32_t>(inputDimensions.size()));
-        const uint32_t dmlAxis = GetDmlAdjustedAxis(onnxAxis, onnxAxis, m_inputTensorDescs.front().GetDimensionCount());
+        const int32_t batchAxis = HandleNegativeAxis(kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::BatchAxis, 0), inputRank);
+        const int32_t timeAxis = HandleNegativeAxis(kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::TimeAxis, 0), inputRank);
+        const uint32_t dmlTimeAxis = GetDmlAdjustedAxis(timeAxis, inputRank, m_inputTensorDescs.front().GetDimensionCount());
+        ML_CHECK_VALID_ARGUMENT(timeAxis != batchAxis);
 
         // Fix up the sequence lengths tensor (originally 1D) to be rank compatible with input,
         // with all dimensions being the same as input except the active reversal axis.
         std::vector<uint32_t> adjustedSequenceLengthDimensions = inputDimensions;
-        adjustedSequenceLengthDimensions[onnxAxis] = 1;
+        adjustedSequenceLengthDimensions[timeAxis] = 1;
         ML_CHECK_VALID_ARGUMENT(ComputeElementCountFromDimensions(adjustedSequenceLengthDimensions), ComputeElementCountFromDimensions(sequenceLengthDimensions));
 
         m_inputTensorDescs[1] =
             TensorDesc(
-                m_inputTensorDescs[0].GetMlOperatorDataType(),
+                m_inputTensorDescs[1].GetMlOperatorDataType(),
                 gsl::make_span(adjustedSequenceLengthDimensions),
                 gsl::make_span(adjustedSequenceLengthDimensions),
                 TensorAxis::DoNotCoerce,
@@ -55,7 +56,7 @@ public:
         operatorDesc.InputTensor = &inputDescs[0];
         operatorDesc.SequenceLengthsTensor = &inputDescs[1];
         operatorDesc.OutputTensor = outputDescs.data();
-        operatorDesc.Axis = dmlAxis;
+        operatorDesc.Axis = dmlTimeAxis;
 
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_REVERSE_SUBSEQUENCES, &operatorDesc };
         SetDmlOperatorDesc(opDesc, kernelCreationContext);

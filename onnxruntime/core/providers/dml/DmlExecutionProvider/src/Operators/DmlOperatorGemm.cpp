@@ -13,19 +13,24 @@ public:
         :   DmlOperator(kernelInfo), 
             GemmHelper(kernelInfo, kernelInfo.GetTensorShapeDescription())
     {
-        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() >= 3);
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() >= 2);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
         DmlOperator::Initialize(kernelInfo);
 
+        bool containsBiasTensor = kernelInfo.IsInputValid(2);
+
         // Broadcast C tensor to the shape of the output tensor.
-        m_inputTensorDescs[2] = CreateTensorDescFromInput(
-            kernelInfo,
-            2,
-            TensorAxis::DoNotCoerce,
-            TensorAxis::W,
-            TensorAxis::RightAligned,
-            kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0)
+        if (containsBiasTensor)
+        {
+            m_inputTensorDescs[2] = CreateTensorDescFromInput(
+                kernelInfo,
+                2,
+                TensorAxis::DoNotCoerce,
+                TensorAxis::W,
+                TensorAxis::RightAligned,
+                kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0)
             );
+        }
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();

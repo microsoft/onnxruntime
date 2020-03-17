@@ -6,25 +6,39 @@
 namespace Dml
 {
 
-class DmlOperatorCumSum : public DmlOperator, OneHotHelper
+class DmlOperatorCumSum : public DmlOperator
 {
 public:
     using Self = DmlOperatorCumSum;
 
     DmlOperatorCumSum(const MLOperatorKernelCreationContext& kernelCreationContext)
-    :   DmlOperator(kernelCreationContext), 
-        OneHotHelper(kernelCreationContext, kernelCreationContext.GetTensorShapeDescription())
+    :   DmlOperator(kernelCreationContext)
     {
-        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == 1);
+        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() >= 1); // input, axis
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1);
-        DmlOperator::Initialize(kernelCreationContext);
+
+        std::vector<std::optional<uint32_t>> inputIndices = { 0 }; // The second tensor ('axis') is not bound, just 'input'.
+        std::vector<std::optional<uint32_t>> outputIndices = { 0 };
+        DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices);
         
         // Adjust the axis so it's in DML's terms rather than the original ONNX indexing.
         int32_t hasExclusiveSum = kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::Exclusive, 0);
         int32_t isReversed = kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::Reverse, 0);
-        int32_t onnxAxis = kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::Axis, -1);
+
+        // Axis defaults to 0 if tensor not present.
+        int32_t onnxAxis = 0;
+        if (kernelCreationContext.IsInputValid(1))
+        {
+            MLOperatorTensor axisTensor = kernelCreationContext.GetConstantInputTensor(1);
+            const uint32_t axisElementCount = ComputeElementCountFromDimensions(axisTensor.GetShape());
+            ML_CHECK_VALID_ARGUMENT(axisTensor.IsCpuData(), "CumSum's 'axis' tensor must be a CPU Tensor.");
+            ML_CHECK_VALID_ARGUMENT(axisElementCount == 1, "CumSum's 'axis' tensor must have one element.");
+
+            const void* tensorData = axisTensor.GetByteData();
+            onnxAxis = static_cast<int32_t>(ReadAsInt64(axisTensor.GetTensorDataType(), tensorData));
+        }
         uint32_t dmlAxis = GetDmlAdjustedAxis(onnxAxis, kernelCreationContext, m_inputTensorDescs.front().GetDimensionCount());
-        
+
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
