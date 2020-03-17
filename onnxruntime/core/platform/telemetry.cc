@@ -6,11 +6,11 @@
 
 namespace onnxruntime {
 
-void LogRuntimeError(HRESULT hr, uint32_t sessionId, const common::Status& status, const char* file,
+void LogRuntimeError(uint32_t sessionId, const common::Status& status, const char* file,
                      const char* function, uint32_t line)
 {
   const Env& env = Env::Default();
-  env.GetTelemetryProvider().LogRuntimeError(hr, sessionId, status, file, function, line);
+  env.GetTelemetryProvider().LogRuntimeError(sessionId, status, file, function, line);
 }
 
 void Telemetry::EnableTelemetryEvents() const {
@@ -51,9 +51,8 @@ void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, cons
   ORT_UNUSED_PARAMETER(use_fp16);
 }
 
-void Telemetry::LogRuntimeError(HRESULT hr, uint32_t session_id, const common::Status& status, const char* file,
-                                       const char* function, uint32_t line) const {
-  ORT_UNUSED_PARAMETER(hr);                                     
+void Telemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
+                                       const char* function, uint32_t line) const {                                  
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(status);
   ORT_UNUSED_PARAMETER(file);
