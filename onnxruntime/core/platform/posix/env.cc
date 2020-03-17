@@ -84,6 +84,7 @@ long int TempFailureRetry(TFunc retriable_operation, TFuncArgs&&... args) {
   return result;
 }
 
+// nftw() callback to remove a file
 int nftw_remove(
     const char* fpath, const struct stat* /*sb*/,
     int /*typeflag*/, struct FTW* /*ftwbuf*/) {
