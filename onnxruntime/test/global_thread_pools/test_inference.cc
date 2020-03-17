@@ -29,7 +29,7 @@ class CApiTestGlobalThreadPoolsWithProvider : public testing::Test, public ::tes
 };
 
 template <typename OutT>
-static void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
+static void RunSession(OrtAllocator& allocator, Ort::Session& session_object,
                        const std::vector<Input>& inputs,
                        const char* output_name,
                        const std::vector<int64_t>& dims_y,
@@ -39,7 +39,7 @@ static void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
   std::vector<const char*> input_names;
   for (size_t i = 0; i < inputs.size(); i++) {
     input_names.emplace_back(inputs[i].name);
-    ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(allocator->Info(allocator), const_cast<float*>(inputs[i].values.data()), inputs[i].values.size(), inputs[i].dims.data(), inputs[i].dims.size()));
+    ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(allocator.Info(&allocator), const_cast<float*>(inputs[i].values.data()), inputs[i].values.size(), inputs[i].dims.data(), inputs[i].dims.size()));
   }
 
   std::vector<Ort::Value> ort_outputs;
@@ -107,7 +107,7 @@ static void TestInference(Ort::Session& session,
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   Ort::Value value_y = Ort::Value::CreateTensor<float>(default_allocator.get(), expected_dims_y.data(), expected_dims_y.size());
 
-  RunSession<OutT>(default_allocator.get(),
+  RunSession<OutT>(*default_allocator,
                    session,
                    inputs,
                    output_name,

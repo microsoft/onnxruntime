@@ -1492,7 +1492,6 @@ static constexpr OrtApi ort_api_1_to_3 = {
     &OrtApis::ReleaseCustomOpDomain,
     // End of Version 1 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 2 - In development, feel free to add/remove/rearrange here
     &OrtApis::GetDenotationFromTypeInfo,
     &OrtApis::CastTypeInfoToMapTypeInfo,
     &OrtApis::CastTypeInfoToSequenceTypeInfo,
@@ -1510,8 +1509,9 @@ static constexpr OrtApi ort_api_1_to_3 = {
     &OrtApis::ModelMetadataLookupCustomMetadataMap,
     &OrtApis::ModelMetadataGetVersion,
     &OrtApis::ReleaseModelMetadata,
+    // End of Version 2 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 3
+    // Version 3 - In development, feel free to add/remove/rearrange here
     &OrtApis::CreateEnvWithGlobalThreadPools,
     &OrtApis::DisablePerSessionThreads,
 };

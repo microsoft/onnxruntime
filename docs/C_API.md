@@ -19,7 +19,7 @@ The basic idea here is to share a set of global threadpools across multiple sess
 is as follows
    * Populate ```ThreadingOptions```. Use the value of 0 for ORT to pick the defaults.
    * Create env using ```CreateEnvWithGlobalThreadPools()```
-   * Create session and call ```DisablePerSessionThreads()``` on the session
+   * Create session and call ```DisablePerSessionThreads()``` on the session options object
    * Call ```Run()``` as usual
 
 ## Usage Overview

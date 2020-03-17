@@ -14,7 +14,7 @@ class Environment;
 
 namespace test {
 
-const ::onnxruntime::Environment& GetEnvironment();
+const onnxruntime::Environment& GetEnvironment();
 
 /**
 Static logging manager with a CLog based sink so logging macros that use the default logger will work
