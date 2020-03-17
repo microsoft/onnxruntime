@@ -1,0 +1,176 @@
+<?xml version="1.0" ?>
+<Data>
+    <Table ID="Devices">
+        <ParameterTypes>
+            <ParameterType Name="Device">String</ParameterType>
+        </ParameterTypes>
+        <Row Name="CPU">
+            <Parameter Name="Device">CPU</Parameter>
+        </Row>
+        <Row Name="GPU">
+            <Parameter Name="Device">GPU</Parameter>
+        </Row>
+    </Table>
+
+    <Table ID="Models">
+        <ParameterTypes>
+            <ParameterType Name="ModelFileName">String</ParameterType>
+            <ParameterType Name="ModelInputOutputType">String</ParameterType>
+            <ParameterType Name="InputImages" Array="true">String</ParameterType>
+            <ParameterType Name="BatchSize">Int32</ParameterType>
+            <ParameterType Name="UseSessionOptions">Boolean</ParameterType>
+        </ParameterTypes>
+        <!-- We need a model takes Gray8 image as input-->
+        <Row Name="FNS-fns-candy_Bgr8_Batch2_1">
+            <Parameter Name="ModelFileName">fns-candy_Bgr8_Batch2.onnx</Parameter>
+            <Parameter Name="ModelInputOutputType">image</Parameter>
+            <Parameter Name="InputImages">
+                <Value>fish_720.png</Value>
+                <Value>fish_720.png</Value>
+            </Parameter>
+            <Parameter Name="BatchSize">2</Parameter>
+            <Parameter Name="UseSessionOptions">False</Parameter>
+        </Row>
+        <Row Name="FNS-fns-candy_Bgr8_Batch2_2">
+            <Parameter Name="ModelFileName">fns-candy_Bgr8_Batch2.onnx</Parameter>
+            <Parameter Name="ModelInputOutputType">image</Parameter>
+            <Parameter Name="InputImages">
+                <Value>1080.jpg</Value>
+                <Value>fish_720.png</Value>
+            </Parameter>
+            <Parameter Name="BatchSize">2</Parameter>
+            <Parameter Name="UseSessionOptions">False</Parameter>
+        </Row>
+
+        <Row Name="FNS-fns-candy_Bgr8_Batch2_4">
+            <Parameter Name="ModelFileName">fns-candy_Bgr8_Batch2.onnx</Parameter>
+            <Parameter Name="ModelInputOutputType">image</Parameter>
+            <Parameter Name="InputImages">
+                <Value>fish_720_Gray.png</Value>
+                <Value>fish_720.png</Value>
+            </Parameter>
+            <Parameter Name="BatchSize">2</Parameter>
+            <Parameter Name="UseSessionOptions">False</Parameter>
+        </Row>
+
+        <Row Name="FNS-fns-candy_Bgr8_Batch3_1">
+            <Parameter Name="ModelFileName">fns-candy_Bgr8_Batch3.onnx</Parameter>
+            <Parameter Name="ModelInputOutputType">image</Parameter>
+            <Parameter Name="InputImages">
+                <Value>1080.jpg</Value>
+                <Value>fish_720_Gray.png</Value>
+                <Value>fish_720.png</Value>
+            </Parameter>
+            <Parameter Name="BatchSize">3</Parameter>
+            <Parameter Name="UseSessionOptions">False</Parameter>
+        </Row>
+
+        <Row Name="FNS-fns-candy_Bgr8_Batch3_2">
+            <Parameter Name="ModelFileName">fns-candy_Bgr8_Batch3.onnx</Parameter>
+            <Parameter Name="ModelInputOutputType">image</Parameter>
+            <Parameter Name="InputImages">
+                <Value>1080.jpg</Value>
+                <Value>kitten_224.png</Value>
+                <Value>fish_720.png</Value>
+            </Parameter>
+            <Parameter Name="BatchSize">3</Parameter>
+            <Parameter Name="UseSessionOptions">False</Parameter>
+        </Row>
+
+        <Row Name="FNS-fns-candy_Bgr8_Batch3_3">
+            <Parameter Name="ModelFileName">fns-candy_Bgr8_tensor_Batch3.onnx</Parameter>
+            <Parameter Name="ModelInputOutputType">tensor</Parameter>
+            <Parameter Name="InputImages">
+                <Value>1080.jpg</Value>
+                <Value>fish_720_Gray.png</Value>
+                <Value>fish_720.png</Value>
+            </Parameter>
+            <Parameter Name="BatchSize">3</Parameter>
+            <Parameter Name="UseSessionOptions">False</Parameter>
+        </Row>
+
+        <Row Name="fns-candy_Bgr8_freeDimInput_Batch10">
+            <Parameter Name="ModelFileName">fns-candy_Bgr8_freeDimInput_Batch10.onnx</Parameter>
+            <Parameter Name="ModelInputOutputType">image</Parameter>
+            <Parameter Name="InputImages">
+            </Parameter>
+            <Parameter Name="BatchSize">10</Parameter>
+            <Parameter Name="UseSessionOptions">False</Parameter>
+        </Row>
+
+        <Row Name="fns-candy_Bgr8_freeDimInput_BatchFree_NoOpt">
+            <Parameter Name="ModelFileName">fns-candy_Bgr8.onnx</Parameter>
+            <Parameter Name="ModelInputOutputType">image</Parameter>
+            <Parameter Name="InputImages">
+                <Value>1080.jpg</Value>
+                <Value>fish_720_Gray.png</Value>
+                <Value>fish_720.png</Value>
+            </Parameter>
+            <Parameter Name="BatchSize">3</Parameter>
+            <Parameter Name="UseSessionOptions">False</Parameter>
+        </Row>
+
+        <Row Name="fns-candy_Bgr8_freeDimInput_BatchFree_Opt">
+            <Parameter Name="ModelFileName">fns-candy_Bgr8.onnx</Parameter>
+            <Parameter Name="ModelInputOutputType">image</Parameter>
+            <Parameter Name="InputImages">
+                <Value>1080.jpg</Value>
+                <Value>fish_720_Gray.png</Value>
+                <Value>fish_720.png</Value>
+            </Parameter>
+            <Parameter Name="BatchSize">3</Parameter>
+            <Parameter Name="UseSessionOptions">True</Parameter>
+        </Row>
+    </Table>
+
+    <Table ID="OutputBindingStrategies">
+        <ParameterTypes>
+            <ParameterType Name="OutputBindingStrategy">String</ParameterType>
+        </ParameterTypes>
+        <Row Name="Bound">
+            <Parameter Name="OutputBindingStrategy">bound</Parameter>
+        </Row>
+        <Row Name="Unbound">
+            <Parameter Name="OutputBindingStrategy">unbound</Parameter>
+        </Row>
+    </Table>
+
+    <Table ID="EvaluationStrategies">
+        <ParameterTypes>
+            <ParameterType Name="EvaluationStrategy">String</ParameterType>
+        </ParameterTypes>
+        <Row Name="Async">
+            <Parameter Name="EvaluationStrategy">Async</Parameter>
+        </Row>
+        <Row Name="Sync">
+            <Parameter Name="EvaluationStrategy">Sync</Parameter>
+        </Row>
+    </Table>
+
+    <Table ID="VideoFrameSources">
+        <ParameterTypes>
+            <ParameterType Name="VideoFrameSource">String</ParameterType>
+        </ParameterTypes>
+        <Row Name="SoftwareBitmap">
+            <Parameter Name="VideoFrameSource">SoftwareBitmap</Parameter>
+        </Row>
+        <Row Name="Direct3DSurface">
+            <Parameter Name="VideoFrameSource">Direct3DSurface</Parameter>
+        </Row>
+    </Table>
+
+    <Table ID="OutputVideoFrameSources">
+        <ParameterTypes>
+            <ParameterType Name="OutputVideoFrameSource">String</ParameterType>
+        </ParameterTypes>
+        <Row Name="SoftwareBitmap">
+            <Parameter Name="OutputVideoFrameSource">SoftwareBitmap</Parameter>
+        </Row>
+        <Row Name="Direct3DSurface">
+            <Parameter Name="OutputVideoFrameSource">Direct3DSurface</Parameter>
+        </Row>
+        <Row Name="UnsupportedDirect3DSurface">
+            <Parameter Name="OutputVideoFrameSource">UnsupportedDirect3DSurface</Parameter>
+        </Row>
+    </Table>
+</Data>

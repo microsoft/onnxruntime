@@ -1,0 +1,31 @@
+<?xml version="1.0" ?>
+<Data>
+    <Table ID="mnistTable">
+        <ParameterTypes>
+            <ParameterType Name="FileName">String</ParameterType>
+            <ParameterType Name="Label">uint</ParameterType>
+        </ParameterTypes>
+        <Row Name="vertical-crop.png">
+            <Parameter Name="FileName">vertical-crop.png</Parameter>
+            <Parameter Name="Label">5</Parameter>
+        </Row>
+        <Row Name="horizontal-crop.png">
+            <Parameter Name="FileName">horizontal-crop.png</Parameter>
+            <Parameter Name="Label">2</Parameter>
+        </Row>
+        <Row Name="big.png">
+            <Parameter Name="FileName">big.png</Parameter>
+            <Parameter Name="Label">8</Parameter>
+        </Row>
+        <Row Name="RGB_5.png">
+            <Parameter Name="FileName">RGB_5.png</Parameter>
+            <Parameter Name="Label">5</Parameter>
+        </Row>
+        <!-- small images are not accepted on run time.
+        <Row Name="small.png">
+            <Parameter Name="FileName">small.png</Parameter>
+            <Parameter Name="Label">0</Parameter>
+        </Row>
+        -->
+    </Table>
+</Data>
