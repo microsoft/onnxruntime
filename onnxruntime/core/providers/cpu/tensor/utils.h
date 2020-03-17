@@ -226,12 +226,12 @@ struct SliceIteratorBase {
     byte* out_bytes = reinterpret_cast<byte*>(output);
     auto bytes_to_copy = inner_extent_ * element_size_;
 
-    if (is_string_tensor_) {
+    if (!is_string_tensor_) {
+      std::copy(input_, input_ + bytes_to_copy, out_bytes);
+    } else {
       const std::string* input = reinterpret_cast<const std::string*>(input_);
       std::string* out = reinterpret_cast<std::string*>(output);
       std::copy(input, input + inner_extent_, out);
-    } else {
-      std::copy(input_, input_ + bytes_to_copy, out_bytes);
     }
 
     input_ += bytes_to_copy;
@@ -321,7 +321,7 @@ struct SliceIterator : public SliceIteratorBase {
 
   // postfix iterator increment
   const T* operator++(int) {
-    const T* input = reinterpret_cast<const T*>(cur_input());
+    const T* input = static_cast<const T*>(cur_input());
     IncrementInnerDimension();
     return input;
   }
@@ -329,11 +329,11 @@ struct SliceIterator : public SliceIteratorBase {
   // prefix iterator increment
   const T* operator++() {
     IncrementInnerDimension();
-    return reinterpret_cast<const T*>(cur_input());
+    return static_cast<const T*>(cur_input());
   }
 
   const T& operator*() const {
-    return *reinterpret_cast<const T*>(cur_input());
+    return *static_cast<const T*>(cur_input());
   }
 
   // Assumes SolitaryInnerStep() == true
