@@ -254,58 +254,62 @@ static inline float sigmoid_probability(float score, float proba, float probb) {
   return 1 - ComputeLogistic(val);  // ref: https://github.com/arnaudsj/libsvm/blob/eaaefac5ebd32d0e07902e1ae740e038eaaf0826/svm.cpp#L1818
 }
 
-static inline void ComputeSoftmax(const gsl::span<float>& values) {
+template <typename T>
+static inline void ComputeSoftmax(const gsl::span<T>& values) {
   // TODO: Replace this with usage of code in Softmax operator
 
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
-  for (float value : values) {
-    if (value > v_max)
-      v_max = value;
+  for (auto it = values.cbegin(); it != values.cend(); ++it) {
+    if (static_cast<float>(*it) > v_max)
+      v_max = static_cast<float>(*it);
   }
   float this_sum = 0.f;
-  for (float& value : values) {
-    value = std::exp(value - v_max);
-    this_sum += value;
+  for (auto it = values.begin(); it != values.end(); ++it) {
+    *it = std::exp(static_cast<float>(*it) - v_max);
+    this_sum += static_cast<float>(*it);
   }
-  for (float& value : values)
-    value /= this_sum;
+  for (auto it = values.begin(); it != values.end(); ++it)
+    *it = static_cast<float>(*it) / this_sum;
 }
 
-static inline void ComputeSoftmax(std::vector<float>& values) {
+template <typename T>
+static inline void ComputeSoftmax(std::vector<T>& values) {
   auto span = gsl::make_span(values);
   ComputeSoftmax(span);
 }
 
 //this function skips zero values (since exp(0) is non zero)
-static inline void ComputeSoftmaxZero(const gsl::span<float>& values) {
+template <typename T>
+static inline void ComputeSoftmaxZero(const gsl::span<T>& values) {
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
-  for (float value : values) {
-    if (value > v_max)
-      v_max = value;
+  for (auto it = values.cbegin(); it != values.cend(); ++it) {
+    if (static_cast<float>(*it) > v_max)
+      v_max = static_cast<float>(*it);
   }
   float exp_neg_v_max = std::exp(-v_max);
   float this_sum = 0.f;
-  for (float& value : values) {
-    if (value > 0.0000001f || value < -0.0000001f) {
-      value = std::exp(value - v_max);
-      this_sum += value;
+  for (auto it = values.begin(); it != values.end(); ++it) {
+    if (static_cast<float>(*it) > 0.0000001f || static_cast<float>(*it) < -0.0000001f) {
+      *it = std::exp(static_cast<float>(*it) - v_max);
+      this_sum += static_cast<float>(*it);
     } else {
-      value *= exp_neg_v_max;
+      *it = static_cast<float>(*it) * exp_neg_v_max;
     }
   }
-  for (float& value : values)
-    value /= this_sum;
+  for (auto it = values.begin(); it != values.end(); ++it)
+    *it = *it / this_sum;
 }
 
-static inline void ComputeSoftmaxZero(std::vector<float>& values) {
+template <typename T>
+static inline void ComputeSoftmaxZero(std::vector<T>& values) {
   auto span = gsl::make_span(values);
   ComputeSoftmaxZero(span);
 }
 
-template <typename T>
-static void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform,
+template <typename T, typename IT>
+static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_transform,
                          T* Z, int add_second_class) {
   if (scores.size() >= 2) {
     switch (post_transform) {
@@ -319,15 +323,18 @@ static void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transf
         break;
       case POST_EVAL_TRANSFORM::SOFTMAX:
         ComputeSoftmax(scores);
-        memcpy(Z, scores.data(), scores.size() * sizeof(T));
+        for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
+          *Z = static_cast<T>(*it);
         break;
       case POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
         ComputeSoftmaxZero(scores);
-        memcpy(Z, scores.data(), scores.size() * sizeof(T));
+        for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
+          *Z = static_cast<T>(*it);
         break;
       default:
       case POST_EVAL_TRANSFORM::NONE:
-        memcpy(Z, scores.data(), scores.size() * sizeof(T));
+        for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
+          *Z = static_cast<T>(*it);
         break;
     }
   } else if (scores.size() == 1) {  //binary case
@@ -351,7 +358,8 @@ static void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transf
         case 2:
         case 3:  //2 = mixed weights, winning class is positive
           if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-            scores.push_back(static_cast<T>(ComputeLogistic(static_cast<float>(scores[0]))));
+            scores.resize(2);
+            scores[1] = static_cast<T>(ComputeLogistic(static_cast<float>(scores[0])));
             scores[0] = static_cast<T>(ComputeLogistic(static_cast<float>(-scores[0])));
           } else {
             scores.push_back(scores[0]);

@@ -14,6 +14,11 @@
 using namespace WinML;
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
+LearningModelBinding::~LearningModelBinding()
+{
+  Clear();
+}
+
 LearningModelBinding::LearningModelBinding(
     Windows::AI::MachineLearning::LearningModelSession const& session) try : m_session(session) {
   session.as<winmlp::LearningModelSession>()->CheckClosed();
@@ -151,6 +156,13 @@ void LearningModelBinding::Bind(
     hstring const& name,
     Windows::Foundation::IInspectable const& value,
     Windows::Foundation::Collections::IPropertySet const& properties) try {
+
+  // if this is being called on the GPU, grab the DML lock
+  // the DML EP is not thread safe.
+  auto session = m_session.as<winmlp::LearningModelSession>();
+  auto device = m_session.Device().as<winmlp::LearningModelDevice>();
+  CWinMLAutoLock lock(!device->IsCpuDevice() ? session->GetDMLEPLock() : nullptr);
+
   _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding);
 
   BindingType binding_type;
@@ -172,6 +184,12 @@ void LearningModelBinding::Bind(
 WINML_CATCH_ALL
 
 void LearningModelBinding::Clear() try {
+  // if this is being called on the GPU, grab the DML lock
+  // the DML EP is not thread safe.
+  auto session = m_session.as<winmlp::LearningModelSession>();
+  auto device = m_session.Device().as<winmlp::LearningModelDevice>();
+  CWinMLAutoLock lock(!device->IsCpuDevice() ? session->GetDMLEPLock() : nullptr);
+
   m_session.as<winmlp::LearningModelSession>()->CheckClosed();
   inputs_.clear();
   input_names_.clear();
@@ -423,6 +441,12 @@ STDMETHODIMP LearningModelBinding::Bind(
     UINT32 cchName,
     IUnknown* value) {
   try {
+    // if this is being called on the GPU, grab the DML lock
+    // the DML EP is not thread safe.
+    auto session = m_session.as<winmlp::LearningModelSession>();
+    auto device = m_session.Device().as<winmlp::LearningModelDevice>();
+    CWinMLAutoLock lock(!device->IsCpuDevice() ? session->GetDMLEPLock() : nullptr);
+    
     _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding);
     BindingType binding_type;
     std::string binding_name;
