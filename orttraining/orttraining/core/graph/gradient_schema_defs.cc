@@ -1326,10 +1326,10 @@ Return true if all elements are true and false otherwise.
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Send data tensor to the specified destination.")
-      .Input(0, "Remote", "Remote dst rank.", "TInt64")
-      .Input(1, "InputSignal", "Input control signal.", "TBool")
+      .Input(0, "Remote", "Remote dst rank. It mush be a scalar.", "TInt64")
+      .Input(1, "InputSignal", "Input control signal. It mush be a scalar.", "TBool")
       .Input(2, "Data", "Tensors to send.", "V", OpSchema::Variadic, false)
-      .Output(0, "OutputSignal", "Output control signal.", "TBool")
+      .Output(0, "OutputSignal", "Output control signal. It mush be a scalar.", "TBool")
       .Attr("tag", "The tag of the message carrying Data.",
             AttributeProto::INT)
       .Attr("element_types", "Element types of the sent tensors.",
@@ -1344,10 +1344,22 @@ Return true if all elements are true and false otherwise.
           "Constrain types to boolean tensors.")
       .TypeConstraint("V", OpSchema::all_tensor_types(), "All Tensor types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        if (ctx.getNumInputs() < 3)
+        if (ctx.getNumInputs() < 3) {
           fail_shape_inference("Send must have at least three inputs.");
-        if (ctx.getNumOutputs() != 1)
+        } else {
+          auto& remote_input_shape = getInputShape(ctx, 0);
+          if (static_cast<int>(remote_input_shape.dim_size()) != 0) {
+            fail_shape_inference("Remote of Send must be a scalar.");
+          }
+          auto& signal_input_shape = getInputShape(ctx, 1);
+          if (static_cast<int>(signal_input_shape.dim_size()) != 0) {
+            fail_shape_inference("InputSignal of Send must be a scalar.");
+          }
+        }
+
+        if (ctx.getNumOutputs() != 1) {
           fail_shape_inference("Send must have one output.");
+        }
 
         auto output_element_type = ctx.getOutputType(0)->mutable_tensor_type();
         output_element_type->set_elem_type(TensorProto::BOOL);
@@ -1361,9 +1373,9 @@ Return true if all elements are true and false otherwise.
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Receive a tensor from the the specified source.")
-      .Input(0, "Remote", "Remote src rank.", "TInt64")
-      .Input(1, "InputSignal", "Input control signal.", "TBool")
-      .Output(0, "OutputSignal", "Output control signal.", "TBool")
+      .Input(0, "Remote", "Remote src rank. It mush be a scalar.", "TInt64")
+      .Input(1, "InputSignal", "Input control signal. It mush be a scalar.", "TBool")
+      .Output(0, "OutputSignal", "Output control signal. It mush be a scalar.", "TBool")
       .Output(1, "Data", "The Received tensors.", "V", OpSchema::Variadic, false)
       .Attr("tag", "The tag of the message carrying Data.",
             AttributeProto::INT)
@@ -1379,10 +1391,22 @@ Return true if all elements are true and false otherwise.
           "Constrain types to boolean tensors.")
       .TypeConstraint("V", OpSchema::all_tensor_types(), "All Tensor types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        if (ctx.getNumInputs() != 2)
+        if (ctx.getNumInputs() != 2) {
           fail_shape_inference("Recv must have two inputs.");
-        if (ctx.getNumOutputs() < 2)
+        } else {
+          auto& remote_input_shape = getInputShape(ctx, 0);
+          if (static_cast<int>(remote_input_shape.dim_size()) != 0) {
+            fail_shape_inference("Remote of Recv must be a scalar.");
+          }
+          auto& signal_input_shape = getInputShape(ctx, 1);
+          if (static_cast<int>(signal_input_shape.dim_size()) != 0) {
+            fail_shape_inference("InputSignal of Recv must be a scalar.");
+          }
+        }
+
+        if (ctx.getNumOutputs() < 2) {
           fail_shape_inference("Recv must have at least two outputs.");
+        }
 
         updateOutputShape(ctx, 0, {});
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
