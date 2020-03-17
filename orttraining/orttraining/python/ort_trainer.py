@@ -597,15 +597,11 @@ class ORTTrainer():
         self.partition_optimizer_ = partition_optimizer
         self.loss_scale_input_name = ''
 
-    def _init_onnx_model(self, inputs):
-        if self.onnx_model_ is not None:
+        self._init_session()
+
+    def _init_session(self):
+        if self.onnx_model_ is None:
             return
-
-        if self.torch_model_ is not None:
-            self.onnx_model_ = convert_model_loss_fn_to_onnx(self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs)
-
-            if self.post_process_model_fn_:
-                self.post_process_model_fn_(self.onnx_model_)
 
         if self.use_mixed_precision:
             self.loss_scale_input_name, self.scaled_loss_output_name = add_loss_scale_input(self.onnx_model_)
@@ -645,6 +641,18 @@ class ORTTrainer():
             self.output_desc_with_all_fp_16_or_fp32_gradients_finite = [
                 *self.model_desc_.outputs_,
                 IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool)]
+
+    def _init_onnx_model(self, inputs):
+        if self.onnx_model_ is not None:
+            return
+
+        if self.torch_model_ is not None:
+            self.onnx_model_ = convert_model_loss_fn_to_onnx(self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs)
+
+            if self.post_process_model_fn_:
+                self.post_process_model_fn_(self.onnx_model_)
+
+        self._init_session()
 
     def train(self):
         self.is_train = True
