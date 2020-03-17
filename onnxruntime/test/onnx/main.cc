@@ -282,6 +282,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     if (enable_openvino) {
 #ifdef USE_OPENVINO
       sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+      if(p_models != 1)
+        fprintf(stderr, "OpenVINO doesn't support more than 1 model running simultaneously default value of 1 will be set \n");
+      p_models = 1;
+      if(concurrent_session_runs != 1)
+        fprintf(stderr, "OpenVINO doesn't support more than 1 session running simultaneously default value of 1 will be set \n");
+      concurrent_session_runs = 1;
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, ""));
 #else
       fprintf(stderr, "OpenVINO is not supported in this build");
@@ -498,7 +504,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
     broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
     broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
-    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});    
+    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.0_224", "Results mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});

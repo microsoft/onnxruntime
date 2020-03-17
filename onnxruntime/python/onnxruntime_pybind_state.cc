@@ -67,6 +67,8 @@
   #else
   #define BACKEND_OPENVINO ""
   #endif
+#else
+  #define BACKEND_OPENVINO ""
 #endif
 
 #ifdef USE_NUPHAR
@@ -388,7 +390,7 @@ void addGlobalMethods(py::module& m) {
   std::cout << "=================================== hit openvino =======================";
   m.def("set_openvino_device", [](const std::string& device) {
     openvino_device = device;} ,
-    "Set the prefered OpenVINO device(s) to be used. If left unset, all available devices will be used." 
+    "Set the prefered OpenVINO device(s) to be used. If left unset, all available devices will be used."
   );
   m.def("get_openvino_device", []() -> std::string {
     return openvino_device;
