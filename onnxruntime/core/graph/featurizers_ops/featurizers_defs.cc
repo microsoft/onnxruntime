@@ -1395,12 +1395,12 @@ void RegisterShortGrainDropperFeaturizerVer1() {
       .Input(
           1,
           "Input",
-          "No information is available",
+          "String tensor of shape [R][K].",
           "T1")
       .Output(
           0,
           "Output",
-          "No information is available",
+          "Bool tensor of shape [R]",
           "T2")
       .TypeConstraint(
           "T0",
@@ -1420,7 +1420,7 @@ void RegisterShortGrainDropperFeaturizerVer1() {
             if (hasInputShape(ctx, 1)) {
               const auto& input_shape = getInputShape(ctx, 1);
               if (input_shape.dim_size() != 2) {
-                fail_shape_inference("Expecting data to have 2 dimensions");
+                fail_shape_inference("Expecting Input1 to have 2 dimensions");
               }
               ONNX_NAMESPACE::TensorShapeProto shape;
               *shape.add_dim() = input_shape.dim(0);
