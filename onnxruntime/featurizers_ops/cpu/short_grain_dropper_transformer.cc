@@ -35,12 +35,13 @@ void ShortGrainDropperTransformerImpl(OpKernelContext* ctx) {
   bool* output_data(output_tensor->MutableData<bool>());
 
   // Transform
+  std::vector<std::string> input_data_vec;
+  input_data_vec.reserve(strings_num);
   for (int64_t rows_idx = 0; rows_idx < input_rows_num; ++rows_idx) {
-    std::vector<std::string> input_data_vec;
-    input_data_vec.reserve(strings_num);
     for (int64_t string_idx = 0; string_idx < strings_num; ++string_idx)
-      input_data_vec.emplace_back(std::move(input_data[string_idx + rows_idx * strings_num]));
+      input_data_vec.push_back(*input_data++);
     output_data[rows_idx] = transformer.execute(input_data_vec);
+    input_data_vec.clear();
   }
 };
 
