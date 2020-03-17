@@ -52,6 +52,11 @@ class SliceBase {
 
   Status Compute(OpKernelContext* context) const;
 
+ protected:
+  const std::vector<int64_t>& StartsAttribute() const { return attr_starts_; }
+  const std::vector<int64_t>& EndsAttribute() const { return attr_ends_; }
+  const std::vector<int64_t>& AxesAttribute() const { return attr_axes_; }
+
  private:
   bool dynamic_;
   std::vector<int64_t> attr_starts_, attr_ends_, attr_axes_;
