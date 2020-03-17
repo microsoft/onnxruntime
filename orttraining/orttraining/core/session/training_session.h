@@ -129,6 +129,8 @@ class TrainingSession : public InferenceSession {
       bool partition_optimizer{};
       // Selects the reduction algorithm for Adasum.
       AdasumReductionType adasum_reduction_type{AdasumReductionType::None};
+      // Whether to enable gradient clipping.
+      bool enable_gradient_clip{true};
     };
     // The optimizer configuration.
     // If not provided, no optimizer is added.

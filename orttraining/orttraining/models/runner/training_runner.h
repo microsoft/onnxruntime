@@ -149,6 +149,8 @@ class TrainingRunner {
 
     int data_parallel_size = 1;
     int horizontal_parallel_size = 1;
+    // Enable gradient clipping.
+    bool enable_gradient_clip=true;
   };
 
   TrainingRunner(Parameters params);

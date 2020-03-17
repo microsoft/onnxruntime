@@ -76,6 +76,7 @@ Status SetupOptimizerParams(
   opt_graph_config.allreduce_in_fp16 = optimizer_config.do_all_reduce_in_fp16;
   opt_graph_config.use_nccl = optimizer_config.use_nccl;
   opt_graph_config.adasum_reduction_type = optimizer_config.adasum_reduction_type;
+  opt_graph_config.enable_gradient_clip = optimizer_config.enable_gradient_clip;
 #if USE_HOROVOD
   opt_graph_config.horovod_reduce_op =
       opt_graph_config.adasum_reduction_type == AdasumReductionType::None

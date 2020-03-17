@@ -393,7 +393,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                gradient_accumulation_steps=1, bind_parameters=False,
                                                use_mixed_precision=False, allreduce_post_accumulation=False,
                                                loss_scale_input_name='', scaled_loss_output_name='',
-                                               partition_optimizer=False):
+                                               partition_optimizer=False, enable_gradient_clip=True):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -410,6 +410,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
         ort_parameters.scaled_loss_output_name = scaled_loss_output_name
     ort_parameters.allreduce_post_accumulation = allreduce_post_accumulation
     ort_parameters.partition_optimizer = partition_optimizer
+    ort_parameters.enable_gradient_clip = enable_gradient_clip
 
     output_types = {}
     for output in model.graph.output:
@@ -515,7 +516,7 @@ class ORTTrainer():
     def __init__(self, model, loss_fn, model_desc, training_optimizer_name, map_optimizer_attributes,
                  learning_rate_description, device, gradient_accumulation_steps=1, postprocess_model=None,
                  world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
-                 global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False):
+                 global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False, enable_gradient_clip=True):
         super(ORTTrainer, self).__init__()
         """
         Initializes ORTTrainer.
@@ -596,6 +597,7 @@ class ORTTrainer():
             self.input_desc_with_lr_and_loss_scale = [*self.input_desc_with_lr, IODescription(self.loss_scale_input_name, [], torch.float32)]
         else:
             self.loss_scale_input_name, self.scaled_loss_output_name = '', ''
+        self.enable_gradient_clip_ = enable_gradient_clip
 
         self.verify_fully_optimized_model(self.onnx_model_)
         self.session, self.train_io_binding, self.eval_io_binding, self.output_name, _, self.output_types = \
@@ -606,7 +608,7 @@ class ORTTrainer():
                 self.gradient_accumulation_steps, bind_parameters=False,
                 use_mixed_precision=use_mixed_precision, allreduce_post_accumulation=allreduce_post_accumulation,
                 loss_scale_input_name=self.loss_scale_input_name, scaled_loss_output_name=self.scaled_loss_output_name,
-                partition_optimizer=partition_optimizer)
+                partition_optimizer=partition_optimizer, enable_gradient_clip=self.enable_gradient_clip_)
 
         # ORT backend has modified model output dtype from float32 to float16.
         for o_desc in self.model_desc_.outputs_:
