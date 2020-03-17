@@ -218,7 +218,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
-  #ifdef _WIN32
+#ifdef _WIN32
   HRESULT hr = common::StatusCodeToHRESULT(static_cast<common::StatusCode>(status.Code()));
   TraceLoggingWrite(telemetry_provider_handle,
                     "RuntimeError",
@@ -235,7 +235,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingString(file, "file"),
                     TraceLoggingString(function, "function"),
                     TraceLoggingInt32(line, "line"));
-  #else
+#else
   TraceLoggingWrite(telemetry_provider_handle,
                     "RuntimeError",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -250,8 +250,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingString(file, "file"),
                     TraceLoggingString(function, "function"),
                     TraceLoggingInt32(line, "line"));
-  #endif
-  
+#endif
 }
 
 void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last) const {
