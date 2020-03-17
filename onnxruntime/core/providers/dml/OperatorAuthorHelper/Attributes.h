@@ -14,6 +14,7 @@ namespace AttrName
     static constexpr const char* Axes = "axes";
     static constexpr const char* Axis = "axis";
     static constexpr const char* AxisW = "axis_w";
+    static constexpr const char* BatchAxis = "batch_axis";
     static constexpr const char* Beta = "beta";
     static constexpr const char* Bias = "bias";
     static constexpr const char* BlockSize = "blocksize";
@@ -22,8 +23,8 @@ namespace AttrName
     static constexpr const char* CeilMode = "ceil_mode";
     static constexpr const char* Clip = "clip";
     static constexpr const char* CountIncludePad = "count_include_pad";
-    static constexpr const char* DetectPositive = "detect_negative";
-    static constexpr const char* DetectNegative = "detect_negative ";
+    static constexpr const char* DetectPositive = "detect_positive";
+    static constexpr const char* DetectNegative = "detect_negative";
     static constexpr const char* Dilations = "dilations";
     static constexpr const char* Direction = "direction";
     static constexpr const char* Dtype = "dtype";

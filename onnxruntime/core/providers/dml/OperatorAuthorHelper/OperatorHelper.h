@@ -1127,6 +1127,40 @@ class ResizeHelper {
   std::vector<float> m_scales;  // Cached scales to check for updates/invalidate operator.
 };
 
+class RangeHelper {
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    RangeHelper(const Info_t& info, const Shape_t& shape) {
+        // Read the scales from the 2nd tensor.
+        if (info.GetInputCount() > 1) {
+            MLOperatorTensor scalesTensor = info.GetConstantInputTensor(1);
+            Initialize(scalesTensor, shape.GetInputTensorShape(0));
+        } else  // From attribute.
+        {
+            Initialize(info, shape.GetInputTensorShape(0));
+        }
+    }
+
+    void Initialize(
+        const MLOperatorAttributes& operatorAttributes,
+        gsl::span<const DimensionType> inputDimensions);
+
+    void Initialize(
+        const MLOperatorTensor& scalesTensor,
+        gsl::span<const DimensionType> inputDimensions);
+
+    void InitializeOutputDimensions(
+        gsl::span<const float> scales,
+        gsl::span<const DimensionType> inputDimensions);
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+protected:
+    std::vector<DimensionType> m_outputDimensions;
+};
+
 class OneHotHelper {
  public:
   template <typename Info_t, typename Shape_t>
@@ -1310,7 +1344,7 @@ using ShapeInferenceHelper_Multinomial = MultinomialHelper;
 
 using ShapeInferenceHelper_ReverseSequence = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_CumSum = GetOutputShapeAsInputShapeHelper;
-// TODO::: using ShapeInferenceHelper_ShapeInferenceHelper_Range = ...
+using ShapeInferenceHelper_ShapeInferenceHelper_Range = RangeHelper;
 
 using ShapeInferenceHelper_FusedConv = ConvHelper;
 using ShapeInferenceHelper_FusedConvTranspose = ConvTransposeHelper;

@@ -483,15 +483,9 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         gsl::span<const DimensionType> inputDimensions
         )
     {
-        m_axis = operatorAttributes.GetOptionalAttribute<int>(AttrName::Axis, 0);
-        ML_CHECK_VALID_ARGUMENT(m_axis >= -int(inputDimensions.size()) && m_axis <= int(inputDimensions.size()) - 1);
-
-        // Adjust any negative axis, meaning it counts from the back, with -1 being the last dimension
-        // and -dimCount being the first dimension.
-        if (m_axis < 0)
-        {
-            m_axis += gsl::narrow_cast<int>(inputDimensions.size());
-        }
+        int32_t signedOnnxAxis = operatorAttributes.GetOptionalAttribute<int>(AttrName::Axis, 0);
+        uint32_t inputRank = gsl::narrow_cast<int>(inputDimensions.size());
+        m_axis = HandleNegativeAxis(signedOnnxAxis, inputRank);
     }
 
     std::vector<EdgeShapes> GatherHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
