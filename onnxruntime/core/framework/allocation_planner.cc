@@ -429,10 +429,13 @@ class PlannerImpl {
                          }) != outer_scope_node_args_.cend()) {
           OrtValueIndex index = Index(name);
 
-          // implicit inputs do not have an entry in the kernel def so we use the default memory type.
+          // implicit inputs do not have an entry in the kernel def.
+          // setting location for implicit inputs may cause inconsistency in nested subgraph.
           // matching logic is used in TransformerMemcpyImpl::ProcessDefs
-          OrtMemType mem_type = is_implicit_input ? OrtMemTypeDefault : p_kernel_def->InputMemoryType(arg_idx);
-          plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
+          if (!is_implicit_input) {
+            OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
+            plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
+          }
         }
 
         return Status::OK();
