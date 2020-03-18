@@ -155,10 +155,12 @@ TEST(CseTests, Random) {
   ASSERT_EQ(output_names[0], "Result");
 
   op_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_count["RandomUniform"], 3);
+  ASSERT_EQ(op_count["RandomUniform"], 4);
   auto node_names = GetNodeNames(graph);
   ASSERT_EQ(std::count(node_names.begin(), node_names.end(), "random_uniform_1"), 1);
   ASSERT_EQ(std::count(node_names.begin(), node_names.end(), "random_uniform_2"), 1);
+  ASSERT_EQ(std::count(node_names.begin(), node_names.end(), "random_uniform_3"), 1);
+  ASSERT_EQ(std::count(node_names.begin(), node_names.end(), "random_uniform_4"), 1);
 }
 
 TEST(CseTests, Subgraph) {
