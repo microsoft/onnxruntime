@@ -454,6 +454,17 @@ class InferenceSession {
   // It has a dependency on execution_providers_.
   std::unique_ptr<SessionState> session_state_;
 
+  // Use these 2 threadpool methods to get access to the threadpools since they rely on
+  // specific flags in session options
+  // These methods assume that session options have been finalized before the call.
+  onnxruntime::concurrency::ThreadPool* GetIntraOpThreadPoolToUse() const {
+    return session_options_.use_per_session_threads ? thread_pool_.get() : intra_op_thread_pool_from_env_;
+  }
+
+  onnxruntime::concurrency::ThreadPool* GetInterOpThreadPoolToUse() const {
+    return session_options_.use_per_session_threads ? inter_op_thread_pool_.get() : inter_op_thread_pool_from_env_;
+  }
+
  private:
   // Threadpools per session. These are initialized and used for the entire duration of the session
   // when use_per_session_threads is true.

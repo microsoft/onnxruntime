@@ -102,8 +102,6 @@ static void TestInference(Ort::Session& session,
                           const char* output_name,
                           const std::vector<int64_t>& expected_dims_y,
                           const std::vector<OutT>& expected_values_y) {
-  Ort::SessionOptions session_options;
-  session_options.DisablePerSessionThreads();
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   Ort::Value value_y = Ort::Value::CreateTensor<float>(default_allocator.get(), expected_dims_y.data(), expected_dims_y.size());
 

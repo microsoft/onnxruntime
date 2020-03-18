@@ -196,8 +196,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   session_state_ = onnxruntime::make_unique<SessionState>(execution_providers_,
                                                           session_options_.enable_mem_pattern &&
                                                               session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
-                                                          use_per_session_threads_ ? thread_pool_.get() : intra_op_thread_pool_from_env_,
-                                                          use_per_session_threads_ ? inter_op_thread_pool_.get() : inter_op_thread_pool_from_env_);
+                                                          GetIntraOpThreadPoolToUse(),
+                                                          GetInterOpThreadPoolToUse());
 
   session_state_->SetLogger(*session_logger_);
   session_state_->SetDataTransferMgr(&data_transfer_mgr_);
