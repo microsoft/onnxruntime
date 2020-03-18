@@ -707,12 +707,15 @@ void RegisterGradientSchemas() {
              "label is N-D input whose shape should match that of logits. "
              "It is a tensor of nonnegative integers, "
              "where each element is the nonnegative integer label for the element of the batch.",
-             "T")
+             "Tind")
       .Input(3, "weight", "weight for each sample. The shape is the same as label's", "T", OpSchema::Optional)
       .Output(0, "d_logits", "gradient of logits", "T")
       .TypeConstraint("T",
                       {"tensor(float16)", "tensor(float)", "tensor(double)"},
                       "Constrain to float, float16 and double tensors.")
+      .TypeConstraint("Tind",
+                      {"tensor(int32)", "tensor(int64)"},
+                      "Constrain indices to integer types")
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)

@@ -17,6 +17,18 @@ namespace cuda {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Class<T>);
 
+#define REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, domain, version) \
+  ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                    \
+      Class,                                                            \
+      domain,                                                           \
+      version,                                                          \
+      T, Tin,                                                           \
+      kCudaExecutionProvider,                                           \
+      KernelDefBuilder()                                                \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
+          .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()),   \
+      Class<T, Tin>);
+
 template <typename T>
 Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor& logit = *ctx->Input<Tensor>(0);
@@ -109,8 +121,8 @@ Status SoftmaxCrossEntropyGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-template <typename T>
-Status SoftmaxCrossEntropyLoss<T>::ComputeInternal(OpKernelContext* ctx) const {
+template <typename T, typename Tin>
+Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor& logit = *ctx->Input<Tensor>(0);
   const Tensor& label = *ctx->Input<Tensor>(1);
 
@@ -132,7 +144,7 @@ Status SoftmaxCrossEntropyLoss<T>::ComputeInternal(OpKernelContext* ctx) const {
   Tensor* log_prob = ctx->Output(1, logit_shape);
 
   const T* logit_data = logit.template Data<T>();
-  const T* label_data = label.template Data<T>();
+  const Tin* label_data = label.template Data<Tin>();
   T* total_loss_data = total_loss->template MutableData<T>();
   T* log_prob_data = log_prob->template MutableData<T>();
 
@@ -197,8 +209,8 @@ Status SoftmaxCrossEntropyLoss<T>::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-template <typename T>
-Status SoftmaxCrossEntropyLossGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
+template <typename T, typename Tin>
+Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor& dY = *ctx->Input<Tensor>(0);
   const Tensor& log_prob = *ctx->Input<Tensor>(1);
   const Tensor& label = *ctx->Input<Tensor>(2);
@@ -218,7 +230,7 @@ Status SoftmaxCrossEntropyLossGrad<T>::ComputeInternal(OpKernelContext* ctx) con
 
   const T* dY_data = dY.template Data<T>();
   const T* log_prob_data = log_prob.template Data<T>();
-  const T* label_data = label.template Data<T>();
+  const Tin* label_data = label.template Data<Tin>();
   T* d_logit_data = d_logit->template MutableData<T>();
 
   const T* weight_data = nullptr;
@@ -271,14 +283,14 @@ Status SoftmaxCrossEntropyLossGrad<T>::ComputeInternal(OpKernelContext* ctx) con
 SPECIALIZED_COMPUTE(SoftmaxCrossEntropy, float, kMSDomain, 1)
 SPECIALIZED_COMPUTE(SoftmaxCrossEntropyGrad, float, kMSDomain, 1)
 
-#define SPECIALIZED_COMPUTE_SOFTMAX_CROSS_ENTROPY_LOSS(Class, T, domain, version) \
-  REGISTER_KERNEL_TYPED(Class, T, domain, version)                                \
-  template Status Class<T>::ComputeInternal(OpKernelContext* ctx) const;
+#define SPECIALIZED_COMPUTE_SPARSE(Class, T, Tin, domain, version) \
+  REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, domain, version)  \
+  template Status Class<T, Tin>::ComputeInternal(OpKernelContext* ctx) const;
 
-// SPECIALIZED_COMPUTE_SOFTMAX_CROSS_ENTROPY_LOSS(SoftmaxCrossEntropyLoss, float, int32_t, kOnnxDomain, 9)
-SPECIALIZED_COMPUTE_SOFTMAX_CROSS_ENTROPY_LOSS(SoftmaxCrossEntropyLoss, float, kOnnxDomain, 12)
-// SPECIALIZED_COMPUTE_SOFTMAX_CROSS_ENTROPY_LOSS(SoftmaxCrossEntropyLossGrad, float, int32_t, kOnnxDomain, 9)
-SPECIALIZED_COMPUTE_SOFTMAX_CROSS_ENTROPY_LOSS(SoftmaxCrossEntropyLossGrad, float, kMSDomain, 1)
+// SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropy, float, int32_t, kOnnxDomain, 9)
+SPECIALIZED_COMPUTE_SPARSE(SoftmaxCrossEntropyLoss, float, int64_t, kOnnxDomain, 12)
+// SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropyGrad, float, int32_t, kOnnxDomain, 9)
+SPECIALIZED_COMPUTE_SPARSE(SoftmaxCrossEntropyLossGrad, float, int64_t, kMSDomain, 1)
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -461,7 +461,7 @@ static void RunBertTrainingWithChecks(
   }
 }
 #endif
-TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
+TEST(GradientGraphBuilderTest, DISABLED_TrainingSession_BertToy) {
   const auto model_path = ORT_TSTR("testdata/bert_toy_optimized.onnx");
 
   TrainingSession::TrainingConfiguration config{};

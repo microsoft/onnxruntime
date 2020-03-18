@@ -6,7 +6,7 @@
 	url = https://github.com/google/googletest.git
 [submodule "cmake/external/onnx"]
   path = cmake/external/onnx
-  url = https://github.com/onnx/onnx
+  url = https://github.com/codemzs/onnx.git
 [submodule "cmake/external/tvm"]
 	path = cmake/external/tvm
 	url = https://github.com/microsoft/onnxruntime-tvm.git

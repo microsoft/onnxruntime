@@ -90,23 +90,23 @@ void SoftMaxCrossEntropyGradImpl(
 
 SPECIALIZED_IMPL_SoftMaxEntropyGradImpl(float)
 
-    template <typename T>
+    template <typename T, typename Tin>
     __global__ void _SoftmaxCrossEntropyLoss(
         const T* log_prob_data,
-        const T* label_data,
+        const Tin* label_data,
         const T* normalize_factor_data,
         T* output_data,
         CUDA_LONG N,
         CUDA_LONG D) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N);
   CUDA_KERNEL_ASSERT(label_data[i] >= 0 && label_data[i] < D);
-  output_data[i] = -log_prob_data[i * D + (int)(label_data[i])] / (*normalize_factor_data);
+  output_data[i] = -log_prob_data[i * D + label_data[i]] / (*normalize_factor_data);
 }
 
-template <typename T>
+template <typename T, typename Tin>
 __global__ void _WeightedSoftmaxCrossEntropyLoss(
     const T* log_prob_data,
-    const T* label_data,
+    const Tin* label_data,
     const T* weight_data,
     const T* normalize_factor_data,
     T* output_data,
@@ -114,13 +114,13 @@ __global__ void _WeightedSoftmaxCrossEntropyLoss(
     CUDA_LONG D) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N);
   CUDA_KERNEL_ASSERT(label_data[i] >= 0 && label_data[i] < D);
-  output_data[i] = -log_prob_data[i * D + (int)(label_data[i])] * weight_data[i] / (*normalize_factor_data);
+  output_data[i] = -log_prob_data[i * D + label_data[i]] * weight_data[i] / (*normalize_factor_data);
 }
 
-template <typename T>
+template <typename T, typename Tin>
 void SoftmaxCrossEntropyLossImpl(
     const T* log_prob,
-    const T* label,
+    const Tin* label,
     const T* weight,
     const T* normalize_factor,
     T* output_data,
@@ -130,7 +130,7 @@ void SoftmaxCrossEntropyLossImpl(
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   CUDA_LONG D = static_cast<CUDA_LONG>(label_depth);
   if (weight) {
-    _WeightedSoftmaxCrossEntropyLoss<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _WeightedSoftmaxCrossEntropyLoss<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         log_prob,
         label,
         weight,
@@ -139,7 +139,7 @@ void SoftmaxCrossEntropyLossImpl(
         N,
         D);
   } else {
-    _SoftmaxCrossEntropyLoss<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _SoftmaxCrossEntropyLoss<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         log_prob,
         label,
         normalize_factor,
@@ -149,38 +149,39 @@ void SoftmaxCrossEntropyLossImpl(
   }
 }
 
-#define SPECIALIZED_IMPL_SoftMaxEntropyLossImpl(T) \
-  template void SoftmaxCrossEntropyLossImpl(       \
-      const T* log_prob,                           \
-      const T* label,                              \
-      const T* weight,                             \
-      const T* normalize_factor,                   \
-      T* output_data,                              \
-      size_t count,                                \
+#define SPECIALIZED_IMPL_SoftmaxCrossEntropyLossImpl(T, Tin) \
+  template void SoftmaxCrossEntropyLossImpl(              \
+      const T* log_prob,                                  \
+      const Tin* label,                                   \
+      const T* weight,                                    \
+      const T* normalize_factor,                          \
+      T* output_data,                                     \
+      size_t count,                                       \
       size_t label_depth);
 
-SPECIALIZED_IMPL_SoftMaxEntropyLossImpl(float)
+SPECIALIZED_IMPL_SoftmaxCrossEntropyLossImpl(float, int32_t)
+SPECIALIZED_IMPL_SoftmaxCrossEntropyLossImpl(float, int64_t)
 
-    template <typename T>
-    __global__ void _SoftmaxCrossEntropyLossGrad(
-        const T* dY,
-        const T* log_prob,
-        const T* label,
-        const T* normalize_factor,
-        T* output_data,
-        CUDA_LONG N,
-        CUDA_LONG D) {
+        template <typename T, typename Tin>
+        __global__ void _SoftmaxCrossEntropyLossGrad(
+            const T* dY,
+            const T* log_prob,
+            const Tin* label,
+            const T* normalize_factor,
+            T* output_data,
+            CUDA_LONG N,
+            CUDA_LONG D) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N * D);
   int row = i / D;
   int d = i % D;
-  output_data[i] = (*dY) * (_Exp(log_prob[i]) - 1.0 * (d == (int)(label[row]))) / (*normalize_factor);
+  output_data[i] = (*dY) * (_Exp(log_prob[i]) - 1.0 * (d == label[row])) / (*normalize_factor);
 }
 
-template <typename T>
+template <typename T, typename Tin>
 __global__ void _WeightedSoftmaxCrossEntropyLossGrad(
     const T* dY,
     const T* log_prob,
-    const T* label,
+    const Tin* label,
     const T* weight,
     const T* normalize_factor,
     T* output_data,
@@ -192,11 +193,11 @@ __global__ void _WeightedSoftmaxCrossEntropyLossGrad(
   output_data[i] = (*dY) * weight[row] * (_Exp(log_prob[i]) - 1.0 * (d == label[row])) / (*normalize_factor);
 }
 
-template <typename T>
+template <typename T, typename Tin>
 void SoftmaxCrossEntropyLossGradImpl(
     const T* dY,
     const T* log_prob,
-    const T* label,
+    const Tin* label,
     const T* weight,
     const T* normalize_factor,
     T* output_data,
@@ -206,7 +207,7 @@ void SoftmaxCrossEntropyLossGradImpl(
   CUDA_LONG D = static_cast<CUDA_LONG>(label_depth);
   int blocksPerGrid = (int)(ceil(static_cast<float>(N * D) / GridDim::maxThreadsPerBlock));
   if (weight) {
-    _WeightedSoftmaxCrossEntropyLossGrad<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _WeightedSoftmaxCrossEntropyLossGrad<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         dY,
         log_prob,
         label,
@@ -216,7 +217,7 @@ void SoftmaxCrossEntropyLossGradImpl(
         N,
         D);
   } else {
-    _SoftmaxCrossEntropyLossGrad<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _SoftmaxCrossEntropyLossGrad<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         dY,
         log_prob,
         label,
@@ -227,18 +228,19 @@ void SoftmaxCrossEntropyLossGradImpl(
   }
 }
 
-#define SPECIALIZED_IMPL_SoftMaxEntropyLossGradImpl(T) \
-  template void SoftmaxCrossEntropyLossGradImpl(       \
-      const T* dY,                                     \
-      const T* log_prob,                               \
-      const T* label,                                  \
-      const T* weight,                                 \
-      const T* normalize_factor,                       \
-      T* output_data,                                  \
-      size_t count,                                    \
+#define SPECIALIZED_IMPL_SoftmaxCrossEntropyLossGradImpl(T, Tin) \
+  template void SoftmaxCrossEntropyLossGradImpl(              \
+      const T* dY,                                            \
+      const T* log_prob,                                      \
+      const Tin* label,                                       \
+      const T* weight,                                        \
+      const T* normalize_factor,                              \
+      T* output_data,                                         \
+      size_t count,                                           \
       size_t label_depth);
 
-SPECIALIZED_IMPL_SoftMaxEntropyLossGradImpl(float)
+SPECIALIZED_IMPL_SoftmaxCrossEntropyLossGradImpl(float, int32_t)
+SPECIALIZED_IMPL_SoftmaxCrossEntropyLossGradImpl(float, int64_t)
 
 }  // namespace cuda
 }  // namespace onnxruntime

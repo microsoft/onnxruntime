@@ -188,7 +188,7 @@ Status SoftmaxCrossEntropyLoss<T>::Compute(OpKernelContext* context) const {
   Tensor* log_prob = context->Output(1, logit_shape);
 
   const T* logit_data = logit.template Data<T>();
-  const T* label_data = label.template Data<T>();
+  const int64_t* label_data = label.template Data<int64_t>();
   T* loss_data = loss->template MutableData<T>();
   T* log_prob_data = log_prob->template MutableData<T>();
 
@@ -206,7 +206,7 @@ Status SoftmaxCrossEntropyLoss<T>::Compute(OpKernelContext* context) const {
     ORT_ENFORCE(weight_shape == label_shape, "The shape of weight and label is different");
     const T* weight_data = weight.template Data<T>();
     for (int i = 0; i < n; i++) {
-      loss_sample[i] = -log_prob_data[i * d + (int)(label_data[i])] * weight_data[i];
+      loss_sample[i] = -log_prob_data[i * d + label_data[i]] * weight_data[i];
     }
 
     // Sum loss over n samples
@@ -220,7 +220,7 @@ Status SoftmaxCrossEntropyLoss<T>::Compute(OpKernelContext* context) const {
     }
   } else {
     for (int i = 0; i < n; i++) {
-      loss_sample[i] = -log_prob_data[i * d + (int)(label_data[i])];
+      loss_sample[i] = -log_prob_data[i * d + label_data[i]];
     }
     // Sum loss over n samples
     math::Sum<T, CPUMathUtil>(n, loss_sample.data(), loss_data, nullptr);
@@ -265,7 +265,7 @@ Status SoftmaxCrossEntropyLossGrad<T>::Compute(OpKernelContext* context) const {
 
   const T* dY_data = dY.template Data<T>();
   const T* log_prob_data = log_prob.template Data<T>();
-  const T* label_data = label.template Data<T>();
+  const int64_t* label_data = label.template Data<int64_t>();
   T* d_logit_data = d_logit->template MutableData<T>();
 
   // computation begins here
@@ -283,11 +283,11 @@ Status SoftmaxCrossEntropyLossGrad<T>::Compute(OpKernelContext* context) const {
     }
 
     for (int i = 0; i < n; i++) {
-      T label_sample = label_data[i];
+      int64_t label_sample = label_data[i];
       T weight_smaple = weight_data[i] * dY_scaled;
       for (int j = 0; j < d; j++) {
         int index = i * d + j;
-        d_logit_data[index] = (exp(log_prob_data[index]) - ((int)(label_sample) == j)) * weight_smaple;
+        d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == j)) * weight_smaple;
       }
     }
   } else {
@@ -297,10 +297,10 @@ Status SoftmaxCrossEntropyLossGrad<T>::Compute(OpKernelContext* context) const {
     }
 
     for (int i = 0; i < n; i++) {
-      T label_sample = label_data[i];
+      int64_t label_sample = label_data[i];
       for (int j = 0; j < d; j++) {
         int index = i * d + j;
-        d_logit_data[index] = (exp(log_prob_data[index]) - ((int)(label_sample) == j)) * dY_scaled;
+        d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == j)) * dY_scaled;
       }
     }
   }

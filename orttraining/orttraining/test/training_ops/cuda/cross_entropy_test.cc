@@ -128,14 +128,14 @@ TEST(CudaKernelTest, SoftmaxCrossEntropyLoss_Basic) {
   std::vector<float> X_data{-0.9468f, 1.3250f, 1.0438f, 0.4106f, -0.2150f,
                             -0.3399f, -0.4396f, 1.1835f, 1.2089f, -1.0617f,
                             -0.5239f, -0.2767f, 0.9910f, -1.5688f, -0.2863f};
-  std::vector<float> index_data = {3.0f, 4.0f, 1.0f};
+  std::vector<int64_t> index_data = {3, 4, 1};
   std::vector<float> Y_data = {2.2956f};
   std::vector<float> log_prob_data = {-3.1773f, -0.9054f, -1.1867f, -1.8199f, -2.4454f,
                                       -2.4583f, -2.5580f, -0.9349f, -0.9094f, -3.1800f,
                                       -2.1341f, -1.8869f, -0.6192f, -3.1789f, -1.8965f};
 
   test.AddInput<float>("X", {3, 5}, X_data);
-  test.AddInput<float>("index", {3}, index_data);
+  test.AddInput<int64_t>("index", {3}, index_data);
   test.AddOutput<float>("output", {}, Y_data);
   test.AddOutput<float>("log_prob", {3, 5}, log_prob_data);
 
@@ -154,10 +154,10 @@ static void TestSoftmaxCrossEntropyLoss(const std::vector<int64_t>* X_dims,
   // create rand inputs
   RandomValueGenerator random{};
   std::vector<float> X_data = random.Uniform<float>(*X_dims, -200.0f, 200.0f);
-  std::vector<float> index_data = random.Uniform<float>(*index_dims, 0.0f, static_cast<float>(X_dims->back()));
+  std::vector<int64_t> index_data = random.Uniform<int64_t>(*index_dims, 0.0f, static_cast<float>(X_dims->back()));
 
   test.AddInput<float>("X", *X_dims, X_data);
-  test.AddInput<float>("index", *index_dims, index_data);
+  test.AddInput<int64_t>("index", *index_dims, index_data);
 
   if (weight_dims) {
     std::vector<float> weight_data = random.Uniform<float>(*weight_dims, 0.0f, 1.0f);
@@ -233,11 +233,11 @@ static void TestSoftmaxCrossEntropyLossGrad(const std::vector<int64_t>& dY_dims,
   RandomValueGenerator random{};
   std::vector<float> dY_data = random.Uniform<float>(dY_dims, -10.0f, 10.0f);
   std::vector<float> log_prob_data = random.Uniform<float>(log_prob_dims, -10.0f, 10.0f);
-  std::vector<float> index_data = random.Uniform<float>(index_dims, 0.0f, static_cast<float>(dX_dims.back()));
+  std::vector<int64_t> index_data = random.Uniform<int64_t>(index_dims, 0.0f, static_cast<float>(dX_dims.back()));
 
   test.AddInput<float>("dY", dY_dims, dY_data);
   test.AddInput<float>("log_prob", log_prob_dims, log_prob_data);
-  test.AddInput<float>("index", index_dims, index_data);
+  test.AddInput<int64_t>("index", index_dims, index_data);
 
   std::vector<float> dX_data = FillZeros<float>(dX_dims);
 

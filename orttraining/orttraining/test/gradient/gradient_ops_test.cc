@@ -1090,12 +1090,12 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape, const std::
     logit_shape.emplace_back(D);
 
     TensorInfo x_info(logit_shape);
-    TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<float>());
+    TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
 
     gradient_checker.ComputeGradientError(op_def, {x_info, index_info},
                                           {{}, {logit_shape, false}}, &max_error,
                                           {MakeAttribute("reduction", reduction)});
-    EXPECT_IS_TINIER_THAN(max_error, 2.0); //REVIEW(mzs): Investigate why the error is so larger.
+    EXPECT_IS_TINY(max_error);
   }
 
   // with weight
@@ -1104,13 +1104,13 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape, const std::
     logit_shape.emplace_back(D);
 
     TensorInfo x_info(logit_shape);
-    TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<float>());
+    TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
     TensorInfo weight_info(index_shape, false, &transformer_weight);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info},
                                           {{}, {logit_shape, false}}, &max_error,
                                           {MakeAttribute("reduction", reduction)});
-    EXPECT_IS_TINIER_THAN(max_error, 2.0); //REVIEW(mzs): Investigate why the error is so larger.
+    EXPECT_IS_TINY(max_error);
   }
 }
 
