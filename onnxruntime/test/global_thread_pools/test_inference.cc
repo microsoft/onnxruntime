@@ -30,7 +30,7 @@ class CApiTestGlobalThreadPoolsWithProvider : public testing::Test, public ::tes
 
 template <typename OutT>
 static void RunSession(OrtAllocator& allocator, Ort::Session& session_object,
-                       const std::vector<Input>& inputs,
+                       std::vector<Input>& inputs,
                        const char* output_name,
                        const std::vector<int64_t>& dims_y,
                        const std::vector<OutT>& values_y,
@@ -39,7 +39,7 @@ static void RunSession(OrtAllocator& allocator, Ort::Session& session_object,
   std::vector<const char*> input_names;
   for (size_t i = 0; i < inputs.size(); i++) {
     input_names.emplace_back(inputs[i].name);
-    ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(allocator.Info(&allocator), const_cast<float*>(inputs[i].values.data()), inputs[i].values.size(), inputs[i].dims.data(), inputs[i].dims.size()));
+    ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(allocator.Info(&allocator), inputs[i].values.data(), inputs[i].values.size(), inputs[i].dims.data(), inputs[i].dims.size()));
   }
 
   std::vector<Ort::Value> ort_outputs;
@@ -98,7 +98,7 @@ static Ort::Session GetSessionObj(Ort::Env& env, T model_uri, int provider_type)
 
 template <typename T, typename OutT>
 static void TestInference(Ort::Session& session,
-                          const std::vector<Input>& inputs,
+                          std::vector<Input>& inputs,
                           const char* output_name,
                           const std::vector<int64_t>& expected_dims_y,
                           const std::vector<OutT>& expected_values_y) {
