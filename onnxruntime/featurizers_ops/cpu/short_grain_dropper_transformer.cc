@@ -38,10 +38,10 @@ void ShortGrainDropperTransformerImpl(OpKernelContext* ctx) {
   std::vector<std::string> input_data_vec;
   input_data_vec.reserve(strings_num);
   for (int64_t rows_idx = 0; rows_idx < input_rows_num; ++rows_idx) {
-    for (int64_t string_idx = 0; string_idx < strings_num; ++string_idx)
-      input_data_vec.push_back(*input_data++);
-    output_data[rows_idx] = transformer.execute(input_data_vec);
     input_data_vec.clear();
+    std::copy(input_data, input_data + strings_num, std::back_inserter(input_data_vec));
+    output_data[rows_idx] = transformer.execute(input_data_vec);
+    input_data += strings_num;
   }
 };
 
