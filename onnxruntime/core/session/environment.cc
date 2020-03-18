@@ -8,6 +8,7 @@
 #include "core/graph/op.h"
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets-ml.h"
+#include "onnx/defs/operator_sets-training.h"
 #ifndef DISABLE_CONTRIB_OPS
 #include "core/graph/contrib_ops/contrib_defs.h"
 #endif
@@ -56,8 +57,8 @@ Status Environment::Initialize() {
 #ifdef USE_DML
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
 #endif
-      // Register contributed schemas.
-      // The corresponding kernels are registered inside the appropriate execution provider.
+// Register contributed schemas.
+// The corresponding kernels are registered inside the appropriate execution provider.
 #ifndef DISABLE_CONTRIB_OPS
       contrib::RegisterContribSchemas();
 #endif
@@ -69,6 +70,7 @@ Status Environment::Initialize() {
 #endif
       RegisterOnnxOperatorSetSchema();
       RegisterOnnxMLOperatorSetSchema();
+      RegisterOnnxTrainingOperatorSetSchema();
 
 #ifdef ENABLE_TRAINING
       // preserve this order: this depends on operatorsetschema registration.
