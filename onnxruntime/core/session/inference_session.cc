@@ -909,6 +909,7 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_ERROR_SESSIONID_(InitializeSubgraphSessions(graph, *session_state_));
     session_state_->ResolveMemoryPatternFlag();
     is_inited_ = true;
+
     // and log telemetry
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
     env.GetTelemetryProvider().LogSessionCreation(
@@ -918,7 +919,7 @@ common::Status InferenceSession::Initialize() {
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     std::map<std::string, size_t> node_name_to_index;
     bool AreNamesUnique = true;
-    for (auto& n : session_state_.GetGraphViewer()->Nodes()) {
+    for (auto& n : session_state_->GetGraphViewer()->Nodes()) {
       if (n.Name().empty() || node_name_to_index.find(n.Name()) != node_name_to_index.end()) {
         AreNamesUnique = false;
         break;
@@ -932,10 +933,9 @@ common::Status InferenceSession::Initialize() {
       std::string content = oss.str();
       // TODO: write the information out
       TraceLoggingWrite(telemetry_provider_handle,  // handle to my provider
-                        "NodeNameMapping",  // Event Name that should uniquely identify your event.
+                        "NodeNameMapping",          // Event Name that should uniquely identify your event.
                         TraceLoggingValue(content.c_str(), "op_name"));
     }
-
 #endif
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   } catch (const NotImplementedException& ex) {
