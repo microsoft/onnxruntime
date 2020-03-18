@@ -138,6 +138,19 @@ bool PrepareForReduce(OpKernelContext* ctx,
   const Tensor& input = *input_tensor_ptr;
 
   size_t ndim = input.Shape().GetDims().size();
+
+  // Scalar tensor
+  if (ndim == 0) {
+    auto size = input.Shape().Size();
+    assert(size == 1);
+    transposedInputData.resize(size, 0);
+    T* to_data = &transposedInputData[0];
+    *to_data = *input.Data<T>();
+    block_size = blocks = 1;
+    *reducedTensor = ctx->Output(0, input.Shape());
+    return false;
+  }
+
   std::vector<int64_t> axes;
   axes.reserve(axes_.size());
   for (int64_t axis : axes_) {
