@@ -130,11 +130,6 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        public IntPtr GetOnnxValue()
-        {
-            return _onnxValueHandle;
-        }
-
         public IntPtr Handle { get { return _onnxValueHandle; } }
 
         ~NativeOnnxTensorMemory()
