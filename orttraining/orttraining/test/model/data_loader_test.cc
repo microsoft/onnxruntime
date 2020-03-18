@@ -9,7 +9,7 @@
 #include "orttraining/models/runner/training_util.h"
 #include "core/framework/path_lib.h"  // TODO fix include ordering dependency
 #include "orttraining/models/runner/data_loader.h"
-#include "test/util/include/gtest_utils.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/temp_dir.h"
 
 using onnxruntime::test::TemporaryDirectory;

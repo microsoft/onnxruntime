@@ -20,7 +20,7 @@
 #include "orttraining/core/graph/adasum_optimizer_graph_builder.h"
 #include "orttraining/core/graph/zero_optimizer_graph_builder.h"
 #include "test/framework/test_utils.h"
-#include "test/util/include/gtest_utils.h"
+#include "test/util/include/asserts.h"
 #include "test/test_environment.h"
 
 using onnxruntime::test::CountOpsInGraph;

@@ -3,10 +3,12 @@
 
 #include "core/platform/env.h"
 
+#include <fstream>
+
 #include "gtest/gtest.h"
 
 #include "core/common/path_string.h"
-#include "test/util/include/gtest_utils.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace test {
@@ -20,6 +22,12 @@ TEST(PlatformEnvTest, DirectoryCreationAndDeletion) {
 
   ASSERT_STATUS_OK(env.CreateFolder(sub_dir));
   ASSERT_TRUE(env.FolderExists(sub_dir));
+
+  // create a file in the subdirectory
+  {
+    std::ofstream outfile{sub_dir + ORT_TSTR("/file")};
+    outfile << "hello!";
+  }
 
   ASSERT_STATUS_OK(env.DeleteFolder(root_dir));
   ASSERT_FALSE(env.FolderExists(root_dir));
