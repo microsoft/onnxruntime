@@ -25,7 +25,7 @@ TransposeMatMul::TransposeMatMul(const OpKernelInfo& info)
 }
 
 Status TransposeMatMul::Compute(OpKernelContext* context) const {
-  auto* context_internal = dynamic_cast<OpKernelContextInternal*>(context);
+  auto* context_internal = static_cast<OpKernelContextInternal*>(context);
   ORT_ENFORCE(context_internal, "Failed to get OpKernelContextInternal instance.");
   concurrency::ThreadPool* thread_pool = context_internal->GetOperatorThreadPool();
 
