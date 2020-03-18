@@ -6,11 +6,6 @@
 cmake_minimum_required(VERSION 3.13)
 cmake_policy(SET CMP0069 NEW)
 if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.15")
-  if (NOT onnxruntime_USE_CUDA)
-    # Work around https://gitlab.kitware.com/cmake/cmake/issues/19428
-    cmake_policy(SET CMP0091 NEW)
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
-  endif()
   cmake_policy(SET CMP0092 NEW)
 endif()
 
@@ -127,7 +122,7 @@ else()
   if(WINDOWS_STORE)
     # cmake/external/protobuf/src/google/protobuf/compiler/subprocess.cc and onnxruntime/core/platform/windows/env.cc call a bunch of Win32 APIs.
     # For now, we'll set the API family to desktop globally to expose Win32 symbols in headers; this must be fixed!
-    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/FI ${CMAKE_CURRENT_SOURCE_DIR}\\set_winapi_family_desktop.h>")
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/FI${CMAKE_CURRENT_SOURCE_DIR}/set_winapi_family_desktop.h>")
   endif()
 endif()
 
