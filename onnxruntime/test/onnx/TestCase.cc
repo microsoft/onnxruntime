@@ -12,8 +12,8 @@
 #include "core/common/common.h"
 #include "core/platform/env.h"
 #include "core/platform/ort_mutex.h"
+#include "core/platform/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/path_lib.h"
 #include "core/framework/allocator.h"
 #include "re2/re2.h"
 #include <sstream>
