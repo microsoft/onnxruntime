@@ -63,9 +63,6 @@
 
   #elif OPENVINO_CONFIG_VAD_M
   #define BACKEND_OPENVINO "-OPENVINO_VAD_M"
-
-  #else
-  #define BACKEND_OPENVINO ""
   #endif
 #else
   #define BACKEND_OPENVINO ""
