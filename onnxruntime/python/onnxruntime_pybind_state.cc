@@ -6,6 +6,7 @@
 
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
+#include "python/onnxruntime_pybind_state_common.h"
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
@@ -154,11 +155,6 @@ static AllocatorPtr& GetAllocator() {
   return alloc;
 }
 
-static const SessionOptions& GetDefaultCPUSessionOptions() {
-  static SessionOptions so;
-  return so;
-}
-
 template <typename T>
 void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
   pyobjs.push_back(py::cast(val.Get<T>()));
@@ -271,27 +267,6 @@ void AddTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   GetPyObjFromTensor(rtensor, obj);
   pyobjs.push_back(obj);
 }
-
-class SessionObjectInitializer {
- public:
-  typedef const SessionOptions& Arg1;
-  typedef logging::LoggingManager* Arg2;
-  operator Arg1() {
-    return GetDefaultCPUSessionOptions();
-  }
-
-  operator Arg2() {
-    static std::string default_logger_id{"Default"};
-    static LoggingManager default_logging_manager{std::unique_ptr<ISink>{new CErrSink{}},
-                                                  Severity::kWARNING, false, LoggingManager::InstanceType::Default,
-                                                  &default_logger_id};
-    return &default_logging_manager;
-  }
-
-  static SessionObjectInitializer Get() {
-    return SessionObjectInitializer();
-  }
-};
 
 inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
   auto p = f.CreateProvider();

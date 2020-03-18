@@ -36,6 +36,17 @@ set(onnxruntime_pybind_srcs_pattern
     "${ONNXRUNTIME_ROOT}/python/*.h"
 )
 
+if (onnxruntime_ENABLE_TRAINING)
+  list(APPEND onnxruntime_pybind_srcs_pattern
+    "${ORTTRAINING_ROOT}/orttraining/python/*.cc"
+    "${ORTTRAINING_ROOT}/orttraining/python/*.h"
+  )
+endif()
+
+message(aaasssdddff)
+message(${ORTTRAINING_ROOT})
+message(${onnxruntime_pybind_srcs_pattern})
+
 file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
