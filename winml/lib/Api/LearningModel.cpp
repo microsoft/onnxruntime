@@ -23,6 +23,17 @@ LearningModel::LearningModel(
 WINML_CATCH_ALL
 
 LearningModel::LearningModel(
+    WinML::IEngineFactory* engine_factory,
+    WinML::IModel* model,
+    const winml::ILearningModelOperatorProvider operator_provider) try :
+      operator_provider_(operator_provider) {
+  engine_factory_.copy_from(engine_factory);
+  model_.copy_from(model);
+  WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
+}
+WINML_CATCH_ALL
+
+LearningModel::LearningModel(
     const std::string& path,
     const winml::ILearningModelOperatorProvider operator_provider) try : operator_provider_(operator_provider) {
   _winmlt::TelemetryEvent loadModel_event(_winmlt::EventCategory::kModelLoad);

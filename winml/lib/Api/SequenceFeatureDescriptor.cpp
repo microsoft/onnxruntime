@@ -64,4 +64,14 @@ SequenceFeatureDescriptor::GetDescription(
   *cchDescription = static_cast<uint32_t>(description_.size());
   return S_OK;
 }
+
+HRESULT
+SequenceFeatureDescriptor::GetDescriptorInfo(
+    WinML::IEngineFactory* engine_factory,
+    WinML::IDescriptorInfo** info) {
+  engine_factory->CreateSequenceDescriptorInfo(info);
+  return S_OK;
+};
+
+
 }  // namespace winrt::Windows::AI::MachineLearning::implementation

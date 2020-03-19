@@ -17,9 +17,13 @@
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 
+#include "core/framework/tensor_type_and_shape.h"
+
+#include "onnx/onnx-ml.pb.h"
+
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
-static std::vector<const char*> GetInitializers(const onnx::ModelProto& model_proto) {
+static std::vector<const char*> GetInitializers(const ONNX_NAMESPACE::ModelProto& model_proto) {
   std::vector<const char*> initializers;
   auto& graph = model_proto.graph();
   auto& graph_initializers = graph.initializer();
@@ -29,10 +33,10 @@ static std::vector<const char*> GetInitializers(const onnx::ModelProto& model_pr
   return initializers;
 }
 
-static std::vector<const onnx::ValueInfoProto*> GetInputsWithoutInitializers(const onnx::ModelProto& model_proto) {
+static std::vector<const ONNX_NAMESPACE::ValueInfoProto*> GetInputsWithoutInitializers(const ONNX_NAMESPACE::ModelProto& model_proto) {
   auto initializers = GetInitializers(model_proto);
 
-  std::vector<const onnx::ValueInfoProto*> inputs_without_initializers;
+  std::vector<const ONNX_NAMESPACE::ValueInfoProto*> inputs_without_initializers;
   auto& graph = model_proto.graph();
   auto& inputs = graph.input();
   for (auto& input : inputs) {
@@ -53,8 +57,8 @@ static std::vector<const onnx::ValueInfoProto*> GetInputsWithoutInitializers(con
   return inputs_without_initializers;
 }
 
-static std::vector<const onnx::ValueInfoProto*> GetOutputs(const onnx::ModelProto& model_proto) {
-  std::vector<const onnx::ValueInfoProto*> outputs_with_name;
+static std::vector<const ONNX_NAMESPACE::ValueInfoProto*> GetOutputs(const ONNX_NAMESPACE::ModelProto& model_proto) {
+  std::vector<const ONNX_NAMESPACE::ValueInfoProto*> outputs_with_name;
   auto& graph = model_proto.graph();
   auto& outputs = graph.output();
   for (auto& output : outputs) {
@@ -67,7 +71,7 @@ static std::vector<const onnx::ValueInfoProto*> GetOutputs(const onnx::ModelProt
 
 class ModelInfo {
  public:
-  ModelInfo(const onnx::ModelProto* model_proto) {
+  ModelInfo(const ONNX_NAMESPACE::ModelProto* model_proto) {
     Initialize(model_proto);
   }
 
@@ -79,12 +83,12 @@ class ModelInfo {
   std::string description_;
   int64_t version_;
   std::vector<std::pair<std::string, std::string>> model_metadata_;
-  std::vector<const onnx::ValueInfoProto*> input_features_;
-  std::vector<const onnx::ValueInfoProto*> output_features_;
+  std::vector<const ONNX_NAMESPACE::ValueInfoProto*> input_features_;
+  std::vector<const ONNX_NAMESPACE::ValueInfoProto*> output_features_;
   bool requires_float16_support_;
 
  private:
-  void Initialize(const onnx::ModelProto* model_proto) {
+  void Initialize(const ONNX_NAMESPACE::ModelProto* model_proto) {
     for (auto& prop : model_proto->metadata_props()) {
       model_metadata_.push_back(std::make_pair(prop.key(), prop.value()));
     }
@@ -111,12 +115,12 @@ class ModelInfo {
   }
 };
 
-OrtModel::OrtModel(std::unique_ptr<onnx::ModelProto> model_proto) : model_proto_(std::move(model_proto)),
-                                                                    model_info_(std::make_unique<ModelInfo>(model_proto_.get())) {
+OrtModel::OrtModel(std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto) : model_proto_(std::move(model_proto)),
+                                                                              model_info_(std::make_unique<ModelInfo>(model_proto_.get())) {
 }
 
 // factory methods for creating an ort model from a path
-static OrtStatus* CreateModelProto(const char* path, std::unique_ptr<onnx::ModelProto>& out) {
+static OrtStatus* CreateModelProto(const char* path, std::unique_ptr<ONNX_NAMESPACE::ModelProto>& out) {
   int file_descriptor;
   _set_errno(0);  // clear errno
   _sopen_s(
@@ -139,7 +143,7 @@ static OrtStatus* CreateModelProto(const char* path, std::unique_ptr<onnx::Model
   google::protobuf::io::FileInputStream stream(file_descriptor);
   stream.SetCloseOnDelete(true);
 
-  auto model_proto = std::unique_ptr<onnx::ModelProto>(new onnx::ModelProto());
+  auto model_proto = std::unique_ptr<ONNX_NAMESPACE::ModelProto>(new ONNX_NAMESPACE::ModelProto());
 
   auto parse_succeeded = model_proto->ParseFromZeroCopyStream(&stream);
   if (!parse_succeeded) {
@@ -151,10 +155,17 @@ static OrtStatus* CreateModelProto(const char* path, std::unique_ptr<onnx::Model
   return S_OK;
 }
 
+OrtStatus* OrtModel::CreateEmptyModel(OrtModel** model) {
+  auto model_proto = std::unique_ptr<ONNX_NAMESPACE::ModelProto>(new ONNX_NAMESPACE::ModelProto());
+  auto opsetimportproto = model_proto->add_opset_import();
+  opsetimportproto->set_version(7);
+  return OrtModel::CreateOrtModelFromProto(std::move(model_proto), model);
+}
+
 OrtStatus* OrtModel::CreateOrtModelFromPath(const char* path, size_t len, OrtModel** model) {
   ORT_UNUSED_PARAMETER(len);
 
-  std::unique_ptr<onnx::ModelProto> model_proto;
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto;
 
   if (auto status = CreateModelProto(path, model_proto)) {
     return status;
@@ -164,7 +175,7 @@ OrtStatus* OrtModel::CreateOrtModelFromPath(const char* path, size_t len, OrtMod
 }
 
 OrtStatus* OrtModel::CreateOrtModelFromData(void* data, size_t len, OrtModel** model) {
-  auto model_proto = std::unique_ptr<onnx::ModelProto>(new onnx::ModelProto());
+  auto model_proto = std::unique_ptr<ONNX_NAMESPACE::ModelProto>(new ONNX_NAMESPACE::ModelProto());
 
   auto parse_succeeded = model_proto->ParseFromArray(data, static_cast<int>(len));
   if (!parse_succeeded) {
@@ -174,7 +185,7 @@ OrtStatus* OrtModel::CreateOrtModelFromData(void* data, size_t len, OrtModel** m
   return OrtModel::CreateOrtModelFromProto(std::move(model_proto), model);
 }
 
-OrtStatus* OrtModel::CreateOrtModelFromProto(std::unique_ptr<onnx::ModelProto>&& model_proto, OrtModel** model) {
+OrtStatus* OrtModel::CreateOrtModelFromProto(std::unique_ptr<ONNX_NAMESPACE::ModelProto>&& model_proto, OrtModel** model) {
   *model = new (std::nothrow) OrtModel(std::move(model_proto));
   if (*model == nullptr) {
     return OrtApis::CreateStatus(ORT_ENGINE_ERROR, "Engine failed to create a model!");
@@ -187,11 +198,11 @@ const ModelInfo* OrtModel::UseModelInfo() const {
   return model_info_.get();
 }
 
-const ONNX_NAMESPACE::ModelProto* OrtModel::UseModelProto() const {
+ONNX_NAMESPACE::ModelProto* OrtModel::UseModelProto() const {
   return model_proto_.get();
 }
 
-std::unique_ptr<onnx::ModelProto> OrtModel::DetachModelProto() {
+std::unique_ptr<ONNX_NAMESPACE::ModelProto> OrtModel::DetachModelProto() {
   return std::move(model_proto_);
 }
 
@@ -215,7 +226,7 @@ ORT_API_STATUS_IMPL(winmla::CreateModelFromData, void* data, size_t size, OrtMod
 
 ORT_API_STATUS_IMPL(winmla::CloneModel, const OrtModel* in, OrtModel** out) {
   API_IMPL_BEGIN
-  auto model_proto_copy = std::make_unique<onnx::ModelProto>(*in->UseModelProto());
+  auto model_proto_copy = std::make_unique<ONNX_NAMESPACE::ModelProto>(*in->UseModelProto());
   if (auto status = OrtModel::CreateOrtModelFromProto(std::move(model_proto_copy), out)) {
     return status;
   }
@@ -382,7 +393,7 @@ ORT_API_STATUS_IMPL(winmla::ModelEnsureNoFloat16, const OrtModel* model) {
       for (int attribIndex = 0; attribIndex < node.attribute_size(); attribIndex++) {
         auto attribute = node.attribute(attribIndex);
         if (attribute.name() == "to") {
-          if (attribute.i() == onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16) {
+          if (attribute.i() == ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_FLOAT16) {
             std::stringstream error_message;
             error_message << "The model contains a 16-bit input ("
                           << node.name().c_str()
@@ -398,7 +409,7 @@ ORT_API_STATUS_IMPL(winmla::ModelEnsureNoFloat16, const OrtModel* model) {
   //    tensors via the Cast (to float16) operator
   for (int i = 0; i < graph.initializer_size(); i++) {
     auto initializer = graph.initializer(i);
-    if (initializer.data_type() == onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16) {
+    if (initializer.data_type() == ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_FLOAT16) {
       std::stringstream error_message;
       error_message << "The model contains a 16-bit input ("
                     << initializer.name().c_str()
@@ -425,6 +436,191 @@ ORT_API_STATUS_IMPL(winmla::ModelEnsureNoFloat16, const OrtModel* model) {
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(winmla::CreateModel, OrtModel** out) {
+  API_IMPL_BEGIN
+  return OrtModel::CreateEmptyModel(out);
+  API_IMPL_END
+}
+
+static ONNX_NAMESPACE::TensorProto_DataType ONNXTensorElementDataTypeToTensorProto_DataType(ONNXTensorElementDataType type) {
+  switch (type) {
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+      return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+      return ONNX_NAMESPACE::TensorProto_DataType_UINT8;
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+      return ONNX_NAMESPACE::TensorProto_DataType_INT8;
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
+      return ONNX_NAMESPACE::TensorProto_DataType_UINT16;
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
+      return ONNX_NAMESPACE::TensorProto_DataType_INT16;
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+      return ONNX_NAMESPACE::TensorProto_DataType_INT32;
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+      return ONNX_NAMESPACE::TensorProto_DataType_INT64;
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
+      return ONNX_NAMESPACE::TensorProto_DataType_STRING;
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+      return ONNX_NAMESPACE::TensorProto_DataType_BOOL;
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+      return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+      return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
+      return ONNX_NAMESPACE::TensorProto_DataType_UINT32;
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
+      return ONNX_NAMESPACE::TensorProto_DataType_UINT64;
+    default:
+      return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  }
+}
+
+static void CreateTypeProto_Tensor(ONNX_NAMESPACE::TypeProto_Tensor* mutable_tensor_type, const char* const name,
+                                   const int64_t* shape, size_t shape_len, ONNX_NAMESPACE::TensorProto_DataType data_type) {
+  mutable_tensor_type->set_elem_type(data_type);
+
+  size_t dim_param = 0;
+  for (size_t i = 0; i < shape_len; i++) {
+    if (shape[i] == -1) {
+      std::ostringstream str;
+      str << name << dim_param++;
+      mutable_tensor_type->mutable_shape()->add_dim()->set_dim_param(str.str().c_str(), 1);
+    } else {
+      mutable_tensor_type->mutable_shape()->add_dim()->set_dim_value(shape[i]);
+    }
+  }
+
+  if (shape_len > 0) {
+    mutable_tensor_type->mutable_shape()->mutable_dim(0)->set_denotation("DATA_BATCH");
+  }
+}
+
+
+ORT_API_STATUS_IMPL(winmla::ModelAddInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info, _In_ bool /*is_constant*/) {
+ API_IMPL_BEGIN
+  auto model_proto = model->UseModelProto();
+  ONNX_NAMESPACE::GraphProto& graph = *model_proto->mutable_graph();
+  ONNX_NAMESPACE::ValueInfoProto& input = *graph.add_input();
+  input.set_name(input_name);
+
+  if (info->type == ONNXType::ONNX_TYPE_TENSOR) {
+    CreateTypeProto_Tensor(
+        input.mutable_type()->mutable_tensor_type(),
+        input_name,
+        &info->data->shape[0],
+        info->data->shape.NumDimensions(),
+        ONNXTensorElementDataTypeToTensorProto_DataType(info->data->type));
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::ModelAddOutput, _In_ OrtModel* model, _In_ const char* const output_name, _In_ OrtTypeInfo* info) {
+  API_IMPL_BEGIN
+  auto model_proto = model->UseModelProto();
+  ONNX_NAMESPACE::GraphProto& graph = *model_proto->mutable_graph();
+  ONNX_NAMESPACE::ValueInfoProto& output = *graph.add_output();
+  output.set_name(output_name);
+
+  if (info->type == ONNXType::ONNX_TYPE_TENSOR) {
+    CreateTypeProto_Tensor(
+      output.mutable_type()->mutable_tensor_type(),
+      output_name,
+      &info->data->shape[0],
+      info->data->shape.NumDimensions(),
+      ONNXTensorElementDataTypeToTensorProto_DataType(info->data->type));
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
+                    _In_ OrtModel* model,
+                    _In_ const char* const op_type,
+                    _In_ const char* const op_name,
+                    _In_ const char* const* input_names, _In_ size_t num_inputs,
+                    _In_ const char* const* output_names, _In_ size_t num_outputs,
+                    _In_ const char* const* attribute_names, _In_ OrtValue** attribute_values, _In_ size_t num_attributes) {
+  API_IMPL_BEGIN
+  auto model_proto = model->UseModelProto();
+  ONNX_NAMESPACE::GraphProto& graph = *model_proto->mutable_graph();
+  onnx::NodeProto& node = *graph.add_node();
+  node.set_op_type(op_type);
+  node.set_name(op_name);
+
+  for (size_t i = 0; i < num_inputs; i++) {
+    node.add_input(input_names[i]);
+  }
+
+  for (size_t i = 0; i < num_outputs; i++) {
+    node.add_output(output_names[i]);
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::InferOperatorOutputs,
+                    _In_ OrtModel* model,
+                    _In_ const char* const op_type,
+                    _In_ OrtTypeInfo** input_type_info, size_t num_inputs,
+                    _In_ const char* const* attribute_names, _In_ OrtValue** attribute_values, _In_ size_t num_attributes,
+                    _Out_ OrtTypeInfo** output_type_info, const char* const* output_names, size_t num_outputs) {
+  API_IMPL_BEGIN
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::ResolveOperatorInputs,
+                    _In_ const char* const op_type,
+                    _In_ OrtTypeInfo** inputs_type_info, size_t num_inputs,
+                    _Out_ size_t* indexes, size_t num_indexes) {
+  API_IMPL_BEGIN
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(void, winmla::ReleaseModel, OrtModel* ptr) {
   delete ptr;
+}
+
+#include "core/framework/onnxruntime_typeinfo.h"
+#include "core/framework/tensor_type_and_shape.h"
+
+OrtStatus* GetTensorShapeAndTypeHelper(ONNXTensorElementDataType type, const onnxruntime::TensorShape shape, const std::vector<std::string>* dim_params, OrtTensorTypeAndShapeInfo** out);
+
+ORT_API_STATUS_IMPL(winmla::CreateTensorTypeInfo, _In_ const int64_t* dim_values, size_t dim_count, ONNXTensorElementDataType type, _Out_ OrtTypeInfo** ort_type_info) {
+  API_IMPL_BEGIN
+  OrtTensorTypeAndShapeInfo* data = nullptr;
+  auto tensor_shape = onnxruntime::TensorShape(dim_values, dim_count);
+  auto st = GetTensorShapeAndTypeHelper(type, tensor_shape, nullptr, &data);
+  if (st != nullptr){
+    return st;
+  }
+  *ort_type_info = new OrtTypeInfo(ONNX_TYPE_TENSOR, data);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::CreateSequenceTypeInfo, _Out_ OrtTypeInfo** type_info) {
+  API_IMPL_BEGIN
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::CreateMapTypeInfo, _Out_ OrtTypeInfo** type_info) {
+  API_IMPL_BEGIN
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::OperatorGetNumInputs, _In_ const char* const op_type, _Out_ size_t* num_inputs) {
+  API_IMPL_BEGIN
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::OperatorGetInputName, _In_ const char* const op_type, _In_ size_t index, _Out_ const char** const name) {
+  API_IMPL_BEGIN
+  return nullptr;
+  API_IMPL_END
 }

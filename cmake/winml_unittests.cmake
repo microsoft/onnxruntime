@@ -13,6 +13,7 @@ set(WINML_TEST_INC_DIR
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated
+  ${CMAKE_CURRENT_BINARY_DIR}/winml_more_api/comp_generated
   ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)
 
 function(set_winml_target_properties target)

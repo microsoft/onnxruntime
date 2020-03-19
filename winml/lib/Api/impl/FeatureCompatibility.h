@@ -15,7 +15,7 @@ namespace error_strings {
 using namespace winrt::Windows::AI::MachineLearning;
 
 // This must be kept in sync with the TensorKind enum in Windows.AI.MachineLearning.idl
-const char* SzTensorKind[] =
+__declspec(selectany) const char* SzTensorKind[] =
     {
         "Undefined",
         "Float",

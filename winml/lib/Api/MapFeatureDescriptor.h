@@ -4,11 +4,13 @@
 #pragma once
 
 #include "MapFeatureDescriptor.g.h"
+#include "iengine.h"
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 struct MapFeatureDescriptor : MapFeatureDescriptorT<
                                   MapFeatureDescriptor,
-                                  ILearningModelFeatureDescriptorNative> {
+                                  ILearningModelFeatureDescriptorNative,
+                                  WinML::IDescriptorInfoProvider> {
   MapFeatureDescriptor() = delete;
 
   MapFeatureDescriptor(
@@ -47,6 +49,11 @@ struct MapFeatureDescriptor : MapFeatureDescriptorT<
   (
       const wchar_t** description,
       uint32_t* cchDescription) override;
+  
+  STDMETHOD(GetDescriptorInfo)
+  (
+      WinML::IEngineFactory* engine_factory,
+      WinML::IDescriptorInfo** info) override;
 
  private:
   winrt::hstring name_;

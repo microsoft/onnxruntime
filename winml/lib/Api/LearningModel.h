@@ -29,6 +29,11 @@ struct LearningModel : LearningModelT<LearningModel> {
       const std::string& path,
       const winml::ILearningModelOperatorProvider operator_provider);
 
+  LearningModel(
+      WinML::IEngineFactory* engine_factory,
+      WinML::IModel* model,
+      const winml::ILearningModelOperatorProvider operator_provider);
+
   /* LearningModel properties (MachineLearningContract 1). */
   hstring
   Author();

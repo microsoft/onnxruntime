@@ -8,7 +8,8 @@
 #include "LearningModelDevice.h"
 #include "OnnxruntimeProvider.h"
 #include "LearningModelBuilder.h"
-#include "FullyConnectedJunction.h"
+#include "LearningModelOperatorResolutionPolicy.h"
+#include "LearningModelOperator.h"
 
 using namespace winrt::Windows::AI::MachineLearning::implementation;
 
@@ -104,6 +105,16 @@ int32_t WINRT_CALL WinmlMoreGetActivationFactory(void* classId, void** factory) 
       return 0;
     }
 
+    if (requal(name, L"Windows.AI.MachineLearning.More.LearningModelOperator")) {
+      *factory = winrt::detach_abi(winrt::make<winrt::Windows::AI::MachineLearning::More::factory_implementation::LearningModelOperator>());
+      return 0;
+    }
+
+    if (requal(name, L"Windows.AI.MachineLearning.More.LearningModelOperatorResolutionPolicy")) {
+      *factory = winrt::detach_abi(winrt::make<winrt::Windows::AI::MachineLearning::More::factory_implementation::LearningModelOperatorResolutionPolicy>());
+      return 0;
+    }
+
 #ifdef _WRL_MODULE_H_
     return ::Microsoft::WRL::Module<::Microsoft::WRL::InProc>::GetModule().GetActivationFactory(static_cast<HSTRING>(classId), reinterpret_cast<::IActivationFactory**>(factory));
 #else
@@ -114,7 +125,6 @@ int32_t WINRT_CALL WinmlMoreGetActivationFactory(void* classId, void** factory) 
   }
 }
 
-
 STDAPI DllGetActivationFactory(HSTRING classId, void** factory) {
   auto ret = WINRT_GetActivationFactory(classId, factory);
 
@@ -123,4 +133,3 @@ STDAPI DllGetActivationFactory(HSTRING classId, void** factory) {
 
   return 0;
 }
-

@@ -78,6 +78,18 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::ValueGetDeviceId,
     &winmla::SessionGetInputRequiredDeviceId,
 
+    &winmla::CreateTensorTypeInfo,
+    &winmla::CreateSequenceTypeInfo,
+    &winmla::CreateMapTypeInfo,
+    &winmla::CreateModel,
+    &winmla::ModelAddInput,
+    &winmla::ModelAddOutput,
+    &winmla::ModelAddOperator,
+    &winmla::InferOperatorOutputs,
+    &winmla::ResolveOperatorInputs,
+    &winmla::OperatorGetNumInputs,
+    &winmla::OperatorGetInputName,
+
     // Release
     &winmla::ReleaseModel
 };

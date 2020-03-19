@@ -19,109 +19,87 @@ import "windows.storage.idl";
 
 #include <sdkddkver.h>
 
-namespace Windows.AI.MachineLearning.More
-{
-	[threading(both)]
-    [marshaling_behavior(agile)]
-    [dualapipartition(1)]
-    runtimeclass LearningModelJunctionResolutionPolicy
-    {
-        static LearningModelJunctionResolutionPolicy Create();
+namespace Windows.AI.MachineLearning.More {
 
-        void Foo();
-    }
+  [threading(both)]
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelOperatorResolutionPolicy {
+    LearningModelOperatorResolutionPolicy();
 
+    LearningModelOperatorResolutionPolicy ConnectInputs();
+    LearningModelOperatorResolutionPolicy ConnectConstants();
+    LearningModelOperatorResolutionPolicy AddInputMapping(String operator_input, String incoming_input);
+    LearningModelOperatorResolutionPolicy GenerateMissingInputsAsModelConstants();
+    LearningModelOperatorResolutionPolicy GenerateMissingInputsAsModelInputs();
+  }
 
-    //! \brief Describes the common properties that all features have.
-    [uuid(f3f39d9f-52ce-4588-86c5-94fbc382d8b6)]
-    interface ILearningModelJunction
-    {
-        ILearningModelJunction Then(ILearningModelJunction next_junction);
-
-        ILearningModelJunction Then(ILearningModelJunction next_junction, LearningModelJunctionResolutionPolicy policy);
-    }
-
-    //! \interface ILearningModelJunction
-    //! \brief Represents a trained machine learning model.
-    //! \details This is the main object you use to interact with Windows Machine Learning.  You use 
-    //! it to load, bind, and evaluate trained ONNX models.   To load the model you use 
-    //! one of the Load constructors.  You can then enumerate the InputFeatures and 
-    //! OutputFeatures.   To bind and evaluate you create a LearningModelSession.
-    [marshaling_behavior(agile)]
-    [dualapipartition(1)]
-    runtimeclass FullyConnectedJunction : ILearningModelJunction
-    {
-    }
-
-    //! \interface LearningModelBuilder
-    //! \brief Represents a trained machine learning model.
-    //! \details This is the main object you use to interact with Windows Machine Learning.  You use 
-    //! it to load, bind, and evaluate trained ONNX models.   To load the model you use 
-    //! one of the Load constructors.  You can then enumerate the InputFeatures and 
-    //! OutputFeatures.   To bind and evaluate you create a LearningModelSession.
-    [threading(both)]
-    [marshaling_behavior(agile)]
-    [dualapipartition(1)]
-    runtimeclass LearningModelBuilder : Windows.Foundation.IClosable
-    {
-        ILearningModelJunction InputJunction { get; };
-        ILearningModelJunction OutputJunction { get; };
-
-        //! Create a builder.
-        static LearningModelBuilder Create();
-
-        static ILearningModelJunction AfterAll(
-          ILearningModelJunction target,
-          Windows.Foundation.Collections.IVectorView<ILearningModelJunction> input_junctions);
-
-        static ILearningModelJunction AfterAll(
-          ILearningModelJunction target,
-          Windows.Foundation.Collections.IVectorView<ILearningModelJunction> input_junctions,
-          LearningModelJunctionResolutionPolicy policy);
-
-        ILearningModelJunction AddInput(Windows.AI.MachineLearning.ILearningModelFeatureDescriptor input_descriptor);
-
-        ILearningModelJunction AddOutput(Windows.AI.MachineLearning.ILearningModelFeatureDescriptor output_descriptor);
-
-        Windows.AI.MachineLearning.LearningModel CreateModel();
-    }
-}
+  runtimeclass LearningModelBuilder;
 
 
-/*
+  [threading(both)]
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelOperator {
+    LearningModelOperator(String type, String name);
 
-::ShapeSize()
-Tensor::Reshape()
+    LearningModelOperator Then(LearningModelOperator next_operator);
+    LearningModelOperator Then(LearningModelOperator next_operator, LearningModelOperatorResolutionPolicy policy);
+    LearningModelBuilder ConnectToOutputs();
+    LearningModelBuilder ConnectToOutputs(LearningModelOperatorResolutionPolicy policy);
 
-ILearningModelFeatureDescriptor input_desc = TensorFeatureDescriptor::Create();
-ILearningModelFeatureDescriptor output_desc = TensorFeatureDescriptor::Create();
-LearningModelBuilder mb;
-mb.AddInput(input_desc);
-mb.AddOutput(output_desc);
+    LearningModelOperator SetAttribute(String name, IInspectable value);
+    Windows.Foundation.Collections.IVectorView<Windows.AI.MachineLearning.ILearningModelFeatureDescriptor> Inputs { get; };
+    Windows.Foundation.Collections.IMapView<String, String> InputMapping { get; };
+    Windows.Foundation.Collections.IVectorView<Windows.AI.MachineLearning.ILearningModelFeatureDescriptor> Attributes { get; };
+    Windows.Foundation.Collections.IVectorView<Windows.AI.MachineLearning.ILearningModelFeatureDescriptor> Outputs { get; };
+    String Name { get; };
 
-auto fc1 = Layer::CreateFullyConnected(shape_tensor.ShapeSize(), Tensor::Uniform(TensorFloat::Create(...), mean));
-auto fc2 = Layer::CreateFullyConnected(shape_tensor.ShapeSize(), Tensor::Uniform(TensorFloat::Create(...), mean));
-auto fc3 = Layer::CreateFullyConnected(shape_tensor.ShapeSize(), Tensor::Uniform(TensorFloat::Create(...), mean));
+    static LearningModelOperator Gemm();
+    static LearningModelOperator Gemm(String name);
+  }
 
-// fc1 -> fc2 -> fc3
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelInputs {
+    LearningModelOperator Then(LearningModelOperator next_operator);
+    LearningModelOperator Then(LearningModelOperator next_operator, LearningModelOperatorResolutionPolicy policy);
+    LearningModelBuilder Add(Windows.AI.MachineLearning.ILearningModelFeatureDescriptor input);
+    LearningModelBuilder Add(Windows.AI.MachineLearning.ILearningModelFeatureDescriptor input, IInspectable default_value);
+    LearningModelBuilder AddConstant(Windows.AI.MachineLearning.ILearningModelFeatureDescriptor input, IInspectable value);
+  }
 
-std::map<uint32_t, uint32_t> fc1_edge_map = { {0, 0}, {2, 1} };
-mb.InputLayer()
-  .Then(fc1, fc1_edge_map)
-  .Then(fc2)
-  .Then(fc3)
-  .Then(mb.OutputLayer());
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelOutputs {
+    LearningModelBuilder Add(Windows.AI.MachineLearning.ILearningModelFeatureDescriptor output);
+  }
 
-// fc1 -> fc3; fc2 -> fc3
-mb.InputLayer().Then(fc1);
-mb.InputLayer().Then(fc2);
-LearningModelBuilder::AfterAll(fc3, {fc1, fc2})
-  .Then(mb.OutputLayer());
+  //! \interface LearningModelBuilder
+  //! \brief Represents a trained machine learning model.
+  //! \details This is the main object you use to interact with Windows Machine Learning.  You use
+  //! it to load, bind, and evaluate trained ONNX models.   To load the model you use
+  //! one of the Load constructors.  You can then enumerate the InputFeatures and
+  //! OutputFeatures.   To bind and evaluate you create a LearningModelSession.
+  [threading(both)]
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelBuilder {
+    LearningModelInputs Inputs { get; };
+    LearningModelOutputs Outputs { get; };
 
+    //! Create a builder.
+    static LearningModelBuilder Create();
 
+    static LearningModelOperator AfterAll(
+        LearningModelOperator target,
+        Windows.Foundation.Collections.IVectorView<LearningModelOperator> input_operators);
 
-torch.
-torch.nn
-torch.nn.function
+    static LearningModelOperator AfterAll(
+        LearningModelOperator target,
+        Windows.Foundation.Collections.IVectorView<LearningModelOperator> input_operators,
+        LearningModelOperatorResolutionPolicy policy);
 
-*/
+    Windows.AI.MachineLearning.LearningModel CreateModel();
+  }
+}  // namespace Windows.AI.MachineLearning.More

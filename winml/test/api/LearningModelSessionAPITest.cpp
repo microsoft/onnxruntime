@@ -9,6 +9,8 @@
 #include "protobufHelpers.h"
 #include "winrt/Windows.Storage.h"
 
+#include "winrt/Windows.AI.MachineLearning.More.h"
+
 #include <D3d11_4.h>
 #include <dxgi1_6.h>
 #include "Psapi.h"
@@ -33,67 +35,61 @@ static void LearningModelSessionAPITestsSkipEdgeCoreSetup() {
   SKIP_EDGECORE
 }
 
-static void CreateSessionDeviceDefault()
-{
-    LearningModel learningModel = nullptr;
-    LearningModelDevice learningModelDevice = nullptr;
-    WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
+static void CreateSessionDeviceDefault() {
+  LearningModel learningModel = nullptr;
+  LearningModelDevice learningModelDevice = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
 
-    WINML_EXPECT_NO_THROW(learningModelDevice = LearningModelDevice(LearningModelDeviceKind::Default));
-    WINML_EXPECT_NO_THROW(LearningModelSession(learningModel, learningModelDevice));
+  WINML_EXPECT_NO_THROW(learningModelDevice = LearningModelDevice(LearningModelDeviceKind::Default));
+  WINML_EXPECT_NO_THROW(LearningModelSession(learningModel, learningModelDevice));
 }
 
-static void CreateSessionDeviceCpu()
-{
-    LearningModel learningModel = nullptr;
-    LearningModelDevice learningModelDevice = nullptr;
-    WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
+static void CreateSessionDeviceCpu() {
+  LearningModel learningModel = nullptr;
+  LearningModelDevice learningModelDevice = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
 
-    WINML_EXPECT_NO_THROW(learningModelDevice = LearningModelDevice(LearningModelDeviceKind::Cpu));
-    WINML_EXPECT_NO_THROW(LearningModelSession(learningModel, learningModelDevice));
-    // for the CPU device, make sure that we get back NULL and 0 for any device properties
-    WINML_EXPECT_EQUAL(learningModelDevice.Direct3D11Device(), nullptr);
-    LARGE_INTEGER id;
-    id.QuadPart = APITest::GetAdapterIdQuadPart(learningModelDevice);
-    WINML_EXPECT_EQUAL(id.LowPart, static_cast<DWORD>(0));
-    WINML_EXPECT_EQUAL(id.HighPart, 0);
+  WINML_EXPECT_NO_THROW(learningModelDevice = LearningModelDevice(LearningModelDeviceKind::Cpu));
+  WINML_EXPECT_NO_THROW(LearningModelSession(learningModel, learningModelDevice));
+  // for the CPU device, make sure that we get back NULL and 0 for any device properties
+  WINML_EXPECT_EQUAL(learningModelDevice.Direct3D11Device(), nullptr);
+  LARGE_INTEGER id;
+  id.QuadPart = APITest::GetAdapterIdQuadPart(learningModelDevice);
+  WINML_EXPECT_EQUAL(id.LowPart, static_cast<DWORD>(0));
+  WINML_EXPECT_EQUAL(id.HighPart, 0);
 }
 
-static void CreateSessionWithModelLoadedFromStream()
-{
-    LearningModel learningModel = nullptr;
-    LearningModelDevice learningModelDevice = nullptr;
-    std::wstring path = FileHelpers::GetModulePath() + L"model.onnx";
-    auto storageFile = winrt::Windows::Storage::StorageFile::GetFileFromPathAsync(path).get();
+static void CreateSessionWithModelLoadedFromStream() {
+  LearningModel learningModel = nullptr;
+  LearningModelDevice learningModelDevice = nullptr;
+  std::wstring path = FileHelpers::GetModulePath() + L"model.onnx";
+  auto storageFile = winrt::Windows::Storage::StorageFile::GetFileFromPathAsync(path).get();
 
-    WINML_EXPECT_NO_THROW(learningModel = LearningModel::LoadFromStream(storageFile));
+  WINML_EXPECT_NO_THROW(learningModel = LearningModel::LoadFromStream(storageFile));
 
-    WINML_EXPECT_NO_THROW(learningModelDevice = LearningModelDevice(LearningModelDeviceKind::Default));
-    WINML_EXPECT_NO_THROW(LearningModelSession(learningModel, learningModelDevice));
+  WINML_EXPECT_NO_THROW(learningModelDevice = LearningModelDevice(LearningModelDeviceKind::Default));
+  WINML_EXPECT_NO_THROW(LearningModelSession(learningModel, learningModelDevice));
 }
 
-static void CreateSessionDeviceDirectX()
-{
-    LearningModel learningModel = nullptr;
-    LearningModelDevice learningModelDevice = nullptr;
-    WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
+static void CreateSessionDeviceDirectX() {
+  LearningModel learningModel = nullptr;
+  LearningModelDevice learningModelDevice = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
 
-    WINML_EXPECT_NO_THROW(learningModelDevice = LearningModelDevice(LearningModelDeviceKind::DirectX));
-    WINML_EXPECT_NO_THROW(LearningModelSession(learningModel, learningModelDevice));
+  WINML_EXPECT_NO_THROW(learningModelDevice = LearningModelDevice(LearningModelDeviceKind::DirectX));
+  WINML_EXPECT_NO_THROW(LearningModelSession(learningModel, learningModelDevice));
 }
 
-static void CreateSessionDeviceDirectXHighPerformance()
-{
-    LearningModel learningModel = nullptr;
-    LearningModelDevice learningModelDevice = nullptr;
-    WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
+static void CreateSessionDeviceDirectXHighPerformance() {
+  LearningModel learningModel = nullptr;
+  LearningModelDevice learningModelDevice = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
 
-    WINML_EXPECT_NO_THROW(learningModelDevice = LearningModelDevice(LearningModelDeviceKind::DirectXHighPerformance));
-    WINML_EXPECT_NO_THROW(LearningModelSession(learningModel, learningModelDevice));
+  WINML_EXPECT_NO_THROW(learningModelDevice = LearningModelDevice(LearningModelDeviceKind::DirectXHighPerformance));
+  WINML_EXPECT_NO_THROW(LearningModelSession(learningModel, learningModelDevice));
 }
 
-static void CreateSessionDeviceDirectXMinimumPower()
-{
+static void CreateSessionDeviceDirectXMinimumPower() {
   LearningModel learningModel = nullptr;
   LearningModelDevice learningModelDevice = nullptr;
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
@@ -103,234 +99,217 @@ static void CreateSessionDeviceDirectXMinimumPower()
 }
 
 static void AdapterIdAndDevice() {
-    LearningModel learningModel = nullptr;
-    LearningModelDevice learningModelDevice = nullptr;
-    LearningModelSession learningModelSession = nullptr;
-    WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
+  LearningModel learningModel = nullptr;
+  LearningModelDevice learningModelDevice = nullptr;
+  LearningModelSession learningModelSession = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
 
-    com_ptr<IDXGIFactory6> factory;
-    WINML_EXPECT_HRESULT_SUCCEEDED(CreateDXGIFactory1(__uuidof(IDXGIFactory6), factory.put_void()));
-    com_ptr<IDXGIAdapter> adapter;
+  com_ptr<IDXGIFactory6> factory;
+  WINML_EXPECT_HRESULT_SUCCEEDED(CreateDXGIFactory1(__uuidof(IDXGIFactory6), factory.put_void()));
+  com_ptr<IDXGIAdapter> adapter;
 
-    learningModelDevice = LearningModelDevice(LearningModelDeviceKind::DirectX);
-    WINML_EXPECT_HRESULT_SUCCEEDED(factory->EnumAdapters(0, adapter.put()));
-    DXGI_ADAPTER_DESC desc;
-    WINML_EXPECT_HRESULT_SUCCEEDED(adapter->GetDesc(&desc));
-    LARGE_INTEGER id;
-    id.QuadPart = APITest::GetAdapterIdQuadPart(learningModelDevice);
-    WINML_EXPECT_EQUAL(desc.AdapterLuid.LowPart, id.LowPart);
-    WINML_EXPECT_EQUAL(desc.AdapterLuid.HighPart, id.HighPart);
-    WINML_EXPECT_TRUE(learningModelDevice.Direct3D11Device() != nullptr);
+  learningModelDevice = LearningModelDevice(LearningModelDeviceKind::DirectX);
+  WINML_EXPECT_HRESULT_SUCCEEDED(factory->EnumAdapters(0, adapter.put()));
+  DXGI_ADAPTER_DESC desc;
+  WINML_EXPECT_HRESULT_SUCCEEDED(adapter->GetDesc(&desc));
+  LARGE_INTEGER id;
+  id.QuadPart = APITest::GetAdapterIdQuadPart(learningModelDevice);
+  WINML_EXPECT_EQUAL(desc.AdapterLuid.LowPart, id.LowPart);
+  WINML_EXPECT_EQUAL(desc.AdapterLuid.HighPart, id.HighPart);
+  WINML_EXPECT_TRUE(learningModelDevice.Direct3D11Device() != nullptr);
 
-    learningModelDevice = LearningModelDevice(LearningModelDeviceKind::DirectXHighPerformance);
-    adapter = nullptr;
-    WINML_EXPECT_HRESULT_SUCCEEDED(factory->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, __uuidof(IDXGIAdapter), adapter.put_void()));
-    WINML_EXPECT_HRESULT_SUCCEEDED(adapter->GetDesc(&desc));
-    id.QuadPart = APITest::GetAdapterIdQuadPart(learningModelDevice);
-    WINML_EXPECT_EQUAL(desc.AdapterLuid.LowPart, id.LowPart);
-    WINML_EXPECT_EQUAL(desc.AdapterLuid.HighPart, id.HighPart);
-    WINML_EXPECT_TRUE(learningModelDevice.Direct3D11Device() != nullptr);
+  learningModelDevice = LearningModelDevice(LearningModelDeviceKind::DirectXHighPerformance);
+  adapter = nullptr;
+  WINML_EXPECT_HRESULT_SUCCEEDED(factory->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, __uuidof(IDXGIAdapter), adapter.put_void()));
+  WINML_EXPECT_HRESULT_SUCCEEDED(adapter->GetDesc(&desc));
+  id.QuadPart = APITest::GetAdapterIdQuadPart(learningModelDevice);
+  WINML_EXPECT_EQUAL(desc.AdapterLuid.LowPart, id.LowPart);
+  WINML_EXPECT_EQUAL(desc.AdapterLuid.HighPart, id.HighPart);
+  WINML_EXPECT_TRUE(learningModelDevice.Direct3D11Device() != nullptr);
 
-    adapter = nullptr;
-    learningModelDevice = LearningModelDevice(LearningModelDeviceKind::DirectXMinPower);
-    WINML_EXPECT_HRESULT_SUCCEEDED(factory->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_MINIMUM_POWER, __uuidof(IDXGIAdapter), adapter.put_void()));
-    WINML_EXPECT_HRESULT_SUCCEEDED(adapter->GetDesc(&desc));
-    id.QuadPart = APITest::GetAdapterIdQuadPart(learningModelDevice);
-    WINML_EXPECT_EQUAL(desc.AdapterLuid.LowPart, id.LowPart);
-    WINML_EXPECT_EQUAL(desc.AdapterLuid.HighPart, id.HighPart);
-    WINML_EXPECT_TRUE(learningModelDevice.Direct3D11Device() != nullptr);
+  adapter = nullptr;
+  learningModelDevice = LearningModelDevice(LearningModelDeviceKind::DirectXMinPower);
+  WINML_EXPECT_HRESULT_SUCCEEDED(factory->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_MINIMUM_POWER, __uuidof(IDXGIAdapter), adapter.put_void()));
+  WINML_EXPECT_HRESULT_SUCCEEDED(adapter->GetDesc(&desc));
+  id.QuadPart = APITest::GetAdapterIdQuadPart(learningModelDevice);
+  WINML_EXPECT_EQUAL(desc.AdapterLuid.LowPart, id.LowPart);
+  WINML_EXPECT_EQUAL(desc.AdapterLuid.HighPart, id.HighPart);
+  WINML_EXPECT_TRUE(learningModelDevice.Direct3D11Device() != nullptr);
 
-    WINML_EXPECT_NO_THROW(learningModelSession = LearningModelSession(learningModel, learningModelDevice));
-    WINML_EXPECT_EQUAL(learningModelSession.Device().AdapterId(), learningModelDevice.AdapterId());
+  WINML_EXPECT_NO_THROW(learningModelSession = LearningModelSession(learningModel, learningModelDevice));
+  WINML_EXPECT_EQUAL(learningModelSession.Device().AdapterId(), learningModelDevice.AdapterId());
 }
 
-static void EvaluateFeatures()
-{
-    std::vector<int64_t> shape = { 4 };
-    std::vector<winrt::hstring> data = { L"one", L"two", L"three", L"four" };
+static void EvaluateFeatures() {
+  std::vector<int64_t> shape = {4};
+  std::vector<winrt::hstring> data = {L"one", L"two", L"three", L"four"};
 
-    // create from buffer
-    auto tensor = TensorString::CreateFromArray(shape, data);
-    WINML_EXPECT_EQUAL(tensor.GetAsVectorView().Size(), data.size());
-    WINML_EXPECT_TRUE(std::equal(data.cbegin(), data.cend(), begin(tensor.GetAsVectorView())));
+  // create from buffer
+  auto tensor = TensorString::CreateFromArray(shape, data);
+  WINML_EXPECT_EQUAL(tensor.GetAsVectorView().Size(), data.size());
+  WINML_EXPECT_TRUE(std::equal(data.cbegin(), data.cend(), begin(tensor.GetAsVectorView())));
 
-    // create from vector view
-    auto dataCopy = data;
-    tensor = TensorString::CreateFromIterable(
-        shape, winrt::single_threaded_vector<winrt::hstring>(std::move(dataCopy)).GetView());
-    WINML_EXPECT_EQUAL(tensor.GetAsVectorView().Size(), data.size());
-    WINML_EXPECT_TRUE(std::equal(data.cbegin(), data.cend(), begin(tensor.GetAsVectorView())));
+  // create from vector view
+  auto dataCopy = data;
+  tensor = TensorString::CreateFromIterable(
+      shape, winrt::single_threaded_vector<winrt::hstring>(std::move(dataCopy)).GetView());
+  WINML_EXPECT_EQUAL(tensor.GetAsVectorView().Size(), data.size());
+  WINML_EXPECT_TRUE(std::equal(data.cbegin(), data.cend(), begin(tensor.GetAsVectorView())));
 
-    LearningModel learningModel = nullptr;
-    WINML_EXPECT_NO_THROW(APITest::LoadModel(L"id-tensor-string.onnx", learningModel));
-    LearningModelSession session(learningModel);
+  LearningModel learningModel = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"id-tensor-string.onnx", learningModel));
+  LearningModelSession session(learningModel);
 
-    auto outputTensor = TensorString::Create();
+  auto outputTensor = TensorString::Create();
 
-    std::map<hstring, winrt::Windows::Foundation::IInspectable> featuresstandardmap;
-    featuresstandardmap[L"X"] = tensor;
-    featuresstandardmap[L"Y"] = outputTensor;
-    auto featureswinrtmap = winrt::single_threaded_map(std::move(featuresstandardmap));
-    session.EvaluateFeatures(featureswinrtmap, L"0");
+  std::map<hstring, winrt::Windows::Foundation::IInspectable> featuresstandardmap;
+  featuresstandardmap[L"X"] = tensor;
+  featuresstandardmap[L"Y"] = outputTensor;
+  auto featureswinrtmap = winrt::single_threaded_map(std::move(featuresstandardmap));
+  session.EvaluateFeatures(featureswinrtmap, L"0");
 
-    // verify identity model round-trip works
-    WINML_EXPECT_EQUAL(outputTensor.GetAsVectorView().Size(), data.size());
-    WINML_EXPECT_TRUE(std::equal(data.cbegin(), data.cend(), begin(outputTensor.GetAsVectorView())));
+  // verify identity model round-trip works
+  WINML_EXPECT_EQUAL(outputTensor.GetAsVectorView().Size(), data.size());
+  WINML_EXPECT_TRUE(std::equal(data.cbegin(), data.cend(), begin(outputTensor.GetAsVectorView())));
 }
 
-static void EvaluateFeaturesAsync()
-{
-    std::vector<int64_t> shape = { 4 };
-    std::vector<winrt::hstring> data = { L"one", L"two", L"three", L"four" };
+static void EvaluateFeaturesAsync() {
+  std::vector<int64_t> shape = {4};
+  std::vector<winrt::hstring> data = {L"one", L"two", L"three", L"four"};
 
-    // create from buffer
-    auto tensor = TensorString::CreateFromArray(shape, data);
-    WINML_EXPECT_EQUAL(tensor.GetAsVectorView().Size(), data.size());
-    WINML_EXPECT_TRUE(std::equal(data.cbegin(), data.cend(), begin(tensor.GetAsVectorView())));
+  // create from buffer
+  auto tensor = TensorString::CreateFromArray(shape, data);
+  WINML_EXPECT_EQUAL(tensor.GetAsVectorView().Size(), data.size());
+  WINML_EXPECT_TRUE(std::equal(data.cbegin(), data.cend(), begin(tensor.GetAsVectorView())));
 
-    // create from vector view
-    auto dataCopy = data;
-    tensor = TensorString::CreateFromIterable(
-        shape, winrt::single_threaded_vector<winrt::hstring>(std::move(dataCopy)).GetView());
-    WINML_EXPECT_EQUAL(tensor.GetAsVectorView().Size(), data.size());
-    WINML_EXPECT_TRUE(std::equal(data.cbegin(), data.cend(), begin(tensor.GetAsVectorView())));
+  // create from vector view
+  auto dataCopy = data;
+  tensor = TensorString::CreateFromIterable(
+      shape, winrt::single_threaded_vector<winrt::hstring>(std::move(dataCopy)).GetView());
+  WINML_EXPECT_EQUAL(tensor.GetAsVectorView().Size(), data.size());
+  WINML_EXPECT_TRUE(std::equal(data.cbegin(), data.cend(), begin(tensor.GetAsVectorView())));
 
-    LearningModel learningModel = nullptr;
-    WINML_EXPECT_NO_THROW(APITest::LoadModel(L"id-tensor-string.onnx", learningModel));
-    LearningModelSession session(learningModel);
+  LearningModel learningModel = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"id-tensor-string.onnx", learningModel));
+  LearningModelSession session(learningModel);
 
-    auto outputTensor = TensorString::Create(shape);
+  auto outputTensor = TensorString::Create(shape);
 
-    std::map<hstring, winrt::Windows::Foundation::IInspectable> featuresstandardmap;
-    featuresstandardmap[L"X"] = tensor;
-    featuresstandardmap[L"Y"] = outputTensor;
-    auto featureswinrtmap = winrt::single_threaded_map(std::move(featuresstandardmap));
-    session.EvaluateFeaturesAsync(featureswinrtmap, L"0").get();
+  std::map<hstring, winrt::Windows::Foundation::IInspectable> featuresstandardmap;
+  featuresstandardmap[L"X"] = tensor;
+  featuresstandardmap[L"Y"] = outputTensor;
+  auto featureswinrtmap = winrt::single_threaded_map(std::move(featuresstandardmap));
+  session.EvaluateFeaturesAsync(featureswinrtmap, L"0").get();
 
-    // verify identity model round-trip works
-    WINML_EXPECT_EQUAL(outputTensor.GetAsVectorView().Size(), data.size());
-    WINML_EXPECT_TRUE(std::equal(data.cbegin(), data.cend(), begin(outputTensor.GetAsVectorView())));
+  // verify identity model round-trip works
+  WINML_EXPECT_EQUAL(outputTensor.GetAsVectorView().Size(), data.size());
+  WINML_EXPECT_TRUE(std::equal(data.cbegin(), data.cend(), begin(outputTensor.GetAsVectorView())));
 }
 
-static void EvaluationProperties()
-{
-    // load a model
-    LearningModel learningModel = nullptr;
-    WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
-    // create a session
-    LearningModelSession learningModelSession = nullptr;
-    learningModelSession = LearningModelSession(learningModel);
-    // set a property
-    auto value = winrt::Windows::Foundation::PropertyValue::CreateBoolean(true);
-    learningModelSession.EvaluationProperties().Insert(L"propName1", value);
-    // get the property and make sure it's there with the right value
-    auto value2 = learningModelSession.EvaluationProperties().Lookup(L"propName1");
-    WINML_EXPECT_EQUAL(value2.as<IPropertyValue>().GetBoolean(), true);
+static void EvaluationProperties() {
+  // load a model
+  LearningModel learningModel = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
+  // create a session
+  LearningModelSession learningModelSession = nullptr;
+  learningModelSession = LearningModelSession(learningModel);
+  // set a property
+  auto value = winrt::Windows::Foundation::PropertyValue::CreateBoolean(true);
+  learningModelSession.EvaluationProperties().Insert(L"propName1", value);
+  // get the property and make sure it's there with the right value
+  auto value2 = learningModelSession.EvaluationProperties().Lookup(L"propName1");
+  WINML_EXPECT_EQUAL(value2.as<IPropertyValue>().GetBoolean(), true);
 }
 
-static LearningModelSession CreateSession(LearningModel model)
-{
-    LearningModelDevice device(nullptr);
-    WINML_EXPECT_NO_THROW(device = LearningModelDevice(LearningModelDeviceKind::DirectX));
+static LearningModelSession CreateSession(LearningModel model) {
+  LearningModelDevice device(nullptr);
+  WINML_EXPECT_NO_THROW(device = LearningModelDevice(LearningModelDeviceKind::DirectX));
 
-    LearningModelSession session(nullptr);
-    if (CommonDeviceHelpers::IsFloat16Supported(device))
-    {
-        WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device));
-    }
-    else
-    {
-        WINML_EXPECT_THROW_SPECIFIC(
-            session = LearningModelSession(model, device),
-            winrt::hresult_error,
-            [](const winrt::hresult_error& e) -> bool
-        {
-            return e.code() == DXGI_ERROR_UNSUPPORTED;
+  LearningModelSession session(nullptr);
+  if (CommonDeviceHelpers::IsFloat16Supported(device)) {
+    WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device));
+  } else {
+    WINML_EXPECT_THROW_SPECIFIC(
+        session = LearningModelSession(model, device),
+        winrt::hresult_error,
+        [](const winrt::hresult_error& e) -> bool {
+          return e.code() == DXGI_ERROR_UNSUPPORTED;
         });
-    }
+  }
 
-    return session;
+  return session;
 }
 
-static void CreateSessionWithCastToFloat16InModel()
-{
-    // load a model
-    LearningModel learningModel = nullptr;
-    WINML_EXPECT_NO_THROW(APITest::LoadModel(L"fp16-truncate-with-cast.onnx", learningModel));
+static void CreateSessionWithCastToFloat16InModel() {
+  // load a model
+  LearningModel learningModel = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"fp16-truncate-with-cast.onnx", learningModel));
 
-    CreateSession(learningModel);
+  CreateSession(learningModel);
 }
 
-static void DISABLED_CreateSessionWithFloat16InitializersInModel()
-{
-    // Disabled due to https://microsoft.visualstudio.com/DefaultCollection/OS/_workitems/edit/21624720:
-    // Model fails to resolve due to ORT using incorrect IR version within partition
+static void DISABLED_CreateSessionWithFloat16InitializersInModel() {
+  // Disabled due to https://microsoft.visualstudio.com/DefaultCollection/OS/_workitems/edit/21624720:
+  // Model fails to resolve due to ORT using incorrect IR version within partition
 
-    // load a model
-    LearningModel learningModel = nullptr;
-    WINML_EXPECT_NO_THROW(APITest::LoadModel(L"fp16-initializer.onnx", learningModel));
+  // load a model
+  LearningModel learningModel = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"fp16-initializer.onnx", learningModel));
 
-    CreateSession(learningModel);
+  CreateSession(learningModel);
 }
 
 static void EvaluateSessionAndCloseModelHelper(
     LearningModelDeviceKind kind,
-    bool close_model_on_session_creation)
-{
-    auto shape = std::vector<int64_t>{ 1, 1000 };
+    bool close_model_on_session_creation) {
+  auto shape = std::vector<int64_t>{1, 1000};
 
-    auto model = ProtobufHelpers::CreateModel(TensorKind::Float, shape, 1000);
+  auto model = ProtobufHelpers::CreateModel(TensorKind::Float, shape, 1000);
 
-    auto device = LearningModelDevice(kind);
-    auto options = LearningModelSessionOptions();
+  auto device = LearningModelDevice(kind);
+  auto options = LearningModelSessionOptions();
 
-    // close the model on session creation
-    options.CloseModelOnSessionCreation(close_model_on_session_creation);
+  // close the model on session creation
+  options.CloseModelOnSessionCreation(close_model_on_session_creation);
 
-    // ensure you can create a session from the model
-    LearningModelSession session(nullptr);
+  // ensure you can create a session from the model
+  LearningModelSession session(nullptr);
 
-    WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device, options));
+  WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device, options));
 
-    std::vector<float> input(1000);
-    std::iota(std::begin(input), std::end(input), 0.0f);
-    auto tensor_input = TensorFloat::CreateFromShapeArrayAndDataArray(shape, input);
-    auto binding = LearningModelBinding(session);
-    binding.Bind(L"input", tensor_input);
+  std::vector<float> input(1000);
+  std::iota(std::begin(input), std::end(input), 0.0f);
+  auto tensor_input = TensorFloat::CreateFromShapeArrayAndDataArray(shape, input);
+  auto binding = LearningModelBinding(session);
+  binding.Bind(L"input", tensor_input);
 
-    LearningModelEvaluationResult result(nullptr);
-    WINML_EXPECT_NO_THROW(result = session.Evaluate(binding, L""));
+  LearningModelEvaluationResult result(nullptr);
+  WINML_EXPECT_NO_THROW(result = session.Evaluate(binding, L""));
 
-    if (close_model_on_session_creation)
-    {
-        // ensure that the model has been closed
-        WINML_EXPECT_THROW_SPECIFIC(
-            LearningModelSession(model, device, options),
-            winrt::hresult_error,
-            [](const winrt::hresult_error& e) -> bool
-        {
-            return e.code() == E_INVALIDARG;
+  if (close_model_on_session_creation) {
+    // ensure that the model has been closed
+    WINML_EXPECT_THROW_SPECIFIC(
+        LearningModelSession(model, device, options),
+        winrt::hresult_error,
+        [](const winrt::hresult_error& e) -> bool {
+          return e.code() == E_INVALIDARG;
         });
-    }
-    else
-    {
-        WINML_EXPECT_NO_THROW(LearningModelSession(model, device, options));
-    }
+  } else {
+    WINML_EXPECT_NO_THROW(LearningModelSession(model, device, options));
+  }
 }
 
-static void EvaluateSessionAndCloseModel()
-{
-    WINML_EXPECT_NO_THROW(::EvaluateSessionAndCloseModelHelper(LearningModelDeviceKind::Cpu, true));
-    WINML_EXPECT_NO_THROW(::EvaluateSessionAndCloseModelHelper(LearningModelDeviceKind::Cpu, false));
+static void EvaluateSessionAndCloseModel() {
+  WINML_EXPECT_NO_THROW(::EvaluateSessionAndCloseModelHelper(LearningModelDeviceKind::Cpu, true));
+  WINML_EXPECT_NO_THROW(::EvaluateSessionAndCloseModelHelper(LearningModelDeviceKind::Cpu, false));
 }
 
-static void CloseSession()
-{
-    LearningModel learningModel = nullptr;
-    WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
-    LearningModelSession session = nullptr;
+static void CloseSession() {
+  LearningModel learningModel = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
+  LearningModelSession session = nullptr;
 
-    /*
+  /*
     HANDLE currentProcessHandle = NULL;
     try
     {
@@ -345,9 +324,9 @@ static void CloseSession()
     SIZE_T afterSessionCloseWorkingSetSize = 0;
     bool getProcessMemoryInfoSuccess = false;
     */
-    WINML_EXPECT_NO_THROW(session = LearningModelSession(learningModel));
+  WINML_EXPECT_NO_THROW(session = LearningModelSession(learningModel));
 
-    /*
+  /*
     // Get the current process memory info after session creation.
     getProcessMemoryInfoSuccess = GetProcessMemoryInfo(currentProcessHandle, &pmc, sizeof(pmc));
     if (!getProcessMemoryInfoSuccess)
@@ -357,9 +336,9 @@ static void CloseSession()
     beforeSessionCloseWorkingSetSize = pmc.WorkingSetSize;
     pmc = { 0 };
     */
-    WINML_EXPECT_NO_THROW(session.Close());
+  WINML_EXPECT_NO_THROW(session.Close());
 
-    /*
+  /*
     Bug 23659026: Working set difference tolerance is too tight for LearningModelSessionAPITests::CloseSession
     https://microsoft.visualstudio.com/OS/_workitems/edit/23659026
 
@@ -382,42 +361,71 @@ static void CloseSession()
     VERIFY_IS_LESS_THAN(expectedWorkingSetDifference - (beforeSessionCloseWorkingSetSize - afterSessionCloseWorkingSetSize), expectedWorkingSetDifference * tolerance);
     */
 
-    // verify that model still has metadata info after session close
-    std::wstring author(learningModel.Author());
-    WINML_EXPECT_EQUAL(author, L"onnx-caffe2");
+  // verify that model still has metadata info after session close
+  std::wstring author(learningModel.Author());
+  WINML_EXPECT_EQUAL(author, L"onnx-caffe2");
 
-    // verify that session throws RO_E_CLOSED error
-    std::vector<float> input(1 * 3 * 224 * 224, 0);
-    std::vector<int64_t> shape = { 1, 3, 224, 224 };
-    auto tensor_input = TensorFloat::CreateFromShapeArrayAndDataArray(shape, input);
-    WINML_EXPECT_THROW_SPECIFIC(LearningModelBinding binding(session),
-        winrt::hresult_error,
-        [](const winrt::hresult_error &e) -> bool
-    {
-        return e.code() == RO_E_CLOSED;
-    });
- }
+  // verify that session throws RO_E_CLOSED error
+  std::vector<float> input(1 * 3 * 224 * 224, 0);
+  std::vector<int64_t> shape = {1, 3, 224, 224};
+  auto tensor_input = TensorFloat::CreateFromShapeArrayAndDataArray(shape, input);
+  WINML_EXPECT_THROW_SPECIFIC(LearningModelBinding binding(session),
+                              winrt::hresult_error,
+                              [](const winrt::hresult_error& e) -> bool {
+                                return e.code() == RO_E_CLOSED;
+                              });
+}
+
+static void TestModelBuilding() {
+
+    using namespace winrt::Windows::AI::MachineLearning::More;
+    using Operator = winrt::Windows::AI::MachineLearning::More::LearningModelOperator;
+    auto builder = LearningModelBuilder::Create();
+
+    std::vector<int64_t> shape = {256, 256};
+
+    std::vector<float> attribute_data(256 * 256, 0);
+    auto attribute = TensorFloat::CreateFromShapeArrayAndDataArray(shape, attribute_data);
+
+    std::vector<float> constant_y_data(256 * 256, 0);
+    auto constant_y = TensorFloat::CreateFromShapeArrayAndDataArray(shape, constant_y_data);
+
+    auto model = builder
+                   .Inputs().Add(TensorFeatureDescriptor(L"x", L"the x input", TensorKind::Float, shape))
+                   .Inputs().AddConstant(TensorFeatureDescriptor(L"y", L"the y input", TensorKind::Float, shape), constant_y)
+                   .Outputs().Add(TensorFeatureDescriptor(L"z", L"the z output", TensorKind::Float, shape))
+                   .Inputs()
+                     .Then(Operator::Gemm().SetAttribute(L"a", attribute)
+                                           .SetAttribute(L"b", attribute))
+                     .Then(Operator::Gemm(), LearningModelOperatorResolutionPolicy().ConnectConstants())
+                     .Then(Operator::Gemm(), LearningModelOperatorResolutionPolicy().ConnectConstants())
+                     .ConnectToOutputs()
+                     .CreateModel();
+
+    LearningModelSession session(model);
+    LearningModelBinding binding(session);
+}
 
 const LearningModelSesssionAPITestApi& getapi() {
   static constexpr LearningModelSesssionAPITestApi api =
-  {
-    LearningModelSessionAPITestSetup,
-    LearningModelSessionAPITestGpuSetup,
-    LearningModelSessionAPITestsSkipEdgeCoreSetup,
-    CreateSessionDeviceDefault,
-    CreateSessionDeviceCpu,
-    CreateSessionWithModelLoadedFromStream,
-    CreateSessionDeviceDirectX,
-    CreateSessionDeviceDirectXHighPerformance,
-    CreateSessionDeviceDirectXMinimumPower,
-    AdapterIdAndDevice,
-    EvaluateFeatures,
-    EvaluateFeaturesAsync,
-    EvaluationProperties,
-    CreateSessionWithCastToFloat16InModel,
-    DISABLED_CreateSessionWithFloat16InitializersInModel,
-    EvaluateSessionAndCloseModel,
-    CloseSession,
-  };
- return api;
+      {
+          LearningModelSessionAPITestSetup,
+          LearningModelSessionAPITestGpuSetup,
+          LearningModelSessionAPITestsSkipEdgeCoreSetup,
+          CreateSessionDeviceDefault,
+          CreateSessionDeviceCpu,
+          CreateSessionWithModelLoadedFromStream,
+          CreateSessionDeviceDirectX,
+          CreateSessionDeviceDirectXHighPerformance,
+          CreateSessionDeviceDirectXMinimumPower,
+          AdapterIdAndDevice,
+          EvaluateFeatures,
+          EvaluateFeaturesAsync,
+          EvaluationProperties,
+          CreateSessionWithCastToFloat16InModel,
+          DISABLED_CreateSessionWithFloat16InitializersInModel,
+          EvaluateSessionAndCloseModel,
+          CloseSession,
+          TestModelBuilding};
+  return api;
 }

@@ -80,10 +80,41 @@ ORT_API_STATUS(ValueGetDeviceId, _In_ OrtValue* ort_value, _Out_ int16_t* device
 ORT_API_STATUS(SessionGetInputRequiredDeviceId, _In_ OrtSession* session, _In_ const char* const input_name, _Out_ int16_t* device_id);
 
 // Model Building
+ORT_API_STATUS(CreateTensorTypeInfo, _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type, _Out_ OrtTypeInfo** type_info);
+ORT_API_STATUS(CreateSequenceTypeInfo, _Out_ OrtTypeInfo** type_info);
+ORT_API_STATUS(CreateMapTypeInfo, _Out_ OrtTypeInfo** type_info);
 ORT_API_STATUS(CreateModel, _Outptr_ OrtModel** out);
-ORT_API_STATUS(ModelAddTensorInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
-ORT_API_STATUS(ModelAddTensorOutput, _In_ OrtModel* model, _In_ const char* const output_name, _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
-ORT_API_STATUS(ModelAddOperator, _In_ OrtModel* model, _In_ const char* const name, _In_ const char* const* input_names, _In_ size_t num_inputs, _In_ const char* const* output_names, _In_ size_t num_outputs);
+ORT_API_STATUS(ModelAddInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info, _In_ bool is_constant);
+ORT_API_STATUS(ModelAddOutput, _In_ OrtModel* model, _In_ const char* const output_name, _In_ OrtTypeInfo* info);
+ORT_API_STATUS(ModelAddOperator, 
+    _In_ OrtModel* model,
+    _In_ const char* const op_type,
+    _In_ const char* const op_name,
+    _In_ const char* const* input_names, _In_ size_t num_inputs,
+    _In_ const char* const* output_names, _In_ size_t num_outputs,
+    _In_ const char* const* attribute_names, _In_ OrtValue** attribute_values, _In_ size_t num_attributes);
+
+ORT_API_STATUS(InferOperatorOutputs, 
+    _In_ OrtModel* model,
+    _In_ const char* const op_type,
+    _In_ OrtTypeInfo** input_type_info, size_t num_inputs,
+    _In_ const char* const* attribute_names, _In_ OrtValue** attribute_values, _In_ size_t num_attributes,
+    _Out_ OrtTypeInfo** output_type_info, const char* const* output_names, size_t num_outputs);
+
+ORT_API_STATUS(ResolveOperatorInputs, 
+    _In_ const char* const op_type,
+    _In_ OrtTypeInfo** inputs_type_info, size_t num_inputs,
+    _Out_ size_t* indexes, size_t num_indexes);
+
+ORT_API_STATUS(OperatorGetNumInputs,
+      _In_ const char* const op_type, 
+      _Out_ size_t* num_inputs);
+
+ORT_API_STATUS(OperatorGetInputName,
+      _In_ const char* const op_type,
+      _In_ size_t index,
+      _Out_ const char** const name);
+
 // maps and sequences???
 //ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second
 

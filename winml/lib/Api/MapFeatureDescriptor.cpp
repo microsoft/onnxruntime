@@ -70,4 +70,13 @@ MapFeatureDescriptor::GetDescription(
   *cchDescription = static_cast<uint32_t>(description_.size());
   return S_OK;
 }
+
+HRESULT
+MapFeatureDescriptor::GetDescriptorInfo(
+    WinML::IEngineFactory* engine_factory,
+    WinML::IDescriptorInfo** info) {
+  engine_factory->CreateMapDescriptorInfo(info);
+  return S_OK;
+}
+
 }  // namespace winrt::Windows::AI::MachineLearning::implementation

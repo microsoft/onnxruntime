@@ -219,3 +219,143 @@ STDMETHODIMP OnnruntimeModel::DetachOrtModel(OrtModel** model) {
   *model = ort_model_.release();
   return S_OK;
 }
+
+STDMETHODIMP OnnruntimeModel::AddOperator(const char* const op_type, const char* const op_name, const char* const* input_names,
+                                          size_t num_inputs, const char* const* output_names, size_t num_outputs) {
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelAddOperator(ort_model_.get(), op_type, op_name, input_names, num_inputs, output_names, num_outputs, nullptr, nullptr, 0),
+                          engine_factory_->UseOrtApi());
+  return S_OK;
+}
+
+static ONNXTensorElementDataType
+ONNXTensorElementDataTypeFromTensorKind(winml::TensorKind kind) {
+  switch (kind) {
+    case winml::TensorKind::Boolean: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
+    }
+    case winml::TensorKind::String: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+    }
+    case winml::TensorKind::Float16: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+    }
+    case winml::TensorKind::Float: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+    }
+    case winml::TensorKind::Double: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
+    }
+    case winml::TensorKind::Int8: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
+    }
+    case winml::TensorKind::Int16: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
+    }
+    case winml::TensorKind::Int32: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
+    }
+    case winml::TensorKind::Int64: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+    }
+    case winml::TensorKind::UInt8: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
+    }
+    case winml::TensorKind::UInt16: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16;
+    }
+    case winml::TensorKind::UInt32: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32;
+    }
+    case winml::TensorKind::UInt64: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
+    }
+    case winml::TensorKind::Complex64: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64;
+    }
+    case winml::TensorKind::Complex128: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128;
+    }
+    default: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+    }
+  }
+}
+
+STDMETHODIMP OnnruntimeModel::AddModelInput(_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant) {
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  auto ort_api = engine_factory_->UseOrtApi();
+
+  winrt::com_ptr<WinML::IDescriptorInfo> descriptor_info;
+  descriptor_provider->GetDescriptorInfo(engine_factory_.Get(), descriptor_info.put());
+
+  auto ort_type_info_provider = descriptor_info.as<WinML::IOrtTypeInfoProvider>();
+  OrtTypeInfo* type_info;
+  ort_type_info_provider->GetTypeInfo(&type_info);
+
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelAddInput(ort_model_.get(), name, type_info, is_constant),
+                          ort_api);
+  return S_OK;
+}
+
+STDMETHODIMP OnnruntimeModel::AddModelOutput(_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider) {
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  auto ort_api = engine_factory_->UseOrtApi();
+
+  winrt::com_ptr<WinML::IDescriptorInfo> descriptor_info;
+  descriptor_provider->GetDescriptorInfo(engine_factory_.Get(), descriptor_info.put());
+
+  auto ort_type_info_provider = descriptor_info.as<WinML::IOrtTypeInfoProvider>();
+  OrtTypeInfo* type_info;
+  ort_type_info_provider->GetTypeInfo(&type_info);
+
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelAddOutput(ort_model_.get(), name, type_info), ort_api);
+  return S_OK;
+}
+
+STDMETHODIMP OnnruntimeModel::InferOperatorOutputs(_In_ const char* const op_name, _In_ const wfc::IVector<winml::ILearningModelFeatureDescriptor>& inputs, _Out_ wfc::IVector<winml::ILearningModelFeatureDescriptor>& outputs) {
+  UNREFERENCED_PARAMETER(op_name);
+  UNREFERENCED_PARAMETER(inputs);
+  UNREFERENCED_PARAMETER(outputs);
+  return S_OK;
+}
+
+STDMETHODIMP OnnruntimeModel::ResolveOperatorInputs(_In_ const char* const op_type,
+                                                    _In_ wfc::IVectorView<winml::ILearningModelFeatureDescriptor>& available_inputs,
+                                                    _Out_ wfc::IVector<winml::ILearningModelFeatureDescriptor>& resolved_inputs,
+                                                    _Out_ wfc::IMap<winrt::hstring, winrt::hstring>& mapping) {
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+
+  std::vector<OrtTypeInfo*> available_inputs_vector;
+  for (uint32_t i = 0; i < available_inputs.Size(); i++) {
+    auto learning_model_descriptor = available_inputs.GetAt(i);
+    auto descriptor_provider = learning_model_descriptor.as<IDescriptorInfoProvider>();
+
+    winrt::com_ptr<IDescriptorInfo> descriptor_info;
+    descriptor_provider->GetDescriptorInfo(engine_factory_.Get(), descriptor_info.put());
+    auto ort_type_info_provider = descriptor_info.as<IOrtTypeInfoProvider>();
+
+    OrtTypeInfo* info;
+    ort_type_info_provider->GetTypeInfo(&info);
+
+    available_inputs_vector.emplace_back(info);
+  }
+
+  size_t num_inputs;
+  winml_adapter_api->OperatorGetNumInputs(op_type, &num_inputs);
+  std::vector<size_t> indexes(num_inputs);
+  winml_adapter_api->ResolveOperatorInputs(op_type, available_inputs_vector.data(), available_inputs_vector.size(), indexes.data(), num_inputs);
+
+  resolved_inputs.Clear();
+  mapping.Clear();
+  for (size_t i = 0; i < num_inputs; i++) {
+    auto feature_descriptor = available_inputs.GetAt(static_cast<uint32_t>(indexes[i]));
+    resolved_inputs.Append(feature_descriptor);
+
+    const char* name;
+    winml_adapter_api->OperatorGetInputName(op_type, i, &name);
+    mapping.Insert(WinML::Strings::HStringFromUTF8(name), feature_descriptor.Name());
+  }
+
+  return S_OK;
+}

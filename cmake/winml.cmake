@@ -382,10 +382,14 @@ add_library(winml_lib_api STATIC
   ## WinML.More
   ${winml_lib_api_dir}/LearningModelBuilder.cpp
   ${winml_lib_api_dir}/LearningModelBuilder.h
-  ${winml_lib_api_dir}/LearningModelJunctionResolutionPolicy.cpp
-  ${winml_lib_api_dir}/LearningModelJunctionResolutionPolicy.h
-  ${winml_lib_api_dir}/FullyConnectedJunction.cpp
-  ${winml_lib_api_dir}/FullyConnectedJunction.h
+  ${winml_lib_api_dir}/LearningModelInputs.cpp
+  ${winml_lib_api_dir}/LearningModelInputs.h
+  ${winml_lib_api_dir}/LearningModelOutputs.cpp
+  ${winml_lib_api_dir}/LearningModelOutputs.h
+  ${winml_lib_api_dir}/LearningModelOperator.cpp
+  ${winml_lib_api_dir}/LearningModelOperator.h
+  ${winml_lib_api_dir}/LearningModelOperatorResolutionPolicy.cpp
+  ${winml_lib_api_dir}/LearningModelOperatorResolutionPolicy.h
   
   ${winml_lib_api_dir}/pch/pch.h
 )
@@ -543,6 +547,7 @@ target_precompiled_header(winml_dll pch.h)
 # Includes
 target_include_directories(winml_dll PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
 target_include_directories(winml_dll PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
+target_include_directories(winml_dll PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_more_api/comp_generated)    # windows machine learning generated component headers
 target_include_directories(winml_dll PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
 
 target_include_directories(winml_dll PRIVATE ${winml_dll_dir})

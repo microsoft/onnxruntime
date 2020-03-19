@@ -5,6 +5,26 @@
 
 namespace Windows::AI::MachineLearning {
 
+interface IEngineFactory;
+
+MIDL_INTERFACE("4637dfcb-fc19-45c3-a632-c84942d0cf8e")
+IOrtTypeInfoProvider : IUnknown {
+  STDMETHOD(GetTypeInfo)
+  (OrtTypeInfo * *info) PURE;
+};
+
+MIDL_INTERFACE("fe94665f-76cb-42a2-ab21-a06ae1c7f1ae")
+IDescriptorInfo : IUnknown{
+
+};
+
+MIDL_INTERFACE("e3feaec4-eb09-4b82-973c-781f1c230842")
+IDescriptorInfoProvider : IUnknown{
+  STDMETHOD(GetDescriptorInfo)
+  (IEngineFactory* engine_factory, IDescriptorInfo * *info) PURE;
+};
+
+
 MIDL_INTERFACE("eaae30b5-7381-432d-9730-322136b02371")
 IModelInfo : IUnknown {
   STDMETHOD(GetAuthor)
@@ -15,7 +35,6 @@ IModelInfo : IUnknown {
 
   STDMETHOD(GetDomain)
   (const char** out, size_t* len) PURE;
-
 
   STDMETHOD(GetDescription)
   (const char** out, size_t* len) PURE;
@@ -43,6 +62,24 @@ IModel : IUnknown {
 
   STDMETHOD(CloneModel)
   (IModel * *copy) PURE;
+
+  STDMETHOD(AddOperator)
+  (_In_ const char* const op_type, _In_ const char* const op_name, _In_ const char* const* input_names, _In_ size_t num_inputs, _In_ const char* const* output_names, _In_ size_t num_outputs) PURE;
+
+  STDMETHOD(AddModelInput)
+  (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant) PURE;
+
+  STDMETHOD(AddModelOutput)
+  (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider) PURE;
+
+  STDMETHOD(InferOperatorOutputs)
+  (_In_ const char* const op_name, _In_ const wfc::IVector<winml::ILearningModelFeatureDescriptor>& inputs, _Out_ wfc::IVector<winml::ILearningModelFeatureDescriptor>& outputs) PURE;
+
+  STDMETHOD(ResolveOperatorInputs)
+  (_In_ const char* const op_type,
+   _In_ wfc::IVectorView<winml::ILearningModelFeatureDescriptor>& available_inputs,
+   _Out_ wfc::IVector<winml::ILearningModelFeatureDescriptor>& resolved_inputs,
+   _Out_ wfc::IMap<winrt::hstring, winrt::hstring>& mapping) PURE;
 };
 
 using Resource = std::unique_ptr<void, std::function<void(void*)>>;
@@ -76,7 +113,7 @@ IValue : IUnknown {
 MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac")
 IEngine : IUnknown {
   STDMETHOD(LoadModel)
-  (_In_ IModel*) PURE;
+  (_In_ IModel*)PURE;
 
   STDMETHOD(Initialize)
   () PURE;
@@ -168,6 +205,9 @@ IEngineFactory : IUnknown {
   STDMETHOD(CreateModel)
   (_In_ void* data, _In_ size_t size, _Outptr_ IModel** out) PURE;
 
+  STDMETHOD(CreateEmptyModel)
+  (_Outptr_ IModel * *out) PURE;
+
   STDMETHOD(CreateEngineBuilder)
   (IEngineBuilder * *engine_builder) PURE;
 
@@ -176,6 +216,19 @@ IEngineFactory : IUnknown {
 
   STDMETHOD(CreateCustomRegistry)
   (_Out_ IMLOperatorRegistry * *registry) PURE;
+
+  STDMETHOD(CreateTensorDescriptorInfo)
+  (
+      winml::TensorKind kind,
+      int64_t* dims,
+      size_t num_dims,
+      _Out_ IDescriptorInfo * *info) PURE;
+
+  STDMETHOD(CreateSequenceDescriptorInfo)
+  (_Out_ IDescriptorInfo * *info) PURE;
+
+  STDMETHOD(CreateMapDescriptorInfo)
+  (_Out_ IDescriptorInfo * *info) PURE;
 };
 
 }  // namespace Windows::AI::MachineLearning

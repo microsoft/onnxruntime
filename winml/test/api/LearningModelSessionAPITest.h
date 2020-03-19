@@ -21,17 +21,19 @@ struct LearningModelSesssionAPITestApi {
   VoidTest DISABLED_CreateSessionWithFloat16InitializersInModel;
   VoidTest EvaluateSessionAndCloseModel;
   VoidTest CloseSession;
+  VoidTest TestModelBuilding;
 };
 const LearningModelSesssionAPITestApi& getapi();
 
 WINML_TEST_CLASS_BEGIN_WITH_SETUP(LearningModelSessionAPITest, LearningModelSessionAPITestSetup)
 WINML_TEST(LearningModelSessionAPITest, CreateSessionDeviceDefault)
-WINML_TEST(LearningModelSessionAPITest,CreateSessionDeviceCpu)
-WINML_TEST(LearningModelSessionAPITest,CreateSessionWithModelLoadedFromStream)
-WINML_TEST(LearningModelSessionAPITest,EvaluateFeatures)
-WINML_TEST(LearningModelSessionAPITest,EvaluateFeaturesAsync)
-WINML_TEST(LearningModelSessionAPITest,EvaluationProperties)
-WINML_TEST(LearningModelSessionAPITest,EvaluateSessionAndCloseModel)
+WINML_TEST(LearningModelSessionAPITest, CreateSessionDeviceCpu)
+WINML_TEST(LearningModelSessionAPITest, CreateSessionWithModelLoadedFromStream)
+WINML_TEST(LearningModelSessionAPITest, EvaluateFeatures)
+WINML_TEST(LearningModelSessionAPITest, EvaluateFeaturesAsync)
+WINML_TEST(LearningModelSessionAPITest, EvaluationProperties)
+WINML_TEST(LearningModelSessionAPITest, EvaluateSessionAndCloseModel)
+WINML_TEST(LearningModelSessionAPITest, TestModelBuilding)
 WINML_TEST_CLASS_END()
 
 WINML_TEST_CLASS_BEGIN_WITH_SETUP(LearningModelSessionAPITestGpu, LearningModelSessionAPITestGpuSetup)

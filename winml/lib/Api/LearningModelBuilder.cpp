@@ -1,49 +1,50 @@
 ﻿#include "pch.h"
 #include "LearningModelBuilder.h"
+#include "LearningModel.h"
 
-namespace winrt::Windows::AI::MachineLearning::More::implementation
-{
-    Windows::AI::MachineLearning::More::ILearningModelJunction LearningModelBuilder::InputJunction()
-    {
-        throw hresult_not_implemented();
-    }
+#include "LearningModelInputs.h"
+#include "LearningModelOutputs.h"
+#include "OnnxruntimeProvider.h"
 
-    Windows::AI::MachineLearning::More::ILearningModelJunction LearningModelBuilder::OutputJunction()
-    {
-        throw hresult_not_implemented();
-    }
+namespace winrt::Windows::AI::MachineLearning::More::implementation {
 
-    Windows::AI::MachineLearning::More::ILearningModelJunction LearningModelBuilder::AddInput(Windows::AI::MachineLearning::ILearningModelFeatureDescriptor const& /*input_descriptor*/)
-    {
-        throw hresult_not_implemented();
-    }
-
-    Windows::AI::MachineLearning::More::ILearningModelJunction LearningModelBuilder::AddOutput(Windows::AI::MachineLearning::ILearningModelFeatureDescriptor const& /*output_descriptor*/)
-    {
-        throw hresult_not_implemented();
-    }
-
-    Windows::AI::MachineLearning::LearningModel LearningModelBuilder::CreateModel()
-    {
-        throw hresult_not_implemented();
-    }
-
-    void LearningModelBuilder::Close()
-    {
-        throw hresult_not_implemented();
-    }
-
-    Windows::AI::MachineLearning::More::LearningModelBuilder LearningModelBuilder::Create(){
-      return winrt::make<LearningModelBuilder>();
-    }
-
-    Windows::AI::MachineLearning::More::ILearningModelJunction LearningModelBuilder::AfterAll(Windows::AI::MachineLearning::More::ILearningModelJunction const& /*target*/, Windows::Foundation::Collections::IVectorView<Windows::AI::MachineLearning::More::ILearningModelJunction> const& /*input_junctions*/)
-    {
-        throw hresult_not_implemented();
-    }
-
-    Windows::AI::MachineLearning::More::ILearningModelJunction LearningModelBuilder::AfterAll(Windows::AI::MachineLearning::More::ILearningModelJunction const& /*target*/, Windows::Foundation::Collections::IVectorView<Windows::AI::MachineLearning::More::ILearningModelJunction> const& /*input_junctions*/, Windows::AI::MachineLearning::More::LearningModelJunctionResolutionPolicy const& /*policy*/)
-    {
-        throw hresult_not_implemented();
-    }
+LearningModelBuilder::LearningModelBuilder() : inputs_(nullptr), outputs_(nullptr) {
+  WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
+  WINML_THROW_IF_FAILED(engine_factory_->CreateEmptyModel(model_.put()));
+  inputs_ = winrt::make<morep::LearningModelInputs>(*this);
+  outputs_ = winrt::make<morep::LearningModelOutputs>(*this);
 }
+
+LearningModelBuilder::LearningModelBuilder(LearningModelBuilder& builder) : inputs_(builder.inputs_),
+                                                                            outputs_(builder.outputs_) {
+}
+
+more::LearningModelInputs LearningModelBuilder::Inputs() {
+  return inputs_;
+}
+
+more::LearningModelOutputs LearningModelBuilder::Outputs() {
+  return outputs_;
+}
+
+winml::LearningModel LearningModelBuilder::CreateModel() {
+  return winrt::make<winmlp::LearningModel>(engine_factory_.get(), model_.get(), nullptr);
+}
+
+more::LearningModelBuilder LearningModelBuilder::Create() {
+  return winrt::make<LearningModelBuilder>();
+}
+
+more::LearningModelOperator LearningModelBuilder::AfterAll(more::LearningModelOperator const& /*target*/, wfc::IVectorView<more::LearningModelOperator> const& /*input_operators*/) {
+  throw hresult_not_implemented();
+}
+
+more::LearningModelOperator LearningModelBuilder::AfterAll(more::LearningModelOperator const& /*target*/, wfc::IVectorView<more::LearningModelOperator> const& /*input_operators*/, more::LearningModelOperatorResolutionPolicy const& /*policy*/) {
+  throw hresult_not_implemented();
+}
+
+WinML::IModel* LearningModelBuilder::UseModel() {
+  return model_.get();
+}
+
+}  // namespace winrt::Windows::AI::MachineLearning::More::implementation

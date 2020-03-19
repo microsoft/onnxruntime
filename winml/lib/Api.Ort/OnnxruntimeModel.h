@@ -68,6 +68,24 @@ class OnnruntimeModel : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(DetachOrtModel)
   (OrtModel** model);
 
+  STDMETHOD(AddOperator)
+  (_In_ const char* const op_type, _In_ const char* const op_name, _In_ const char* const* input_names, _In_ size_t num_inputs, _In_ const char* const* output_names, _In_ size_t num_outputs);
+    
+  STDMETHOD(AddModelInput)
+  (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant);
+
+  STDMETHOD(AddModelOutput)
+  (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider);
+
+  STDMETHOD(InferOperatorOutputs)
+  (_In_ const char* const op_name, _In_ const wfc::IVector<winml::ILearningModelFeatureDescriptor>& inputs, _Out_ wfc::IVector<winml::ILearningModelFeatureDescriptor>& outputs);
+
+  STDMETHOD(ResolveOperatorInputs)
+  (_In_ const char* const op_type,
+   _In_ wfc::IVectorView<winml::ILearningModelFeatureDescriptor>& available_inputs,
+   _Out_ wfc::IVector<winml::ILearningModelFeatureDescriptor>& resolved_inputs,
+   _Out_ wfc::IMap<winrt::hstring, winrt::hstring>& mapping);
+
  private:
   UniqueOrtModel ort_model_;
 

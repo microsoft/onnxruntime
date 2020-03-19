@@ -4,6 +4,7 @@
 #pragma once
 
 #include "ImageFeatureDescriptor.g.h"
+#include "iengine.h"
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 enum class ImageNominalPixelRange {
@@ -19,7 +20,8 @@ enum class ImageColorSpaceGamma {
 
 struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
                                     ImageFeatureDescriptor,
-                                    ILearningModelFeatureDescriptorNative> {
+                                    ILearningModelFeatureDescriptorNative,
+                                    WinML::IDescriptorInfoProvider> {
   ImageFeatureDescriptor() = delete;
   ImageFeatureDescriptor(
       const char* name,
@@ -79,6 +81,11 @@ struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
   (
       const wchar_t** description,
       uint32_t* cchDescription) override;
+
+  STDMETHOD(GetDescriptorInfo)
+  (
+      WinML::IEngineFactory* engine_factory,
+      WinML::IDescriptorInfo** info) override;
 
  private:
   winrt::hstring name_;

@@ -4,11 +4,13 @@
 #pragma once
 
 #include "SequenceFeatureDescriptor.g.h"
+#include "iengine.h"
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 struct SequenceFeatureDescriptor : SequenceFeatureDescriptorT<
                                        SequenceFeatureDescriptor,
-                                       ILearningModelFeatureDescriptorNative> {
+                                       ILearningModelFeatureDescriptorNative,
+                                       WinML::IDescriptorInfoProvider> {
   SequenceFeatureDescriptor() = delete;
   SequenceFeatureDescriptor(
       const char* name,
@@ -42,6 +44,10 @@ struct SequenceFeatureDescriptor : SequenceFeatureDescriptorT<
       const wchar_t** description,
       uint32_t* cchDescription) override;
 
+  STDMETHOD(GetDescriptorInfo)
+  (
+      WinML::IEngineFactory* engine_factory,
+      WinML::IDescriptorInfo** info) override;
  private:
   winrt::hstring name_;
   winrt::hstring description_;
