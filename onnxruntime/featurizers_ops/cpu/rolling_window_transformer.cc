@@ -2,68 +2,97 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
+#include "core/framework/data_types.h"
+#include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 
-#include "Featurizers/?.h"
+#include "Featurizers/AnalyticalRollingWindowFeaturizer.h"
 #include "Featurizers/../Archive.h"
-
-namespace NS = Microsoft::Featurizer;
 
 namespace onnxruntime {
 namespace featurizers {
 
-void ShortGrainDropperTransformerImpl(OpKernelContext* ctx) {
-  // Create the transformer
-  Microsoft::Featurizer::Featurizers::ShortGrainDropperTransformer transformer(
-      [ctx]() {
-        const auto* state_tensor(ctx->Input<Tensor>(0));
-        const uint8_t* const state_data(state_tensor->Data<uint8_t>());
+template <typename TargetT>
+struct RollingWindowTransformerImpl {
+  void operator()(OpKernelContext* ctx) const {
+    // Create the transformer
+    Microsoft::Featurizer::Featurizers::AnalyticalRollingWindowTransformer<TargetT> transformer(
+        [ctx](void) {
+          const auto* state_tensor(ctx->Input<Tensor>(0));
+          const uint8_t* const state_data(state_tensor->Data<uint8_t>());
 
-        Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
-        return Microsoft::Featurizer::Featurizers::ShortGrainDropperTransformer(archive);
-      }());
+          Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
+          return Microsoft::Featurizer::Featurizers::AnalyticalRollingWindowTransformer<TargetT>(archive);
+        }());
 
-  // Get the input
-  const auto* input_tensor = ctx->Input<Tensor>(1);
-  const std::string* input_data = input_tensor->template Data<std::string>();
+    // Get the Grains
+    const auto* grains_tensor(ctx->Input<Tensor>(1));
+    const std::string* grains_data(input_tensor->Data<std::string>());
+    const auto grains_num = grains_tensor.Shape()[1];
 
-  // Prepare the output
-  const int64_t input_rows_num = input_tensor->Shape()[0];
-  const int64_t strings_num = input_tensor->Shape()[1];
-  TensorShape rows_shape({input_rows_num});
-  Tensor* output_tensor(ctx->Output(0, rows_shape));
-  bool* output_data(output_tensor->MutableData<bool>());
+    // Get the Target
+    const auto* target_tensor(ctx->Input<Tensor>(2));
+    const TargetT* target_data(input_tensor->Data<TargetT>());
 
-  // Transform
-  std::vector<std::string> input_data_vec;
-  input_data_vec.reserve(strings_num);
-  for (int64_t rows_idx = 0; rows_idx < input_rows_num; ++rows_idx) {
-    for (int64_t string_idx = 0; string_idx < strings_num; ++string_idx)
-      input_data_vec.push_back(*input_data++);
-    output_data[rows_idx] = transformer.execute(input_data_vec);
-    input_data_vec.clear();
+    // Prepare the output
+    const auto output_dim_0 = grains_tensor.Shape()[0];
+    const auto output_dim_1 = transformer.getVectorLength();
+    TensorShape output_shape({output_dim_0, output_dim_1});
+    Tensor* output_tensor(ctx->Output(0, output_shape));
+    double* output_data(output_tensor->MutableData<double>());
+
+    // Transform
+    std::vector<std::string> grains;
+    grains.reserve(grains_num);
+    for (int64_t i = 0; i < output_dim_0; ++i) {
+      //Prepare Input and Output
+      grains.clear();
+      std::copy(grains_data, grains_data + grains_num, std::back_inserter(grains));
+      std::tuple<std::vector<std::string>, TargetT> input_per_row = std::make_tuple(std::move(grains), *target_data);
+      std::vector<double> output_per_row(output_data, output_data + output_dim_1);
+
+      //Execute
+      output_per_row = transformer.execute(input_per_row);
+
+      target_data++;
+      grains_data += grains_num;
+      output_data += output_dim_1;
+    }
   }
 };
 
-class ShortGrainDropperTransformer final : public OpKernel {
+class RollingWindowTransformer final : public OpKernel {
  public:
-  explicit ShortGrainDropperTransformer(const OpKernelInfo& info) : OpKernel(info) {
+  explicit RollingWindowTransformer(const OpKernelInfo& info) : OpKernel(info) {
   }
+
   Status Compute(OpKernelContext* ctx) const override {
-    ShortGrainDropperTransformerImpl(ctx);
+    utils::MLTypeCallDispatcher<RollingWindowTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
+                                int64_t, uint64_t, float, double>
+        t_disp(ctx->Input<Tensor>(1)->GetElementType());
+    t_disp.Invoke(ctx);
     return Status::OK();
   }
 };
 
 ONNX_OPERATOR_KERNEL_EX(
-    ShortGrainDropperTransformer,
+    RollingWindowTransformer,
     kMSFeaturizersDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T0", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<std::string>()),
-    ShortGrainDropperTransformer);
-
+        .TypeConstraint("TargetT", {DataTypeImpl::GetTensorType<int8_t>(),
+                                   DataTypeImpl::GetTensorType<uint8_t>(),
+                                   DataTypeImpl::GetTensorType<int16_t>(),
+                                   DataTypeImpl::GetTensorType<uint16_t>(),
+                                   DataTypeImpl::GetTensorType<int32_t>(),
+                                   DataTypeImpl::GetTensorType<uint32_t>(),
+                                   DataTypeImpl::GetTensorType<int64_t>(),
+                                   DataTypeImpl::GetTensorType<uint64_t>(),
+                                   DataTypeImpl::GetTensorType<float>(),
+                                   DataTypeImpl::GetTensorType<double>()
+                                   }),
+    RollingWindowTransformer);
 }  // namespace featurizers
 }  // namespace onnxruntime
