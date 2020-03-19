@@ -454,6 +454,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
                       tmp_div, tmp_div,
                       input_data, input_count);
     } else if (log_sum_exp_) {
+      // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
+      // This happens when the input is Scalar
       if (input_count == output_count) {
         if (Y->template MutableData<T>() != X->template Data<T>()) {
           CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), input_count * sizeof(T), cudaMemcpyDeviceToDevice));
@@ -492,6 +494,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
                       reinterpret_cast<CudaT*>(exp_result),
                       input_count);
 
+      // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
+      // This happens when the input is Scalar. We do not need to add anything in this case.
       if (input_count == output_count) {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(reinterpret_cast<CudaT*>(log_sum_result), exp_result, input_count * sizeof(T), cudaMemcpyDeviceToDevice));
      } else {
@@ -518,6 +522,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
       return Status::OK();
     }
     if (calculate_sqt_) {
+      // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
+      // This happens when the input is Scalar. We do not need to add anything in this case.
       if (input_count == output_count) {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(reinterpret_cast<CudaT*>(Y->template MutableData<T>()), input_data, input_count * sizeof(T), cudaMemcpyDeviceToDevice));
       } else {
