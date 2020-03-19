@@ -312,12 +312,21 @@ Status ReduceL1<T>::Compute(OpKernelContext* ctx) const {
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
-  PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_);
+
+  bool no_transpose = PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_, true);
 
   T* output_data = reduced->template MutableData<T>();
 
-  EigenVectorMap<T> out_vec(output_data, block_size);
-  out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).cwiseAbs().rowwise().sum();
+  if (no_transpose) {
+    const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
+
+    for (int64_t i = 0; i < block_size; ++i) {
+      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).cwiseAbs().sum();
+    }
+  } else {
+    EigenVectorMap<T> out_vec(output_data, block_size);
+    out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).cwiseAbs().rowwise().sum();
+  }
 
   return Status::OK();
 }
@@ -328,12 +337,21 @@ Status ReduceL2<T>::Compute(OpKernelContext* ctx) const {
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
-  PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_);
+
+  bool no_transpose = PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_, true);
 
   T* output_data = reduced->template MutableData<T>();
 
-  EigenVectorMap<T> out_vec(output_data, block_size);
-  out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().norm();
+  if (no_transpose) {
+    const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
+
+    for (int64_t i = 0; i < block_size; ++i) {
+      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).norm();
+    }
+  } else {
+    EigenVectorMap<T> out_vec(output_data, block_size);
+    out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().norm();
+  }
 
   return Status::OK();
 }
@@ -344,12 +362,22 @@ Status ReduceLogSum<T>::Compute(OpKernelContext* ctx) const {
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
-  PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_);
+
+  bool no_transpose = PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_, true);
 
   T* output_data = reduced->template MutableData<T>();
 
-  EigenVectorMap<T> out_vec(output_data, block_size);
-  out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().sum();
+  if (no_transpose) {
+    const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
+
+    for (int64_t i = 0; i < block_size; ++i) {
+      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).sum();
+    }
+  } else {
+    EigenVectorMap<T> out_vec(output_data, block_size);
+    out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().sum();
+  }
+
   for (int j = 0; j < block_size; ++j) {
     *(output_data) = static_cast<T>(std::log(*(output_data)));
     ++output_data;
@@ -463,12 +491,21 @@ Status ReduceProd<T>::Compute(OpKernelContext* ctx) const {
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
-  PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_);
+
+  bool no_transpose = PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_, true);
 
   T* output_data = reduced->template MutableData<T>();
 
-  EigenVectorMap<T> out_vec(output_data, block_size);
-  out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().prod();
+  if (no_transpose) {
+    const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
+
+    for (int64_t i = 0; i < block_size; ++i) {
+      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).prod();
+    }
+  } else {
+    EigenVectorMap<T> out_vec(output_data, block_size);
+    out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().prod();
+  }
 
   return Status::OK();
 }
@@ -506,12 +543,21 @@ Status ReduceSumSquare<T>::Compute(OpKernelContext* ctx) const {
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
-  PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_);
+
+  bool no_transpose = PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_, true);
 
   T* output_data = reduced->template MutableData<T>();
 
-  EigenVectorMap<T> out_vec(output_data, block_size);
-  out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().squaredNorm();
+  if (no_transpose) {
+    const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
+
+    for (int64_t i = 0; i < block_size; ++i) {
+      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).squaredNorm();
+    }
+  } else {
+    EigenVectorMap<T> out_vec(output_data, block_size);
+    out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().squaredNorm();
+  }
 
   return Status::OK();
 }
