@@ -839,28 +839,28 @@ class PipelineBatchPlanner {
       int64_t retired_batch = -1;
       for (size_t t = 0; t < timeline.GetNumSlots(); ++t) {
         const auto& slot = timeline.Get(s, t);
-        if (!slot.bits.used)
+        if (!slot.occupied)
           continue;
 
         ORT_ENFORCE(event_id < max_id_);
-        if (slot.bits.bw) {
+        if (slot.is_backward) {
           if (s < num_stages - 1) {
             // dont update wait event for last stage's bw
-            plan[slot.bits.batch_id].events[2 * num_stages - 2 - s].first = prev_event_id;
+            plan[slot.batch_id].events[2 * num_stages - 2 - s].first = prev_event_id;
             prev_event_id = event_id;
           }
-          plan[slot.bits.batch_id].events[2 * num_stages - 2 - s].second = event_id++;
-          retired_batch = slot.bits.batch_id;
+          plan[slot.batch_id].events[2 * num_stages - 2 - s].second = event_id++;
+          retired_batch = gsl::narrow<int64_t>(slot.batch_id);
         } else {
           if (s == 0) {
             // update retired batch when starting a new batch (s == 0 && !bw)
-            plan[slot.bits.batch_id].retired_batch = retired_batch;
+            plan[slot.batch_id].retired_batch = retired_batch;
           }
-          plan[slot.bits.batch_id].events[s].first = prev_event_id;
+          plan[slot.batch_id].events[s].first = prev_event_id;
           prev_event_id = event_id;
           if (s < num_stages - 1) {
             // dont update record event for last stage's fw
-            plan[slot.bits.batch_id].events[s].second = event_id++;
+            plan[slot.batch_id].events[s].second = event_id++;
           }
         }
       }
@@ -870,44 +870,41 @@ class PipelineBatchPlanner {
  private:
   class Timeline {
    public:
-    union Slot {
-      uint32_t u32;
-      struct {
-        uint32_t batch_id : 30;
-        uint32_t bw : 1;
-        uint32_t used : 1;
-      } bits;
+    struct Slot {
+      size_t batch_id;
+      bool is_backward;
+      bool occupied;
+
+      Slot() : occupied(false) {}
     };
 
     Timeline(size_t stages, size_t num_slots) : slots_(stages) {
       for (size_t s = 0; s < stages; ++s) {
-        slots_[s].resize(num_slots, 0);
+        slots_[s].resize(num_slots);
       }
     }
 
     bool IsOccupied(size_t s, size_t t) const {
-      return slots_[s][t] != 0;
+      return slots_[s][t].occupied;
     }
 
     const Slot& Get(size_t s, size_t t) const {
-      return *(Slot*)(&slots_[s][t]);
+      return slots_[s][t];
     }
 
     size_t GetNumSlots() const {
       return slots_[0].size();
     }
 
-    void Occupy(size_t s, size_t t, size_t batch, bool bw) {
-      Slot slot;
-      slot.bits.used = true;
-      slot.bits.bw = bw;
-      ORT_ENFORCE(batch < (1 << 30));
-      slot.bits.batch_id = gsl::narrow<int>(batch);
-      slots_[s][t] = slot.u32;
+    void Occupy(size_t s, size_t t, size_t batch_id, bool bw) {
+      Slot& slot = slots_[s][t];
+      slot.occupied = true;
+      slot.is_backward = bw;
+      slot.batch_id = batch_id;
     }
 
    private:
-    std::vector<std::vector<uint32_t>> slots_;
+    std::vector<std::vector<Slot>> slots_;
   };
 
   Timeline GenerateTimeline(size_t num_stages, size_t num_batches) {
