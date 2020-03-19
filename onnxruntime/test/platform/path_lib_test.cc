@@ -1,7 +1,9 @@
-#include "test_utils.h"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "core/platform/path_lib.h"
 
 #include "gtest/gtest.h"
-#include "core/framework/path_lib.h"
 #include <string>
 
 #define PATH_EXPECT(X, Y)                                            \
