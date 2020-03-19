@@ -19,8 +19,8 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType<OrtMemTypeCPUInput>(0)   /* CPU variable */
         .InputMemoryType<OrtMemTypeCPUInput>(1)   /* CPU variable */
         .OutputMemoryType<OrtMemTypeCPUOutput>(0) /* CPU variable */
-        .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("TBool", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
     Recv);
 
@@ -31,15 +31,15 @@ void CUDART_CB HostRecv(void* args) {
 }
 
 Status Recv::ComputeInternal(OpKernelContext* ctx) const {
-  // Extract Remote rank
-  const Tensor* remote_rank_tensor = ctx->Input<Tensor>(0);
-  const int64_t* remote_rank = remote_rank_tensor->template Data<int64_t>();
-  int src = static_cast<int>(*remote_rank);
-
   // Check if control signal is true.
-  const Tensor* input_signal_tensor = ctx->Input<Tensor>(1);
+  const Tensor* input_signal_tensor = ctx->Input<Tensor>(0);
   const bool* input_signal = input_signal_tensor->template Data<bool>();
   ORT_ENFORCE(*input_signal, "Input control signal of Recv must be true before executing the node.");
+
+  // Extract Remote rank
+  const Tensor* remote_rank_tensor = ctx->Input<Tensor>(1);
+  const int64_t* remote_rank = remote_rank_tensor->template Data<int64_t>();
+  int src = static_cast<int>(*remote_rank);
 
   // Create buffers
   int tensor_num = static_cast<int>(element_types_.size());
