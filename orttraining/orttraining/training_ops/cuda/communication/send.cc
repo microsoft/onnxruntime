@@ -20,7 +20,8 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType<OrtMemTypeCPUInput>(1)   /* CPU variable */
         .OutputMemoryType<OrtMemTypeCPUOutput>(0) /* CPU variable */
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("TBool", DataTypeImpl::GetTensorType<bool>()),
+        .TypeConstraint("TBool", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
     Send);
 
 void CUDART_CB HostSend(void* args) {
@@ -77,7 +78,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
       static_cast<size_t>(aggregated_aligned_tensor_bytes));
 
   // Keep the sync copy in the previous design
-  // TODO they can be moved to async call after global stream becoming accessible 
+  // TODO they can be moved to async call after global stream becoming accessible
   for (int i = 0; i < tensor_num; ++i) {
     const Tensor* x_tensor = ctx->Input<Tensor>(i + 2);
     ORT_ENFORCE(cudaMemcpy(buffer.get() + tensor_offsets_in_bytes[i], x_tensor->Data<void>(),
@@ -85,23 +86,22 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   // Prepare MPI communication info
-  CommInfo_t info_shape_sizes{prefix_tensor_shape_sizes.data(), 
-                              tensor_num * static_cast<int>(sizeof(size_t)), 
-                              dst, 
+  CommInfo_t info_shape_sizes{prefix_tensor_shape_sizes.data(),
+                              tensor_num * static_cast<int>(sizeof(size_t)),
+                              dst,
                               static_cast<int>(tag_)};
-  CommInfo_t info_aggregated_size{&aggregated_aligned_tensor_bytes, 
+  CommInfo_t info_aggregated_size{&aggregated_aligned_tensor_bytes,
                                   static_cast<int>(sizeof(size_t)),
-                                  dst, 
+                                  dst,
                                   static_cast<int>(tag_)};
-  CommInfo_t info_shapes{aggregated_tensor_shapes.data(), 
+  CommInfo_t info_shapes{aggregated_tensor_shapes.data(),
                          static_cast<int>(aggregated_tensor_shapes.size()) * static_cast<int>(sizeof(int64_t)),
-                         dst, 
+                         dst,
                          static_cast<int>(tag_)};
-  CommInfo_t info_data{buffer.get(), 
-                       static_cast<int>(aggregated_aligned_tensor_bytes), 
-                       dst, 
+  CommInfo_t info_data{buffer.get(),
+                       static_cast<int>(aggregated_aligned_tensor_bytes),
+                       dst,
                        static_cast<int>(tag_)};
-
 
   // Enqueue communication functions to a GPU stream.
   // Keep the local stream in the previous design
