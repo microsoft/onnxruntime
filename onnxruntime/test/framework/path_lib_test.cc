@@ -8,8 +8,6 @@
 #include "core/platform/env.h"
 #include "test/framework/test_utils.h"
 #include "core/framework/path_lib.h"  // TODO fix include order dependency, path_lib.h should be first
-#include "test/util/include/gtest_utils.h"
-#include "test/util/include/temp_dir.h"
 
 namespace onnxruntime {
 namespace test {
