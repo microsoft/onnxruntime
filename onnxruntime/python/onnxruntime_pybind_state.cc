@@ -143,13 +143,6 @@ namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
-void addObjectMethodsForTraining(py::module& m);
-
-static AllocatorPtr& GetAllocator() {
-  static AllocatorPtr alloc = std::make_shared<TAllocator>();
-  return alloc;
-}
-
 template <typename T>
 void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
   pyobjs.push_back(py::cast(val.Get<T>()));
@@ -899,6 +892,10 @@ static struct {
   PyMemAllocatorEx raw;
   PyMemAllocatorEx obj;
 } allocators;
+#endif
+
+#ifdef ENABLE_TRAINING
+void addObjectMethodsForTraining(py::module& m);
 #endif
 
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {

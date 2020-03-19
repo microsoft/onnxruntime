@@ -1,3 +1,4 @@
+#include "core/framework/allocator.h"
 #include "core/framework/session_options.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/cerr_sink.h"
@@ -11,6 +12,11 @@ using namespace onnxruntime::logging;
 static const SessionOptions& GetDefaultCPUSessionOptions() {
   static SessionOptions so;
   return so;
+}
+
+static AllocatorPtr& GetAllocator() {
+  static AllocatorPtr alloc = std::make_shared<TAllocator>();
+  return alloc;
 }
 
 class SessionObjectInitializer {

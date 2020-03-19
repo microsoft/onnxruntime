@@ -7,6 +7,9 @@
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/mpi_setup.h"
 
+// pybind11/stl.h is needed to support std::unordered_set, etc.
+#include <pybind11/stl.h>
+
 namespace onnxruntime {
 namespace python {
 namespace py = pybind11;
@@ -18,7 +21,6 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
 void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransferManager* data_transfer_manager = nullptr);
 void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, AllocatorPtr alloc, const std::string& name_input,
                           py::object& value, OrtValue* p_mlvalue);
-AllocatorPtr& GetAllocator();
 // END: forward declaration
 
 struct TrainingParameters {
