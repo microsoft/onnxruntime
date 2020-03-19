@@ -47,7 +47,10 @@ common::Status CopyTensorDataToSpan(
     const DataTransferManager& data_transfer_manager,
     const Tensor& src_tensor,
     const OrtMemoryInfo& dst_alloc_info, gsl::span<TElement> dst_span) {
+// std::is_trivially_copyable is not implemented in older versions of GCC
+#if !defined(__GNUC__) || __GNUC__ >= 5
   static_assert(std::is_trivially_copyable<TElement>::value, "Element type must be trivially copyable.");
+#endif
   ORT_RETURN_IF_NOT(src_tensor.DataType() == DataTypeImpl::GetType<TElement>());
   ORT_RETURN_IF_NOT(
       src_tensor.SizeInBytes() == static_cast<size_t>(dst_span.size_bytes()));

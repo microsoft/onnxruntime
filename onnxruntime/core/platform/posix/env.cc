@@ -84,6 +84,7 @@ long int TempFailureRetry(TFunc retriable_operation, TFuncArgs&&... args) {
   return result;
 }
 
+// nftw() callback to remove a file
 int nftw_remove(
     const char* fpath, const struct stat* /*sb*/,
     int /*typeflag*/, struct FTW* /*ftwbuf*/) {
@@ -141,7 +142,7 @@ class PosixEnv : public Env {
     return getpid();
   }
 
-  Status GetFileLength(const ORTCHAR_T* file_path, size_t& length) const override {
+  Status GetFileLength(const PathChar* file_path, size_t& length) const override {
     ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
     if (file_descriptor.Get() < 0) {
       return ReportSystemError("open", file_path);
@@ -162,7 +163,7 @@ class PosixEnv : public Env {
   }
 
   Status ReadFileIntoBuffer(
-      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+      const PathChar* file_path, FileOffsetType offset, size_t length,
       gsl::span<char> buffer) const override {
     ORT_RETURN_IF_NOT(file_path);
     ORT_RETURN_IF_NOT(offset >= 0);
@@ -207,7 +208,7 @@ class PosixEnv : public Env {
   }
 
   Status MapFileIntoMemory(
-      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+      const PathChar* file_path, FileOffsetType offset, size_t length,
       MappedMemoryPtr& mapped_memory) const override {
     ORT_RETURN_IF_NOT(file_path);
     ORT_RETURN_IF_NOT(offset >= 0);
@@ -285,7 +286,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  common::Status DeleteFolder(const std::string& path) const override {
+  common::Status DeleteFolder(const PathString& path) const override {
     const auto result = nftw(
         path.c_str(), &nftw_remove, 32, FTW_DEPTH | FTW_PHYS);
     ORT_RETURN_IF_NOT(
@@ -318,8 +319,8 @@ class PosixEnv : public Env {
   }
 
   common::Status GetCanonicalPath(
-      const std::basic_string<ORTCHAR_T>& path,
-      std::basic_string<ORTCHAR_T>& canonical_path) const override {
+      const PathString& path,
+      PathString& canonical_path) const override {
     MallocdStringPtr canonical_path_cstr{realpath(path.c_str(), nullptr)};
     if (!canonical_path_cstr) {
       return ReportSystemError("realpath", path);
