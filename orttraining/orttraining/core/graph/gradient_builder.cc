@@ -921,22 +921,29 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSendGradient) {
+  // Send inputs: signal A, remote, data; outputs: signal B
+  // Recv inputs: signal B, remote; outputs: signal A', data'
+
   std::vector<ArgDef> out_args;
-  for (int i = 1; i < GetSrcNodeInputSize(); ++i) {
-    out_args.push_back(GI(i));  // i=1 for Signal, the rest Data
+  out_args.push_back(GI(0));  // Signal
+  for (int i = 2; i < GetSrcNodeInputSize(); ++i) {
+    out_args.push_back(GI(i));  // Data
   }
 
   return std::vector<NodeDef>{
       NodeDef("Recv",
-              {I(0),O(0)},  // {Remote, Signal} 
+              {O(0), I(1)},  // {Signal, Remote}
               out_args,
               SrcNodeAttributes())};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetRecvGradient) {
+  // Recv inputs: signal A, remote; outputs: signal B, data
+  // Send inputs: signal B, remote, data'; outputs: signal A'
+
   std::vector<ArgDef> in_args;
-  in_args.push_back(I(0)); // Remote
-  in_args.push_back(O(0)); // Signal
+  in_args.push_back(O(0));  // Signal
+  in_args.push_back(I(0));  // Remote
 
   for (int i = 1; i < GetSrcNodeOutputSize(); ++i) {
     in_args.push_back(GO(i));  // Data
@@ -945,7 +952,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetRecvGradient) {
   return std::vector<NodeDef>{
       NodeDef("Send",
               in_args,
-              {GI(1)},  // Signal
+              {GI(0)},  // Signal
               SrcNodeAttributes())};
 }
 

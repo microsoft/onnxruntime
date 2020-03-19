@@ -48,21 +48,23 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<size_t> prefix_tensor_shape_sizes;
   std::vector<int64_t> aggregated_tensor_shapes;
   size_t aggregated_aligned_tensor_bytes = 0;
-  size_t alignment = 256;
+  const size_t alignment = 256;
+  // tensor_offsets_in_bytes[i] is the starting byte of the i-th tensor in the send tensor buffer
   std::vector<size_t> tensor_offsets_in_bytes;
+  // tensor_sizes_in_bytes[i] = (# of elements in the i-th tensor) * sizeof(the i-th tensor's element type)
   std::vector<size_t> tensor_sizes_in_bytes;
 
   // Compute tensor shapes and sizes
-  size_t sum = 0;
+  size_t prefix_tensor_shape_size_sum = 0;
   for (int i = 0; i < tensor_num; ++i) {
     const Tensor* x_tensor = ctx->Input<Tensor>(i + 2);
-    sum += x_tensor->Shape().NumDimensions();
-    prefix_tensor_shape_sizes.push_back(sum);
+    prefix_tensor_shape_size_sum += x_tensor->Shape().NumDimensions();
+    prefix_tensor_shape_sizes.push_back(prefix_tensor_shape_size_sum);
     aggregated_tensor_shapes.insert(aggregated_tensor_shapes.end(),
                                     x_tensor->Shape().GetDims().begin(),
                                     x_tensor->Shape().GetDims().end());
 
-    // handle alignment requirement
+    // Find the next aligned offset in the tensor buffer to meet alignment requirement
     aggregated_aligned_tensor_bytes = (aggregated_aligned_tensor_bytes + alignment - 1) / alignment * alignment;
     tensor_offsets_in_bytes.push_back(aggregated_aligned_tensor_bytes);
     aggregated_aligned_tensor_bytes += x_tensor->SizeInBytes();

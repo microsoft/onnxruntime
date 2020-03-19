@@ -76,7 +76,7 @@ static void propagateRecvOutputTensorElemTypes(
     size_t outputSize) {
   auto attr_proto = ctx.getAttribute(attributeName);
   if (nullptr == attr_proto) {  // attribute not present
-      fail_type_inference("Value of attribute ", attributeName, " not specified");
+    fail_type_inference("Value of attribute ", attributeName, " not specified");
   }
 
   size_t tensor_num = static_cast<size_t>(attr_proto->ints_size());
@@ -92,7 +92,7 @@ static void propagateRecvOutputTensorElemTypes(
     if (!TensorProto_DataType_IsValid(elem_type)) {
       fail_type_inference("Attribute ", attributeName, " does not specify a valid type.");
     }
-    updateOutputElemType(ctx, i+1, elem_type);
+    updateOutputElemType(ctx, i + 1, elem_type);
   }
 }
 
@@ -1326,8 +1326,8 @@ Return true if all elements are true and false otherwise.
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Send data tensor to the specified destination.")
-      .Input(0, "Remote", "Remote dst rank. It must be a scalar.", "TInt64")
-      .Input(1, "InputSignal", "Input control signal. It must be a scalar.", "TBool")
+      .Input(0, "InputSignal", "Input control signal. It must be a scalar.", "TBool")
+      .Input(1, "Remote", "Remote dst rank. It must be a scalar.", "TInt64")
       .Input(2, "Data", "Tensors to send.", "V", OpSchema::Variadic, false)
       .Output(0, "OutputSignal", "Output control signal. It must be a scalar.", "TBool")
       .Attr("tag", "The tag of the message carrying Data.",
@@ -1347,13 +1347,13 @@ Return true if all elements are true and false otherwise.
         if (ctx.getNumInputs() < 3) {
           fail_shape_inference("Send must have at least three inputs.");
         } else {
-          auto& remote_input_shape = getInputShape(ctx, 0);
-          if (static_cast<int>(remote_input_shape.dim_size()) != 0) {
-            fail_shape_inference("Remote of Send must be a scalar.");
-          }
-          auto& signal_input_shape = getInputShape(ctx, 1);
+          auto& signal_input_shape = getInputShape(ctx, 0);
           if (static_cast<int>(signal_input_shape.dim_size()) != 0) {
             fail_shape_inference("InputSignal of Send must be a scalar.");
+          }
+          auto& remote_input_shape = getInputShape(ctx, 1);
+          if (static_cast<int>(remote_input_shape.dim_size()) != 0) {
+            fail_shape_inference("Remote of Send must be a scalar.");
           }
         }
 
@@ -1373,8 +1373,8 @@ Return true if all elements are true and false otherwise.
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Receive a tensor from the the specified source.")
-      .Input(0, "Remote", "Remote src rank. It must be a scalar.", "TInt64")
-      .Input(1, "InputSignal", "Input control signal. It must be a scalar.", "TBool")
+      .Input(0, "InputSignal", "Input control signal. It must be a scalar.", "TBool")
+      .Input(1, "Remote", "Remote src rank. It must be a scalar.", "TInt64")
       .Output(0, "OutputSignal", "Output control signal. It must be a scalar.", "TBool")
       .Output(1, "Data", "The Received tensors.", "V", OpSchema::Variadic, false)
       .Attr("tag", "The tag of the message carrying Data.",
@@ -1394,13 +1394,13 @@ Return true if all elements are true and false otherwise.
         if (ctx.getNumInputs() != 2) {
           fail_shape_inference("Recv must have two inputs.");
         } else {
-          auto& remote_input_shape = getInputShape(ctx, 0);
-          if (static_cast<int>(remote_input_shape.dim_size()) != 0) {
-            fail_shape_inference("Remote of Recv must be a scalar.");
-          }
-          auto& signal_input_shape = getInputShape(ctx, 1);
+          auto& signal_input_shape = getInputShape(ctx, 0);
           if (static_cast<int>(signal_input_shape.dim_size()) != 0) {
             fail_shape_inference("InputSignal of Recv must be a scalar.");
+          }
+          auto& remote_input_shape = getInputShape(ctx, 1);
+          if (static_cast<int>(remote_input_shape.dim_size()) != 0) {
+            fail_shape_inference("Remote of Recv must be a scalar.");
           }
         }
 
@@ -1410,7 +1410,7 @@ Return true if all elements are true and false otherwise.
 
         updateOutputShape(ctx, 0, {});
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
-        propagateRecvOutputTensorElemTypes(ctx, "element_types", ctx.getNumOutputs()-1);
+        propagateRecvOutputTensorElemTypes(ctx, "element_types", ctx.getNumOutputs() - 1);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MegatronF)

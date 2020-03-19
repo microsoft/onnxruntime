@@ -48,7 +48,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<size_t> prefix_tensor_shape_sizes(tensor_num);
   std::vector<int64_t> aggregated_tensor_shapes;
   size_t aggregated_aligned_tensor_bytes = 0;
-  size_t alignment = 256;
+  const size_t alignment = 256;
 
   // Start communication
   int world_rank;
@@ -93,14 +93,14 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
   // Create Tensors
   size_t begin = 0;
-  int64_t tensor_offset_in_bytes = 0;
+  size_t tensor_offset_in_bytes = 0;
   for (int i = 0; i < tensor_num; ++i) {
     std::vector<int64_t> tensor_shape(aggregated_tensor_shapes.begin() + begin,
                                       aggregated_tensor_shapes.begin() + prefix_tensor_shape_sizes[i]);
     begin = prefix_tensor_shape_sizes[i];
 
     Tensor* x_tensor = ctx->Output(i + 1, tensor_shape);
-    // handle alignment requirement
+    // Find the next aligned offset in the tensor buffer to meet alignment requirement
     tensor_offset_in_bytes = (tensor_offset_in_bytes + alignment - 1) / alignment * alignment;
 
     // Keep the sync copy in the previous design
