@@ -295,9 +295,7 @@ bool IsNodeSupported(const Node& node) {
     return false;
   }
 
-  const std::string& op = node.OpType();
-  if (op.substr(0, 6) == "Random") {
-    // Random* operators are non-deterministic, even when seed is provided.
+  if (kNonDeterministicOps.find(node.OpType()) != kNonDeterministicOps.end()) {
     return false;
   }
 

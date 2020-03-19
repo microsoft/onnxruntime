@@ -33,4 +33,6 @@ constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 constexpr const char* kNnapiExecutionProvider = "NnapiExecutionProvider";
 constexpr const char* kDmlExecutionProvider = "DmlExecutionProvider";
 constexpr const char* kAclExecutionProvider = "ACLExecutionProvider";
+const std::unordered_set<std::string> kNonDeterministicOps =
+      {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"};
 }  // namespace onnxruntime
