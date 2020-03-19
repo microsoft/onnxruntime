@@ -16,9 +16,9 @@ namespace Windows::AI::MachineLearning {
 // Supported derived classes:
 //    Map<String, Float>, Map<Int64, Float>
 //
-template <typename TDerived, typename T>
+template <typename TDerived, typename T, typename TRaw>
 struct SequenceBase : public winrt::implements<
-                          SequenceBase<TDerived, T>,
+                          SequenceBase<TDerived, T, TRaw>,
                           winml::ILearningModelFeatureValue,
                           WinML::ISequenceFeatureValue,
                           WinML::ILotusValueProviderPrivate> {
@@ -26,11 +26,31 @@ struct SequenceBase : public winrt::implements<
   using AbiMapStringToFloat = wfc::IMap<winrt::hstring, float>;
   using AbiMapInt64BitToFloat = wfc::IMap<int64_t, float>;
 
-  template <typename T> struct SequenceAbiTypeInfo {
+  static_assert(
+      std::is_same<T, AbiMapStringToFloat>::value ||
+          std::is_same<T, AbiMapInt64BitToFloat>::value ||
+          std::is_same<TRaw, bool>::value ||
+          std::is_same<TRaw, float>::value ||
+          std::is_same<TRaw, double>::value ||
+          std::is_same<TRaw, int8_t>::value ||
+          std::is_same<TRaw, uint8_t>::value ||
+          std::is_same<TRaw, uint16_t>::value ||
+          std::is_same<TRaw, int16_t>::value ||
+          std::is_same<TRaw, uint32_t>::value ||
+          std::is_same<TRaw, int32_t>::value ||
+          std::is_same<TRaw, uint64_t>::value ||
+          std::is_same<TRaw, int64_t>::value ||
+          std::is_same<TRaw, WinML::Half>::value ||
+          std::is_same<TRaw, std::string>::value,
+      "Only sequences of of map<string, float>, map<int64, float> and tensor<T> are supported.");
+
+  template <typename T>
+  struct SequenceAbiTypeInfo {
     static constexpr winml::TensorKind Key = winml::TensorKind::Undefined;
     static constexpr winml::TensorKind Value = winml::TensorKind::Undefined;
   };
-  template <> struct SequenceAbiTypeInfo<AbiMapStringToFloat> {
+  template <>
+  struct SequenceAbiTypeInfo<AbiMapStringToFloat> {
     static constexpr winml::TensorKind Key = winml::TensorKind::String;
     static constexpr winml::TensorKind Value = winml::TensorKind::Float;
   };
@@ -43,7 +63,7 @@ struct SequenceBase : public winrt::implements<
   template <typename TElement>
   void
   GetElementDescriptor(winml::ILearningModelFeatureDescriptor* result) {
-    static_assert(false, "Only sequences of of map<string, float> and map<int64, float> are supported.")
+    *result = WinML::TensorFeatureDescriptorFrom<TRaw>::CreateAnonymous(std::vector<int64_t>{});
   }
 
   template <>
@@ -101,8 +121,7 @@ struct SequenceBase : public winrt::implements<
   }
 
   STDMETHOD(get_ElementDescriptor)
-  (
-      winml::ILearningModelFeatureDescriptor* result) {
+  (winml::ILearningModelFeatureDescriptor* result) {
     FAIL_FAST_IF_NULL(result);
 
     GetElementDescriptor<T>(result);
@@ -110,18 +129,48 @@ struct SequenceBase : public winrt::implements<
     return S_OK;
   }
 
-  STDMETHOD(GetValue)(
+  STDMETHOD(GetValue)
+  (
       WinML::BindingContext& context,
       IValue** out) {
     auto session = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
     auto engine = session->GetEngine();
 
     if (context.type == WinML::BindingType::kInput) {
-	  // In opset 10, all ops that use sequences are seq<map>.
-	  // In opset 11, we will need to support seq<tensor<t>> as well.
-      RETURN_IF_FAILED(engine->CreateSequenceOfMapsValue(
-		  reinterpret_cast<::IInspectable*>(winrt::get_abi(data_)),
-          SequenceAbiTypeInfo<T>::Key, SequenceAbiTypeInfo<T>::Value, out));
+      winml::ILearningModelFeatureDescriptor descriptor(nullptr);
+      GetElementDescriptor<T>(&descriptor);
+
+      if (descriptor.Kind() == winml::LearningModelFeatureKind::Map) {
+        // In opset 10 and earlier only seq<map<,>> were supported
+        RETURN_IF_FAILED(engine->CreateSequenceOfMapsValue(
+            reinterpret_cast<::IInspectable*>(winrt::get_abi(data_)),
+            SequenceAbiTypeInfo<T>::Key, SequenceAbiTypeInfo<T>::Value, out));
+      } else if (descriptor.Kind() == winml::LearningModelFeatureKind::Tensor) {
+        // In opset 11, operators that require seq<tensor<t>> were added.
+
+        std::vector<winrt::com_ptr<WinML::IValue>> sequence;
+        for (auto tensor : data_) {
+          auto value_provider = tensor.as<WinML::ILotusValueProviderPrivate>();
+          winrt::com_ptr<WinML::IValue> out_value;
+          RETURN_IF_FAILED(value_provider->GetValue(context, out_value.put()));
+          sequence.push_back(out_value);
+        }
+
+        std::vector<WinML::IValue*> sequence_values;
+        std::transform(
+            std::begin(sequence),
+            std::end(sequence),
+            std::back_inserter(sequence_values),
+            [](auto value) {
+              return value.get();
+            });
+
+        RETURN_IF_FAILED(engine->CreateSequenceOfValuesValue(sequence_values.data(), sequence_values.size(), out));
+      } else {
+        // This should never happen, as the static_assert at the beginning of the code should prevent this path
+        // from even being hit.
+        FAIL_FAST();
+      }
     } else {
       RETURN_IF_FAILED(engine->CreateNullValue(out));
     }
@@ -135,22 +184,56 @@ struct SequenceBase : public winrt::implements<
     *p_is_placeholder = false;
     return S_OK;
   }
+    
+  template <typename TElement>
+  void AppendValue(
+      WinML::BindingContext& context, wfc::IVector<TElement> data, winrt::com_ptr<WinML::IValue> value) {
+    auto tensor = TElement::Create();
+    auto value_provider = tensor.as<WinML::ILotusValueProviderPrivate>();
+    WINML_THROW_IF_FAILED(value_provider->UpdateSourceResourceData(context, value.get()));
+    data.Append(tensor);
+  }
+  
+  template <>
+  void AppendValue<wfc::IMap<winrt::hstring, float>>(
+      WinML::BindingContext& /*context*/, wfc::IVector<wfc::IMap<winrt::hstring, float>> /*data*/, winrt::com_ptr<WinML::IValue> /*value*/) {}
+  
+  template <>
+  void AppendValue<wfc::IMap<int64_t, float>>(
+      WinML::BindingContext& /*context*/, wfc::IVector<wfc::IMap<int64_t, float>> /*data*/, winrt::com_ptr<WinML::IValue> /*value*/) {}
+  
 
-  STDMETHOD(UpdateSourceResourceData)(
-      BindingContext& context,
-      IValue* out) {
+  STDMETHOD(UpdateSourceResourceData)
+  (BindingContext& context, IValue* out) {
     auto writable_vector = data_.as<wfc::IVector<T>>();
     writable_vector.Clear();
 
     auto session = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
     auto engine = session->GetEngine();
-    RETURN_IF_FAILED(engine->FillSequenceOfMapsValue(reinterpret_cast<::IInspectable*>(winrt::get_abi(data_)), SequenceAbiTypeInfo<T>::Key, SequenceAbiTypeInfo<T>::Value, out));
 
+    winml::ILearningModelFeatureDescriptor descriptor(nullptr);
+    GetElementDescriptor<T>(&descriptor);
+
+    if (descriptor.Kind() == winml::LearningModelFeatureKind::Map) {
+      // In opset 10 and earlier only seq<map<,>> were supported
+      RETURN_IF_FAILED(engine->FillSequenceOfMapsValue(reinterpret_cast<::IInspectable*>(winrt::get_abi(data_)), SequenceAbiTypeInfo<T>::Key, SequenceAbiTypeInfo<T>::Value, out));
+    } else if (descriptor.Kind() == winml::LearningModelFeatureKind::Tensor) {
+      // In opset 11, operators that require seq<tensor<t>> were added.
+      std::vector<winrt::com_ptr<WinML::IValue>> tensor_values;
+      RETURN_IF_FAILED(engine->GetSequenceOfTensorValues(out, tensor_values));
+
+      for (auto tensor_value : tensor_values) {
+        AppendValue<T>(context, writable_vector, tensor_value);
+      }
+    } else {
+      FAIL_FAST();
+    }
     return S_OK;
   }
 
-  STDMETHOD(AbiRepresentation)(
-    wf::IInspectable& abi_representation) {
+  STDMETHOD(AbiRepresentation)
+  (
+      wf::IInspectable& abi_representation) {
     data_.as(abi_representation);
     return S_OK;
   }

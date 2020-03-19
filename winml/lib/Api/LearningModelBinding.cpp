@@ -257,80 +257,119 @@ ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
         uint32_t width = static_cast<uint32_t>(shape[3]);
         uint32_t height = static_cast<uint32_t>(shape[2]);
         uint32_t batchSize = static_cast<uint32_t>(shape[0]);
-        return implementation::ImageFeatureValue::Create(batchSize, format, width, height);
+        return winmlp::ImageFeatureValue::Create(batchSize, format, width, height);
       } else {
-        return implementation::TensorFloat::Create();
+        return winmlp::TensorFloat::Create();
       }
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::Double, &out)) && out) {
-      return implementation::TensorDouble::Create();
+      return winmlp::TensorDouble::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::String, &out)) && out) {
-      return implementation::TensorString::Create();
+      return winmlp::TensorString::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::UInt8, &out)) && out) {
-      return implementation::TensorUInt8Bit::Create();
+      return winmlp::TensorUInt8Bit::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::Int8, &out)) && out) {
-      return implementation::TensorInt8Bit::Create();
+      return winmlp::TensorInt8Bit::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::UInt16, &out)) && out) {
-      return implementation::TensorUInt16Bit::Create();
+      return winmlp::TensorUInt16Bit::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::Int16, &out)) && out) {
-      return implementation::TensorInt16Bit::Create();
+      return winmlp::TensorInt16Bit::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::UInt32, &out)) && out) {
-      return implementation::TensorUInt32Bit::Create();
+      return winmlp::TensorUInt32Bit::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::Int32, &out)) && out) {
-      return implementation::TensorInt32Bit::Create();
+      return winmlp::TensorInt32Bit::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::UInt64, &out)) && out) {
-      return implementation::TensorUInt64Bit::Create();
+      return winmlp::TensorUInt64Bit::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::Int64, &out)) && out) {
-      return implementation::TensorInt64Bit::Create();
+      return winmlp::TensorInt64Bit::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::Boolean, &out)) && out) {
-      return implementation::TensorBoolean::Create();
+      return winmlp::TensorBoolean::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::Float16, &out)) && out) {
-      return implementation::TensorFloat16Bit::Create();
+      return winmlp::TensorFloat16Bit::Create();
     }
   }
 
   // Maps
   if (SUCCEEDED(value->IsOfMapType(TensorKind::String, TensorKind::String, &out)) && out) {
-    return implementation::MapStringToString::Create();
+    return winmlp::MapStringToString::Create();
   }
   if (SUCCEEDED(value->IsOfMapType(TensorKind::String, TensorKind::Int64, &out)) && out) {
-    return implementation::MapStringToInt64Bit::Create();
+    return winmlp::MapStringToInt64Bit::Create();
   }
   if (SUCCEEDED(value->IsOfMapType(TensorKind::String, TensorKind::Float, &out)) && out) {
-    return implementation::MapStringToFloat::Create();
+    return winmlp::MapStringToFloat::Create();
   }
   if (SUCCEEDED(value->IsOfMapType(TensorKind::String, TensorKind::Double, &out)) && out) {
-    return implementation::MapStringToDouble::Create();
+    return winmlp::MapStringToDouble::Create();
   }
   if (SUCCEEDED(value->IsOfMapType(TensorKind::Int64, TensorKind::String, &out)) && out) {
-    return implementation::MapInt64BitToString::Create();
+    return winmlp::MapInt64BitToString::Create();
   }
   if (SUCCEEDED(value->IsOfMapType(TensorKind::Int64, TensorKind::Int64, &out)) && out) {
-    return implementation::MapInt64BitToInt64Bit::Create();
+    return winmlp::MapInt64BitToInt64Bit::Create();
   }
   if (SUCCEEDED(value->IsOfMapType(TensorKind::Int64, TensorKind::Float, &out)) && out) {
-    return implementation::MapInt64BitToFloat::Create();
+    return winmlp::MapInt64BitToFloat::Create();
   }
   if (SUCCEEDED(value->IsOfMapType(TensorKind::Int64, TensorKind::Double, &out)) && out) {
-    return implementation::MapInt64BitToDouble::Create();
+    return winmlp::MapInt64BitToDouble::Create();
   }
   // Sequences
   if (SUCCEEDED(value->IsOfVectorMapType(TensorKind::String, TensorKind::Float, &out)) && out) {
-    return implementation::SequenceMapStringFloat::Create();
+    return winmlp::SequenceMapStringFloat::Create();
   }
   if (SUCCEEDED(value->IsOfVectorMapType(TensorKind::Int64, TensorKind::Float, &out)) && out) {
-    return implementation::SequenceMapInt64BitFloat::Create();
+    return winmlp::SequenceMapInt64BitFloat::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::Float, &out)) && out) {
+    return winmlp::SequenceTensorFloat::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::Double, &out)) && out) {
+    return winmlp::SequenceTensorDouble::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::String, &out)) && out) {
+    return winmlp::SequenceTensorString::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::UInt8, &out)) && out) {
+    return winmlp::SequenceTensorUInt8Bit::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::Int8, &out)) && out) {
+    return winmlp::SequenceTensorInt8Bit::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::UInt16, &out)) && out) {
+    return winmlp::SequenceTensorUInt16Bit::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::Int16, &out)) && out) {
+    return winmlp::SequenceTensorInt16Bit::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::UInt32, &out)) && out) {
+    return winmlp::SequenceTensorUInt32Bit::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::Int32, &out)) && out) {
+    return winmlp::SequenceTensorInt32Bit::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::UInt64, &out)) && out) {
+    return winmlp::SequenceTensorUInt64Bit::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::Int64, &out)) && out) {
+    return winmlp::SequenceTensorInt64Bit::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::Boolean, &out)) && out) {
+    return winmlp::SequenceTensorBoolean::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::Float16, &out)) && out) {
+    return winmlp::SequenceTensorFloat16Bit::Create();
   }
 
   auto utf8_name = WinML::Strings::UTF8FromHString(descriptor.Name());

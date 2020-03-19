@@ -40,6 +40,8 @@ class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
   (winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) override;
   STDMETHOD(IsOfVectorMapType)
   (winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) override;
+  STDMETHOD(IsOfVectorTensorType)
+  (winml::TensorKind kind, bool* out) override;
 
   HRESULT(SetParameter)
   (IUnknown* param);
@@ -94,6 +96,9 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   (IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue** out) override;
   STDMETHOD(CreateSequenceOfMapsValue)
   (IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue** out) override;
+  STDMETHOD(CreateSequenceOfValuesValue)
+  (IValue ** values, size_t size, IValue * *out) override;
+
   STDMETHOD(CreateOneInputAcrossDevices)
   (const char* name, IValue* src, IValue** dest) override;
   STDMETHOD(CopyValueAcrossDevices)
@@ -104,6 +109,9 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   (IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue* value) override;
   STDMETHOD(FillSequenceOfMapsValue)
   (IInspectable* sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue* value) override;
+
+  STDMETHOD(GetSequenceOfTensorValues)
+  (WinML::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<WinML::IValue>>& out_values) override;
 
   OrtSession* UseOrtSession();
   const OrtApi* UseOrtApi();

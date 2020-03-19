@@ -71,6 +71,10 @@ IValue : IUnknown {
 
   STDMETHOD(IsOfVectorMapType)
   (winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) PURE;
+
+  STDMETHOD(IsOfVectorTensorType)
+  (winml::TensorKind kind, bool* out) PURE;
+
 };
 
 MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac")
@@ -126,6 +130,9 @@ IEngine : IUnknown {
   STDMETHOD(CreateSequenceOfMapsValue)
   (IInspectable * sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue * *out) PURE;
 
+  STDMETHOD(CreateSequenceOfValuesValue)
+  (IValue ** values, size_t size, IValue * *out) PURE;
+
   STDMETHOD(CreateOneInputAcrossDevices)
   (const char* name, IValue* src, IValue** dest) PURE;
 
@@ -140,6 +147,9 @@ IEngine : IUnknown {
 
   STDMETHOD(FillSequenceOfMapsValue)
   (IInspectable * sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue * value) PURE;
+
+  STDMETHOD(GetSequenceOfTensorValues)
+  (WinML::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<WinML::IValue>>& out_values) PURE;
 };
 
 MIDL_INTERFACE("0452ef15-b66b-47ca-9eff-aedac571764e")
