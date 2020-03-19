@@ -511,7 +511,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"mean_square_distance_none_weights_expanded", "invalid model", {"onnxtip"}},
       {"mean_square_distance_sum_expanded", "invalid model", {"onnxtip"}},
       {"min_float16", "invalid model", {"onnxtip"}},
-      {"sequence_model4", "invalid model", {"onnxtip"}},
       {"softmax_cross_entropy_mean", "invalid model", {"onnxtip"}},
       {"softmax_cross_entropy_mean_3d", "invalid model", {"onnxtip"}},
       {"softmax_cross_entropy_mean_weight", "invalid model", {"onnxtip"}},

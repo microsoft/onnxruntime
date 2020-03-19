@@ -141,12 +141,8 @@ def create_backend_test(testname=None):
                                  '^test_dropout*', #Could not find an implementation for the node Dropset(12)..so weird its there!
                                  '^test_argmin*', #Could not find an implementation for the node ArgMin(12)
                                  '^test_argmax*', #Could not find an implementation for the node ArgMax(12)
-                                 '^test_adagrad*',
-                                 '^test_adagrad_multiple*',
                                  '^test_celu*',
                                  '^test_celu_expanded*',
-                                 '^test_gradient_of_add failed*',
-                                 '^test_gradient_of_add_and_mul*',
                                  '^test_max_float16*',
                                  '^test_mean_square_distance_mean_3d_expanded*',
                                  '^test_mean_square_distance_mean_4d_expanded*',
@@ -155,7 +151,6 @@ def create_backend_test(testname=None):
                                  '^test_mean_square_distance_none_weights*',
                                  '^test_mean_square_distance_sum_expanded*',
                                  '^test_min_float16*',
-                                 '^test_sequence_model4*',
                                  '^test_softmax_cross_entropy_mean*',
                                  '^test_softmax_cross_entropy_mean_3d*',
                                  '^test_softmax_cross_entropy_mean_weight*',
