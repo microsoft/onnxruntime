@@ -2,21 +2,21 @@ parameters:
   DoEsrp: 'false'
   PackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
 
-jobs: 
+jobs:
 - template: ../../templates/win-ci-2019.yml
   parameters:
     AgentPool : 'Win-GPU-2019'
-    ArtifactName: 'drop-nuget'    
+    ArtifactName: 'drop-nuget'
     JobName: 'Windows_CI_GPU_CUDA_Dev'
     BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --use_telemetry --cmake_generator "Visual Studio 16 2019" --use_cuda --cuda_version=10.1 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.1" --cudnn_home="C:\local\cudnn-10.1-windows10-x64-v7.6.5.32\cuda"
     BuildArch: 'x64'
     msbuildArchitecture: 'amd64'
-    EnvSetupScript: 'setup_env_cuda.bat'    
+    EnvSetupScript: 'setup_env_cuda.bat'
     sln_platform: 'x64'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
-    DoEsrp: ${{ parameters.DoEsrp }}    
+    DoEsrp: ${{ parameters.DoEsrp }}
     CudaVersion: '10.1'
     OrtPackageId: 'Microsoft.ML.OnnxRuntime.Gpu'
     NuPackScript: |
@@ -29,17 +29,17 @@ jobs:
 - template: ../../templates/win-ci-2019.yml
   parameters:
     AgentPool : 'Win-GPU-2019'
-    ArtifactName: 'drop-nuget-dml'    
+    ArtifactName: 'drop-nuget-dml'
     JobName: 'Windows_CI_GPU_DML_Dev'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
     BuildArch: 'x64'
     msbuildArchitecture: 'amd64'
-    EnvSetupScript: 'setup_env_cuda.bat'    
+    EnvSetupScript: 'setup_env_cuda.bat'
     sln_platform: 'x64'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
-    DoEsrp: ${{ parameters.DoEsrp }}    
+    DoEsrp: ${{ parameters.DoEsrp }}
     CudaVersion: '10.0'
     OrtPackageId: 'Microsoft.ML.OnnxRuntime.DirectML'
     NuPackScript: |
@@ -54,7 +54,7 @@ jobs:
     AgentPool : 'Win-GPU-2019'
     ArtifactName: 'drop-win-dml-x86-zip'
     JobName: 'Windows_CI_GPU_DML_Dev_x86'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --x86 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --x86 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
     BuildArch: 'x86'
     EnvSetupScript: 'setup_env_x86.bat'
     sln_platform: 'Win32'
@@ -75,7 +75,7 @@ jobs:
   workspace:
     clean: all
   pool: $(AgentPoolLinux)
-  steps:    
+  steps:
     - template: ../../templates/set-version-number-variables-step.yml
     - template: ../../templates/linux-set-variables-and-download.yml
     - task: CmdLine@2
@@ -94,7 +94,7 @@ jobs:
        zip -r linux-x64.zip linux-x64
        cp $(Build.BinariesDirectory)/linux-x64/linux*.zip $(Build.ArtifactStagingDirectory)
        mkdir $(Build.ArtifactStagingDirectory)/testdata
-       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata 
+       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
        ls -al $(Build.ArtifactStagingDirectory)
       displayName: 'Create Artifacts'
     - task: PublishPipelineArtifact@0
@@ -117,7 +117,7 @@ jobs:
   - Windows_CI_GPU_DML_Dev_x86
   - Linux_CI_GPU_Dev
   condition: succeeded()
-  steps:  
+  steps:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet CUDA'
     inputs:
@@ -129,7 +129,7 @@ jobs:
     inputs:
       artifactName: 'drop-nuget-dml'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact-dml'
-      
+
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet DirectML x86'
     inputs:
@@ -148,7 +148,7 @@ jobs:
      powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
      powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
      set PATH=%CD%;%PATH%
-     SETLOCAL EnableDelayedExpansion 
+     SETLOCAL EnableDelayedExpansion
      FOR /R %%i IN (*.nupkg) do (
          set filename=%%~ni
          IF NOT "!filename:~25,7!"=="Managed" (
@@ -175,7 +175,7 @@ jobs:
      powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
      powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
      set PATH=%CD%;%PATH%
-     FOR /R %%i IN (*.nupkg) do ( 
+     FOR /R %%i IN (*.nupkg) do (
          rename %%~ni.nupkg %%~ni.zip
          unzip %%~ni.zip -d %%~ni
          del /Q %%~ni.zip
