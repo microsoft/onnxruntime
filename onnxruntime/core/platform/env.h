@@ -24,10 +24,10 @@ limitations under the License.
 #include <gsl/gsl>
 
 #include "core/common/common.h"
+#include "core/common/path_string.h"
 #include "core/framework/callback.h"
 #include "core/platform/env_time.h"
 #include "core/platform/telemetry.h"
-#include "core/session/onnxruntime_c_api.h"  // for ORTCHAR_T
 
 #ifndef _WIN32
 #include <sys/types.h>
@@ -81,7 +81,7 @@ class Env {
    * Gets the length of the specified file.
    */
   virtual common::Status GetFileLength(
-      const ORTCHAR_T* file_path, size_t& length) const = 0;
+      const PathChar* file_path, size_t& length) const = 0;
 
   /**
    * Copies the content of the file into the provided buffer.
@@ -91,7 +91,7 @@ class Env {
    * @param buffer The buffer in which to write.
    */
   virtual common::Status ReadFileIntoBuffer(
-      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+      const PathChar* file_path, FileOffsetType offset, size_t length,
       gsl::span<char> buffer) const = 0;
 
   using MappedMemoryPtr = std::unique_ptr<char[], OrtCallbackInvoker>;
@@ -107,7 +107,7 @@ class Env {
    *             unmaps the memory (unless release()'d) when destroyed.
    */
   virtual common::Status MapFileIntoMemory(
-      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+      const PathChar* file_path, FileOffsetType offset, size_t length,
       MappedMemoryPtr& mapped_memory) const = 0;
 
 #ifdef _WIN32
@@ -115,9 +115,6 @@ class Env {
   virtual bool FolderExists(const std::wstring& path) const = 0;
   /// \brief Recursively creates the directory, if it doesn't exist.
   virtual common::Status CreateFolder(const std::wstring& path) const = 0;
-  // Recursively deletes the directory and its contents.
-  // Note: This function is not thread safe!
-  virtual common::Status DeleteFolder(const std::wstring& path) const = 0;
   //Mainly for use with protobuf library
   virtual common::Status FileOpenRd(const std::wstring& path, /*out*/ int& fd) const = 0;
   //Mainly for use with protobuf library
@@ -129,7 +126,7 @@ class Env {
   virtual common::Status CreateFolder(const std::string& path) const = 0;
   // Recursively deletes the directory and its contents.
   // Note: This function is not thread safe!
-  virtual common::Status DeleteFolder(const std::string& path) const = 0;
+  virtual common::Status DeleteFolder(const PathString& path) const = 0;
   //Mainly for use with protobuf library
   virtual common::Status FileOpenRd(const std::string& path, /*out*/ int& fd) const = 0;
   //Mainly for use with protobuf library
@@ -139,8 +136,8 @@ class Env {
 
   /** Gets the canonical form of a file path (symlinks resolved). */
   virtual common::Status GetCanonicalPath(
-      const std::basic_string<ORTCHAR_T>& path,
-      std::basic_string<ORTCHAR_T>& canonical_path) const = 0;
+      const PathString& path,
+      PathString& canonical_path) const = 0;
 
   //This functions is always successful. It can't fail.
   virtual PIDType GetSelfPid() const = 0;

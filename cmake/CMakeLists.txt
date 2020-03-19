@@ -809,7 +809,10 @@ if (onnxruntime_ENABLE_TRAINING)
       set(HOROVOD_ROOT ${PROJECT_SOURCE_DIR}/external/horovod)
       set(HOROVOD_INCLUDE_DIRS  "${HOROVOD_ROOT}/horovod/common" ${MPI_CXX_INCLUDE_PATH})
       add_subdirectory(horovod EXCLUDE_FROM_ALL)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES horovod  /usr/lib/x86_64-linux-gnu/libnccl.so ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+      # use external/horovod/third_party/gloo/cmake/Modules/Findnccl.cmake to locate nccl lib path
+      list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external/horovod/third_party/gloo/cmake/Modules/)
+      find_package(nccl REQUIRED)  
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES horovod ${NCCL_LIBRARIES} ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
     endif()
   endif()
 

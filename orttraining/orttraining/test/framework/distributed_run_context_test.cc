@@ -6,7 +6,7 @@
 
 #include "core/common/common.h"
 #include "orttraining/core/framework/distributed_run_context.h"
-#include "test/util/include/gtest_utils.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace training {
