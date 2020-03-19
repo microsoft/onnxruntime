@@ -7,9 +7,6 @@
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/mpi_setup.h"
 
-// BEGIN: include
-// END:
-
 namespace onnxruntime {
 namespace python {
 namespace py = pybind11;

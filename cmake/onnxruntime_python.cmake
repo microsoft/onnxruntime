@@ -43,10 +43,6 @@ if (onnxruntime_ENABLE_TRAINING)
   )
 endif()
 
-message(aaasssdddff)
-message(${ORTTRAINING_ROOT})
-message(${onnxruntime_pybind_srcs_pattern})
-
 file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
