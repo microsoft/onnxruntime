@@ -137,7 +137,7 @@ bool PrepareForReduce(OpKernelContext* ctx,
   ORT_ENFORCE(input_tensor_ptr != nullptr);
   const Tensor& input = *input_tensor_ptr;
 
-  size_t ndim = input.Shape().GetDims().size();
+  size_t ndim = input.Shape().NumDimensions();
 
   // Scalar tensor
   if (ndim == 0) {
