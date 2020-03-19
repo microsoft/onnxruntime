@@ -305,9 +305,10 @@ class ONNXQuantizer:
             if self.nodes_to_quantize is not None and node.name not in self.nodes_to_quantize:
                 new_list += self._handle_other_ops(node, new_list)
             # only onnx domain ops can be quantized today
-            elif node.domain != "ai.onnx" and node.domain != '':
-                new_list += self._handle_other_ops(node, new_list)
+            #elif node.domain != "ai.onnx" and node.domain != '':
+            #    new_list += self._handle_other_ops(node, new_list)
             else:
+                print(node.op_type)
                 if node.op_type == 'Conv':
                     new_list += self._quantize_convolution(node, new_list)
                 elif node.op_type == 'MatMul':
@@ -316,6 +317,9 @@ class ONNXQuantizer:
                     new_list += self._quantize_gather_ops(node, new_list)
                 elif node.op_type == 'Relu' or node.op_type == 'Clip':
                     new_list += self._handle_activation_ops(node, new_list)
+                elif node.op_type == 'Attention':
+                    print('Attention')
+                    new_list += self._quantize_attention_integer_ops(node, new_list)
                 else:
                     new_list += self._handle_other_ops(node, new_list)
 
@@ -959,7 +963,7 @@ class ONNXQuantizer:
                      List of new QuantizeLinear nodes created)
         '''
         assert (node.op_type == "Conv" or node.op_type == "MatMul"
-                or node.op_type == "Gather")
+                or node.op_type == "Gather" or node.op_type == "Attention")
 
         quantized_input_names = []
         zero_point_names = []
@@ -1027,7 +1031,7 @@ class ONNXQuantizer:
 
     def _handle_other_ops(self, node, new_nodes_list):
         '''
-        Given a node which does not support quantization(Conv, Matmul, Gather), this method
+        Given a node which does not support quantization(Conv, Matmul, Gather, Attention), this method
         checks whether the input to this node is quantized and adds a DequantizeLinear node
         to dequantize this input back to FP32
 
@@ -1233,6 +1237,41 @@ class ONNXQuantizer:
             _get_mul_node([cast_op_output, scales_mul_op_output],
                           node.output[0], output_scale_mul_op))
         return nodes
+
+    def _quantize_attention_integer_ops(self, node, new_nodes_list):
+        '''
+        Used when self.mode is QuantizationMode.IntegerOps.
+            parameter node: Attention node.
+            parameter new_nodes_list: List of new nodes created before processing this node.
+            return: a list of nodes in topological order that represents quantized Attention node.
+        '''
+        assert (node.op_type == "Attention")
+
+        node_input = node.input[1]
+        # Quantize the input
+        initializer = _find_by_name(node_input, self.model.graph.initializer)
+        if initializer is not None:
+            weight = self._get_quantized_weight(initializer, self.weight_qType)
+        else:
+            raise ValueError(
+                'Unknown value for nbits. only 8 bit quantization is currently supported'
+            )
+
+        self._update_graph(weight)
+
+        quantized_weight = weight.name + "_quantized"
+        quantized_scale = weight.name + "_scale"
+
+        attention_integer_name = ""
+        if node.name != "":
+            attention_integer_name = node.name + "_quant"
+        attention_integer_node = onnx.helper.make_node(
+            "AttentionDynamicQuant", [node.input[0], quantized_weight, node.input[2], node.input[3], quantized_scale],
+            node.output, attention_integer_name)
+        attention_integer_node.domain = "com.microsoft"
+        attention_integer_node.attribute.extend([onnx.helper.make_attribute("num_heads", node.attribute[0].i)])
+
+        return [attention_integer_node]
 
     def _quantize_convolution_qlinear_ops(self, node, new_nodes_list):
         '''
@@ -1489,5 +1528,5 @@ def quantize(model,
         return quantizer.model
     else:
         raise ValueError(
-            'Unknown value for nbits. only 8 bit quantization is currently supported'
+            'Only 8 bit quantization is supported currently'
         )
