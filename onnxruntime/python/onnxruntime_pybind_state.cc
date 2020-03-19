@@ -143,6 +143,8 @@ namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
+void addObjectMethodsForTraining(py::module& m);
+
 static AllocatorPtr& GetAllocator() {
   static AllocatorPtr alloc = std::make_shared<TAllocator>();
   return alloc;
