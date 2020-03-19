@@ -14,7 +14,7 @@
 #include "core/framework/path_lib.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
-#include "test/util/include/gtest_utils.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/temp_dir.h"
 
 using onnxruntime::test::TemporaryDirectory;

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <Shlwapi.h>
 #include <Windows.h>
-#include <shellapi.h>
 
 #include <fstream>
 #include <string>
@@ -31,6 +30,8 @@ limitations under the License.
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
 #include "core/platform/windows/telemetry.h"
+
+#include "core/framework/path_lib.h"  // for LoopDir() // TODO path_lib is moving to core/platform
 
 namespace onnxruntime {
 
@@ -89,7 +90,7 @@ class WindowsEnv : public Env {
     return GetCurrentProcessId();
   }
 
-  Status GetFileLength(const ORTCHAR_T* file_path, size_t& length) const override {
+  Status GetFileLength(const PathChar* file_path, size_t& length) const override {
     ScopedFileHandle file_handle{CreateFileW(
         file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
     LARGE_INTEGER filesize;
@@ -105,7 +106,7 @@ class WindowsEnv : public Env {
   }
 
   Status ReadFileIntoBuffer(
-      const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length,
+      const PathChar* const file_path, const FileOffsetType offset, const size_t length,
       const gsl::span<char> buffer) const override {
     ORT_RETURN_IF_NOT(file_path);
     ORT_RETURN_IF_NOT(offset >= 0);
@@ -153,7 +154,7 @@ class WindowsEnv : public Env {
   }
 
   Status MapFileIntoMemory(
-      const ORTCHAR_T*, FileOffsetType, size_t,
+      const PathChar*, FileOffsetType, size_t,
       MappedMemoryPtr&) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "MapFileIntoMemory is not implemented on Windows.");
   }
@@ -198,44 +199,48 @@ class WindowsEnv : public Env {
     return Status::OK();
   }
 
-  common::Status DeleteFolder(const std::wstring& path) const override {
-    // SHFileOperation() will also delete files, so check for directory first
-    ORT_RETURN_IF_NOT(FolderExists(path), "Directory does not exist: ", ToMBString(path));
+  common::Status DeleteFolder(const PathString& path) const override {
+    Status final_status = Status::OK();
+    LoopDir(
+        path,
+        [this, &path, &final_status](
+            const PathString& child_basename, OrtFileType file_type) {
+          // ignore . and ..
+          if (child_basename == ORT_TSTR(".") || child_basename == ORT_TSTR("..")) {
+            return true;
+          }
 
-    const std::wstring path_ending_with_double_null = path + L'\0';
-    SHFILEOPSTRUCTW sh_file_op{};
-    sh_file_op.wFunc = FO_DELETE;
-    sh_file_op.pFrom = path_ending_with_double_null.c_str();
-    sh_file_op.fFlags = FOF_NO_UI;
+          const PathString child_path = path + GetPathSep<PathChar>() + child_basename;
 
-    const auto result = ::SHFileOperationW(&sh_file_op);
-    ORT_RETURN_IF_NOT(result == 0, "SHFileOperation() failed with error: ", result);
+          if (file_type == OrtFileType::TYPE_DIR) {
+            const auto delete_dir_status = DeleteFolder(child_path);
+            if (!delete_dir_status.IsOK()) {
+              final_status = delete_dir_status;
+            }
+          } else {  // not directory
+            if (!DeleteFileW(child_path.c_str())) {
+              const auto err = GetLastError();
+              final_status = ORT_MAKE_STATUS(
+                  ONNXRUNTIME, FAIL,
+                  "DeleteFile() failed - path: ", ToMBString(child_path),
+                  ", error code: ", err);
+            }
+          }
 
-    ORT_RETURN_IF_NOT(
-        !sh_file_op.fAnyOperationsAborted,
-        "SHFileOperation() indicated that an operation was aborted.");
+          return final_status.IsOK();
+        });
 
-    return Status::OK();
-  }
+    ORT_RETURN_IF_ERROR(final_status);
 
-  common::Status DeleteFolder(const std::string& path) const override {
-    // SHFileOperation() will also delete files, so check for directory first
-    ORT_RETURN_IF_NOT(FolderExists(path), "Directory does not exist: ", path);
+    if (!RemoveDirectoryW(path.c_str())) {
+      const auto err = GetLastError();
+      final_status = ORT_MAKE_STATUS(
+          ONNXRUNTIME, FAIL,
+          "RemoveDirectory() failed - path: ", ToMBString(path),
+          ", error code: ", err);
+    }
 
-    const std::string path_ending_with_double_null = path + '\0';
-    SHFILEOPSTRUCTA sh_file_op{};
-    sh_file_op.wFunc = FO_DELETE;
-    sh_file_op.pFrom = path_ending_with_double_null.c_str();
-    sh_file_op.fFlags = FOF_NO_UI;
-
-    const auto result = ::SHFileOperationA(&sh_file_op);
-    ORT_RETURN_IF_NOT(result == 0, "SHFileOperation() failed with error: ", result);
-
-    ORT_RETURN_IF_NOT(
-        !sh_file_op.fAnyOperationsAborted,
-        "SHFileOperation() indicated that an operation was aborted.");
-
-    return Status::OK();
+    return final_status;
   }
 
   common::Status FileOpenRd(const std::wstring& path, /*out*/ int& fd) const override {
@@ -279,8 +284,8 @@ class WindowsEnv : public Env {
   }
 
   common::Status GetCanonicalPath(
-      const std::basic_string<ORTCHAR_T>& path,
-      std::basic_string<ORTCHAR_T>& canonical_path) const override {
+      const PathString& path,
+      PathString& canonical_path) const override {
     // adapted from MSVC STL std::filesystem::canonical() implementation
     // https://github.com/microsoft/STL/blob/ed3cbf36416a385828e7a5987ca52cb42882d84b/stl/inc/filesystem#L2986
 
@@ -297,7 +302,7 @@ class WindowsEnv : public Env {
         file_handle.IsValid(), "CreateFile() failed: ", GetLastError());
 
     constexpr DWORD initial_buffer_size = MAX_PATH;
-    std::vector<ORTCHAR_T> result_buffer{};
+    std::vector<PathChar> result_buffer{};
     result_buffer.resize(initial_buffer_size);
 
     while (true) {
