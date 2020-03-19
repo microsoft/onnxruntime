@@ -17,7 +17,7 @@
 #include "sync_api.h"
 #include "providers.h"
 #include <google/protobuf/stubs/common.h>
-#include "core/framework/path_lib.h"
+#include "core/platform/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
