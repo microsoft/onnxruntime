@@ -344,10 +344,10 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         skiplayernorm_nodes = self.get_nodes_by_op_type("SkipLayerNormalization")
         reshape_removed = 0
         for skiplayernorm_node in skiplayernorm_nodes:
-            path = self.match_parent_path(skiplayernorm_node, [
-                'Add', 'Reshape', 'MatMul', 'Reshape', 'Gelu', 'Add', 'Reshape', 'MatMul', 'Reshape',
-                'SkipLayerNormalization'
-            ], [None, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+            path = self.match_parent_path(
+                skiplayernorm_node,
+                ['Add', 'Reshape', 'MatMul', 'Reshape', 'Gelu', 'Add', 'Reshape', 'MatMul', 'Reshape', 'SkipLayerNormalization']
+                [None, 0, 0, 0, 0, 0, 0, 0, 0, 0]) # yapf: disable
             if path is None:
                 continue
 

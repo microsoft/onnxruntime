@@ -11,6 +11,11 @@
 
 :: The style configuration file is .style.yapf in current directory.
 
+:: You can setup git pre-commit hook following https://github.com/google/yapf/tree/master/plugins.
+
+:: For more info about YAPF, see https://github.com/google/yapf
+
 yapf -ir ./python
+yapf -ir ./test
 
 if errorlevel 1 echo please install python, then pip install yapf
