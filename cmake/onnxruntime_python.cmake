@@ -36,6 +36,13 @@ set(onnxruntime_pybind_srcs_pattern
     "${ONNXRUNTIME_ROOT}/python/*.h"
 )
 
+if (onnxruntime_ENABLE_TRAINING)
+  list(APPEND onnxruntime_pybind_srcs_pattern
+    "${ORTTRAINING_ROOT}/orttraining/python/*.cc"
+    "${ORTTRAINING_ROOT}/orttraining/python/*.h"
+  )
+endif()
+
 file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
@@ -142,9 +149,28 @@ endif()
 file(GLOB onnxruntime_backend_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/backend/*.py"
 )
-file(GLOB onnxruntime_python_srcs CONFIGURE_DEPENDS
+
+if (onnxruntime_ENABLE_TRAINING)
+  file(GLOB onnxruntime_python_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/*.py"
-)
+    "${ORTTRAINING_SOURCE_DIR}/python/*.py"
+  )
+else()
+  file(GLOB onnxruntime_python_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/*.py"
+  )
+endif()
+
+if (onnxruntime_ENABLE_TRAINING)
+  file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/*.py"
+  )
+else()
+  file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/training/*.py"
+  )
+endif()
+
 file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/*.py"
 )
@@ -168,6 +194,7 @@ add_custom_command(
   TARGET onnxruntime_pybind11_state POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/backend
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/training
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/featurizer_ops
@@ -192,6 +219,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_capi_training_srcs}
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/training/
   COMMAND ${CMAKE_COMMAND} -E copy
       $<TARGET_FILE:onnxruntime_pybind11_state>
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
