@@ -19,5 +19,10 @@ typedef struct {
   int tag;
 } CommInfo_t;
 
+inline size_t GetAggregatedAlignedAddress(size_t old_addr) {
+  constexpr size_t alignment = 256;
+  size_t new_addr = (old_addr + alignment - 1) / alignment * alignment;
+}
+
 }  // namespace cuda
 }  // namespace onnxruntime

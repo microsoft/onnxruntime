@@ -48,7 +48,6 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<size_t> prefix_tensor_shape_sizes(tensor_num);
   std::vector<int64_t> aggregated_tensor_shapes;
   size_t aggregated_aligned_tensor_bytes = 0;
-  const size_t alignment = 256;
 
   // Start communication
   int world_rank;
@@ -101,7 +100,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
     Tensor* x_tensor = ctx->Output(i + 1, tensor_shape);
     // Find the next aligned offset in the tensor buffer to meet alignment requirement
-    tensor_offset_in_bytes = (tensor_offset_in_bytes + alignment - 1) / alignment * alignment;
+    tensor_offset_in_bytes = GetAggregatedAlignedAddress(tensor_offset_in_bytes);
 
     // Keep the sync copy in the previous design
     // TODO they can be moved to async call after global stream becoming accessible

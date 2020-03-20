@@ -6,6 +6,7 @@
 #include "orttraining/training_ops/cuda/communication/send.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
 #include <mpi.h>
+#include <limits>
 
 namespace onnxruntime {
 namespace cuda {
@@ -48,7 +49,6 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<size_t> prefix_tensor_shape_sizes;
   std::vector<int64_t> aggregated_tensor_shapes;
   size_t aggregated_aligned_tensor_bytes = 0;
-  const size_t alignment = 256;
   // tensor_offsets_in_bytes[i] is the starting byte of the i-th tensor in the send tensor buffer
   std::vector<size_t> tensor_offsets_in_bytes;
   // tensor_sizes_in_bytes[i] = (# of elements in the i-th tensor) * sizeof(the i-th tensor's element type)
@@ -65,9 +65,12 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
                                     x_tensor->Shape().GetDims().end());
 
     // Find the next aligned offset in the tensor buffer to meet alignment requirement
-    aggregated_aligned_tensor_bytes = (aggregated_aligned_tensor_bytes + alignment - 1) / alignment * alignment;
+    aggregated_aligned_tensor_bytes = GetAggregatedAlignedAddress(aggregated_aligned_tensor_bytes);
     tensor_offsets_in_bytes.push_back(aggregated_aligned_tensor_bytes);
     aggregated_aligned_tensor_bytes += x_tensor->SizeInBytes();
+    // Check whether exceeding the limitation of MPI size
+    ORT_ENFORCE(aggregated_aligned_tensor_bytes < INT_MAX,
+                "Aggregated tensor size in bytes is larger than MPI size limit");
     tensor_sizes_in_bytes.push_back(x_tensor->SizeInBytes());
   }
 
