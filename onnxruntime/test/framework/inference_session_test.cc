@@ -1306,7 +1306,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
 
   SessionOptions so;
   so.session_logid = "InferenceSessionTests.Test3LayerNestedSubgraph";
-  InferenceSession session_object{so};
+  InferenceSession session_object{so, GetEnvironment()};
 
 #ifdef USE_CUDA
   CUDAExecutionProviderInfo epi;
@@ -1442,7 +1442,7 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
 
   SessionOptions so;
   so.session_logid = "InferenceSessionTests.Test2LayerNestedSubgraph";
-  InferenceSession session_object{so};
+  InferenceSession session_object{so, GetEnvironment()};
 
 #ifdef USE_CUDA
   CUDAExecutionProviderInfo epi;
