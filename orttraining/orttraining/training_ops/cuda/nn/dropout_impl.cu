@@ -1,5 +1,20 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+/**
+* Copyright (c) 2016-present, Facebook, Inc.
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
+
+/* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "orttraining/training_ops/cuda/nn/dropout_impl.h"
@@ -22,7 +37,8 @@ __global__ void DropoutKernel(
     const T* X_data,
     T* Y_data,
     bool* mask_data) {
-  const T scale = T(1.0f / (1.0f - ratio));
+  const float p = 1.0f - ratio;
+  const T scale = T(1.0f / p);
 
   CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
   CUDA_LONG step_size = gridDim.x * blockDim.x * UNROLL;
@@ -43,7 +59,7 @@ __global__ void DropoutKernel(
     for (CUDA_LONG i = 0; i < UNROLL; i++) {
       CUDA_LONG li = id + gridDim.x * blockDim.x * i;
       if (li < N) {
-        mask_data[li] = (&rand.x)[i] > ratio;
+        mask_data[li] = (&rand.x)[i] < p;
         Y_data[li] = X_data[li] * T(mask_data[li]) * scale;
       }
     }

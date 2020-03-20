@@ -214,6 +214,7 @@ setup(
     packages=['onnxruntime',
               'onnxruntime.backend',
               'onnxruntime.capi',
+              'onnxruntime.capi.training',
               'onnxruntime.datasets',
               'onnxruntime.tools',
               ] + (['onnxruntime.nuphar'] if package_name == 'onnxruntime-nuphar' else []),
