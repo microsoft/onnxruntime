@@ -75,8 +75,7 @@ Copy mymodule.py into Python sys.path, then run the model with onnxruntime pytho
 * TensorProto.DOUBLE
 
 ## Limitations
-* Please make sure the inferencing and compiling environments are installed with same version of python.
-* If `--numpy_version=...` is specified, the Python operator will build with that version.
+* Inferencing and compiling environments must be installed with same version of python.
 * On Windows, `--config Debug` has known issues. Please build with `--config RelWithDebInfo` if debugging symbols are needed.
 * Due to Python C API restrictions, multi-threading is disabled so Python operators will run sequentially.
 
