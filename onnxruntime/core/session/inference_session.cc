@@ -97,7 +97,8 @@ inline std::basic_string<T> GetCurrentTimeString() {
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
-                                     const ONNX_NAMESPACE::ModelProto* model_proto,
+                                     const ONNX_NAMESPACE::ModelProto& model_proto,
+                                     bool is_model_proto_parsed,
                                      /*out*/ SessionOptions& finalized_session_options) {
   const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
 
@@ -134,12 +135,12 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 
     // In theory we should not hit this condition unless this internal class' APIs are being called incorrectly.
     // This is a good sanity check to enforce that the model has been parsed prior to looking into it for ort config.
-    ORT_ENFORCE(model_proto, "Model needs to be provided to check for ORT config within it");
+    ORT_ENFORCE(is_model_proto_parsed, "ModelProto needs to be parsed to check for ORT config within it");
 
     // Use default logger as the session_logger_ hasn't been initialized yet.
     InferenceSessionUtils inference_session_utils(default_logger);
 
-    auto status = inference_session_utils.ParseOrtConfigJsonInModelProto(*model_proto);
+    auto status = inference_session_utils.ParseOrtConfigJsonInModelProto(model_proto);
     if (!status.IsOK()) {
       return status;
     }
@@ -160,31 +161,45 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 }
 
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
-                                         logging::LoggingManager* logging_manager) {
-  auto status = FinalizeSessionOptions(session_options, model_proto_.get(), session_options_);
+                                         const Environment& session_env) {
+  auto status = FinalizeSessionOptions(session_options, model_proto_, model_loaded_, session_options_);
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
 
-  graph_transformation_mgr_ = onnxruntime::make_unique<GraphTransformerManager>(
-      session_options_.max_num_graph_transformation_steps);
-  logging_manager_ = logging_manager;
+  // The call to InitLogger depends on the final state of session_options_. Hence it should be invoked
+  // after the invocation of FinalizeSessionOptions.
+  logging_manager_ = session_env.GetLoggingManager();
+  InitLogger(logging_manager_);  // this sets session_logger_ so that it can be used for logging after this point.
 
-  thread_pool_ = concurrency::CreateThreadPool("intra_op_thread_pool",
-                                               session_options_.intra_op_num_threads);
+  // Update the number of steps for the graph transformer manager using the "finalized" session options
+  graph_transformation_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps);
+  use_per_session_threads_ = session_options.use_per_session_threads;
 
-  inter_op_thread_pool_ = session_options_.execution_mode == ExecutionMode::ORT_PARALLEL
-                              ? concurrency::CreateThreadPool("inter_op_thread_pool",
-                                                              session_options_.inter_op_num_threads)
-                              : nullptr;
+  if (use_per_session_threads_) {
+    LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
+    thread_pool_ = concurrency::CreateThreadPool("intra_op_thread_pool",
+                                                 session_options_.intra_op_num_threads);
+
+    inter_op_thread_pool_ = session_options_.execution_mode == ExecutionMode::ORT_PARALLEL
+                                ? concurrency::CreateThreadPool("inter_op_thread_pool",
+                                                                session_options_.inter_op_num_threads)
+                                : nullptr;
+  } else {
+    LOGS(*session_logger_, INFO) << "Using global/env threadpools since use_per_session_threads_ is false";
+    intra_op_thread_pool_from_env_ = session_env.GetIntraOpThreadPool();
+    inter_op_thread_pool_from_env_ = session_env.GetInterOpThreadPool();
+    ORT_ENFORCE(session_env.EnvCreatedWithGlobalThreadPools() == true,
+                "When the session is not configured to use per session"
+                " threadpools, the env must be created with the the CreateEnvWithGlobalThreadPools API.");
+  }
 
   session_state_ = onnxruntime::make_unique<SessionState>(execution_providers_,
                                                           session_options_.enable_mem_pattern &&
                                                               session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
-                                                          thread_pool_.get(),
-                                                          inter_op_thread_pool_.get());
+                                                          GetIntraOpThreadPoolToUse(),
+                                                          GetInterOpThreadPoolToUse());
 
-  InitLogger(logging_manager);
-
+  session_state_->SetLogger(*session_logger_);
   session_state_->SetDataTransferMgr(&data_transfer_mgr_);
   session_profiler_.Initialize(session_logger_);
   session_state_->SetProfiler(session_profiler_);
@@ -198,66 +213,67 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
-                                   logging::LoggingManager* logging_manager)
-    : insert_cast_transformer_("CastFloat16Transformer") {
+                                   const Environment& session_env)
+    : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+      insert_cast_transformer_("CastFloat16Transformer") {
   // Initialize assets of this session instance
-  ConstructorCommon(session_options, logging_manager);
+  ConstructorCommon(session_options, session_env);
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
-                                   const std::string& model_uri,
-                                   logging::LoggingManager* logging_manager)
-    : insert_cast_transformer_("CastFloat16Transformer") {
+                                   const Environment& session_env,
+                                   const std::string& model_uri)
+    : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+      insert_cast_transformer_("CastFloat16Transformer") {
   model_location_ = ToWideString(model_uri);
-  model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
-  auto status = Model::Load(model_location_, *model_proto_);
+  auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
-
+  model_loaded_ = true;
   // Finalize session options and initialize assets of this session instance
-  ConstructorCommon(session_options, logging_manager);
+  ConstructorCommon(session_options, session_env);
 }
 
 #ifdef _WIN32
 InferenceSession::InferenceSession(const SessionOptions& session_options,
-                                   const std::wstring& model_uri,
-                                   logging::LoggingManager* logging_manager)
-    : insert_cast_transformer_("CastFloat16Transformer") {
+                                   const Environment& session_env,
+                                   const std::wstring& model_uri)
+    : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+      insert_cast_transformer_("CastFloat16Transformer") {
   model_location_ = ToWideString(model_uri);
-  model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
-  auto status = Model::Load(model_location_, *model_proto_);
+  auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
-
+  model_loaded_ = true;
   // Finalize session options and initialize assets of this session instance
-  ConstructorCommon(session_options, logging_manager);
+  ConstructorCommon(session_options, session_env);
 }
 #endif
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
-                                   std::istream& model_istream,
-                                   logging::LoggingManager* logging_manager)
-    : insert_cast_transformer_("CastFloat16Transformer") {
+                                   const Environment& session_env,
+                                   std::istream& model_istream)
+    : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+      insert_cast_transformer_("CastFloat16Transformer") {
   google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
-  model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
-  const bool result = model_proto_->ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
+  const bool result = model_proto_.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
-
+  model_loaded_ = true;
   // Finalize session options and initialize assets of this session instance
-  ConstructorCommon(session_options, logging_manager);
+  ConstructorCommon(session_options, session_env);
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
+                                   const Environment& session_env,
                                    const void* model_data,
-                                   int model_data_len,
-                                   logging::LoggingManager* logging_manager)
-    : insert_cast_transformer_("CastFloat16Transformer") {
-  model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
-  const bool result = model_proto_->ParseFromArray(model_data, model_data_len);
+                                   int model_data_len)
+    : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+      insert_cast_transformer_("CastFloat16Transformer") {
+  const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
-
+  model_loaded_ = true;
   // Finalize session options and initialize assets of this session instance
-  ConstructorCommon(session_options, logging_manager);
+  ConstructorCommon(session_options, session_env);
 }
 
 InferenceSession::~InferenceSession() {
@@ -315,7 +331,7 @@ common::Status InferenceSession::RegisterGraphTransformer(
   if (p_graph_transformer == nullptr) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for graph transformer");
   }
-  return graph_transformation_mgr_->Register(std::move(p_graph_transformer), level);
+  return graph_transformation_mgr_.Register(std::move(p_graph_transformer), level);
 }
 
 common::Status InferenceSession::AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) {
@@ -372,11 +388,6 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
     // all steps complete, mark the model as loaded.
     is_model_loaded_ = true;
 
-    // model_proto_ should either - 1) always have been a nullptr if the ModelProto was never parsed in the ctor (or)
-    // 2) should have become a nullptr by passing on the ownership of the ModelProto resource it was pointing to,
-    // to the Model instance
-    ORT_ENFORCE(model_proto_ == nullptr, "Failed to clear up model_proto_ in Inference Session");
-
     telemetry_.event_name_ = event_name;
 
   } catch (const std::exception& ex) {
@@ -417,7 +428,7 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
 }
 
 common::Status InferenceSession::Load(const std::string& model_uri) {
-  if (model_proto_ != nullptr) {
+  if (model_loaded_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -428,7 +439,7 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
 
 #ifdef _WIN32
 common::Status InferenceSession::Load(const std::wstring& model_uri) {
-  if (model_proto_ != nullptr) {
+  if (model_loaded_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -439,7 +450,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 #endif
 
 common::Status InferenceSession::Load(const ModelProto& model_proto) {
-  if (model_proto_ != nullptr) {
+  if (model_loaded_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -461,7 +472,7 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
 }
 
 common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto) {
-  if (model_proto_ != nullptr) {
+  if (model_loaded_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -474,7 +485,7 @@ common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto)
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    return onnxruntime::Model::Load(std::move(p_model_proto), PathString(), model,
+    return onnxruntime::Model::Load(std::move(*p_model_proto), PathString(), model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
   };
 
@@ -482,23 +493,23 @@ common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto)
 }
 
 common::Status InferenceSession::Load(std::istream& model_istream) {
-  if (model_proto_ != nullptr) {
+  if (model_loaded_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
   }
 
   auto loader = [this, &model_istream](std::shared_ptr<onnxruntime::Model>& model) {
-    auto model_proto = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
+    ModelProto model_proto;
 
     google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
-    const bool result = model_proto->ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
+    const bool result = model_proto.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
     if (!result) {
       return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                     "Failed to load model because protobuf parsing failed.");
     }
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
-    LoadInterOp(*model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
     for (const auto& domain : interop_domains_) {
       AddCustomOpDomains({domain.get()});
     }
@@ -511,22 +522,22 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
 }
 
 common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
-  if (model_proto_ != nullptr) {
+  if (model_loaded_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
   }
 
   auto loader = [this, model_data, model_data_len](std::shared_ptr<onnxruntime::Model>& model) {
-    auto model_proto = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
+    ModelProto model_proto;
 
-    const bool result = model_proto->ParseFromArray(model_data, model_data_len);
+    const bool result = model_proto.ParseFromArray(model_data, model_data_len);
     if (!result) {
       return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                     "Failed to load model because protobuf parsing failed.");
     }
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
-    LoadInterOp(*model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
     for (const auto& domain : interop_domains_) {
       AddCustomOpDomains({domain.get()});
     }
@@ -540,7 +551,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 }
 
 common::Status InferenceSession::Load() {
-  if (model_proto_ == nullptr) {
+  if (!model_loaded_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has not been parsed yet. "
                            "This API should be called in conjunction with a ctor that takes a model abstraction.");
@@ -548,7 +559,7 @@ common::Status InferenceSession::Load() {
 
   auto loader = [this](std::shared_ptr<onnxruntime::Model>& model) {
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
-    LoadInterOp(*this->model_proto_, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    LoadInterOp(this->model_proto_, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
     for (const auto& domain : interop_domains_) {
       AddCustomOpDomains({domain.get()});
     }
@@ -831,7 +842,7 @@ common::Status InferenceSession::Initialize() {
     }
 
     // add predefined transformers
-    AddPredefinedTransformers(*graph_transformation_mgr_, session_options_.graph_optimization_level,
+    AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level,
                               transformers_to_enable_);
 
     onnxruntime::Graph& graph = model_->MainGraph();
@@ -853,7 +864,7 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_ERROR_SESSIONID_(CreateSubgraphSessionState(graph, *session_state_));
 
     // apply any transformations to the main graph and any subgraphs
-    ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, *graph_transformation_mgr_,
+    ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
                                                   execution_providers_, kernel_registry_manager_,
                                                   insert_cast_transformer_,
                                                   *session_state_));
@@ -1423,8 +1434,6 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
   } else {
     session_logger_ = &logging::LoggingManager::DefaultLogger();
   }
-
-  session_state_->SetLogger(*session_logger_);
 }
 
 // Registers all the predefined transformers with transformer manager

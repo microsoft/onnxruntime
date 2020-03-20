@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/platform/path_lib.h"
+
+#include "gtest/gtest.h"
 #include <string>
 
 #include "gtest/gtest.h"

@@ -22,7 +22,7 @@
 #include "core/platform/ort_mutex.h"
 
 #if __FreeBSD__
-#include <sys/thr.h> // Use thr_self() syscall under FreeBSD to get thread id
+#include <sys/thr.h>  // Use thr_self() syscall under FreeBSD to get thread id
 #endif
 
 namespace onnxruntime {
@@ -189,8 +189,8 @@ std::exception LoggingManager::LogFatalAndCreateException(const char* category,
   // create Capture in separate scope so it gets destructed (leading to log output) before we throw.
   {
     ::onnxruntime::logging::Capture c{::onnxruntime::logging::LoggingManager::DefaultLogger(),
-                                      ::onnxruntime::logging::Severity::kFATAL, category, 
-									  ::onnxruntime::logging::DataType::SYSTEM, location};
+                                      ::onnxruntime::logging::Severity::kFATAL, category,
+                                      ::onnxruntime::logging::DataType::SYSTEM, location};
     va_list args;
     va_start(args, format_str);
 
