@@ -52,7 +52,7 @@ struct TrainingParameters {
   int horizontal_parallel_size = 1;
   bool partition_optimizer = false;
   int seed = -1;
-  bool enable_gradient_clip = true;
+  bool enable_grad_norm_clip = true;
 };
 
 // TODO: this method does not handle parallel optimization.
@@ -134,7 +134,9 @@ void ConfigureSessionForTraining(
     // an allreduce_post_accumulation option and remove the use_nccl option.
     opt.use_nccl = parameters.allreduce_post_accumulation;
     opt.partition_optimizer = parameters.partition_optimizer;
-    opt.enable_gradient_clip = parameters.enable_gradient_clip;
+    // TODO: The norm clipping value is 1.0f which is the default used in most frameworks.
+    // Need to have another option to support more values in the future.
+    opt.enable_grad_norm_clip = parameters.enable_grad_norm_clip;
 
     config.optimizer_config = opt;
   }
@@ -169,7 +171,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("world_size", &TrainingParameters::world_size)
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
       .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer)
-      .def_readwrite("enable_gradient_clip", &TrainingParameters::enable_gradient_clip);
+      .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip);
 
 
   py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");

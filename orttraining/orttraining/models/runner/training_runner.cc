@@ -109,7 +109,7 @@ Status TrainingRunner::Initialize() {
     opt.use_nccl = params_.use_nccl;
     opt.partition_optimizer = params_.partition_optimizer;
     opt.adasum_reduction_type = params_.GetAdasumReductionType();
-    opt.enable_gradient_clip = params_.enable_gradient_clip;
+    opt.enable_grad_norm_clip = params_.enable_grad_norm_clip;
     config.optimizer_config = opt;
   }
 
