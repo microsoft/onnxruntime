@@ -7,7 +7,7 @@ All Python C API dependent code are compiled into a dynamic linked library named
 Before calling into Python script, pywrapper will convert onnxruntime tensor(s) to numpy(s), which is converted back when completed.
 <p>Here is a chart illustrating the calling sequence:
 <pre>
-onnxruntime                          pywrapper                          script
+onnxruntime                        python capi                         script
      |                                  |                                 |
      | ------------------------------>  |                                 |
      |       call with tensor(s)        | ------------------------------> |
@@ -20,9 +20,9 @@ onnxruntime                          pywrapper                          script
 
 ## How to Use
 ### Step 1
-Build onnxruntime with `--config Release --enable_language_interop_ops --build_shared_lib` and override the existing onnxruntime binary with the latest. Then, copy onnxruntime_pywrapper.dll, libonnxruntime_pywrapper.so, or libonnxruntime_pywrapper.dylib to the path where the onnxruntime binary is located. 
+Build onnxruntime with `--config Release --enable_language_interop_ops --build_wheel` and pip install the latest wheel file. 
 **Notes:**
-* It is recommended to compile within the Python environment where inferencing will happen. For example, if inferencing will happen in a conda env named myconda1, please compile the binary within that environment as well
+* Please make sure the inferencing and compiling environments are installed with same version of python.
 * If `--numpy_version=...` is specified, the Python operator will build with that version.
 
 ### Step 2
@@ -67,7 +67,7 @@ class Multi_2:
         return r1, r2
 ```
 ### Step 4
-Copy mymodule.py into Python sys.path, then reference with onnxruntime. On Windows, please set PYTHONHOME beforehand. It should point to directory where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
+Copy mymodule.py into Python sys.path, then inferencing with onnxruntime python API. On Windows, please set PYTHONHOME beforehand. It should point to directory where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
 
 ## Supported Data Types
 * TensorProto.BOOL
