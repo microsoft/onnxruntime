@@ -1,14 +1,14 @@
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_state_common.h"
 
+// pybind11/stl.h is needed to support std::unordered_set, etc.
+#include <pybind11/stl.h>
+
 #include "core/framework/random_seed.h"
 #include "core/framework/session_options.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/mpi_setup.h"
-
-// pybind11/stl.h is needed to support std::unordered_set, etc.
-#include <pybind11/stl.h>
 
 namespace onnxruntime {
 namespace python {

@@ -1,7 +1,7 @@
-#include "core/framework/allocator.h"
-#include "core/framework/session_options.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/cerr_sink.h"
+#include "core/framework/allocator.h"
+#include "core/framework/session_options.h"
 
 namespace onnxruntime {
 namespace python {
@@ -9,12 +9,12 @@ namespace python {
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
-static const SessionOptions& GetDefaultCPUSessionOptions() {
+inline const SessionOptions& GetDefaultCPUSessionOptions() {
   static SessionOptions so;
   return so;
 }
 
-static AllocatorPtr& GetAllocator() {
+inline AllocatorPtr& GetAllocator() {
   static AllocatorPtr alloc = std::make_shared<TAllocator>();
   return alloc;
 }
