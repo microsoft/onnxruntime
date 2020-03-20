@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_state_common.h"
 
