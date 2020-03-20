@@ -15,28 +15,36 @@ class CutEdge:
 # Add wait/record/send/recv nodes and split the graph into disconnected subgraphs
 def split_graph(model, edgeIds):
     upstream_nodes = []
+    element_types = []
     for id in edgeIds:
         for node in model.graph.node:
             if len(node.output) >=1 and node.output[0] == id:
                 upstream_nodes.append(node)
+                element_types.append(1) # assuming all tensors are of type float
 
     record_signal = model.graph.input.add()
-    record_signal.CopyFrom(helper.make_tensor_value_info('record_signal', onnx.TensorProto.INT64, [1]))
+    record_signal.CopyFrom(helper.make_tensor_value_info(
+        'record_signal', onnx.TensorProto.INT64, None))
 
     wait_signal = model.graph.input.add()
-    wait_signal.CopyFrom(helper.make_tensor_value_info('wait_signal', onnx.TensorProto.INT64, [1]))
+    wait_signal.CopyFrom(helper.make_tensor_value_info(
+        'wait_signal', onnx.TensorProto.INT64, None))
 
     send_dst_rank = model.graph.input.add()
-    send_dst_rank.CopyFrom(helper.make_tensor_value_info('send_dst_rank', onnx.TensorProto.INT64, [1]))
+    send_dst_rank.CopyFrom(helper.make_tensor_value_info(
+        'send_dst_rank', onnx.TensorProto.INT64, None))
 
     recv_src_rank = model.graph.input.add()
-    recv_src_rank.CopyFrom(helper.make_tensor_value_info('recv_src_rank', onnx.TensorProto.INT64, [1]))
+    recv_src_rank.CopyFrom(helper.make_tensor_value_info(
+        'recv_src_rank', onnx.TensorProto.INT64, None))
 
     send_signal = model.graph.input.add()
-    send_signal.CopyFrom(helper.make_tensor_value_info('send_signal', onnx.TensorProto.BOOL, [1]))
+    send_signal.CopyFrom(helper.make_tensor_value_info(
+        'send_signal', onnx.TensorProto.BOOL, None))
 
     recv_signal = model.graph.input.add()
-    recv_signal.CopyFrom(helper.make_tensor_value_info('recv_signal', onnx.TensorProto.BOOL, [1]))
+    recv_signal.CopyFrom(helper.make_tensor_value_info(
+        'recv_signal', onnx.TensorProto.BOOL, None))
 
     ms_domain = 'com.microsoft'
 
@@ -46,7 +54,10 @@ def split_graph(model, edgeIds):
         inputs=['send_signal', 'send_dst_rank'],
         outputs=[],
         tag=0,
-        domain=ms_domain))
+        domain=ms_domain,
+        version=12,
+        element_types=element_types,
+        name='send'))
 
     new_receive = model.graph.node.add()
     new_receive.CopyFrom(helper.make_node(
@@ -54,7 +65,10 @@ def split_graph(model, edgeIds):
         inputs=['recv_signal', 'recv_src_rank'],
         outputs=[],
         tag=1,
-        domain=ms_domain))
+        domain=ms_domain,
+        version=12,
+        element_types=element_types,
+        name='receive'))
 
     new_wait = model.graph.node.add()
     new_wait.CopyFrom(helper.make_node(
@@ -77,11 +91,13 @@ def split_graph(model, edgeIds):
 
         # new output from send after cut
         send_output = model.graph.output.add()
-        send_output.name = n.output[0] + '_send_sync'
+        send_output.CopyFrom(helper.make_tensor_value_info(
+            n.output[0] + '_send_sync', onnx.TensorProto.FLOAT, None)) #TODO: how to infer the send tensor size?
 
         # new input from receive after cut
         receive_input = model.graph.input.add()
-        receive_input.name =  n.output[0] + '_recv_sync'
+        receive_input.CopyFrom(helper.make_tensor_value_info(
+            n.output[0] + '_recv_sync', onnx.TensorProto.FLOAT, None)) #TODO: how to infer the receive tensor size?
 
         new_send_input = n.output[0] + '_send'
         new_receive_output = n.output[0] + '_recv'
