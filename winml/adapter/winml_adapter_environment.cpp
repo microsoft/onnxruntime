@@ -14,8 +14,8 @@
 #include "abi_custom_registry_impl.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/providers/dml/OperatorAuthorHelper/SchemaInferenceOverrider.h"
-#endif USE_DML
 
+#endif USE_DML
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
 class WinmlAdapterLoggingWrapper : public LoggingWrapper {

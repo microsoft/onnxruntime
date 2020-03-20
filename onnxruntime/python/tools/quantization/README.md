@@ -1,23 +1,23 @@
 # Quantization and Calibration Tools
 
-Quantization in ORT refers to 8 bit linear quantization of an onnx model. There are 2 tools which aid converting an onnx model to an onnx quantized model. 
+Quantization in ORT refers to 8 bit linear quantization of an onnx model. There are 2 tools which aid converting an onnx model to an onnx quantized model.
 
-    * Quantization Tool 
+    * Quantization Tool
     * Calibration Tool
 
 ## Quantization specifics
  During quantization the floating point real values are mapped to an 8 bit quantization space and it is of the form :
  VAL_fp32 = Scale * (VAL_quantized - Zero_point)
- 
- Scale is a positive real number used to map the floating point numbers to a quantization space. It is calculated as follows : 
+
+ Scale is a positive real number used to map the floating point numbers to a quantization space. It is calculated as follows :
  For unsigned 8 bit
  ```
- scale = (data_rage_max - data_range_min) / (quantization_range_max - quantization_range_min)
+ scale = (data_range_max - data_range_min) / (quantization_range_max - quantization_range_min)
  ```
 
  For signed 8 bit
  ```
- scale = Abs(data_rage_max, data_range_min) * 2 / (quantization_range_max - quantization_range_min)
+ scale = Abs(data_range_max, data_range_min) * 2 / (quantization_range_max - quantization_range_min)
  ```
 
  Zero point represents zero in quantization space. It is important that floating point zero value be exactly representable in quantization space. This is because in lot of CNNs, zero padding is used and if after quantization it is not possible to represent 0 uniquely then it will lead to accuracy errors.
@@ -50,10 +50,10 @@ Quantization tool displays a warning when the model opset version is < 10 and st
 Please note quantization and graph optimizations may not always work together.
 
 #### Quantizing an optimized model
-If a model is optimized using level 99 (i.e. all possible optimizations are run on that model) then it is possible that after these optimizations are applied the model is converted in a way that quantization cannot be applied on this model anymore and therefore after running quantization script there will be no change in the model. 
+If a model is optimized using level 99 (i.e. all possible optimizations are run on that model) then it is possible that after these optimizations are applied the model is converted in a way that quantization cannot be applied on this model anymore and therefore after running quantization script there will be no change in the model.
 
 #### Optimizing a quantized model
-Same goes the other way round. After quantizing a model some graph optimizations which otherwise might have been applicable on this model may not be applicable anymore. 
+Same goes the other way round. After quantizing a model some graph optimizations which otherwise might have been applicable on this model may not be applicable anymore.
 
 It is advised that the model owner be aware of this and run perf evaluations to understand which technique gives the best performance for their model.
 
@@ -142,7 +142,7 @@ If False, the inputs/activations are quantized using dynamic scale and zero poin
         are quantized.
         example:
         [
-            'Cov__224',
+            'Conv__224',
             'Conv__252'
         ]
 
@@ -160,7 +160,7 @@ onnx.save(quantized_model, 'path/to/the/quantized_model.onnx')
 ```
 
 ## Calibration tool
-Calibration can be used to improve quantization, adding reduced-precision computation for neural networks while retaining high accuracy without retraining. 
+Calibration can be used to improve quantization, adding reduced-precision computation for neural networks while retaining high accuracy without retraining.
 
 Calibration uses a small data set representative of the original data set to calculate quantization thresholds. To calculate the quantization thresholds it updates the original onnx model by adding `ReduceMin` and `ReduceMax` nodes to all the nodes which are candidates for quantization (Today this is applicable for `Conv` and `MatMul` nodes). It then runs through the calibration datasets to gather these outputs and finally calculates the quantization thresholds. These are then passed as inputs to quantize.py for quantizing the model.
 
@@ -195,12 +195,12 @@ python calibrate.py --model_path=<'path/to/model.onnx'> --output_model_path=<'pa
 This is an E2E example to demonstrate calibration, quantization and accuracy testing for a resnet model. We leverage instructions in MLperf for downloading the imagenet dataset, selecting the calibration data set and use mlperf accuracy benchmark for testing the accuracy of the quantized model.
 
 * Download the model : Download the [resnet50_v1](./E2E_example_model/resnet50_v1.onnx)
- 
+
 * Prepare imagenet dataset : Follow instructions provided in [mlperf repo](https://github.com/mlperf/inference/tree/master/v0.5/classification_and_detection#datasets)
 
 * Install latest versions of ONNX and ONNXRuntime
 
-* Quantize the model : As described above there are 2 ways to do this. 
+* Quantize the model : As described above there are 2 ways to do this.
     * Use quantization tool only. This method uses Integer Ops :
     ```python
     import onnx
@@ -218,7 +218,7 @@ This is an E2E example to demonstrate calibration, quantization and accuracy tes
         python calibrate.py --model_path=/<path>/E2E_example_model/resnet50_v1.onnx.onnx --output_model_path=/<output_path>/calibrated_quantized_model.onnx --dataset_path=/<path>/calibration_data_set --data_preprocess=preprocess_method2
         ```
 
-* Setup and run mlperf accuracy tests : Now that quantized model is ready run the accuracy tests using the mlperf accuracy benchmarks. 
+* Setup and run mlperf accuracy tests : Now that quantized model is ready run the accuracy tests using the mlperf accuracy benchmarks.
     * Set up the [mlperf benchmark](https://github.com/mlperf/inference/tree/master/v0.5/classification_and_detection#prerequisites-and-installation)
     * Run accuracy test : For example
     ```
