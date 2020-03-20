@@ -30,7 +30,6 @@ import argparse
 import numpy as np
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper
-import onnxruntime
 from BertOnnxModel import BertOnnxModel
 from BertOnnxModelTF import BertOnnxModelTF
 from BertOnnxModelKeras import BertOnnxModelKeras
@@ -57,6 +56,8 @@ def optimize_by_onnxruntime(onnx_model_path, use_gpu, optimized_model_path=None)
     Returns:
         optimized_model_path: the path of optimized model
     """
+    import onnxruntime
+
     if use_gpu and 'CUDAExecutionProvider' not in onnxruntime.get_available_providers():
         logger.error("There is no gpu for onnxruntime to do optimization.")
         return onnx_model_path

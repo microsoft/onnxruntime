@@ -111,6 +111,7 @@ class QuantizedValue:
 
 def quantize_data(data, quantize_range, qType):
     '''
+        :parameter data: data to quantize
         :parameter quantize_range: list of data to weight pack.
         :parameter qType: data type to quantize to. Supported types UINT8 and INT8
         :return: minimum, maximum, zero point, scale, and quantized weights
@@ -141,7 +142,7 @@ def quantize_data(data, quantize_range, qType):
         zero_point = round((0 - rmin) / scale)  # round to nearest integer
         quantized_data = ((np.asarray(data) / scale).round() + zero_point).astype('B')  # unsigned byte type
     else:
-        raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.")
+        raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType))
 
     return rmin, rmax, zero_point, scale, quantized_data
 
@@ -607,21 +608,21 @@ class ONNXQuantizer:
         Zero point and scale values are obtained from self.quantization_params if specified.
 
             parameter param_name: Name of the quantization parameter.
-            return: scale_name, zero_point_name, scale_shape, zero_point_shape.
+            return: result, scale_name, zero_point_name, scale_shape, zero_point_shape.
         '''
         if self.quantization_params is None or param_name not in self.quantization_params:
             return False, "", "", "", ""
         params = self.quantization_params[param_name]
         if params is None or len(params) != 2:
             raise ValueError("Quantization parameters should contain zero point and scale. "
-                             "Specified values for output {}: {}".format(output_name, params))
+                             "Specified values for output {}: {}".format(param_name, params))
 
         if not np.isscalar(params[0]):
-            raise ValueError("Zero point for output {} should be a scalar value. Value specified: {}".format(
-                output_name, params[0]))
+            raise ValueError("Zero point for param {} should be a scalar value. Value specified: {}".format(
+                param_name, params[0]))
         if not np.isscalar(params[1]):
-            raise ValueError("Scale for output {} should be a scalar value. Value specified: {}".format(
-                output_name, params[1]))
+            raise ValueError("Scale for param {} should be a scalar value. Value specified: {}".format(
+                param_name, params[1]))
 
         zero_point_values = [params[0].item()]
         zero_point_shape = []
@@ -654,7 +655,7 @@ class ONNXQuantizer:
         input_name = node.input[input_index]
         output_name = input_name + "_quantized"
 
-        data_found, scale_name, zp_name, scale_shape, zp_shape = \
+        data_found, scale_name, zp_name, _, _ = \
             self._get_quantization_params(input_name)
 
         if self.static:
@@ -806,12 +807,19 @@ class ONNXQuantizer:
             self._dynamic_quantize_bias(node.input[0], weight_scale_name, bias_name, quantized_bias_name, new_node_list)
         else:
             # get scale for input
-            input_scale_name = self.quantized_value_map[node.input[0]].scale_name
+            if node.input[0] in self.quantized_value_map:
+                input_scale_name = self.quantized_value_map[node.input[0]].scale_name
+            elif node.input[0] in self.quantization_params:
+                _, input_scale_name, _, _, _ = self._get_quantization_params(node.input[0])
+            else:
+                raise ValueError("Expected {} to be in quantized value map for static quantization".format(
+                    node.input[0]))
+
             inputscale_initializer = _find_by_name(input_scale_name, self.model.graph.initializer)
             input_scale = self.find_weight_data(inputscale_initializer)
 
             # calcuate scale for bias
-            bias_scale_name = node.input[2] + "_scale"
+
             bias_scale = input_scale * weight_scale
             print(bias_scale)
 
@@ -1119,10 +1127,12 @@ class ONNXQuantizer:
         if len(node.input) == 3:
             quantized_bias_name = self._quantize_bias(node, nodes)
             bias_present = True
-        data_found, output_scale_name, output_zp_name, output_scale_shape, output_zp_shape = \
+        data_found, output_scale_name, output_zp_name, _, _ = \
             self._get_quantization_params(node.output[0])
 
-        assert (data_found)
+        if not data_found:
+            raise ValueError("Quantization parameters for output:\"{}\" of node:\"{}\" not specified".format(
+                node.output[0], node.name))
 
         qlinear_conv_output = node.output[0] + "_quantized"
         qlinear_conv_name = ""
@@ -1171,7 +1181,7 @@ class ONNXQuantizer:
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
             self._quantize_inputs(node, [0, 1], new_nodes_list)
 
-        data_found, output_scale_name, output_zp_name, output_scale_shape, output_zp_shape = \
+        data_found, output_scale_name, output_zp_name, _, _ = \
             self._get_quantization_params(node.output[0])
 
         assert (data_found)
@@ -1345,4 +1355,4 @@ def quantize(model,
         quantizer.model.producer_version = __version__
         return quantizer.model
     else:
-        raise ValueError('Unknown value for nbits. only 8 bit quantization is currently supported')
+        raise ValueError('Only 8 bit quantization is currently supported')
