@@ -110,8 +110,9 @@ if [ $DEVICE_TYPE = "Normal" ]; then
 elif [ $DEVICE_TYPE = "gpu" ]; then
     ${PYTHON_EXE} -m pip install sympy==1.1.1
     if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
-      ${PYTHON_EXE} -m pip install --pre torch -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
-      ${PYTHON_EXE} -m pip install torchvision --no-deps 
+      # ${PYTHON_EXE} -m pip install --pre torch torchvision -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
+      ${PYTHON_EXE} -m pip install torchvision
+      ${PYTHON_EXE} -c "import torchvision"
     fi
 fi
 
