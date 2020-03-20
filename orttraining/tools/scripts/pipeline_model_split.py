@@ -16,6 +16,7 @@ class CutEdge:
 def split_graph(model, edgeIds):
     upstream_nodes = []
     element_types = []
+
     for id in edgeIds:
         for node in model.graph.node:
             if len(node.output) >=1 and node.output[0] == id:
