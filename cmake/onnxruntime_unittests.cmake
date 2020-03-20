@@ -360,9 +360,6 @@ set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest"
 set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src} ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src})
 if(NOT TARGET onnxruntime)
   list(APPEND all_tests ${onnxruntime_shared_lib_test_SRC})
-  if (NOT onnxruntime_USE_NNAPI)
-    list(APPEND all_tests ${onnxruntime_global_thread_pools_test_SRC})
-  endif()
 endif()
 set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
