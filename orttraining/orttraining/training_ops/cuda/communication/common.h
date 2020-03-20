@@ -19,9 +19,11 @@ typedef struct {
   int tag;
 } CommInfo_t;
 
+// This function returns the next multiple of "alignment" where "alignment" is 256 below.
 inline size_t GetAggregatedAlignedAddress(size_t old_addr) {
   constexpr size_t alignment = 256;
   size_t new_addr = (old_addr + alignment - 1) / alignment * alignment;
+  return new_addr;
 }
 
 }  // namespace cuda

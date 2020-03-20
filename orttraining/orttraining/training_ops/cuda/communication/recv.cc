@@ -36,13 +36,13 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   const bool* input_signal = input_signal_tensor->template Data<bool>();
   ORT_ENFORCE(*input_signal, "Input control signal of Recv must be true before executing the node.");
 
-  // Extract Remote rank
+  // Extract remote rank
   const Tensor* remote_rank_tensor = ctx->Input<Tensor>(1);
   const int64_t* remote_rank = remote_rank_tensor->template Data<int64_t>();
-  int src = static_cast<int>(*remote_rank);
+  const int src = static_cast<int>(*remote_rank);
 
   // Create buffers
-  int tensor_num = static_cast<int>(element_types_.size());
+  const int tensor_num = static_cast<int>(element_types_.size());
   // TODO move the following variables to member variables for extending life-time
   // if we want to make the entire call async
   std::vector<size_t> prefix_tensor_shape_sizes(tensor_num);

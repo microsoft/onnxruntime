@@ -73,7 +73,7 @@ void AddRepeatedOutputs(
 static void propagateRecvOutputTensorElemTypes(
     InferenceContext& ctx,
     const std::string& attributeName,
-    size_t outputSize) {
+    const size_t outputSize) {
   auto attr_proto = ctx.getAttribute(attributeName);
   if (nullptr == attr_proto) {  // attribute not present
     fail_type_inference("Value of attribute ", attributeName, " not specified");

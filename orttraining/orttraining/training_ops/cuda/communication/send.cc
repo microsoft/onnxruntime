@@ -37,13 +37,13 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   const bool* input_signal = input_signal_tensor->template Data<bool>();
   ORT_ENFORCE(*input_signal, "Input control signal of Send must be true before executing the node.");
 
-  // Extract Remote rank
+  // Extract remote rank
   const Tensor* remote_rank_tensor = ctx->Input<Tensor>(1);
   const int64_t* remote_rank = remote_rank_tensor->template Data<int64_t>();
-  int dst = static_cast<int>(*remote_rank);
+  const int dst = static_cast<int>(*remote_rank);
 
   // Create buffers
-  int tensor_num = static_cast<int>(element_types_.size());
+  const int tensor_num = static_cast<int>(element_types_.size());
   // TODO move the following variables to member variables for extending life-time
   // if we want to make the entire call async
   std::vector<size_t> prefix_tensor_shape_sizes;
@@ -68,9 +68,6 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
     aggregated_aligned_tensor_bytes = GetAggregatedAlignedAddress(aggregated_aligned_tensor_bytes);
     tensor_offsets_in_bytes.push_back(aggregated_aligned_tensor_bytes);
     aggregated_aligned_tensor_bytes += x_tensor->SizeInBytes();
-    // Check whether exceeding the limitation of MPI size
-    ORT_ENFORCE(aggregated_aligned_tensor_bytes < INT_MAX,
-                "Aggregated tensor size in bytes is larger than MPI size limit");
     tensor_sizes_in_bytes.push_back(x_tensor->SizeInBytes());
   }
 
@@ -91,18 +88,29 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   // Prepare MPI communication info
+  int tensor_num_in_bytes = tensor_num * static_cast<int>(sizeof(size_t));
+  ORT_ENFORCE(tensor_num_in_bytes < INT_MAX,
+              "Total tensor number larger than MPI size limit");
   CommInfo_t info_shape_sizes{prefix_tensor_shape_sizes.data(),
-                              tensor_num * static_cast<int>(sizeof(size_t)),
+                              tensor_num_in_bytes,
                               dst,
                               static_cast<int>(tag_)};
+
+  ORT_ENFORCE(aggregated_aligned_tensor_bytes < INT_MAX,
+              "Aggregated tensor size larger than MPI size limit");
   CommInfo_t info_aggregated_size{&aggregated_aligned_tensor_bytes,
                                   static_cast<int>(sizeof(size_t)),
                                   dst,
                                   static_cast<int>(tag_)};
+
+  int total_tensor_dim_in_bytes = static_cast<int>(aggregated_tensor_shapes.size()) * static_cast<int>(sizeof(int64_t));
+  ORT_ENFORCE(total_tensor_dim_in_bytes < INT_MAX,
+              "Total dimensions of tensors larger than MPI size limit");
   CommInfo_t info_shapes{aggregated_tensor_shapes.data(),
-                         static_cast<int>(aggregated_tensor_shapes.size()) * static_cast<int>(sizeof(int64_t)),
+                         total_tensor_dim_in_bytes,
                          dst,
                          static_cast<int>(tag_)};
+
   CommInfo_t info_data{buffer.get(),
                        static_cast<int>(aggregated_aligned_tensor_bytes),
                        dst,
