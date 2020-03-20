@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -66,7 +67,7 @@ TEST(GatherOpTest, Gather_invalid_axis) {
 }
 
 TEST(GatherOpTest, Gather_invalid_index_cpu) {
-  OpTester test("Gather", 12);  // added check in opset 11
+  OpTester test("Gather"); 
   // Invalid index 3. data[3] does not exist.
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<float>("data", {3, 4},
@@ -76,7 +77,9 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
   test.AddInput<int32_t>("indices", {3}, {0LL, 1L, 1000L});
   test.AddOutput<float>("output", {1}, {1.0f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Mismatch between number of source and target dimensions.");
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds", {}, nullptr, &execution_providers);
 }
 
 #ifdef USE_CUDA
