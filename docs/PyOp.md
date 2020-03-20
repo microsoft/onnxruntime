@@ -3,8 +3,6 @@ The Python Operator provides the capability to easily invoke any custom Python c
 
 ## Design Overview
 The feature can be found under [onnxruntime/core/language_interop_ops](../onnxruntime/core/language_interop_ops).
-All Python C API dependent code are compiled into a dynamic linked library named pywrapper.
-Before calling into Python script, pywrapper will convert onnxruntime tensor(s) to numpy(s), which is converted back when completed.
 <p>Here is a chart illustrating the calling sequence:
 <pre>
 onnxruntime                        python capi                         script
@@ -67,7 +65,7 @@ class Multi_2:
         return r1, r2
 ```
 ### Step 4
-Copy mymodule.py into Python sys.path, then inferencing with onnxruntime python API. On Windows, please set PYTHONHOME beforehand. It should point to directory where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
+Copy mymodule.py into Python sys.path, then run the model with onnxruntime python API. On Windows, please set PYTHONHOME beforehand. It should point to directory where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
 
 ## Supported Data Types
 * TensorProto.BOOL
