@@ -3,7 +3,7 @@ The Python Operator provides the capability to easily invoke any custom Python c
 
 ## Design Overview
 The feature can be found under [onnxruntime/core/language_interop_ops](../onnxruntime/core/language_interop_ops).
-<p>Here is a chart illustrating the calling sequence:
+Here is a chart of calling sequence:
 <pre>
 onnxruntime                        python capi                         script
      |                                  |                                 |
@@ -19,9 +19,6 @@ onnxruntime                        python capi                         script
 ## How to Use
 ### Step 1
 Build onnxruntime with `--config Release --enable_language_interop_ops --build_wheel` and pip install the latest wheel file. 
-**Note:**
-* Please make sure the inferencing and compiling environments are installed with same version of python.
-* If `--numpy_version=...` is specified, the Python operator will build with that version.
 
 ### Step 2
 Create an onnx model containing Python operator nodes:
@@ -77,7 +74,9 @@ Copy mymodule.py into Python sys.path, then run the model with onnxruntime pytho
 * TensorProto.FLOAT
 * TensorProto.DOUBLE
 
-## Limitations
+## Note:
+* Please make sure the inferencing and compiling environments are installed with same version of python.
+* If `--numpy_version=...` is specified, the Python operator will build with that version.
 * On Windows, `--config Debug` has known issues. Please build with `--config RelWithDebInfo` if debugging symbols are needed.
 * Due to Python C API restrictions, multi-threading is disabled so Python operators will run sequentially.
 
