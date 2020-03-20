@@ -51,11 +51,12 @@ def preprocess_method2(image_filepath, height, width):
         return: matrix characterizing image
     '''
     pillow_img = Image.open(image_filepath).resize((width, height))
+    if pillow_img.mode != 'RGB':
+        pillow_img = pillow_img.convert('RGB')
     input_data = np.float32(pillow_img) - \
         np.array([123.68, 116.78, 103.94], dtype=np.float32)
     nhwc_data = np.expand_dims(input_data, axis=0)
-    nchw_data = nhwc_data.transpose(0, 3, 1, 2)  # ONNX Runtime standard
-    return nchw_data
+    return nhwc_data
 
 
 def load_batch(images_folder,
