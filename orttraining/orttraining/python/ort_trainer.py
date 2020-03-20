@@ -279,8 +279,10 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs):
         inputs = [inputs]
     if isinstance(inputs, dict):
         sample_inputs = [inputs[k.name_].to(device=device) for k in model_desc.inputs_]
-    else:
+    elif isinstance(inputs, (list, tuple)):
         sample_inputs = [input.to(device=device) for i, input in enumerate(inputs) if i < len(model_desc.inputs_)]
+    else:
+        raise RuntimeError("Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
     model.eval()
     with torch.no_grad():
         sample_outputs = model(*sample_inputs)
@@ -828,6 +830,12 @@ class ORTTrainer():
         # with model_loss_cls, the last input is label, first output is loss
         input, fetches = self.prepare_input_and_fetches(self.model_desc_.inputs_,
                                                         None, None, *args, **kwargs)
+
+        if self.onnx_model_ is None:
+            if self.torch_model_ is not None:
+                self._init_onnx_model(input)
+            else:
+                raise RuntimeError("Model is unintialized. Please ensure a valid ONNX model or PyTorch model is provided to this Trainer.")
 
         input_desc = self.model_desc_.inputs_[0:len(input)]
         if fetches is None:
