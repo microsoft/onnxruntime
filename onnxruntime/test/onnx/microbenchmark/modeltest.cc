@@ -3,7 +3,7 @@
 
 #include <benchmark/benchmark.h>
 #include <core/graph/model.h>
-#include <core/framework/path_lib.h>
+#include <core/platform/path_lib.h>
 #include <core/session/onnxruntime_c_api.h>
 #include <core/session/onnxruntime_cxx_api.h>
 #include <core/session/ort_env.h>

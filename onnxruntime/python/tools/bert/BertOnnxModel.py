@@ -234,15 +234,24 @@ class BertOnnxModel(OnnxModel):
 
     """
      Fuse Gelu with Erf into one node:
-                   +-------Mul(B=0.5)-------------------+
+     Pattern 1:
+                   +-------Mul(0.5)---------------------+
                    |                                    |
                    |                                    v
                 [root] --> Div -----> Erf  --> Add --> Mul -->
-                          (B=1.4142...)       (B=1)
+                          (B=1.4142...)       (1)
+
+      Pattern 2:
+                   +------------------------------------+
+                   |                                    |
+                   |                                    v
+                [root] --> Div -----> Erf  --> Add --> Mul -->Mul -->
+                          (B=1.4142...)       (1)            (0.5)
 
      Note that constant input for Add and Mul could be first or second input: like either A=0.5 or B=0.5 is fine.
     """
     def fuse_gelu_with_elf(self, gelu_op_name):
+        logger.debug(f"start fuse_gelu_with_elf({gelu_op_name})")
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
@@ -276,25 +285,38 @@ class BertOnnxModel(OnnxModel):
             if self.find_constant_input(div, 1.4142, delta=0.001) != 1:
                 continue
 
-            root_node = self.get_parent(div, 0, output_name_to_node)
-            if root_node is None:
-                continue
+            subgraph_input = div.input[0]
 
-            mul_half = self.match_parent(mul_after_erf, 'Mul', None, output_name_to_node)
-            if mul_half is None:
-                continue
+            another = 1 if mul_after_erf.input[0] == add_after_erf.output[0] else 0
+            if subgraph_input == mul_after_erf.input[another]: # pattern 2
+                children = input_name_to_nodes[mul_after_erf.output[0]]
+                if len(children) != 1 or children[0].op_type != 'Mul':
+                    continue
+                mul_half = children[0]
+                if not self.has_constant_input(mul_half, 0.5):
+                    continue
+                subgraph_output = mul_half.output[0]
+            else: # pattern 1
+                mul_half = self.match_parent(mul_after_erf, 'Mul', another, output_name_to_node)
+                if mul_half is None:
+                    continue
             
-            if not self.has_constant_input(mul_half, 0.5):
-                continue
+                if not self.has_constant_input(mul_half, 0.5):
+                    continue
+
+                if subgraph_input not in mul_half.input:
+                    continue
+
+                subgraph_output = mul_after_erf.output[0]
 
             subgraph_nodes = [div, erf_node, add_after_erf, mul_after_erf, mul_half]
-            if not self.is_safe_to_fuse_nodes(subgraph_nodes, [mul_after_erf.output[0]], input_name_to_nodes, output_name_to_node):
+            if not self.is_safe_to_fuse_nodes(subgraph_nodes, [subgraph_output], input_name_to_nodes, output_name_to_node):
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
             gelu_node = onnx.helper.make_node(gelu_op_name,
-                inputs=[root_node.output[0]],
-                outputs=[mul_after_erf.output[0]])
+                inputs=[subgraph_input],
+                outputs=[subgraph_output])
             gelu_node.domain = "com.microsoft"
             nodes_to_add.append(gelu_node)
 
@@ -663,7 +685,8 @@ class BertOnnxModel(OnnxModel):
                     break
 
         if normalize_node is None:
-            logger.info("Failed to find embedding layer")
+            if len(self.get_nodes_by_op_type("EmbedLayerNormalization")) == 0:
+                logger.info("Failed to find embedding layer")
             return
 
         # Here we assume the order of embedding is word_embedding +
@@ -918,7 +941,7 @@ class BertOnnxModel(OnnxModel):
                 normalize_node = onnx.helper.make_node('LayerNormalization',
                     inputs=[node.input[0], weight_input, bias_input],
                     outputs=[last_add_node.output[0]])
-                normalize_node.attribute.extend([onnx.helper.make_attribute("epsilon", add_weight)])
+                normalize_node.attribute.extend([onnx.helper.make_attribute("epsilon", float(add_weight))])
                 layernorm_nodes.extend([normalize_node])
 
         self.remove_nodes(nodes_to_remove)

@@ -7,9 +7,9 @@
 #include "core/common/const_pointer_container.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
-#include "core/framework/path_lib.h"
 #include "core/framework/tensor_allocator.h"
 #include "core/framework/session_options.h"
+#include "core/platform/path_lib.h"
 
 namespace onnxruntime {
 class ExecutionProviders;

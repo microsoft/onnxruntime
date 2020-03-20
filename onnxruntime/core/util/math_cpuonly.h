@@ -87,7 +87,6 @@ auto EigenMap(Tensor& t) -> EigenVectorMap<T> {
 }
 template <typename T>
 auto EigenMap(const Tensor& t) -> ConstEigenVectorMap<T> {
-
   return ConstEigenVectorMap<T>(t.template Data<T>(), t.Shape().Size());
 }
 

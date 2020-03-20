@@ -166,6 +166,16 @@ TEST(ReductionOpTest, ReduceL1_int32) {
   test.Run();
 }
 
+#if !(defined USE_TENSORRT) && !(defined USE_TVM)
+TEST(ReductionOpTest, ReduceL10DTensor) {
+  OpTester test("ReduceL1");
+  test.AddInput<float>("data", {}, {2});
+  test.AddOutput<float>("reduced", {}, {2});
+  test.Run();
+}
+#endif  // !(defined USE_TENSORRT) && !(defined USE_TVM)
+
+
 TEST(ReductionOpTest, ReduceL2_default_axes_keepdims) {
   OpTester test("ReduceL2");
   test.AddAttribute("keepdims", (int64_t)1);
@@ -276,6 +286,15 @@ TEST(ReductionOpTest, ReduceL2_int32) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Int32 not allowed as input to this layer
 }
 
+#if !(defined USE_TENSORRT) && !(defined USE_TVM)
+TEST(ReductionOpTest, ReduceL20DTensor) {
+  OpTester test("ReduceL2");
+  test.AddInput<float>("data", {}, {2});
+  test.AddOutput<float>("reduced", {}, {2});
+  test.Run();
+}
+#endif  // !(defined USE_TENSORRT) && !(defined USE_TVM)
+
 TEST(ReductionOpTest, ReduceLogSum) {
   OpTester test("ReduceLogSum");
   test.AddAttribute("axes", std::vector<int64_t>{1});
@@ -339,6 +358,15 @@ TEST(ReductionOpTest, ReduceLogSumAxes01) {
 
   test.Run();
 }
+
+#if !(defined USE_TENSORRT) && !(defined USE_TVM)
+TEST(ReductionOpTest, ReduceLogSum0DTensor) {
+  OpTester test("ReduceLogSum");
+  test.AddInput<float>("data", {}, {2.f});
+  test.AddOutput<float>("reduced", {}, {0.693147f});
+  test.Run();
+}
+#endif  // !(defined USE_TENSORRT) && !(defined USE_TVM)
 
 TEST(ReductionOpTest, ReduceLogSumExp_default_axes_keepdims) {
   OpTester test("ReduceLogSumExp");
@@ -450,6 +478,15 @@ TEST(ReductionOpTest, ReduceLogSumExp_int32) {
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {10, 12});
   test.Run();
 }
+
+#if !(defined USE_TENSORRT) && !(defined USE_TVM)
+TEST(ReductionOpTest, ReduceLogSumExp0DTensor) {
+  OpTester test("ReduceLogSumExp");
+  test.AddInput<float>("data", {}, {2});
+  test.AddOutput<float>("reduced", {}, {2});
+  test.Run();
+}
+#endif  // !(defined USE_TENSORRT) && !(defined USE_TVM)
 
 TEST(ReductionOpTest, ReduceMax_default_axes_keepdims) {
   OpTester test("ReduceMax");
@@ -584,6 +621,15 @@ TEST(ReductionOpTest, ReduceMax_int64) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
 }
 
+#if !(defined USE_TENSORRT) && !(defined USE_TVM)
+TEST(ReductionOpTest, ReduceMax0DTensor) {
+  OpTester test("ReduceMax");
+  test.AddInput<float>("data", {}, {2});
+  test.AddOutput<float>("reduced", {}, {2});
+  test.Run();
+}
+#endif  // !(defined USE_TENSORRT) && !(defined USE_TVM)
+
 TEST(ReductionOpTest, ReduceMean_default_axes_keepdims) {
   OpTester test("ReduceMean");
   test.AddAttribute("keepdims", (int64_t)1);
@@ -698,6 +744,15 @@ TEST(ReductionOpTest, ReduceMean_int32) {
   test.Run();
 #endif
 }
+
+#if !(defined USE_TENSORRT) && !(defined USE_TVM)
+TEST(ReductionOpTest, ReduceMean0DTensor) {
+  OpTester test("ReduceMean");
+  test.AddInput<float>("data", {}, {2});
+  test.AddOutput<float>("reduced", {}, {2});
+  test.Run();
+}
+#endif  // !(defined USE_TENSORRT) && !(defined USE_TVM)
 
 TEST(ReductionOpTest, ReduceMin_default_axes_keepdims) {
   OpTester test("ReduceMin");
@@ -818,6 +873,15 @@ TEST(ReductionOpTest, ReduceMin_int32) {
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {1, 3});
   test.Run();
 }
+
+#if !(defined USE_TENSORRT) && !(defined USE_TVM)
+TEST(ReductionOpTest, ReduceMin0DTensor) {
+  OpTester test("ReduceMin");
+  test.AddInput<float>("data", {}, {2});
+  test.AddOutput<float>("reduced", {}, {2});
+  test.Run();
+}
+#endif  // !(defined USE_TENSORRT) && !(defined USE_TVM)
 
 TEST(ReductionOpTest, ReduceSum) {
   OpTester test("ReduceSum");
@@ -1098,6 +1162,15 @@ TEST(ReductionOpTest, ReduceSum_keepdims) {
   test.Run();
 }
 
+#if !(defined USE_TENSORRT) && !(defined USE_TVM)
+TEST(ReductionOpTest, ReduceSum0DTensor) {
+  OpTester test("ReduceSum");
+  test.AddInput<float>("data", {}, {2});
+  test.AddOutput<float>("reduced", {}, {2});
+  test.Run();
+}
+#endif  // !(defined USE_TENSORRT) && !(defined USE_TVM)
+
 TEST(ReductionOpTest, ReduceSumSquare) {
   OpTester test("ReduceSumSquare");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
@@ -1225,6 +1298,15 @@ TEST(ReductionOpTest, ReduceSumSquare_keepdims) {
   test.Run();
 }
 
+#if !(defined USE_TENSORRT) && !(defined USE_TVM)
+TEST(ReductionOpTest, ReduceSumSquare0DTensor) {
+  OpTester test("ReduceSumSquare");
+  test.AddInput<float>("data", {}, {2});
+  test.AddOutput<float>("reduced", {}, {4});
+  test.Run();
+}
+#endif  // !(defined USE_TENSORRT) && !(defined USE_TVM)
+
 TEST(ReductionOpTest, ReduceProd_default_axes_keepdims) {
   OpTester test("ReduceProd");
   test.AddInput<float>("data", {3, 2, 2},
@@ -1331,6 +1413,15 @@ TEST(ReductionOpTest, ReduceProd_int32) {
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {5400, 88704});
   test.Run();
 }
+
+#if !(defined USE_TENSORRT) && !(defined USE_TVM)
+TEST(ReductionOpTest, ReduceProd0DTensor) {
+  OpTester test("ReduceProd");
+  test.AddInput<float>("data", {}, {2});
+  test.AddOutput<float>("reduced", {}, {2});
+  test.Run();
+}
+#endif  // (!defined USE_TENSORRT) && (!defined USE_TVM)
 
 TEST(ReductionOpTest, ArgMax) {
   OpTester test("ArgMax");

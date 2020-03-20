@@ -15,7 +15,7 @@
 #endif
 
 #include <core/graph/constants.h>
-#include <core/framework/path_lib.h>
+#include <core/platform/path_lib.h>
 #include <core/optimizer/graph_transformer_level.h>
 
 #include "test_configuration.h"

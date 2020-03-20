@@ -30,7 +30,6 @@ import argparse
 import numpy as np
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper
-import onnxruntime
 from BertOnnxModel import BertOnnxModel
 from BertOnnxModelTF import BertOnnxModelTF
 from BertOnnxModelKeras import BertOnnxModelKeras
@@ -56,6 +55,8 @@ def optimize_by_onnxruntime(onnx_model_path, use_gpu, optimized_model_path=None)
     Returns:
         optimized_model_path: the path of optimized model
     """
+    import onnxruntime
+
     if use_gpu and 'CUDAExecutionProvider' not in onnxruntime.get_available_providers():
         logger.error("There is no gpu for onnxruntime to do optimization.")
         return onnx_model_path
@@ -92,10 +93,10 @@ def parse_arguments():
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
 
     parser.add_argument('--num_heads', required=False, type=int, default=12,
-                        help="number of attention heads")
+                        help="number of attention heads. 12 for bert-base model and 16 for bert-large")
 
     parser.add_argument('--hidden_size', required=False, type=int, default=768,
-                        help="bert model hidden size. 768 for base model and 1024 for large")
+                        help="bert model hidden size. 768 for bert-base model and 1024 for bert-large")
 
     parser.add_argument('--sequence_length', required=False, type=int, default=128,
                         help="max sequence length")
@@ -151,7 +152,11 @@ def main():
         log_handler.setFormatter(logging.Formatter('%(filename)20s: %(message)s'))
         logging_level = logging.INFO
     log_handler.setLevel(logging_level)
-    logger.addHandler(log_handler)
+
+    # Avoid duplicated handlers when runing this script in multiple cells of Jupyter Notebook.
+    if not logger.hasHandlers():
+        logger.addHandler(log_handler)
+
     logger.setLevel(logging_level)
 
     bert_model = optimize_model(args.input, args.model_type, args.gpu_only, args.num_heads, args.hidden_size, args.sequence_length, args.input_int32, args.float16)

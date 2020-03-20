@@ -70,9 +70,9 @@ void add_feeds(NameMLValMap& feeds, std::string name, std::vector<int64_t> dims,
 }
 
 //TODO:(nivas) Refractor to use existing code
-void RunTest(const std::string& model_path, const NameMLValMap& feeds, const std::vector<std::string>& output_names, const std::vector<std::vector<int64_t>>& expected_shapes, const std::vector<std::vector<float>>& expected_values) {
+void RunTest(const std::string& model_path, const NameMLValMap& feeds, const std::vector<std::string>& output_names, const std::vector<std::vector<int64_t>>& expected_shapes, const std::vector<std::vector<float>>& expected_values, const Environment& env) {
   SessionOptions so;
-  InferenceSession session_object(so, &DefaultLoggingManager());
+  InferenceSession session_object(so, env);
 
   EXPECT_TRUE(session_object.RegisterExecutionProvider(DefaultNGraphExecutionProvider()).IsOK());
 
@@ -148,7 +148,7 @@ TEST(NGraphExecutionProviderTest, Basic_Test) {
   std::vector<std::vector<int64_t>> expected_shapes = {
       {4}};
 
-  RunTest("testdata/ngraph/Basic_Test.onnx", feeds, {"Z"}, expected_shapes, expected_values);
+  RunTest("testdata/ngraph/Basic_Test.onnx", feeds, {"Z"}, expected_shapes, expected_values, GetEnvironment());
 }
 
 /*
@@ -177,7 +177,7 @@ TEST(NGraphExecutionProviderTest, Graph_with_UnSupportedOp) {
   std::vector<std::vector<int64_t>> expected_shapes = {
       {4}};
 
-  RunTest("testdata/ngraph/Graph_with_UnSupportedOp.onnx", feeds, {"Z"}, expected_shapes, expected_values);
+  RunTest("testdata/ngraph/Graph_with_UnSupportedOp.onnx", feeds, {"Z"}, expected_shapes, expected_values, GetEnvironment());
 }
 
 /*
@@ -210,7 +210,7 @@ TEST(NGraphExecutionProviderTest, Two_Subgraphs) {
   std::vector<std::vector<int64_t>> expected_shapes = {
       {4}};
 
-  RunTest("testdata/ngraph/Two_Subgraphs.onnx", feeds, {"Z"}, expected_shapes, expected_values);
+  RunTest("testdata/ngraph/Two_Subgraphs.onnx", feeds, {"Z"}, expected_shapes, expected_values, GetEnvironment());
 }
 
 /*
@@ -246,7 +246,7 @@ TEST(NGraphExecutionProviderTest, ClusterOut_isAlso_GraphOut) {
       {4},
       {4}};
 
-  RunTest("testdata/ngraph/ClusterOut_isAlso_GraphOut.onnx", feeds, {"Y", "Z"}, expected_shapes, expected_values);
+  RunTest("testdata/ngraph/ClusterOut_isAlso_GraphOut.onnx", feeds, {"Y", "Z"}, expected_shapes, expected_values, GetEnvironment());
 }
 
 /*
@@ -282,7 +282,7 @@ TEST(NGraphExecutionProviderTest, InOut_isAlso_GraphOut) {
       {4},
       {4}};
 
-  RunTest("testdata/ngraph/InOut_isAlso_GraphOut.onnx", feeds, {"Y", "Z"}, expected_shapes, expected_values);
+  RunTest("testdata/ngraph/InOut_isAlso_GraphOut.onnx", feeds, {"Y", "Z"}, expected_shapes, expected_values, GetEnvironment());
 }
 
 /*
@@ -314,7 +314,7 @@ TEST(NGraphExecutionProviderTest, Op_with_Optional_or_Unused_Outputs) {
   std::vector<std::vector<int64_t>> expected_shapes = {
       {4}};
 
-  RunTest("testdata/ngraph/Op_with_Optional_or_Unused_Outputs.onnx", feeds, {"Z"}, expected_shapes, expected_values);
+  RunTest("testdata/ngraph/Op_with_Optional_or_Unused_Outputs.onnx", feeds, {"Z"}, expected_shapes, expected_values, GetEnvironment());
 }
 
 /*
@@ -350,7 +350,7 @@ TEST(NGraphExecutionProviderTest, Independent_SubGraphs) {
   std::vector<std::vector<int64_t>> expected_shapes = {
       {4}};
 
-  RunTest("testdata/ngraph/Independent_SubGraphs.onnx", feeds, {"Z"}, expected_shapes, expected_values);
+  RunTest("testdata/ngraph/Independent_SubGraphs.onnx", feeds, {"Z"}, expected_shapes, expected_values, GetEnvironment());
 }
 
 }  // namespace test

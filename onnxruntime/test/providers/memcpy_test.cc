@@ -10,7 +10,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/utils.h"
-#include "core/framework/path_lib.h"
+#include "core/platform/path_lib.h"
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "test/test_environment.h"
 
