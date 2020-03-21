@@ -39,6 +39,7 @@ function(add_winml_test)
   add_executable(${_UT_TARGET} ${_UT_SOURCES})
   source_group(TREE ${WINML_TEST_SRC_DIR} FILES ${_UT_SOURCES})
   set_winml_target_properties(${_UT_TARGET})
+  target_compile_definitions(${_UT_TARGET} PRIVATE BUILD_GOOGLE_TEST)
 
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
@@ -91,11 +92,8 @@ add_winml_test(
   SOURCES ${winml_test_api_src}
   LIBS winml_test_common delayimp.lib
 )
-target_compile_definitions(winml_test_api PRIVATE BUILD_GOOGLE_TEST)
 target_precompiled_header(winml_test_api testPch.h)
 
-target_link_libraries(winml_test_api PRIVATE windowsapp.lib)
-target_link_options(winml_test_api PRIVATE /NODEFAULTLIB:kernel32.lib /NODEFAULTLIB:user32.lib /NODEFAULTLIB:gdi32.lib /NODEFAULTLIB:winspool.lib /NODEFAULTLIB:shell32.lib /NODEFAULTLIB:ole32.lib /NODEFAULTLIB:oleaut32.lib /NODEFAULTLIB:uuid.lib /NODEFAULTLIB:comdlg32.lib /NODEFAULTLIB:advapi32.lib)
 target_link_options(winml_test_api PRIVATE /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
 if (onnxruntime_USE_DML)
   target_link_options(winml_test_api PRIVATE /DELAYLOAD:directml.dll)
@@ -111,10 +109,7 @@ add_winml_test(
   LIBS winml_test_common delayimp.lib ${winml_test_scenario_libs}
 )
 target_precompiled_header(winml_test_scenario testPch.h)
-target_compile_definitions(winml_test_scenario PRIVATE BUILD_GOOGLE_TEST)
 
-target_link_libraries(winml_test_scenario PRIVATE windowsapp.lib)
-target_link_options(winml_test_scenario PRIVATE /NODEFAULTLIB:kernel32.lib /NODEFAULTLIB:user32.lib /NODEFAULTLIB:gdi32.lib /NODEFAULTLIB:winspool.lib /NODEFAULTLIB:shell32.lib /NODEFAULTLIB:ole32.lib /NODEFAULTLIB:oleaut32.lib /NODEFAULTLIB:uuid.lib /NODEFAULTLIB:comdlg32.lib /NODEFAULTLIB:advapi32.lib)
 target_link_options(winml_test_scenario PRIVATE /DELAYLOAD:d2d1.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
 if (onnxruntime_USE_DML)
   target_link_options(winml_test_scenario PRIVATE /DELAYLOAD:directml.dll)

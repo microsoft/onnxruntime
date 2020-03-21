@@ -128,7 +128,7 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
                                 b_pad_size,
                                 b_padded));
 
-  for (int batch = 0; batch < helper.OutputOffsets().size(); batch++) {
+  for (size_t batch = 0; batch < helper.OutputOffsets().size(); batch++) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmEx(
         Base::CublasHandle(),
         CUBLAS_OP_N,

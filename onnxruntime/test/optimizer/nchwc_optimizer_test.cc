@@ -9,6 +9,7 @@
 #include "test/compare_ortvalue.h"
 #include "gtest/gtest.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/session/environment.h"
 
 namespace onnxruntime {
 namespace test {
@@ -17,7 +18,7 @@ namespace test {
 class NchwcInferenceSession : public InferenceSession {
  public:
   explicit NchwcInferenceSession(const SessionOptions& session_options,
-                                 logging::LoggingManager* logging_manager) : InferenceSession(session_options, logging_manager) {
+                                 const Environment& env) : InferenceSession(session_options, env) {
   }
 
   std::unordered_map<std::string, int> CountOpsInGraph() {
@@ -208,7 +209,7 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
     SessionOptions session_options;
     session_options.graph_optimization_level = level;
     session_options.session_logid = "NchwcOptimizerTests";
-    NchwcInferenceSession session{session_options, &DefaultLoggingManager()};
+    NchwcInferenceSession session{session_options, GetEnvironment()};
     ASSERT_TRUE(session.Load(model_data.data(), static_cast<int>(model_data.size())).IsOK());
     ASSERT_TRUE(session.Initialize().IsOK());
 
