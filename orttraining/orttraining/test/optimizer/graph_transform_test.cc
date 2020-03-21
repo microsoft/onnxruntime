@@ -367,7 +367,7 @@ TEST(GraphTransformationTests, MegatronMLPPartitionCorrectnessTest) {
     SessionOptions so;
     so.session_logid = "RawGraphRun";
 
-    InferenceSession session_object{so, &DefaultLoggingManager()};
+    InferenceSession session_object{so, GetEnvironment()};
     std::unique_ptr<IExecutionProvider> execution_provider = DefaultCudaExecutionProvider();
     EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
@@ -396,7 +396,7 @@ TEST(GraphTransformationTests, MegatronMLPPartitionCorrectnessTest) {
     SessionOptions so;
     so.session_logid = "SplitThenCombineRun";
 
-    InferenceSession session_object{so, &DefaultLoggingManager()};
+    InferenceSession session_object{so, GetEnvironment()};
     std::unique_ptr<IExecutionProvider> execution_provider = DefaultCudaExecutionProvider();
     EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
@@ -489,7 +489,7 @@ TEST(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) {
     SessionOptions so;
     so.session_logid = "RawGraphRun";
 
-    InferenceSession session_object{so, &DefaultLoggingManager()};
+    InferenceSession session_object{so, GetEnvironment()};
     std::unique_ptr<IExecutionProvider> execution_provider = DefaultCudaExecutionProvider();
     EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
@@ -522,7 +522,7 @@ TEST(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) {
     SessionOptions so;
     so.session_logid = "SplitThenCombineRun";
 
-    InferenceSession session_object{so, &DefaultLoggingManager()};
+    InferenceSession session_object{so, GetEnvironment()};
     std::unique_ptr<IExecutionProvider> execution_provider = DefaultCudaExecutionProvider();
     EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
@@ -550,7 +550,7 @@ TEST(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) {
     st = session_object.Run(run_options, feeds, output_names, &actual_ort_values);
     EXPECT_TRUE(st.IsOK());
   }
-  
+
   auto& expected_val = expected_ort_values[0].Get<Tensor>();
   for (auto i = 0; i < total_rank; i++) {
     auto& actual_val = actual_ort_values[i].Get<Tensor>();

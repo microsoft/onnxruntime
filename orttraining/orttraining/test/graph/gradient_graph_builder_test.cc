@@ -50,10 +50,10 @@ static Status BuildBackPropGraph(
     const TrainingSession::TrainingConfiguration& config,
     PathString& backward_model_file) {
   std::unique_ptr<Environment> env;
-  ORT_RETURN_IF_ERROR(Environment::Create(env));
+  ORT_RETURN_IF_ERROR(Environment::Create(nullptr, env));
 
   SessionOptions so{};
-  TrainingSession training_session{so};
+  TrainingSession training_session{so, *env};
 
   std::cout << "Loading source model file = " << ToMBString(forward_model_file) << "\n";
 
@@ -76,11 +76,9 @@ static Status BuildBackPropGraph(
 static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
     const SessionOptions& so, const PathString& backprop_model_file) {
   std::unique_ptr<Environment> env;
-  EXPECT_TRUE(Environment::Create(env).IsOK());
+  EXPECT_TRUE(Environment::Create(nullptr, env).IsOK());
 
-  const auto& log_manager = so.session_log_verbosity_level > 0 ? &DefaultLoggingManager() : nullptr;
-
-  std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, log_manager);
+  std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, *env);
 
   EXPECT_TRUE(training_session->Load(backprop_model_file).IsOK());
 
@@ -296,11 +294,9 @@ static void RunBertTrainingWithChecks(
     const SessionOptions& so,
     const PathString& backprop_model_file) {
   std::unique_ptr<Environment> env;
-  EXPECT_TRUE(Environment::Create(env).IsOK());
+  EXPECT_TRUE(Environment::Create(nullptr, env).IsOK());
 
-  const auto& log_manager = so.session_log_verbosity_level > 0 ? &DefaultLoggingManager() : nullptr;
-
-  std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, log_manager);
+  std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, *env);
 
   EXPECT_TRUE(training_session->Load(backprop_model_file).IsOK());
 
@@ -857,7 +853,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
 
   // create training sessions
   std::unique_ptr<Environment> env;
-  EXPECT_TRUE(Environment::Create(env).IsOK());
+  EXPECT_TRUE(Environment::Create(nullptr, env).IsOK());
 
   struct SubSession {
     std::unique_ptr<TrainingSession> sess;
@@ -875,11 +871,11 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
     auto sub_id_str = std::to_string(sub_id);
 #endif
     sub_sess.so.profile_file_prefix = ORT_TSTR("pipeline") + sub_id_str;
-    const auto& log_manager = sub_sess.so.session_log_verbosity_level > 0 ? &DefaultLoggingManager() : nullptr;
+
     sub_sess.run_options.run_log_verbosity_level = sub_sess.so.session_log_verbosity_level;
     sub_sess.run_options.run_tag = sub_sess.so.session_logid;
 
-    sub_sess.sess = onnxruntime::make_unique<TrainingSession>(sub_sess.so, log_manager);
+    sub_sess.sess = onnxruntime::make_unique<TrainingSession>(sub_sess.so, *env);
     EXPECT_TRUE(sub_sess.sess->Load(sub_model_files[sub_id]).IsOK());
     EXPECT_TRUE(sub_sess.sess->Initialize().IsOK());
   }

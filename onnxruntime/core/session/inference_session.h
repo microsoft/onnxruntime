@@ -430,8 +430,6 @@ class InferenceSession {
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
 
-  SessionOptions session_options_;
-
   onnxruntime::GraphTransformerManager graph_transformation_mgr_;
 
   // List of transformers to run. When this list is not empty only the transformers in this list

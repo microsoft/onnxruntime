@@ -354,7 +354,7 @@ TEST(InferenceSessionTests, OnlyExecutePathToFetches) {
 
   so.session_logid = "InferenceSessionTests.OnlyExecutePathToFetches";
 
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   Status st;
   ASSERT_TRUE((st = session_object.Load(MODEL_URI)).IsOK()) << st.ErrorMessage();
   ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st.ErrorMessage();

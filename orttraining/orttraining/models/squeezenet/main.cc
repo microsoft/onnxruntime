@@ -36,7 +36,7 @@ int main(int /*argc*/, char* /*args*/ []) {
                                                   &default_logger_id};
 
   unique_ptr<Environment> env;
-  ORT_ENFORCE(Environment::Create(env).IsOK());
+  ORT_ENFORCE(Environment::Create(nullptr, env).IsOK());
 
   DataLoader training_data_loader;
   // Uncomment below line to load only shard-0 training data (total shards = 3), for data parallelism.
@@ -107,7 +107,7 @@ int main(int /*argc*/, char* /*args*/ []) {
     total_loss = 0.0f;
   };
 
-  TrainingRunner runner(training_data_loader.MutableDataSet(), test_data_loader.MutableDataSet(), params);
+  TrainingRunner runner(training_data_loader.MutableDataSet(), test_data_loader.MutableDataSet(), *env, params);
   RETURN_IF_FAIL(runner.Initialize());
   RETURN_IF_FAIL(runner.Run());
 
