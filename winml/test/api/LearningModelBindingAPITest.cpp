@@ -707,7 +707,7 @@ static void SequenceConstructTensorString()
   auto bound_output_sequence = winrt::single_threaded_vector<TensorInt64Bit> ();
   WINML_EXPECT_NO_THROW(learningModelBinding.Bind(L"output_sequence", bound_output_sequence));
   WINML_EXPECT_NO_THROW(learningModelSession.Evaluate(learningModelBinding, L""));
-  WINML_EXPECT_EQUAL(static_cast<uint32_t>(6), bound_output_sequence.Size());
+  WINML_EXPECT_EQUAL(static_cast<uint32_t>(2), bound_output_sequence.Size());
   WINML_EXPECT_EQUAL(2, bound_output_sequence.GetAt(0).Shape().GetAt(0));
   WINML_EXPECT_EQUAL(3, bound_output_sequence.GetAt(0).Shape().GetAt(1));
   WINML_EXPECT_EQUAL(2, bound_output_sequence.GetAt(1).Shape().GetAt(0));
