@@ -1265,16 +1265,15 @@ The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale),
       .Input(
           1,
           "y_scale",
-          "Scale for doing quantization to get 'y'. It could be a scalar or a 1-D tensor,"
-          "which means a per-tensor or per-axis quantization. If it's a 1-D tensor, "
-          "its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
-          "T1")
+          "Scale for doing quantization to get 'y'. It's a scalar, which means a per-tensor/layer quantization.",
+          "T3")
       .Input(
           2,
           "y_zero_point",
-          "Zero point for doing quantization to get 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor"
-          "or per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
-          "T2")
+          "Zero point for doing quantization to get 'y'. It's a scalar, which means a per-tensor/layer quantization. "
+          "Default value is uint8 typed 0 if it's not specified.",
+          "T2",
+          OpSchema::Optional)
       .Output(
           0,
           "y",
@@ -1282,12 +1281,16 @@ The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale),
           "T2")
       .TypeConstraint(
           "T1",
-          {"tensor(float)"},
-          "Constrain 'x', 'y_scale' to float tensors.")
+          {"tensor(float16)", "tensor(float)", "tensor(int32)"},
+          "Constrain 'x' to float or int32 tensor.")
       .TypeConstraint(
           "T2",
           {"tensor(int8)", "tensor(uint8)"},
-          "Constrain 'y_zero_point' and 'y' to 8-bit integer tensors.")
+          "Constrain 'y_zero_point' and 'y' to 8-bit integer tensor.")
+      .TypeConstraint(
+          "T3",
+          {"tensor(float16)", "tensor(float)"},
+          "Constrain 'y_zero_point' and 'y' to 8-bit integer tensor.")
       .SetDoc(QuantizeLinear_ver1_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 2, 0);

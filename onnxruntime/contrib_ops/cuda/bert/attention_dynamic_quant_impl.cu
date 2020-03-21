@@ -17,13 +17,27 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 template <int NumThreadsPerBlock, int NumElementsPerThread>
-__global__ void QuantizeLinearKernel(const float* input, int8_t* output, float scale, CUDA_LONG N) {
+__global__ void QuantizeLinearKernel(const float* input, int8_t* output, float rscale, CUDA_LONG N) {
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
 
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      int value = __float2int_rn(input[id] / scale);
+      int value = __float2int_rn(input[id] * rscale);
+      output[id] = static_cast<int8_t>(max(-127, min(127, value)));
+      id += NumThreadsPerBlock;
+    }
+  }
+}
+
+template <int NumThreadsPerBlock, int NumElementsPerThread>
+__global__ void QuantizeLinearKernel(const half* input, int8_t* output, half rscale, CUDA_LONG N) {
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+
+#pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      int value = __half2int_rn(input[id] * rscale);
       output[id] = static_cast<int8_t>(max(-127, min(127, value)));
       id += NumThreadsPerBlock;
     }
@@ -53,7 +67,7 @@ __global__ void DequantizeLinearKernel(const int32_t* quantize, const T* bias, T
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      output[id] = (quantize[id] * scale) + bias[id % bias_len];
+      output[id] = (static_cast<T>(quantize[id]) * scale) + bias[id % bias_len];
       id += NumThreadsPerBlock;
     }
   }
@@ -76,6 +90,8 @@ Status CudaDequantizeWithBias(const int32_t* quantize, const T* bias, T* output,
 
 template Status CudaQuantizeLinearSimple<float>(const float* input, int8_t* output, float scale, int num_of_element);
 template Status CudaDequantizeWithBias<float>(const int32_t* quantize, const float* bias, float* output, float scale, int m, int n);
+template Status CudaQuantizeLinearSimple<half>(const half* input, int8_t* output, half scale, int num_of_element);
+template Status CudaDequantizeWithBias<half>(const int32_t* quantize, const half* bias, half* output, half scale, int m, int n);
 
 }  // namespace cuda
 }  // namespace contrib

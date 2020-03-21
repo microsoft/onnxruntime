@@ -11,8 +11,8 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <class T>
-Status CudaQuantizeLinear(const float* input, T* output, const float* scale, const T* zero_point, size_t num_of_element);
+template <class T, class U>
+Status CudaQuantizeLinear(const U* input, T* output, const U* scale, const T* zero_point, size_t num_of_element);
 
 template <class T>
 Status CudaDequantizeLinear(const T* input, float* output, const float* scale, const T* zero_point, size_t num_of_element);

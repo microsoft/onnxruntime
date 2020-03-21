@@ -7,6 +7,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/math/matmul_integer.cuh"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "core/providers/cuda/tensor/quantize_linear.h"
 #include "attention_impl.h"
 #include "attention_dynamic_quant_impl.cuh"
 
@@ -17,6 +18,24 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+using onnxruntime::cuda::QuantizeLinear;
+
+#define REGISTER_KERNEL_TYPED_QL(T, U)                             \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
+      QuantizeLinear,                                              \
+      kMSDomain,                                                   \
+      1,                                                           \
+      T##_##U,                                                     \
+      kCudaExecutionProvider,                                      \
+      KernelDefBuilder()                                           \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<U>())  \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>())  \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<U>()), \
+      QuantizeLinear<T, U>);
+
+REGISTER_KERNEL_TYPED_QL(int8_t, MLFloat16)
+REGISTER_KERNEL_TYPED_QL(uint8_t, MLFloat16)
 
 #define REGISTER_KERNEL_TYPED(T)                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
@@ -31,6 +50,7 @@ namespace cuda {
       AttentionDynamicQuant<T>);
 
 REGISTER_KERNEL_TYPED(float)
+REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 AttentionDynamicQuant<T>::AttentionDynamicQuant(const OpKernelInfo& info) : CudaKernel(info),
@@ -95,20 +115,29 @@ Status AttentionDynamicQuant<T>::ComputeInternal(OpKernelContext* context) const
 
   // compute the AMax of input
   int max_idx;
-  T input_max;
-  cublasAmaxHelper(cublas, input_size, input->template Data<T>(), 1, &max_idx);
+  CudaT input_max;
+  cublasAmaxHelper(cublas, input_size, reinterpret_cast<const CudaT*>(input->template Data<T>()), 1, &max_idx);
   CUDA_CALL(cudaMemcpy(&input_max,
                        input->template Data<T>() + max_idx,
                        sizeof(T),
                        cudaMemcpyDeviceToHost));
-  T input_scale = input_max / 127;
+
+  CudaT r_scale;
+  CudaT input_scale;
+  if (sizeof(T) == 2) {
+    r_scale = __float2half(127.f / __half2float(input_max));
+    input_scale = __float2half(__half2float(input_max) / 127.f);
+  } else {
+    r_scale = 127.f / input_max;
+    input_scale = input_max / 127.f;
+  }
 
   // quantize input
   auto quantize_buffer = GetScratchBuffer<int8_t>(input_size);
-  CudaQuantizeLinearSimple(input->template Data<T>(),
-                     quantize_buffer.get(),
-                     input_scale,
-                     input_size);
+  CudaQuantizeLinearSimple(reinterpret_cast<const CudaT*>(input->template Data<T>()),
+                           quantize_buffer.get(),
+                           r_scale,
+                           input_size);
 
   // pad A and B to make their leading dimension be multiples of 32
   // because cublasGemmEx requires:
@@ -158,14 +187,20 @@ Status AttentionDynamicQuant<T>::ComputeInternal(OpKernelContext* context) const
       CUDA_R_32I,
       CUBLAS_GEMM_DFALT));
 
-  const T* weight_scale_ptr = weight_scale->template Data<T>();
+  const CudaT* weight_scale_ptr = reinterpret_cast<const CudaT*>(weight_scale->template Data<T>());
 
+  CudaT dequant_scale;
+  if (sizeof(T) == 2) {
+    dequant_scale = __float2half(__half2float(input_scale) * __half2float(*weight_scale_ptr));
+  } else {
+    dequant_scale = input_scale * (*weight_scale_ptr);
+  }
   // scale back and bias
   CudaDequantizeWithBias(
       gemm_buffer_quantized.get(),
-      bias->template Data<T>(),
-      gemm_buffer.get(),
-      input_scale * (*weight_scale_ptr),
+      reinterpret_cast<const CudaT*>(bias->template Data<T>()),
+      reinterpret_cast<CudaT*>(gemm_buffer.get()),
+      dequant_scale,
       m,
       n);
 
