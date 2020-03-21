@@ -20,13 +20,13 @@ LearningModelBinding::~LearningModelBinding()
 }
 
 LearningModelBinding::LearningModelBinding(
-    Windows::AI::MachineLearning::LearningModelSession const& session) try : m_session(session) {
+    winml::LearningModelSession const& session) try : m_session(session) {
   session.as<winmlp::LearningModelSession>()->CheckClosed();
 }
 WINML_CATCH_ALL
 
-static Windows::AI::MachineLearning::ILearningModelFeatureDescriptor FindValidBinding(
-    winrt::Windows::Foundation::Collections::IIterable<ILearningModelFeatureDescriptor> descriptors,
+static winml::ILearningModelFeatureDescriptor FindValidBinding(
+    wfc::IIterable<ILearningModelFeatureDescriptor> descriptors,
     const std::wstring& name) {
   for (auto descriptor : descriptors) {
     auto descriptor_native = descriptor.as<ILearningModelFeatureDescriptorNative>();
@@ -43,7 +43,7 @@ static Windows::AI::MachineLearning::ILearningModelFeatureDescriptor FindValidBi
   return nullptr;
 }
 
-using NullableBindingPort = std::optional<std::pair<Windows::AI::MachineLearning::ILearningModelFeatureDescriptor, BindingType>>;
+using NullableBindingPort = std::optional<std::pair<winml::ILearningModelFeatureDescriptor, BindingType>>;
 
 static NullableBindingPort FindValidBinding(
     winml::LearningModel model,
@@ -65,8 +65,8 @@ void LearningModelBinding::CacheProvider(
 
 std::tuple<std::string, winrt::com_ptr<WinML::IValue>, BindingType> LearningModelBinding::CreateBinding(
     const std::string& name,
-    const Windows::Foundation::IInspectable& inspectable,
-    Windows::Foundation::Collections::IPropertySet const& properties) {
+    const wf::IInspectable& inspectable,
+    wfc::IPropertySet const& properties) {
   // Given a known type, validate against the model
   auto model = m_session.Model();
   auto bindingPort = FindValidBinding(model, WinML::Strings::WStringFromString(name));
@@ -147,15 +147,15 @@ std::tuple<std::string, winrt::com_ptr<WinML::IValue>, BindingType> LearningMode
 
 void LearningModelBinding::Bind(
     hstring const& name,
-    Windows::Foundation::IInspectable const& value) try {
+    wf::IInspectable const& value) try {
   return Bind(name, value, nullptr /* no properties */);
 }
 WINML_CATCH_ALL
 
 void LearningModelBinding::Bind(
     hstring const& name,
-    Windows::Foundation::IInspectable const& value,
-    Windows::Foundation::Collections::IPropertySet const& properties) try {
+    wf::IInspectable const& value,
+    wfc::IPropertySet const& properties) try {
 
   // if this is being called on the GPU, grab the DML lock
   // the DML EP is not thread safe.
@@ -199,8 +199,8 @@ void LearningModelBinding::Clear() try {
 }
 WINML_CATCH_ALL
 
-Windows::Foundation::Collections::IIterator<LearningModelBinding::KeyValuePair> LearningModelBinding::First() {
-  std::unordered_map<hstring, Windows::Foundation::IInspectable> bindingsMap;
+wfc::IIterator<LearningModelBinding::KeyValuePair> LearningModelBinding::First() {
+  std::unordered_map<hstring, wf::IInspectable> bindingsMap;
 
   for (auto mergedBindings : m_providers) {
     auto name = WinML::Strings::HStringFromUTF8(mergedBindings.first);
@@ -210,7 +210,7 @@ Windows::Foundation::Collections::IIterator<LearningModelBinding::KeyValuePair> 
   return winrt::single_threaded_map(std::move(bindingsMap)).First();
 }
 
-Windows::Foundation::IInspectable LearningModelBinding::Lookup(hstring const& key) {
+wf::IInspectable LearningModelBinding::Lookup(hstring const& key) {
   auto utf8_name = WinML::Strings::UTF8FromHString(key);
 
   auto foundIt = m_providers.find(utf8_name);
@@ -234,8 +234,8 @@ bool LearningModelBinding::HasKey(hstring const& key) {
 }
 
 void LearningModelBinding::Split(
-    Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& first,
-    Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& second) {
+    wfc::IMapView<hstring, wf::IInspectable>& first,
+    wfc::IMapView<hstring, wf::IInspectable>& second) {
   // the winrt api guide states:
   // If the IMapView instance cannot be split, then both the first and second parameters are null when the method returns.
   first = nullptr;
@@ -382,7 +382,7 @@ ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
   return nullptr;
 }
 
-Windows::Foundation::IInspectable LearningModelBinding::CreateUnboundOutput(
+wf::IInspectable LearningModelBinding::CreateUnboundOutput(
     const std::string& name,
     winrt::com_ptr<WinML::IValue> value) {
   // Find valid binding port
@@ -425,7 +425,7 @@ Windows::Foundation::IInspectable LearningModelBinding::CreateUnboundOutput(
       name.c_str());
 
   // Get abi representation
-  winrt::Windows::Foundation::IInspectable inspectable;
+  wf::IInspectable inspectable;
   WINML_THROW_IF_FAILED_MSG(
       spLotusValueProvider->AbiRepresentation(inspectable),
       "Failed to return bound object for model variable output %s",
@@ -434,8 +434,8 @@ Windows::Foundation::IInspectable LearningModelBinding::CreateUnboundOutput(
   return inspectable;
 }
 
-std::unordered_map<std::string, Windows::Foundation::IInspectable> LearningModelBinding::UpdateProviders() {
-  std::unordered_map<std::string, Windows::Foundation::IInspectable> outputs;
+std::unordered_map<std::string, wf::IInspectable> LearningModelBinding::UpdateProviders() {
+  std::unordered_map<std::string, wf::IInspectable> outputs;
 
   auto& output_names = GetOutputNames();
   auto& output_values = GetOutputs();
@@ -491,9 +491,9 @@ STDMETHODIMP LearningModelBinding::Bind(
     std::string binding_name;
     winrt::com_ptr<WinML::IValue> binding_value;
 
-    winrt::Windows::Foundation::IInspectable to;
+    wf::IInspectable to;
     RETURN_IF_FAILED(value->QueryInterface(
-        winrt::guid_of<winrt::Windows::Foundation::IInspectable>(),
+        winrt::guid_of<wf::IInspectable>(),
         reinterpret_cast<void**>(winrt::put_abi(to))));
 
     auto featureName = WinML::Strings::UTF8FromUnicode(name, cchName);

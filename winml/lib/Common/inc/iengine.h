@@ -74,7 +74,6 @@ IValue : IUnknown {
 
   STDMETHOD(IsOfVectorTensorType)
   (winml::TensorKind kind, bool* out) PURE;
-
 };
 
 MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac")

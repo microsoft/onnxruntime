@@ -189,6 +189,7 @@ static void not_compatible(ILearningModelFeatureValue value, ILearningModelFeatu
   not_compatible_hr(WINML_ERR_INVALID_BINDING, value, descriptor);
 }
 
+// This method is used in validating sequeance and map type's internal element, key and value types.
 static HRESULT verify(ILearningModelFeatureDescriptor first, ILearningModelFeatureDescriptor second) {
   RETURN_HR_IF(WINML_ERR_INVALID_BINDING, first.Kind() != second.Kind());
 

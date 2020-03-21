@@ -130,12 +130,13 @@ OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
     OrtTensorTypeAndShapeInfo* info = nullptr;
     const auto* tensor_data_type = value.Get<onnxruntime::TensorSeq>().DataType();
     if (tensor_data_type != nullptr) {
-        TensorShape void_shape = {};
-        OrtStatus* st = GetTensorShapeAndType(void_shape, *tensor_data_type, &info);
-        if (st != nullptr)
-          return st;
+      TensorShape void_shape = {};
+      OrtStatus* st = GetTensorShapeAndType(void_shape, *tensor_data_type, &info);
+      if (st != nullptr) {
+        return st;
+      }
 
-        auto element_type_info = new OrtTypeInfo(ONNX_TYPE_TENSOR, info);
+      auto element_type_info = new OrtTypeInfo(ONNX_TYPE_TENSOR, info);
       auto sequence_type_info = new OrtSequenceTypeInfo(element_type_info);
       *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE, sequence_type_info);
       return nullptr;
