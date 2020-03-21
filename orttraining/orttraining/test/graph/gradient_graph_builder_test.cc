@@ -884,13 +884,9 @@ class PipelineBatchPlanner {
     timeline_.Initialize(num_stages, num_slots);
 
     // fw time slot to start the search for empty ones in each stage
-    std::vector<size_t> t_fw(num_stages);
+    std::vector<size_t> t_fw(num_stages, 0);
     // bw time slot to start the search for empty ones in each stage
-    std::vector<size_t> t_bw(num_stages);
-    for (size_t s = 0; s < num_stages; ++s) {
-      t_fw[s] = 0;
-      t_bw[s] = 0;
-    }
+    std::vector<size_t> t_bw(num_stages, 0);
 
     // generate timeline in batch order to minimize latency for ongoing batches
     for (size_t batch_id = 0; batch_id < num_batches; ++batch_id) {
