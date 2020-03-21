@@ -10,7 +10,6 @@
 
 #include "core/platform/env.h"
 #include "test/framework/test_utils.h"
-#include "core/framework/path_lib.h"  // TODO fix include order dependency, path_lib.h should be first
 
 namespace onnxruntime {
 namespace test {

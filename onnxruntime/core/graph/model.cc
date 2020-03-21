@@ -195,7 +195,7 @@ Version Model::ModelVersion() const {
   return kNoVersion;
 }
 
-void Model::SetModelversion(onnxruntime::Version version) {
+void Model::SetModelVersion(onnxruntime::Version version) {
   model_proto_.set_model_version(version);
 }
 

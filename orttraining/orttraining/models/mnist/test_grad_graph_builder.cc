@@ -64,7 +64,7 @@ int main(int /*argc*/, char* /*args*/ []) {
 
   // Step 1: Load the model and generate gradient graph in a training session.
   SessionOptions so;
-  TrainingSession training_session{so};
+  TrainingSession training_session{so, *env};
 
   // TODO: TERMINATE_IF_FAILED swallows some errors and messes up the call stack. Perhaps, find an alternative for debug mode ?
   TERMINATE_IF_FAILED(training_session.Load(ORIGINAL_MODEL_PATH));

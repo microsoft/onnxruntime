@@ -151,8 +151,8 @@ class TrainingRunner {
     int horizontal_parallel_size = 1;
   };
 
-  TrainingRunner(Parameters params);
-  TrainingRunner(Parameters params, SessionOptions session_options);
+  TrainingRunner(Parameters params, const Environment& env);
+  TrainingRunner(Parameters params, const Environment& env, SessionOptions session_options);
 
   common::Status Initialize();
 
