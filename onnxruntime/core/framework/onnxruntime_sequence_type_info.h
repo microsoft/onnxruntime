@@ -12,6 +12,8 @@ class TypeProto;
 
 struct OrtSequenceTypeInfo {
  public:
+  OrtSequenceTypeInfo(OrtTypeInfo* sequence_key_type) noexcept;
+
   std::unique_ptr<OrtTypeInfo, decltype(OrtApi::ReleaseTypeInfo)> sequence_key_type_;
 
   OrtStatus* Clone(OrtSequenceTypeInfo** out);
@@ -19,7 +21,6 @@ struct OrtSequenceTypeInfo {
   static OrtStatus* FromTypeProto(const ONNX_NAMESPACE::TypeProto*, OrtSequenceTypeInfo** out);
 
  private:
-  OrtSequenceTypeInfo(OrtTypeInfo* sequence_key_type) noexcept;
   OrtSequenceTypeInfo(const OrtSequenceTypeInfo& other) = delete;
   OrtSequenceTypeInfo& operator=(const OrtSequenceTypeInfo& other) = delete;
 };

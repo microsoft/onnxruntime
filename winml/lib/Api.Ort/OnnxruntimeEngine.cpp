@@ -276,6 +276,11 @@ static bool EnsureMapTypeInfo(OnnxruntimeEngine* engine, OrtTypeInfo* type_info,
   THROW_IF_NOT_OK_MSG(ort_api->CastTypeInfoToMapTypeInfo(type_info, &map_info),
                       ort_api);
 
+  if (map_info == nullptr) {
+    // It must be a seq<tensor<*>> type
+    return false;
+  }
+
   ONNXTensorElementDataType map_key_type;
   THROW_IF_NOT_OK_MSG(ort_api->GetMapKeyType(map_info, &map_key_type),
                       ort_api);
@@ -381,7 +386,7 @@ HRESULT OnnxruntimeValue::IsOfVectorTensorType(winml::TensorKind kind, bool* out
 
     ONNXType element_type;
     RETURN_HR_IF_NOT_OK_MSG(ort_api->GetOnnxTypeFromTypeInfo(unique_element_info.get(), &element_type),
-                          ort_api);
+                            ort_api);
 
     if (element_type == ONNXType::ONNX_TYPE_TENSOR) {
       const OrtTensorTypeAndShapeInfo* element_tensor_info = nullptr;
@@ -731,18 +736,17 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalBuffer(void* data, size_
   return S_OK;
 }
 
-HRESULT OnnxruntimeEngine::CreateSequenceOfValuesValue(IValue ** values, size_t size, IValue * *out) {
+HRESULT OnnxruntimeEngine::CreateSequenceOfValuesValue(IValue** values, size_t size, IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
 
   std::vector<OrtValue*> sequence(size);
   std::transform(
-    values,
-    values+size,
-    std::begin(sequence),
-    [](auto value){
-      return static_cast<OnnxruntimeValue*>(value)->UseOrtValue();
-    }
-  );
+      values,
+      values + size,
+      std::begin(sequence),
+      [](auto value) {
+        return static_cast<OnnxruntimeValue*>(value)->UseOrtValue();
+      });
 
   OrtValue* ort_value;
   RETURN_HR_IF_NOT_OK_MSG(ort_api->CreateValue(sequence.data(), size, ONNXType::ONNX_TYPE_SEQUENCE, &ort_value),
@@ -752,7 +756,6 @@ HRESULT OnnxruntimeEngine::CreateSequenceOfValuesValue(IValue ** values, size_t 
   RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)));
   return S_OK;
 }
-
 
 /*
 * OnnxruntimeEngine::CreateNullValue
@@ -1108,7 +1111,7 @@ HRESULT OnnxruntimeEngine::FillSequenceOfMapsValue(IInspectable* sequence, winml
 }
 
 HRESULT OnnxruntimeEngine::GetSequenceOfTensorValues(_In_ WinML::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<WinML::IValue>>& out_values) {
-    auto ort_api = engine_factory_->UseOrtApi();
+  auto ort_api = engine_factory_->UseOrtApi();
   auto onnxruntime_squence_value = static_cast<OnnxruntimeValue*>(sequence_value);
   auto ort_sequence_value = onnxruntime_squence_value->UseOrtValue();
 

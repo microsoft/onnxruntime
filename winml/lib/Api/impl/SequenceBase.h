@@ -184,24 +184,29 @@ struct SequenceBase : public winrt::implements<
     *p_is_placeholder = false;
     return S_OK;
   }
-    
-  template <typename TElement>
+
+  template <typename TElement = T> auto CreatePlaceholderTensor() { return TElement(nullptr); }
+  template <> auto CreatePlaceholderTensor<winml::TensorBoolean>() { return winmlp::TensorBoolean::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorFloat>() { return winmlp::TensorFloat::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorDouble>() { return winmlp::TensorDouble::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorInt8Bit>() { return winmlp::TensorInt8Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorUInt8Bit>() { return winmlp::TensorUInt8Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorUInt16Bit>() { return winmlp::TensorUInt16Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorInt16Bit>() { return winmlp::TensorInt16Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorUInt32Bit>() { return winmlp::TensorUInt32Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorInt32Bit>() { return winmlp::TensorInt32Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorUInt64Bit>() { return winmlp::TensorUInt64Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorInt64Bit>() { return winmlp::TensorInt64Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorFloat16Bit>() { return winmlp::TensorFloat16Bit::Create(); }
+  template <> auto CreatePlaceholderTensor<winml::TensorString>() { return winmlp::TensorString::Create(); }
+  
   void AppendValue(
-      WinML::BindingContext& context, wfc::IVector<TElement> data, winrt::com_ptr<WinML::IValue> value) {
-    auto tensor = TElement::Create();
+      WinML::BindingContext& context, wfc::IVector<T> data, winrt::com_ptr<WinML::IValue> value) {
+    auto tensor = CreatePlaceholderTensor();
     auto value_provider = tensor.as<WinML::ILotusValueProviderPrivate>();
     WINML_THROW_IF_FAILED(value_provider->UpdateSourceResourceData(context, value.get()));
     data.Append(tensor);
-  }
-  
-  template <>
-  void AppendValue<wfc::IMap<winrt::hstring, float>>(
-      WinML::BindingContext& /*context*/, wfc::IVector<wfc::IMap<winrt::hstring, float>> /*data*/, winrt::com_ptr<WinML::IValue> /*value*/) {}
-  
-  template <>
-  void AppendValue<wfc::IMap<int64_t, float>>(
-      WinML::BindingContext& /*context*/, wfc::IVector<wfc::IMap<int64_t, float>> /*data*/, winrt::com_ptr<WinML::IValue> /*value*/) {}
-  
+  }  
 
   STDMETHOD(UpdateSourceResourceData)
   (BindingContext& context, IValue* out) {
@@ -223,7 +228,7 @@ struct SequenceBase : public winrt::implements<
       RETURN_IF_FAILED(engine->GetSequenceOfTensorValues(out, tensor_values));
 
       for (auto tensor_value : tensor_values) {
-        AppendValue<T>(context, writable_vector, tensor_value);
+        AppendValue(context, writable_vector, tensor_value);
       }
     } else {
       FAIL_FAST();

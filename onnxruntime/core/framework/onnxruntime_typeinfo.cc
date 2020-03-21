@@ -15,6 +15,7 @@
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/onnxruntime_map_type_info.h"
 #include "core/framework/onnxruntime_sequence_type_info.h"
+#include "core/framework/TensorSeq.h"
 
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
@@ -126,8 +127,19 @@ OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
   }
 
   if (type->IsTensorSequenceType()) {
-    *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE);
-    return nullptr;
+    OrtTensorTypeAndShapeInfo* info = nullptr;
+    const auto* tensor_data_type = value.Get<onnxruntime::TensorSeq>().DataType();
+    if (tensor_data_type != nullptr) {
+        TensorShape void_shape = {};
+        OrtStatus* st = GetTensorShapeAndType(void_shape, *tensor_data_type, &info);
+        if (st != nullptr)
+          return st;
+
+        auto element_type_info = new OrtTypeInfo(ONNX_TYPE_TENSOR, info);
+      auto sequence_type_info = new OrtSequenceTypeInfo(element_type_info);
+      *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE, sequence_type_info);
+      return nullptr;
+    } 
   }
 
   const auto* type_proto = type->GetTypeProto();
