@@ -140,6 +140,9 @@ OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
       auto sequence_type_info = new OrtSequenceTypeInfo(element_type_info);
       *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE, sequence_type_info);
       return nullptr;
+    }
+    else {
+      return OrtApis::CreateStatus(ORT_FAIL, "OrtValue is TensorSequence type but has no element Tensor DataType.")
     } 
   }
 

@@ -698,7 +698,7 @@ static void SequenceConstructTensorString()
   auto results = learningModelSession.Evaluate(learningModelBinding, L"");
 
   auto output_sequence = results.Outputs().Lookup(L"output_sequence").as<winrt::Windows::Foundation::Collections::IVectorView<TensorInt64Bit>>();
-  WINML_EXPECT_EQUAL(static_cast<uint32_t>(6), output_sequence.Size());
+  WINML_EXPECT_EQUAL(static_cast<uint32_t>(2), output_sequence.Size());
   WINML_EXPECT_EQUAL(2, output_sequence.GetAt(0).Shape().GetAt(0));
   WINML_EXPECT_EQUAL(3, output_sequence.GetAt(0).Shape().GetAt(1));
   WINML_EXPECT_EQUAL(2, output_sequence.GetAt(1).Shape().GetAt(0));
