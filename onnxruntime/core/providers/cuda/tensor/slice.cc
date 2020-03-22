@@ -105,16 +105,16 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
 
   TArray<int64_t> starts_buffer(gsl::narrow_cast<int32_t>(starts.size()));
   for (size_t i = 0; i < starts.size(); ++i) {
-    starts_buffer.data_[i] = starts[i];
+    starts_buffer[i] = starts[i];
   }
 
   TArray<int64_t> steps_buffer(gsl::narrow_cast<int32_t>(steps.size()));
   for (size_t i = 0; i < steps.size(); ++i) {
-    steps_buffer.data_[i] = steps[i];
+    steps_buffer[i] = steps[i];
   }
 
   TArray<int64_t> input_strides(gsl::narrow_cast<int32_t>(dimension_count));
-  const gsl::span<int64_t> input_strides_span = gsl::make_span(input_strides.data_, input_strides.size_);
+  const gsl::span<int64_t> input_strides_span = gsl::make_span(input_strides, input_strides.size_);
   if (p_flattened_output_dims != nullptr) {
     // we were able to flatten the innermost dimensions as they're being copied in full to the output.
     // do the same flattening to the innermost input dimensions in order to calculate pitches that match
@@ -135,7 +135,7 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   TensorPitches original_output_strides(p_flattened_output_dims != nullptr ? flattened_output_dims : output_dims);
   TArray<fast_divmod> output_strides(gsl::narrow_cast<int32_t>(original_output_strides.size()));
   for (size_t i = 0; i < original_output_strides.size(); ++i) {
-    output_strides.data_[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
+    output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
   }
 
   size_t element_size = input_tensor->DataType()->Size();

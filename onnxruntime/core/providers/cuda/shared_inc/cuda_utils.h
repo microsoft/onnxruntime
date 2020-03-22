@@ -48,10 +48,18 @@ struct TArray {
     ORT_ENFORCE(size <= capacity, "TArray size was set to ", size, ", exeeding the capacity limit of ", capacity);
   }
 
+ T& operator[](int32_t index) {
+    return data_[index];
+  }
+
+  __device__ __forceinline__ const T& operator[](int32_t index) const {
+    return data_[index];
+  }
+
   static constexpr int32_t GetCapacity() { return capacity; };
 
-  T data_[capacity];
   int32_t size_;
+  T data_[capacity];
 };
 
 }  // namespace cuda
