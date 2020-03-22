@@ -114,7 +114,7 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   TArray<int64_t> input_strides(gsl::narrow_cast<int32_t>(dimension_count));
-  const gsl::span<int64_t> input_strides_span = gsl::make_span(input_strides, input_strides.size_);
+  const gsl::span<int64_t> input_strides_span = gsl::make_span(input_strides.data_, input_strides.size_);
   if (p_flattened_output_dims != nullptr) {
     // we were able to flatten the innermost dimensions as they're being copied in full to the output.
     // do the same flattening to the innermost input dimensions in order to calculate pitches that match
