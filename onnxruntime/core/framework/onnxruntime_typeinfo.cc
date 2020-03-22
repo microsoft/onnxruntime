@@ -142,7 +142,7 @@ OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
       return nullptr;
     }
     else {
-      return OrtApis::CreateStatus(ORT_FAIL, "OrtValue is TensorSequence type but has no element Tensor DataType.")
+      return OrtApis::CreateStatus(ORT_FAIL, "OrtValue is TensorSequence type but has no element Tensor DataType.");
     } 
   }
 
