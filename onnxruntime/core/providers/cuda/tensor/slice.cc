@@ -103,16 +103,8 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
     dimension_count = flattened_output_dims.size();
   }
 
-  TArray<int64_t> starts_buffer(gsl::narrow_cast<int32_t>(starts.size()));
-  for (size_t i = 0; i < starts.size(); ++i) {
-    starts_buffer[i] = starts[i];
-  }
-
-  TArray<int64_t> steps_buffer(gsl::narrow_cast<int32_t>(steps.size()));
-  for (size_t i = 0; i < steps.size(); ++i) {
-    steps_buffer[i] = steps[i];
-  }
-
+  TArray<int64_t> starts_buffer(starts);
+  TArray<int64_t> steps_buffer(steps);
   TArray<int64_t> input_strides(gsl::narrow_cast<int32_t>(dimension_count));
   const gsl::span<int64_t> input_strides_span = gsl::make_span(input_strides.data_, input_strides.size_);
   if (p_flattened_output_dims != nullptr) {
