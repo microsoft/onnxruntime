@@ -57,7 +57,7 @@ struct TArray {
     return data_[index];
   }
 
-  __device__ __forceinline__ const T& operator[](int32_t index) const {
+  __host__ __device__ __forceinline__ const T& operator[](int32_t index) const {
     return data_[index];
   }
 

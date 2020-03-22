@@ -126,7 +126,7 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
 
   TensorPitches original_output_strides(p_flattened_output_dims != nullptr ? flattened_output_dims : output_dims);
   TArray<fast_divmod> output_strides(gsl::narrow_cast<int32_t>(original_output_strides.size()));
-  for (size_t i = 0; i < original_output_strides.size(); ++i) {
+  for (int32_t i = 0; i < static_cast<int32_t>(original_output_strides.size()); ++i) {
     output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
   }
 
