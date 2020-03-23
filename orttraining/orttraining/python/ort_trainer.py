@@ -597,6 +597,7 @@ class ORTTrainer():
         self.map_optimizer_attributes_ = map_optimizer_attributes
         self.allreduce_post_accumulation_ = allreduce_post_accumulation
         self.partition_optimizer_ = partition_optimizer
+        self.enable_grad_norm_clip_ = enable_grad_norm_clip
         self.loss_scale_input_name = ''
 
         self._init_session()
@@ -610,7 +611,6 @@ class ORTTrainer():
             self.input_desc_with_lr_and_loss_scale = [*self.input_desc_with_lr, IODescription(self.loss_scale_input_name, [], torch.float32)]
         else:
             self.loss_scale_input_name, self.scaled_loss_output_name = '', ''
-        self.enable_grad_norm_clip_ = enable_grad_norm_clip
 
         self.verify_fully_optimized_model(self.onnx_model_)
         self.session, self.train_io_binding, self.eval_io_binding, self.output_name, _, self.output_types = \
