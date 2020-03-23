@@ -30,24 +30,20 @@ class EinsumEquationParser final {
     CalculateOutputShape();
   }
 
-  const std::unordered_map<char, int64_t>& GetSubscriptLabelToDimValue() const {
+  const std::unordered_map<char, int64_t> GetSubscriptLabelToDimValue() const {
     return subscript_label_to_dim_value_;
   }
 
-  const std::unordered_map<int64_t, char>& GetIndexToSubscriptLabel() const {
+  const std::unordered_map<int64_t, char> GetIndexToSubscriptLabel() const {
     return index_to_subscript_label_;
   }
 
-  const std::vector<std::unique_ptr<const std::unordered_set<char>>>& GetInputIndicesToSubscriptLabels() const {
+  const std::vector<std::unique_ptr<const std::unordered_set<char>>> GetInputIndicesToSubscriptLabels() const {
     return input_indices_to_subscript_labels_;
   }
 
-  const std::vector<const std::string*>& GetInputSubscripts() const {
-    return input_subscripts_;
-  }
-
-  const std::string& GetOutputSubscript() const {
-    return output_subscript_;
+  const std::unordered_set<char> GetOutputSubscriptLabels() const {
+    return output_subscript_labels_;
   }
 
   const std::vector<int64_t> GetOutputDims() const {
@@ -136,7 +132,7 @@ class EinsumEquationParser final {
         }
       }
 
-      input_indices_to_subscript_labels_.emplace_back(local_subscript_labels);
+      input_indices_to_subscript_labels_.push_back(onnxruntime::make_unique<const std::unordered_set<char>>(local_subscript_labels));
     }
   }
 
@@ -168,10 +164,7 @@ class EinsumEquationParser final {
   }
 
   void CalculateOutputShape() {
-    auto output_rank = output_subscript_.length();
-    if (output_rank > 0) {
-      output_dims_.resize(output_rank);
-
+	 // TODO: Reserve ??
       // Iterate through all subscript labels in the subscript
       for (auto subscript_label : output_subscript_) {
         // Subscript labels may contain spaces and are to be ignored
@@ -179,9 +172,9 @@ class EinsumEquationParser final {
           // The output_subscript_ has already been validated to make sure that it only contains
           // known letters from inputs => won't look up a key not in the map
           output_dims_.push_back(subscript_label_to_dim_value_.find(subscript_label)->second);
+          output_subscript_labels_.insert(subscript_label);
         }
       }
-    }
   }
 
   // private members
@@ -212,6 +205,9 @@ class EinsumEquationParser final {
 
   // Used to hold each input's subscript labels
   std::vector<std::unique_ptr<const std::unordered_set<char>>> input_indices_to_subscript_labels_;
+
+  // Used to hold output's subscript labels
+  std::unordered_set<char> output_subscript_labels_;
 };
 
 template <typename T>
