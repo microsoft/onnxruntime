@@ -17,10 +17,6 @@ namespace
 {
 void LoadBindEvalSqueezenetRealDataWithValidationConcurrently()
 {
-    // Bug 21617097: WinML concurrency test LoadBindEvalSqueezenetRealDataWithValidationConcurrently is disabled due to #21617041
-    // https://dev.azure.com/microsoft/OS/_workitems/edit/21617097
-    // This test has a race condition that causes it to randomly fail. Disable the test until the underlying bug
-    // is fixed. (#21617041)
     WINML_SKIP_TEST("Skipping due to bug 21617097");
 
     constexpr auto loadTestModel = [](const std::string& instance, LearningModelDeviceKind device)
