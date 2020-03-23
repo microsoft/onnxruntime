@@ -24,19 +24,9 @@ inline hipblasStatus_t hipblasGemmHelper(hipblasHandle_t handle, hipblasOperatio
 inline hipblasStatus_t hipblasGemmHelper(hipblasHandle_t handle, hipblasOperation_t transa, hipblasOperation_t transb, int m, int n, int k, const double* alpha, const double* A, int lda, const double* B, int ldb, const double* beta, double* C, int ldc) {
   return hipblasDgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 }
-// inline hipblasStatus_t hipblasGemmHelper(hipblasHandle_t handle, hipblasOperation_t transa, hipblasOperation_t transb, int m, int n, int k, const half* alpha, const half* A, int lda, const half* B, int ldb, const half* beta, half* C, int ldc) {
-//   // Disable below to make sure merged result is on par with before-merge.
-//   // This does true FP16 computation which is slow for non-Volta GPUs
-//   //if (onnxruntime::hip::DeviceProp().GetDeviceProps().major >= 7) {
-//   //   onnxruntime::hip::CublasMathModeSetter math_mode_setter( handle, CUBLAS_TENSOR_OP_MATH );
-//   //  return hipblasHgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
-//   //}
-//   // This does pseudo FP16 computation (input/output in fp16, computation in fp32)
-//   float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
-//   float h_b = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));
-//   hipblasSetMathMode(handle, CUBLAS_TENSOR_OP_MATH);
-//   return hipblasGemmEx(handle, transa, transb, m, n, k, &h_a, A, HIPBLAS_R_16F, lda, B, HIPBLAS_R_16F, ldb, &h_b, C, HIPBLAS_R_16F, ldc, HIPBLAS_R_32F, HIPBLAS_GEMM_DEFAULT);
-// }
+inline hipblasStatus_t hipblasGemmHelper(hipblasHandle_t handle, hipblasOperation_t transa, hipblasOperation_t transb, int m, int n, int k, const half* alpha, const half* A, int lda, const half* B, int ldb, const half* beta, half* C, int ldc) {
+  return hipblasHgemm(handle, transa, transb, m, n, k, (const hipblasHalf*)alpha, (const hipblasHalf*)A, lda, (const hipblasHalf*)B, ldb, (const hipblasHalf*)beta, (hipblasHalf*)C, ldc);
+}
 
 // batched gemm
 inline hipblasStatus_t hipblasGemmBatchedHelper(hipblasHandle_t handle, hipblasOperation_t transa, hipblasOperation_t transb, int m, int n, int k, const float* alpha, const float* Aarray[], int lda, const float* Barray[], int ldb, const float* beta, float* Carray[], int ldc, int batchCount) {
@@ -45,10 +35,9 @@ inline hipblasStatus_t hipblasGemmBatchedHelper(hipblasHandle_t handle, hipblasO
 inline hipblasStatus_t hipblasGemmBatchedHelper(hipblasHandle_t handle, hipblasOperation_t transa, hipblasOperation_t transb, int m, int n, int k, const double* alpha, const double* Aarray[], int lda, const double* Barray[], int ldb, const double* beta, double* Carray[], int ldc, int batchCount) {
   return hipblasDgemmBatched(handle, transa, transb, m, n, k, alpha, Aarray, lda, Barray, ldb, beta, Carray, ldc, batchCount);
 }
-// inline hipblasStatus_t hipblasGemmBatchedHelper(hipblasHandle_t handle, hipblasOperation_t transa, hipblasOperation_t transb, int m, int n, int k, const half* alpha, const half* Aarray[], int lda, const half* Barray[], int ldb, const half* beta, half* Carray[], int ldc, int batchCount) {
-//   hipblasSetMathMode(handle, CUBLAS_TENSOR_OP_MATH);
-//   return hipblasHgemmBatched(handle, transa, transb, m, n, k, alpha, (const __half**)Aarray, lda, (const __half**)Barray, ldb, beta, (__half**)Carray, ldc, batchCount);
-// }
+inline hipblasStatus_t hipblasGemmBatchedHelper(hipblasHandle_t handle, hipblasOperation_t transa, hipblasOperation_t transb, int m, int n, int k, const half* alpha, const half* Aarray[], int lda, const half* Barray[], int ldb, const half* beta, half* Carray[], int ldc, int batchCount) {
+  return hipblasHgemmBatched(handle, transa, transb, m, n, k, (const hipblasHalf*)alpha, (const hipblasHalf**)Aarray, lda, (const hipblasHalf**)Barray, ldb, (const hipblasHalf*)beta, (hipblasHalf**)Carray, ldc, batchCount);
+}
 
 // strided batched gemm
 inline hipblasStatus_t hipblasGemmStridedBatchedHelper(hipblasHandle_t handle,
@@ -83,22 +72,21 @@ inline hipblasStatus_t hipblasGemmStridedBatchedHelper(hipblasHandle_t handle,
   return hipblasDgemmStridedBatched(handle, transa, transb, m, n, k, alpha, A, lda, strideA, B, ldb, strideB, beta, C, ldc, strideC, batchCount);
 }
 
-// inline hipblasStatus_t hipblasGemmStridedBatchedHelper(hipblasHandle_t handle,
-//                                                      hipblasOperation_t transa,
-//                                                      hipblasOperation_t transb,
-//                                                      int m, int n, int k,
-//                                                      const __half* alpha,
-//                                                      const __half* A, int lda,
-//                                                      long long int strideA,
-//                                                      const __half* B, int ldb,
-//                                                      long long int strideB,
-//                                                      const __half* beta,
-//                                                      __half* C, int ldc,
-//                                                      long long int strideC,
-//                                                      int batchCount) {
-//   hipblasSetMathMode(handle, CUBLAS_TENSOR_OP_MATH);
-//   return hipblasHgemmStridedBatched(handle, transa, transb, m, n, k, alpha, A, lda, strideA, B, ldb, strideB, beta, C, ldc, strideC, batchCount);
-// }
+inline hipblasStatus_t hipblasGemmStridedBatchedHelper(hipblasHandle_t handle,
+                                                     hipblasOperation_t transa,
+                                                     hipblasOperation_t transb,
+                                                     int m, int n, int k,
+                                                     const __half* alpha,
+                                                     const __half* A, int lda,
+                                                     long long int strideA,
+                                                     const __half* B, int ldb,
+                                                     long long int strideB,
+                                                     const __half* beta,
+                                                     __half* C, int ldc,
+                                                     long long int strideC,
+                                                     int batchCount) {
+  return hipblasHgemmStridedBatched(handle, transa, transb, m, n, k, (const hipblasHalf*)alpha, (const hipblasHalf*)A, lda, strideA, (const hipblasHalf*)B, ldb, strideB, (const hipblasHalf*)beta, (hipblasHalf*)C, ldc, strideC, batchCount);
+}
 
 // // axpy
 // inline hipblasStatus_t hipblasAxpyHelper(hipblasHandle_t handle, int n, const float* alpha, const float* x, int incx, float* y, int incy) {
@@ -119,7 +107,7 @@ inline hipblasStatus_t hipblasTransposeHelper(hipblasHandle_t handle, hipblasOpe
 inline hipblasStatus_t hipblasTransposeHelper(hipblasHandle_t handle, hipblasOperation_t transa, hipblasOperation_t transb, int m, int n, const double* alpha, const double* A, int lda, const double* beta, const double* B, int ldb, double* C, int ldc) {
   return hipblasDgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
 }
-//hipblasStatus_t hipblasTransposeHelper(hipblasHandle_t, hipblasOperation_t, hipblasOperation_t, int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int);
+hipblasStatus_t hipblasTransposeHelper(hipblasHandle_t, hipblasOperation_t, hipblasOperation_t, int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int);
 
 // // asum
 // inline hipblasStatus_t hipblasAsumHelper(hipblasHandle_t handle, int n, const float* x, int incx, float* result) {
@@ -287,4 +275,4 @@ inline hipblasStatus_t hipblasCopyHelper(hipblasHandle_t handle, int n, const fl
 inline hipblasStatus_t hipblasCopyHelper(hipblasHandle_t handle, int n, const double* x, int incx, double* y, int incy) {
   return hipblasDcopy(handle, n, x, incx, y, incy);
 }
-//hipblasStatus_t hipblasCopyHelper(hipblasHandle_t handle, int n, const half* x, int incx, half* y, int incy);
+hipblasStatus_t hipblasCopyHelper(hipblasHandle_t handle, int n, const half* x, int incx, half* y, int incy);
