@@ -22,7 +22,7 @@ namespace hip {
           .InputMemoryType<OrtMemTypeCPUInput>(1),                    \
       TrainableDropout<T>);
 
-//REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(MLFloat16)
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 
@@ -78,7 +78,7 @@ Status TrainableDropout<T>::ComputeInternal(OpKernelContext* context) const {
           .InputMemoryType<OrtMemTypeCPUInput>(2),                    \
       TrainableDropoutGrad<T>);
 
-//REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16)
+REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16)
 REGISTER_GRADIENT_KERNEL_TYPED(float)
 REGISTER_GRADIENT_KERNEL_TYPED(double)
 

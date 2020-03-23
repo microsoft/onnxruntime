@@ -91,7 +91,7 @@ void DropoutKernelImpl(
 
 SPECIALIZED_DROPOUT_IMPL(float)
 SPECIALIZED_DROPOUT_IMPL(double)
-//SPECIALIZED_DROPOUT_IMPL(half)
+SPECIALIZED_DROPOUT_IMPL(half)
 
 template <typename T>
 __global__ void DropoutGradientKernel(
@@ -132,7 +132,7 @@ void DropoutGradientKernelImpl(
 
 SPECIALIZED_DROPOUT_GRAD_IMPL(float)
 SPECIALIZED_DROPOUT_GRAD_IMPL(double)
-//SPECIALIZED_DROPOUT_GRAD_IMPL(half)
+SPECIALIZED_DROPOUT_GRAD_IMPL(half)
 
 }  // namespace hip
 }  // namespace onnxruntime
