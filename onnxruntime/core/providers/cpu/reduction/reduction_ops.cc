@@ -5,6 +5,10 @@
 #include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/cpu/containers.h"
+
+#include <iomanip>
+#include <iostream>
+
 using namespace std;
 namespace onnxruntime {
 
@@ -115,12 +119,15 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceSumSquare, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSumSquare, 11);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMax, 1, 10);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMax, 11);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMax, 11, 11);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMax, 12);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMin, 1, 10);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 11);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMin, 11, 11);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 12);
 
 // When all reduce axises located at the tail of the dims, quite general cases, transpose and extra
-// copy could be skipped to improve performance, if required by check_no_transpose = true;
+// copy could be skipped to improve performance. If required by check_no_transpose = true, then
+// the calling code will check if the data was transposed and act accordingly.
 // return value: true means transposedInputData is not created/copied, input tensor data could
 //               be direct use as row major matrix [block_size, blocks], where blocks is the
 //               size of each reduce.
@@ -189,9 +196,9 @@ bool PrepareForReduce(OpKernelContext* ctx,
     }
   }
 
-  std::vector<int64_t> new_dims_(transposed_axes.size());
+  std::vector<int64_t> new_dims(transposed_axes.size());
   for (size_t i = 0; i < transposed_axes.size(); ++i) {
-    new_dims_[i] = input.Shape().GetDims().at(transposed_axes[i]);
+    new_dims[i] = input.Shape().GetDims().at(transposed_axes[i]);
   }
 
   int num_axes = static_cast<int>(transposed_axes.size());
@@ -202,7 +209,7 @@ bool PrepareForReduce(OpKernelContext* ctx,
   int n_shared_idxs = 0;
   for (int i = num_axes - 1; i >= 0; --i) {
     if (transposed_axes[i] == i) {
-      blocksize *= new_dims_[i];
+      blocksize *= new_dims[i];
       ++n_shared_idxs;
     } else {
       break;
@@ -290,7 +297,7 @@ bool PrepareForReduce(OpKernelContext* ctx,
 
       ++itr_idxs[itr_axes - 1];
       for (int i = itr_axes - 1; i >= 1; --i) {
-        auto expected_dim = new_dims_[i];
+        auto expected_dim = new_dims[i];
         if (itr_idxs[i] < expected_dim) {
           break;
         }
@@ -309,7 +316,7 @@ bool PrepareForReduce(OpKernelContext* ctx,
 
       ++itr_idxs[itr_axes - 1];
       for (int i = itr_axes - 1; i >= 1; --i) {
-        auto expected_dim = new_dims_[i];
+        auto expected_dim = new_dims[i];
         if (itr_idxs[i] < expected_dim) {
           break;
         }
@@ -585,13 +592,28 @@ Status ArgMax<T>::Compute(OpKernelContext* ctx) const {
   Tensor* reduced;
   PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_);
 
+  // The transposed is now column major
   auto* output_data = reduced->template MutableData<int64_t>();
-
-  Eigen::MatrixXf::Index maxIndex;
   auto matrixData = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks);
-  for (int i = 0; i < block_size; ++i) {
-    matrixData.row(i).maxCoeff(&maxIndex);
-    *(output_data++) = maxIndex;
+  if (select_last_index_) {
+    for (int64_t i = 0; i < block_size; ++i) {
+      int64_t max_index = 0;
+      T max_val = matrixData(i, 0);
+      for (int64_t c = 1; c < blocks; ++c) {
+        auto v = matrixData(i, c);
+        if (v >= max_val) {
+          max_index = c;
+          max_val = v;
+        }
+      }
+      *(output_data++) = max_index;
+    }
+  } else {
+    Eigen::MatrixXf::Index maxIndex;
+    for (int i = 0; i < block_size; ++i) {
+      matrixData.row(i).maxCoeff(&maxIndex);
+      *(output_data++) = maxIndex;
+    }
   }
 
   return Status::OK();
@@ -607,11 +629,28 @@ Status ArgMin<T>::Compute(OpKernelContext* ctx) const {
 
   auto* output_data = reduced->template MutableData<int64_t>();
 
-  Eigen::MatrixXf::Index minIndex;
   auto matrixData = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks);
-  for (int i = 0; i < block_size; ++i) {
-    matrixData.row(i).minCoeff(&minIndex);
-    *(output_data++) = minIndex;
+  if (select_last_index_) {
+    for (int64_t i = 0; i < block_size; ++i) {
+      int64_t min_index = 0;
+      T min_val = matrixData(i, 0);
+      std::cout << i << ":" << 0 << " " << min_val << std::endl;
+      for (int64_t c = 1; c < blocks; ++c) {
+        auto v = matrixData(i, c);
+        std::cout << i << ":" << c << " " << v << std::endl;
+        if (v <= min_val) {
+          min_index = c;
+          min_val = v;
+        }
+      }
+      *(output_data++) = min_index;
+    }
+  } else {
+    Eigen::MatrixXf::Index minIndex;
+    for (int i = 0; i < block_size; ++i) {
+      matrixData.row(i).minCoeff(&minIndex);
+      *(output_data++) = minIndex;
+    }
   }
 
   return Status::OK();
