@@ -809,9 +809,10 @@ struct PipelineBatchInfo {
   // indices of retired batches, so their data could be reused
   // a batch can only be retired after finished backward in stage 0
   // this can be used to join worker threads or reuse buffers
-  // for example, in a node with N GPUs and B batches to run in pipeline
+  // for example, in a node with N GPUs and B batches to run in pipeline (with one stage for each GPU)
   // there will be (N * B) threads created, and by being able to retire,
-  // only (N * (2*N-1)) concurrent threads are needed.
+  // only at most (N * (2 * N - 1)) concurrent threads are needed
+  // for small number of B, there's no retired threads so total count would be the same.
   // for big number of B, this would be helpful
   std::vector<int64_t> retired_batches;
 };
@@ -820,14 +821,14 @@ class PipelineTimeline {
  public:
   struct Slot {
     enum class Type {
+      Unused,
       Forward,
       Backward
     };
     Type type;
     size_t batch_id;
-    bool occupied;
 
-    Slot() : occupied(false) {}
+    Slot() : type(Type::Unused) {}
   };
 
   PipelineTimeline() = default;
@@ -840,7 +841,7 @@ class PipelineTimeline {
   }
 
   bool IsOccupied(size_t s, size_t t) const {
-    return slots_[s][t].occupied;
+    return slots_[s][t].type != Slot::Type::Unused;
   }
 
   const Slot& Get(size_t s, size_t t) const {
@@ -853,7 +854,7 @@ class PipelineTimeline {
 
   void Occupy(size_t s, size_t t, size_t batch_id, Slot::Type st) {
     Slot& slot = slots_[s][t];
-    slot.occupied = true;
+    ORT_ENFORCE(slot.type == Slot::Type::Unused);
     slot.type = st;
     slot.batch_id = batch_id;
   }
@@ -927,10 +928,10 @@ class PipelineBatchPlanner {
     int64_t event_id = start_event_id;
     std::vector<int64_t> retired_batches;
     for (size_t t = 0; t < timeline_.GetNumSlots(); ++t) {
-      const auto& slot = timeline_.Get(stage, t);
-      if (!slot.occupied)
+      if (!timeline_.IsOccupied(stage, t))
         continue;
 
+      const auto& slot = timeline_.Get(stage, t);
       ORT_ENFORCE(event_id < max_id_);
       if (stage == 0) {
         if (slot.type == PipelineTimeline::Slot::Type::Forward) {
