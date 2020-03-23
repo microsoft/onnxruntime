@@ -48,8 +48,7 @@ struct TArray {
     ORT_ENFORCE(size <= capacity, "TArray size was set to ", size, ", exeeding the capacity limit of ", capacity);
   }
 
-  TArray(const std::vector<T>& vec) : size_(static_cast<int32_t>(vec.size())), data_() {
-    ORT_ENFORCE(size_ <= capacity, "TArray size was set to ", size_, ", exeeding the capacity limit of ", capacity);
+  TArray(const std::vector<T>& vec) : TArray(static_cast<int32_t>(vec.size()))  {
     memcpy(data_, vec.data(), vec.size() * sizeof(T));
   }
 
