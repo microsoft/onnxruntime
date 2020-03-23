@@ -348,14 +348,13 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   if ((CUDNN_RNN_RELU == rnn_mode_ || CUDNN_RNN_TANH == rnn_mode_) && sequence_lens_data != nullptr && y_h_data != nullptr && y_data != nullptr) {
-    CudaAsyncBuffer<int32_t> sequence_lens_buffer(this, batch_size);
-    memcpy(sequence_lens_buffer.CpuPtr(), sequence_lens_data, batch_size * sizeof(int32_t));
-    ORT_RETURN_IF_ERROR(sequence_lens_buffer.CopyToGpu());
+    TArray<int32_t> sequence_lens_buffer(batch_size);
+    memcpy(sequence_lens_buffer.data_, sequence_lens_data, batch_size * sizeof(int32_t));
     RnnMaskImpl(gsl::narrow_cast<int32_t>(num_directions_),
                 gsl::narrow_cast<int32_t>(seq_length),
                 gsl::narrow_cast<int32_t>(batch_size),
                 gsl::narrow_cast<int32_t>(hidden_size_),
-                sequence_lens_buffer.GpuPtr(),
+                sequence_lens_buffer,
                 reinterpret_cast<CudaT*>(y_data),
                 reinterpret_cast<CudaT*>(y_h_data),
                 output_size);
@@ -371,14 +370,12 @@ void CudnnRnnBase<T>::SetZeroSequences(const int64_t zero_seq_index_cache_size,
                                        T* y_h_data,
                                        T* y_c_data) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
-  CudaAsyncBuffer<int32_t> zero_seq_index_cache_async_buffer(this, zero_seq_index_cache_size);
-  memcpy(zero_seq_index_cache_async_buffer.CpuPtr(), zero_seq_index_cache.data(), zero_seq_index_cache_size * sizeof(int32_t));
-  ORT_THROW_IF_ERROR(zero_seq_index_cache_async_buffer.CopyToGpu());
+  TArray<int32_t> zero_seq_index_cache_async_buffer(zero_seq_index_cache);
   MaskZeroSequences(gsl::narrow_cast<int32_t>(hidden_size_),
                     reinterpret_cast<CudaT*>(y_data),
                     reinterpret_cast<CudaT*>(y_h_data),
                     reinterpret_cast<CudaT*>(y_c_data),
-                    zero_seq_index_cache_async_buffer.GpuPtr(),
+                    zero_seq_index_cache_async_buffer,
                     static_cast<int64_t>(zero_seq_index_cache_size));
 }
 

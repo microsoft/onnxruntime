@@ -11,11 +11,11 @@ namespace cuda {
 template <typename T>
 __global__ void _ConcatKernel(const fast_divmod block_size_including_axis_dim_div,
                               const fast_divmod block_size_inside_axis_dim_div,
-                              const int64_t* concat_sizes,
-                              const int64_t* concat_sizes_range,
-                              const int64_t* axis_dimension_input_output_mapping,
+                              const TArray<int64_t> concat_sizes,
+                              const TArray<int64_t> concat_sizes_range,
+                              const TArray<int64_t> axis_dimension_input_output_mapping,
                               T* output_data,
-                              const void** input_ptr,
+                              const TArray<const void*> input_ptr,
                               const CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG input_pos = 0;
@@ -41,11 +41,11 @@ __global__ void _ConcatKernel(const fast_divmod block_size_including_axis_dim_di
 Status ConcatImpl(const size_t element_bytes,
                   const int block_size_including_axis_dim,
                   const int block_size_inside_axis_dim,
-                  const int64_t* concat_sizes,
-                  const int64_t* concat_sizes_range,
-                  const int64_t* axis_dimension_input_output_mapping,
+                  const TArray<int64_t>& concat_sizes,
+                  const TArray<int64_t>& concat_sizes_range,
+                  const TArray<int64_t>& axis_dimension_input_output_mapping,
                   void* output_data,
-                  const void** input_ptr,
+                  const TArray<const void*>& input_ptr,
                   const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 

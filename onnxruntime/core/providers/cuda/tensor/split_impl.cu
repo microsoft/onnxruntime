@@ -11,12 +11,12 @@ namespace cuda {
 template <typename T>
 __global__ void _SplitKernel(const fast_divmod block_size_including_axis_dim_div,
                              const fast_divmod block_size_inside_axis_dim_div,
-                             const int64_t* split_sizes,
-                             const int64_t* split_sizes_range,
-                             const int64_t* axis_dimension_input_output_mapping,
+                             const TArray<int64_t> split_sizes,
+                             const TArray<int64_t> split_sizes_range,
+                             const TArray<int64_t> axis_dimension_input_output_mapping,
                              const int num_outputs,
                              const T* input_data,
-                             void** output_ptr,
+                             TArray<void*> output_ptr,
                              const CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG output_pos = 0;
@@ -42,12 +42,12 @@ __global__ void _SplitKernel(const fast_divmod block_size_including_axis_dim_div
 Status SplitImpl(const size_t element_size,
                  const int block_size_including_axis_dim,
                  const int block_size_inside_axis_dim,
-                 const int64_t* split_sizes,
-                 const int64_t* split_sizes_range,
-                 const int64_t* axis_dimension_input_output_mapping,
+                 const TArray<int64_t>& split_sizes,
+                 const TArray<int64_t>& split_sizes_range,
+                 const TArray<int64_t>& axis_dimension_input_output_mapping,
                  const int num_outputs,
                  const void* input_data,
-                 void** output_ptr,
+                 TArray<void*>& output_ptr,
                  const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 

@@ -42,14 +42,13 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
 
   std::vector<int64_t> concat_sizes(input_count);
 
-  CudaAsyncBuffer<const void*> input_ptr(this, input_count);
-  gsl::span<const void*> input_ptr_cpuspan = input_ptr.CpuSpan();
+  TArray<const void*> input_ptr(input_count);
   std::vector<int64_t> axis_dimension_input_output_mapping(p.output_tensor->Shape()[p.axis]);
   int index = 0;
   for (int i = 0; i < input_count; ++i) {
     auto input = p.inputs[i];
     concat_sizes[i] = input.tensor->Shape()[p.axis];
-    input_ptr_cpuspan[i] = input.tensor->DataRaw();
+    input_ptr[i] = input.tensor->DataRaw();
     for (int j = 0; j < input.tensor->Shape()[p.axis]; ++j) {
       axis_dimension_input_output_mapping.at(index++) = i;
     }
@@ -59,24 +58,20 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
     concat_sizes_range[i] += concat_sizes_range[i - 1];
   }
 
-  CudaAsyncBuffer<int64_t> concat_sizes_gpu(this, concat_sizes);
-  CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
-  CudaAsyncBuffer<int64_t> concat_sizes_range_gpu(this, concat_sizes_range);
-  concat_sizes_gpu.CopyToGpu();
-  axis_dimension_input_output_mapping_gpu.CopyToGpu();
-  concat_sizes_range_gpu.CopyToGpu();
-  input_ptr.CopyToGpu();
+  TArray<int64_t> concat_sizes_gpu(concat_sizes);
+  TArray<int64_t> axis_dimension_input_output_mapping_gpu( axis_dimension_input_output_mapping);
+  TArray<int64_t> concat_sizes_range_gpu(concat_sizes_range);
   int block_size_inside_axis_dim = static_cast<int>(p.output_axis_pitch / p.output_tensor->Shape()[p.axis]);
   int block_size_including_axis_dim = static_cast<int>(p.output_axis_pitch);
   auto element_bytes = p.output_tensor->DataType()->Size();
   ORT_RETURN_IF_ERROR(ConcatImpl(element_bytes,
                                  block_size_including_axis_dim,
                                  block_size_inside_axis_dim,
-                                 concat_sizes_gpu.GpuPtr(),
-                                 concat_sizes_range_gpu.GpuPtr(),
-                                 axis_dimension_input_output_mapping_gpu.GpuPtr(),
+                                 concat_sizes_gpu,
+                                 concat_sizes_range_gpu,
+                                 axis_dimension_input_output_mapping_gpu,
                                  p.output_tensor->MutableDataRaw(),
-                                 input_ptr.GpuPtr(),
+                                 input_ptr,
                                  p.output_num_elements));
   return Status::OK();
 }
