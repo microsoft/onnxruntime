@@ -81,7 +81,9 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       ("lambda", "Adam/Lamb lambda parameter", cxxopts::value<float>()->default_value("0.01"))
       ("epsilon", "Adam/Lamb epsilon parameter", cxxopts::value<float>()->default_value("1e-8"))
       ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
-      ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"));
+      ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
+      ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
+        cxxopts::value<bool>()->default_value("true"));
   options
     .add_options("ORT configuration")
       ("ort_log_severity", "ORT minimum logging severity (see onnxruntime::logging::Severity values)",
@@ -197,6 +199,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
     }
 
     params.partition_optimizer = flags["partition_optimizer"].as<bool>();
+    params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
     float lambda = flags["lambda"].as<float>();
