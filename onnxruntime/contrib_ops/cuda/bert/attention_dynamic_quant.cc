@@ -46,6 +46,7 @@ REGISTER_KERNEL_TYPED_QL(uint8_t, MLFloat16)
       kCudaExecutionProvider,                                      \
       KernelDefBuilder()                                           \
           .InputMemoryType<OrtMemTypeCPUInput>(4)                  \
+          .InputMemoryType<OrtMemTypeCPUInput>(5)                  \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()), \
       AttentionDynamicQuant<T>);
 
@@ -90,7 +91,8 @@ Status AttentionDynamicQuant<T>::ComputeInternal(OpKernelContext* context) const
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
-  const Tensor* weight_scale = context->Input<Tensor>(4);
+  const Tensor* weight_scale_tensor = context->Input<Tensor>(4);
+  const Tensor* input_scale_tensor = context->Input<Tensor>(5);
 
   const auto dims = input->Shape().GetDims();
   int input_size = static_cast<int>(input->Shape().Size());
@@ -113,23 +115,41 @@ Status AttentionDynamicQuant<T>::ComputeInternal(OpKernelContext* context) const
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  // compute the AMax of input
-  int max_idx;
-  CudaT input_max;
-  cublasAmaxHelper(cublas, input_size, reinterpret_cast<const CudaT*>(input->template Data<T>()), 1, &max_idx);
-  CUDA_CALL(cudaMemcpy(&input_max,
-                       input->template Data<T>() + max_idx,
-                       sizeof(T),
-                       cudaMemcpyDeviceToHost));
-
   CudaT r_scale;
   CudaT input_scale;
-  if (sizeof(T) == 2) {
-    r_scale = __float2half(127.f / __half2float(input_max));
-    input_scale = __float2half(__half2float(input_max) / 127.f);
+  CudaT dequant_scale;
+
+  if (input_scale_tensor) {
+    input_scale = *(reinterpret_cast<const CudaT*>(input_scale_tensor->template Data<T>()));
+    if (sizeof(T) == 2) {
+      r_scale = __float2half(1.f / __half2float(input_scale));
+    } else {
+      r_scale = 1.f / input_scale;
+    }
   } else {
-    r_scale = 127.f / input_max;
-    input_scale = input_max / 127.f;
+    // compute the AMax of input
+    int max_idx = 0;
+    CudaT input_max;
+    cublasAmaxHelper(cublas, input_size, reinterpret_cast<const CudaT*>(input->template Data<T>()), 1, &max_idx);
+    CUDA_CALL(cudaMemcpy(&input_max,
+                         input->template Data<T>() + max_idx,
+                         sizeof(T),
+                         cudaMemcpyDeviceToHost));
+
+    if (sizeof(T) == 2) {
+      r_scale = __float2half(127.f / __half2float(input_max));
+      input_scale = __float2half(__half2float(input_max) / 127.f);
+    } else {
+      r_scale = 127.f / input_max;
+      input_scale = input_max / 127.f;
+    }
+  }
+
+  CudaT weight_scale = *(reinterpret_cast<const CudaT*>(weight_scale_tensor->template Data<T>()));
+  if (sizeof(T) == 2) {
+    dequant_scale = __float2half(__half2float(input_scale) * __half2float(weight_scale));
+  } else {
+    dequant_scale = input_scale * weight_scale;
   }
 
   // quantize input
@@ -187,14 +207,6 @@ Status AttentionDynamicQuant<T>::ComputeInternal(OpKernelContext* context) const
       CUDA_R_32I,
       CUBLAS_GEMM_DFALT));
 
-  const CudaT* weight_scale_ptr = reinterpret_cast<const CudaT*>(weight_scale->template Data<T>());
-
-  CudaT dequant_scale;
-  if (sizeof(T) == 2) {
-    dequant_scale = __float2half(__half2float(input_scale) * __half2float(*weight_scale_ptr));
-  } else {
-    dequant_scale = input_scale * (*weight_scale_ptr);
-  }
   // scale back and bias
   CudaDequantizeWithBias(
       gemm_buffer_quantized.get(),
