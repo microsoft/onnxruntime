@@ -176,7 +176,7 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc)
 if(onnxruntime_RUN_ONNX_TESTS)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_io_types.cc)
-endif() 
+endif()
 
 set (onnxruntime_global_thread_pools_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
@@ -360,9 +360,6 @@ set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest"
 set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src} ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src})
 if(NOT TARGET onnxruntime)
   list(APPEND all_tests ${onnxruntime_shared_lib_test_SRC})
-  if (NOT onnxruntime_USE_NNAPI)
-    list(APPEND all_tests ${onnxruntime_global_thread_pools_test_SRC})
-  endif()
 endif()
 set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
@@ -397,6 +394,9 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
   # the default logger tests conflict with the need to have an overall default logger
   # so skip in this type of
   target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
+  if (onnxruntime_USE_FEATURIZERS)
+    target_include_directories(onnxruntime_test_all PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/external/FeaturizersLibrary/src)
+  endif()
 
   if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
     target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
@@ -461,7 +461,7 @@ add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if(WIN32)
-  target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100" "/wd4267")  
+  target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100" "/wd4267")
 else()
   if(HAS_UNUSED_PARAMETER)
     target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-parameter")
@@ -469,7 +469,7 @@ else()
   if(HAS_UNUSED_VARIABLE)
     target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-variable")
   endif()
-  if(HAS_UNUSED_BUT_SET_VARIABLE)    
+  if(HAS_UNUSED_BUT_SET_VARIABLE)
     target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-but-set-variable")
   endif()
 endif()

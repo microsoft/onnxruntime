@@ -348,7 +348,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
                  "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
                  "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
-                 "-Donnxruntime_ENABLE_WCOS=" + ("ON" if args.enable_wcos else "OFF"),
                  "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
                  ]
 
@@ -960,31 +959,21 @@ def main():
         cmake_extra_args = []
         path_to_protoc_exe = None
         if(is_windows()):
-          if (args.x86):
-            cmake_extra_args = ['-A','Win32','-T','host=x64','-G', args.cmake_generator]
-          elif (args.arm or args.arm64):
-            # Cross-compiling for ARM(64) architecture
-            # First build protoc for host to use during cross-compilation
-            path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
-            if args.arm:
-                cmake_extra_args = ['-A', 'ARM']
-            else:
-                cmake_extra_args = ['-A', 'ARM64']
-            cmake_extra_args += ['-G', args.cmake_generator]
-            # Cannot test on host build machine for cross-compiled builds (Override any user-defined behaviour for test if any)
-            if args.test:
-                log.info("Cannot test on host build machine for cross-compiled ARM(64) builds. Will skip test running after build.")
-                args.test = False
-          else:
-            if args.msvc_toolset == '14.16' and args.cmake_generator == 'Visual Studio 16 2019':
-                #CUDA 10.0 requires _MSC_VER >= 1700 and _MSC_VER < 1920, aka Visual Studio version in [2012, 2019)
-                #In VS2019, we have to use Side-by-side minor version MSVC toolsets from Visual Studio 2017
-                #14.16 is MSVC version
-                #141 is MSVC Toolset Version
-                #Cuda VS extension should be installed to C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Microsoft\VC\v160\BuildCustomizations
-                toolset = 'v141,host=x64,version=' + args.msvc_toolset
-            elif args.msvc_toolset:
-                toolset = 'host=x64,version=' + args.msvc_toolset
+            if (args.x86):
+                cmake_extra_args = ['-A','Win32','-T','host=x64','-G', args.cmake_generator]
+            elif (args.arm or args.arm64):
+                # Cross-compiling for ARM(64) architecture
+                # First build protoc for host to use during cross-compilation
+                path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
+                if args.arm:
+                    cmake_extra_args = ['-A', 'ARM']
+                else:
+                    cmake_extra_args = ['-A', 'ARM64']
+                cmake_extra_args += ['-G', args.cmake_generator]
+                # Cannot test on host build machine for cross-compiled builds (Override any user-defined behaviour for test if any)
+                if args.test:
+                    log.info("Cannot test on host build machine for cross-compiled ARM(64) builds. Will skip test running after build.")
+                    args.test = False
             else:
                 toolset = 'host=x64'
             if (args.cuda_version):
@@ -995,6 +984,24 @@ def main():
         
         if not args.path_to_protoc_exe and (args.android or args.ios):
             # Cross-compiling for Android/iOS
+                if args.msvc_toolset == '14.16' and args.cmake_generator == 'Visual Studio 16 2019':
+                    #CUDA 10.0 requires _MSC_VER >= 1700 and _MSC_VER < 1920, aka Visual Studio version in [2012, 2019)
+                    #In VS2019, we have to use Side-by-side minor version MSVC toolsets from Visual Studio 2017
+                    #14.16 is MSVC version
+                    #141 is MSVC Toolset Version
+                    #Cuda VS extension should be installed to C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Microsoft\VC\v160\BuildCustomizations
+                    toolset = 'v141,host=x64,version=' + args.msvc_toolset
+                elif args.msvc_toolset:
+                    toolset = 'host=x64,version=' + args.msvc_toolset
+                else:
+                    toolset = 'host=x64'
+                if (args.cuda_version):
+                    toolset += ',cuda=' + args.cuda_version
+                cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
+            if args.enable_wcos:
+                cmake_extra_args.append('-DCMAKE_TOOLCHAIN_FILE=' + os.path.join(source_dir, 'cmake', 'wcos_toolchain.cmake'))
+        if args.android:
+            # Cross-compiling for Android
             path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
         else :
             path_to_protoc_exe = args.path_to_protoc_exe
