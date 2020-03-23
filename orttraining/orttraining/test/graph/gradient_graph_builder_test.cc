@@ -876,7 +876,6 @@ class PipelineBatchPlanner {
   // Generate timeline for one-forward-one-backward scheduling,
   // which schedules execution in batch order to minimize latency for onging batches
   // each stage requires 2 pair of wait/record events for FW/BW
-  // except for last stage, which only need one pair of wait/record
   void GenerateOneFWOneBWTimeline(size_t num_stages, size_t num_batches) {
     // The first batch has 2 * (num_stages - 1) gaps between FW and BW
     // then 2 slots for FW/BW in each batch
@@ -942,11 +941,6 @@ class PipelineBatchPlanner {
           // add to retired batches after backward of stage 0
           retired_batches.push_back(gsl::narrow<int64_t>(slot.batch_id));
         }
-      }
-      if (t + 1 < timeline_.GetNumSlots() &&
-          slot.batch_id == timeline_.Get(stage, t + 1).batch_id) {
-        // if next slot is with the same batch_id, no need to increase event_id
-        continue;
       }
       // add a pair of wait/record event ids to given batch_id
       plan[slot.batch_id].events.emplace_back(prev_event_id, event_id);
@@ -1140,6 +1134,8 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
         output_values = {data.t6_value, data.t3_grad_value};
         break;
       case 2:
+        // note that last stage only need to wait on FW and record and BW
+        // there's no wait/record in between
         input_names = {
             "T6_sync", "labels",
             "wait_data_2_fw", "wait_pipeline_2_fw",
@@ -1147,8 +1143,8 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
         input_values = {
             data.t6_value, data.label_value,
             data.record_data_values[1],
-            data.wait_record_pipeline_values[4].first,
-            data.wait_record_pipeline_values[4].second,
+            data.wait_record_pipeline_values[4].first,   // wait on FW
+            data.wait_record_pipeline_values[5].second,  // record on BW
             data.record_data_values[2]};
         output_names = {"T6_grad_sync"};
         output_values = {data.t6_grad_value};
@@ -1160,7 +1156,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   };
 
   const std::vector<int64_t> start_ids = {100, 200, 300};
-  const std::vector<int64_t> expected_end_ids = {112, 212, 306};
+  const std::vector<int64_t> expected_end_ids = {112, 212, 312};
   const size_t num_stages = start_ids.size();
   const int num_batches = 6;
   std::vector<PipelineBatchInfo> plan(num_batches);
@@ -1189,22 +1185,22 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   // for sub 1, the schedule is:
   //   F0(-1, 200), F1(200,201), F2(201,202)...
   // for sub 2, the schedule is:
-  //   F0 B0(-1, 300), F1 B1(300, 301), F2 B2(301, 302)...
+  //   F0 (-1, 300), B0 (300, 301), F1 (301, 302), B1(302, 303)...
   // Note the chart above is timeline view, execution plan needs to change it to batch view
   const std::vector<PipelineBatchInfo> expected_plan = {
       // each batch event pairs are in order of:
       // batch 0 events on {sub0_fw, sub0_bw, sub1_fw, sub1_bw, sub2_fwbw}
-      {{{-1, 100}, {104, 105}, {-1, 200}, {202, 203}, {-1, 300}}, {}},
+      {{{-1, 100}, {104, 105}, {-1, 200}, {202, 203}, {-1, 300}, {300, 301}}, {}},
       // batch 1
-      {{{100, 101}, {106, 107}, {200, 201}, {204, 205}, {300, 301}}, {}},
+      {{{100, 101}, {106, 107}, {200, 201}, {204, 205}, {301, 302}, {302, 303}}, {}},
       // batch 2
-      {{{101, 102}, {107, 108}, {201, 202}, {206, 207}, {301, 302}}, {}},
+      {{{101, 102}, {107, 108}, {201, 202}, {206, 207}, {303, 304}, {304, 305}}, {}},
       // batch 3
-      {{{102, 103}, {108, 109}, {203, 204}, {208, 209}, {302, 303}}, {}},
+      {{{102, 103}, {108, 109}, {203, 204}, {208, 209}, {305, 306}, {306, 307}}, {}},
       // batch 4
-      {{{103, 104}, {109, 110}, {205, 206}, {209, 210}, {303, 304}}, {}},
+      {{{103, 104}, {109, 110}, {205, 206}, {209, 210}, {307, 308}, {308, 309}}, {}},
       // batch 5
-      {{{105, 106}, {110, 111}, {207, 208}, {210, 211}, {304, 305}}, {0}},
+      {{{105, 106}, {110, 111}, {207, 208}, {210, 211}, {309, 310}, {310, 311}}, {0}},
   };
   for (int batch = 0; batch < num_batches; ++batch) {
     EXPECT_TRUE(expected_plan[batch].retired_batches == plan[batch].retired_batches);
