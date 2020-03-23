@@ -254,7 +254,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, HipRedu
       static_cast<int>(stride));
     return Status::OK();
   }
-
+  //return Status::OK();
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "reduction is not supported");
 }
 

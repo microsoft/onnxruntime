@@ -19,7 +19,7 @@ namespace hip {
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
-//REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(MLFloat16)
 
 }  // namespace hip
 }  // namespace onnxruntime

@@ -62,16 +62,16 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDoma
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, 10, Gather);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 7, 8, float, Gemm);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 7, 8, double, Gemm);
-// class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 7, 8, MLFloat16, Gemm);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 7, 8, MLFloat16, Gemm);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 9, 10, float, Gemm);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 9, 10, double, Gemm);
-// class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 9, 10, MLFloat16, Gemm);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 9, 10, MLFloat16, Gemm);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, 8, float, MatMul);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, 8, double, MatMul);
-// class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, 8, MLFloat16, MatMul);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, 8, MLFloat16, MatMul);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 9, float, MatMul);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 9, double, MatMul);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 9, MLFloat16, MatMul);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 9, MLFloat16, MatMul);
 // class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 6, float, Tile);
 // class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 6, double, Tile);
 // class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 6, MLFloat16, Tile);
@@ -528,16 +528,16 @@ static void RegisterHIPKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, 10, Gather)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 7, 8, float, Gemm)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 7, 8, double, Gemm)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 7, 8, MLFloat16, Gemm)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 7, 8, MLFloat16, Gemm)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 9, 10, float, Gemm)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 9, 10, double, Gemm)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 9, 10, MLFloat16, Gemm)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 9, 10, MLFloat16, Gemm)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, 8, float, MatMul)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, 8, double, MatMul)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, 8, MLFloat16, MatMul)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, 8, MLFloat16, MatMul)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 9, float, MatMul)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 9, double, MatMul)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 9, MLFloat16, MatMul)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 9, MLFloat16, MatMul)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 6, 10, float, Clip)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 6, float, Tile)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 6, double, Tile)>,

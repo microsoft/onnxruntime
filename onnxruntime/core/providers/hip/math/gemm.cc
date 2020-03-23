@@ -41,7 +41,7 @@ namespace hip {
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
-//REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
