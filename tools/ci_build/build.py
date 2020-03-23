@@ -1000,8 +1000,8 @@ def main():
                 cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_args.append('-DCMAKE_TOOLCHAIN_FILE=' + os.path.join(source_dir, 'cmake', 'wcos_toolchain.cmake'))
-        if args.android:
-            # Cross-compiling for Android
+        if (args.android or args.ios) and not args.path_to_protoc_exe:
+            # Cross-compiling for Android and iOS
             path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
         else :
             path_to_protoc_exe = args.path_to_protoc_exe
