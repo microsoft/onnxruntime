@@ -6,6 +6,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/session_options.h"
 
+#include "core/session/environment.h"
 namespace onnxruntime {
 namespace python {
 
@@ -25,23 +26,29 @@ inline AllocatorPtr& GetAllocator() {
 class SessionObjectInitializer {
  public:
   typedef const SessionOptions& Arg1;
-  typedef logging::LoggingManager* Arg2;
+  // typedef logging::LoggingManager* Arg2;
+  static const std::string default_logger_id;
   operator Arg1() {
     return GetDefaultCPUSessionOptions();
   }
 
-  operator Arg2() {
-    static std::string default_logger_id{"Default"};
-    static LoggingManager default_logging_manager{std::unique_ptr<ISink>{new CErrSink{}},
-                                                  Severity::kWARNING, false, LoggingManager::InstanceType::Default,
-                                                  &default_logger_id};
-    return &default_logging_manager;
-  }
+  // operator Arg2() {
+  //   static LoggingManager default_logging_manager{std::unique_ptr<ISink>{new CErrSink{}},
+  //                                                 Severity::kWARNING, false, LoggingManager::InstanceType::Default,
+  //                                                 &default_logger_id};
+  //   return &default_logging_manager;
+  // }
 
   static SessionObjectInitializer Get() {
     return SessionObjectInitializer();
   }
 };
+
+// static variable used to create inference session and training session.
+static std::unique_ptr<Environment> session_env;
+void initialize_env();
+Environment& get_env();
+
 }
 }
 

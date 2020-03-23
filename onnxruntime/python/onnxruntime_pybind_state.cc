@@ -255,28 +255,6 @@ void AddTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   GetPyObjFromTensor(rtensor, obj);
   pyobjs.push_back(obj);
 }
-class SessionObjectInitializer {
- public:
-  typedef const SessionOptions& Arg1;
-  // typedef logging::LoggingManager* Arg2;
-  static const std::string default_logger_id;
-  operator Arg1() {
-    return GetDefaultCPUSessionOptions();
-  }
-
-  // operator Arg2() {
-  //   static LoggingManager default_logging_manager{std::unique_ptr<ISink>{new CErrSink{}},
-  //                                                 Severity::kWARNING, false, LoggingManager::InstanceType::Default,
-  //                                                 &default_logger_id};
-  //   return &default_logging_manager;
-  // }
-
-  static SessionObjectInitializer Get() {
-    return SessionObjectInitializer();
-  }
-};
-
-const std::string SessionObjectInitializer::default_logger_id = "Default";
 
 inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
   auto p = f.CreateProvider();
@@ -968,7 +946,29 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
 #endif
 
-  static std::unique_ptr<Environment> env;
+  // Initialization of the module
+  ([]() -> void {
+    // import_array1() forces a void return value.
+    import_array1();
+  })();
+
+  Environment& env = get_env();
+
+  addGlobalMethods(m, env);
+  addObjectMethods(m, env);
+
+#ifdef ENABLE_TRAINING
+  addObjectMethodsForTraining(m);
+#endif  // ENABLE_TRAINING
+
+#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
+  addOpSchemaSubmodule(m);
+  addOpKernelSubmodule(m);
+#endif
+}
+
+
+void initialize_env(){
   auto initialize = [&]() {
     // Initialization of the module
     ([]() -> void {
@@ -980,7 +980,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
                                                   std::unique_ptr<ISink>{new CLogSink{}},
                                                   Severity::kWARNING, false, LoggingManager::InstanceType::Default,
                                                   &SessionObjectInitializer::default_logger_id),
-                                              env));
+                                              session_env));
 
     static bool initialized = false;
     if (initialized) {
@@ -989,18 +989,13 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
     initialized = true;
   };
   initialize();
+}
 
-  addGlobalMethods(m, *env);
-  addObjectMethods(m, *env);
-
-#ifdef ENABLE_TRAINING
-  addObjectMethodsForTraining(m);
-#endif  // ENABLE_TRAINING
-
-#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
-  addOpSchemaSubmodule(m);
-  addOpKernelSubmodule(m);
-#endif
+onnxruntime::Environment& get_env(){
+  if (!session_env){
+    initialize_env();
+  }
+  return *session_env;
 }
 
 }  // namespace python

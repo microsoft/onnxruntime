@@ -20,8 +20,7 @@ class TrainingSession : public InferenceSession {
                              std::vector<std::pair<size_t /*InputIndex*/, float /*value*/>>>
       ImmutableWeights;
 
-  TrainingSession(const SessionOptions& session_options,
-                           const Environment& env)
+  TrainingSession(const SessionOptions& session_options, const Environment& env)
       : InferenceSession(session_options, env) {}
 
   /**
