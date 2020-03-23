@@ -30,23 +30,23 @@ class EinsumEquationParser final {
     CalculateOutputShape();
   }
 
-  const std::unordered_map<char, int64_t> GetSubscriptLabelToDimValue() const {
+  const std::unordered_map<char, int64_t>& GetSubscriptLabelToDimValue() const {
     return subscript_label_to_dim_value_;
   }
 
-  const std::unordered_map<int64_t, char> GetIndexToSubscriptLabel() const {
+  const std::unordered_map<int64_t, char>& GetIndexToSubscriptLabel() const {
     return index_to_subscript_label_;
   }
 
-  const std::vector<std::unique_ptr<const std::unordered_set<char>>> GetInputIndicesToSubscriptLabels() const {
+  const std::vector<std::unique_ptr<const std::unordered_set<char>>>& GetInputIndicesToSubscriptLabels() const {
     return input_indices_to_subscript_labels_;
   }
 
-  const std::unordered_set<char> GetOutputSubscriptLabels() const {
+  const std::unordered_set<char>& GetOutputSubscriptLabels() const {
     return output_subscript_labels_;
   }
 
-  const std::vector<int64_t> GetOutputDims() const {
+  const std::vector<int64_t>& GetOutputDims() const {
     return output_dims_;
   }
 
@@ -164,7 +164,7 @@ class EinsumEquationParser final {
   }
 
   void CalculateOutputShape() {
-	 // TODO: Reserve ??
+     // TODO: Reserve ??
       // Iterate through all subscript labels in the subscript
       for (auto subscript_label : output_subscript_) {
         // Subscript labels may contain spaces and are to be ignored
@@ -302,8 +302,8 @@ template <typename T>
 class Input {
  public:
   Input(const T* buffer, const std::vector<int64>& dims, 
-	   const std::unordered_set<char>& subscript_labels, 
-	   const std::vector<int64_t>& dim_indices_based_on_subscript_label_order)
+       const std::unordered_set<char>& subscript_labels, 
+       const std::vector<int64_t>& dim_indices_based_on_subscript_label_order)
       : buffer_(buffer), dims_(dims) : subscript_labels_(subscript_labels) {
     ComputeStrides(dims_, strides_);
   }
@@ -311,9 +311,9 @@ class Input {
   T operator*(const std::vector<int64_t>& current_combination,
               const std::unordered_set<char>& change_from_prev) {
     if (offset == -1 || RecalcNeeded(change_from_prev)) {
-	  // TODO: Implement
+      // TODO: Implement
     }
-	return buffer[offset_];
+    return buffer[offset_];
   }
 
   bool RecalcNeeded(const std::unordered_set<char>& change_from_prev) {
