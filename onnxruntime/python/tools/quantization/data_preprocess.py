@@ -17,10 +17,7 @@ def set_preprocess(preprocess_func_name):
         parameter preprocess_func_name: name of the preprocess function 
         return: function pointer 
     '''
-    funcdict = {
-        'preprocess_method1': preprocess_method1,
-        'preprocess_method2': preprocess_method2
-    }
+    funcdict = {'preprocess_method1': preprocess_method1, 'preprocess_method2': preprocess_method2}
     return funcdict[preprocess_func_name]
 
 
@@ -58,11 +55,7 @@ def preprocess_method2(image_filepath, height, width):
     return nchw_data
 
 
-def load_batch(images_folder,
-               height,
-               width,
-               preprocess_func_name,
-               size_limit=0):
+def load_batch(images_folder, height, width, preprocess_func_name, size_limit=0):
     '''
     Loads a batch of images
     parameter images_folder: path to folder storing images
@@ -84,7 +77,5 @@ def load_batch(images_folder,
         image_filepath = images_folder + '/' + image_name
         nchw_data = preprocess_func(image_filepath, height, width)
         unconcatenated_batch_data.append(nchw_data)
-    batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data,
-                                               axis=0),
-                                axis=0)
+    batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
     return batch_data

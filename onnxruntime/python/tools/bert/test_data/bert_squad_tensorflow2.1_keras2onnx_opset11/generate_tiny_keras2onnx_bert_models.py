@@ -2,7 +2,6 @@
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
-
 """
 Convert a Bert large model exported by Keras2Onnx to a tiny model for test purpose.
 The input model is generated like the following (need install keras2onnx from source):
@@ -39,9 +38,11 @@ import timeit
 
 DICT_SIZE = 20
 SEQ_LEN = 7
-
 """ This class creates a tiny bert model for test purpose. """
+
+
 class TinyBertOnnxModel(OnnxModel):
+
     def __init__(self, model, verbose):
         super(TinyBertOnnxModel, self).__init__(model, verbose)
         self.resize_model()
@@ -54,17 +55,16 @@ class TinyBertOnnxModel(OnnxModel):
         if len(target_shape) == 1:
             target_w = w[:target_shape[0]]
         elif len(target_shape) == 2:
-            target_w = w[:target_shape[0],:target_shape[1]]
+            target_w = w[:target_shape[0], :target_shape[1]]
         elif len(target_shape) == 3:
             target_w = w[:target_shape[0], :target_shape[1], :target_shape[2]]
         else:
             print("at most 3 dimensions")
 
-        tensor = onnx.helper.make_tensor(
-            name=initializer_name + '_resize',
-            data_type=TensorProto.FLOAT,
-            dims=target_shape,
-            vals=target_w.flatten().tolist())
+        tensor = onnx.helper.make_tensor(name=initializer_name + '_resize',
+                                         data_type=TensorProto.FLOAT,
+                                         dims=target_shape,
+                                         vals=target_w.flatten().tolist())
 
         return tensor
 
@@ -74,23 +74,23 @@ class TinyBertOnnxModel(OnnxModel):
 
         # parameters of input base model.
         old_parameters = {
-            "seq_len" : 26,
+            "seq_len": 26,
             "hidden_size": 1024,
             "num_heads": 16,
             "size_per_head": 64,
-            "word_dict_size": [28996, 30522], # list of supported dictionary size.
+            "word_dict_size": [28996, 30522],  # list of supported dictionary size.
             "max_word_position": 512
-            }
+        }
 
         # parameters of output tiny model.
         new_parameters = {
-            "seq_len" : SEQ_LEN,
+            "seq_len": SEQ_LEN,
             "hidden_size": 8,
             "num_heads": 2,
             "size_per_head": 4,
             "word_dict_size": DICT_SIZE,
             "max_word_position": 10
-            }
+        }
 
         for input in graph.input:
             if (input.type.tensor_type.shape.dim[1].dim_value == old_parameters["seq_len"]):
@@ -104,41 +104,72 @@ class TinyBertOnnxModel(OnnxModel):
             dtype = np.float32 if initializer.data_type == 1 else np.int32
             if len(tensor.shape) == 1 and tensor.shape[0] == 1:
                 if tensor == old_parameters["num_heads"]:
-                    print("initializer type={}".format(initializer.data_type), initializer.name, old_parameters["num_heads"], "=>[", new_parameters["num_heads"], "]")
-                    initializer.CopyFrom(numpy_helper.from_array(np.asarray([new_parameters["num_heads"]], dtype=dtype), initializer.name))
+                    print("initializer type={}".format(initializer.data_type), initializer.name,
+                          old_parameters["num_heads"], "=>[", new_parameters["num_heads"], "]")
+                    initializer.CopyFrom(
+                        numpy_helper.from_array(np.asarray([new_parameters["num_heads"]], dtype=dtype),
+                                                initializer.name))
                 elif tensor == old_parameters["seq_len"]:
-                    print("initializer type={}".format(initializer.data_type), initializer.name, old_parameters["seq_len"], "=>[", new_parameters["seq_len"], "]")
-                    initializer.CopyFrom(numpy_helper.from_array(np.asarray([new_parameters["seq_len"]], dtype=dtype), initializer.name))
+                    print("initializer type={}".format(initializer.data_type), initializer.name,
+                          old_parameters["seq_len"], "=>[", new_parameters["seq_len"], "]")
+                    initializer.CopyFrom(
+                        numpy_helper.from_array(np.asarray([new_parameters["seq_len"]], dtype=dtype), initializer.name))
                 elif tensor == old_parameters["size_per_head"]:
-                    print("initializer type={}".format(initializer.data_type), initializer.name, old_parameters["size_per_head"], "=>[", new_parameters["size_per_head"], "]")
-                    initializer.CopyFrom(numpy_helper.from_array(np.asarray([new_parameters["size_per_head"]], dtype=dtype), initializer.name))
+                    print("initializer type={}".format(initializer.data_type), initializer.name,
+                          old_parameters["size_per_head"], "=>[", new_parameters["size_per_head"], "]")
+                    initializer.CopyFrom(
+                        numpy_helper.from_array(np.asarray([new_parameters["size_per_head"]], dtype=dtype),
+                                                initializer.name))
                 elif tensor == old_parameters["hidden_size"]:
-                    print("initializer type={}".format(initializer.data_type), initializer.name, old_parameters["hidden_size"], "=>[", new_parameters["hidden_size"], "]")
-                    initializer.CopyFrom(numpy_helper.from_array(np.asarray([new_parameters["hidden_size"]], dtype=dtype), initializer.name))
+                    print("initializer type={}".format(initializer.data_type), initializer.name,
+                          old_parameters["hidden_size"], "=>[", new_parameters["hidden_size"], "]")
+                    initializer.CopyFrom(
+                        numpy_helper.from_array(np.asarray([new_parameters["hidden_size"]], dtype=dtype),
+                                                initializer.name))
                 elif tensor == 4 * old_parameters["hidden_size"]:
-                    print("initializer type={}".format(initializer.data_type), initializer.name, 4 * old_parameters["hidden_size"], "=>[", 4 * new_parameters["hidden_size"], "]")
-                    initializer.CopyFrom(numpy_helper.from_array(np.asarray([4 * new_parameters["hidden_size"]], dtype=dtype), initializer.name))
+                    print("initializer type={}".format(initializer.data_type), initializer.name,
+                          4 * old_parameters["hidden_size"], "=>[", 4 * new_parameters["hidden_size"], "]")
+                    initializer.CopyFrom(
+                        numpy_helper.from_array(np.asarray([4 * new_parameters["hidden_size"]], dtype=dtype),
+                                                initializer.name))
             elif len(tensor.shape) == 0:
                 if tensor == old_parameters["num_heads"]:
-                    print("initializer type={}".format(initializer.data_type), initializer.name, old_parameters["num_heads"], "=>", new_parameters["num_heads"])
-                    initializer.CopyFrom(numpy_helper.from_array(np.asarray(new_parameters["num_heads"], dtype=dtype), initializer.name))
+                    print("initializer type={}".format(initializer.data_type), initializer.name,
+                          old_parameters["num_heads"], "=>", new_parameters["num_heads"])
+                    initializer.CopyFrom(
+                        numpy_helper.from_array(np.asarray(new_parameters["num_heads"], dtype=dtype), initializer.name))
                 elif tensor == old_parameters["seq_len"]:
-                    print("initializer type={}".format(initializer.data_type), initializer.name, old_parameters["seq_len"], "=>", new_parameters["seq_len"])
-                    initializer.CopyFrom(numpy_helper.from_array(np.asarray(new_parameters["seq_len"], dtype=dtype), initializer.name))
+                    print("initializer type={}".format(initializer.data_type), initializer.name,
+                          old_parameters["seq_len"], "=>", new_parameters["seq_len"])
+                    initializer.CopyFrom(
+                        numpy_helper.from_array(np.asarray(new_parameters["seq_len"], dtype=dtype), initializer.name))
                 elif tensor == old_parameters["size_per_head"]:
-                    print("initializer type={}".format(initializer.data_type), initializer.name, old_parameters["size_per_head"], "=>", new_parameters["size_per_head"])
-                    initializer.CopyFrom(numpy_helper.from_array(np.asarray(new_parameters["size_per_head"], dtype=dtype), initializer.name))
+                    print("initializer type={}".format(initializer.data_type), initializer.name,
+                          old_parameters["size_per_head"], "=>", new_parameters["size_per_head"])
+                    initializer.CopyFrom(
+                        numpy_helper.from_array(np.asarray(new_parameters["size_per_head"], dtype=dtype),
+                                                initializer.name))
                 elif tensor == old_parameters["hidden_size"]:
-                    print("initializer type={}".format(initializer.data_type), initializer.name, old_parameters["hidden_size"], "=>", new_parameters["hidden_size"])
-                    initializer.CopyFrom(numpy_helper.from_array(np.asarray(new_parameters["hidden_size"], dtype=dtype), initializer.name))
+                    print("initializer type={}".format(initializer.data_type), initializer.name,
+                          old_parameters["hidden_size"], "=>", new_parameters["hidden_size"])
+                    initializer.CopyFrom(
+                        numpy_helper.from_array(np.asarray(new_parameters["hidden_size"], dtype=dtype),
+                                                initializer.name))
                 elif tensor == 4 * old_parameters["hidden_size"]:
-                    print("initializer type={}".format(initializer.data_type), initializer.name, 4 * old_parameters["hidden_size"], "=>", 4 * new_parameters["hidden_size"])
-                    initializer.CopyFrom(numpy_helper.from_array(np.asarray(4 * new_parameters["hidden_size"], dtype=dtype), initializer.name))
+                    print("initializer type={}".format(initializer.data_type), initializer.name,
+                          4 * old_parameters["hidden_size"], "=>", 4 * new_parameters["hidden_size"])
+                    initializer.CopyFrom(
+                        numpy_helper.from_array(np.asarray(4 * new_parameters["hidden_size"], dtype=dtype),
+                                                initializer.name))
                 elif tensor == 1.0 / np.sqrt(old_parameters["size_per_head"]):
-                    print("initializer type={}".format(initializer.data_type), initializer.name, 1.0 / np.sqrt(old_parameters["size_per_head"]), "=>", 1.0 / np.sqrt(new_parameters["size_per_head"]))
-                    initializer.CopyFrom(numpy_helper.from_array(np.asarray(1.0 / np.sqrt(new_parameters["size_per_head"]), dtype=dtype), initializer.name))
+                    print("initializer type={}".format(initializer.data_type), initializer.name,
+                          1.0 / np.sqrt(old_parameters["size_per_head"]), "=>",
+                          1.0 / np.sqrt(new_parameters["size_per_head"]))
+                    initializer.CopyFrom(
+                        numpy_helper.from_array(np.asarray(1.0 / np.sqrt(new_parameters["size_per_head"]), dtype=dtype),
+                                                initializer.name))
 
-            new_shape=[]
+            new_shape = []
             shape_changed = False
             for dim in tensor.shape:
                 if (dim == old_parameters["hidden_size"]):
@@ -182,8 +213,16 @@ class TinyBertOnnxModel(OnnxModel):
             dim_proto.dim_param = dynamic_batch_dim
             dim_proto = output.type.tensor_type.shape.dim[1]
             dim_proto.dim_value = seq_len
-            
-def generate_test_data(onnx_file, output_path, batch_size, sequence_length, use_cpu = True, input_tensor_only=False, dictionary_size=DICT_SIZE, test_cases=3):
+
+
+def generate_test_data(onnx_file,
+                       output_path,
+                       batch_size,
+                       sequence_length,
+                       use_cpu=True,
+                       input_tensor_only=False,
+                       dictionary_size=DICT_SIZE,
+                       test_cases=3):
     input_data_type = np.int32
     for test_case in range(test_cases):
         input_1 = np.random.randint(dictionary_size, size=(batch_size, sequence_length), dtype=input_data_type)
@@ -192,7 +231,7 @@ def generate_test_data(onnx_file, output_path, batch_size, sequence_length, use_
         actual_seq_len = random.randint(sequence_length - 3, sequence_length)
         input_2 = np.zeros((batch_size, sequence_length), dtype=input_data_type)
         temp = np.ones((batch_size, actual_seq_len), dtype=input_data_type)
-        input_2[:temp.shape[0],:temp.shape[1]]=temp
+        input_2[:temp.shape[0], :temp.shape[1]] = temp
         tensor_2 = numpy_helper.from_array(input_2, 'attention_mask')
 
         input_3 = np.zeros((batch_size, sequence_length), dtype=input_data_type)
@@ -202,9 +241,9 @@ def generate_test_data(onnx_file, output_path, batch_size, sequence_length, use_
         try:
             os.mkdir(path)
         except OSError:
-            print ("Creation of the directory %s failed" % path)
+            print("Creation of the directory %s failed" % path)
         else:
-            print ("Successfully created the directory %s " % path)
+            print("Successfully created the directory %s " % path)
 
         if input_tensor_only:
             return
@@ -216,8 +255,8 @@ def generate_test_data(onnx_file, output_path, batch_size, sequence_length, use_
         input1_name = sess.get_inputs()[0].name
         output_names = [output.name for output in sess.get_outputs()]
         inputs = {'input_ids': input_1, 'attention_mask': input_2, 'token_type_ids': input_3}
-        print ("inputs", inputs)
-        result=sess.run(output_names, inputs)
+        print("inputs", inputs)
+        result = sess.run(output_names, inputs)
 
         with open(os.path.join(path, 'input_{}.pb'.format(0)), 'wb') as f:
             f.write(tensor_1.SerializeToString())
@@ -227,9 +266,10 @@ def generate_test_data(onnx_file, output_path, batch_size, sequence_length, use_
             f.write(tensor_3.SerializeToString())
 
         for i, output_name in enumerate(output_names):
-           tensor_result = numpy_helper.from_array(np.asarray(result[i]).reshape((batch_size, sequence_length)), output_names[i])
-           with open(os.path.join(path, 'output_{}.pb'.format(i)), 'wb') as f:
-               f.write(tensor_result.SerializeToString())
+            tensor_result = numpy_helper.from_array(
+                np.asarray(result[i]).reshape((batch_size, sequence_length)), output_names[i])
+            with open(os.path.join(path, 'output_{}.pb'.format(i)), 'wb') as f:
+                f.write(tensor_result.SerializeToString())
 
         start_time = timeit.default_timer()
 
@@ -243,7 +283,7 @@ def generate_test_data(onnx_file, output_path, batch_size, sequence_length, use_
 
         session = onnxruntime.InferenceSession(onnx_file, sess_options)
         if use_cpu:
-            session.set_providers(['CPUExecutionProvider']) # use cpu
+            session.set_providers(['CPUExecutionProvider'])  # use cpu
         else:
             if 'CUDAExecutionProvider' not in session.get_providers():
                 print("Warning: GPU not found")
@@ -251,8 +291,10 @@ def generate_test_data(onnx_file, output_path, batch_size, sequence_length, use_
         outputs = session.run(None, inputs)
         evalTime = timeit.default_timer() - start_time
         if outputs[0].tolist() != result[0].tolist():
-            print("Error: not same result after optimization. use_cpu={}, no_opt_output={}, opt_output={}".format(use_cpu, result[0].tolist(), outputs[1].tolist()))
+            print("Error: not same result after optimization. use_cpu={}, no_opt_output={}, opt_output={}".format(
+                use_cpu, result[0].tolist(), outputs[1].tolist()))
         print("** Evaluation done in total {} secs".format(evalTime))
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -270,7 +312,7 @@ def main():
 
     if args.float16:
         bert_model.convert_model_float32_to_float16()
-    
+
     bert_model.update_graph()
     bert_model.remove_unused_constant()
 
@@ -286,6 +328,7 @@ def main():
     sequence_length = SEQ_LEN
 
     generate_test_data(args.output, data_path, batch_size, sequence_length, use_cpu=not args.float16)
+
 
 if __name__ == "__main__":
     main()

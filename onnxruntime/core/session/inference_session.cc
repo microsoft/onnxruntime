@@ -161,32 +161,45 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 }
 
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
-                                         logging::LoggingManager* logging_manager) {
+                                         const Environment& session_env) {
   auto status = FinalizeSessionOptions(session_options, model_proto_, model_loaded_, session_options_);
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
 
+  // The call to InitLogger depends on the final state of session_options_. Hence it should be invoked
+  // after the invocation of FinalizeSessionOptions.
+  logging_manager_ = session_env.GetLoggingManager();
+  InitLogger(logging_manager_);  // this sets session_logger_ so that it can be used for logging after this point.
+
   // Update the number of steps for the graph transformer manager using the "finalized" session options
   graph_transformation_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps);
+  use_per_session_threads_ = session_options.use_per_session_threads;
 
-  logging_manager_ = logging_manager;
+  if (use_per_session_threads_) {
+    LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
+    thread_pool_ = concurrency::CreateThreadPool("intra_op_thread_pool",
+                                                 session_options_.intra_op_num_threads);
 
-  thread_pool_ = concurrency::CreateThreadPool("intra_op_thread_pool",
-                                               session_options_.intra_op_num_threads);
-
-  inter_op_thread_pool_ = session_options_.execution_mode == ExecutionMode::ORT_PARALLEL
-                              ? concurrency::CreateThreadPool("inter_op_thread_pool",
-                                                              session_options_.inter_op_num_threads)
-                              : nullptr;
+    inter_op_thread_pool_ = session_options_.execution_mode == ExecutionMode::ORT_PARALLEL
+                                ? concurrency::CreateThreadPool("inter_op_thread_pool",
+                                                                session_options_.inter_op_num_threads)
+                                : nullptr;
+  } else {
+    LOGS(*session_logger_, INFO) << "Using global/env threadpools since use_per_session_threads_ is false";
+    intra_op_thread_pool_from_env_ = session_env.GetIntraOpThreadPool();
+    inter_op_thread_pool_from_env_ = session_env.GetInterOpThreadPool();
+    ORT_ENFORCE(session_env.EnvCreatedWithGlobalThreadPools() == true,
+                "When the session is not configured to use per session"
+                " threadpools, the env must be created with the the CreateEnvWithGlobalThreadPools API.");
+  }
 
   session_state_ = onnxruntime::make_unique<SessionState>(execution_providers_,
                                                           session_options_.enable_mem_pattern &&
                                                               session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
-                                                          thread_pool_.get(),
-                                                          inter_op_thread_pool_.get());
+                                                          GetIntraOpThreadPoolToUse(),
+                                                          GetInterOpThreadPoolToUse());
 
-  InitLogger(logging_manager);
-
+  session_state_->SetLogger(*session_logger_);
   session_state_->SetDataTransferMgr(&data_transfer_mgr_);
   session_profiler_.Initialize(session_logger_);
   session_state_->SetProfiler(session_profiler_);
@@ -200,16 +213,16 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
-                                   logging::LoggingManager* logging_manager)
+                                   const Environment& session_env)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer") {
   // Initialize assets of this session instance
-  ConstructorCommon(session_options, logging_manager);
+  ConstructorCommon(session_options, session_env);
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
-                                   const std::string& model_uri,
-                                   logging::LoggingManager* logging_manager)
+                                   const Environment& session_env,
+                                   const std::string& model_uri)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer") {
   model_location_ = ToWideString(model_uri);
@@ -218,13 +231,13 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
               status.ErrorMessage());
   model_loaded_ = true;
   // Finalize session options and initialize assets of this session instance
-  ConstructorCommon(session_options, logging_manager);
+  ConstructorCommon(session_options, session_env);
 }
 
 #ifdef _WIN32
 InferenceSession::InferenceSession(const SessionOptions& session_options,
-                                   const std::wstring& model_uri,
-                                   logging::LoggingManager* logging_manager)
+                                   const Environment& session_env,
+                                   const std::wstring& model_uri)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer") {
   model_location_ = ToWideString(model_uri);
@@ -233,13 +246,13 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
               status.ErrorMessage());
   model_loaded_ = true;
   // Finalize session options and initialize assets of this session instance
-  ConstructorCommon(session_options, logging_manager);
+  ConstructorCommon(session_options, session_env);
 }
 #endif
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
-                                   std::istream& model_istream,
-                                   logging::LoggingManager* logging_manager)
+                                   const Environment& session_env,
+                                   std::istream& model_istream)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer") {
   google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
@@ -247,20 +260,20 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
   model_loaded_ = true;
   // Finalize session options and initialize assets of this session instance
-  ConstructorCommon(session_options, logging_manager);
+  ConstructorCommon(session_options, session_env);
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
+                                   const Environment& session_env,
                                    const void* model_data,
-                                   int model_data_len,
-                                   logging::LoggingManager* logging_manager)
+                                   int model_data_len)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer") {
   const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
   model_loaded_ = true;
   // Finalize session options and initialize assets of this session instance
-  ConstructorCommon(session_options, logging_manager);
+  ConstructorCommon(session_options, session_env);
 }
 
 InferenceSession::~InferenceSession() {
@@ -1408,8 +1421,6 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
   } else {
     session_logger_ = &logging::LoggingManager::DefaultLogger();
   }
-
-  session_state_->SetLogger(*session_logger_);
 }
 
 // Registers all the predefined transformers with transformer manager
