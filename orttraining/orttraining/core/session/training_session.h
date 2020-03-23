@@ -69,8 +69,6 @@ class TrainingSession : public InferenceSession {
     struct MixedPrecisionConfiguration {
       // Whether to add loss scaling.
       bool add_loss_scaling{};
-      // The initial loss scaling factor.
-      float initial_loss_scale_value{};
       // Whether to use FP16 initializers.
       bool use_fp16_initializers{};
     };
@@ -211,12 +209,12 @@ class TrainingSession : public InferenceSession {
   const PathString& GetModelLocation() const { return model_location_; }
 
  private:
-  /** Add a graph input suitable for use as a scaling factor for loss scaling.
+  /** Add a graph input for the loss scaling factor.
   It will be a scalar float tensor.
-  @param loss_scale_input_name The name of the added graph input.
+  @param[out] loss_scale_input_name The name of the added graph input.
   @return Status of the graph input addition.
   */
-  common::Status BuildLossScalingFactorInput(const float loss_scale, std::string& loss_scale_input_name);
+  common::Status BuildLossScalingFactorInput(std::string& loss_scale_input_name);
 
   /** Add a system provided or an op as loss function to the model.
   After the call, the model have one more input named as label_name and one more output named as loss_func_output_name.

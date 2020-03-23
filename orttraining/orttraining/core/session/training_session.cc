@@ -122,9 +122,7 @@ Status TrainingSession::ConfigureForTraining(
     TrainingConfigurationResult::MixedPrecisionConfigurationResult mixed_precision_config_result{};
 
     if (mixed_precision_config.add_loss_scaling) {
-      ORT_RETURN_IF_ERROR(BuildLossScalingFactorInput(
-          mixed_precision_config.initial_loss_scale_value,
-          loss_scale_input_name));
+      ORT_RETURN_IF_ERROR(BuildLossScalingFactorInput(loss_scale_input_name));
 
       tensorboard_scalar_names.emplace_back(loss_scale_input_name);
       mixed_precision_config_result.loss_scale_input_name = loss_scale_input_name;
@@ -396,12 +394,22 @@ Status TrainingSession::AddGistEncoding() {
   return DoPostLoadProcessing(*model_);
 }
 
-Status TrainingSession::BuildLossScalingFactorInput(const float loss_scale, std::string& loss_scale_input_name) {
-  const std::string input_name = model_->MainGraph().GenerateNodeArgName("loss_scale");
-  GraphAugmenter::GraphDefs defs{};
-  defs.AddInitializers({CreateTensorProto<float>(input_name, loss_scale, {1})});
-  ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(model_->MainGraph(), defs));
-  ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_));
+Status TrainingSession::BuildLossScalingFactorInput(std::string& loss_scale_input_name) {
+  Graph& graph = model_->MainGraph();
+  const std::string input_name = graph.GenerateNodeArgName("loss_scale");
+  std::vector<const NodeArg*> inputs = graph.GetInputsIncludingInitializers();
+  ONNX_NAMESPACE::TypeProto input_type{};
+  {
+    auto* tensor_type = input_type.mutable_tensor_type();
+    tensor_type->mutable_shape()->add_dim()->set_dim_value(1);
+    tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  }
+  const auto& input_node_arg = graph.GetOrCreateNodeArg(input_name, &input_type);
+
+  inputs.reserve(inputs.size() + 1);
+  inputs.push_back(&input_node_arg);
+  graph.SetInputs(inputs);
+
   loss_scale_input_name = input_name;
   return Status::OK();
 }

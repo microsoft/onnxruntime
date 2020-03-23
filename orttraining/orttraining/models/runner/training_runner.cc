@@ -84,7 +84,6 @@ Status TrainingRunner::Initialize() {
   if (params_.use_mixed_precision) {
     TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
     mp.add_loss_scaling = true;
-    mp.initial_loss_scale_value = params_.loss_scale;
     mp.use_fp16_initializers = params_.use_fp16_initializer;
 
     config.mixed_precision_config = mp;
