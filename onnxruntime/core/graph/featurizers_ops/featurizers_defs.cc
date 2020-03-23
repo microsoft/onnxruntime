@@ -1358,17 +1358,17 @@ void RegisterRollingWindowFeaturizerVer1() {
       .Input(
           1,
           "Grains",
-          "??????",
+          "Grains tensor of shape [R][K].",
           "GrainT")
       .Input(
           2,
           "Target",
-          "??????",
-          "TargetT")
+          "Target tensor of shape [R]",
+          "T")
       .Output(
           0,
           "Output",
-          "?????????",
+          "Output tensor of shape [R][M]",
           "OutputT")
       .TypeConstraint(
           "T0",
@@ -1376,7 +1376,11 @@ void RegisterRollingWindowFeaturizerVer1() {
           "No information is available")
       .TypeConstraint(
           "GrainT",
-          {"tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(float)", "tensor(double)"},
+          {"tensor(string)"},
+          "No information is available")
+      .TypeConstraint(
+          "T",
+          {"tensor(int8)", "tensor(uint8)", "tensor(int16)",  "tensor(uint16)", "tensor(int32)", "tensor(uint32)", "tensor(int64)", "tensor(uint64)", "tensor(float)", "tensor(double)"},
           "No information is available")
       .TypeConstraint(
           "OutputT",
@@ -1385,7 +1389,7 @@ void RegisterRollingWindowFeaturizerVer1() {
       .TypeAndShapeInferenceFunction(
           [](ONNX_NAMESPACE::InferenceContext& ctx) {
             propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, 0);
-            if (hasInputShape(ctx, 1) && hasInputShape(ctx, 2) {
+            if (hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
               const auto& grains_shape = getInputShape(ctx, 1);
               const auto& target_shape = getInputShape(ctx, 2);
               if (grains_shape.dim_size() != 2) {
@@ -1393,9 +1397,6 @@ void RegisterRollingWindowFeaturizerVer1() {
               }
               if (target_shape.dim_size() != 1) {
                 fail_shape_inference("Expecting Target to have 1 dimensions");
-              }
-              if (grains_shape.dim(0) != target_shape.dim(0)) {
-                fail_shape_inference("Expecting Grains and Target have same value with dim(0)");
               }
               ONNX_NAMESPACE::TensorShapeProto shape;
               *shape.add_dim() = grains_shape.dim(0);
