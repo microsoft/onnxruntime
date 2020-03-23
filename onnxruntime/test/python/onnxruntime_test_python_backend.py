@@ -25,7 +25,8 @@ def check_list_of_map_to_float(testcase, expected_rows, actual_rows):
         # use np.testing.assert_allclose so we can specify the tolerance
         np.testing.assert_allclose([expected_rows[i][key] for key in sorted_keys],
                                    [actual_rows[i][key] for key in sorted_keys],
-                                   rtol=1e-05, atol=1e-07)
+                                   rtol=1e-05,
+                                   atol=1e-07)
 
 
 class TestBackend(unittest.TestCase):
@@ -68,9 +69,19 @@ class TestBackend(unittest.TestCase):
         res = rep.run(x)
         output_expected = np.array([0, 0, 0], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
-        output_expected = [{0: 0.950599730014801, 1: 0.027834169566631317, 2: 0.02156602405011654},
-                           {0: 0.9974970817565918, 1: 5.6299926654901356e-05, 2: 0.0024466661270707846},
-                           {0: 0.9997311234474182, 1: 1.1918064757310276e-07, 2: 0.00026869276189245284}]
+        output_expected = [{
+            0: 0.950599730014801,
+            1: 0.027834169566631317,
+            2: 0.02156602405011654
+        }, {
+            0: 0.9974970817565918,
+            1: 5.6299926654901356e-05,
+            2: 0.0024466661270707846
+        }, {
+            0: 0.9997311234474182,
+            1: 1.1918064757310276e-07,
+            2: 0.00026869276189245284
+        }]
 
         check_list_of_map_to_float(self, output_expected, res[1])
 
@@ -83,9 +94,19 @@ class TestBackend(unittest.TestCase):
 
         output_expected = np.array([0, 0, 0], dtype=np.float32)
         np.testing.assert_allclose(output_expected, outputs[0], rtol=1e-05, atol=1e-08)
-        output_expected = [{0: 0.950599730014801, 1: 0.027834169566631317, 2: 0.02156602405011654},
-                           {0: 0.9974970817565918, 1: 5.6299926654901356e-05, 2: 0.0024466661270707846},
-                           {0: 0.9997311234474182, 1: 1.1918064757310276e-07, 2: 0.00026869276189245284}]
+        output_expected = [{
+            0: 0.950599730014801,
+            1: 0.027834169566631317,
+            2: 0.02156602405011654
+        }, {
+            0: 0.9974970817565918,
+            1: 5.6299926654901356e-05,
+            2: 0.0024466661270707846
+        }, {
+            0: 0.9997311234474182,
+            1: 1.1918064757310276e-07,
+            2: 0.00026869276189245284
+        }]
 
         check_list_of_map_to_float(self, output_expected, outputs[1])
 
