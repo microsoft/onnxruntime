@@ -247,7 +247,6 @@ endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
     #For ios compliance
-    CMAKE_OSX_ARCHITECTURES
     message("Adding flags for ios builds")
     if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target arm64-apple-darwin-macho")

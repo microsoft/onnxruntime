@@ -981,30 +981,15 @@ def main():
 
             cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
         
-        
-        if not args.path_to_protoc_exe and (args.android or args.ios):
-            # Cross-compiling for Android/iOS
-                if args.msvc_toolset == '14.16' and args.cmake_generator == 'Visual Studio 16 2019':
-                    #CUDA 10.0 requires _MSC_VER >= 1700 and _MSC_VER < 1920, aka Visual Studio version in [2012, 2019)
-                    #In VS2019, we have to use Side-by-side minor version MSVC toolsets from Visual Studio 2017
-                    #14.16 is MSVC version
-                    #141 is MSVC Toolset Version
-                    #Cuda VS extension should be installed to C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Microsoft\VC\v160\BuildCustomizations
-                    toolset = 'v141,host=x64,version=' + args.msvc_toolset
-                elif args.msvc_toolset:
-                    toolset = 'host=x64,version=' + args.msvc_toolset
-                else:
-                    toolset = 'host=x64'
-                if (args.cuda_version):
-                    toolset += ',cuda=' + args.cuda_version
-                cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_args.append('-DCMAKE_TOOLCHAIN_FILE=' + os.path.join(source_dir, 'cmake', 'wcos_toolchain.cmake'))
+        
         if (args.android or args.ios) and not args.path_to_protoc_exe:
             # Cross-compiling for Android and iOS
             path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
         else :
             path_to_protoc_exe = args.path_to_protoc_exe
+            print(args.path_to_protoc_exe)
             
         if is_ubuntu_1604():
             if (args.arm or args.arm64):
