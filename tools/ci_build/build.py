@@ -989,7 +989,6 @@ def main():
             path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
         else :
             path_to_protoc_exe = args.path_to_protoc_exe
-            print(args.path_to_protoc_exe)
             
         if is_ubuntu_1604():
             if (args.arm or args.arm64):
