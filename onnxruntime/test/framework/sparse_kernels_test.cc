@@ -651,7 +651,7 @@ TEST(SparseTensorConversionTests, TestConstantNodeConversion) {
       },
       RawDataChecker<int64_t>);
 
-  // strings can't use raw data, and string_data is a RepeatedPrtField (vs. RepeatedField for simple types)
+  // strings can't use raw data, and string_data is a RepeatedPtrField (vs. RepeatedField for simple types)
   // so has to be handled differently
   TestConversion<std::string>(
       [](const std::vector<std::string>& values, TensorProto& tp) {

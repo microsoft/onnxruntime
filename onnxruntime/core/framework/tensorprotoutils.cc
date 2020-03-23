@@ -668,10 +668,11 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
   size_t sparse_bytes;
   ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorProto<0>(sparse_values, &sparse_bytes));
-  std::vector<unsigned char> sparse_data_storage(sparse_bytes, 0);
-  void* sparse_data = sparse_data_storage.data();
 
   if (type != TensorProto_DataType_STRING) {
+    std::vector<unsigned char> sparse_data_storage(sparse_bytes, 0);
+    void* sparse_data = sparse_data_storage.data();
+
     int32_t element_size = 0;
 
     // setup buffer for output
@@ -745,11 +746,12 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
     dense.set_raw_data(std::move(dense_data_storage));
 
   } else {
-    UnpackTensor<std::string>(sparse_values, static_cast<std::string*>(sparse_data), n_sparse_elements);
-
     // strings need to be handled differently as they can't use raw data (as per ONNX rules)
-    auto dense_strings = dense.mutable_string_data();
+    std::vector<std::string> sparse_data(n_sparse_elements);
+    UnpackTensor<std::string>(sparse_values, sparse_data.data(), n_sparse_elements);
+
     // RepeatedPtrField<std::string> doesn't have a Resize method so manually add elements
+    auto dense_strings = dense.mutable_string_data();
     dense_strings->Reserve(n_dense_elements);
     for (int64_t j = 0; j < n_dense_elements; ++j) {
       dense_strings->Add("");
