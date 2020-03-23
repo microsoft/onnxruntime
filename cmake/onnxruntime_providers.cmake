@@ -803,7 +803,8 @@ if (onnxruntime_USE_HIP)
   find_library(HIP_LIB hip_hcc REQUIRED)
   find_library(HIP_BLAS hipblas REQUIRED)
   find_library(MIOPEN_LIB MIOpen REQUIRED)
-  set(ONNXRUNTIME_HIP_LIBS ${HIP_LIB} ${HIP_BLAS} ${MIOPEN_LIB})
+  find_library(CLANG_RT_LIB clang_rt.builtins-x86_64 REQUIRED)
+  set(ONNXRUNTIME_HIP_LIBS ${HIP_LIB} ${HIP_BLAS} ${MIOPEN_LIB} ${CLANG_RT_LIB})
 
   file(GLOB_RECURSE onnxruntime_providers_hip_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/hip/*.h"

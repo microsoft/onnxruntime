@@ -93,7 +93,7 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
   TYPED_FUNCTION_CALL(uint16_t)
   TYPED_FUNCTION_CALL(uint32_t)
   TYPED_FUNCTION_CALL(uint64_t)
-  //TYPED_FUNCTION_CALL(MLFloat16)
+  TYPED_FUNCTION_CALL(MLFloat16)
   TYPED_FUNCTION_CALL(float)
   TYPED_FUNCTION_CALL(double)
   TYPED_FUNCTION_CALL(bool)
