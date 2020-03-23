@@ -123,6 +123,11 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--android_sdk_path", type=str, help='Path to the Android SDK')
     parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
 
+    parser.add_argument("--ios", action='store_true', help="build for ios")
+    parser.add_argument("--ios_sysroot", default="", help="Path to ios sysroot")
+    parser.add_argument("--ios_toolchain_dir", default="", help="Path to ios toolchain binaries")
+
+
     # Arguments needed by CI
     parser.add_argument("--cmake_path", default="cmake", help="Path to the CMake program.")
     parser.add_argument("--ctest_path", default="ctest", help="Path to the CTest program.")
@@ -158,7 +163,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--skip_winml_tests", action='store_true', help="Explicitly disable all WinML related tests")
     parser.add_argument("--enable_msvc_static_runtime", action='store_true', help="Enable static linking of MSVC runtimes.")
     parser.add_argument("--enable_language_interop_ops", action='store_true', help="Enable operator implemented in language other than cpp")
-    parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019'],
+    parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019', 'Xcode'],
                         default='Visual Studio 15 2017', help="Specify the generator that CMake invokes. This is only supported on Windows")
     parser.add_argument("--enable_multi_device_test", action='store_true', help="Test with multi-device. Mostly used for multi-device GPU")
     parser.add_argument("--use_dml", action='store_true', help="Build with DirectML.")
@@ -374,6 +379,25 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path + "/build/cmake/android.toolchain.cmake",
                 "-DANDROID_PLATFORM=android-" + str(args.android_api),
                 "-DANDROID_ABI=" + str(args.android_abi)]
+    
+    if args.ios:
+        needed_args = [len(args.ios_sysroot) == 0, not args.arm64 and not args.arm, len(args.ios_toolchain_dir) == 0]
+        arg_names = ["--ios_sysroot <path to sysroot>", "--arm or --arm64", "--ios_toolchain_dir <path to toolchain>"]
+        if any(needed_args):
+            raise BuildError("iOS build canceled due to missing arguments: " + (val + "," for val, cond in zip(arg_names, needed_args) if cond))
+        compilers = sorted(glob.glob(args.ios_toolchain_dir + "/bin/*-clang*"))
+        os.environ["PATH"] = args.ios_toolchain_dir + "/bin:" + os.environ.get("PATH", "")
+        os.environ["LD_LIBRARY_PATH"] = args.ios_toolchain_dir + "/lib:" + os.environ.get("LD_LIBRARY_PATH", "")
+        #print(compilers)
+        #exit(0)
+        if len(compilers) != 2:
+            raise BuildError("error identifiying compilers in toolchaindir")
+        cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + ("arm64" if args.arm64 else "arm"),
+                       "-DCMAKE_SYSTEM_NAME=iOSCross",
+                       "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
+                       "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot, 
+                       "-DCMAKE_C_COMPILER=" + compilers[0], 
+                       "-DCMAKE_CXX_COMPILER=" + compilers[1]]
 
     if path_to_protoc_exe:
         cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
@@ -806,8 +830,8 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use
         run_subprocess(args, cwd=cwd)
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
-    if (args.arm or args.arm64) and not is_windows():
-        raise BuildError('Currently only support building protoc for Windows host while cross-compiling for ARM/ARM64 arch')
+    #if (args.arm or args.arm64) and not is_windows():
+    #    raise BuildError('Currently only support building protoc for Windows host while cross-compiling for ARM/ARM64 arch')
 
     log.info("Building protoc for host to be used in cross-compiled build process")
     protoc_build_dir = os.path.join(os.getcwd(), build_dir, 'host_protoc')
@@ -967,9 +991,14 @@ def main():
                 toolset += ',cuda=' + args.cuda_version
 
             cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
-        if args.android:
-            # Cross-compiling for Android
+        
+        
+        if not args.path_to_protoc_exe and (args.android or args.ios):
+            # Cross-compiling for Android/iOS
             path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
+        else :
+            path_to_protoc_exe = args.path_to_protoc_exe
+            
         if is_ubuntu_1604():
             if (args.arm or args.arm64):
                 raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
@@ -984,8 +1013,6 @@ def main():
         if args.enable_onnx_tests:
             setup_test_data(build_dir, configs)
 
-        if args.path_to_protoc_exe:
-            path_to_protoc_exe = args.path_to_protoc_exe
 
         generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, tensorrt_home, path_to_protoc_exe, configs, cmake_extra_defines,
                             args, cmake_extra_args)

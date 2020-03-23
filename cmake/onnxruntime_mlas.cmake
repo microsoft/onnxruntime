@@ -98,6 +98,13 @@ else()
     elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86")
       set(X86 TRUE)
     endif()
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "iOSCross")
+      set(IOS TRUE)
+    if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+      set(ARM64 TRUE)
+    elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")  
+      set(ARM TRUE)
+    endif()
   else()
     execute_process(
       COMMAND ${CMAKE_C_COMPILER} -dumpmachine
@@ -122,11 +129,16 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
     )
   elseif(ARM64)
-    enable_language(ASM)
-
-    set(mlas_platform_srcs
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemmKernelNeon.S
-    )
+    if(IOS)
+      set(mlas_platform_srcs
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
+      )
+    else()
+      enable_language(ASM)
+      set(mlas_platform_srcs
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemmKernelNeon.S
+      )
+    endif()
   elseif(X86)
     enable_language(ASM)
 

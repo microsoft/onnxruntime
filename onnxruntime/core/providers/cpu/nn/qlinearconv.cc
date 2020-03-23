@@ -148,7 +148,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 #endif
 
   const auto* Xdata = X->template Data<uint8_t>();
-  const auto* Wdata = W->template Data<uint8_t>();
+  __attribute__((unused)) const auto* Wdata = W->template Data<uint8_t>();
   const auto* Bdata = B != nullptr ? B->template Data<int32_t>() : nullptr;
   auto* Ydata = Y->template MutableData<uint8_t>();
 

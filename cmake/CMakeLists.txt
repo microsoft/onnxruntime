@@ -243,6 +243,17 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
 endif()
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
+    #For ios compliance
+    CMAKE_OSX_ARCHITECTURES
+    message("Adding flags for ios builds")
+    if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target arm64-apple-darwin-macho")
+    elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")  
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target armv7a-apple-darwin-macho")
+    endif()
+endif()
+
 #Dependencies
 if (onnxruntime_BUILD_UNIT_TESTS)
   if(onnxruntime_PREFER_SYSTEM_LIB)
