@@ -3,19 +3,23 @@
 
 #pragma once
 
+#include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+//#include "core/providers/common.h"
+//#include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
-class EinSum final : public OpKernel {
+
+class Einsum final : public OpKernel {
  public:
-  TopK(const OpKernelInfo& op_kernel_info);
+  Einsum(const OpKernelInfo& info) : OpKernel(info) {
+    ORT_ENFORCE(info.GetAttr<std::string>("equation", &equation_).IsOK(), "Missing 'equation' attribute");
+  }
 
-  Status Compute(OpKernelContext* p_op_kernel_context) const override;
+  Status Compute(OpKernelContext* context) const override;
 
- private:
-  int axis_; // used by all opset versions
-  unsigned k_; // opset-9 only
-  bool largest_; // opset-11 only
-  bool sorted_; // opset-11 only
+private:
+  std::string equation_;
 };
+
 }  // namespace onnxruntime
