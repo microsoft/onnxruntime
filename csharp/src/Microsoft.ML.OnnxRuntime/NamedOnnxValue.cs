@@ -73,13 +73,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="pinnedMemoryHandle"></param>
         /// <param name="disposeOnnxValueAfterUse"></param>
         internal virtual void ToNativeOnnxValue(out IntPtr onnxValue, 
-                                                out MemoryHandle pinnedMemoryHandle,
-                                                out bool disposeOnnxValueAfterUse)
+                                                out MemoryHandle pinnedMemoryHandle)
         {
-            // 'disposeOnnxValueAfterUse' is always 'true' for NamedOnnxValue as the onus
-            // to dispose the onnxValue after use is on the internal caller
-            disposeOnnxValueAfterUse = true;
-
             //try to cast _value to Tensor<T>
             TensorElementType nativeElementType = TensorElementType.DataTypeMax; //invalid
             IntPtr dataBufferPointer = IntPtr.Zero;

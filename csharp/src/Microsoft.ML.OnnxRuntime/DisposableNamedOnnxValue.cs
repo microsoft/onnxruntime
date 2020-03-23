@@ -79,8 +79,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="pinnedMemoryHandle"></param>
         /// <param name="disposeOnnxValueAfterUse"></param>
         internal override void ToNativeOnnxValue(out IntPtr onnxValue, 
-                                                 out MemoryHandle pinnedMemoryHandle,
-                                                 out bool disposeOnnxValueAfterUse)
+                                                 out MemoryHandle pinnedMemoryHandle)
         {
             // Make sure that this instance hasn't been disposed yet
             if (disposedValue)
@@ -96,12 +95,12 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new NotSupportedException("Use of Maps and SequenceTensors is not yet supported");
             }
 
-            // 'disposeOnnxValueAfterUse' is always 'false' for DisposableNamedOnnxValue as the onus
-            // to dispose the onnxValue after use is on the user, not the internal caller
-            disposeOnnxValueAfterUse = false;
-
             // Assign the onnxValue by querying this instance's NativeOnnxTensorMemory instance
             onnxValue = _nativeMemoryManager.Handle;
+
+            // PinnedMemoryHandle holds the default value as DisposableNamedOnnxValue
+            // doesn't hold any managed buffer (that needs to be pinned)
+            pinnedMemoryHandle = default;
         }
 
         internal static DisposableNamedOnnxValue CreateTensorFromOnnxValue(string name, IntPtr nativeOnnxValue)
