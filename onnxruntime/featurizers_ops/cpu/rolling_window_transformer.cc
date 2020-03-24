@@ -36,12 +36,9 @@ struct RollingWindowTransformerImpl {
 
     // Prepare the output
     const auto output_dim_0 = grains_tensor->Shape()[0];
-    //const auto output_dim_1 = transformer.getVectorLength();
-    const auto output_dim_1 = 2;
-    TensorShape output_shape({output_dim_0, output_dim_1});
-    Tensor* output_tensor(ctx->Output(0, output_shape));
-    double* output_data(output_tensor->MutableData<double>());
 
+    double* output_data(0);
+    bool has_allocate_output_data = false;
     // Transform
     //std::vector<std::string> grains;
     //grains.reserve(grains_num);
@@ -55,11 +52,18 @@ struct RollingWindowTransformerImpl {
       //Execute
       //std::cout << *target_data << std::endl;
       std::vector<double> output_per_row = transformer.execute(*target_data++);
+
+      if(!has_allocate_output_data) {
+        TensorShape output_shape({output_dim_0, static_cast<int64_t>(output_per_row.size())});
+        Tensor* output_tensor(ctx->Output(0, output_shape));
+        output_data = output_tensor->MutableData<double>();
+        has_allocate_output_data = true;
+      }
+
       std::copy(output_per_row.begin(), output_per_row.end(), output_data);
-      //std::cout << output_per_row[0] << ", " << output_per_row[1] << std::endl;
 
       //grains_data += grains_num;
-      output_data += output_dim_1;
+      output_data += output_per_row.size();
     }
   }
 };
