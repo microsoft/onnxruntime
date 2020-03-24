@@ -29,13 +29,10 @@ public:
         int32_t onnxAxis = 0;
         if (kernelCreationContext.IsInputValid(1))
         {
+            uint64_t rawAxisBytes;
             MLOperatorTensor axisTensor = kernelCreationContext.GetConstantInputTensor(1);
-            const uint32_t axisElementCount = ComputeElementCountFromDimensions(axisTensor.GetShape());
-            ML_CHECK_VALID_ARGUMENT(axisTensor.IsCpuData(), "CumSum's 'axis' tensor must be a CPU Tensor.");
-            ML_CHECK_VALID_ARGUMENT(axisElementCount == 1, "CumSum's 'axis' tensor must have one element.");
-
-            const void* tensorData = axisTensor.GetByteData();
-            onnxAxis = static_cast<int32_t>(ReadAsInt64(axisTensor.GetTensorDataType(), tensorData));
+            ReadScalarTensorData(axisTensor, /*out*/ &rawAxisBytes, sizeof(rawAxisBytes));
+            onnxAxis = gsl::narrow_cast<int32_t>(ReadAsInt64(axisTensor.GetTensorDataType(), /*out*/ &rawAxisBytes));
         }
         uint32_t dmlAxis = GetDmlAdjustedAxis(onnxAxis, kernelCreationContext, m_inputTensorDescs.front().GetDimensionCount());
 

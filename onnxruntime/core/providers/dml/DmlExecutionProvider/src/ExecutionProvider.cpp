@@ -181,7 +181,7 @@ namespace Dml
         // CPU Allocator used to create buffers for the MemcpyFromHost operator.
         m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
         m_cpuOutputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUOutput);
-		
+
         CreateDmlKernelRegistry(&m_kernelRegistry, &m_internalRegInfoMap);
     }
 
