@@ -113,7 +113,8 @@ DML_OP_EXTERN_CREATION_FUNCTION(Log);
 DML_OP_EXTERN_CREATION_FUNCTION(Abs);
 DML_OP_EXTERN_CREATION_FUNCTION(Ceil);
 DML_OP_EXTERN_CREATION_FUNCTION(Floor);
-DML_OP_EXTERN_CREATION_FUNCTION(Clip);
+DML_OP_EXTERN_CREATION_FUNCTION(Clip7);
+DML_OP_EXTERN_CREATION_FUNCTION(Clip11);
 DML_OP_EXTERN_CREATION_FUNCTION(Greater);
 DML_OP_EXTERN_CREATION_FUNCTION(Less);
 DML_OP_EXTERN_CREATION_FUNCTION(Equal);
@@ -329,8 +330,8 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(      7,  Concat,                             typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
     {REG_INFO(     11,  Concat,                             typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)}, // Adds negative axis.
     {REG_INFO_VER(  7,  Slice,                              typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
-    {REG_INFO_VER( 10, Slice,                               typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported,      {1, 2, 3}, std::nullopt, QuerySlice)},
-    {REG_INFO_VER( 11, Slice,                               typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported,      {1, 2, 3}, std::nullopt, QuerySlice)}, // Adds negative axes.
+    {REG_INFO_VER( 10,  Slice,                              typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported,      {1, 2, 3}, std::nullopt, QuerySlice)},
+    {REG_INFO_VER( 11,  Slice,                              typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported,      {1, 2, 3}, std::nullopt, QuerySlice)}, // Adds negative axes.
     {REG_INFO(      7,  Pad,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
 #if 0 // TODO:DwayneR Pads and Value are inputs. https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pad-11
     {REG_INFO(     11,  Pad,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
@@ -341,7 +342,7 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     // TODO:Dwayner https://microsoft.visualstudio.com/OS/_workitems/edit/24672169
     {REG_INFO(     11,  DepthToSpace,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
 #endif
-    {REG_INFO(      7,  Tile,                               typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported,      {1})},  
+    {REG_INFO(      7,  Tile,                               typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported,      {1})},
     {REG_INFO(      8,  Expand,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1})},
     {REG_INFO(      9,  ConstantOfShape,                    typeNameListConstantOfShape,    supportedTypeListConstantOfShape,   DmGraphSupport::NotSupported,   {0})},
     {REG_INFO(      7,  Gather,                             typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
@@ -370,10 +371,8 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(      7,  Abs,                                typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
     {REG_INFO(      7,  Ceil,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  Floor,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Clip,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-#if 0 // TODO:DwayneR https://microsoft.visualstudio.com/OS/_workitems/edit/24674103
-    {REG_INFO(     11,  Clip,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-#endif
+    {REG_INFO_VER(  7,  Clip,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_VER( 11,  Clip,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1,2})},
     {REG_INFO(      7,  Add,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  Sub,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  Mul,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},

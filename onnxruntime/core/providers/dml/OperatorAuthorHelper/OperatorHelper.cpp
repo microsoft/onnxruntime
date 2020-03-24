@@ -107,6 +107,20 @@ namespace OperatorHelper
         memcpy(data, tensor.GetByteData(), elementByteSize);
     }
 
+    int64_t ReadScalarTensorAsInt64(const MLOperatorTensor& tensor)
+    {
+        std::byte tensorBytes[8];
+        ReadScalarTensorData(tensor, /*out*/ &tensorBytes, sizeof(tensorBytes));
+        return ReadAsInt64(tensor.GetTensorDataType(), &tensorBytes);
+    }
+
+    double ReadScalarTensorAsFloat64(const MLOperatorTensor& tensor)
+    {
+        std::byte tensorBytes[8];
+        ReadScalarTensorData(tensor, /*out*/ &tensorBytes, sizeof(tensorBytes));
+        return ReadAsFloat64(tensor.GetTensorDataType(), &tensorBytes);
+    }
+
     // Calculates the spatial dimensions from input dimensions and a kernel. The non-spatial (leading)
     // dimensions will be initialized to match the input dimensions. This assumes the spatial dimensions
     // are ordered such that they are at the end (e.g. NCHW or NCDHW).
@@ -1312,7 +1326,7 @@ namespace OperatorHelper
             double start = ReadAsFloat64(m_tensorDataType, &m_valueStart);
             double limit = ReadAsFloat64(m_tensorDataType, &m_valueLimit);
             double delta = ReadAsFloat64(m_tensorDataType, &m_valueDelta);
-            totalElementCount = gsl::narrow_cast<uint32_t>(ceil((limit - start) / delta));
+            totalElementCount = gsl::narrow_cast<uint32_t>(std::max(ceil((limit - start) / delta), 0.0));
         }
         else
         {
@@ -1320,7 +1334,7 @@ namespace OperatorHelper
             int64_t limit = ReadAsInt64(m_tensorDataType, &m_valueLimit);
             int64_t delta = ReadAsInt64(m_tensorDataType, &m_valueDelta);
             int64_t range = limit - start;
-            totalElementCount = gsl::narrow_cast<uint32_t>((range / delta) + (range % delta != 0));
+            totalElementCount = gsl::narrow_cast<uint32_t>(std::max((range / delta) + (range % delta != 0), int64_t(0)));
         }
         m_outputDimensions.push_back(totalElementCount);
     }
