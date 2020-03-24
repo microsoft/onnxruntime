@@ -70,6 +70,41 @@ void AddRepeatedOutputs(
   }
 }
 
+static void checkSendInputTensorElemTypes(
+    InferenceContext& ctx,
+    const std::string& attributeName,
+    const size_t inputSize) {
+  auto attr_proto = ctx.getAttribute(attributeName);
+  if (nullptr == attr_proto) {  // attribute not present
+    fail_type_inference("Value of attribute ", attributeName, " not specified");
+  }
+
+  size_t tensor_num = static_cast<size_t>(attr_proto->ints_size());
+
+  if (tensor_num != inputSize) {
+    fail_type_inference("Attribute ", attributeName, " has a wrong size");
+  }
+
+  const int64_t* elem_types = attr_proto->ints().data();
+
+  for (size_t i = 0; i < tensor_num; ++i) {
+    auto elem_type = static_cast<::ONNX_NAMESPACE::TensorProto_DataType>(elem_types[i]);
+    if (!TensorProto_DataType_IsValid(elem_type)) {
+      fail_type_inference("Attribute ", attributeName, " does not specify a valid type.");
+    }
+
+    auto input_type = ctx.getInputType(i + 2);
+    if (input_type->tensor_type().has_elem_type()) {
+      auto input_elem_type = static_cast<::ONNX_NAMESPACE::TensorProto_DataType>(input_type->tensor_type().elem_type());
+      if (input_elem_type != elem_type) {
+        fail_type_inference("Attribute ", attributeName, " does not match an input's element type.");
+      }
+    } else {
+      fail_type_inference("Attribute ", attributeName, " does not match an input type.");
+    }
+  }
+}
+
 static void propagateRecvOutputTensorElemTypes(
     InferenceContext& ctx,
     const std::string& attributeName,
@@ -1355,6 +1390,8 @@ Return true if all elements are true and false otherwise.
           if (static_cast<int>(remote_input_shape.dim_size()) != 0) {
             fail_shape_inference("Remote of Send must be a scalar.");
           }
+
+          checkSendInputTensorElemTypes(ctx, "element_types", ctx.getNumInputs() - 2);
         }
 
         if (ctx.getNumOutputs() != 1) {
