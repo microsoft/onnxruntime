@@ -188,7 +188,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
           //   flow op (Loop, Scan, If) to do the necessary copy if the input crosses different provider.
           // PlannerImpl::ComputeUseCounts has matching logic so the allocation plan does the same thing
           if (!is_implicit_input) {
-            if (!is_implicit_input && kci && kci->kernel_def->IsInputOnCpu(index)) {
+            if (kci && kci->kernel_def->IsInputOnCpu(index)) {
               non_provider_input_defs_.insert(&arg);
             } else {
               provider_input_defs_.insert(&arg);
