@@ -230,7 +230,7 @@ const static char* const typeNameListLogicalComparison[2] = { "T", "T1" };
 const static char* const typeNameListT1T2[2] = { "T1", "T2" };
 const static char* const typeNameListConstantOfShape[2] = { "T1", "T2" };
 const static char* const typeNameListScatterGather[2] = { "T", "Tind" };
-const static char* const typeNameListScatterGatherND[2] = { "T" }; // Tind is curiously missing, only allowing 64-bit.
+const static char* const typeNameListScatterGatherND[1] = { "T" }; // Tind is curiously missing, only allowing 64-bit.
 const static char* const typeNameListQuantize[2] = { "T1", "T2" };
 const static char* const typeNameListWhere[2] = { "B", "T" };
 const static char* const typeNameListOneHot[3] = { "T1", "T2", "T3" };
@@ -246,7 +246,7 @@ const static SupportedTensorDataTypes supportedTypeListTopK[2] = {SupportedTenso
 const static SupportedTensorDataTypes supportedTypeListIndices[1] = { SupportedTensorDataTypes::Int32|SupportedTensorDataTypes::Int64 };
 const static SupportedTensorDataTypes supportedTypeListCast[2] = { SupportedTensorDataTypes::AllScalars, SupportedTensorDataTypes::Scalars8to32 };
 const static SupportedTensorDataTypes supportedTypeListScatterGather[2] = { SupportedTensorDataTypes::NumericDefault, SupportedTensorDataTypes::Int32 | SupportedTensorDataTypes::Int64 };
-const static SupportedTensorDataTypes supportedTypeListScatterGatherND[2] = { SupportedTensorDataTypes::NumericDefault };
+const static SupportedTensorDataTypes supportedTypeListScatterGatherND[1] = { SupportedTensorDataTypes::NumericDefault };
 const static SupportedTensorDataTypes supportedTypeListQuantizeLinear[2] = { SupportedTensorDataTypes::Float32 | SupportedTensorDataTypes::Int32, SupportedTensorDataTypes::UInt8 | SupportedTensorDataTypes::Int8 };
 const static SupportedTensorDataTypes supportedTypeListDequantizeLinear[2] = { SupportedTensorDataTypes::Float32, SupportedTensorDataTypes::UInt8 | SupportedTensorDataTypes::Int8 | SupportedTensorDataTypes::Int32 };
 const static SupportedTensorDataTypes supportedTypeListQuantize[2] = { SupportedTensorDataTypes::Float32, SupportedTensorDataTypes::UInt8 };
@@ -511,15 +511,16 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(     11,  Round,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 
     {REG_INFO(     10,  ReverseSequence,                    typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},  // TODO::: data types, why not registered??
     {REG_INFO(     11,  CumSum,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1})}, 
-    {REG_INFO(     11,  Range,                              typeNameListDefault,            supportedTypeListRange,             DmGraphSupport::Supported),    {0,1,2}}, 
+    {REG_INFO(     11,  Range,                              typeNameListDefault,            supportedTypeListRange,             DmGraphSupport::Supported,      {0,1,2})},
+
+    {REG_INFO(     11,  Gather,                             typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
+    {REG_INFO(     11,  GatherElements,                     typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
+    {REG_INFO(     11,  GatherND,                           typeNameListScatterGatherND,    supportedTypeListScatterGatherND,   DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ScatterElements,                    typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ScatterND,                          typeNameListScatterGatherND,    supportedTypeListScatterGatherND,   DmGraphSupport::Supported)},
 #if 0
-    {REG_INFO(      9,  MaxUnpool,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {2})}, 
-    {REG_INFO(     11,  Gather,                             typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)}, 
-   -{REG_INFO(     11,  GatherElements,                     typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)}, 
-   -{REG_INFO(     11,  GatherND,                           typeNameListScatterGatherND,    supportedTypeListScatterGatherND,   DmGraphSupport::Supported)}, 
+    {REG_INFO(      9,  MaxUnpool,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {2})},
     {REG_INFO(     11,  Resize,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1})},
-   -{REG_INFO(     11,  ScatterElements,                    typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
-   -{REG_INFO(     11,  ScatterND,                          typeNameListScatterGatherND,    supportedTypeListScatterGatherND,   DmGraphSupport::Supported)}, 
 
     {REG_INFO(     11,  QLinearConv,                        typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 
         // T1 : tensor(int8), tensor(uint8)
