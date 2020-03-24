@@ -19,6 +19,16 @@ def ort_trainer_learning_rate_description():
     return IODescription('Learning_Rate', [1, ], torch.float32)
 
 
+def remove_extra_info(model_desc):
+    simple_model_desc = copy.deepcopy(model_desc)
+    for input_desc in simple_model_desc.inputs_:
+        input_desc.dtype_ = None
+        input_desc.num_classes_ = None
+    for output_desc in simple_model_desc.outputs_:
+        output_desc.dtype_ = None
+        output_desc.num_classes_ = None
+    return simple_model_desc
+
 def bert_model_description():
     vocab_size = 30528
     input_ids_desc = IODescription('input_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=vocab_size)
@@ -49,12 +59,13 @@ def generate_sample_batch(desc, batch_size, device):
 
 def runBertTrainingTest(gradient_accumulation_steps, use_mixed_precision, allreduce_post_accumulation):
     model_desc = bert_model_description()
+    simple_model_desc = remove_extra_info(model_desc)
     learning_rate_description = ort_trainer_learning_rate_description()
     device = torch.device("cuda", 0)
 
     onnx_model = onnx.load(get_name("bert_toy_postprocessed.onnx"))
 
-    model = ORTTrainer(onnx_model, None, model_desc, "LambOptimizer",
+    model = ORTTrainer(onnx_model, None, simple_model_desc, "LambOptimizer",
                        map_optimizer_attributes,
                        learning_rate_description,
                        device, postprocess_model=None,
