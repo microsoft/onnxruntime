@@ -5,7 +5,7 @@
 #endif
 
 #include "dnnl_func_kernel.h"
-#include "core/common/exceptions.h"
+//#include "core/common/exceptions.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/dnnl/dnnl_common.h"
 #include "core/providers/dnnl/subgraph/dnnl_conv.h"
@@ -271,5 +271,3 @@ template class DnnlFuncKernel<float>;
 
 }  // namespace ort_dnnl
 }  // namespace onnxruntime
-
-#endif

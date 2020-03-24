@@ -22,12 +22,31 @@ ONNX_OPERATOR_KERNEL_EX(
 
 class GemmHelper {
  public:
-  GemmHelper(const TensorShape& left, bool trans_left, const TensorShape& right, bool trans_right, const TensorShape& bias);
+  GemmHelper(const TensorShape& left, bool trans_left, const TensorShape& right, bool trans_right, const TensorShape& bias) {
+    assert(false);
+    left;
+    trans_left;
+    right;
+    trans_right;
+    bias;
+  }
 
-  int64_t M() const;
-  int64_t N() const;
-  int64_t K() const;
-  Status State() const;
+  int64_t M() const {
+    assert(false);
+    return 0;
+  }
+  int64_t N() const {
+    assert(false);
+    return 0;
+  }
+  int64_t K() const {
+    assert(false);
+    return 0;
+  }
+  Status State() const {
+    assert(false);
+    return Status::OK();
+  }
 };
 
 template <typename T>
@@ -101,11 +120,11 @@ Status Gemm<float>::Compute(OpKernelContext* ctx) const {
 
   // dnnl_sgemm expects row major matrices, so no need to swap the operands A and B
   auto status = dnnl_sgemm(trans_A_ ? 'T' : 'N',
-                             trans_B_ ? 'T' : 'N',
-                             M, N, K,
-                             alpha_, X->template Data<float>(), trans_A_ ? M : K,
-                             W->template Data<float>(), trans_B_ ? K : N,
-                             beta_, Y->template MutableData<float>(), N);
+                           trans_B_ ? 'T' : 'N',
+                           M, N, K,
+                           alpha_, X->template Data<float>(), trans_A_ ? M : K,
+                           W->template Data<float>(), trans_B_ ? K : N,
+                           beta_, Y->template MutableData<float>(), N);
   if (status == dnnl_success) {
     return Status::OK();
   } else {

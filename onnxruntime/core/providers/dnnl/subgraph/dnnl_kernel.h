@@ -7,7 +7,7 @@
 #endif
 
 #include "dnnl.hpp"
-#include "core/common/cpuid_info.h"
+//#include "core/common/cpuid_info.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/dnnl/subgraph/subgraph.h"
 #include "core/providers/dnnl/dnnl_execution_provider.h"
@@ -18,7 +18,7 @@ namespace ort_dnnl {
 class DnnlKernel {
  public:
   DnnlKernel(const DnnlNode& node,
-               DNNLExecutionProvider* provider) {
+             DNNLExecutionProvider* provider) {
     name_ = node.name;
     mklnode_ptr_ = std::make_shared<DnnlNode>(node);
     provider_ = provider;
@@ -113,7 +113,7 @@ class DnnlKernel {
 
   // memory used for reorders
   std::unique_ptr<dnnl::memory> reorder_dst_mem_to_;
-  AllocatorPtr alloc_;
+  Prov_AllocatorPtr alloc_;
   DNNLExecutionProvider* provider_;
 };
 

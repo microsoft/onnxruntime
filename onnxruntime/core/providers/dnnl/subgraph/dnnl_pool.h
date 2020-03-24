@@ -3,10 +3,10 @@
 
 #pragma once
 #include "core/providers/dnnl/dnnl_fwd.h"
-#include "core/providers/cpu/nn/autopad_type.h"
+//#include "core/providers/cpu/nn/autopad_type.h"
 #include "core/providers/dnnl/dnnl_execution_provider.h"
 #include "core/providers/dnnl/subgraph/dnnl_kernel.h"
-#include "core/util/math.h"
+//#include "core/util/math.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -14,9 +14,9 @@ template <typename T>
 class DnnlPool : public DnnlKernel {
  public:
   DnnlPool(const DnnlNode& node,
-             DNNLExecutionProvider* provider,
-             const NodeAttributes& attributes,
-             const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
+           DNNLExecutionProvider* provider,
+           const NodeAttributes& attributes,
+           const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     op_name_ = node.name;
     ReadAttributes(attributes, attributes_prefix);
   }
@@ -105,9 +105,9 @@ class DnnlPool : public DnnlKernel {
     }
     fwd_desc_ = onnxruntime::make_unique<dnnl::pooling_forward::desc>(
         dnnl::pooling_forward::desc(dnnl::prop_kind::forward_inference, algo,
-                                      *src_md_, *primitive_dst_md_,
-                                      strides_mkl, kernel_mkl,
-                                      padding_left_mkl, padding_right_mkl));
+                                    *src_md_, *primitive_dst_md_,
+                                    strides_mkl, kernel_mkl,
+                                    padding_left_mkl, padding_right_mkl));
 
     fwd_primitive_desc_ = onnxruntime::make_unique<dnnl::pooling_forward::primitive_desc>(
         dnnl::pooling_forward::primitive_desc(*fwd_desc_, cpu_engine));
@@ -200,7 +200,7 @@ class DnnlPool : public DnnlKernel {
       }
 
       auto src_size = fwd_primitive_desc_.get()->src_desc().get_size();
-      src_reorder_buffer_ = IAllocator::MakeUniquePtr<void>(alloc_, src_size);
+      src_reorder_buffer_ = Prov_IAllocator::MakeUniquePtr<void>(alloc_, src_size);
       src_mem_->set_data_handle(src_reorder_buffer_.get());
     } else {
       if (mklnode_ptr_->parent_nodes.empty()) {

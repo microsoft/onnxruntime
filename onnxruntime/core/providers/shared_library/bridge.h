@@ -16,17 +16,106 @@ class Graph;
 class NodeArg;
 class Node;
 class GraphNodes;
+class TensorShape;
 
-struct IExecutionProviderFactory;
+struct Prov_IExecutionProvider;
+
+struct Prov_IExecutionProviderFactory {
+  virtual ~Prov_IExecutionProviderFactory() = default;
+  virtual std::unique_ptr<Prov_IExecutionProvider> CreateProvider() = 0;
+};
+
 struct ProviderHost;
 struct KernelCreateInfo;
+
+class DataTypeImpl;
+using MLDataType = const DataTypeImpl*;
+
+struct Prov_OrtDevice {
+  virtual ~Prov_OrtDevice() {}
+};
+
+struct Prov_OrtMemoryInfo {
+  static std::unique_ptr<Prov_OrtMemoryInfo> Create(const char* name_, OrtAllocatorType type_, Prov_OrtDevice* device_ = nullptr, int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault);
+  virtual ~Prov_OrtMemoryInfo() {}
+};
+
+template <typename T>
+using Prov_IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
+
+struct Prov_IAllocator {
+  virtual ~Prov_IAllocator() {}
+
+  virtual void* Alloc(size_t size) = 0;
+  virtual void Free(void* p) = 0;
+  virtual const Prov_OrtMemoryInfo& Info() const = 0;
+
+  template <typename T>
+  static Prov_IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<Prov_IAllocator> allocator, size_t count_or_bytes) {
+    __debugbreak();
+    allocator;
+    count_or_bytes;
+    return nullptr;
+  }
+};
+
+struct Prov_IDeviceAllocator : Prov_IAllocator {
+  virtual bool AllowsArena() const = 0;
+};
+
+using Prov_AllocatorPtr = std::shared_ptr<Prov_IAllocator>;
+using Prov_DeviceAllocatorFactory = std::function<std::unique_ptr<Prov_IDeviceAllocator>(int)>;
+
+struct Prov_DeviceAllocatorRegistrationInfo {
+  OrtMemType mem_type;
+  Prov_DeviceAllocatorFactory factory;
+  size_t max_mem;
+};
+
+class GraphViewer;
+class KernelRegistry;
+struct IndexedSubGraph;
+
+struct Prov_ComputeCapability {
+  Prov_ComputeCapability(std::unique_ptr<IndexedSubGraph> t_sub_graph);
+};
+
+struct Prov_IExecutionProvider_Router {
+  virtual ~Prov_IExecutionProvider_Router() {}
+
+  virtual std::vector<std::unique_ptr<Prov_ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph,
+                                                                             const std::vector<const KernelRegistry*>& kernel_registries) const = 0;
+
+  virtual Prov_AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const = 0;
+  virtual void InsertAllocator(Prov_AllocatorPtr allocator) = 0;
+};
+
+struct Prov_IExecutionProvider {
+  Prov_IExecutionProvider(const std::string& type);
+  virtual ~Prov_IExecutionProvider() {}
+
+#if 0
+  virtual std::shared_ptr<Prov_KernelRegistry> GetKernelRegistry() const = 0;
+#endif
+
+  virtual std::vector<std::unique_ptr<Prov_ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph,
+                                                                             const std::vector<const KernelRegistry*>& kernel_registries) const { return p_->GetCapability(graph, kernel_registries); }
+#if 0
+  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
+#endif
+
+  virtual Prov_AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const { return p_->GetAllocator(id, mem_type); }
+  virtual void InsertAllocator(Prov_AllocatorPtr allocator) { return p_->InsertAllocator(allocator); }
+
+  std::unique_ptr<Prov_IExecutionProvider_Router> p_;
+};
 
 namespace logging {
 class Logger;
 }
 
 struct Provider {
-  virtual std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) = 0;
+  virtual std::shared_ptr<Prov_IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) = 0;
   virtual void SetProviderHost(ProviderHost& host) = 0;
 };
 
@@ -36,7 +125,24 @@ struct Provider {
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
 struct ProviderHost {
+  virtual void* IExecutionProvider_constructor(const std::string& type) = 0;
+  virtual void IExecutionProvider_destructor(void* proxy) = 0;
+
+  virtual void IExecutionProvider_InsertAllocator(Prov_AllocatorPtr allocator) = 0;
+
+  virtual Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, int device_id = 0) = 0;
+
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
+
+  virtual std::unique_ptr<Prov_OrtMemoryInfo> OrtMemoryInfo_Create(const char* name_, OrtAllocatorType type_, Prov_OrtDevice* device_, int id_, OrtMemType mem_type_) = 0;
+
+  //  virtual OrtMemoryInfo* OrtMemoryInfo_constructor(const char* name_, OrtAllocatorType type_, OrtDevice& device_, int id_, OrtMemType mem_type_) = 0;
+  //  virtual void OrtMemoryInfo_destructor(OrtMemoryInfo* proxy) = 0;
+
+  virtual std::unique_ptr<Prov_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Prov_OrtMemoryInfo> memory_info) = 0;
+  virtual std::unique_ptr<Prov_IExecutionProvider_Router> Create_IExecutionProvider_Router(Prov_IExecutionProvider* outer, const std::string& type) = 0;
+
+  virtual void SessionOptions_AddProviderFactory(OrtSessionOptions& options, std::shared_ptr<Prov_IExecutionProviderFactory> provider) = 0;
 
   MLDataType (*DataTypeImpl_GetType_Tensor)();
   MLDataType (*DataTypeImpl_GetType_float)();
@@ -118,11 +224,11 @@ struct ProviderHost {
   virtual const std::string& NodeArg_Name(const NodeArg* _this) = 0;
   virtual const ONNX_NAMESPACE::TensorShapeProto* NodeArg_Shape(const NodeArg* _this) = 0;
   virtual ONNX_NAMESPACE::DataType NodeArg_Type(const NodeArg* _this) = 0;
-#endif
 
   virtual void* TensorShape_TensorShape(const std::initializer_list<int64_t>& dims) override {
     virtual int64_t TensorShape_Size(const void* _this) = 0;
     //  virtual TensorShape TensorShape_Slice(const TensorShape* _this, uint64_t) = 0;
-  };
+#endif
+};
 
 }  // namespace onnxruntime

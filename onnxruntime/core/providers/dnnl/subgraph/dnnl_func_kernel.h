@@ -6,7 +6,7 @@
 //#include "core/graph/onnx_protobuf.h"
 #include "core/providers/dnnl/dnnl_execution_provider.h"
 #include "core/session/onnxruntime_c_api.h"
-#include "core/framework/func_api.h"
+//#include "core/framework/func_api.h"
 #include "dnnl_kernel.h"
 
 namespace onnxruntime {
@@ -28,8 +28,8 @@ template <typename T>
 class DnnlFuncKernel {
  public:
   explicit DnnlFuncKernel(const ComputeContext* context,
-                            const NodeAttributes& attributes,
-                            DNNLExecutionProvider* provider) {
+                          const NodeAttributes& attributes,
+                          DNNLExecutionProvider* provider) {
     ORT_UNUSED_PARAMETER(context);
 
     params_.provider = provider;

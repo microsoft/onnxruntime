@@ -30,12 +30,12 @@ struct DNNLExecutionProviderInfo {
 };
 
 // Logical device representation.
-class DNNLExecutionProvider : public IExecutionProvider {
+class DNNLExecutionProvider : public Prov_IExecutionProvider {
  public:
   explicit DNNLExecutionProvider(const DNNLExecutionProviderInfo& info);
   virtual ~DNNLExecutionProvider();
 
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const /*override*/;
 
   std::shared_ptr<dnnl::memory> GetWeightsMemoryBuffer(const std::string& weight_key) {
     auto iter = weights_mem_map_.find(weight_key);
@@ -76,12 +76,12 @@ class DNNLExecutionProvider : public IExecutionProvider {
     biass_buffers_.push_back(std::move(buffer));
   }
 
-  std::vector<std::unique_ptr<ComputeCapability>>
+  std::vector<std::unique_ptr<Prov_ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
 
   common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
+                         std::vector<NodeComputeInfo>& node_compute_funcs) /*override*/;
 
  private:
   // dnnl weights(filer data) memory blocks from first iteration
@@ -147,11 +147,11 @@ class DNNLExecutionProvider : public IExecutionProvider {
   }
 
   void CreateOrUpdateDnnlNode(const Node* node,
-                                std::shared_ptr<ort_dnnl::Subgraph>& subgraph_ptr,
-                                ort_dnnl::Subgraph::SubgraphVariables& sub_var,
-                                bool fused,
-                                std::map<std::string, size_t>& output_to_source_node_map,
-                                NodeAttributes& subgraph_attributes) const;
+                              std::shared_ptr<ort_dnnl::Subgraph>& subgraph_ptr,
+                              ort_dnnl::Subgraph::SubgraphVariables& sub_var,
+                              bool fused,
+                              std::map<std::string, size_t>& output_to_source_node_map,
+                              NodeAttributes& subgraph_attributes) const;
 
   // Create Dnnl node, update inputs, outputs and parent nodes
   // collect attribtes
@@ -159,7 +159,7 @@ class DNNLExecutionProvider : public IExecutionProvider {
                      const NodeAttributes& subgraph_attributes,
                      std::shared_ptr<ort_dnnl::Subgraph>& subgraph_ptr,
                      ort_dnnl::Subgraph::SubgraphVariables& sub_var,
-                     std::vector<std::unique_ptr<ComputeCapability>>& result) const;
+                     std::vector<std::unique_ptr<Prov_ComputeCapability>>& result) const;
 
  public:
   const std::shared_ptr<ort_dnnl::Subgraph> GetDnnlSubgraph(const std::string& subgraph_id) {
@@ -171,7 +171,7 @@ class DNNLExecutionProvider : public IExecutionProvider {
 
   // supported Dnnl Operators
   std::set<std::string> dnnl_ops_ = {"Conv", "BatchNormalization", "Relu", "Sum",
-                                       "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};
+                                     "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};
 
   mutable std::unordered_map<std::string, std::shared_ptr<ort_dnnl::Subgraph>> mkl_subgraphs_;
 };

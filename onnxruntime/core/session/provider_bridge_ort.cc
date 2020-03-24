@@ -6,14 +6,16 @@
 
 #include "core/framework/data_types.h"
 #include "core/framework/allocatormgr.h"
-#include "core/providers/mkldnn/mkldnn_provider_factory.h"
+#include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/platform/env.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/compute_capability.h"
 #include "core/providers/shared_library/bridge.h"
 #include "core/common/logging/logging.h"
-#include "core/common/cpuid_info.h"
+//#include "core/common/cpuid_info.h"
+
+#if 0
 
 using namespace google::protobuf::internal;
 
@@ -34,7 +36,109 @@ struct private_cast_2 {};
 template struct private_access_helper<onnx::TensorProto* (*)(google::protobuf::Arena*), &google::protobuf::Arena::CreateMaybeMessage<onnx::TensorProto>, private_cast_2>;
 auto private_cast_Arena_CreateMaybeMessage_onnx_TensorProto() { return private_cast(private_cast_2{}); }
 
+#endif
+
 namespace onnxruntime {
+
+struct Proxy_IExecutionProvider : IExecutionProvider {
+  Proxy_IExecutionProvider(const std::string& type) : IExecutionProvider{type} {}
+};
+
+struct Prov_OrtDevice_Impl : Prov_OrtDevice {
+  OrtDevice v_;
+};
+
+struct Prov_OrtMemoryInfo_Impl : Prov_OrtMemoryInfo {
+  Prov_OrtMemoryInfo_Impl(const char* name_, OrtAllocatorType type_, OrtDevice device_, int id_, OrtMemType mem_type_) : info_{std::make_unique<OrtMemoryInfo>(name_, type_, device_, id_, mem_type_)} {}
+
+  std::unique_ptr<OrtMemoryInfo> info_;
+};
+
+struct Prov_IAllocator_Impl : Prov_IAllocator {
+  Prov_IAllocator_Impl(AllocatorPtr p) : p_{p} {}
+
+  void* Alloc(size_t size) override { return p_->Alloc(size); }
+  void Free(void* p) override { return p_->Free(p); }
+  const Prov_OrtMemoryInfo& Info() const override {
+    __debugbreak();
+    return *(Prov_OrtMemoryInfo*)nullptr;
+    //return p_->Info();
+  }
+
+  AllocatorPtr p_;
+};
+
+struct Prov_IDeviceAllocator_Impl : Prov_IDeviceAllocator {
+  Prov_IDeviceAllocator_Impl(std::unique_ptr<IDeviceAllocator> p) : p_{std::move(p)} {}
+
+  void* Alloc(size_t size) override { return p_->Alloc(size); }
+  void Free(void* p) override { return p_->Free(p); }
+  const Prov_OrtMemoryInfo& Info() const override {
+    __debugbreak();
+    return *(Prov_OrtMemoryInfo*)nullptr;
+    //return p_->Info();
+  }
+
+  bool AllowsArena() const override { return p_->AllowsArena(); }
+
+  std::unique_ptr<IDeviceAllocator> p_;
+};
+
+struct Prov_IExecutionProvider_Router2 : Prov_IExecutionProvider_Router {
+  virtual Prov_AllocatorPtr Prov_GetAllocator(int id, OrtMemType mem_type) const = 0;
+  Prov_AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override final {
+    return Prov_GetAllocator(id, mem_type);
+  }
+
+  virtual std::vector<std::unique_ptr<Prov_ComputeCapability>> Prov_GetCapability(const onnxruntime::GraphViewer& graph,
+                                                                                  const std::vector<const KernelRegistry*>& kernel_registries) const = 0;
+  std::vector<std::unique_ptr<Prov_ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph,
+                                                                     const std::vector<const KernelRegistry*>& kernel_registries) const override final {
+    return Prov_GetCapability(graph, kernel_registries);
+  }
+};
+
+struct Prov_IExecutionProvider_Router_Impl : Prov_IExecutionProvider_Router2, IExecutionProvider {
+  Prov_IExecutionProvider_Router_Impl(Prov_IExecutionProvider* outer, const std::string& type) : IExecutionProvider(type), outer_(outer) {
+  }
+
+  virtual ~Prov_IExecutionProvider_Router_Impl() {}
+
+#if 0
+  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const { return derived_->GetKernelRegistry(); }
+#endif
+
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
+    return IExecutionProvider::GetKernelRegistry();
+    //  return derived_->GetKernelRegistry();
+  }
+
+  std::vector<std::unique_ptr<Prov_ComputeCapability>> Prov_GetCapability(const onnxruntime::GraphViewer& graph,
+                                                                          const std::vector<const KernelRegistry*>& kernel_registries) const override {
+    __debugbreak();
+    graph;
+    kernel_registries;
+    return {};
+  }
+
+  common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) override {
+    return IExecutionProvider::Compile(fused_nodes, node_compute_funcs);
+    //  return derived_->Compile(fused_nodes, node_compute_funcs);
+  }
+
+  Prov_AllocatorPtr Prov_GetAllocator(int id, OrtMemType mem_type) const override {
+    id;
+    mem_type;
+    __debugbreak();
+    return nullptr;
+  }
+
+  void InsertAllocator(Prov_AllocatorPtr allocator) override {
+    IExecutionProvider::InsertAllocator(static_cast<Prov_IAllocator_Impl*>(allocator.get())->p_);
+  }
+
+  Prov_IExecutionProvider* outer_;
+};
 
 struct ProviderHostImpl : ProviderHost {
   ProviderHostImpl() {
@@ -68,8 +172,46 @@ struct ProviderHostImpl : ProviderHost {
 #endif
   }
 
-  logging::Logger*
-  LoggingManager_GetDefaultLogger() override {
+  std::unique_ptr<Prov_OrtMemoryInfo> OrtMemoryInfo_Create(const char* name_, OrtAllocatorType type_, Prov_OrtDevice* device_, int id_, OrtMemType mem_type_) override {
+    return std::make_unique<Prov_OrtMemoryInfo_Impl>(name_, type_, device_ ? static_cast<Prov_OrtDevice_Impl*>(device_)->v_ : OrtDevice(), id_, mem_type_);
+  }
+
+  void* IExecutionProvider_constructor(const std::string& type) override {
+    return new Proxy_IExecutionProvider(type);
+  }
+
+  void IExecutionProvider_destructor(void* proxy) override {
+    delete reinterpret_cast<Proxy_IExecutionProvider*>(proxy);
+  }
+
+  void IExecutionProvider_InsertAllocator(Prov_AllocatorPtr allocator) override {
+  }
+
+  Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, int device_id = 0) override {
+    DeviceAllocatorRegistrationInfo info_real;
+    info_real.mem_type = info.mem_type;
+    info_real.factory = [&info](int value) { return std::move(static_cast<Prov_IDeviceAllocator_Impl*>(&*info.factory(value))->p_); };
+
+    return std::make_shared<Prov_IAllocator_Impl>(onnxruntime::CreateAllocator(info_real, device_id));
+  }
+
+  std::unique_ptr<Prov_IDeviceAllocator>
+  CreateCPUAllocator(std::unique_ptr<Prov_OrtMemoryInfo> memory_info) override {
+    return std::make_unique<Prov_IDeviceAllocator_Impl>(std::make_unique<CPUAllocator>(std::move(static_cast<Prov_OrtMemoryInfo_Impl*>(memory_info.get())->info_)));
+  };
+
+  std::unique_ptr<Prov_IExecutionProvider_Router> Create_IExecutionProvider_Router(Prov_IExecutionProvider* outer, const std::string& type) override {
+    return std::make_unique<Prov_IExecutionProvider_Router_Impl>(outer, type);
+  };
+
+  void SessionOptions_AddProviderFactory(OrtSessionOptions& options, std::shared_ptr<Prov_IExecutionProviderFactory> provider) override {
+    // options.provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena));
+    options;
+    provider;
+    __debugbreak();
+  }
+
+  logging::Logger* LoggingManager_GetDefaultLogger() override {
     return const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
   }
 
@@ -236,7 +378,6 @@ struct ProviderHostImpl : ProviderHost {
   void onnxruntime_TensorShape_constructor(void* _this, int64_t const* p1, uint64_t p2) override {
     new (_this) TensorShape(p1, p2);
   }
-#endif
 
   void* TensorShape_TensorShape(const std::initializer_list<int64_t>& dims) override {
     return new TensorShape(dims);
@@ -249,12 +390,25 @@ struct ProviderHostImpl : ProviderHost {
   void* TensorShape_Slice(const TensorShape* _this, uint64_t p1) override {
     return reinterpret_cast<TensorShape*>(_this)->Slice(p1);
   }
+#endif
 
-} provider_host_;
+}  // namespace onnxruntime
+provider_host_;
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int device_id) {
+struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
+  IExecutionProviderFactory_Translator(std::shared_ptr<Prov_IExecutionProviderFactory> p) : p_(p) {}
+
+  std::unique_ptr<IExecutionProvider> CreateProvider() override {
+    auto provider = p_->CreateProvider();
+    return std::unique_ptr<IExecutionProvider>(static_cast<Prov_IExecutionProvider_Router_Impl*>(provider.release()->p_.release()));
+  }
+
+  std::shared_ptr<Prov_IExecutionProviderFactory> p_;
+};
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int device_id) {
   void* handle;
-  Env::Default().LoadDynamicLibrary("C:\\code\\github\\onnxrt\\build\\windows\\debug\\debug\\onnxruntime_providers_mkldnn.dll", &handle);
+  Env::Default().LoadDynamicLibrary("C:\\code\\github\\onnxrt\\build\\windows\\debug\\debug\\onnxruntime_providers_dnnl.dll", &handle);
   if (!handle)
     return nullptr;
 
@@ -262,17 +416,17 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn
 
   Env::Default().GetSymbolFromLibrary(handle, "GetProvider", (void**)&PGetProvider);
   //return std::make_shared<onnxruntime::MkldnnProviderFactory>(device_id);
-  //TODO: This is apparently a bug. The consructor parameter is create-arena-flag, not the device-id
+  //TODO: This is apparently a bug. The constructor parameter is create-arena-flag, not the device-id
 
   Provider* provider = PGetProvider();
   provider->SetProviderHost(provider_host_);
 
-  return provider->CreateExecutionProviderFactory(device_id);
+  return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory(device_id));
 }
 
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Mkldnn, _In_ OrtSessionOptions* options, int use_arena) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Mkldnn(use_arena));
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena));
   return nullptr;
 }

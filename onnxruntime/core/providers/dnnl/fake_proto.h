@@ -12,16 +12,20 @@
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "gsl/gsl-lite.hpp"
 //#include "core/framework/op_node_proto_helper.h"
 //#include "core/graph/graph.h"
 //#include "core/providers/providers.h"
+#include "../shared_library/bridge.h"
 
+#if 0
 namespace google {
 namespace protobuf {
 template <typename T>
 struct RepeatedPtrField {};
 }  // namespace protobuf
 }  // namespace google
+#endif
 
 namespace onnx {
 enum AttributeProto_AttributeType;
@@ -102,10 +106,9 @@ class FunctionProto {};
 namespace onnxruntime {
 
 constexpr const char* kOnnxDomain = "";
+constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 
 class Graph;
-class DataTypeImpl;
-using MLDataType = const DataTypeImpl*;
 
 /**
  * \brief Base class for MLDataType
@@ -336,14 +339,14 @@ class TensorShape {
 
   TensorShape(TensorShape&& /*other*/) = default;
   TensorShape& operator=(TensorShape&& /*other*/) = default;
-  TensorShape(const std::vector<int64_t>& dims) : std::vector<int64_t>(dims) {}
-  TensorShape(std::vector<int64_t>&& dims) : std::vector<int64_t>(std::move(dims)) {}
 #endif
+  TensorShape(const std::vector<int64_t>& dims);
+  TensorShape(std::vector<int64_t>&& dims);
 
   TensorShape(const std::initializer_list<int64_t>& dims);
 
-#if 0
   TensorShape(const int64_t* dimension_sizes, size_t dimension_count);
+#if 0
   TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end);
 #endif
 
@@ -381,6 +384,7 @@ class TensorShape {
                       inclusive.
   */
   int64_t SizeFromDimension(size_t dimension) const;
+#endif
 
   /**
      Return a new TensorShape of the dimensions from dimstart to dimend.
@@ -397,6 +401,7 @@ class TensorShape {
   */
   std::string ToString() const;
 
+#if 0
   /**
      Calculate size between start and end.
      Assumes start and end are between 0 and this->NumDimensions(), inclusive, and that
@@ -422,16 +427,27 @@ class Tensor final {
   const TensorShape& Shape() const noexcept;
 
   template <typename T>
-  T* MutableData();
+  T* MutableData() {
+    __debugbreak();
+    return nullptr;
+  }
 
   template <typename T>
-  const T* Data() const;
+  const T* Data() const {
+    __debugbreak();
+    return nullptr;
+  }
 };
 
 class OpKernelInfo {
  public:
   template <typename T>
-  Status GetAttr(const std::string& name, T* value) const;
+  Status GetAttr(const std::string& name, T* value) const {
+    __debugbreak();
+    name;
+    value;
+    return Status::OK();
+  }
 };
 
 class OpKernel {
@@ -442,7 +458,11 @@ class OpKernel {
 class OpKernelContext {
  public:
   template <typename T>
-  const T* Input(int index) const;
+  const T* Input(int index) const {
+    __debugbreak();
+    index;
+    return nullptr;
+  }
   template <typename T>
   T* Output(int index);
   Tensor* Output(int index, const TensorShape& shape);
@@ -494,10 +514,6 @@ class KernelRegistry {
   Status Register(KernelCreateInfo&& create_info);
 };
 
-struct ComputeCapability {
-  ComputeCapability(std::unique_ptr<IndexedSubGraph> t_sub_graph);
-};
-
 using AllocateFunc = void* (*)(void*, size_t, size_t);
 using DestroyFunc = void (*)(void*, void*);
 using AllocatorHandle = void*;
@@ -524,36 +540,12 @@ struct NodeComputeInfo {
   DestroyFunctionStateFunc release_state_func;
 };
 
-struct OrtDevice {
-};
-
-class OrtMemoryInfo {
- public:
-  constexpr OrtMemoryInfo(const char* name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(), int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault);
-};
-
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
-class IAllocator {
- public:
-  virtual ~IAllocator() = default;
-  virtual void* Alloc(size_t size) = 0;
-  virtual void Free(void* p) = 0;
-  virtual const OrtMemoryInfo& Info() const = 0;
-
-  template <typename T>
-  static IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<IAllocator> allocator, size_t count_or_bytes);
-};
-
-class IDeviceAllocator : public IAllocator {
- public:
-  ~IDeviceAllocator() override = default;
-  void* Alloc(size_t size) override = 0;
-  void Free(void* p) override = 0;
-  const OrtMemoryInfo& Info() const override = 0;
-  virtual bool AllowsArena() const { return true; }
-};
+std::unique_ptr<Prov_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Prov_OrtMemoryInfo> memory_info);
+Prov_AllocatorPtr CreateDummyArenaAllocator(Prov_AllocatorPtr resource_allocator);
+Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, int device_id = 0);
 
 class CPUIDInfo {
  public:
@@ -561,59 +553,6 @@ class CPUIDInfo {
 
   bool HasAVX2() const;
   bool HasAVX512f() const;
-};
-
-class CPUAllocator : public IDeviceAllocator {
- public:
-  explicit CPUAllocator(std::unique_ptr<OrtMemoryInfo> memory_info);
-  CPUAllocator();
-
-  void* Alloc(size_t size) override;
-  void Free(void* p) override;
-  const OrtMemoryInfo& Info() const override;
-};
-
-using DeviceAllocatorFactory = std::function<std::unique_ptr<IDeviceAllocator>(int)>;
-
-struct DeviceAllocatorRegistrationInfo {
-  OrtMemType mem_type;
-  DeviceAllocatorFactory factory;
-  size_t max_mem;
-};
-
-using AllocatorPtr = std::shared_ptr<IAllocator>;
-
-AllocatorPtr CreateAllocator(DeviceAllocatorRegistrationInfo info, int device_id = 0);
-
-class IArenaAllocator : public IAllocator {
-};
-
-class DummyArena : public IArenaAllocator {
- public:
-  explicit DummyArena(std::unique_ptr<IDeviceAllocator> resource_allocator);
-
-  void* Alloc(size_t size) override;
-  void Free(void* p) override;
-  const OrtMemoryInfo& Info() const override;
-};
-
-class IExecutionProvider {
- protected:
-  IExecutionProvider(const std::string& type);
-
- public:
-  virtual ~IExecutionProvider() = default;
-
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const;
-
-  virtual std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph,
-                                                                        const std::vector<const KernelRegistry*>& /*kernel_registries*/) const;
-
-  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                                 std::vector<NodeComputeInfo>& node_compute_funcs);
-
-  virtual AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
-  void InsertAllocator(AllocatorPtr allocator);
 };
 
 namespace logging {
@@ -684,11 +623,17 @@ inline AutoPadType StringToAutoPadType(const std::string& str) {
   ORT_ENFORCE(false, "Unknown AutoPadType String");
 }
 
-}  // namespace onnxruntime
+namespace math {
 
-struct OrtSessionOptions {
-  std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> provider_factories;
-};
+// Rounds a up to the next highest multiple of b, which is power-of-2. User must be careful
+// to ensure that there is no overflow or underflow in the calculation
+// of divUp.
+template <typename T, T b>
+constexpr T roundUpPow2(T a) {
+  return (a + (b - 1)) & (~(b - 1));
+}
+}  // namespace math
+}  // namespace onnxruntime
 
 #define ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name) \
   provider##_##name##_##domain##_ver##ver
