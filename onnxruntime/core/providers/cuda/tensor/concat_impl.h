@@ -12,11 +12,11 @@ namespace cuda {
 Status ConcatImpl(const size_t element_bytes,
                   const int block_size_including_axis_dim,
                   const int block_size_inside_axis_dim,
-                  const TArray<int64_t>& concat_sizes,
-                  const TArray<int64_t>& concat_sizes_range,
-                  const TArray<int64_t>& axis_dimension_input_output_mapping,
+                  const int64_t* concat_sizes,
+                  const int64_t* concat_sizes_range,
+                  const int64_t* axis_dimension_input_output_mapping,
                   void* output_data,
-                  const TArray<const void*>& input_ptr,
+                  const void** input_ptr,
                   const size_t N);
 
 }  // namespace cuda

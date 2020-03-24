@@ -29,7 +29,7 @@ void RnnMaskImpl(const int32_t num_directions,
                  const int32_t seq_length,
                  const int32_t batch_size,
                  const int32_t hidden_size,
-                 const TArray<int32_t>& sequence_lens,
+                 const int32_t* sequence_lens,
                  T* y_output_data,
                  T* y_h_output_data,
                  const size_t N);
@@ -39,7 +39,7 @@ void MaskZeroSequences(const int32_t hidden_size,
                        T* y_output_data,
                        T* y_h_output_data,
                        T* y_c_output_data,
-                       const TArray<int32_t>& zeor_seq_index_cache_async_buffer,
+                       const int32_t* zeor_seq_index_cache_async_buffer,
                        const size_t N);
 }  // namespace cuda
 }  // namespace onnxruntime

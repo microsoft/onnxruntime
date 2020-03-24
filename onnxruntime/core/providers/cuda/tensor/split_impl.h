@@ -12,12 +12,12 @@ namespace cuda {
 Status SplitImpl(const size_t element_size, 
                  const int block_size_including_axis_dim,
                  const int block_size_inside_axis_dim,
-                 const TArray<int64_t>& split_sizes,
-                 const TArray<int64_t>& split_sizes_range,
-                 const TArray<int64_t>& axis_dimension_input_output_mapping,
+                 const int64_t* split_sizes,
+                 const int64_t* split_sizes_range,
+                 const int64_t* axis_dimension_input_output_mapping,
                  const int num_outputs,
                  const void* input_data,
-                 TArray<void*>& output_ptr,
+                 void** output_ptr,
                  const size_t N);
 
 }  // namespace cuda
