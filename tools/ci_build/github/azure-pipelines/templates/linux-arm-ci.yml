@@ -14,8 +14,6 @@ jobs:
   timeoutInMinutes:  ${{ parameters.TimeoutInMinutes }}
   pool: ${{ parameters.AgentPool }}
   steps:
-    - script: ${{ parameters.ExportCommand }}
-      displayName: 'Command Line Script (export)'
     - script: ${{ parameters.BuildCommand }}
       displayName: 'Command Line Script'
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
