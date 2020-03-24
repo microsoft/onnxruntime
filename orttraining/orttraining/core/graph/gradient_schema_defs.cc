@@ -108,6 +108,11 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
           "Small scalar to avoid dividing by zero.",
           AttributeProto::FLOATS,
           std::vector<float>(1024, 1e-6f))
+      .Attr(
+          "do_bias_correction",
+          "Compute unbiased 1st and 2nd momentums.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
       .TypeConstraint(
           "T1",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},

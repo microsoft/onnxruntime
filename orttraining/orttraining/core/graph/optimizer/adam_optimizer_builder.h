@@ -11,7 +11,7 @@ namespace training {
 class AdamOptimizerBuilder final : public OptimizerBuilder {
  public:
   AdamOptimizerBuilder() : OptimizerBuilder("AdamOptimizer",
-                                            {"alpha", "beta", "lambda", "epsilon"}) {}
+                                            {"alpha", "beta", "lambda", "epsilon", "do_bias_correction"}) {}
 
   virtual Status Build(
       const std::vector<ArgDef>& weight_argdefs,

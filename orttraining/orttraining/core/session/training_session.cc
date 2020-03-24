@@ -50,11 +50,19 @@ Status SetupOptimizerParams(
     OptimizerNodeConfig opt_node_config{};
     opt_node_config.name = optimizer_config.name;
     opt_node_config.lr_feed_name = optimizer_config.learning_rate_input_name;
+
     try {
       opt_node_config.attributes = optimizer_config.weight_attributes_generator(weight_name);
     } catch (const std::exception& ex) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
     }
+
+    try {
+      opt_node_config.int_attributes = optimizer_config.weight_int_attributes_generator(weight_name);
+    } catch (const std::exception& ex) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+    }
+
     opt_node_config.loss_scale_input_name = loss_scale_input_name;
     opt_node_config.use_fp16_moments = optimizer_config.use_fp16_moments;
 

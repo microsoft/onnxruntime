@@ -138,9 +138,9 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("epsilon", "Adam/Lamb epsilon parameter", cxxopts::value<float>()->default_value("1e-6"))
       ("do_bias_correction",
         "A flag controls if Adam/Lamb should do bias correction. "
-        "Default is 0, which means no bias correction. "
-        "Use 1 to enable bias correction.",
-        cxxopts::value<int64_t>()->default_value("0"))
+        "Default is false, which means no bias correction. "
+        "Use true to enable bias correction.",
+        cxxopts::value<bool>()->default_value("false"))
       ("ratio_min", "Lamb min ratio parameter", cxxopts::value<float>()->default_value("0.05"))
       ("ratio_max", "Lamb max ratio parameter", cxxopts::value<float>()->default_value("5.0"))
       ("cuda_mem_limit_in_gb", "Max cuda memory ort can use, in GB", cxxopts::value<float>()->default_value("-1.0"))
@@ -317,12 +317,10 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     float beta = flags["beta"].as<float>();
     float lambda = flags["lambda"].as<float>();
     float epsilon = flags["epsilon"].as<float>();
-    int64_t do_bias_correction = flags["do_bias_correction"].as<int64_t>();
     float ratio_min = flags["ratio_min"].as<float>();
     float ratio_max = flags["ratio_max"].as<float>();
     ORT_RETURN_IF_NOT(alpha >= 0.f && alpha <= 1.f, "alpha is not in valid range [0.0, 1.0]");
     ORT_RETURN_IF_NOT(beta >= 0.f && beta <= 1.f, "alpha is not in valid range [0.0, 1.0]");
-    ORT_RETURN_IF_NOT(do_bias_correction == 0 || do_bias_correction == 1, "Bias correction can be either 0 or 1.");
     ORT_RETURN_IF_NOT(epsilon >= 0.f, "epsilon should be non-negative.");
     ORT_RETURN_IF_NOT(epsilon >= 0.f, "epsilon should be non-negative.");
     ORT_RETURN_IF_NOT(ratio_min >= 0.f, "ratio_min should be non-negative.");
@@ -330,6 +328,9 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     ORT_RETURN_IF_NOT(ratio_max >= ratio_min, "ratio_max should be greater than or equal to ratio_min.");
     std::vector<std::string> no_decay{"bias", "gamma", "beta", "LayerNorm"};
 
+    bool do_bias_correction = flags["do_bias_correction"].as<bool>();
+
+    // Optimizer's float attributes.
     params.optimizer_attributes = [=](const std::string& weight) {
       // Set lambda attribute to zero if we don't want decay on this weight.
       bool zero_lambda = std::any_of(no_decay.begin(), no_decay.end(), [&](const std::string& name) {
@@ -342,8 +343,14 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
           {"lambda", zero_lambda ? 0.f : lambda},
           {"epsilon", epsilon},
           {"ratio_min", ratio_min},
-          {"ratio_max", ratio_max},
-          {"do_bias_correction", do_bias_correction}
+          {"ratio_max", ratio_max}
+      };
+    };
+
+    // Optimizer's int attributes.
+    params.optimizer_int_attributes = [=](const std::string& /*weight*/) {
+      return std::unordered_map<std::string, int64_t>{
+          {"do_bias_correction", do_bias_correction ? static_cast<int64_t>(1) : static_cast<int64_t>(0)}
       };
     };
 

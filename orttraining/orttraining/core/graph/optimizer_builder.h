@@ -43,7 +43,10 @@ class OptimizerBuilder {
  public:
   OptimizerBuilder(const std::string& name, const std::vector<std::string>& attribute_names = {})
       : name_(name),
-        attr_names_(attribute_names) {}
+        attr_names_(attribute_names) {
+
+
+        }
 
   virtual ~OptimizerBuilder() {}
 
@@ -133,8 +136,13 @@ class OptimizerBuilder {
   std::vector<ONNX_NAMESPACE::AttributeProto> BuildAttributeProto(const OptimizerNodeConfig& opt_config) const {
     std::vector<ONNX_NAMESPACE::AttributeProto> attribute_protos;
     for (auto attr_name : attr_names_) {
+      // Search dictionary of float attributes.
       if (opt_config.attributes.count(attr_name)) {
         attribute_protos.push_back(ONNX_NAMESPACE::MakeAttribute(attr_name, opt_config.attributes.at(attr_name)));
+      }
+      // Search dictionary of int attributes.
+      if (opt_config.int_attributes.count(attr_name)) {
+        attribute_protos.push_back(ONNX_NAMESPACE::MakeAttribute(attr_name, opt_config.int_attributes.at(attr_name)));
       }
     }
     return attribute_protos;
