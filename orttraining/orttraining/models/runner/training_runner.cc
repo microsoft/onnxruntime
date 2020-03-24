@@ -83,7 +83,6 @@ Status TrainingRunner::Initialize() {
 
   if (params_.use_mixed_precision) {
     TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
-    mp.add_loss_scaling = true;
     mp.use_fp16_initializers = params_.use_fp16_initializer;
 
     config.mixed_precision_config = mp;
@@ -133,10 +132,9 @@ Status TrainingRunner::Initialize() {
 
   ORT_RETURN_IF_ERROR(session_.ConfigureForTraining(config, config_result));
 
-  if (config_result.mixed_precision_config_result.has_value() &&
-      config_result.mixed_precision_config_result.value().loss_scale_input_name.has_value()) {
+  if (config_result.mixed_precision_config_result.has_value()) {
     const std::string& loss_scale_input_name =
-        config_result.mixed_precision_config_result.value().loss_scale_input_name.value();
+        config_result.mixed_precision_config_result.value().loss_scale_input_name;
     if (params_.loss_scale == 0.0f) {
       // use dynamic loss_scale
       loss_scaler_ = onnxruntime::make_unique<LossScaler>(loss_scale_input_name, true, static_cast<float>(1 << 16));

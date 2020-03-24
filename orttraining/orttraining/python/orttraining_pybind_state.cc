@@ -34,8 +34,6 @@ struct TrainingParameters {
 
   // optimizer
   std::string training_optimizer_name;
-  std::string loss_scale_input_name;
-  std::string scaled_loss_output_name;
   std::string lr_params_feed_name = "Learning_Rate";
   std::unordered_map<std::string, std::unordered_map<std::string, float>> optimizer_attributes_map;
   bool use_fp16_moments = false;
@@ -55,8 +53,12 @@ struct TrainingParameters {
   bool enable_grad_norm_clip = true;
 };
 
+struct TrainingConfigurationResult {
+  std::string loss_scale_input_name;
+};
+
 // TODO: this method does not handle parallel optimization.
-void ConfigureSessionForTraining(
+TrainingConfigurationResult ConfigureSessionForTraining(
     training::TrainingSession* sess, TrainingParameters& parameters) {
   //TODO tix, refactor the mpi related code to populate all fields correctly by default.
   ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size);
@@ -105,14 +107,12 @@ void ConfigureSessionForTraining(
 
   if (parameters.use_mixed_precision) {
     training::TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
-    mp.add_loss_scaling = true;
     mp.use_fp16_initializers = true;
 
     config.mixed_precision_config = mp;
   }
 
-  config.loss_name =
-      parameters.use_mixed_precision ? parameters.scaled_loss_output_name : parameters.loss_output_name;
+  config.loss_name = parameters.loss_output_name;
 
   if (!parameters.training_optimizer_name.empty()) {
     training::TrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
@@ -149,6 +149,14 @@ void ConfigureSessionForTraining(
   training::TrainingSession::TrainingConfigurationResult config_result{};
 
   OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
+
+  TrainingConfigurationResult python_config_result{};
+  if (config_result.mixed_precision_config_result.has_value()) {
+    const auto& mp_config_result = config_result.mixed_precision_config_result.value();
+    python_config_result.loss_scale_input_name = mp_config_result.loss_scale_input_name;
+  }
+
+  return python_config_result;
 }
 
 void addObjectMethodsForTraining(py::module& m) {
@@ -158,8 +166,6 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("immutable_weights", &TrainingParameters::immutable_weights)
       .def_readwrite("weights_not_to_train", &TrainingParameters::weights_not_to_train)
       .def_readwrite("weights_to_train", &TrainingParameters::weights_to_train)
-      .def_readwrite("loss_scale_input_name", &TrainingParameters::loss_scale_input_name)
-      .def_readwrite("scaled_loss_output_name", &TrainingParameters::scaled_loss_output_name)
       .def_readwrite("training_optimizer_name", &TrainingParameters::training_optimizer_name)
       .def_readwrite("lr_params_feed_name", &TrainingParameters::lr_params_feed_name)
       .def_readwrite("optimizer_attributes_map", &TrainingParameters::optimizer_attributes_map)
@@ -173,6 +179,9 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip);
 
+  py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
+  config_result.def(py::init())
+      .def_readonly("loss_scale_input_name", &TrainingConfigurationResult::loss_scale_input_name);
 
   py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
   training_session.def(py::init<SessionOptions, SessionObjectInitializer>())
@@ -185,19 +194,23 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("load_model", [](onnxruntime::training::TrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
         OrtPybindThrowIfError(sess->Load(path));
 
-        ConfigureSessionForTraining(sess, parameters);
+        const auto config_result = ConfigureSessionForTraining(sess, parameters);
 
         std::vector<std::string> provider_types = {};
         InitializeSession(sess, provider_types);
+
+        return config_result;
       })
       .def("read_bytes", [](onnxruntime::training::TrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
         std::istringstream buffer(serialized_model);
         OrtPybindThrowIfError(sess->Load(buffer));
 
-        ConfigureSessionForTraining(sess, parameters);
+        const auto config_result = ConfigureSessionForTraining(sess, parameters);
 
         std::vector<std::string> provider_types = {};
         InitializeSession(sess, provider_types);
+
+        return config_result;
       })
       .def("get_state", [](onnxruntime::training::TrainingSession* sess) {
         NameMLValMap state_tensors;

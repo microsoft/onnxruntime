@@ -38,7 +38,7 @@ namespace {
 Status SetupOptimizerParams(
     const std::unordered_set<std::string>& weight_names_to_train,
     const std::unordered_map<std::string, NodeArg*>& fp32_weight_names_to_fp16_node_args,
-    const std::string& loss_scale_input_name,
+    const optional<std::string>& loss_scale_input_name,
     const TrainingSession::TrainingConfiguration& config,
     OptimizerGraphConfig& opt_graph_config_result,
     std::unordered_map<std::string, OptimizerNodeConfig>& opt_node_configs_result) {
@@ -55,7 +55,9 @@ Status SetupOptimizerParams(
     } catch (const std::exception& ex) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
     }
-    opt_node_config.loss_scale_input_name = loss_scale_input_name;
+    // TODO make OptimizerNodeConfig::loss_scale_input_name optional<string>
+    opt_node_config.loss_scale_input_name =
+        loss_scale_input_name.has_value() ? loss_scale_input_name.value() : "";
     opt_node_config.use_fp16_moments = optimizer_config.use_fp16_moments;
 
     const auto fp16_weight_name_it = fp32_weight_names_to_fp16_node_args.find(weight_name);
@@ -67,7 +69,10 @@ Status SetupOptimizerParams(
 
   OptimizerGraphConfig opt_graph_config{};
   opt_graph_config.use_mixed_precision = config.mixed_precision_config.has_value();
-  opt_graph_config.loss_scale_input_name = loss_scale_input_name;
+  // TODO make OptimizerGraphConfig::loss_scale_input_name optional<string>
+  opt_graph_config.loss_scale_input_name =
+      loss_scale_input_name.has_value() ? loss_scale_input_name.value() : "";
+  ;
   opt_graph_config.local_size = DistributedRunContext::RunConfig().local_size;
   opt_graph_config.local_rank = DistributedRunContext::RunConfig().local_rank;
   opt_graph_config.data_parallel_group_rank = DistributedRunContext::RankInGroup(WorkerGroupType::DataParallel);
@@ -116,39 +121,29 @@ Status TrainingSession::ConfigureForTraining(
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph());
 
   // add loss scale
-  std::string loss_scale_input_name{};
+  optional<std::string> loss_scale_input_name{};
   if (config.mixed_precision_config.has_value()) {
-    const auto& mixed_precision_config = config.mixed_precision_config.value();
+    std::string loss_scale_input_name_value;
+    ORT_RETURN_IF_ERROR(BuildLossScalingFactorInput(loss_scale_input_name_value));
 
-    TrainingConfigurationResult::MixedPrecisionConfigurationResult mixed_precision_config_result{};
-
-    if (mixed_precision_config.add_loss_scaling) {
-      ORT_RETURN_IF_ERROR(BuildLossScalingFactorInput(loss_scale_input_name));
-
-      tensorboard_scalar_names.emplace_back(loss_scale_input_name);
-      mixed_precision_config_result.loss_scale_input_name = loss_scale_input_name;
-    }
-
-    config_result.mixed_precision_config_result = mixed_precision_config_result;
+    loss_scale_input_name = loss_scale_input_name_value;
+    tensorboard_scalar_names.emplace_back(loss_scale_input_name_value);
+    TrainingConfigurationResult::MixedPrecisionConfigurationResult mp_result{};
+    mp_result.loss_scale_input_name = loss_scale_input_name_value;
+    config_result.mixed_precision_config_result = mp_result;
   }
 
-  // configure loss function or use external one
-  ORT_RETURN_IF_NOT(
-      config.loss_function_config.has_value() ^ config.loss_name.has_value(),
-      "Exactly one of loss_function_config or loss_name should be given.");
-
   std::string loss_name{};
-  if (config.loss_function_config.has_value()) {
-    const auto& loss_function_config = config.loss_function_config.value();
-    ORT_RETURN_IF_ERROR(BuildLossFunction(
-        loss_function_config.loss_function_info, loss_scale_input_name, loss_name));
+  const optional<LossFunctionInfo> loss_function_info =
+      config.loss_function_config.has_value()
+          ? config.loss_function_config.value().loss_function_info
+          : optional<LossFunctionInfo>{};
+  ORT_RETURN_IF_ERROR(ConfigureLossFunction(
+      config.loss_name, loss_function_info, loss_scale_input_name, loss_name));
 
-    if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
-      ORT_IGNORE_RETURN_VALUE(Save(
-          config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
-    }
-  } else {
-    loss_name = config.loss_name.value();
+  if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
+    ORT_IGNORE_RETURN_VALUE(Save(
+        config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
   }
 
   // derive actual set of weights to train
@@ -248,29 +243,55 @@ Status TrainingSession::ConfigureForTraining(
   return Status::OK();
 }
 
-static Status AddLossFunctionInternal(Graph& graph,
-                                      ILossFunction& loss_graph_builder,
-                                      const LossFunctionInfo& loss_func_info,
-                                      const std::string& loss_scale_input_name,
-                                      std::string& actual_loss_name) {
-  auto loss_function_graph_defs = loss_graph_builder(graph, loss_func_info);
-
-  if (!loss_scale_input_name.empty()) {
-    // add node to scale by loss_scale_input_name
-    TypeProto* loss_type_proto = loss_function_graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    actual_loss_name = graph.GenerateNodeArgName("scaled_loss");
-    loss_function_graph_defs.AddNodeDefs(
-        {NodeDef{
-            "Mul",
-            {ArgDef{loss_func_info.loss_name}, ArgDef{loss_scale_input_name, loss_type_proto}},
-            {ArgDef{actual_loss_name, loss_type_proto}},
-            NodeAttributes(),
-            actual_loss_name}});
-  } else {
-    actual_loss_name = loss_func_info.loss_name;
+static Status AddLossScaling(
+    const std::string& loss_name, const optional<std::string>& loss_scale_input_name,
+    Graph& graph, std::string& scaled_loss_name) {
+  if (!loss_scale_input_name.has_value()) {
+    scaled_loss_name = loss_name;
+    return Status::OK();
   }
 
-  return GraphAugmenter::AugmentGraph(graph, loss_function_graph_defs);
+  // add node to scale loss_name by loss_scale_input_name
+  GraphAugmenter::GraphDefs defs{};
+  scaled_loss_name = graph.GenerateNodeArgName("scaled_loss");
+  defs.AddNodeDef(NodeDef{
+      "Mul",
+      {ArgDef{loss_name}, ArgDef{loss_scale_input_name.value()}},
+      {ArgDef{scaled_loss_name}},
+      NodeAttributes(),
+      scaled_loss_name});
+
+  ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, defs));
+
+  return Status::OK();
+}
+
+static Status ConfigureLossFunctionInternal(
+    const optional<std::string>& external_loss_name,
+    ILossFunction* loss_graph_builder,
+    const optional<LossFunctionInfo>& loss_func_info,
+    const optional<std::string>& loss_scale_input_name,
+    Graph& graph,
+    std::string& actual_loss_name) {
+  // build loss function or use external one
+  ORT_RETURN_IF_NOT(
+      (loss_func_info.has_value() && loss_graph_builder) ^ external_loss_name.has_value(),
+      "Either loss function information should be provided or an external "
+      "loss name should be given.");
+
+  std::string unscaled_loss_name;
+  if (external_loss_name.has_value()) {
+    unscaled_loss_name = external_loss_name.value();
+  } else {
+    auto loss_function_graph_defs = (*loss_graph_builder)(graph, loss_func_info.value());
+    ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, loss_function_graph_defs));
+    unscaled_loss_name = loss_func_info.value().loss_name;
+  }
+
+  ORT_RETURN_IF_ERROR(AddLossScaling(
+      unscaled_loss_name, loss_scale_input_name, graph, actual_loss_name));
+
+  return Status::OK();
 }
 
 static Status BuildGradientGraphInternal(Graph& graph,
@@ -426,21 +447,30 @@ Status TrainingSession::AddTensorboard(const std::string& summary_name,
   return DoPostLoadProcessing(*model_);
 }
 
-Status TrainingSession::BuildLossFunction(const LossFunctionInfo& loss_func_info,
-                                          const std::string& loss_scale_input_name,
-                                          std::string& actual_loss_name) {
-  try {
-    ORT_RETURN_IF(loss_func_info.op_def.type.empty() || loss_func_info.loss_name.empty(),
-                  "BuildLossFunction's loss_function_info is invalid.");
+Status TrainingSession::ConfigureLossFunction(
+    const optional<std::string>& external_loss_name,
+    const optional<LossFunctionInfo>& loss_function_info,
+    const optional<std::string>& loss_scale_input_name,
+    std::string& actual_loss_name) {
+  external_loss_name_ = external_loss_name;
+  loss_function_info_ = loss_function_info;
+  loss_scale_input_name_ = loss_scale_input_name;
 
-    loss_func_info_ = loss_func_info;
-    loss_graph_builder_ = LossFunctionBuilder::Build(loss_func_info_.op_def.type);
-    loss_scale_input_name_ = loss_scale_input_name;
+  if (loss_function_info_.has_value()) {
+    const auto& loss_function_info = loss_function_info_.value();
+    ORT_RETURN_IF(
+        loss_function_info.op_def.type.empty() || loss_function_info.loss_name.empty(),
+        "loss_function_info is invalid.");
+
+    loss_graph_builder_ = LossFunctionBuilder::Build(loss_function_info.op_def.type);
 
     ORT_RETURN_IF_NOT(loss_graph_builder_);
-    ORT_RETURN_IF_ERROR(AddLossFunctionInternal(
-        model_->MainGraph(), *loss_graph_builder_, loss_func_info_,
-        loss_scale_input_name_, actual_loss_name));
+  }
+
+  try {
+    ORT_RETURN_IF_ERROR(ConfigureLossFunctionInternal(
+        external_loss_name_, loss_graph_builder_.get(), loss_function_info_,
+        loss_scale_input_name_, model_->MainGraph(), actual_loss_name));
   } catch (const OnnxRuntimeException& exp) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add loss function:", exp.what());
   }
@@ -577,11 +607,9 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
   std::string actual_loss_name{};
   if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC /* with weights and loss func*/ ||
       opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS /*with everything*/) {
-    ORT_RETURN_IF_NOT(loss_graph_builder_);
-    ORT_RETURN_IF_ERROR(AddLossFunctionInternal(
-        new_model->MainGraph(),
-        *loss_graph_builder_, loss_func_info_,
-        loss_scale_input_name_, actual_loss_name));
+    ORT_RETURN_IF_ERROR(ConfigureLossFunctionInternal(
+        external_loss_name_, loss_graph_builder_.get(), loss_function_info_,
+        loss_scale_input_name_, new_model->MainGraph(), actual_loss_name));
   }
 
   if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS) {

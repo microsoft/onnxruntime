@@ -350,21 +350,6 @@ def generate_node_name(graph, base_name):
             return new_name
         generator += 1
 
-def add_loss_scale_input(model):
-    # verify_fully_optimized_model ensures that the first output is the loss
-    output_name = model.graph.output[0].name
-    loss_scale_input_name = generate_node_arg_name(model.graph, 'loss_scale_' + output_name)
-    scaled_loss_output_name = generate_node_arg_name(model.graph, 'scaled_loss_' + output_name)
-    node_name = generate_node_name(model.graph, "loss_scale_" + output_name)
-
-    loss_scale_input_value_info = helper.make_tensor_value_info(loss_scale_input_name, onnx.TensorProto.FLOAT, [])
-    model.graph.input.extend([loss_scale_input_value_info])
-
-    node = model.graph.node.add()
-    inputs = [loss_scale_input_name, output_name]
-    node.CopyFrom(onnx.helper.make_node("Mul", inputs, [scaled_loss_output_name], node_name))
-    return loss_scale_input_name, scaled_loss_output_name
-
 def create_and_bind_grad_or_grad_accumulate_buffer(train_io_binding, torch_tensor, param,
                                                    enable_grad_accumulation, device, device_index):
     if torch_tensor.grad is None:
@@ -392,7 +377,6 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                map_optimizer_attributes, world_rank=-1, world_size=1,
                                                gradient_accumulation_steps=1, bind_parameters=False,
                                                use_mixed_precision=False, allreduce_post_accumulation=False,
-                                               loss_scale_input_name='', scaled_loss_output_name='',
                                                partition_optimizer=False, enable_grad_norm_clip=True):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
@@ -403,11 +387,6 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.world_size = world_size
     ort_parameters.gradient_accumulation_steps = gradient_accumulation_steps
     ort_parameters.use_mixed_precision = use_mixed_precision
-    if ort_parameters.use_mixed_precision:
-        assert(loss_scale_input_name)
-        assert(scaled_loss_output_name)
-        ort_parameters.loss_scale_input_name = loss_scale_input_name
-        ort_parameters.scaled_loss_output_name = scaled_loss_output_name
     ort_parameters.allreduce_post_accumulation = allreduce_post_accumulation
     ort_parameters.partition_optimizer = partition_optimizer
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
@@ -592,11 +571,6 @@ class ORTTrainer():
             if self.post_process_model_fn_:
                 self.post_process_model_fn_(self.onnx_model_)
 
-        if self.use_mixed_precision:
-            self.loss_scale_input_name, self.scaled_loss_output_name = add_loss_scale_input(self.onnx_model_)
-            self.input_desc_with_lr_and_loss_scale = [*self.input_desc_with_lr, IODescription(self.loss_scale_input_name, [], torch.float32)]
-        else:
-            self.loss_scale_input_name, self.scaled_loss_output_name = '', ''
         self.enable_grad_norm_clip_ = enable_grad_norm_clip
 
         self.verify_fully_optimized_model(self.onnx_model_)
@@ -607,8 +581,12 @@ class ORTTrainer():
                 self.world_rank, self.world_size,
                 self.gradient_accumulation_steps, bind_parameters=False,
                 use_mixed_precision=use_mixed_precision, allreduce_post_accumulation=allreduce_post_accumulation,
-                loss_scale_input_name=self.loss_scale_input_name, scaled_loss_output_name=self.scaled_loss_output_name,
                 partition_optimizer=partition_optimizer, enable_grad_norm_clip=self.enable_grad_norm_clip_)
+
+        if self.use_mixed_precision:
+            self.input_desc_with_lr_and_loss_scale = [
+                *self.input_desc_with_lr,
+                IODescription(self.session.loss_scale_input_name, [], torch.float32)]
 
         # ORT backend has modified model output dtype from float32 to float16.
         for o_desc in self.model_desc_.outputs_:
