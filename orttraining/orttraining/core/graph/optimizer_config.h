@@ -45,6 +45,7 @@ struct OptimizerGraphConfig {
   int64_t horovod_reduce_op{1};
   std::string loss_scale_input_name{};  // empty string means no loss scaling factor is applied
   AdasumReductionType adasum_reduction_type{AdasumReductionType::None};
+  bool enable_grad_norm_clip{true};
 };
 
 }  // namespace training
