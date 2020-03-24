@@ -104,7 +104,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   // Calculate output dimensions, and handle any negative padding
   TArray<int64_t> lower_pads(dimension_count);
   TArray<int64_t> upper_pads(dimension_count);
-  for (size_t i = 0; i < dimension_count; i++) {
+  for (auto i = 0; i < dimension_count; i++) {
     lower_pads[i] = (*p_pads)[i] + (*p_slices)[i];
     upper_pads[i] = (*p_pads)[i + dimension_count] + (*p_slices)[i + dimension_count];
     output_dims[i] += lower_pads[i] + upper_pads[i];

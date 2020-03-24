@@ -52,7 +52,7 @@ struct TArray {
     memcpy(data_, vec.data(), vec.size() * sizeof(T));
   }
 
-  __host__ __device__ __forceinline__ T& operator[](int32_t index) {
+  T& operator[](int32_t index) {
     return data_[index];
   }
 

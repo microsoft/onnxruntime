@@ -94,7 +94,7 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
 
   TArray<fast_divmod> output_strides(rank);
   for (auto i = 0; i < rank; i++) {
-    output_strides[i] = fast_divmod(original_output_strides[i]);
+    output_strides[i] = fast_divmod(static_cast<int>(original_output_strides[i]));
   }
 
   return ExpandImpl(

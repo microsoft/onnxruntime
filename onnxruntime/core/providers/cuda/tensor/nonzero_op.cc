@@ -73,7 +73,7 @@ Status NonZero<T>::ComputeInternal(OpKernelContext* context) const {
     TArray<fast_divmod> fdm_x_strides(x_rank);
     TensorPitches x_strides(x_dims);
     for (auto i = 0; i < x_rank; i++) {
-      fdm_x_strides[i] = fast_divmod(x_strides[i]);
+      fdm_x_strides[i] = fast_divmod(static_cast<int>(x_strides[i]));
     }
 
     auto* output_tensor = context->Output(0, {x_rank, nonzero_elements});

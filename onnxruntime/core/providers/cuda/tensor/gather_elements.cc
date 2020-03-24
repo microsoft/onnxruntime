@@ -56,7 +56,7 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   TArray<fast_divmod> fdm_indices_strides(indices_rank);
   TensorPitches indices_strides(indices_dims);
   for (auto i = 0; i < indices_rank; i++) {
-    fdm_indices_strides[i] = fast_divmod(indices_strides[i]);
+    fdm_indices_strides[i] = fast_divmod(static_cast<int>(indices_strides[i]));
   }
 
   size_t element_size = input_tensor->DataType()->Size();
