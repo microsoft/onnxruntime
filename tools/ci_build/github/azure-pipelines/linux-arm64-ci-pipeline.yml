@@ -1,5 +1,5 @@
 jobs:
-- template: templates/linux-ci.yml
+- template: templates/linux-arm-ci.yml
   parameters:
     AgentPool : 'ARM64 with GPU'
     JobName: 'Linux_CI_Dev_ARM64'

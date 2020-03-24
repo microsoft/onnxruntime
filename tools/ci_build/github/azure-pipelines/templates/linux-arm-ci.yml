@@ -1,0 +1,31 @@
+parameters:
+  AgentPool : 'Linux-CPU'
+  JobName : 'Linux_CI_Dev'
+  BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --build_wheel"'
+  DoNugetPack: 'false'
+  NuPackScript: ''
+  ArtifactName: 'drop-linux'
+  TimeoutInMinutes: 120
+
+jobs:
+- job: ${{ parameters.JobName }}
+  workspace:
+    clean: all
+  timeoutInMinutes:  ${{ parameters.TimeoutInMinutes }}
+  pool: ${{ parameters.AgentPool }}
+  steps:
+    - script: ${{ parameters.BuildCommand }}
+      displayName: 'Command Line Script'
+    - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
+      - script: |
+         ${{ parameters.NuPackScript }}
+        displayName: 'Create Artifacts'
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline Artifact'
+        inputs:
+          artifactName: ${{ parameters.ArtifactName }}
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+    - template: clean-agent-build-directory-step.yml
