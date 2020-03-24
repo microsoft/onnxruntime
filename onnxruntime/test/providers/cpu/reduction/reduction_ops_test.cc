@@ -1535,7 +1535,7 @@ TEST(ReductionOpTest, ArgMax2D) {
 }
 
 TEST(ReductionOpTest, ArgMax2D_select_last) {
-  OpTester test("ArgMax");
+  OpTester test("ArgMax", 12);
   test.AddAttribute("axis", (int64_t)1);
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddAttribute("select_last_index", (int64_t)1);

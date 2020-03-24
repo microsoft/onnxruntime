@@ -592,7 +592,6 @@ Status ArgMax<T>::Compute(OpKernelContext* ctx) const {
   Tensor* reduced;
   PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_);
 
-  // The transposed is now column major
   auto* output_data = reduced->template MutableData<int64_t>();
   auto matrixData = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks);
   if (select_last_index_) {
@@ -634,10 +633,8 @@ Status ArgMin<T>::Compute(OpKernelContext* ctx) const {
     for (int64_t i = 0; i < block_size; ++i) {
       int64_t min_index = 0;
       T min_val = matrixData(i, 0);
-      std::cout << i << ":" << 0 << " " << min_val << std::endl;
       for (int64_t c = 1; c < blocks; ++c) {
         auto v = matrixData(i, c);
-        std::cout << i << ":" << c << " " << v << std::endl;
         if (v <= min_val) {
           min_index = c;
           min_val = v;
