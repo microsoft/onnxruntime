@@ -45,7 +45,7 @@ __global__ void NonZeroCountEachBlockKernel(const InputT* x, int64_t x_size, int
 
 template <typename InputT, int THREADS_PER_BLOCK>
 __global__ void NonZeroOutputPositionsKernel(
-    const InputT* x, int64_t x_size, int x_rank, const fast_divmod* x_strides,
+    const InputT* x, int64_t x_size, int x_rank, const TArray<fast_divmod> x_strides,
     const int* prefix_counts, int nonzero_elements, int64_t* results) {
   typedef cub::BlockScan<int, THREADS_PER_BLOCK> BlockScanT;
   __shared__ typename BlockScanT::TempStorage temp_storage;
@@ -78,7 +78,7 @@ cudaError_t NonZeroCountEachBlock(const InputT* x, int64_t x_size, int* count_in
 
 template <typename InputT>
 cudaError_t NonZeroOutputPositions(
-    const InputT* x, int64_t x_size, int x_rank, const fast_divmod* x_strides,
+    const InputT* x, int64_t x_size, int x_rank, const TArray<fast_divmod>& x_strides,
     const int* prefix_counts, int nonzero_elements, int64_t* results) {
   int num_blocks = NonZeroCalcBlockCount(x_size);
   NonZeroOutputPositionsKernel<InputT, NONZERO_THREADS_PER_BLOCK><<<num_blocks, NONZERO_THREADS_PER_BLOCK>>>(
@@ -94,12 +94,12 @@ template cudaError_t NonZeroCountEachBlock(const int32_t*, int64_t, int*);
 template cudaError_t NonZeroCountEachBlock(const float*, int64_t, int*);
 template cudaError_t NonZeroCountEachBlock(const half*, int64_t, int*);
 
-template cudaError_t NonZeroOutputPositions(const bool*, int64_t, int, const fast_divmod*, const int*, int, int64_t*);
-template cudaError_t NonZeroOutputPositions(const uint8_t*, int64_t, int, const fast_divmod*, const int*, int, int64_t*);
-template cudaError_t NonZeroOutputPositions(const int64_t*, int64_t, int, const fast_divmod*, const int*, int, int64_t*);
-template cudaError_t NonZeroOutputPositions(const int32_t*, int64_t, int, const fast_divmod*, const int*, int, int64_t*);
-template cudaError_t NonZeroOutputPositions(const float*, int64_t, int, const fast_divmod*, const int*, int, int64_t*);
-template cudaError_t NonZeroOutputPositions(const half*, int64_t, int, const fast_divmod*, const int*, int, int64_t*);
+template cudaError_t NonZeroOutputPositions(const bool*, int64_t, int, const TArray<fast_divmod>&, const int*, int, int64_t*);
+template cudaError_t NonZeroOutputPositions(const uint8_t*, int64_t, int, const TArray<fast_divmod>&, const int*, int, int64_t*);
+template cudaError_t NonZeroOutputPositions(const int64_t*, int64_t, int, const TArray<fast_divmod>&, const int*, int, int64_t*);
+template cudaError_t NonZeroOutputPositions(const int32_t*, int64_t, int, const TArray<fast_divmod>&, const int*, int, int64_t*);
+template cudaError_t NonZeroOutputPositions(const float*, int64_t, int, const TArray<fast_divmod>&, const int*, int, int64_t*);
+template cudaError_t NonZeroOutputPositions(const half*, int64_t, int, const TArray<fast_divmod>&, const int*, int, int64_t*);
 
 }  // namespace cuda
 }  // namespace onnxruntime
