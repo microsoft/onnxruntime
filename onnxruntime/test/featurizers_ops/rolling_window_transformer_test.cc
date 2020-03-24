@@ -12,28 +12,37 @@ namespace test {
 
 namespace {
 
-using InputType = int32_t;
-using TransformerT = NS::Featurizers::AnalyticalRollingWindowTransformer<InputType>;
+using InputType = std::tuple<std::vector<std::string> const &, std::int32_t const &>;
+using EstimatorT = NS::Featurizers::GrainedAnalyticalRollingWindowEstimator<std::int32_t>;
+using AnalyticalRollingWindowCalculation = NS::Featurizers::AnalyticalRollingWindowCalculation;
 
-std::vector<uint8_t> GetTransformerStream(TransformerT& transformer) {
+std::vector<uint8_t> GetStream(EstimatorT& estimator, const std::vector<InputType>& trainingBatches) {
+  NS::TestHelpers::Train<EstimatorT, InputType>(estimator, trainingBatches);
+  auto pTransformer = estimator.create_transformer();
   NS::Archive ar;
-  transformer.save(ar);
+  pTransformer->save(ar);
   return ar.commit();
 }
 
 } // namespace
 
-TEST(FeaturizersTests, RollingWindow_Transformer_Draft) {
+TEST(FeaturizersTests, RollingWindow_Transformer_Grained_Mean_1_grain_window_size_1_horizon_1) {
   //parameter setting
-  TransformerT transformer(1, NS::Featurizers::AnalyticalRollingWindowCalculation::Mean, 2);
+  NS::AnnotationMapsPtr                   pAllColumnAnnotations(NS::CreateTestAnnotationMapsPtr(1));
+  NS::Featurizers::GrainedAnalyticalRollingWindowEstimator<int32_t>      estimator(pAllColumnAnnotations, 1, AnalyticalRollingWindowCalculation::Mean, 1);
+  using GrainType = std::vector<std::string>;
+  using GrainedInputType = std::tuple<GrainType, int32_t>;
+  GrainType const grain({"one"});
+  InputType const tup1 = std::make_tuple(grain, 1);
+  std::vector<InputType> const training_batch = {tup1};
 
-  auto stream = GetTransformerStream(transformer);
+  auto stream = GetStream(estimator, training_batch);
   auto dim = static_cast<int64_t>(stream.size());
   OpTester test("RollingWindowTransformer", 1, onnxruntime::kMSFeaturizersDomain);
   test.AddInput<uint8_t>("State", {dim}, stream);
-  test.AddInput<std::string>("Grains", {4, 1}, {"a", "a", "a", "a"});
-  test.AddInput<int32_t>("Target", {4}, {1, 2, 3, 4});
-  test.AddOutput<double>("Output", {4, 2}, {NS::Traits<double>::CreateNullValue(), NS::Traits<double>::CreateNullValue(), NS::Traits<double>::CreateNullValue(), 1.0, 1.0, 2.0, 2.0, 3.0});
+  test.AddInput<std::string>("Grains", {3, 1}, {"one", "one", "one"});
+  test.AddInput<int32_t>("Target", {3}, {1, 2, 3});
+  test.AddOutput<double>("Output", {3, 1}, {NS::Traits<double>::CreateNullValue(), 1.0, 2.0});
 
   test.Run();
 }
