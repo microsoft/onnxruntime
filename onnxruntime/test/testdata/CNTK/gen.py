@@ -10,23 +10,30 @@ from onnx import numpy_helper
 model_file = 'model.onnx'
 data_dir = 'test_data_set_0'
 
+
 def SaveTensorProto(file_path, variable, data, name):
     # ONNX input shape always has sequence axis as the first dimension, if sequence axis exists
     if len(variable.dynamic_axes) == 2:
-        data = data.transpose((1,0,)+tuple(range(2,len(data.shape))))
+        data = data.transpose((
+            1,
+            0,
+        ) + tuple(range(2, len(data.shape))))
     tp = numpy_helper.from_array(data, name if name else variable.uid)
     onnx.save_tensor(tp, file_path)
+
 
 def SaveData(test_data_dir, prefix, variables, data_list, name_replacements=None):
     if isinstance(data_list, np.ndarray):
         data_list = [data_list]
     for (i, d), v in zip(enumerate(data_list), variables):
-        SaveTensorProto(os.path.join(test_data_dir, '{0}_{1}.pb'.format(prefix, i)), v, d, name_replacements[v.uid] if name_replacements else None)
+        SaveTensorProto(os.path.join(test_data_dir, '{0}_{1}.pb'.format(prefix, i)), v, d,
+                        name_replacements[v.uid] if name_replacements else None)
+
 
 def Save(dir, func, feed, outputs):
     if not os.path.exists(dir):
         os.makedirs(dir)
-    onnx_file = os.path.join(dir,model_file)
+    onnx_file = os.path.join(dir, model_file)
     func.save(onnx_file, C.ModelFormat.ONNX)
 
     # onnx model may have different name for RNN initial states as inputs
@@ -40,10 +47,10 @@ def Save(dir, func, feed, outputs):
                 cntk_to_actual_names[cntk_name] = actual_input_name
 
     if type(feed) is not dict:
-       feed = {func.arguments[0]:feed}
+        feed = {func.arguments[0]: feed}
 
     if type(outputs) is not dict:
-       outputs = {func.outputs[0]:outputs}
+        outputs = {func.outputs[0]: outputs}
 
     test_data_dir = os.path.join(dir, data_dir)
     if not os.path.exists(test_data_dir):
@@ -52,20 +59,29 @@ def Save(dir, func, feed, outputs):
     SaveData(test_data_dir, 'input', func.arguments, [feed[var] for var in func.arguments], cntk_to_actual_names)
     SaveData(test_data_dir, 'output', func.outputs, [outputs[var] for var in func.outputs])
 
+
 def GenSimple():
-    x = C.input_variable((1,3,)) # TODO: fix CNTK exporter bug with shape (3,)
+    x = C.input_variable((
+        1,
+        3,
+    ))  # TODO: fix CNTK exporter bug with shape (3,)
     y = C.layers.Embedding(2)(x) + C.parameter((-1,))
-    data_x = np.random.rand(1,*x.shape).astype(np.float32)
+    data_x = np.random.rand(1, *x.shape).astype(np.float32)
     data_y = y.eval(data_x)
     Save('test_simple', y, data_x, data_y)
 
+
 def GenSharedWeights():
-    x = C.input_variable((1,3,))
+    x = C.input_variable((
+        1,
+        3,
+    ))
     y = C.layers.Embedding(2)(x)
     y = y + y.parameters[0]
-    data_x = np.random.rand(1,*x.shape).astype(np.float32)
+    data_x = np.random.rand(1, *x.shape).astype(np.float32)
     data_y = y.eval(data_x)
     Save('test_shared_weights', y, data_x, data_y)
+
 
 def GenSimpleMNIST():
     input_dim = 784
@@ -77,22 +93,29 @@ def GenSimpleMNIST():
 
     scaled_input = C.element_times(C.constant(0.00390625, shape=(input_dim,)), feature)
 
-    z = C.layers.Sequential([C.layers.For(range(num_hidden_layers), lambda i: C.layers.Dense(hidden_layers_dim, activation=C.relu)),
-                    C.layers.Dense(num_output_classes)])(scaled_input)
+    z = C.layers.Sequential([
+        C.layers.For(range(num_hidden_layers), lambda i: C.layers.Dense(hidden_layers_dim, activation=C.relu)),
+        C.layers.Dense(num_output_classes)
+    ])(scaled_input)
 
     model = C.softmax(z)
 
-    data_feature = np.random.rand(1,*feature.shape).astype(np.float32)
+    data_feature = np.random.rand(1, *feature.shape).astype(np.float32)
     data_output = model.eval(data_feature)
     Save('test_simpleMNIST', model, data_feature, data_output)
 
-def GenMatMul_1k():
-    feature = C.input_variable((1024, 1024,), np.float32)
-    model = C.times(feature, C.parameter((1024,1024), init=C.glorot_uniform()))
 
-    data_feature = np.random.rand(1,*feature.shape).astype(np.float32)
+def GenMatMul_1k():
+    feature = C.input_variable((
+        1024,
+        1024,
+    ), np.float32)
+    model = C.times(feature, C.parameter((1024, 1024), init=C.glorot_uniform()))
+
+    data_feature = np.random.rand(1, *feature.shape).astype(np.float32)
     data_output = model.eval(data_feature)
     Save('test_MatMul_1k', model, data_feature, data_output)
+
 
 def LSTM(cell_dim, use_scan=True):
     # we now create an LSTM_cell function and call it with the input and placeholders
@@ -104,10 +127,11 @@ def LSTM(cell_dim, use_scan=True):
         if use_scan:
             LSTM_func_root = C.as_composite(LSTM_func.outputs[0].owner.block_root)
             args = LSTM_func_root.arguments
-            LSTM_func = LSTM_func_root.clone(C.CloneMethod.share, {args[0]:input, args[1]:dh, args[2]:dc})
+            LSTM_func = LSTM_func_root.clone(C.CloneMethod.share, {args[0]: input, args[1]: dh, args[2]: dc})
         return LSTM_func
 
     return func
+
 
 def GenLSTMx4(use_scan):
     feature = C.sequence.input_variable((128,), np.float32)
@@ -123,20 +147,21 @@ def GenLSTMx4(use_scan):
 
     postfix = 'Scan' if use_scan else 'LSTM'
 
-    data_feature = np.random.rand(1,64,128).astype(np.float32)
+    data_feature = np.random.rand(1, 64, 128).astype(np.float32)
     data_output = np.asarray(model.eval(data_feature))
     Save('test_LSTMx4_' + postfix, model, data_feature, data_output)
+
 
 def GenScan():
     np.random.seed(0)
     feature = C.sequence.input_variable((3,), np.float32)
-    model = C.layers.For(range(4), lambda : C.layers.Recurrence(LSTM(2, use_scan=True)))(feature)
+    model = C.layers.For(range(4), lambda: C.layers.Recurrence(LSTM(2, use_scan=True)))(feature)
 
-    data_feature = np.random.rand(2,5,3).astype(np.float32)
+    data_feature = np.random.rand(2, 5, 3).astype(np.float32)
     data_output = np.asarray(model.eval(data_feature))
 
     Save('test_Scan', model, data_feature, data_output)
-    
+
     # Currently CNTK only outputs batch == 1, do some editing
     in_mp = onnx.load('test_Scan/model.onnx')
     out_mp = onnx.ModelProto()
@@ -163,7 +188,7 @@ def GenScan():
     for vi in list(out_mp.graph.input) + list(out_mp.graph.output) + list(out_mp.graph.value_info):
         dim = vi.type.tensor_type.shape.dim
         dim[len(dim) - 2].dim_param = 'batch'
-        
+
     for n in out_mp.graph.node:
         if n.op_type == 'Scan':
             body = [attr for attr in n.attribute if attr.name == 'body'][0]
@@ -173,32 +198,39 @@ def GenScan():
 
     onnx.save(out_mp, 'test_Scan/model.onnx', 'wb')
 
+
 def GenSimpleScan():
     feature = C.sequence.input_variable((128,), np.float32)
     param = C.parameter(shape=(1,), dtype=np.float32)
     scan = C.layers.Recurrence(lambda h, x: x + h + param)(feature)
     model = C.sequence.reduce_sum(scan)
-    data_feature = np.random.rand(1,64,128).astype(np.float32)
+    data_feature = np.random.rand(1, 64, 128).astype(np.float32)
     data_output = np.asarray(model.eval(data_feature), dtype=np.float32)
     Save('test_SimpleScan', model, data_feature, data_output)
+
 
 def GenGRU():
     feature = C.sequence.input_variable((64,), np.float32)
     gru_fw = C.layers.Recurrence(C.layers.GRU(128))(feature)
     gru_bw = C.layers.Recurrence(C.layers.GRU(128), go_backwards=True)(feature)
     model = C.splice(gru_fw, gru_bw, axis=0)
-    data_feature = np.random.rand(1,16,64).astype(np.float32)
+    data_feature = np.random.rand(1, 16, 64).astype(np.float32)
     data_output = np.asarray(model.eval(data_feature))
     Save('test_GRU', model, data_feature, data_output)
 
+
 def GenRNN():
     feature = C.sequence.input_variable((64,), np.float32)
-    model = C.optimized_rnnstack(feature, C.parameter((C.InferredDimension, 64,), init=C.glorot_uniform()), 128, 2, True, 'rnnReLU')
-    data_feature = np.random.rand(1,16,64).astype(np.float32)
+    model = C.optimized_rnnstack(feature, C.parameter((
+        C.InferredDimension,
+        64,
+    ), init=C.glorot_uniform()), 128, 2, True, 'rnnReLU')
+    data_feature = np.random.rand(1, 16, 64).astype(np.float32)
     data_output = np.asarray(model.eval(data_feature))
     Save('test_RNN', model, data_feature, data_output)
 
-if __name__=='__main__':
+
+if __name__ == '__main__':
     np.random.seed(0)
     GenSimple()
     GenSharedWeights()
