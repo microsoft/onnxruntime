@@ -387,10 +387,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         compilers = sorted(glob.glob(args.ios_toolchain_dir + "/bin/*-clang*"))
         os.environ["PATH"] = args.ios_toolchain_dir + "/bin:" + os.environ.get("PATH", "")
         os.environ["LD_LIBRARY_PATH"] = args.ios_toolchain_dir + "/lib:" + os.environ.get("LD_LIBRARY_PATH", "")
-        #print(compilers)
-        #exit(0)
         if len(compilers) != 2:
-            raise BuildError("error identifiying compilers in toolchaindir")
+            raise BuildError("error identifying compilers in ios_toolchain_dir")
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + ("arm64" if args.arm64 else "arm"),
                        "-DCMAKE_SYSTEM_NAME=iOSCross",
                        "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
