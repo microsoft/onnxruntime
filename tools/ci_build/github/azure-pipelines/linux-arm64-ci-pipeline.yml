@@ -4,5 +4,6 @@ jobs:
     AgentPool : 'ARM64 with GPU'
     JobName: 'Linux_CI_Dev_ARM64'
     BuildCommand: './build.sh --config Release --update --build --build_wheel --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu'
+    ExportCommand: 'export PATH=/home/nvidia/tools/cmake-3.16.4/bin/:$PATH'
     DoNugetPack:  'false'
     ArtifactName: 'drop-linux-arm64'
