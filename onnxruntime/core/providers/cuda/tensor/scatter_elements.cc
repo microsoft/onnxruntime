@@ -128,7 +128,7 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
   TArray<fast_divmod> fdm_indices_strides(rank);
   TensorPitches indices_strides(indices_dims);
   for (auto i = 0; i < rank; i++) {
-    fdm_indices_strides[i] = fast_divmod(indices_strides[i]);
+    fdm_indices_strides[i] = fast_divmod(static_cast<int>(indices_strides[i]));
   }
 
   MLDataType Tin_type = indices_tensor->DataType();

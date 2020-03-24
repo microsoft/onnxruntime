@@ -55,7 +55,7 @@ Status Tile<T>::ComputeInternal(OpKernelContext* ctx) const {
   TArray<fast_divmod> fdm_output_strides(rank);
   TensorPitches output_pitches(output_dims);
   for (auto i = 0; i < rank; i++) {
-    fdm_output_strides[i] = fast_divmod(output_pitches[i]);
+    fdm_output_strides[i] = fast_divmod(static_cast<int>(output_pitches[i]));
   }
 
   if (output_tensor.Shape().Size() > 0) {
