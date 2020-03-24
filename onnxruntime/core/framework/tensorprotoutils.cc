@@ -592,42 +592,42 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 }
 
 template <typename T>
-static Status CopySparseData(int64_t n_sparse_elements,
+static Status CopySparseData(size_t n_sparse_elements,
                              const ONNX_NAMESPACE::TensorProto& indices,
                              gsl::span<const int64_t> dims,
-                             std::function<void(int64_t from_idx, int64_t to_idx)> copier) {
+                             std::function<void(size_t from_idx, size_t to_idx)> copier) {
   Status status = Status::OK();
   TensorShape indices_shape(indices.dims().data(), indices.dims().size());
 
-  auto indices_data = gsl::make_span<const int64_t>(indices.int64_data().data(), indices_shape.Size());
+  auto indices_data = gsl::make_span<const int64_t>(indices.int64_data().data(), static_cast<size_t>(indices_shape.Size()));
 
   if (indices_shape.NumDimensions() == 1) {
     // flattened indexes
-    for (int64_t i = 0; i < n_sparse_elements; ++i) {
-      copier(i, indices_data[i]);
+    for (size_t i = 0; i < n_sparse_elements; ++i) {
+      copier(i, static_cast<size_t>(indices_data[i]));
     }
   } else if (indices_shape.NumDimensions() == 2) {
     // entries in format {NNZ, rank}
-    auto rank = indices_shape[1];
-    ORT_ENFORCE(static_cast<size_t>(rank) == dims.size());
+    size_t rank = static_cast<size_t>(indices_shape[1]);
+    ORT_ENFORCE(rank == dims.size() && rank > 0);
     const int64_t* cur_index = indices_data.data();
-    std::vector<int64_t> multipliers;
+    std::vector<size_t> multipliers;
     multipliers.resize(rank);
 
     // calculate sum of inner dimension elements for each dimension.
     // e.g. if shape {2,3,4}, the result should be {3*4, 4, 1}
     multipliers[rank - 1] = 1;
-    for (int64_t r = rank - 2; r >= 0; --r) {
-      multipliers[r] = dims[r + 1] * multipliers[r + 1];
+    for (int32_t r = static_cast<int32_t>(rank) - 2; r >= 0; --r) {
+      multipliers[r] = static_cast<size_t>(dims[r + 1]) * multipliers[r + 1];
     }
 
     // calculate the offset for the entry
     // e.g. if shape was {2,3,4} and entry was (1, 0, 2) the offset is 14
     // as there are 2 rows, each with 12 entries per row
-    for (int64_t i = 0; i < n_sparse_elements; ++i) {
-      int64_t idx = 0;
-      for (int64_t j = 0; j < rank; ++j) {
-        idx += cur_index[j] * multipliers[j];
+    for (size_t i = 0; i < n_sparse_elements; ++i) {
+      size_t idx = 0;
+      for (size_t j = 0; j < rank; ++j) {
+        idx += static_cast<size_t>(cur_index[j]) * multipliers[j];
       }
 
       copier(i, idx);
@@ -651,12 +651,12 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   auto type = sparse_values.data_type();
   dense.set_data_type(type);
 
-  int64_t n_sparse_elements = 1;
+  SafeInt<size_t> n_sparse_elements = 1;
   for (auto dim : sparse_values.dims()) {
     n_sparse_elements *= dim;
   }
 
-  SafeInt<int32_t> n_dense_elements = 1;
+  SafeInt<size_t> n_dense_elements = 1;
   for (auto dim : sparse.dims()) {
     n_dense_elements *= dim;
     dense.add_dims(dim);
@@ -673,7 +673,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
     std::vector<unsigned char> sparse_data_storage(sparse_bytes, 0);
     void* sparse_data = sparse_data_storage.data();
 
-    int32_t element_size = 0;
+    size_t element_size = 0;
 
     // setup buffer for output
     switch (type) {
@@ -724,7 +724,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
         status = CopySparseData<uint32_t>(
             n_sparse_elements,
             indices, dims,
-            [sparse_data, dense_data_span](int64_t from_idx, int64_t to_idx) {
+            [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
               dense_data_span[to_idx] = static_cast<const uint32_t*>(sparse_data)[from_idx];
             });
 
@@ -735,7 +735,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
         status = CopySparseData<uint64_t>(
             n_sparse_elements,
             indices, dims,
-            [sparse_data, dense_data_span](int64_t from_idx, int64_t to_idx) {
+            [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
               dense_data_span[to_idx] = static_cast<const uint64_t*>(sparse_data)[from_idx];
             });
 
@@ -760,7 +760,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
     status = CopySparseData<std::string>(
         n_sparse_elements,
         indices, dims,
-        [&sparse_values, &dense_strings](int64_t from_idx, int64_t to_idx) {
+        [&sparse_values, &dense_strings](size_t from_idx, size_t to_idx) {
           const std::string& input = sparse_values.string_data()[SafeInt<int32_t>(from_idx)];
           *dense_strings->Mutable(SafeInt<int32_t>(to_idx)) = input;
         });
