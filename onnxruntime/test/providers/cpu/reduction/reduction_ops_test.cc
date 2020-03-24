@@ -610,6 +610,40 @@ TEST(ReductionOpTest, ReduceMax_int64) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
 }
 
+TEST(ReductionOpTest, ReduceMax_int8) {
+  OpTester test("ReduceMax", 12);
+  test.AddAttribute("axes", std::vector<int64_t>{1, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int8_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int8_t>("reduced", {3, 1, 1}, {4, 8, 12});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+}
+
+TEST(ReductionOpTest, ReduceMax_uint8) {
+  OpTester test("ReduceMax", 12);
+  test.AddAttribute("axes", std::vector<int64_t>{1, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<uint8_t>("data", {3, 2, 2},
+                        {1, 2,
+                         3, 4,
+
+                         5, 6,
+                         7, 8,
+
+                         9, 10,
+                         11, 12});
+  test.AddOutput<uint8_t>("reduced", {3, 1, 1}, {4, 8, 12});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+}
+
 #if !(defined USE_TENSORRT) && !(defined USE_TVM)
 TEST(ReductionOpTest, ReduceMax0DTensor) {
   OpTester test("ReduceMax");
@@ -857,6 +891,41 @@ TEST(ReductionOpTest, ReduceMin_int32) {
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {1, 3});
   test.Run();
 }
+
+TEST(ReductionOpTest, ReduceMin_int8) {
+  OpTester test("ReduceMin", 12);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int8_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int8_t>("reduced", {1, 2, 1}, {1, 3});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_uint8) {
+  OpTester test("ReduceMin", 12);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<uint8_t>("data", {3, 2, 2},
+                        {1, 2,
+                         3, 4,
+
+                         5, 6,
+                         7, 8,
+
+                         9, 10,
+                         11, 12});
+  test.AddOutput<uint8_t>("reduced", {1, 2, 1}, {1, 3});
+  test.Run();
+}
+
 
 #if !(defined USE_TENSORRT) && !(defined USE_TVM)
 TEST(ReductionOpTest, ReduceMin0DTensor) {

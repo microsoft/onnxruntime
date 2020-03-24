@@ -78,6 +78,23 @@ namespace onnxruntime {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), \
       x<int64_t>);
 
+#define REGISTER_UNARY_ELEMENTWISE_KERNEL_INT8_ONLY(x, sinceVersion)                 \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                     \
+      x,                                                                              \
+      sinceVersion,                                                                   \
+      int8_t,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int8_t>()), \
+      x<int8_t>);
+
+#define REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT8_ONLY(x, sinceVersion)                 \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                    \
+      x,                                                                             \
+      sinceVersion,                                                                  \
+      uint8_t,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()), \
+      x<uint8_t>);
+
+
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL1, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceL1, 11);
 
@@ -95,6 +112,11 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMax, 11);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceMax, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMax, 11);
 
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMax, 12);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMax, 12);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT8_ONLY(ReduceMax, 12);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT8_ONLY(ReduceMax, 12);
+
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMean, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMean, 11);
 
@@ -102,6 +124,11 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMin, 11);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceMin, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMin, 11);
+
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMin, 12);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMin, 12);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT8_ONLY(ReduceMin, 12);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT8_ONLY(ReduceMin, 12);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceProd, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceProd, 11);
