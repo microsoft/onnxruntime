@@ -404,10 +404,10 @@ public:
     std::vector<ComPtr<IDMLCompiledOperator>> m_compiledOperators;
 };
 
-class DmlOperatorElementwiseClip : public DmlOperator
+class DmlOperatorElementwiseClip7 : public DmlOperator
 {
 public:
-    DmlOperatorElementwiseClip(const MLOperatorKernelCreationContext& kernelInfo) : DmlOperator(kernelInfo)
+    DmlOperatorElementwiseClip7(const MLOperatorKernelCreationContext& kernelInfo) : DmlOperator(kernelInfo)
     {
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 1);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
@@ -422,6 +422,42 @@ public:
         opDesc.OutputTensor = outputDescs.data();
         opDesc.Min = kernelInfo.GetOptionalAttribute<float>(AttrName::Min, std::numeric_limits<float>::lowest());
         opDesc.Max = kernelInfo.GetOptionalAttribute<float>(AttrName::Max, std::numeric_limits<float>::max());
+
+        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_CLIP, &opDesc}, kernelInfo);
+    }
+};
+
+class DmlOperatorElementwiseClip11 : public DmlOperator
+{
+public:
+    DmlOperatorElementwiseClip11(const MLOperatorKernelCreationContext& kernelInfo) : DmlOperator(kernelInfo)
+    {
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() >= 1 && kernelInfo.GetInputCount() <= 3);
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
+
+        std::vector<std::optional<uint32_t>> inputIndices = {0}; // min and max (1 and 2) are CPU-bound.
+        std::vector<std::optional<uint32_t>> outputIndices = {0};
+        DmlOperator::Initialize(kernelInfo, inputIndices, outputIndices, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
+
+        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
+        float minValue = -FLT_MAX;
+        float maxValue = FLT_MAX;
+        if (kernelInfo.IsInputValid(1))
+        {
+            minValue = ReadScalarTensorAsFloat64(kernelInfo.GetConstantInputTensor(1));
+        }
+        if (kernelInfo.IsInputValid(2))
+        {
+            maxValue = ReadScalarTensorAsFloat64(kernelInfo.GetConstantInputTensor(2));
+        }
+
+        DML_ELEMENT_WISE_CLIP_OPERATOR_DESC opDesc = {};
+        opDesc.InputTensor = inputDescs.data();
+        opDesc.OutputTensor = outputDescs.data();
+        opDesc.Min = minValue;
+        opDesc.Max = maxValue;
 
         SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_CLIP, &opDesc}, kernelInfo);
     }
@@ -681,7 +717,8 @@ DML_OP_DEFINE_CREATION_FUNCTION(Max,              DmlOperatorElementwiseBinaryLo
 DML_OP_DEFINE_CREATION_FUNCTION(Mean,             DmlOperatorElementwiseMean);
 
 // Operators with extra attributes:
-DML_OP_DEFINE_CREATION_FUNCTION(Clip,             DmlOperatorElementwiseClip);
+DML_OP_DEFINE_CREATION_FUNCTION(Clip7,            DmlOperatorElementwiseClip7);
+DML_OP_DEFINE_CREATION_FUNCTION(Clip11,           DmlOperatorElementwiseClip11);
 DML_OP_DEFINE_CREATION_FUNCTION(Pow,              DmlOperatorElementwisePow);
 DML_OP_DEFINE_CREATION_FUNCTION(QuantizeLinear,   DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_QUANTIZE_LINEAR_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(DequantizeLinear, DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_DEQUANTIZE_LINEAR_OPERATOR_DESC>);

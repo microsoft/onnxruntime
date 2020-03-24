@@ -77,7 +77,9 @@ void RemoveValuesByIndex(gsl::span<const uint32_t> indices, bool keepOneValue, /
 
 int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p);
 double ReadAsFloat64(MLOperatorTensorDataType tensorDataType, const void* p);
-void ReadScalarTensorData(const MLOperatorTensor& tensor, void* data, size_t dataByteSize);
+void ReadScalarTensorData(const MLOperatorTensor& tensor, /*out*/ void* data, size_t dataByteSize);
+int64_t ReadScalarTensorAsInt64(const MLOperatorTensor& tensor);
+double ReadScalarTensorAsFloat64(const MLOperatorTensor& tensor);
 
 class EdgeShapes {
  public:
@@ -1220,7 +1222,7 @@ protected:
     std::vector<DimensionType> m_outputDimensions;
 
     MLOperatorTensorDataType m_tensorDataType = MLOperatorTensorDataType::Undefined;
-    using TensorScalarData = typename std::aligned_storage<sizeof(double), alignof(double)>::type;
+    using TensorScalarData = typename std::aligned_storage_t<sizeof(double), alignof(double)>;
     TensorScalarData m_valueStart;
     TensorScalarData m_valueLimit;
     TensorScalarData m_valueDelta;
@@ -1322,7 +1324,8 @@ using ShapeInferenceHelper_Log = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Abs = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Ceil = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Floor = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_Clip = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Clip7 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Clip11 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Greater = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Less = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Equal = GetBroadcastedOutputShapeHelper;
