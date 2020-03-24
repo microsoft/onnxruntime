@@ -141,8 +141,9 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 inputNamesArray[inputIndex] = input.Name;
 
-                // create native OrtValue from the input if feasible, else throw notsupported exception for now
-                input.ToNativeOnnxValue(out inputValuesArray[inputIndex], out pinnedInputBufferHandles[inputIndex]);
+                // create Tensor from the input if feasible, else throw notsupported exception for now
+                input.ToNativeOnnxValue(out inputTensors[inputIndex], 
+                                        out pinnedBufferHandles[inputIndex]);
 
                 inputIndex++;
             }
@@ -187,8 +188,8 @@ namespace Microsoft.ML.OnnxRuntime
             }
             finally
             {
-                // always unpin the input buffers, and delete the native Onnx value objects
-                for (int i = 0; i < inputs.Count; i++)
+                inputIndex = 0;
+                foreach (var input in inputs)
                 {
                     NativeMethods.OrtReleaseValue(inputValuesArray[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
                                                                         // For string tensors, this releases the native memory allocated for the tensor, including the buffer
@@ -293,6 +294,16 @@ namespace Microsoft.ML.OnnxRuntime
                     {
                         NativeMethods.OrtReleaseValue(outputValuesArray[i]);
                     }
+                    // For NamedOnnxValue, always unpin the input buffers, and delete the native Onnx value objects
+                    // For DisposableNamedOnnxValue, the user needs to do this by invoking Dispose
+                    if (input.GetType() == typeof(NamedOnnxValue))
+                    {
+                        NativeMethods.OrtReleaseValue(inputTensors[inputIndex]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
+                                                                                 // For string tensors, this releases the native memory allocated for the tensor, including the buffer
+                        pinnedBufferHandles[inputIndex].Dispose();
+                    }
+
+                    inputIndex++;
                 }
                 throw e;
             }

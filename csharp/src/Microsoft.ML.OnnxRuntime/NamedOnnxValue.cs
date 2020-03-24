@@ -28,7 +28,7 @@ namespace Microsoft.ML.OnnxRuntime
             return new NamedOnnxValue(name, value);
         }
 
-        public string Name { get { return _name; } }
+        public string Name { get { return _name; } set { _name = value; } }
 
         /// <summary>
         /// Try-get value as a Tensor&lt;T&gt;.
@@ -62,7 +62,16 @@ namespace Microsoft.ML.OnnxRuntime
             return _value as IDictionary<K, V>;
         }
 
-        internal void ToNativeOnnxValue(out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle)
+        /// <summary>
+        /// Attempts to Pin the buffer, and create a native OnnxValue out of it. the pinned MemoryHandle is passed to output.
+        /// In this case, the pinnedHandle should be kept alive till the native OnnxValue is used, then dispose it.
+        /// If it is not possible to Pin the buffer, then creates OnnxValue from the copy of the data. The output pinnedMemoryHandle
+        /// contains a default value in that case.
+        /// Attempts to infer the type of the value while creating the OnnxValue
+        /// </summary>
+        /// <param name="onnxValue"></param>
+        /// <param name="pinnedMemoryHandle"></param>
+        internal virtual void ToNativeOnnxValue(out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle)
         {
             NativeOnnxValueHelper.ToNativeOnnxValue(_value, out onnxValue, out pinnedMemoryHandle);
         }

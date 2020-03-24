@@ -26,7 +26,7 @@ def export_onnx(args, model, output_path):
                       do_constant_folding=True,  # whether to execute constant folding for optimization
                       input_names = ["input_ids", "input_mask", "segment_ids"],
                       output_names = ["output"],
-                      dynamic_axes={'input_ids' : {0 : 'batch_size'},    # variable lenght axes
+                      dynamic_axes={'input_ids' : {0 : 'batch_size'},    # variable length axes
                                     'input_mask' : {0 : 'batch_size'},
                                     'segment_ids' : {0 : 'batch_size'},
                                     'output' : {0 : 'batch_size'}})
@@ -80,7 +80,8 @@ Most optimizations require exact match of a subgraph. That means this tool could
 Here is list of models that have been tested using this tool:
 - **BertForSequenceClassification** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_glue.py) exported by PyTorch 1.2-1.4 using opset version 10 or 11.
 - **BertForQuestionAnswering** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_squad.py) exported by PyTorch 1.2-1.4 using opset version 10 or 11.
-- **TFBertForSequenceClassification** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_tf_glue.py) exported by keras2onnx 1.6.0.
+- **TFBertForSequenceClassification** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_tf_glue.py) exported by keras2onnx installed from its master source.
+- **TFBertForQuestionAnswering** as in [transformers](https://github.com/huggingface/transformers/) exported by keras2onnx installed from its master source.
 
 If your model is not in the list, the optimized model might not work. You are welcome to update the scripts to support new models.
 
@@ -119,3 +120,4 @@ python bert_perf_test.py --model optimized_model_gpu.onnx --batch_size 1 --seque
 ```
 
 After test is finished, a file like perf_results_CPU_B1_S128_<date_time>.txt or perf_results_GPU_B1_S128_<date_time>.txt will be output to the model directory.
+

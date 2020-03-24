@@ -906,6 +906,100 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
+        private void TestReusingRunOutputNonStringType()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_BOOL.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<bool>(new bool[] { true, false, true, false, true }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                var res1 = session.Run(container);
+
+                // change the name of the DisposableNamedOnnxValue
+                res1.First().Name = "input";
+
+                // Run inferencing 2 times using the output of the first Run()
+                for(int i=0; i<2; ++i)
+                { 
+                    using (var res2 = session.Run(res1))
+                    {
+                        var tensorOut = res2.First().AsTensor<bool>();
+                        Assert.True(tensorOut.SequenceEqual(tensorIn));
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        private void TestReusingRunOutputStringType()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_STRING.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<string>(new string[] { "a", "b", "c", "d", "e" }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                var res1 = session.Run(container);
+
+                // change the name of the DisposableNamedOnnxValue
+                res1.First().Name = "input";
+
+                // Run inferencing 2 times using the output of the first Run()
+                for (int i = 0; i < 2; ++i)
+                {
+                    using (var res2 = session.Run(res1))
+                    {
+                        var tensorOut = res2.First().AsTensor<string>();
+                        Assert.True(tensorOut.SequenceEqual(tensorIn));
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        private void TestReusingDisposedRunOutput()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_BOOL.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<bool>(new bool[] { true, false, true, false, true }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                var res1 = session.Run(container);
+
+                // Dispose the result tensor
+                res1.First().Dispose();
+
+                bool succeeded = false;
+
+                // Now try using the disposed output as input to another Run()
+                try
+                {
+                    // Run() should fail with a user friendly error message.
+                    session.Run(res1);
+                }
+
+                catch (ObjectDisposedException e)
+                {
+                    var errorString = "This instance of DisposableNamedOnnxValue has already been disposed";
+
+                    Assert.True(e.Message.Contains(errorString));
+
+                    succeeded = true;
+                }
+
+                Assert.True(succeeded);
+            }
+        }
+
+        [Fact]
         private void TestModelInputINT32()
         {
             // model takes 1x5 input of fixed type, echoes back

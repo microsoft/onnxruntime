@@ -17,7 +17,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/callback.h"
 #include "core/framework/data_types.h"
-#include "core/framework/path_lib.h"
+#include "core/platform/path_lib.h"
 #include "core/session/ort_apis.h"
 
 using namespace ONNX_NAMESPACE;

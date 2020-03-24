@@ -6,19 +6,19 @@ Licensed under the MIT License.
 
 Module Name:
 
-    QgemmU8S8KernelAvx512BW.s
+    QgemmU8U8KernelAvx512Core.s
 
 Abstract:
 
     This module implements the kernels for the quantized integer matrix/matrix
     multiply operation (QGEMM).
 
-    This implementation uses AVX512BW instructions.
+    This implementation uses AVX512 core instructions (BW/DQ/VL).
 
 --*/
 
 #include "asmmacro.h"
-#include "QgemmU8S8KernelAvx512Common.h"
+#include "QgemmU8U8KernelAvx512Common.h"
 
         .intel_syntax noprefix
 
@@ -43,14 +43,11 @@ Implicit Arguments:
 
     zmm4 - Supplies a scratch register for intermediate results.
 
-    zmm5 - Supplies a 512-bit with the broadcasted word value 0x0001.
-
 --*/
 
         .macro MultiplyAccumulateCell AccumReg, Mult1Reg, Mult2Reg
 
-        vpmaddubsw zmm4,\Mult1Reg\(),\Mult2Reg\()
-        vpmaddwd zmm4,zmm4,zmm5
+        vpmaddwd zmm4,\Mult1Reg\(),\Mult2Reg\()
         vpaddd  \AccumReg\(),\AccumReg\(),zmm4
 
         .endm
@@ -91,14 +88,14 @@ Implicit Arguments:
         .macro ComputeBlock ColumnCount, RowCount, VectorOffset, BroadcastOffset
 
 .if \ColumnCount\() >= 48
-        vmovdqu32 zmm0,ZMMWORD PTR [rsi+\VectorOffset\()]
-        vmovdqu32 zmm1,ZMMWORD PTR [rsi+r14+\VectorOffset\()]
-        vmovdqu32 zmm2,ZMMWORD PTR [rsi+r14*2+\VectorOffset\()]
+        vpmovzxbw zmm0,YMMWORD PTR [rsi+\VectorOffset\()]
+        vpmovzxbw zmm1,YMMWORD PTR [rsi+r14+\VectorOffset\()]
+        vpmovzxbw zmm2,YMMWORD PTR [rsi+r14*2+\VectorOffset\()]
 .elseif \ColumnCount\() >= 32
-        vmovdqu32 zmm1,ZMMWORD PTR [rsi+\VectorOffset\()]
-        vmovdqu32 zmm2,ZMMWORD PTR [rsi+r14+\VectorOffset\()]
+        vpmovzxbw zmm1,YMMWORD PTR [rsi+\VectorOffset\()]
+        vpmovzxbw zmm2,YMMWORD PTR [rsi+r14+\VectorOffset\()]
 .else
-        vmovdqu32 zmm2,ZMMWORD PTR [rsi+\VectorOffset\()]
+        vpmovzxbw zmm2,YMMWORD PTR [rsi+\VectorOffset\()]
 .endif
         EmitIfCountGE \RowCount\(), 1, "vpbroadcastd zmm3,DWORD PTR [rdi+\BroadcastOffset\()]"
         EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 48, "MultiplyAccumulateCell zmm26,zmm3,zmm0"
@@ -131,6 +128,6 @@ Implicit Arguments:
 // Generate the GEMM kernel.
 //
 
-GemmU8X8KernelAvx512Function U8S8, Avx512BW
+GemmU8X8KernelAvx512Function U8U8, Avx512Core
 
         .end

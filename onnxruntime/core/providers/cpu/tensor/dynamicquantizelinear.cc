@@ -48,9 +48,11 @@ Status DynamicQuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   // find input range min and max
   auto min = ConstEigenVectorMap<float>(x_data, num_of_elements).minCoeff();
-  min = std::min(min, qmin);
   auto max = ConstEigenVectorMap<float>(x_data, num_of_elements).maxCoeff();
-  max = std::max(max, qmin);
+
+  // ensure the input range includes zero
+  min = std::min(min, 0.0f);
+  max = std::max(max, 0.0f);
 
   // find scale and zero point
   auto scale = (max - min) / (qmax - qmin);
