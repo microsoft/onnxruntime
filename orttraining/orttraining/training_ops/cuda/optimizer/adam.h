@@ -19,10 +19,11 @@ void AdamOptimizerImpl(
     const T4* moment_2,
     const T3* loss_scale,
     const T_GRAD_NORM* grad_norm,
-    T4 alpha,
-    T4 beta,
-    T4 lambda,
-    T4 epsilon,
+    const T4 alpha,
+    const T4 beta,
+    const T4 lambda,
+    const T4 epsilon,
+    const bool do_bias_correction,
     T4* moment_1_out,
     T4* moment_2_out,
     T3* weights_out,
@@ -38,6 +39,7 @@ class AdamOptimizer final : public CudaKernel {
     info.GetAttrOrDefault("beta", &beta_, 0.999f);
     info.GetAttrOrDefault("lambda", &lambda_, 0.0f);
     info.GetAttrOrDefault("epsilon", &epsilon_, 1e-8f);
+    info.GetAttrOrDefault("do_bias_correction", &do_bias_correction_, static_cast<int64_t>(1));
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -47,6 +49,7 @@ class AdamOptimizer final : public CudaKernel {
   float beta_;
   float lambda_;
   float epsilon_;
+  int64_t do_bias_correction_; 
 };
 
 }  // namespace cuda

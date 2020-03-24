@@ -93,6 +93,7 @@ Status LambOptimizerBuilder::Build(
   std::vector<float> epsilon;
   float ratio_min = -std::numeric_limits<float>::infinity();
   float ratio_max = std::numeric_limits<float>::infinity();
+  int64_t do_bias_correction = 0;
 
   {
     // Read the first weight's min and max ratios.
@@ -103,6 +104,9 @@ Status LambOptimizerBuilder::Build(
     auto ratio_max_iter = attrs.find("ratio_max");
     if (ratio_max_iter != attrs.end())
       ratio_max = ratio_max_iter->second;
+    auto do_bias_correction_iter = attrs.find("do_bias_correction");
+    if (do_bias_correction_iter != attrs.end())
+      do_bias_correction = do_bias_correction_iter->second;
   }
 
   // Each iteration handles the associated inputs and outputs of a weight tensor.
@@ -158,6 +162,12 @@ Status LambOptimizerBuilder::Build(
       if (ratio_max_iter != attrs.end()) {
         // All weight tensors should have the same max ratio.
         ORT_ENFORCE(ratio_max_iter->second == ratio_max);
+      }
+
+      auto do_bias_correction_iter = attrs.find("do_bias_correction");
+      if (do_bias_correction_iter != attrs.end()) {
+        // All weight tensors should have the same bias correction flag.
+        ORT_ENFORCE(do_bias_correction_iter->second == do_bias_correction);
       }
 
       // Extract weight's type and shape information.
@@ -236,6 +246,7 @@ Status LambOptimizerBuilder::Build(
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("epsilon", epsilon));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("ratio_min", ratio_min));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("ratio_max", ratio_max));
+  attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("do_bias_correction", do_bias_correction));
 
   graph_defs.AddNodeDefs({NodeDef(OpType(),
                                   input_argdefs,

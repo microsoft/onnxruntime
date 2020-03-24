@@ -3,6 +3,7 @@
 
 #pragma once
 #include "core/providers/cuda/cuda_common.h"
+#include "orttraining/training_ops/cpu/optimizer/common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -15,17 +16,6 @@ Status CopyIfNotSameBuffer(const Tensor& source_tensor, Tensor& target_tensor) {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, source_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice));
   }
   return Status::OK();
-}
-
-template <typename TS, typename TC>
-TC compute_bias_correction_coefficient(
-  const TC momentum_update_coefficient,
-  const TS step) {
-  if (step > 0) {
-    return TC(1.0 - std::pow(static_cast<double>(momentum_update_coefficient), static_cast<double>(step)));
-  } else {
-    return TC(1.f);
-  }
 }
 
 }  // namespace cuda

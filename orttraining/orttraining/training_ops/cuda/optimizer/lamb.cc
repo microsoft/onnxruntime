@@ -203,8 +203,10 @@ Status launch_lamb_compute_direction(
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
       // For the first iteration (indexed by 0), the update count should be 2.
-      const float alpha_correction = compute_bias_correction_coefficient(alphas[i], update_count);
-      const float beta_correction = compute_bias_correction_coefficient(betas[i], update_count);
+      const float alpha_correction =
+        onnxruntime::contrib::compute_bias_correction_coefficient(alphas[i], update_count);
+      const float beta_correction =
+        onnxruntime::contrib::compute_bias_correction_coefficient(betas[i], update_count);
 
       LambComputeDirection(
           p_ws[i],
@@ -244,8 +246,10 @@ Status launch_lamb_compute_direction(
     std::tie(alpha, beta, lambda, epsilon) = key;
 
     // For the first iteration (indexed by 0), the update count should be 1.
-    const float alpha_correction = compute_bias_correction_coefficient(alpha, update_count);
-    const float beta_correction = compute_bias_correction_coefficient(beta, update_count);
+    const float alpha_correction =
+      onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count);
+    const float beta_correction =
+      onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count);
 
     typedef LambMultiTensorComputeDirectionFunctor<CudaT2, CudaT3, CudaT4, CudaT_GRAD_NORM> LambStage1;
     LambStage1 lamb_stage1;

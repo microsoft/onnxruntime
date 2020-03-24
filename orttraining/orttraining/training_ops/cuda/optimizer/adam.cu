@@ -79,10 +79,11 @@ void AdamOptimizerImpl(
     const T4* moment_2,
     const T3* loss_scale,
     const T_GRAD_NORM* grad_norm,
-    T4 alpha,
-    T4 beta,
-    T4 lambda,
-    T4 epsilon,
+    const T4 alpha,
+    const T4 beta,
+    const T4 lambda,
+    const T4 epsilon,
+    const bool do_bias_correction,
     T4* moment_1_out,
     T4* moment_2_out,
     T3* weights_out,
@@ -91,8 +92,9 @@ void AdamOptimizerImpl(
     size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  T4 alpha_correction = compute_bias_correction_coefficient(alpha, update_count);
-  T4 beta_correction = compute_bias_correction_coefficient(beta, update_count);
+  // If bias correction coefficients are set to 1s, it's equivalent to disabling bias correction. 
+  const T4 alpha_correction = do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count) : T4(1.f);
+  const T4 beta_correction = do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count) : T4(1.f);
   _AdamOptimizer<T1, T3, T4, T_GRAD, T_GRAD_NORM><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       eta,
       weights,
@@ -125,10 +127,11 @@ void AdamOptimizerImpl(
       const T4* moment_2,                                                  \
       const T3* loss_scale,                                                \
       const T_GRAD_NORM* grad_norm,                                        \
-      T4 alpha,                                                            \
-      T4 beta,                                                             \
-      T4 lambda,                                                           \
-      T4 epsilon,                                                          \
+      const T4 alpha,                                                      \
+      const T4 beta,                                                       \
+      const T4 lambda,                                                     \
+      const T4 epsilon,                                                    \
+      const bool do_bias_correction,                                       \
       T4* moment_1_out,                                                    \
       T4* moment_2_out,                                                    \
       T3* weights_out,                                                     \

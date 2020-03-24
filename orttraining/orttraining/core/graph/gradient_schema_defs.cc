@@ -473,6 +473,11 @@ void RegisterGradientSchemas() {
           "Small scalar to avoid dividing by zero.",
           AttributeProto::FLOAT,
           1e-8f)
+      .Attr(
+          "do_bias_correction",
+          "Compute unbiased 1st and 2nd momentums.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
       .TypeConstraint(
           "T1",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
