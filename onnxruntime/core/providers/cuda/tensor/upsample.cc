@@ -60,7 +60,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
   TensorPitches output_pitches(output_dims);
   TArray<fast_divmod> output_div_pitches(rank);
 
-  for (auto i = 0; i < rank; ++i) {
+  for (int32_t i = 0; i < rank; ++i) {
     output_div_pitches[i] = fast_divmod(gsl::narrow_cast<int>(output_pitches[i]));
   }
   size_t output_count = Y->Shape().Size();
@@ -85,7 +85,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
   } else {
     TArray<fast_divmod> scales_div(rank);
 
-    for (size_t i = 0; i < rank; ++i) {
+    for (int32_t i = 0; i < rank; ++i) {
       scales_div[i] = fast_divmod(gsl::narrow_cast<int>(ceil(scales[i])));
     }
 
