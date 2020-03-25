@@ -14,6 +14,7 @@ namespace ml {
 
 template <typename T>
 class SVMRegressor final : public OpKernel, private SVMCommon<T> {
+  using SVMCommon<T>::batched_kernel_dot;
   using SVMCommon<T>::kernel_dot;
   using SVMCommon<T>::set_kernel_type;
   using SVMCommon<T>::get_kernel_type;
