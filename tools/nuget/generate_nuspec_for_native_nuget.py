@@ -55,7 +55,7 @@ def generate_project_url(list, project_url):
 def generate_repo_url(list, repo_url, commit_id):
     list.append('<repository type="git" url="' + repo_url + '"' + ' commit="' + commit_id + '" />')
     
-def generate_dependencies(list, version):
+def generate_dependencies(list, package_name, version):
     list.append('<dependencies>')
 
     # Support .Net Core
@@ -72,6 +72,9 @@ def generate_dependencies(list, version):
     list.append('<group targetFramework="NETFRAMEWORK">')
     list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
     list.append('</group>')
+
+    if (package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or package_name == 'Microsoft.ML.OnnxRuntime')):
+        list.append('<dependency id="Microsoft.Windows.CppWinRT"' + ' version="2.0.200316.3"/>')
 
     list.append('</dependencies>')
 
@@ -106,7 +109,7 @@ def generate_metadata(list, args):
     generate_license(metadata_list)
     generate_project_url(metadata_list, 'https://github.com/Microsoft/onnxruntime')
     generate_repo_url(metadata_list, 'https://github.com/Microsoft/onnxruntime.git', args.commit_id)  
-    generate_dependencies(metadata_list, args.package_version)
+    generate_dependencies(metadata_list, args.package_name, args.package_version)
     generate_release_notes(metadata_list)
     metadata_list.append('</metadata>')
     
