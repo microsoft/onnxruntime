@@ -178,28 +178,28 @@ inline void LtIgemmTensor(cublasLtHandle_t ltHandle,
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutSetAttribute(CtransformDesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &order_COL32, sizeof(order_COL32)));
 
   // Transforms and computation
-  CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
-                                            transform_desc,
-                                            &transformAlpha,
-                                            A,
-                                            a_desc,
-                                            &transformBeta,
-                                            NULL,
-                                            NULL,
-                                            a_transform,
-                                            AtransformDesc,
-                                            0));
-  CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
-                                            transform_desc,
-                                            &transformAlpha,
-                                            B,
-                                            b_desc,
-                                            &transformBeta,
-                                            NULL,
-                                            NULL,
-                                            b_transform,
-                                            BtransformDesc,
-                                            0));
+  //CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
+  //                                          transform_desc,
+  //                                          &transformAlpha,
+  //                                          A,
+  //                                          a_desc,
+  //                                          &transformBeta,
+  //                                          NULL,
+  //                                          NULL,
+  //                                          a_transform,
+  //                                          AtransformDesc,
+  //                                          0));
+  //CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
+  //                                          transform_desc,
+  //                                          &transformAlpha,
+  //                                          B,
+  //                                          b_desc,
+  //                                          &transformBeta,
+  //                                          NULL,
+  //                                          NULL,
+  //                                          b_transform,
+  //                                          BtransformDesc,
+  //                                          0));
 
   // No need to transform C matrix as beta is assumed to be 0
   CUBLAS_CALL_THROW(cublasLtMatmul(ltHandle,
@@ -219,18 +219,18 @@ inline void LtIgemmTensor(cublasLtHandle_t ltHandle,
                                    0,
                                    0));
 
-  // Transform the outputs to COL order
-  CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
-                                            transform_desc,
-                                            &transformAlpha,
-                                            c_transform,
-                                            CtransformDesc,
-                                            &transformBeta,
-                                            NULL,
-                                            NULL,
-                                            C,
-                                            c_desc,
-                                            0));
+  //// Transform the outputs to COL order
+  //CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
+  //                                          transform_desc,
+  //                                          &transformAlpha,
+  //                                          c_transform,
+  //                                          CtransformDesc,
+  //                                          &transformBeta,
+  //                                          NULL,
+  //                                          NULL,
+  //                                          C,
+  //                                          c_desc,
+  //                                          0));
 
   // Descriptors are no longer needed as all GPU work was already
   // enqueued.
