@@ -63,17 +63,15 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Attempts to Pin the buffer, and create a native OnnxValue out of it. the pinned MemoryHandle is passed to output.
-        /// In this case, the pinnedHandle should be kept alive till the native OnnxValue is used, then dispose it.
-        /// If it is not possible to Pin the buffer, then creates OnnxValue from the copy of the data. The output pinnedMemoryHandle
-        /// contains a default value in that case.
-        /// Attempts to infer the type of the value while creating the OnnxValue
+        /// Pin the underlying memory and create native onnx value
         /// </summary>
         /// <param name="onnxValue"></param>
         /// <param name="pinnedMemoryHandle"></param>
-        internal virtual void ToNativeOnnxValue(out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle)
+        /// <param name="disposeOnnxValueAfterUse"></param>
+        internal virtual void ToNativeOnnxValue(out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle, out bool disposeOnnxValueAfterUse)
         {
-            NativeOnnxValueHelper.ToNativeOnnxValue(_value, out onnxValue, out pinnedMemoryHandle);
+            NativeOnnxValueHelper.CreateNativeOnnxValue(_value, out onnxValue, out pinnedMemoryHandle);
+            disposeOnnxValueAfterUse = true;
         }
 
         // may expose different types of getters in future

@@ -211,10 +211,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
 
                 // Run inference with pinned inputs and empty outputs
-                using (var pinnedInputs = new DisposableList<PinnedOnnxValue>())
+                using (var pinnedInputs = new DisposableList<FixedBufferOnnxValue>())
                 {
                     var inputNames = container.Select(i => i.Name).ToArray();
-                    pinnedInputs.AddRange(container.Select(i => PinnedOnnxValue.CreateFromTensor(i.AsTensor<float>())));
+                    pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromTensor(i.AsTensor<float>())));
 
                     // output names not specified
                     using (var results = session.Run(inputNames, pinnedInputs))  // results is an IReadOnlyList<NamedOnnxValue> container
@@ -241,10 +241,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
 
                 // Run inference with pinned inputs and named outputs
-                using (var pinnedInputs = new DisposableList<PinnedOnnxValue>())
+                using (var pinnedInputs = new DisposableList<FixedBufferOnnxValue>())
                 {
                     var inputNames = container.Select(i => i.Name).ToArray();
-                    pinnedInputs.AddRange(container.Select(i => PinnedOnnxValue.CreateFromTensor(i.AsTensor<float>())));
+                    pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromTensor(i.AsTensor<float>())));
 
                     // expected inputs and outputs
                     var expectedOutputValues = new List<NamedOnnxValue>()
@@ -258,24 +258,24 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 // Run inference with named inputs and pinned outputs
                 {
                     // correct pre-allocated outputs
-                    using (var pinnedOutputs = new DisposableList<PinnedOnnxValue>())
+                    using (var pinnedOutputs = new DisposableList<FixedBufferOnnxValue>())
                     {
                         var outputTensor = new DenseTensor<float>(expectedOutputDimensions);
-                        pinnedOutputs.Add(PinnedOnnxValue.CreateFromTensor(outputTensor));
+                        pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromTensor(outputTensor));
                         session.Run(container, expectedOutputNames, pinnedOutputs);
                         validateRunResultData(outputTensor);
                     }
                 }
 
                 // Run inference with pinned inputs and pinned outputs
-                using (DisposableList<PinnedOnnxValue> pinnedInputs = new DisposableList<PinnedOnnxValue>(),
-                                                       pinnedOutputs = new DisposableList<PinnedOnnxValue>())
+                using (DisposableList<FixedBufferOnnxValue> pinnedInputs = new DisposableList<FixedBufferOnnxValue>(),
+                                                       pinnedOutputs = new DisposableList<FixedBufferOnnxValue>())
                 {
                     var inputNames = container.Select(i => i.Name).ToArray();
-                    pinnedInputs.AddRange(container.Select(i => PinnedOnnxValue.CreateFromTensor(i.AsTensor<float>())));
+                    pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromTensor(i.AsTensor<float>())));
 
                     var outputTensor = new DenseTensor<float>(expectedOutputDimensions);
-                    pinnedOutputs.Add(PinnedOnnxValue.CreateFromTensor(outputTensor));
+                    pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromTensor(outputTensor));
 
                     session.Run(inputNames, pinnedInputs, expectedOutputNames, pinnedOutputs);
                     validateRunResultData(outputTensor);
@@ -373,9 +373,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var inputData = tuple.Item2;
             var tensor = tuple.Item3;
 
-            using (var inputs = new DisposableList<PinnedOnnxValue>())
+            using (var inputs = new DisposableList<FixedBufferOnnxValue>())
             {
-                inputs.Add(PinnedOnnxValue.CreateFromTensor(tensor));
+                inputs.Add(FixedBufferOnnxValue.CreateFromTensor(tensor));
                 var ex = Assert.Throws<ArgumentException>(() => session.Run(new string[0], inputs));
                 Assert.StartsWith("Length of inputNames (0) must match that of inputValues (1).", ex.Message);
             }
@@ -453,7 +453,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
             var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 1000, 1, 1 });
 
-            using (var outputs = new DisposableList<PinnedOnnxValue>())
+            using (var outputs = new DisposableList<FixedBufferOnnxValue>())
             {
                 var ex = Assert.Throws<ArgumentException>(() => session.Run(inputs, new string[] { "softmaxout_1" }, outputs));
                 Assert.StartsWith("Length of outputNames (1) must match that of outputValues (0).", ex.Message);

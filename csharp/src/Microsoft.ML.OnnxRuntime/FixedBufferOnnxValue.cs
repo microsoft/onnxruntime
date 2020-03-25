@@ -9,27 +9,27 @@ namespace Microsoft.ML.OnnxRuntime
     /// <summary>
     /// Represents an Onnx Value with its underlying buffer pinned
     /// </summary>
-    public class PinnedOnnxValue : IDisposable
+    public class FixedBufferOnnxValue : IDisposable
     {
         internal MemoryHandle PinnedMemory { get; private set; }
         internal IntPtr Value { get; private set; }
 
-        internal PinnedOnnxValue(MemoryHandle pinnedMemory, IntPtr onnxValue)
+        internal FixedBufferOnnxValue(MemoryHandle pinnedMemory, IntPtr onnxValue)
         {
             PinnedMemory = pinnedMemory;
             Value = onnxValue;
         }
 
         /// <summary>
-        /// Creates a <see cref="PinnedOnnxValue"/> object from the tensor and pins its underlying buffer.
+        /// Creates a <see cref="FixedBufferOnnxValue"/> object from the tensor and pins its underlying buffer.
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <param name="value"></param>
         /// <returns></returns>
-        public static PinnedOnnxValue CreateFromTensor<T>(Tensor<T> value)
+        public static FixedBufferOnnxValue CreateFromTensor<T>(Tensor<T> value)
         {
-            NativeOnnxValueHelper.ToNativeOnnxValue(value, out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle);
-            return new PinnedOnnxValue(pinnedMemoryHandle, onnxValue);
+            NativeOnnxValueHelper.CreateNativeOnnxValue(value, out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle);
+            return new FixedBufferOnnxValue(pinnedMemoryHandle, onnxValue);
         }
 
         #region IDisposable Support
@@ -57,7 +57,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        ~PinnedOnnxValue()
+        ~FixedBufferOnnxValue()
         {
             Dispose(false);
         }

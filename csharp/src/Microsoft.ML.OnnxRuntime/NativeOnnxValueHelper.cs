@@ -23,7 +23,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="value"></param>
         /// <param name="onnxValue"></param>
         /// <param name="pinnedMemoryHandle"></param>
-        internal static void ToNativeOnnxValue(Object value, out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle)
+        internal static void CreateNativeOnnxValue(Object value, out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle)
         {
             //try to cast _value to Tensor<T>
             TensorElementType nativeElementType = TensorElementType.DataTypeMax; //invalid

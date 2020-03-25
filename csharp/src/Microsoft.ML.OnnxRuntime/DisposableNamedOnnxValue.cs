@@ -77,7 +77,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="onnxValue"></param>
         /// <param name="pinnedMemoryHandle"></param>
-        internal override void ToNativeOnnxValue(out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle)
+        /// <param name="disposeOnnxValueAfterUse"></param>
+        internal override void ToNativeOnnxValue(out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle, out bool disposeOnnxValueAfterUse)
         {
             // Make sure that this instance hasn't been disposed yet
             if (disposedValue)
@@ -99,6 +100,7 @@ namespace Microsoft.ML.OnnxRuntime
             // PinnedMemoryHandle holds the default value as DisposableNamedOnnxValue
             // doesn't hold any managed buffer (that needs to be pinned)
             pinnedMemoryHandle = default;
+            disposeOnnxValueAfterUse = false;
         }
 
         internal static DisposableNamedOnnxValue CreateTensorFromOnnxValue(string name, IntPtr nativeOnnxValue)

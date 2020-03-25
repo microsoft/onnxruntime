@@ -135,6 +135,7 @@ namespace Microsoft.ML.OnnxRuntime
             var inputNamesArray = new string[inputs.Count];
             var inputValuesArray = new IntPtr[inputs.Count];
             var pinnedInputBufferHandles = new System.Buffers.MemoryHandle[inputs.Count];
+            var disposeInputs = new bool[inputs.Count];
 
             int inputIndex = 0;
             foreach (var input in inputs)
@@ -142,8 +143,7 @@ namespace Microsoft.ML.OnnxRuntime
                 inputNamesArray[inputIndex] = input.Name;
 
                 // create Tensor from the input if feasible, else throw notsupported exception for now
-                input.ToNativeOnnxValue(out inputTensors[inputIndex], 
-                                        out pinnedBufferHandles[inputIndex]);
+                input.ToNativeOnnxValue(out inputValuesArray[inputIndex], out pinnedInputBufferHandles[inputIndex], out disposeInputs[inputIndex]);
 
                 inputIndex++;
             }
@@ -177,7 +177,7 @@ namespace Microsoft.ML.OnnxRuntime
             catch (OnnxRuntimeException e)
             {
                 //clean up the individual output tensors if it is not null;
-                for (uint i = 0; i < outputValuesArray.Length; i++)
+                for (int i = 0; i < outputValuesArray.Length; i++)
                 {
                     if (outputValuesArray[i] != IntPtr.Zero)
                     {
@@ -188,12 +188,14 @@ namespace Microsoft.ML.OnnxRuntime
             }
             finally
             {
-                inputIndex = 0;
-                foreach (var input in inputs)
+                for (int i = 0; i < inputs.Count; i++)
                 {
-                    NativeMethods.OrtReleaseValue(inputValuesArray[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
-                                                                        // For string tensors, this releases the native memory allocated for the tensor, including the buffer
-                    pinnedInputBufferHandles[i].Dispose();
+                    if (disposeInputs[i])
+                    {
+                        NativeMethods.OrtReleaseValue(inputValuesArray[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
+                                                                            // For string tensors, this releases the native memory allocated for the tensor, including the buffer
+                        pinnedInputBufferHandles[i].Dispose();
+                    }
                 }
             }
 
@@ -207,7 +209,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(
             IReadOnlyCollection<string> inputNames,
-            IReadOnlyCollection<PinnedOnnxValue> inputValues)
+            IReadOnlyCollection<FixedBufferOnnxValue> inputValues)
         {
             string[] outputNames = new string[_outputMetadata.Count];
             _outputMetadata.Keys.CopyTo(outputNames, 0);
@@ -223,7 +225,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(
             IReadOnlyCollection<string> inputNames,
-            IReadOnlyCollection<PinnedOnnxValue> inputValues,
+            IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
             IReadOnlyCollection<string> outputNames)
         {
             return Run(inputNames, inputValues, outputNames, _builtInRunOptions);
@@ -239,7 +241,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(
             IReadOnlyCollection<string> inputNames,
-            IReadOnlyCollection<PinnedOnnxValue> inputValues,
+            IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
             IReadOnlyCollection<string> outputNames,
             RunOptions options)
         {
@@ -294,16 +296,6 @@ namespace Microsoft.ML.OnnxRuntime
                     {
                         NativeMethods.OrtReleaseValue(outputValuesArray[i]);
                     }
-                    // For NamedOnnxValue, always unpin the input buffers, and delete the native Onnx value objects
-                    // For DisposableNamedOnnxValue, the user needs to do this by invoking Dispose
-                    if (input.GetType() == typeof(NamedOnnxValue))
-                    {
-                        NativeMethods.OrtReleaseValue(inputTensors[inputIndex]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
-                                                                                 // For string tensors, this releases the native memory allocated for the tensor, including the buffer
-                        pinnedBufferHandles[inputIndex].Dispose();
-                    }
-
-                    inputIndex++;
                 }
                 throw e;
             }
@@ -321,9 +313,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="outputValues">Specify a collection of <see cref="PinnedOnnxValue"/> that indicates the output values.</param>
         public void Run(
             IReadOnlyCollection<string> inputNames,
-            IReadOnlyCollection<PinnedOnnxValue> inputValues,
+            IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
             IReadOnlyCollection<string> outputNames,
-            IReadOnlyCollection<PinnedOnnxValue> outputValues)
+            IReadOnlyCollection<FixedBufferOnnxValue> outputValues)
         {
             Run(inputNames, inputValues, outputNames, outputValues, _builtInRunOptions);
         }
@@ -340,9 +332,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options"></param>
         public void Run(
             IReadOnlyCollection<string> inputNames,
-            IReadOnlyCollection<PinnedOnnxValue> inputValues,
+            IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
             IReadOnlyCollection<string> outputNames,
-            IReadOnlyCollection<PinnedOnnxValue> outputValues,
+            IReadOnlyCollection<FixedBufferOnnxValue> outputValues,
             RunOptions options)
         {
             if (inputNames.Count != inputValues.Count)
@@ -421,6 +413,7 @@ namespace Microsoft.ML.OnnxRuntime
             var inputNamesArray = new string[inputs.Count];
             var inputValuesArray = new IntPtr[inputs.Count];
             var pinnedInputBufferHandles = new System.Buffers.MemoryHandle[inputs.Count];
+            var disposeInputs = new bool[inputs.Count];
 
             int inputIndex = 0;
             foreach (var input in inputs)
@@ -428,7 +421,7 @@ namespace Microsoft.ML.OnnxRuntime
                 inputNamesArray[inputIndex] = input.Name;
 
                 // create native OrtValue from the input if feasible, else throw notsupported exception for now
-                input.ToNativeOnnxValue(out inputValuesArray[inputIndex], out pinnedInputBufferHandles[inputIndex]);
+                input.ToNativeOnnxValue(out inputValuesArray[inputIndex], out pinnedInputBufferHandles[inputIndex], out disposeInputs[inputIndex]);
 
                 inputIndex++;
             }
@@ -437,6 +430,7 @@ namespace Microsoft.ML.OnnxRuntime
             var outputNamesArray = new string[outputs.Count];
             var outputValuesArray = new IntPtr[outputs.Count];
             var pinnedOutputBufferHandles = new System.Buffers.MemoryHandle[outputs.Count];
+            var disposeOutputs = new bool[outputs.Count];
 
             int outputIndex = 0;
             foreach (var output in outputs)
@@ -444,7 +438,7 @@ namespace Microsoft.ML.OnnxRuntime
                 outputNamesArray[outputIndex] = output.Name;
 
                 // create native OrtValue from the output if feasible, else throw notsupported exception for now
-                output.ToNativeOnnxValue(out outputValuesArray[outputIndex], out pinnedOutputBufferHandles[outputIndex]);
+                output.ToNativeOnnxValue(out outputValuesArray[outputIndex], out pinnedOutputBufferHandles[outputIndex], out disposeOutputs[outputIndex]);
 
                 outputIndex++;
             }
@@ -466,20 +460,24 @@ namespace Microsoft.ML.OnnxRuntime
             }
             finally
             {
-                // always unpin the input buffers, and delete the native Onnx value objects
                 for (int i = 0; i < inputs.Count; i++)
                 {
-                    NativeMethods.OrtReleaseValue(inputValuesArray[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
-                                                                        // For string tensors, this releases the native memory allocated for the tensor, including the buffer
-                    pinnedInputBufferHandles[i].Dispose();
+                    if (disposeInputs[i])
+                    {
+                        NativeMethods.OrtReleaseValue(inputValuesArray[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
+                                                                            // For string tensors, this releases the native memory allocated for the tensor, including the buffer
+                        pinnedInputBufferHandles[i].Dispose();
+                    }
                 }
 
-                // always unpin the output buffers, and delete the native Onnx value objects
                 for (int i = 0; i < outputs.Count; i++)
                 {
-                    NativeMethods.OrtReleaseValue(outputValuesArray[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
-                                                                         // For string tensors, this releases the native memory allocated for the tensor, including the buffer
-                    pinnedOutputBufferHandles[i].Dispose();
+                    if (disposeOutputs[i])
+                    {
+                        NativeMethods.OrtReleaseValue(outputValuesArray[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
+                                                                             // For string tensors, this releases the native memory allocated for the tensor, including the buffer
+                        pinnedOutputBufferHandles[i].Dispose();
+                    }
                 }
             }
         }
@@ -495,7 +493,7 @@ namespace Microsoft.ML.OnnxRuntime
         public void Run(
             IReadOnlyCollection<NamedOnnxValue> inputs,
             IReadOnlyCollection<string> outputNames,
-            IReadOnlyCollection<PinnedOnnxValue> outputValues)
+            IReadOnlyCollection<FixedBufferOnnxValue> outputValues)
         {
             Run(inputs, outputNames, outputValues, _builtInRunOptions);
         }
@@ -512,7 +510,7 @@ namespace Microsoft.ML.OnnxRuntime
         public void Run(
             IReadOnlyCollection<NamedOnnxValue> inputs,
             IReadOnlyCollection<string> outputNames,
-            IReadOnlyCollection<PinnedOnnxValue> outputValues,
+            IReadOnlyCollection<FixedBufferOnnxValue> outputValues,
             RunOptions options)
         {
             if (outputNames.Count != outputValues.Count)
@@ -524,6 +522,7 @@ namespace Microsoft.ML.OnnxRuntime
             var inputNamesArray = new string[inputs.Count];
             var inputValuesArray = new IntPtr[inputs.Count];
             var pinnedInputBufferHandles = new System.Buffers.MemoryHandle[inputs.Count];
+            var disposeInputs = new bool[inputs.Count];
 
             int inputIndex = 0;
             foreach (var input in inputs)
@@ -531,7 +530,7 @@ namespace Microsoft.ML.OnnxRuntime
                 inputNamesArray[inputIndex] = input.Name;
 
                 // create native OrtValue from the input if feasible, else throw notsupported exception for now
-                input.ToNativeOnnxValue(out inputValuesArray[inputIndex], out pinnedInputBufferHandles[inputIndex]);
+                input.ToNativeOnnxValue(out inputValuesArray[inputIndex], out pinnedInputBufferHandles[inputIndex], out disposeInputs[inputIndex]);
 
                 inputIndex++;
             }
@@ -564,12 +563,14 @@ namespace Microsoft.ML.OnnxRuntime
             }
             finally
             {
-                // always unpin the input buffers, and delete the native Onnx value objects
                 for (int i = 0; i < inputs.Count; i++)
                 {
-                    NativeMethods.OrtReleaseValue(inputValuesArray[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
-                                                                        // For string tensors, this releases the native memory allocated for the tensor, including the buffer
-                    pinnedInputBufferHandles[i].Dispose();
+                    if (disposeInputs[i])
+                    {
+                        NativeMethods.OrtReleaseValue(inputValuesArray[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
+                                                                            // For string tensors, this releases the native memory allocated for the tensor, including the buffer
+                        pinnedInputBufferHandles[i].Dispose();
+                    }
                 }
             }
         }
@@ -584,7 +585,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="output">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
         public void Run(
             IReadOnlyCollection<string> inputNames,
-            IReadOnlyCollection<PinnedOnnxValue> inputValues,
+            IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
             IReadOnlyCollection<NamedOnnxValue> outputs)
         {
             Run(inputNames, inputValues, outputs, _builtInRunOptions);
@@ -601,7 +602,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options"></param>
         public void Run(
             IReadOnlyCollection<string> inputNames,
-            IReadOnlyCollection<PinnedOnnxValue> inputValues,
+            IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
             IReadOnlyCollection<NamedOnnxValue> outputs,
             RunOptions options)
         {
@@ -625,6 +626,7 @@ namespace Microsoft.ML.OnnxRuntime
             var outputNamesArray = new string[outputs.Count];
             var outputValuesArray = new IntPtr[outputs.Count];
             var pinnedOutputBufferHandles = new System.Buffers.MemoryHandle[outputs.Count];
+            var disposeOutputs = new bool[outputs.Count];
 
             int outputIndex = 0;
             foreach (var output in outputs)
@@ -632,7 +634,7 @@ namespace Microsoft.ML.OnnxRuntime
                 outputNamesArray[outputIndex] = output.Name;
 
                 // create native OrtValue from the output if feasible, else throw notsupported exception for now
-                output.ToNativeOnnxValue(out outputValuesArray[outputIndex], out pinnedOutputBufferHandles[outputIndex]);
+                output.ToNativeOnnxValue(out outputValuesArray[outputIndex], out pinnedOutputBufferHandles[outputIndex], out disposeOutputs[outputIndex]);
 
                 outputIndex++;
             }
@@ -654,12 +656,14 @@ namespace Microsoft.ML.OnnxRuntime
             }
             finally
             {
-                // always unpin the output buffers, and delete the native Onnx value objects
                 for (int i = 0; i < outputs.Count; i++)
                 {
-                    NativeMethods.OrtReleaseValue(outputValuesArray[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
-                                                                         // For string tensors, this releases the native memory allocated for the tensor, including the buffer
-                    pinnedOutputBufferHandles[i].Dispose();
+                    if (disposeOutputs[i])
+                    {
+                        NativeMethods.OrtReleaseValue(outputValuesArray[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
+                                                                             // For string tensors, this releases the native memory allocated for the tensor, including the buffer
+                        pinnedOutputBufferHandles[i].Dispose();
+                    }
                 }
             }
         }
