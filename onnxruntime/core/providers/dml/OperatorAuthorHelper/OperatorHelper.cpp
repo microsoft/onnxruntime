@@ -355,8 +355,8 @@ namespace OperatorHelper
 
     std::vector<EdgeShapes> GetOutputShapeAsInputShapeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
-        assert(shapeInfo.GetInputCount() >= 1);
-        std::vector<DimensionType> outputDimensions = shapeInfo.GetInputTensorShape(0);
+        assert(shapeInfo.GetInputCount() > m_inputTensorIndex);
+        std::vector<DimensionType> outputDimensions = shapeInfo.GetInputTensorShape(m_inputTensorIndex);
         return { std::move(outputDimensions) };
     }
 
@@ -591,102 +591,26 @@ namespace OperatorHelper
         return { EdgeShapes(std::move(outputDimensions)) };
     }
 
-// TODO:::
-
-    void GatherNDHelper::Initialize(
-        const MLOperatorAttributes& operatorAttributes,
-        gsl::span<const DimensionType> inputDimensions
-        )
-    {
-        int32_t signedOnnxAxis = operatorAttributes.GetOptionalAttribute<int>(AttrName::Axis, 0);
-        uint32_t inputRank = gsl::narrow_cast<int>(inputDimensions.size());
-        m_axis = HandleNegativeAxis(signedOnnxAxis, inputRank);
-    }
-
-    std::vector<EdgeShapes> GatherNDHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    std::vector<EdgeShapes> GatherNdHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         std::vector<DimensionType> inputDimensions = shapeInfo.GetInputTensorShape(0);
         std::vector<DimensionType> indicesDimensions = shapeInfo.GetInputTensorShape(1);
 
+        // Determine the number of output dimensions.
         ML_CHECK_VALID_ARGUMENT(inputDimensions.size() >= 1);
-        ML_CHECK_VALID_ARGUMENT(indicesDimensions.size() >= 0);
-        int outDimCount = gsl::narrow_cast<int>(inputDimensions.size() + indicesDimensions.size() - 1);
-        ML_CHECK_VALID_ARGUMENT(outDimCount > 0 && outDimCount <= NchwDimensionCount);
+        ML_CHECK_VALID_ARGUMENT(indicesDimensions.size() >= 1);
+        const uint32_t numberOfCoordinatesPerIndex = indicesDimensions.back();
+        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() >= numberOfCoordinatesPerIndex);
+        const uint32_t numberOfOutputDimensionsFromInput = static_cast<uint32_t>(inputDimensions.size()) - numberOfCoordinatesPerIndex;
+        const uint32_t numberOfOutputDimensionsFromIndices = static_cast<uint32_t>(indicesDimensions.size()) - 1; // Strip off last dimension.
+        uint32_t outputDimensionCount = gsl::narrow_cast<uint32_t>(numberOfOutputDimensionsFromIndices + numberOfOutputDimensionsFromInput);
+        ML_CHECK_VALID_ARGUMENT(outputDimensionCount > 0 && outputDimensionCount <= NchwDimensionCount);
 
-        std::vector<DimensionType> outputDimensions(outDimCount, 1);
-
-        // The input dimensions following the gather axis determine the final output dimensions.
-        int outputDim = outDimCount - 1;
-        int inputDim = gsl::narrow_cast<int>(inputDimensions.size() - 1);
-        for (; inputDim > m_axis; --outputDim, --inputDim)
-        {
-            outputDimensions[outputDim] = inputDimensions[inputDim];
-        }
-
-        // The shape of the index tensor is reflected in the middle dimensions of the output tensor.
-        int indexDim = gsl::narrow_cast<int>(indicesDimensions.size() - 1);
-        for (; indexDim >= 0; --outputDim, --indexDim)
-        {
-            outputDimensions[outputDim] = indicesDimensions[indexDim];
-        }
-
-        // The gather dimension is skipped for the purposes of sizing because the index values choose slices
-        // across it.  Preceding input dimensions determine the shape of the output's leading dimensions.
-        inputDim = m_axis - 1;
-        for (; outputDim >= 0 && inputDim >= 0; --outputDim, --inputDim)
-        {
-            outputDimensions[outputDim] = inputDimensions[inputDim];
-        }
-
-        return { EdgeShapes(std::move(outputDimensions)) };
-    }
-
-// TODO:::
-
-    void ScatterNDHelper::Initialize(
-        const MLOperatorAttributes& operatorAttributes,
-        gsl::span<const DimensionType> inputDimensions
-        )
-    {
-        int32_t signedOnnxAxis = operatorAttributes.GetOptionalAttribute<int>(AttrName::Axis, 0);
-        uint32_t inputRank = gsl::narrow_cast<int>(inputDimensions.size());
-        m_axis = HandleNegativeAxis(signedOnnxAxis, inputRank);
-    }
-
-    std::vector<EdgeShapes> ScatterNDHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
-    {
-        std::vector<DimensionType> inputDimensions = shapeInfo.GetInputTensorShape(0);
-        std::vector<DimensionType> indicesDimensions = shapeInfo.GetInputTensorShape(1);
-
-        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() >= 1);
-        ML_CHECK_VALID_ARGUMENT(indicesDimensions.size() >= 0);
-        int outDimCount = gsl::narrow_cast<int>(inputDimensions.size() + indicesDimensions.size() - 1);
-        ML_CHECK_VALID_ARGUMENT(outDimCount > 0 && outDimCount <= NchwDimensionCount);
-
-        std::vector<DimensionType> outputDimensions(outDimCount, 1);
-
-        // The input dimensions following the gather axis determine the final output dimensions.
-        int outputDim = outDimCount - 1;
-        int inputDim = gsl::narrow_cast<int>(inputDimensions.size() - 1);
-        for (; inputDim > m_axis; --outputDim, --inputDim)
-        {
-            outputDimensions[outputDim] = inputDimensions[inputDim];
-        }
-
-        // The shape of the index tensor is reflected in the middle dimensions of the output tensor.
-        int indexDim = gsl::narrow_cast<int>(indicesDimensions.size() - 1);
-        for (; indexDim >= 0; --outputDim, --indexDim)
-        {
-            outputDimensions[outputDim] = indicesDimensions[indexDim];
-        }
-
-        // The gather dimension is skipped for the purposes of sizing because the index values choose slices
-        // across it.  Preceding input dimensions determine the shape of the output's leading dimensions.
-        inputDim = m_axis - 1;
-        for (; outputDim >= 0 && inputDim >= 0; --outputDim, --inputDim)
-        {
-            outputDimensions[outputDim] = inputDimensions[inputDim];
-        }
+        // Form the full expected size by concatenating the prefix part of the indices tensor shape
+        // with the suffix of the input tensor shape.
+        std::vector<DimensionType> outputDimensions;
+        outputDimensions.assign(indicesDimensions.begin(), indicesDimensions.end() - 1);
+        outputDimensions.insert(outputDimensions.end(), inputDimensions.end() - numberOfOutputDimensionsFromInput, inputDimensions.end());
 
         return { EdgeShapes(std::move(outputDimensions)) };
     }

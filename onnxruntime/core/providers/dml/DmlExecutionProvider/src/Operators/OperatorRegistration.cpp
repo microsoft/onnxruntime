@@ -202,7 +202,8 @@ DML_OP_EXTERN_CREATION_FUNCTION(Shrink);
 DML_OP_EXTERN_CREATION_FUNCTION(OneHot);
 DML_OP_EXTERN_CREATION_FUNCTION(EyeLike);
 DML_OP_EXTERN_CREATION_FUNCTION(MaxUnpool);
-DML_OP_EXTERN_CREATION_FUNCTION(Scatter);
+DML_OP_EXTERN_CREATION_FUNCTION(Scatter9);
+DML_OP_EXTERN_CREATION_FUNCTION(Scatter11);
 DML_OP_EXTERN_CREATION_FUNCTION(Resize);
 DML_OP_EXTERN_CREATION_FUNCTION(ConstantOfShape);
 DML_OP_EXTERN_CREATION_FUNCTION(IsInf);
@@ -346,7 +347,8 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(      8,  Expand,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1})},
     {REG_INFO(      9,  ConstantOfShape,                    typeNameListConstantOfShape,    supportedTypeListConstantOfShape,   DmGraphSupport::NotSupported,   {0})},
     {REG_INFO(      7,  Gather,                             typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
-    {REG_INFO(      9,  Scatter,                            typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
+    {REG_INFO_VER(  9,  Scatter,                            typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
+    {REG_INFO_VER( 11,  Scatter,                            typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
     {REG_INFO(      9,  EyeLike,                            typeNameListEyeLike,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
 
     // Data reorganization that merely changes the dimensions while keeping the data identical.

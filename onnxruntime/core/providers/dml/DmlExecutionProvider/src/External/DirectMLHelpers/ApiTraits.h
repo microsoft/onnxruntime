@@ -25,7 +25,7 @@ struct EnumTraits<DML_TENSOR_TYPE>
 template <>
 struct EnumTraits<DML_OPERATOR_TYPE>
 {
-    static constexpr auto ValueCount = 107;
+    static constexpr auto ValueCount = 110;
     static constexpr size_t ActivationFunctionCount = 19;
 };
 
@@ -689,6 +689,24 @@ struct OperatorDescTraits<DML_REVERSE_SUBSEQUENCES_OPERATOR_DESC>
 };
 
 template <>
+struct OperatorDescTraits<DML_GATHER_ELEMENTS_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_GATHER_ELEMENTS;
+};
+
+template <>
+struct OperatorDescTraits<DML_GATHER_ND_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_GATHER_ND;
+};
+
+template <>
+struct OperatorDescTraits<DML_SCATTER_ND_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_SCATTER_ND;
+};
+
+template <>
 struct OperatorDescTraits<DML_ACTIVATION_ELU_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_ELU;
@@ -1331,6 +1349,24 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_REVERSE_SUBSEQUENCES>
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_GATHER_ELEMENTS>
+{
+    using DescType = DML_GATHER_ELEMENTS_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_GATHER_ND>
+{
+    using DescType = DML_GATHER_ND_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_SCATTER_ND>
+{
+    using DescType = DML_SCATTER_ND_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_ELU>
 {
     using DescType = DML_ACTIVATION_ELU_OPERATOR_DESC;
@@ -1631,6 +1667,12 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_CUMULATIVE_SUMMATION_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_REVERSE_SUBSEQUENCES:
         return std::invoke(std::forward<Visitor>(visitor), DML_REVERSE_SUBSEQUENCES_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_GATHER_ELEMENTS:
+        return std::invoke(std::forward<Visitor>(visitor), DML_GATHER_ELEMENTS_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_GATHER_ND:
+        return std::invoke(std::forward<Visitor>(visitor), DML_GATHER_ND_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_SCATTER_ND:
+        return std::invoke(std::forward<Visitor>(visitor), DML_SCATTER_ND_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_ELU:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_ELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_HARDMAX:
@@ -1768,6 +1810,9 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_FILL_VALUE_SEQUENCE: return "DML_OPERATOR_FILL_VALUE_SEQUENCE";
     case DML_OPERATOR_CUMULATIVE_SUMMATION: return "DML_OPERATOR_CUMULATIVE_SUMMATION";
     case DML_OPERATOR_REVERSE_SUBSEQUENCES: return "DML_OPERATOR_REVERSE_SUBSEQUENCES";
+    case DML_OPERATOR_GATHER_ELEMENTS: return "DML_OPERATOR_GATHER_ELEMENTS";
+    case DML_OPERATOR_GATHER_ND: return "DML_OPERATOR_GATHER_ND";
+    case DML_OPERATOR_SCATTER_ND: return "DML_OPERATOR_SCATTER_ND";
     default:
         assert(false);
         return "<unknown>";
