@@ -401,7 +401,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                use_mixed_precision=False, allreduce_post_accumulation=False,
                                                loss_scale_input_name='', scaled_loss_output_name='',
                                                partition_optimizer=False, enable_gradient_clip=True,
-                                               weights_not_train=[]):
+                                               frozen_weights=[]):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -431,7 +431,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     optimizer_int_attributes_map = {}
     weights_to_train = set()
     for initializer in model.graph.initializer:
-        if initializer.name in weights_not_train:
+        if initializer.name in frozen_weights:
             continue
         weights_to_train.add(initializer.name)
         if map_optimizer_attributes is not None:
@@ -538,7 +538,7 @@ class ORTTrainer():
                  learning_rate_description, device, gradient_accumulation_steps=1, postprocess_model=None,
                  world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
                  global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False,
-                 enable_gradient_clip=True, weights_not_train=[]):
+                 enable_gradient_clip=True, frozen_weights=[]):
         super(ORTTrainer, self).__init__()
         """
         Initializes ORTTrainer.
@@ -637,7 +637,7 @@ class ORTTrainer():
                 use_mixed_precision=self.use_mixed_precision, allreduce_post_accumulation=self.allreduce_post_accumulation_,
                 loss_scale_input_name=self.loss_scale_input_name, scaled_loss_output_name=self.scaled_loss_output_name,
                 partition_optimizer=self.partition_optimizer_, enable_grad_norm_clip=self.enable_grad_norm_clip_,
-                weights_not_train=weights_not_train)
+                frozen_weights=frozen_weights)
 
         # ORT backend has modified model output dtype from float32 to float16.
         for o_desc in self.model_desc_.outputs_:
