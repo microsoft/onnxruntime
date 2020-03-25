@@ -1508,7 +1508,7 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
     {
         tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
             const_cast<onnxruntime::Tensor*>(tensor),
-            IsAllocationInterface(tensor->Location()),
+            tensor ? IsAllocationInterface(tensor->Location()) : false,
             winmlProviderCapture.Get(),
             internalOpCapture);
     }
@@ -1552,21 +1552,27 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
 
       m_constantInputTensorContentsOfKernel.resize(context->InputCount());
       for (uint32_t index : m_requiredConstantCpuInputs) {
-        MLOperatorTensor tensor = MLOperatorTensor(constantInputGetter(index).Get());
+        const onnxruntime::Tensor* weakTensor = context->Input<onnxruntime::Tensor>(static_cast<int>(index));
 
-        if (index >= static_cast<uint32_t>(context->InputCount())) {
-          continue;
-        }
-        m_constantInputTensorContentsOfKernel[index].isValid = (tensor.GetInterface() != nullptr);
+        // Skip optional constant tensors.
+        if (weakTensor != nullptr)
+        {
+          MLOperatorTensor tensor = MLOperatorTensor(constantInputGetter(index).Get());
 
-        if (tensor.GetInterface() != nullptr) {
-          m_constantInputTensorContentsOfKernel[index].shape = tensor.GetShape();
-          m_constantInputTensorContentsOfKernel[index].type = tensor.GetTensorDataType();
-          m_constantInputTensorContentsOfKernel[index].data.resize(tensor.GetUnalignedTensorByteSize());
+          if (index >= static_cast<uint32_t>(context->InputCount())) {
+            continue;
+          }
+          m_constantInputTensorContentsOfKernel[index].isValid = (tensor.GetInterface() != nullptr);
+
+          if (tensor.GetInterface() != nullptr) {
+            m_constantInputTensorContentsOfKernel[index].shape = tensor.GetShape();
+            m_constantInputTensorContentsOfKernel[index].type = tensor.GetTensorDataType();
+            m_constantInputTensorContentsOfKernel[index].data.resize(tensor.GetUnalignedTensorByteSize());
+          }
+          m_constantInputTensorContentsOfKernel[index].data.assign(
+              reinterpret_cast<const std::byte*>(tensor.GetByteData()),
+              reinterpret_cast<const std::byte*>(tensor.GetByteData()) + tensor.GetUnalignedTensorByteSize());
         }
-        m_constantInputTensorContentsOfKernel[index].data.assign(
-            reinterpret_cast<const std::byte*>(tensor.GetByteData()),
-            reinterpret_cast<const std::byte*>(tensor.GetByteData()) + tensor.GetUnalignedTensorByteSize());
       }
 
       m_kernel = inferShapesAndCreateKernel(m_inputShapesOfKernelInference, m_inferredOutputShapes);

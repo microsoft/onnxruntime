@@ -996,12 +996,17 @@ class RoiPoolingHelper {
 
 class SqueezeHelper {
  public:
+  void Initialize(
+    gsl::span<const int32_t> axes,
+    gsl::span<const DimensionType> inputDimensions);
+
   // Info_t is used to obtain attributes which will be used for calculating the output shape later.
   // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
   template <typename Info_t, typename Shape_t>
   SqueezeHelper(const Info_t& info, const Shape_t& shape) {
-    m_axes = info.GetOptionalAttributeVectorInt32(AttrName::Axes);
-    std::sort(m_axes.begin(), m_axes.end());
+    Initialize(
+      info.GetOptionalAttributeVectorInt32(AttrName::Axes),
+      shape.GetInputTensorShape(0));
   }
 
   std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
@@ -1012,12 +1017,17 @@ class SqueezeHelper {
 
 class UnsqueezeHelper {
  public:
+  void Initialize(
+    gsl::span<const int32_t> axes,
+    gsl::span<const DimensionType> inputDimensions);
+
   // Info_t is used to obtain attributes which will be used for calculating the output shape later.
   // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
   template <typename Info_t, typename Shape_t>
   UnsqueezeHelper(const Info_t& info, const Shape_t& shape) {
-    m_axes = info.GetOptionalAttributeVectorInt32(AttrName::Axes);
-    std::sort(m_axes.begin(), m_axes.end());
+    Initialize(
+      info.GetOptionalAttributeVectorInt32(AttrName::Axes),
+      shape.GetInputTensorShape(0));
   }
 
   std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
