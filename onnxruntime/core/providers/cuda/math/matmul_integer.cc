@@ -133,6 +133,8 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
     LtIgemmTensor(Base::CublasLtHandle(), static_cast<int>(helper.N()),
                   static_cast<int>(helper.M()),
                   static_cast<int>(helper.K()),
+                  alpha,
+                  beta,
                   b_ptr + helper.RightOffsets()[batch] + helper.RightOffsets()[batch] / helper.N() * b_pad_size,
                   static_cast<int>(helper.N() + b_pad_size),
                   a_ptr + helper.LeftOffsets()[batch] + helper.LeftOffsets()[batch] / helper.K() * a_pad_size,

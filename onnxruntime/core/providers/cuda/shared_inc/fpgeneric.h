@@ -14,6 +14,9 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
+
+using namespace onnxruntime;
 
 // Generalize library calls to be use in template functions
 
@@ -27,13 +30,13 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle, cublasOperation_t 
 inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k, const half* alpha, const half* A, int lda, const half* B, int ldb, const half* beta, half* C, int ldc) {
   // Disable below to make sure merged result is on par with before-merge.
   // This does true FP16 computation which is slow for non-Volta GPUs
-  //if (onnxruntime::cuda::DeviceProp().GetDeviceProps().major >= 7) {
-  //   onnxruntime::cuda::CublasMathModeSetter math_mode_setter( handle, CUBLAS_TENSOR_OP_MATH );
+  //if (cuda::DeviceProp().GetDeviceProps().major >= 7) {
+  //   cuda::CublasMathModeSetter math_mode_setter( handle, CUBLAS_TENSOR_OP_MATH );
   //  return cublasHgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
   //}
   // This does pseudo FP16 computation (input/output in fp16, computation in fp32)
-  float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
-  float h_b = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));
+  float h_a = math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
+  float h_b = math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));
   cublasSetMathMode(handle, CUBLAS_TENSOR_OP_MATH);
   return cublasGemmEx(handle, transa, transb, m, n, k, &h_a, A, CUDA_R_16F, lda, B, CUDA_R_16F, ldb, &h_b, C, CUDA_R_16F, ldc, CUDA_R_32F, CUBLAS_GEMM_DFALT);
 }
@@ -79,7 +82,7 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
                                                      const double* beta,
                                                      double* C, int ldc,
                                                      long long int strideC,
-                                                     int batch_count){
+                                                     int batch_count) {
   return cublasDgemmStridedBatched(handle, transa, transb, m, n, k, alpha, A, lda, strideA, B, ldb, strideB, beta, C, ldc, strideC, batch_count);
 }
 
@@ -100,9 +103,8 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
   return cublasHgemmStridedBatched(handle, transa, transb, m, n, k, alpha, A, lda, strideA, B, ldb, strideB, beta, C, ldc, strideC, batch_count);
 }
 
-inline int roundoff( int v, int d )
-{
-   return ( v + d - 1 ) / d * d;
+inline int roundoff(int v, int d) {
+  return (v + d - 1) / d * d;
 }
 
 // Use cublasLtMatmul to perform the tensor op Igemm with the memory
@@ -114,16 +116,126 @@ inline int roundoff( int v, int d )
 // Transa, transb assumed N; alpha, beta are host pointers; Tensor ops
 // allowed. Alpha assumed 1, beta assumed 0, and stream assumed 0.
 
-void LtIgemmTensor( cublasLtHandle_t ltHandle,
-   int m,
-   int n,
-   int k,
-   const int8_t* A,
-   int lda,
-   const int8_t* B,
-   int ldb,
-   int32_t* C,
-   int ldc );
+inline void LtIgemmTensor(cublasLtHandle_t ltHandle,
+                          int m,
+                          int n,
+                          int k,
+                          int32_t alpha,
+                          int32_t beta,
+                          const int8_t* A,
+                          int lda,
+                          const int8_t* B,
+                          int ldb,
+                          int32_t* C,
+                          int ldc) {
+  cublasLtMatmulDesc_t matmulDesc = NULL;
+  cublasLtMatrixLayout_t a_desc = NULL, b_desc = NULL, c_desc = NULL;
+  cublasOperation_t op_transpose = CUBLAS_OP_T;
+
+  // The tensor op igemm kernels require specialized memory order of
+  // data.
+  cublasLtMatrixTransformDesc_t transform_desc = NULL;
+  int8_t *a_transform = NULL, *b_transform = NULL;
+  int32_t* c_transform = NULL;
+  cublasLtMatrixLayout_t AtransformDesc = NULL, BtransformDesc = NULL, CtransformDesc = NULL;
+  float transformAlpha = 1.0f, transformBeta = 0.0f;
+  cublasLtOrder_t order_COL32 = CUBLASLT_ORDER_COL32;
+  cublasLtOrder_t order_COL4_4R2_8C = CUBLASLT_ORDER_COL4_4R2_8C;
+
+  int ldatransform = 32 * m;
+  int ldbtransform = 32 * roundoff(n, 8);
+  int ldctransform = 32 * m;
+
+  CUDA_CALL_THROW(cudaMalloc(&a_transform, sizeof(int8_t) * roundoff(k, 32) / 32 * ldatransform));
+  CUDA_CALL_THROW(cudaMalloc(&b_transform, sizeof(int8_t) * roundoff(k, 32) / 32 * ldbtransform));
+  CUDA_CALL_THROW(cudaMalloc(&c_transform, sizeof(int32_t) * roundoff(n, 32) / 32 * ldctransform));
+
+  CUBLAS_CALL_THROW(cublasLtMatrixTransformDescCreate(&transform_desc, CUDA_R_32F));
+
+  // B matrix is non-transposed, but transposed matrix is needed - add transpose operation in matrix transform.
+  CUBLAS_CALL_THROW(cublasLtMatrixTransformDescSetAttribute(transform_desc, CUBLASLT_MATRIX_TRANSFORM_DESC_TRANSB, &op_transpose, sizeof(op_transpose)));
+
+  CUBLAS_CALL_THROW(cublasLtMatmulDescCreate(&matmulDesc, CUDA_R_32I));
+
+  // Tensor op igemm kernels only support NT gemm
+  CUBLAS_CALL_THROW(cublasLtMatmulDescSetAttribute(matmulDesc, CUBLASLT_MATMUL_DESC_TRANSB, &op_transpose, sizeof(op_transpose)));
+
+  // Create descriptors for the original matrices
+  CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&a_desc, CUDA_R_8I, m, k, lda));
+  CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&b_desc, CUDA_R_8I, k, n, ldb));
+  CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&c_desc, CUDA_R_32I, m, n, ldc));
+
+  // Create descriptors for the transformed matrices
+  CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&AtransformDesc, CUDA_R_8I, m, k, ldatransform));
+  CUBLAS_CALL_THROW(cublasLtMatrixLayoutSetAttribute(AtransformDesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &order_COL32, sizeof(order_COL32)));
+
+  CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&BtransformDesc, CUDA_R_8I, n, k, ldbtransform));
+  CUBLAS_CALL_THROW(cublasLtMatrixLayoutSetAttribute(BtransformDesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &order_COL4_4R2_8C, sizeof(order_COL4_4R2_8C)));
+
+  CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&CtransformDesc, CUDA_R_32I, m, n, ldctransform));
+  CUBLAS_CALL_THROW(cublasLtMatrixLayoutSetAttribute(CtransformDesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &order_COL32, sizeof(order_COL32)));
+
+  // Transforms and computation
+  CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle, transform_desc, &transformAlpha, A, a_desc, &transformBeta, NULL, NULL, a_transform, AtransformDesc, 0));
+  CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
+                                            transform_desc,
+                                            &transformAlpha,
+                                            B,
+                                            b_desc,
+                                            &transformBeta,
+                                            NULL,
+                                            NULL,
+                                            b_transform,
+                                            BtransformDesc,
+                                            0));
+
+  // No need to transform C matrix as beta is assumed to be 0
+  CUBLAS_CALL_THROW(cublasLtMatmul(ltHandle,
+                                   matmulDesc,
+                                   &alpha,
+                                   a_transform,
+                                   AtransformDesc,
+                                   b_transform,
+                                   BtransformDesc,
+                                   &beta,
+                                   c_transform,
+                                   CtransformDesc,
+                                   c_transform,
+                                   CtransformDesc,
+                                   NULL,
+                                   NULL,
+                                   0,
+                                   0));
+
+  // Transform the outputs to COL order
+  CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
+                                            transform_desc,
+                                            &transformAlpha,
+                                            c_transform,
+                                            CtransformDesc,
+                                            &transformBeta,
+                                            NULL,
+                                            NULL,
+                                            C,
+                                            c_desc,
+                                            0));
+
+  // Descriptors are no longer needed as all GPU work was already
+  // enqueued.
+  if (CtransformDesc) cublasLtMatrixLayoutDestroy(CtransformDesc);
+  if (BtransformDesc) cublasLtMatrixLayoutDestroy(BtransformDesc);
+  if (AtransformDesc) cublasLtMatrixLayoutDestroy(AtransformDesc);
+  if (c_desc) cublasLtMatrixLayoutDestroy(c_desc);
+  if (b_desc) cublasLtMatrixLayoutDestroy(b_desc);
+  if (a_desc) cublasLtMatrixLayoutDestroy(a_desc);
+  if (matmulDesc) cublasLtMatmulDescDestroy(matmulDesc);
+  if (transform_desc) cublasLtMatrixTransformDescDestroy(transform_desc);
+
+  // Wait until device is done before freeing transformed buffers
+  if (c_transform) cudaFree(c_transform);
+  if (b_transform) cudaFree(b_transform);
+  if (a_transform) cudaFree(a_transform);
+}
 
 // axpy
 inline cublasStatus_t cublasAxpyHelper(cublasHandle_t handle, int n, const float* alpha, const float* x, int incx, float* y, int incy) {
@@ -133,7 +245,7 @@ inline cublasStatus_t cublasAxpyHelper(cublasHandle_t handle, int n, const doubl
   return cublasDaxpy(handle, n, alpha, x, incx, y, incy);
 }
 inline cublasStatus_t cublasAxpyHelper(cublasHandle_t handle, int n, const half* alpha, const half* x, int incx, half* y, int incy) {
-  float tmp_alpha = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
+  float tmp_alpha = math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
   return cublasAxpyEx(handle, n, (void*)&tmp_alpha, CUDA_R_32F, (void*)x, CUDA_R_16F, incx, (void*)y, CUDA_R_16F, incy, CUDA_R_32F);
 }
 
@@ -284,7 +396,7 @@ inline cublasStatus_t cublasScalHelper(cublasHandle_t handle, int n, const doubl
   return cublasDscal(handle, n, alpha, x, incx);
 }
 inline cublasStatus_t cublasScalHelper(cublasHandle_t handle, int n, const half* alpha, half* x, int incx) {
-  float tmp_alpha = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
+  float tmp_alpha = math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
   return cublasScalEx(handle, n, (void*)&tmp_alpha, CUDA_R_32F, (void*)x, CUDA_R_16F, incx, CUDA_R_32F);
 }
 inline cublasStatus_t cublasScalHelper(cublasHandle_t, int, const char*, char*, int) {
