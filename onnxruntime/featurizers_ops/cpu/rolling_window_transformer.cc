@@ -15,18 +15,17 @@ namespace featurizers {
 template <typename T>
 struct RollingWindowTransformerImpl {
   void operator()(OpKernelContext* ctx) const {
-    // Create the transformer
+    // Define the type
     using GrainT = std::vector<std::string>;
-    using EstimatorT = Microsoft::Featurizer::Featurizers::AnalyticalRollingWindowEstimator<T>;
+    using EstimatorT = Microsoft::Featurizer::Featurizers::GrainedAnalyticalRollingWindowEstimator<T>;
+    using GrainedInputType = std::tuple<GrainT const &, T const &>;
     using OutputType = std::vector<double>;
-    Microsoft::Featurizer::Featurizers::Components::GrainTransformer<GrainT, EstimatorT> transformer(
-        [ctx](void) {
-          const auto* state_tensor(ctx->Input<Tensor>(0));
-          const uint8_t* const state_data(state_tensor->Data<uint8_t>());
 
-          Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
-          return Microsoft::Featurizer::Featurizers::Components::GrainTransformer<GrainT, EstimatorT>(archive);
-        }());
+    //Get the transformer
+    const auto* state_tensor(ctx->Input<Tensor>(0));
+    const uint8_t* const state_data(state_tensor->Data<uint8_t>());
+    Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
+    EstimatorT::TransformerType transformer(archive);
 
     // Get the Grains
     const auto* grains_tensor(ctx->Input<Tensor>(1));
@@ -42,28 +41,27 @@ struct RollingWindowTransformerImpl {
 
     double* output_data(0);
     bool has_allocate_output_data = false;
-    std::function<void(std::tuple<GrainT, OutputType> const &)> callback_fn;
-    callback_fn = [&ctx, &output_data, &has_allocate_output_data, &output_dim_0](std::tuple<GrainT, OutputType> const & value) -> void {
-      OutputType output = std::get<1>(value);
+    std::function<void(OutputType)> callback_fn;
+    callback_fn = [&ctx, &output_data, &has_allocate_output_data, &output_dim_0](OutputType value) -> void {
       //Allocate tensor memory after first output is generated
       if(!has_allocate_output_data) {
-        TensorShape output_shape({output_dim_0, static_cast<int64_t>(output.size())});
+        TensorShape output_shape({output_dim_0, static_cast<int64_t>(value.size())});
         Tensor* output_tensor(ctx->Output(0, output_shape));
         output_data = output_tensor->MutableData<double>();
         has_allocate_output_data = true;
       }
-      std::copy(output.begin(), output.end(), output_data);
-      output_data += output.size();
+      std::copy(value.begin(), value.end(), output_data);
+      output_data += value.size();
     };
 
     // Transform
     GrainT grains;
     grains.reserve(grains_num);
     for (int64_t i = 0; i < output_dim_0; ++i) {
-      //Prepare Input and Output
+      //Prepare Input
       grains.clear();
       std::copy(grains_data, grains_data + grains_num, std::back_inserter(grains));
-      std::tuple<GrainT, T> input_per_row = std::make_tuple(std::move(grains), *target_data);
+      GrainedInputType const input_per_row = std::make_tuple(std::move(grains), *target_data);
 
       //Execute
       transformer.execute(input_per_row, callback_fn);
