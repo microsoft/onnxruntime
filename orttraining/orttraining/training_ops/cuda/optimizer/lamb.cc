@@ -178,7 +178,8 @@ Status launch_lamb_compute_direction(
     const std::vector<float>& alphas,
     const std::vector<float>& betas,
     const std::vector<float>& lambdas,
-    const std::vector<float>& epsilons) {
+    const std::vector<float>& epsilons,
+    const int64_t do_bias_correction) {
   ORT_ENFORCE(group_count == static_cast<int>(tensor_sizes.size()));
 
   ORT_ENFORCE(group_count == static_cast<int>(p_ws.size()));
@@ -203,10 +204,10 @@ Status launch_lamb_compute_direction(
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
       // For the first iteration (indexed by 0), the update count should be 2.
-      const float alpha_correction =
-        onnxruntime::contrib::compute_bias_correction_coefficient(alphas[i], update_count);
-      const float beta_correction =
-        onnxruntime::contrib::compute_bias_correction_coefficient(betas[i], update_count);
+      const float alpha_correction = do_bias_correction != 0 ?
+        onnxruntime::contrib::compute_bias_correction_coefficient(alphas[i], update_count) : 1.f;
+      const float beta_correction = do_bias_correction != 0 ?
+        onnxruntime::contrib::compute_bias_correction_coefficient(betas[i], update_count) : 1.f;
 
       LambComputeDirection(
           p_ws[i],
@@ -247,9 +248,9 @@ Status launch_lamb_compute_direction(
 
     // For the first iteration (indexed by 0), the update count should be 1.
     const float alpha_correction =
-      onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count);
+      do_bias_correction != 0 ? onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count) : 1.f;
     const float beta_correction =
-      onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count);
+      do_bias_correction != 0 ? onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count) : 1.f;
 
     typedef LambMultiTensorComputeDirectionFunctor<CudaT2, CudaT3, CudaT4, CudaT_GRAD_NORM> LambStage1;
     LambStage1 lamb_stage1;
@@ -634,7 +635,8 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
       p_ws, p_gs, p_m1s, p_m2s,
       p_ds,
       p_m1_news, p_m2_news,
-      alpha_, beta_, lambda_, epsilon_);
+      alpha_, beta_, lambda_, epsilon_,
+      do_bias_correction_);
 
   launch_lamb_reduction(
       group_count,
