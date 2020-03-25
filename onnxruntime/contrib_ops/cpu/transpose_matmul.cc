@@ -25,9 +25,7 @@ TransposeMatMul::TransposeMatMul(const OpKernelInfo& info)
 }
 
 Status TransposeMatMul::Compute(OpKernelContext* context) const {
-  auto* context_internal = dynamic_cast<OpKernelContextInternal*>(context);
-  ORT_ENFORCE(context_internal, "Failed to get OpKernelContextInternal instance.");
-  concurrency::ThreadPool* thread_pool = context_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   const Tensor* A = context->Input<Tensor>(0);
   const Tensor* B = context->Input<Tensor>(1);
@@ -40,9 +38,6 @@ Status TransposeMatMul::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(helper.Compute(A->Shape(), B->Shape(), trans_a, trans_b));
 
   Tensor* Y = context->Output(0, helper.OutputShape());
-  if (Y->DataType() != DataTypeImpl::GetType<float>()) {
-    ORT_NOT_IMPLEMENTED("TransposeMatMul CPU operator only supports float inputs.");
-  }
 
   const size_t num_offsets = helper.OutputOffsets().size();
   for (size_t i = 0; i < num_offsets; ++i) {
