@@ -583,15 +583,25 @@ Status ArgMax<T>::Compute(OpKernelContext* ctx) const {
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
-  PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_);
 
-  auto* output_data = reduced->template MutableData<int64_t>();
+  bool no_transpose = PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_, true);
 
+  int64_t* output_data = reduced->template MutableData<int64_t>();
   Eigen::MatrixXf::Index maxIndex;
-  auto matrixData = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks);
-  for (int i = 0; i < block_size; ++i) {
-    matrixData.row(i).maxCoeff(&maxIndex);
-    *(output_data++) = maxIndex;
+
+  if (no_transpose) {
+    const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
+
+    for (int64_t i = 0; i < block_size; ++i) {
+      ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).maxCoeff(&maxIndex);
+      *(output_data++) = maxIndex;
+    }
+  } else {
+    auto matrixData = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks);
+    for (int i = 0; i < block_size; ++i) {
+      matrixData.row(i).maxCoeff(&maxIndex);
+      *(output_data++) = maxIndex;
+    }
   }
 
   return Status::OK();
@@ -603,15 +613,25 @@ Status ArgMin<T>::Compute(OpKernelContext* ctx) const {
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
-  PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_);
 
-  auto* output_data = reduced->template MutableData<int64_t>();
+  bool no_transpose = PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_, true);
 
+  int64_t* output_data = reduced->template MutableData<int64_t>();
   Eigen::MatrixXf::Index minIndex;
-  auto matrixData = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks);
-  for (int i = 0; i < block_size; ++i) {
-    matrixData.row(i).minCoeff(&minIndex);
-    *(output_data++) = minIndex;
+
+  if (no_transpose) {
+    const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
+
+    for (int64_t i = 0; i < block_size; ++i) {
+      ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).minCoeff(&minIndex);
+      *(output_data++) = minIndex;
+    }
+  } else {
+    auto matrixData = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks);
+    for (int i = 0; i < block_size; ++i) {
+      matrixData.row(i).minCoeff(&minIndex);
+      *(output_data++) = minIndex;
+    }
   }
 
   return Status::OK();
