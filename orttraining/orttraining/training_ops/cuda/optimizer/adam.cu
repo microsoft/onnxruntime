@@ -93,8 +93,10 @@ void AdamOptimizerImpl(
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   // If bias correction coefficients are set to 1s, it's equivalent to disabling bias correction. 
-  const T4 alpha_correction = do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count) : T4(1.f);
-  const T4 beta_correction = do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count) : T4(1.f);
+  const T4 alpha_correction = do_bias_correction ? 
+    onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count) : T4(1.f);
+  const T4 beta_correction = do_bias_correction ?
+    onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count) : T4(1.f);
   _AdamOptimizer<T1, T3, T4, T_GRAD, T_GRAD_NORM><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       eta,
       weights,

@@ -431,8 +431,10 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
             for k, v in attributes.items():
                 if isinstance(v, float):
                     optimizer_attributes_map[initializer.name][k] = v
-                else:
+                elif isinstance(v, int):
                     optimizer_int_attributes_map[initializer.name][k] = v
+                else:
+                    raise ValueError("Optimizer attributes must be either float or int.")
         else:
             optimizer_attributes_map[initializer.name] = {}
             optimizer_int_attributes_map[initializer.name] = {}
