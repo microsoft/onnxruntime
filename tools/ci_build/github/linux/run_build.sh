@@ -14,6 +14,7 @@ x) BUILD_EXTR_PAR=${OPTARG};;
 o) BUILD_OS=${OPTARG};;
 # YOCTO 4.19 + ACL 19.05, YOCTO 4.14 + ACL 19.02
 y) YOCTO_VERSION=${OPTARG};;
+a) ARCH_TYPE=${OPTARG};; # CPU architechture, x86, ARM ...
 esac
 done
 
@@ -44,7 +45,11 @@ elif [ $BUILD_OS = "yocto" ]; then
     
     make -j$(nproc)
 else
-    COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
+    if [$ARCH_TYPE = "arm" || $ARCH_TYPE = "ARM"]; then
+        COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --cmake_path /usr/local/bin/cmake --ctest_path /usr/local/bin/ctest"
+    else
+        COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
+    fi
     # For the nocontribops pipeline we don't need openmp as it is used by the Edge browser team and
     # (going forward) the vscode team. Both these teams don't want their users to install any external dependency to use
     # ORT.
@@ -67,20 +72,35 @@ else
                 --cuda_home /usr/local/cuda \
                 --cudnn_home /usr/local/cuda $BUILD_EXTR_PAR
         else
-            _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
+            if [$ARCH_TYPE = "arm" || $ARCH_TYPE = "ARM"]; then
+                CUDNN_PATH = /usr/lib/aarch64-linux-gnu
+            else
+                _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
+                CUDNN_PATH = /usr/local/cudnn-$_CUDNN_VERSION/cuda
+            fi
+
             python3 $SCRIPT_DIR/../../build.py --build_dir /build \
                 --config Debug Release $COMMON_BUILD_ARGS \
                 --use_cuda \
                 --cuda_home /usr/local/cuda \
-                --cudnn_home /usr/local/cudnn-$_CUDNN_VERSION/cuda $BUILD_EXTR_PAR
+                --cudnn_home $CUDNN_PATH $BUILD_EXTR_PAR
         fi
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
         _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
+
+        if [$ARCH_TYPE = "arm" || $ARCH_TYPE = "ARM"]; then
+            CUDNN_PATH = /usr/lib/aarch64-linux-gnu
+            TENSORRT_PATH = /usr/lib/aarch64-linux-gnu 
+        else
+            CUDNN_PATH = /usr/local/cuda
+            TENSORRT_PATH = /workspace/tensorrt
+        fi
+
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
             --config Release $COMMON_BUILD_ARGS \
-            --use_tensorrt --tensorrt_home /workspace/tensorrt \
+            --use_tensorrt --tensorrt_home $TENSORRT_PATH \
             --cuda_home /usr/local/cuda \
-            --cudnn_home /usr/local/cuda $BUILD_EXTR_PAR
+            --cudnn_home $CUDNN_PATH $BUILD_EXTR_PAR
     else #cpu, ngraph and openvino
         export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
