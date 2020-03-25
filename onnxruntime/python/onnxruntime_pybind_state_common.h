@@ -44,9 +44,6 @@ class SessionObjectInitializer {
   }
 };
 
-// static variable used to create inference session and training session.
-static std::unique_ptr<Environment> session_env;
-void initialize_env();
 Environment& get_env();
 
 }
