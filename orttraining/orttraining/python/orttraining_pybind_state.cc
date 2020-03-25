@@ -174,6 +174,10 @@ void addObjectMethodsForTraining(py::module& m) {
       Environment& env = get_env();
       return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
       }))
+      .def(py::init([]() {
+        Environment& env = get_env();
+        return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(GetDefaultCPUSessionOptions(), env);
+      }))
       .def("finalize", [](py::object) {
 #ifdef USE_HOROVOD
         training::shutdown_horovod();

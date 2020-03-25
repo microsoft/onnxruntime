@@ -13,11 +13,9 @@ from onnxruntime.capi.session import Session, InferenceSession, IOBinding
 class TrainingSession(InferenceSession):
     def __init__(self, path_or_bytes, parameters, sess_options=None):
         if sess_options:
-            self._sess = C.TrainingSession(
-                sess_options, C.get_session_initializer())
+            self._sess = C.TrainingSession(sess_options)
         else:
-            self._sess = C.TrainingSession(
-                C.get_session_initializer(), C.get_session_initializer())
+            self._sess = C.TrainingSession()
 
         if isinstance(path_or_bytes, str):
             self._sess.load_model(path_or_bytes, parameters)
