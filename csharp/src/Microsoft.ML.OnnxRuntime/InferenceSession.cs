@@ -148,7 +148,7 @@ namespace Microsoft.ML.OnnxRuntime
                 inputIndex++;
             }
 
-            // prepare empty outputs
+            // prepare outputs
             string[] outputNamesArray = outputNames as string[] ?? outputNames.ToArray();
             IntPtr[] outputValuesArray = new IntPtr[outputNames.Count];
 
@@ -205,7 +205,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Runs the loaded model for the given inputs, and fetches all the outputs.
         /// </summary>
         /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
-        /// <param name="inputValues">Specify a collection of <see cref="PinnedOnnxValue"/> that indicates the input values.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
         /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(
             IReadOnlyCollection<string> inputNames,
@@ -220,7 +220,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Runs the loaded model for the given inputs, and fetches the outputs specified in <paramref name="outputNames"/>.
         /// </summary>
         /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
-        /// <param name="inputValues">Specify a collection of <see cref="PinnedOnnxValue"/> that indicates the input values.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
         /// <param name="outputNames">Specify a collection of string that indicates the output names to fetch.</param>
         /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(
@@ -235,7 +235,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Runs the loaded model for the given inputs, and fetches the specified outputs in <paramref name="outputNames"/>. Uses the given RunOptions for this run.
         /// </summary>
         /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
-        /// <param name="inputValues">Specify a collection of <see cref="PinnedOnnxValue"/> that indicates the input values.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
         /// <param name="outputNames">Specify a collection of string that indicates the output names to fetch.</param>
         /// <param name="options"></param>
         /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
@@ -261,7 +261,7 @@ namespace Microsoft.ML.OnnxRuntime
                 inputIndex++;
             }
 
-            // prepare empty outputs
+            // prepare outputs
             string[] outputNamesArray = outputNames as string[] ?? outputNames.ToArray();
             IntPtr[] outputValuesArray = new IntPtr[outputNames.Count];
 
@@ -308,9 +308,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// Outputs need to be created with correct type and dimension to accept the fetched data.
         /// </summary>
         /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
-        /// <param name="inputValues">Specify a collection of <see cref="PinnedOnnxValue"/> that indicates the input values.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
         /// <param name="outputNames">Specify a collection of string that indicates the output names. Should match <paramref name="outputValues"/>.</param>
-        /// <param name="outputValues">Specify a collection of <see cref="PinnedOnnxValue"/> that indicates the output values.</param>
+        /// <param name="outputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the output values.</param>
         public void Run(
             IReadOnlyCollection<string> inputNames,
             IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
@@ -326,9 +326,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// Outputs need to be created with correct type and dimension to accept the fetched data.
         /// </summary>
         /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
-        /// <param name="inputValues">Specify a collection of <see cref="PinnedOnnxValue"/> that indicates the input values.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
         /// <param name="outputNames">Specify a collection of string that indicates the output names. Should match <paramref name="outputValues"/>.</param>
-        /// <param name="outputValues">Specify a collection of <see cref="PinnedOnnxValue"/> that indicates the output values.</param>
+        /// <param name="outputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the output values.</param>
         /// <param name="options"></param>
         public void Run(
             IReadOnlyCollection<string> inputNames,
@@ -489,7 +489,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="inputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the input values.</param>
         /// <param name="outputNames">Specify a collection of string that indicates the output names. Should match <paramref name="outputValues"/>.</param>
-        /// <param name="outputValues">Specify a collection of <see cref="PinnedOnnxValue"/> that indicates the output values.</param>
+        /// <param name="outputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the output values.</param>
         public void Run(
             IReadOnlyCollection<NamedOnnxValue> inputs,
             IReadOnlyCollection<string> outputNames,
@@ -505,7 +505,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="inputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the input values.</param>
         /// <param name="outputNames">Specify a collection of string that indicates the output names. Should match <paramref name="outputValues"/>.</param>
-        /// <param name="outputValues">Specify a collection of <see cref="PinnedOnnxValue"/> that indicates the output values.</param>
+        /// <param name="outputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the output values.</param>
         /// <param name="options"></param>
         public void Run(
             IReadOnlyCollection<NamedOnnxValue> inputs,
@@ -581,7 +581,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Outputs need to be created with correct type and dimension to receive the fetched data.
         /// </summary>
         /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
-        /// <param name="inputValues">Specify a collection of <see cref="PinnedOnnxValue"/> that indicates the input values.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
         /// <param name="output">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
         public void Run(
             IReadOnlyCollection<string> inputNames,
@@ -597,7 +597,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Outputs need to be created with correct type and dimension to receive the fetched data.
         /// </summary>
         /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
-        /// <param name="inputValues">Specify a collection of <see cref="PinnedOnnxValue"/> that indicates the input values.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
         /// <param name="output">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
         /// <param name="options"></param>
         public void Run(
