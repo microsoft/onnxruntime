@@ -1,0 +1,62 @@
+{
+  "configurations": [
+    {
+      "name": "WinML-Debug",
+      "generator": "Ninja",
+      "configurationType": "Debug",
+      "inheritEnvironments": [ "msvc_x64_x64" ],
+      "buildRoot": "${projectDir}\\..\\build\\${name}",
+      "installRoot": "${projectDir}\\..\\build\\${name}\\install",
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": "",
+      "variables": [
+        {
+          "name": "onnxruntime_USE_WINML",
+          "value": "True",
+          "type": "BOOL"
+        },
+        {
+          "name": "onnxruntime_USE_DML",
+          "value": "True",
+          "type": "BOOL"
+        },
+        {
+          "name": "onnxruntime_BUILD_SHARED_LIB",
+          "value": "True",
+          "type": "BOOL"
+        }
+      ],
+      "cmakeToolchain": "${projectDir}\\wcos_toolchain.cmake"
+    },
+    {
+      "name": "WinML-RelWithDebInfo",
+      "generator": "Ninja",
+      "configurationType": "RelWithDebInfo",
+      "inheritEnvironments": [ "msvc_x64_x64" ],
+      "buildRoot": "${projectDir}\\..\\build\\${name}",
+      "installRoot": "${projectDir}\\..\\build\\${name}\\install",
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": "",
+      "variables": [
+        {
+          "name": "onnxruntime_USE_WINML",
+          "value": "True",
+          "type": "BOOL"
+        },
+        {
+          "name": "onnxruntime_USE_DML",
+          "value": "True",
+          "type": "BOOL"
+        },
+        {
+          "name": "onnxruntime_BUILD_SHARED_LIB",
+          "value": "True",
+          "type": "BOOL"
+        }
+      ],
+      "cmakeToolchain": "${projectDir}\\wcos_toolchain.cmake"
+    }
+  ]
+}

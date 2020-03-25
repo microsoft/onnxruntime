@@ -14,12 +14,14 @@ from OnnxModel import OnnxModel
 
 logger = logging.getLogger(__name__)
 
+
 class BertOnnxModel(OnnxModel):
+
     def __init__(self, model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only):
         assert num_heads > 0
         assert hidden_size % num_heads == 0
         assert sequence_length > 0
-        
+
         super(BertOnnxModel, self).__init__(model)
         self.num_heads = num_heads
         self.sequence_length = sequence_length
@@ -52,7 +54,7 @@ class BertOnnxModel(OnnxModel):
 
     def undo_cast_input_to_int32(self, input_name):
         input_name_to_nodes = self.input_name_to_nodes()
-        nodes =  input_name_to_nodes[input_name]
+        nodes = input_name_to_nodes[input_name]
         for node in nodes:
             if node.op_type == "Cast":
                 is_int32 = False
@@ -77,12 +79,14 @@ class BertOnnxModel(OnnxModel):
         # Add a mask processing node
         output_name = self.create_node_name('mask_index')
         mask_index_node = onnx.helper.make_node('ReduceSum',
-            inputs=[input_name],
-            outputs=[output_name],
-            name=self.create_node_name('ReduceSum', 'MaskReduceSum'))
-        mask_index_node.attribute.extend([onnx.helper.make_attribute("axes", [1]), onnx.helper.make_attribute("keepdims", 0)])
+                                                inputs=[input_name],
+                                                outputs=[output_name],
+                                                name=self.create_node_name('ReduceSum', 'MaskReduceSum'))
+        mask_index_node.attribute.extend(
+            [onnx.helper.make_attribute("axes", [1]),
+             onnx.helper.make_attribute("keepdims", 0)])
         self.add_node(mask_index_node)
-        
+
         self.mask_indice[input] = output_name
         return output_name
 
@@ -104,7 +108,7 @@ class BertOnnxModel(OnnxModel):
         assert vw.shape == (self.hidden_size, self.hidden_size)
 
         qkv_weight = np.stack((qw, kw, vw), axis=-2)
-        
+
         qb = numpy_helper.to_array(q_bias)
         assert qb.shape == (self.hidden_size,)
 
@@ -119,18 +123,19 @@ class BertOnnxModel(OnnxModel):
         attention_node_name = self.create_node_name('Attention')
 
         weight = onnx.helper.make_tensor(name=attention_node_name + '_qkv_weight',
-            data_type=TensorProto.FLOAT,
-            dims=[self.hidden_size, 3 * self.hidden_size],
-            vals=qkv_weight.flatten().tolist())
+                                         data_type=TensorProto.FLOAT,
+                                         dims=[self.hidden_size, 3 * self.hidden_size],
+                                         vals=qkv_weight.flatten().tolist())
         self.add_initializer(weight)
 
-        weight_input = onnx.helper.make_tensor_value_info(weight.name, TensorProto.FLOAT, [self.hidden_size, 3 * self.hidden_size])
+        weight_input = onnx.helper.make_tensor_value_info(weight.name, TensorProto.FLOAT,
+                                                          [self.hidden_size, 3 * self.hidden_size])
         self.add_input(weight_input)
 
         bias = onnx.helper.make_tensor(name=attention_node_name + '_qkv_bias',
-            data_type=TensorProto.FLOAT,
-            dims=[3 * self.hidden_size],
-            vals=qkv_bias.flatten().tolist())
+                                       data_type=TensorProto.FLOAT,
+                                       dims=[3 * self.hidden_size],
+                                       vals=qkv_bias.flatten().tolist())
         self.add_initializer(bias)
 
         bias_input = onnx.helper.make_tensor_value_info(bias.name, TensorProto.FLOAT, [3 * self.hidden_size])
@@ -168,7 +173,9 @@ class BertOnnxModel(OnnxModel):
                 children = input_name_to_nodes[input]
                 children_types = sorted([child.op_type for child in children])
                 if children_types != self.normalize_children_types():
-                    qkv_nodes = self.match_parent_path(normalize_node, ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'], [i, 0, 0, 0, 0])
+                    qkv_nodes = self.match_parent_path(normalize_node,
+                                                       ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
+                                                       [i, 0, 0, 0, 0])
                 else:
                     root_input = input
 
@@ -199,7 +206,8 @@ class BertOnnxModel(OnnxModel):
 
             k_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
             if k_nodes is None:
-                k_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0, 0])
+                k_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Transpose', 'Reshape', 'Add', 'MatMul'],
+                                                 [1, 0, 0, 0, 0])
                 if k_nodes is None:
                     logger.debug("fuse_attention: failed to match k path")
                     continue
@@ -207,7 +215,8 @@ class BertOnnxModel(OnnxModel):
             else:
                 (transpose_k, reshape_k, add_k, matmul_k) = k_nodes
 
-            mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [1, 0, 1, 0, 0])
+            mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'],
+                                                [1, 0, 1, 0, 0])
             if mask_nodes is None:
                 logger.debug("fuse_attention: failed to match mask path")
                 continue
@@ -215,7 +224,8 @@ class BertOnnxModel(OnnxModel):
 
             if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input:
                 mask_index = self.process_mask(unsqueeze_mask_0.input[0])
-                self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v, root_input, reshape_qkv.output[0])
+                self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v, root_input,
+                                           reshape_qkv.output[0])
                 nodes_to_remove.extend([reshape_qkv, transpose_qkv, matmul_qkv])
                 nodes_to_remove.extend(qk_nodes)
                 nodes_to_remove.extend(q_nodes)
@@ -250,6 +260,7 @@ class BertOnnxModel(OnnxModel):
 
      Note that constant input for Add and Mul could be first or second input: like either A=0.5 or B=0.5 is fine.
     """
+
     def fuse_gelu_with_elf(self, gelu_op_name):
         logger.debug(f"start fuse_gelu_with_elf({gelu_op_name})")
         input_name_to_nodes = self.input_name_to_nodes()
@@ -288,7 +299,7 @@ class BertOnnxModel(OnnxModel):
             subgraph_input = div.input[0]
 
             another = 1 if mul_after_erf.input[0] == add_after_erf.output[0] else 0
-            if subgraph_input == mul_after_erf.input[another]: # pattern 2
+            if subgraph_input == mul_after_erf.input[another]:  # pattern 2
                 children = input_name_to_nodes[mul_after_erf.output[0]]
                 if len(children) != 1 or children[0].op_type != 'Mul':
                     continue
@@ -296,11 +307,11 @@ class BertOnnxModel(OnnxModel):
                 if not self.has_constant_input(mul_half, 0.5):
                     continue
                 subgraph_output = mul_half.output[0]
-            else: # pattern 1
+            else:  # pattern 1
                 mul_half = self.match_parent(mul_after_erf, 'Mul', another, output_name_to_node)
                 if mul_half is None:
                     continue
-            
+
                 if not self.has_constant_input(mul_half, 0.5):
                     continue
 
@@ -310,20 +321,20 @@ class BertOnnxModel(OnnxModel):
                 subgraph_output = mul_after_erf.output[0]
 
             subgraph_nodes = [div, erf_node, add_after_erf, mul_after_erf, mul_half]
-            if not self.is_safe_to_fuse_nodes(subgraph_nodes, [subgraph_output], input_name_to_nodes, output_name_to_node):
+            if not self.is_safe_to_fuse_nodes(subgraph_nodes, [subgraph_output], input_name_to_nodes,
+                                              output_name_to_node):
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
-            gelu_node = onnx.helper.make_node(gelu_op_name,
-                inputs=[subgraph_input],
-                outputs=[subgraph_output])
+            gelu_node = onnx.helper.make_node(gelu_op_name, inputs=[subgraph_input], outputs=[subgraph_output])
             gelu_node.domain = "com.microsoft"
             nodes_to_add.append(gelu_node)
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
         if len(nodes_to_add) > 0:
-            logger.info("Fused {} count:{}".format('FastGelu (approximation)' if gelu_op_name == 'FastGelu' else 'Gelu', len(nodes_to_add)))
+            logger.info("Fused {} count:{}".format('FastGelu (approximation)' if gelu_op_name == 'FastGelu' else 'Gelu',
+                                                   len(nodes_to_add)))
 
     """
      Fuse Gelu with tanh into one node:
@@ -336,6 +347,7 @@ class BertOnnxModel(OnnxModel):
           +------> Mul(B=0.5)--------------------------------------------+
      Note that constant input for Add and Mul could be first or second input: like either A=0.5 or B=0.5 is fine.
     """
+
     def fuse_gelu_with_tanh(self, gelu_op_name):
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
@@ -405,20 +417,25 @@ class BertOnnxModel(OnnxModel):
             if pow.input[0] != root_node.output[0]:
                 continue
 
-            subgraph_nodes = [mul_after_tanh, mul_half, add_after_tanh, tanh_node, mul_before_tanh, add_before_tanh, mul_after_pow, pow]
-            if not self.is_safe_to_fuse_nodes(subgraph_nodes, [mul_after_tanh.output[0]], input_name_to_nodes, output_name_to_node):
+            subgraph_nodes = [
+                mul_after_tanh, mul_half, add_after_tanh, tanh_node, mul_before_tanh, add_before_tanh, mul_after_pow,
+                pow
+            ]
+            if not self.is_safe_to_fuse_nodes(subgraph_nodes, [mul_after_tanh.output[0]], input_name_to_nodes,
+                                              output_name_to_node):
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
             gelu_node = onnx.helper.make_node(gelu_op_name,
-                inputs=[root_node.output[0]],
-                outputs=mul_after_tanh.output,
-                name=self.create_node_name(gelu_op_name))
+                                              inputs=[root_node.output[0]],
+                                              outputs=mul_after_tanh.output,
+                                              name=self.create_node_name(gelu_op_name))
             gelu_node.domain = "com.microsoft"
             nodes_to_add.append(gelu_node)
 
         if len(nodes_to_add) > 0:
-            logger.info("Fused {} count: {}".format('Gelu (FastGelu fits better)' if gelu_op_name == 'Gelu' else 'FastGelu', len(nodes_to_add)))
+            logger.info("Fused {} count: {}".format(
+                'Gelu (FastGelu fits better)' if gelu_op_name == 'Gelu' else 'FastGelu', len(nodes_to_add)))
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
@@ -454,14 +471,15 @@ class BertOnnxModel(OnnxModel):
                 continue
 
             subgraph_nodes = [node, add]
-            if not self.is_safe_to_fuse_nodes(subgraph_nodes, [node.output[0]], input_name_to_nodes, output_name_to_node):
+            if not self.is_safe_to_fuse_nodes(subgraph_nodes, [node.output[0]], input_name_to_nodes,
+                                              output_name_to_node):
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
             gelu_node = onnx.helper.make_node('FastGelu',
-                inputs=[matmul.output[0], add.input[bias_index]],
-                outputs=node.output,
-                name=self.create_node_name('FastGelu', "FastGelu_AddBias_"))
+                                              inputs=[matmul.output[0], add.input[bias_index]],
+                                              outputs=node.output,
+                                              name=self.create_node_name('FastGelu', "FastGelu_AddBias_"))
             gelu_node.domain = "com.microsoft"
             nodes_to_add.append(gelu_node)
 
@@ -510,15 +528,20 @@ class BertOnnxModel(OnnxModel):
                 continue
 
             subgraph_nodes = [node, add]
-            if not self.is_safe_to_fuse_nodes(subgraph_nodes, [node.output[0]], input_name_to_nodes, output_name_to_node):
+            if not self.is_safe_to_fuse_nodes(subgraph_nodes, [node.output[0]], input_name_to_nodes,
+                                              output_name_to_node):
                 logger.debug(f"Skip fusing SkipLayerNormalization with Bias since it is not safe")
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
             new_node = onnx.helper.make_node("SkipLayerNormalization",
-                inputs=[node.input[1 - add_input_index], matmul.output[0], node.input[2], node.input[3], add.input[bias_index]],
-                outputs=node.output,
-                name=self.create_node_name("SkipLayerNormalization", "SkipLayerNorm_AddBias_"))
+                                             inputs=[
+                                                 node.input[1 - add_input_index], matmul.output[0], node.input[2],
+                                                 node.input[3], add.input[bias_index]
+                                             ],
+                                             outputs=node.output,
+                                             name=self.create_node_name("SkipLayerNormalization",
+                                                                        "SkipLayerNorm_AddBias_"))
             new_node.domain = "com.microsoft"
             nodes_to_add.append(new_node)
 
@@ -543,12 +566,14 @@ class BertOnnxModel(OnnxModel):
             if concat_node.op_type != 'Concat' or len(concat_node.input) < 3 or len(concat_node.input) > 4:
                 continue
 
-            path0 = self.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [0, 0, 0], output_name_to_node)
+            path0 = self.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [0, 0, 0],
+                                           output_name_to_node)
             if path0 is None:
                 continue
             (unsqueeze_0, gather_0, shape_0) = path0
 
-            path1 = self.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [1, 0, 0], output_name_to_node)
+            path1 = self.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [1, 0, 0],
+                                           output_name_to_node)
             if path1 is None:
                 continue
             (unsqueeze_1, gather_1, shape_1) = path1
@@ -569,8 +594,10 @@ class BertOnnxModel(OnnxModel):
             path3 = []
             shape_nodes = [shape_0, shape_1]
             if len(concat_node.input) == 3 and self.get_initializer(concat_node.input[2]) is None:
-                path2 = self.match_parent_path(concat_node, ['Unsqueeze', 'Mul', 'Gather', 'Shape'], [2, 0, 0, 0], output_name_to_node)
-                path3 = self.match_parent_path(concat_node, ['Unsqueeze', 'Mul', 'Gather', 'Shape'], [2, 0, 1, 0], output_name_to_node)
+                path2 = self.match_parent_path(concat_node, ['Unsqueeze', 'Mul', 'Gather', 'Shape'], [2, 0, 0, 0],
+                                               output_name_to_node)
+                path3 = self.match_parent_path(concat_node, ['Unsqueeze', 'Mul', 'Gather', 'Shape'], [2, 0, 1, 0],
+                                               output_name_to_node)
                 if path2 is None or path3 is None:
                     continue
                 shape_nodes.extend([path2[-1], path3[-1]])
@@ -586,7 +613,8 @@ class BertOnnxModel(OnnxModel):
                     shape.append(concat_value)
 
             if len(concat_node.input) == 4 and self.get_initializer(concat_node.input[3]) is None:
-                path2 = self.match_parent_path(concat_node, ['Unsqueeze', 'Div', 'Gather', 'Shape'], [3, 0, 0, 0], output_name_to_node)
+                path2 = self.match_parent_path(concat_node, ['Unsqueeze', 'Div', 'Gather', 'Shape'], [3, 0, 0, 0],
+                                               output_name_to_node)
                 shape_nodes.extend([path2[-1]])
                 if path2 is None or -1 in shape:
                     continue
@@ -615,12 +643,12 @@ class BertOnnxModel(OnnxModel):
 
             constant_shape_name = self.create_node_name('Constant', 'constant_shape')
             new_node = onnx.helper.make_node('Constant',
-                inputs=[],
-                outputs=[constant_shape_name],
-                value=onnx.helper.make_tensor(name='const_tensor',
-                    data_type=TensorProto.INT64,
-                    dims=shape_value.shape,
-                    vals=shape_value))
+                                             inputs=[],
+                                             outputs=[constant_shape_name],
+                                             value=onnx.helper.make_tensor(name='const_tensor',
+                                                                           data_type=TensorProto.INT64,
+                                                                           dims=shape_value.shape,
+                                                                           vals=shape_value))
             reshape_node.input[1] = constant_shape_name
             reshape_node.name = self.create_node_name('Reshape', 'Reshape_Fuse')
             nodes_to_remove.extend([concat_node])
@@ -657,6 +685,7 @@ class BertOnnxModel(OnnxModel):
                                   v            v
                               SkipLayerNormalization
     """
+
     def fuse_embed_layer(self):
         nodes = self.nodes()
         input_name_to_nodes = self.input_name_to_nodes()
@@ -704,7 +733,8 @@ class BertOnnxModel(OnnxModel):
         if position_embedding_path is None:
             position_embedding_path = self.match_parent_path(add_node, ['Gather', 'Expand', 'Shape'], [1, 1, 1])
             if position_embedding_path is None:
-                position_embedding_path = self.match_parent_path(add_node, ['Gather', 'Expand', 'Concat', 'Unsqueeze', 'Gather', 'Shape'], [1, 1, 1, 1, 0, 0])
+                position_embedding_path = self.match_parent_path(
+                    add_node, ['Gather', 'Expand', 'Concat', 'Unsqueeze', 'Gather', 'Shape'], [1, 1, 1, 1, 0, 0])
                 if position_embedding_path is None:
                     logger.info("Failed to find position embedding")
                     return
@@ -730,11 +760,10 @@ class BertOnnxModel(OnnxModel):
 
         segment_ids = segment_embedding_gather.input[1]
 
-
         if position_embedding_expand:
             subgraph_nodes = self.get_parent_subgraph_nodes(position_embedding_expand, [], output_name_to_node)
             nodes_to_remove.extend(subgraph_nodes)
-        
+
         nodes_to_remove.extend(word_embedding_path)
         nodes_to_remove.extend(position_embedding_path)
         nodes_to_remove.extend(segment_embedding_path)
@@ -757,20 +786,23 @@ class BertOnnxModel(OnnxModel):
         else:
             self.undo_cast_input_to_int32(mask_input_name)
 
-        embed_node = onnx.helper.make_node('EmbedLayerNormalization',
-                        inputs=[input_ids,
-                                segment_ids, 
-                                word_embedding_gather.input[0],
-                                position_embedding_weight_node.input[0],
-                                segment_embedding_gather.input[0],
-                                normalize_node.input[2],
-                                normalize_node.input[3], # gamma and beta
-                                mask_input_name],
-                        outputs=["embed_output", mask_output_name],
-                        name="EmbedLayer")
+        embed_node = onnx.helper.make_node(
+            'EmbedLayerNormalization',
+            inputs=[
+                input_ids,
+                segment_ids,
+                word_embedding_gather.input[0],
+                position_embedding_weight_node.input[0],
+                segment_embedding_gather.input[0],
+                normalize_node.input[2],
+                normalize_node.input[3],  # gamma and beta
+                mask_input_name
+            ],
+            outputs=["embed_output", mask_output_name],
+            name="EmbedLayer")
 
         embed_node.domain = "com.microsoft"
-        
+
         self.replace_input_of_all_nodes(normalize_node.output[0], 'embed_output')
 
         self.remove_nodes(nodes_to_remove)
@@ -796,7 +828,7 @@ class BertOnnxModel(OnnxModel):
                         if (d.HasField("dim_value")):
                             return d.dim_value
                         elif (d.HasField("dim_param")):
-                            return str(d.dim_param)       # unknown dimension with symbolic name
+                            return str(d.dim_param)  # unknown dimension with symbolic name
                         return None
         return None
 
@@ -811,7 +843,8 @@ class BertOnnxModel(OnnxModel):
         bert_inputs = self.get_bert_inputs()
         for input in graph.input:
             if input.name in bert_inputs:
-                int32_input = onnx.helper.make_tensor_value_info(input.name, TensorProto.INT32, [input_batch_size, self.sequence_length])
+                int32_input = onnx.helper.make_tensor_value_info(input.name, TensorProto.INT32,
+                                                                 [input_batch_size, self.sequence_length])
                 new_graph_inputs.append(int32_input)
             else:
                 new_graph_inputs.append(input)
@@ -830,7 +863,6 @@ class BertOnnxModel(OnnxModel):
 
         # restore opset version
         self.model.opset_import[0].version = original_opset_version
-
 
     def use_dynamic_axes(self, dynamic_batch_dim='batch_size', dynamic_seq_len='max_seq_len'):
         """
@@ -905,7 +937,8 @@ class BertOnnxModel(OnnxModel):
                 if div_node is None:
                     continue
 
-                parent_nodes = self.match_parent_path(div_node, ['Sqrt', 'Add', 'ReduceMean', 'Pow', 'Sub'], [1, 0, 0, 0, 0], output_name_to_node)
+                parent_nodes = self.match_parent_path(div_node, ['Sqrt', 'Add', 'ReduceMean', 'Pow', 'Sub'],
+                                                      [1, 0, 0, 0, 0], output_name_to_node)
                 if parent_nodes is None:
                     continue
 
@@ -930,8 +963,10 @@ class BertOnnxModel(OnnxModel):
 
                 subgraph_nodes = [node]
                 subgraph_nodes.extend(children)
-                subgraph_nodes.extend([last_add_node, mul_node, div_node, sqrt_node, second_add_node, reduce_mean_node, pow_node])
-                if not self.is_safe_to_fuse_nodes(subgraph_nodes, last_add_node.output, input_name_to_nodes, output_name_to_node):
+                subgraph_nodes.extend(
+                    [last_add_node, mul_node, div_node, sqrt_node, second_add_node, reduce_mean_node, pow_node])
+                if not self.is_safe_to_fuse_nodes(subgraph_nodes, last_add_node.output, input_name_to_nodes,
+                                                  output_name_to_node):
                     continue
 
                 nodes_to_remove.extend(subgraph_nodes)
@@ -939,9 +974,9 @@ class BertOnnxModel(OnnxModel):
                 weight_input = mul_node.input[1 - self.input_index(div_node.output[0], mul_node)]
                 bias_input = last_add_node.input[1 - self.input_index(mul_node.output[0], last_add_node)]
                 normalize_node = onnx.helper.make_node('LayerNormalization',
-                    inputs=[node.input[0], weight_input, bias_input],
-                    outputs=[last_add_node.output[0]])
-                normalize_node.attribute.extend([onnx.helper.make_attribute("epsilon", add_weight)])
+                                                       inputs=[node.input[0], weight_input, bias_input],
+                                                       outputs=[last_add_node.output[0]])
+                normalize_node.attribute.extend([onnx.helper.make_attribute("epsilon", float(add_weight))])
                 layernorm_nodes.extend([normalize_node])
 
         self.remove_nodes(nodes_to_remove)
@@ -963,9 +998,11 @@ class BertOnnxModel(OnnxModel):
                 if add is None:
                     continue
 
-                if add.op_type == 'Add' and self.is_safe_to_fuse_nodes([add, node], node.output, input_name_to_nodes, output_name_to_node):
+                if add.op_type == 'Add' and self.is_safe_to_fuse_nodes([add, node], node.output, input_name_to_nodes,
+                                                                       output_name_to_node):
                     nodes_to_remove.extend([add, node])
-                    normalize_node = onnx.helper.make_node("SkipLayerNormalization",
+                    normalize_node = onnx.helper.make_node(
+                        "SkipLayerNormalization",
                         inputs=[add.input[0], add.input[1], node.input[1], node.input[2]],
                         outputs=[node.output[0]],
                         name=self.create_node_name("SkipLayerNormalization", name_prefix="SkipLayerNorm"))
@@ -1021,7 +1058,10 @@ class BertOnnxModel(OnnxModel):
         Returns node count of fused operators.
         """
         op_count = {}
-        ops = ['EmbedLayerNormalization', 'Attention', 'Gelu', 'FastGelu', 'BiasGelu', 'LayerNormalization', 'SkipLayerNormalization']
+        ops = [
+            'EmbedLayerNormalization', 'Attention', 'Gelu', 'FastGelu', 'BiasGelu', 'LayerNormalization',
+            'SkipLayerNormalization'
+        ]
         for op in ops:
             nodes = self.get_nodes_by_op_type(op)
             op_count[op] = len(nodes)
@@ -1037,5 +1077,7 @@ class BertOnnxModel(OnnxModel):
         gelu = op_count['Gelu'] + op_count['BiasGelu'] + op_count['FastGelu']
         layer_norm = op_count['LayerNormalization'] + op_count['SkipLayerNormalization']
         is_optimized = (embed > 0) and (attention > 0) and (attention == gelu) and (layer_norm >= 2 * attention)
-        logger.info(f"EmbedLayer={embed}, Attention={attention}, Gelu={gelu}, LayerNormalization={layer_norm}, Succesful={is_optimized}")
+        logger.info(
+            f"EmbedLayer={embed}, Attention={attention}, Gelu={gelu}, LayerNormalization={layer_norm}, Succesful={is_optimized}"
+        )
         return is_optimized

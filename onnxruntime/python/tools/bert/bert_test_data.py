@@ -14,6 +14,7 @@ from pathlib import Path
 from onnx import ModelProto, TensorProto, numpy_helper
 from OnnxModel import OnnxModel
 
+
 def fake_input_ids_data(input_ids, batch_size, sequence_length, dictionary_size):
     """
     Fake data based on the graph input of input ids.
@@ -23,7 +24,7 @@ def fake_input_ids_data(input_ids, batch_size, sequence_length, dictionary_size)
         data (np.array): the data for input tensor
     """
     assert input_ids.type.tensor_type.elem_type in [TensorProto.FLOAT, TensorProto.INT32, TensorProto.INT64]
-    
+
     data = np.random.randint(dictionary_size, size=(batch_size, sequence_length), dtype=np.int32)
 
     if input_ids.type.tensor_type.elem_type == TensorProto.FLOAT:
@@ -32,6 +33,7 @@ def fake_input_ids_data(input_ids, batch_size, sequence_length, dictionary_size)
         data = np.int64(data)
 
     return data
+
 
 def fake_segment_ids_data(segment_ids, batch_size, sequence_length):
     """
@@ -42,7 +44,7 @@ def fake_segment_ids_data(segment_ids, batch_size, sequence_length):
         data (np.array): the data for input tensor
     """
     assert segment_ids.type.tensor_type.elem_type in [TensorProto.FLOAT, TensorProto.INT32, TensorProto.INT64]
-    
+
     data = np.zeros((batch_size, sequence_length), dtype=np.int32)
 
     if segment_ids.type.tensor_type.elem_type == TensorProto.FLOAT:
@@ -50,8 +52,8 @@ def fake_segment_ids_data(segment_ids, batch_size, sequence_length):
     elif segment_ids.type.tensor_type.elem_type == TensorProto.INT64:
         data = np.int64(data)
 
-
     return data
+
 
 def fake_input_mask_data(input_mask, batch_size, sequence_length, random_mask_length):
     """
@@ -67,7 +69,7 @@ def fake_input_mask_data(input_mask, batch_size, sequence_length, random_mask_le
         actual_seq_len = random.randint(int(sequence_length * 2 / 3), sequence_length)
         data = np.zeros((batch_size, sequence_length), dtype=np.int32)
         temp = np.ones((batch_size, actual_seq_len), dtype=np.int32)
-        data[:temp.shape[0],:temp.shape[1]]=temp
+        data[:temp.shape[0], :temp.shape[1]] = temp
     else:
         data = np.ones((batch_size, sequence_length), dtype=np.int32)
 
@@ -78,6 +80,7 @@ def fake_input_mask_data(input_mask, batch_size, sequence_length, random_mask_le
 
     return data
 
+
 def output_test_data(output_path, test_case_id, inputs):
     """
     Output test data so that we can use onnxruntime_perf_test.exe to check performance laster.
@@ -87,9 +90,9 @@ def output_test_data(output_path, test_case_id, inputs):
         try:
             os.mkdir(path)
         except OSError:
-            print ("Creation of the directory %s failed" % path)
+            print("Creation of the directory %s failed" % path)
         else:
-            print ("Successfully created the directory %s " % path)
+            print("Successfully created the directory %s " % path)
 
     index = 0
     for name, data in inputs.items():
@@ -98,7 +101,9 @@ def output_test_data(output_path, test_case_id, inputs):
             f.write(tensor.SerializeToString())
         index += 1
 
-def fake_test_data(batch_size, sequence_length, test_cases, dictionary_size, verbose, random_seed, input_ids, segment_ids, input_mask, random_mask_length):
+
+def fake_test_data(batch_size, sequence_length, test_cases, dictionary_size, verbose, random_seed, input_ids,
+                   segment_ids, input_mask, random_mask_length):
     """
     Generate fake input data for test.
     """
@@ -110,21 +115,22 @@ def fake_test_data(batch_size, sequence_length, test_cases, dictionary_size, ver
         input_1 = fake_input_ids_data(input_ids, batch_size, sequence_length, dictionary_size)
         input_2 = fake_segment_ids_data(segment_ids, batch_size, sequence_length)
         input_3 = fake_input_mask_data(input_mask, batch_size, sequence_length, random_mask_length)
-        inputs = {input_ids.name: input_1,
-                  segment_ids.name: input_2,
-                  input_mask.name: input_3
-                 }
+        inputs = {input_ids.name: input_1, segment_ids.name: input_2, input_mask.name: input_3}
         if verbose and len(all_inputs) == 0:
             print("Example inputs", inputs)
         all_inputs.append(inputs)
     return all_inputs
 
-def generate_test_data(batch_size, sequence_length, test_cases, seed, verbose, input_ids, segment_ids, input_mask, random_mask_length):
+
+def generate_test_data(batch_size, sequence_length, test_cases, seed, verbose, input_ids, segment_ids, input_mask,
+                       random_mask_length):
     dictionary_size = 10000
-    all_inputs = fake_test_data(batch_size, sequence_length, test_cases, dictionary_size, verbose, seed, input_ids, segment_ids, input_mask, random_mask_length)
+    all_inputs = fake_test_data(batch_size, sequence_length, test_cases, dictionary_size, verbose, seed, input_ids,
+                                segment_ids, input_mask, random_mask_length)
     if len(all_inputs) != test_cases:
         print("Failed to create test data for test.")
     return all_inputs
+
 
 def get_graph_input_from_embed_node(onnx_model, embed_node, input_index):
     assert input_index < len(embed_node.input)
@@ -136,6 +142,7 @@ def get_graph_input_from_embed_node(onnx_model, embed_node, input_index):
         if parent_node is not None and parent_node.op_type == 'Cast':
             graph_input = onnx_model.find_graph_input(parent_node.input[0])
     return graph_input
+
 
 def get_bert_inputs(onnx_file):
     """
@@ -166,9 +173,9 @@ def get_bert_inputs(onnx_file):
     input_mask = None
     for input in graph_inputs:
         input_name_lower = input.name.lower()
-        if "mask" in input_name_lower: # matches input with name like "attention_mask" or "input_mask"
+        if "mask" in input_name_lower:  # matches input with name like "attention_mask" or "input_mask"
             input_mask = input
-        elif "token" in input_name_lower or "segment" in input_name_lower: # matches input with name like "segment_ids" or "token_type_ids"
+        elif "token" in input_name_lower or "segment" in input_name_lower:  # matches input with name like "segment_ids" or "token_type_ids"
             segment_ids = input
         else:
             input_ids = input
@@ -178,26 +185,29 @@ def get_bert_inputs(onnx_file):
 
     raise ValueError("Fail to assign 3 inputs. You might try rename the graph inputs.")
 
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--model', required=True, type=str,
-                        help="bert onnx model path.")
+    parser.add_argument('--model', required=True, type=str, help="bert onnx model path.")
 
-    parser.add_argument('--output_dir', required=False, type=str, default=None,
+    parser.add_argument('--output_dir',
+                        required=False,
+                        type=str,
+                        default=None,
                         help="output test data path. If not specified, .")
 
-    parser.add_argument('--batch_size', required=False, type=int, default=1,
-                        help="batch size of input")
+    parser.add_argument('--batch_size', required=False, type=int, default=1, help="batch size of input")
 
-    parser.add_argument('--sequence_length',  required=False, type=int, default=128,
+    parser.add_argument('--sequence_length',
+                        required=False,
+                        type=int,
+                        default=128,
                         help="maximum sequence length of input")
 
-    parser.add_argument('--samples',  required=False, type=int, default=1,
-                        help="number of test cases to be generated")
+    parser.add_argument('--samples', required=False, type=int, default=1, help="number of test cases to be generated")
 
-    parser.add_argument('--seed',  required=False, type=int, default=3,
-                        help="random seed")
+    parser.add_argument('--seed', required=False, type=int, default=3, help="random seed")
 
     parser.add_argument('--verbose', required=False, action='store_true', help="print verbose information")
     parser.set_defaults(verbose=False)
@@ -205,18 +215,28 @@ def parse_arguments():
     args = parser.parse_args()
     return args
 
+
 def create_test_data(model, output_dir, batch_size, sequence_length, test_cases, seed, verbose):
     input_ids, segment_ids, input_mask = get_bert_inputs(model)
 
-    all_inputs = generate_test_data(batch_size, sequence_length, test_cases, seed, verbose, input_ids, segment_ids, input_mask, random_mask_length=False)
+    all_inputs = generate_test_data(batch_size,
+                                    sequence_length,
+                                    test_cases,
+                                    seed,
+                                    verbose,
+                                    input_ids,
+                                    segment_ids,
+                                    input_mask,
+                                    random_mask_length=False)
 
     for i, inputs in enumerate(all_inputs):
         output_test_data(output_dir, i, inputs)
 
+
 def main():
     args = parse_arguments()
 
-    output_dir= args.output_dir
+    output_dir = args.output_dir
     if output_dir is None:
         # Default output directory is a sub-directory under the directory of model.
         p = Path(args.model)
@@ -229,16 +249,11 @@ def main():
     else:
         print("Directory existed. test data files will be overwritten.")
 
-    create_test_data(
-        args.model,
-        output_dir,
-        args.batch_size,
-        args.sequence_length,
-        args.samples,
-        args.seed,
-        args.verbose)
+    create_test_data(args.model, output_dir, args.batch_size, args.sequence_length, args.samples, args.seed,
+                     args.verbose)
 
     print("Test data is saved to directory:", output_dir)
+
 
 if __name__ == "__main__":
     main()

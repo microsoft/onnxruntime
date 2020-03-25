@@ -121,7 +121,7 @@ TEST_P(MathGemmTest, GemmNoTransTrans) {
   }
 }
 
-INSTANTIATE_TEST_CASE_P(MathGemmTests, MathGemmTest,
+INSTANTIATE_TEST_SUITE_P(MathGemmTests, MathGemmTest,
                         testing::Values(1, 4));
 
 TEST(MathTest, GemvNoTrans) {
