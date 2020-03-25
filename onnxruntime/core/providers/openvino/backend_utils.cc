@@ -23,6 +23,8 @@
 #include "core/graph/graph.h"
 #include "core/common/logging/logging.h"
 
+#include "backend_utils.h"
+
 namespace onnxruntime {
 namespace openvino_ep {
 namespace backend_utils {
@@ -49,9 +51,9 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto,
     ng_function = ngraph::onnx_import::import_onnx_model(model_stream);
     LOGS_DEFAULT(INFO) << "ONNX Import Done";
   } catch (const std::exception& exp) {
-    ORT_THROW("[NGRAPHCustomOp] Exception while importing model to nGraph: " + std::string(exp.what()));
+    ORT_THROW(log_tag + "[NGRAPHCustomOp] Exception while importing model to nGraph: " + std::string(exp.what()));
   } catch (...) {
-    ORT_THROW("[NGRAPHCustomOp] Unknown exception while importing model to nGraph");
+    ORT_THROW(log_tag + "[NGRAPHCustomOp] Unknown exception while importing model to nGraph");
   }
 
   //Serializing nGraph function
@@ -83,8 +85,10 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto,
 
   try {
     return std::make_shared<InferenceEngine::CNNNetwork>(ng_function);
+  } catch (InferenceEngine::details::InferenceEngineException e) {
+    ORT_THROW(log_tag + " Exception thrown while making IE::CNNNetwork: " + e.what());
   } catch (...) {
-    ORT_THROW("[OpenVINO EP] Exception thrown while making IE::CNNNetwork");
+    ORT_THROW(log_tag + " Exception thrown while making IE::CNNNetwork");
   }
 }
 
@@ -106,7 +110,7 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO( const ONNX_NAMESPACE:
   } else if (*type_string == "uint8" || *type_string == "tensor(uint8)") {
     return InferenceEngine::Precision::U8;
   } else {
-    ORT_THROW("Unsupported Data type");
+    ORT_THROW(log_tag + "Unsupported Data type");
   }
 }
 
@@ -144,7 +148,7 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
         iter->second->setLayout(InferenceEngine::Layout::NCDHW);
         break;
       default:
-        ORT_THROW("Invalid Dims type for input data map for: " + iter->first);
+        ORT_THROW(log_tag + "Invalid Dims type for input data map for: " + iter->first);
     };
   }
 
@@ -174,7 +178,7 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
         iter->second->setLayout(InferenceEngine::Layout::NCDHW);
         break;
       default:
-        ORT_THROW("Invalid Dims type for output data map for: " + iter->first);
+        ORT_THROW(log_tag + "Invalid Dims type for output data map for: " + iter->first);
     };
   }
 }
@@ -223,7 +227,7 @@ GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_
     }
     auto it = output_names.find(output_info_iter->first);
     if(it == output_names.end()){
-      ORT_THROW("Output names mismatch between OpenVINO and ONNX");
+      ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
     }
     int index = it->second;
 

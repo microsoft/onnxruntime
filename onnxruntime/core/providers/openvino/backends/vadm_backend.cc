@@ -51,6 +51,8 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   InferenceEngine::ExecutableNetwork exe_network;
   try {
     exe_network = ie.LoadNetwork(*ie_cnn_network_, "HDDL");
+  } catch (InferenceEngine::details::InferenceEngineException e) {
+    ORT_THROW(log_tag + " Exception while Loading Network: " + e.what());
   } catch (...) {
     ORT_THROW(log_tag + " Exception while Loading Network." );
   }
@@ -61,6 +63,8 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     InferenceEngine::InferRequest::Ptr infRequest;
     try {
       infRequest = exe_network.CreateInferRequestPtr();
+    } catch (InferenceEngine::details::InferenceEngineException e) {
+      ORT_THROW(log_tag + "Exception while creating InferRequest object: " + e.what());
     } catch (...) {
       ORT_THROW(log_tag + "Exception while creating InferRequest object.");
     }
@@ -86,6 +90,8 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const O
     InferenceEngine::Blob::Ptr graph_input_blob;
     try {
       graph_input_blob = infer_request->GetBlob(input_info_iter->first);
+    } catch (InferenceEngine::details::InferenceEngineException e) {
+      ORT_THROW( log_tag + " Cannot access IE Blob for input: " + input_info_iter->first + e.what());
     } catch (...) {
       ORT_THROW( log_tag + " Cannot access IE Blob for input: " + input_info_iter->first);
     }
@@ -104,8 +110,10 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const O
   // Start Async inference
   try {
     infer_request->StartAsync();
+  } catch (InferenceEngine::details::InferenceEngineException e) {
+    ORT_THROW(log_tag + " Couldn't start Inference: " + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " Couldn't start Inferenece");
+    ORT_THROW(log_tag + " Couldn't start Inference");
   }
 }
 
@@ -120,6 +128,8 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtV
   // Wait for Async inference completion
   try {
     infer_request->Wait(InferenceEngine::IInferRequest::WaitMode::RESULT_READY);
+  } catch (InferenceEngine::details::InferenceEngineException e) {
+    ORT_THROW(log_tag + " Exception with completing Inference: " + e.what());
   } catch (...) {
     ORT_THROW(log_tag + " Exception with completing Inference");
   }
@@ -132,6 +142,8 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtV
     InferenceEngine::Blob::Ptr graph_output_blob;
     try {
       graph_output_blob = infer_request->GetBlob(output_info_iter->first);
+    } catch (InferenceEngine::details::InferenceEngineException e) {
+      ORT_THROW( log_tag + " Cannot access IE Blob for output: " + output_info_iter->first + e.what());
     } catch(...) {
       ORT_THROW( log_tag + " Cannot access IE Blob for output: " + output_info_iter->first);
     }
