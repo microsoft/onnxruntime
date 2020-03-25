@@ -65,9 +65,14 @@ Status AdamOptimizer<T>::Compute(OpKernelContext* ctx) const {
   // Update exponentially-averaged historical squared gradient
   MakeEigenArrayMap<T>(NM2) = beta_ * MakeEigenArrayMap<T>(M2) + ((1 - beta_) * MakeEigenArrayMap<T>(G) * MakeEigenArrayMap<T>(G));
 
+  const float alpha_correction = do_bias_correction_ ?
+    compute_bias_correction_coefficient(alpha_, step) : 1.f;
+  const float beta_correction = do_bias_correction_ ?
+    compute_bias_correction_coefficient(beta_, step) : 1.f;
+
   // Compute weight update.
-  const auto& denom = MakeEigenArrayMap<T>(NM2).sqrt() + epsilon_;
-  const auto& update = (MakeEigenArrayMap<T>(NM1) / denom) + (lambda_ * MakeEigenArrayMap<T>(W));
+  const auto& denom = (MakeEigenArrayMap<T>(NM2) / beta_correction).sqrt() + epsilon_;
+  const auto& update = ( (MakeEigenArrayMap<T>(NM1) / alpha_correction) / denom) + (lambda_ * MakeEigenArrayMap<T>(W));
   const auto& delta = -eta * update;
 
   // Weight, gradient, and step update.

@@ -427,14 +427,24 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     # Have to work around by using a temporary weights_to_train.
     torch_params = {}
     optimizer_attributes_map = {}
+    optimizer_int_attributes_map = {}
     weights_to_train = set()
     for initializer in model.graph.initializer:
         weights_to_train.add(initializer.name)
         if map_optimizer_attributes is not None:
             attributes = map_optimizer_attributes(initializer.name)
-            optimizer_attributes_map[initializer.name] = attributes
+            optimizer_attributes_map[initializer.name] = {}
+            optimizer_int_attributes_map[initializer.name] = {}
+            for k, v in attributes.items():
+                if isinstance(v, float):
+                    optimizer_attributes_map[initializer.name][k] = v
+                elif isinstance(v, int):
+                    optimizer_int_attributes_map[initializer.name][k] = v
+                else:
+                    raise ValueError("Optimizer attributes must be either float or int.")
         else:
             optimizer_attributes_map[initializer.name] = {}
+            optimizer_int_attributes_map[initializer.name] = {}
 
     if bind_parameters:
         for initializer in model.graph.initializer:
@@ -450,6 +460,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.training_optimizer_name = training_optimizer_name
     ort_parameters.lr_params_feed_name = lr_params_feed_name
     ort_parameters.optimizer_attributes_map = optimizer_attributes_map
+    ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
 
     session = ort.TrainingSession(model.SerializeToString(), ort_parameters)
     train_io_binding = session.io_binding()

@@ -17,7 +17,8 @@ class LambOptimizerBuilder final : public OptimizerBuilder {
                       "lambda",
                       "epsilon",
                       "ratio_min",
-                      "ratio_max"}) {}
+                      "ratio_max",
+                      "do_bias_correction"}) {}
 
   virtual Status Build(
       const std::vector<ArgDef>& weight_argdefs,

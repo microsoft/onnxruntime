@@ -1196,6 +1196,8 @@ TEST(OptimizerTest, AdamOptimizerTest) {
   test.AddOutput<float>("Moment_2_Out", {3}, data.m2_new);
   test.AddOutput<float>("W_Out", {3}, data.w_new);
 
+  test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
+
   test.Run();
 }
 
@@ -1217,8 +1219,32 @@ TEST(OptimizerTest, AdamOptimizerTest_Gradient) {
   test.AddMissingOptionalOutput<float>();
   test.AddOutput<float>("G_Out", {3}, data.g_new);
 
+  test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
+
   test.Run();
 }
+
+TEST(OptimizerTest, AdamBiasCorrection) {
+  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  AdamOptimizerInputOutput data;
+
+  test.AddInput<float>("ETA", {}, {1.f});
+  test.AddInput<int64_t>("Update_Count", {}, {1});
+  test.AddInput<float>("W", {3}, {-0.4634f,  0.3584f, -0.2121f});
+  test.AddInput<float>("G", {3}, {0.4171f, 0.9485f, 1.2289f});
+  test.AddInput<float>("Moment_1", {3}, {0.f, 0.f, 0.f});
+  test.AddInput<float>("Moment_2", {3}, {0.f, 0.f, 0.f});
+
+  test.AddOutput<int64_t>("Update_Count_Out", {}, {2});
+  test.AddOutput<float>("Moment_1_Out", {3}, {0.0417f, 0.0949f, 0.1229f});
+  test.AddOutput<float>("Moment_2_Out", {3}, {1.7400e-04f, 8.9966e-04f, 1.5102e-03f});
+  test.AddOutput<float>("W_Out", {3}, {-1.4634f, -0.6416f, -1.2121f});
+
+  test.AddAttribute("do_bias_correction", static_cast<int64_t>(1));
+
+  test.Run();
+}
+
 
 TEST(GradientCheckerTest, GatherGrad) {
   float max_error;
@@ -1490,6 +1516,8 @@ TEST(OptimizerTest, AdamOptimizerMixPrecisionTest) {
   test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_new_half);
   test.AddOutput<float>("W_Out", {3}, data.w_new);
 
+  test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
+
   test.Run();
 }
 
@@ -1512,6 +1540,8 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_Test) {
   test.AddOutput<float>("W_Out", {3}, data.w_new);
   test.AddMissingOptionalOutput<MLFloat16>();
   test.AddOutput<MLFloat16>("FP16_W_Out", {3}, data.w_new_half);
+
+  test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
 
   test.Run();
 }
@@ -1540,6 +1570,8 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_SkipUpdate_Test) {
   test.AddMissingOptionalOutput<MLFloat16>();
   test.AddOutput<MLFloat16>("FP16_W_Out", {3}, data.w_half);
 
+  test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
+
   test.Run();
 }
 
@@ -1559,6 +1591,8 @@ TEST(OptimizerTest, AdamOptimizerMixPrecisionTestFloatEta) {
   test.AddOutput<MLFloat16>("Moment_1_Out", {3}, data.m1_new_half);
   test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_new_half);
   test.AddOutput<float>("W_Out", {3}, data.w_new);
+
+  test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
 
   test.Run();
 }
@@ -1580,6 +1614,8 @@ TEST(OptimizerTest, AdamOptimizerMixPrecisionTest_Gradient) {
   test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_new_half);
   test.AddMissingOptionalOutput<float>();
   test.AddOutput<MLFloat16>("G_Out", {3}, data.g_new_half);
+
+  test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
 
   test.Run();
 }

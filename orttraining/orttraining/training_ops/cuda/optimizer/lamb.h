@@ -20,6 +20,11 @@ class LambOptimizer final : public CudaKernel {
     epsilon_ = info.GetAttrsOrDefault("epsilon", std::vector<float>(1024, 1e-6f));
     ORT_ENFORCE(info.GetAttr<float>("ratio_min", &ratio_min_).IsOK(), "Missing/Invalid 'ratio_min' attribute value");
     ORT_ENFORCE(info.GetAttr<float>("ratio_max", &ratio_max_).IsOK(), "Missing/Invalid 'ratio_max' attribute value");
+
+    int64_t tmp_flag = static_cast<int64_t>(0);
+    ORT_ENFORCE(info.GetAttr<int64_t>("do_bias_correction", &tmp_flag).IsOK(), "Missing/Invalid do_bias_correction");
+    ORT_ENFORCE(tmp_flag == 0 || tmp_flag == 1, "do_bias_correction must be either 0 or 1.");
+    do_bias_correction_ = tmp_flag != 0 ? true : false;
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -31,6 +36,7 @@ class LambOptimizer final : public CudaKernel {
   std::vector<float> epsilon_;
   float ratio_min_;
   float ratio_max_;
+  bool do_bias_correction_;
 };
 
 // Implementation can be found in cuda file, optimizers_impl.cu
