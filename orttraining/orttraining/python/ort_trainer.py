@@ -400,7 +400,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                gradient_accumulation_steps=1, bind_parameters=False,
                                                use_mixed_precision=False, allreduce_post_accumulation=False,
                                                loss_scale_input_name='', scaled_loss_output_name='',
-                                               partition_optimizer=False, enable_gradient_clip=True,
+                                               partition_optimizer=False, enable_grad_norm_clip=True,
                                                frozen_weights=[]):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
@@ -538,7 +538,7 @@ class ORTTrainer():
                  learning_rate_description, device, gradient_accumulation_steps=1, postprocess_model=None,
                  world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
                  global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False,
-                 enable_gradient_clip=True, frozen_weights=[]):
+                 enable_grad_norm_clip=True, frozen_weights=[]):
         super(ORTTrainer, self).__init__()
         """
         Initializes ORTTrainer.
