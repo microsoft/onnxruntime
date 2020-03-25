@@ -16,7 +16,7 @@ class AdamOptimizerBuilder final : public OptimizerBuilder {
                                              "lambda",
                                              "epsilon",
                                              "do_bias_correction",
-                                             "weight_update_mode"}) {}
+                                             "weight_decay_mode"}) {}
 
   virtual Status Build(
       const std::vector<ArgDef>& weight_argdefs,
