@@ -100,6 +100,31 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
   return cublasHgemmStridedBatched(handle, transa, transb, m, n, k, alpha, A, lda, strideA, B, ldb, strideB, beta, C, ldc, strideC, batch_count);
 }
 
+inline int roundoff( int v, int d )
+{
+   return ( v + d - 1 ) / d * d;
+}
+
+// Use cublasLtMatmul to perform the tensor op Igemm with the memory
+// order transforms on all buffers.
+//
+// For better performance the data order transforms should be offline
+// as much as possible.
+//
+// Transa, transb assumed N; alpha, beta are host pointers; Tensor ops
+// allowed. Alpha assumed 1, beta assumed 0, and stream assumed 0.
+
+void LtIgemmTensor( cublasLtHandle_t ltHandle,
+   int m,
+   int n,
+   int k,
+   const int8_t* A,
+   int lda,
+   const int8_t* B,
+   int ldb,
+   int32_t* C,
+   int ldc );
+
 // axpy
 inline cublasStatus_t cublasAxpyHelper(cublasHandle_t handle, int n, const float* alpha, const float* x, int incx, float* y, int incy) {
   return cublasSaxpy(handle, n, alpha, x, incx, y, incy);

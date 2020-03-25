@@ -50,6 +50,7 @@ thread_local std::unique_ptr<CUDAExecutionProvider::PerThreadContextMap> CUDAExe
 CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
+  CUBLAS_CALL_THROW(cublasLtCreate(&cublasLt_handle_));
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
   CURAND_CALL_THROW(curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT));
 
@@ -67,6 +68,12 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
     CUBLAS_CALL(cublasDestroy(cublas_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cublasDestroy threw:" << ex.what();
+  }
+
+  try {
+    CUBLAS_CALL(cublasLtDestroy(cublasLt_handle_));
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(ERROR) << "cublasLtDestroy threw:" << ex.what();
   }
 
   try {
@@ -1324,12 +1331,12 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     for (auto registry : kernel_registries) {
       cuda_kernel_def = registry->TryFindKernel(node, Type());
 
-      // atleast one registry has a CUDA kernel for this node 
+      // atleast one registry has a CUDA kernel for this node
       if (cuda_kernel_def)
-          break;
+        break;
     }
 
-    // none of the provided registries has a CUDA kernel for this node  
+    // none of the provided registries has a CUDA kernel for this node
     if (cuda_kernel_def == nullptr) {
       // node is not in cuda exeuction provider if no kernel def found,
       // or if other execution provider already assigned to it

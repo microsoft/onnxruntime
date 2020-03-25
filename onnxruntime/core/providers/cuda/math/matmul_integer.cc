@@ -7,6 +7,7 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/common.h"
+#include <cublasLt.h>
 
 namespace onnxruntime {
 namespace cuda {
@@ -129,26 +130,35 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
                                 b_padded));
 
   for (int batch = 0; batch < helper.OutputOffsets().size(); batch++) {
-    CUBLAS_RETURN_IF_ERROR(cublasGemmEx(
-        Base::CublasHandle(),
-        CUBLAS_OP_N,
-        CUBLAS_OP_N,
-        static_cast<int>(helper.N()),
-        static_cast<int>(helper.M()),
-        static_cast<int>(helper.K()),
-        &alpha,
-        b_ptr + helper.RightOffsets()[batch] + helper.RightOffsets()[batch] / helper.N() * b_pad_size,
-        CUDA_R_8I,
-        static_cast<int>(helper.N() + b_pad_size),
-        a_ptr + helper.LeftOffsets()[batch] + helper.LeftOffsets()[batch] / helper.K() * a_pad_size,
-        CUDA_R_8I,
-        static_cast<int>(helper.K() + a_pad_size),
-        &beta,
-        output_ptr + helper.OutputOffsets()[batch],
-        CUDA_R_32I,
-        static_cast<int>(helper.N()),
-        CUDA_R_32I,
-        CUBLAS_GEMM_DFALT));
+    LtIgemmTensor(Base::CublasLtHandle(), static_cast<int>(helper.N()),
+                  static_cast<int>(helper.M()),
+                  static_cast<int>(helper.K()),
+                  b_ptr + helper.RightOffsets()[batch] + helper.RightOffsets()[batch] / helper.N() * b_pad_size,
+                  static_cast<int>(helper.N() + b_pad_size),
+                  a_ptr + helper.LeftOffsets()[batch] + helper.LeftOffsets()[batch] / helper.K() * a_pad_size,
+                  static_cast<int>(helper.K() + a_pad_size),
+                  output_ptr + helper.OutputOffsets()[batch],
+                  static_cast<int>(helper.N()));
+    //CUBLAS_RETURN_IF_ERROR(cublasGemmEx(
+    //    Base::CublasHandle(),
+    //    CUBLAS_OP_N,
+    //    CUBLAS_OP_N,
+    //    static_cast<int>(helper.N()),
+    //    static_cast<int>(helper.M()),
+    //    static_cast<int>(helper.K()),
+    //    &alpha,
+    //    b_ptr + helper.RightOffsets()[batch] + helper.RightOffsets()[batch] / helper.N() * b_pad_size,
+    //    CUDA_R_8I,
+    //    static_cast<int>(helper.N() + b_pad_size),
+    //    a_ptr + helper.LeftOffsets()[batch] + helper.LeftOffsets()[batch] / helper.K() * a_pad_size,
+    //    CUDA_R_8I,
+    //    static_cast<int>(helper.K() + a_pad_size),
+    //    &beta,
+    //    output_ptr + helper.OutputOffsets()[batch],
+    //    CUDA_R_32I,
+    //    static_cast<int>(helper.N()),
+    //    CUDA_R_32I,
+    //    CUBLAS_GEMM_DFALT));
   }
 
   return Status::OK();
