@@ -967,6 +967,8 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 #endif
 }
 
+// static variable used to create inference session and training session.
+static std::unique_ptr<Environment> session_env;
 
 void initialize_env(){
   auto initialize = [&]() {
