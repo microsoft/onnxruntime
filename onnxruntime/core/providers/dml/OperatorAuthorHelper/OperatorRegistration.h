@@ -224,6 +224,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Resize = 11;
         static const int sc_sinceVer_Round = 11;
         static const int sc_sinceVer_Scan = 11;
+        static const int sc_sinceVer_Scatter = 11; // Deprecated alias
         static const int sc_sinceVer_ScatterElements = 11;
         static const int sc_sinceVer_ScatterND = 11;
         static const int sc_sinceVer_Slice = 11;

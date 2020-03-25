@@ -927,44 +927,15 @@ class GatherHelper {
   int m_axis = 0;
 };
 
-class GatherNDHelper {
+class GatherNdHelper {
  public:
-  void Initialize(
-    const MLOperatorAttributes& operatorAttributes,
-    gsl::span<const DimensionType> dataDimensions
-  );
-
   // Info_t is used to obtain attributes which will be used for calculating the output shape later.
   // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
   template <typename Info_t, typename Shape_t>
-  GatherNDHelper(const Info_t& info, const Shape_t& shape) {
-    Initialize(info, shape.GetInputTensorShape(0));
+  GatherNdHelper(const Info_t& info, const Shape_t& shape) {
   }
 
   std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
-
- protected:
-  int m_axis = 0;
-};
-
-class ScatterNDHelper {
- public:
-  void Initialize(
-    const MLOperatorAttributes& operatorAttributes,
-    gsl::span<const DimensionType> dataDimensions
-  );
-
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  ScatterNDHelper(const Info_t& info, const Shape_t& shape) {
-    Initialize(info, shape.GetInputTensorShape(0));
-  }
-
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
-
- protected:
-  int m_axis = 0;
 };
 
 class PoolingHelperBase {
@@ -1291,9 +1262,10 @@ using ShapeInferenceHelper_LSTM = RecurrentHelper;
 using ShapeInferenceHelper_Gather = GatherHelper;
 using ShapeInferenceHelper_GatherElements = GetOutputShapeAsSpecificInputShapeHelper<1>;
 using ShapeInferenceHelper_ScatterElements = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_Scatter = ShapeInferenceHelper_ScatterElements;
-using ShapeInferenceHelper_GatherND = GatherNDHelper;
-using ShapeInferenceHelper_ScatterND = ScatterNDHelper;
+using ShapeInferenceHelper_Scatter9 = ShapeInferenceHelper_ScatterElements; // Old deprecated alias for ScatterElements.
+using ShapeInferenceHelper_Scatter11 = ShapeInferenceHelper_ScatterElements; // Old deprecated alias for ScatterElements.
+using ShapeInferenceHelper_GatherND = GatherNdHelper;
+using ShapeInferenceHelper_ScatterND = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_Flatten = FlattenHelper;
 using ShapeInferenceHelper_Split = SplitHelper;
