@@ -342,15 +342,20 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(      7,  SpaceToDepth,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  DepthToSpace,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
 #if 0
-    // TODO:Dwayner Update operator DepthToSpace-11 - added column-row-depth shuffle order mode https://microsoft.visualstudio.com/OS/_workitems/edit/24672169
+    // TODO:DwayneR Update operator DepthToSpace-11 - added column-row-depth shuffle order mode https://microsoft.visualstudio.com/OS/_workitems/edit/24672169
     {REG_INFO(     11,  DepthToSpace,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
 #endif
     {REG_INFO(      7,  Tile,                               typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported,      {1})},
     {REG_INFO(      8,  Expand,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1})},
     {REG_INFO(      9,  ConstantOfShape,                    typeNameListConstantOfShape,    supportedTypeListConstantOfShape,   DmGraphSupport::NotSupported,   {0})},
     {REG_INFO(      7,  Gather,                             typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
+    {REG_INFO(     11,  Gather,                             typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
+    {REG_INFO(     11,  GatherElements,                     typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
+    {REG_INFO(     11,  GatherND,                           typeNameListScatterGatherND,    supportedTypeListScatterGatherND,   DmGraphSupport::Supported)},
     {REG_INFO_VER(  9,  Scatter,                            typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
     {REG_INFO_VER( 11,  Scatter,                            typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ScatterElements,                    typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ScatterND,                          typeNameListScatterGatherND,    supportedTypeListScatterGatherND,   DmGraphSupport::Supported)},
     {REG_INFO(      9,  EyeLike,                            typeNameListEyeLike,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
 
     // Data reorganization that merely changes the dimensions while keeping the data identical.
@@ -514,51 +519,32 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(     11,  CumSum,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1})}, 
     {REG_INFO(     11,  Range,                              typeNameListDefault,            supportedTypeListRange,             DmGraphSupport::Supported,      {0,1,2})},
 
-    {REG_INFO(     11,  Gather,                             typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
-    {REG_INFO(     11,  GatherElements,                     typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
-    {REG_INFO(     11,  GatherND,                           typeNameListScatterGatherND,    supportedTypeListScatterGatherND,   DmGraphSupport::Supported)},
-    {REG_INFO(     11,  ScatterElements,                    typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
-    {REG_INFO(     11,  ScatterND,                          typeNameListScatterGatherND,    supportedTypeListScatterGatherND,   DmGraphSupport::Supported)},
-#if 0
+#if 0 // TODO:DwayneR
     {REG_INFO(      9,  MaxUnpool,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {2})},
     {REG_INFO(     11,  Resize,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1})},
+#endif
 
-    {REG_INFO(     11,  QLinearConv,                        typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 
-        // T1 : tensor(int8), tensor(uint8)
-        // Constrain input type to 8-bit integer tensor.
-        // T2 : tensor(int8), tensor(uint8)
-        // Constrain filter type to 8-bit integer tensor.
-        // T3 : tensor(int8), tensor(uint8)
-        // Constrain output type to 8-bit integer tensor.
-        // T4 : tensor(int32)
-        // Constrain bias type to 32-bit integer tensor.
-    {REG_INFO(     11,  QLinearMatMul,                      typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 
-        // T1 : tensor(int8), tensor(uint8)
-        // Constrain input a and its zero point data type to 8-bit integer tensor.
-        // T2 : tensor(int8), tensor(uint8)
-        // Constrain input b and its zero point data type to 8-bit integer tensor.
-        // T3 : tensor(int8), tensor(uint8)
-        // Constrain output y and its zero point data type to 8-bit integer tensor.
-    {REG_INFO(     11,  DynamicQuantizeLinear,              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 
-        //T1 : tensor(float)
-        //Constrain 'x' to float tensor.
-        //T2 : tensor(uint8)        
-
-    {REG_INFO(     11,  MatMulInteger,                      typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 
-        MatMulInteger
-        //T1 : tensor(int8), tensor(uint8)
-        //Constrain input A data type to 8-bit integer tensor.
-        //T2 : tensor(int8), tensor(uint8)
-        //Constrain input B data type to 8-bit integer tensor.
-        //T3 : tensor(int32)
-        //Constrain output Y data type as 32-bit integer tensor.
-    {REG_INFO(     11,  ConvInteger,                        typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 
-        // T1 : tensor(int8), tensor(uint8)
-        // Constrain input x and its zero point data type to 8-bit integer tensor.
-        // T2 : tensor(int8), tensor(uint8)
-        // Constrain input w and its zero point data type to 8-bit integer tensor.
-        // T3 : tensor(int32)
-        // Constrain output y data type to 32-bit integer tensor.
+#if 0 // TODO:NickFe
+    {REG_INFO(     11,  QLinearConv,                        typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+        // T1 : tensor(int8), tensor(uint8) - Constrain input type to 8-bit integer tensor.
+        // T2 : tensor(int8), tensor(uint8) - Constrain filter type to 8-bit integer tensor.
+        // T3 : tensor(int8), tensor(uint8) - Constrain output type to 8-bit integer tensor.
+        // T4 : tensor(int32) - Constrain bias type to 32-bit integer tensor.
+    {REG_INFO(     11,  QLinearMatMul,                      typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+        // T1 : tensor(int8), tensor(uint8) - Constrain input a and its zero point data type to 8-bit integer tensor.
+        // T2 : tensor(int8), tensor(uint8) - Constrain input b and its zero point data type to 8-bit integer tensor.
+        // T3 : tensor(int8), tensor(uint8) - Constrain output y and its zero point data type to 8-bit integer tensor.
+    {REG_INFO(     11,  DynamicQuantizeLinear,              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+        //T1 : tensor(float) - Constrain 'x' to float tensor.
+        //T2 : tensor(uint8)
+    {REG_INFO(     11,  MatMulInteger,                      typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+        //T1 : tensor(int8), tensor(uint8) - Constrain input A data type to 8-bit integer tensor.
+        //T2 : tensor(int8), tensor(uint8) - Constrain input B data type to 8-bit integer tensor.
+        //T3 : tensor(int32) - Constrain output Y data type as 32-bit integer tensor.
+    {REG_INFO(     11,  ConvInteger,                        typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+        // T1 : tensor(int8), tensor(uint8) - Constrain input x and its zero point data type to 8-bit integer tensor.
+        // T2 : tensor(int8), tensor(uint8) - Constrain input w and its zero point data type to 8-bit integer tensor.
+        // T3 : tensor(int32) - Constrain output y data type to 32-bit integer tensor.
 #endif
 };
  
