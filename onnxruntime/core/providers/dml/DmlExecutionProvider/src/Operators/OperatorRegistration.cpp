@@ -515,7 +515,7 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(     10,  Mod,                                typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)}, 
     {REG_INFO(     11,  BitShift,                           typeNameListDefault,            supportedTypeListInt8to32,          DmGraphSupport::Supported)}, 
     {REG_INFO(     11,  Round,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 
-    {REG_INFO(     10,  ReverseSequence,                    typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},  // TODO::: data types, why not registered??
+    {REG_INFO(     10,  ReverseSequence,                    typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(     11,  CumSum,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1})}, 
     {REG_INFO(     11,  Range,                              typeNameListDefault,            supportedTypeListRange,             DmGraphSupport::Supported,      {0,1,2})},
 

@@ -1177,7 +1177,6 @@ class ResizeHelper {
   std::vector<float> m_scales;  // Cached scales to check for updates/invalidate operator.
 };
 
-//TODO:::
 class RangeHelper {
 public:
     // Info_t is used to obtain attributes which will be used for calculating the output shape later.
