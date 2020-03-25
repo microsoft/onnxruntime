@@ -43,10 +43,7 @@ class OptimizerBuilder {
  public:
   OptimizerBuilder(const std::string& name, const std::vector<std::string>& attribute_names = {})
       : name_(name),
-        attr_names_(attribute_names) {
-
-
-        }
+        attr_names_(attribute_names) {}
 
   virtual ~OptimizerBuilder() {}
 
