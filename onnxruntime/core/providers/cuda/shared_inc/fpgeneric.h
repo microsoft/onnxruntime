@@ -152,17 +152,19 @@ inline void LtIgemmTensor(cublasLtHandle_t ltHandle,
 
   CUBLAS_CALL_THROW(cublasLtMatrixTransformDescCreate(&transform_desc, CUDA_R_32F));
 
-  // B matrix is non-transposed, but transposed matrix is needed - add transpose operation in matrix transform.
-  CUBLAS_CALL_THROW(cublasLtMatrixTransformDescSetAttribute(transform_desc, CUBLASLT_MATRIX_TRANSFORM_DESC_TRANSB, &op_transpose, sizeof(op_transpose)));
-
-  CUBLAS_CALL_THROW(cublasLtMatmulDescCreate(&matmulDesc, CUDA_R_32I));
+  //// B matrix is non-transposed, but transposed matrix is needed - add transpose operation in matrix transform.
+  //CUBLAS_CALL_THROW(cublasLtMatrixTransformDescSetAttribute(transform_desc,
+  //                                                          CUBLASLT_MATRIX_TRANSFORM_DESC_TRANSB,
+  //                                                          &op_transpose,
+  //                                                          sizeof(op_transpose)));
 
   // Tensor op igemm kernels only support NT gemm
+  CUBLAS_CALL_THROW(cublasLtMatmulDescCreate(&matmulDesc, CUDA_R_32I));
   CUBLAS_CALL_THROW(cublasLtMatmulDescSetAttribute(matmulDesc, CUBLASLT_MATMUL_DESC_TRANSB, &op_transpose, sizeof(op_transpose)));
 
   // Create descriptors for the original matrices
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&a_desc, CUDA_R_8I, m, k, lda));
-  CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&b_desc, CUDA_R_8I, k, n, ldb));
+  CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&b_desc, CUDA_R_8I, n, k, ldb));
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&c_desc, CUDA_R_32I, m, n, ldc));
 
   // Create descriptors for the transformed matrices
@@ -176,7 +178,17 @@ inline void LtIgemmTensor(cublasLtHandle_t ltHandle,
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutSetAttribute(CtransformDesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &order_COL32, sizeof(order_COL32)));
 
   // Transforms and computation
-  CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle, transform_desc, &transformAlpha, A, a_desc, &transformBeta, NULL, NULL, a_transform, AtransformDesc, 0));
+  CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
+                                            transform_desc,
+                                            &transformAlpha,
+                                            A,
+                                            a_desc,
+                                            &transformBeta,
+                                            NULL,
+                                            NULL,
+                                            a_transform,
+                                            AtransformDesc,
+                                            0));
   CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
                                             transform_desc,
                                             &transformAlpha,
