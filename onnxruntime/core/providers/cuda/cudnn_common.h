@@ -13,6 +13,8 @@ class CudnnTensor final {
  public:
   CudnnTensor();
   ~CudnnTensor();
+  CudnnTensor(const CudnnTensor&) = delete;
+  CudnnTensor& operator=(const CudnnTensor&) = delete;
 
   Status Set(const std::vector<int64_t>& input_dims, cudnnDataType_t dataType);
   Status Set(const CudnnTensor& x_desc, cudnnBatchNormMode_t mode);
@@ -32,6 +34,8 @@ class CudnnDataTensor final {
  public:
   CudnnDataTensor();
   ~CudnnDataTensor();
+  CudnnDataTensor(const CudnnDataTensor&) = delete;
+  CudnnDataTensor& operator=(const CudnnDataTensor&) = delete;
 
   Status Set(cudnnDataType_t dataType,
              int64_t max_seq_length,
@@ -51,6 +55,8 @@ class CudnnFilterDescriptor final {
  public:
   CudnnFilterDescriptor();
   ~CudnnFilterDescriptor();
+  CudnnFilterDescriptor(const CudnnFilterDescriptor&) = delete;
+  CudnnFilterDescriptor& operator=(const CudnnFilterDescriptor&) = delete;
 
   Status Set(const std::vector<int64_t>& filter_dims, cudnnDataType_t data_typ);
 
@@ -64,6 +70,8 @@ class CudnnDropout final {
  public:
   CudnnDropout() : dropout_desc_(nullptr) {
   }
+  CudnnDropout(const CudnnDropout&) = delete;
+  CudnnDropout& operator=(const CudnnDropout&) = delete;
 
   Status GetCudnnDropoutStatesSize(const cudnnHandle_t& cudnnHandle, size_t& stateSize) {
     CUDNN_RETURN_IF_ERROR(cudnnDropoutGetStatesSize(cudnnHandle, &stateSize));

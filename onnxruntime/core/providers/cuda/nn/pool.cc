@@ -53,9 +53,16 @@ POOLING_KERNEL_VERSIONED(MaxPool, MLFloat16, MaxPool<8>, 8, 9)
 POOLING_KERNEL_VERSIONED(MaxPool, float, MaxPool<8>, 10, 10)
 POOLING_KERNEL_VERSIONED(MaxPool, double, MaxPool<8>, 10, 10)
 POOLING_KERNEL_VERSIONED(MaxPool, MLFloat16, MaxPool<8>, 10, 10)
-POOLING_KERNEL(MaxPool, float, MaxPool<8>, 11)
-POOLING_KERNEL(MaxPool, double, MaxPool<8>, 11)
-POOLING_KERNEL(MaxPool, MLFloat16, MaxPool<8>, 11)
+POOLING_KERNEL_VERSIONED(MaxPool, float, MaxPool<8>, 11, 11)
+POOLING_KERNEL_VERSIONED(MaxPool, double, MaxPool<8>, 11, 11)
+POOLING_KERNEL_VERSIONED(MaxPool, MLFloat16, MaxPool<8>, 11, 11)
+POOLING_KERNEL(MaxPool, float, MaxPool<8>, 12)
+POOLING_KERNEL(MaxPool, double, MaxPool<8>, 12)
+POOLING_KERNEL(MaxPool, MLFloat16, MaxPool<8>, 12)
+POOLING_KERNEL(MaxPool, int8_t, MaxPool<8>, 12)
+POOLING_KERNEL(MaxPool, uint8_t, MaxPool<8>, 12)
+
+
 POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 1)
 POOLING_KERNEL(GlobalMaxPool, double, MaxPool<1>, 1)
 POOLING_KERNEL(GlobalMaxPool, MLFloat16, MaxPool<1>, 1)
@@ -71,6 +78,9 @@ class CudnnPoolingDescriptor final {
       desc_ = nullptr;
     }
   }
+
+  CudnnPoolingDescriptor(const CudnnPoolingDescriptor&) = delete;
+  CudnnPoolingDescriptor& operator=(const CudnnPoolingDescriptor&) = delete;
 
   Status Set(cudnnPoolingMode_t mode,
              const std::vector<int64_t>& kernel_shape,
