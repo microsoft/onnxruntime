@@ -238,7 +238,7 @@ TEST(PoolTest, MaxPool_10_Dilation_1d) {
 TEST(PoolTest, MaxPool_DefaultDilations) {
   OpTester test("MaxPool");
 
-  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
 
   std::vector<int64_t> x_dims = {1, 3, 3};
   std::vector<float> x_vals = {0.f, 1.f, 2.f,
@@ -346,6 +346,29 @@ TEST(PoolTest, MaxPool_10_Dilation_Ceil0_2d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kAclExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool_12_Dilation_Ceil0_2d_int8) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", vector<int64_t>{2, 2});
+
+  std::vector<int8_t> x_vals = {
+      1, 3, 2, 4, -1,
+      5, 7, 6, 8, -2,
+      9, 11, 10, 12, -3,
+      13, 15, 14, 16, -4};
+  std::vector<int64_t> x_dims = {1, 1, 4, 5};
+  std::vector<int64_t> expected_dims = {1, 1, 1, 3};
+  std::vector<int8_t> expected_vals = {10, 12, 10};
+
+  test.AddInput<int8_t>("X", x_dims, x_vals);
+  test.AddOutput<int8_t>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kAclExecutionProvider});
 }
 

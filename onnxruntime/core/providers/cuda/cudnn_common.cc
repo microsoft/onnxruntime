@@ -47,11 +47,6 @@ Status CudnnTensor::Set(const CudnnTensor& x_desc, cudnnBatchNormMode_t mode) {
   return Status::OK();
 }
 
-template <typename ElemType>
-cudnnDataType_t CudnnTensor::GetDataType() {
-    ORT_THROW("cuDNN engine currently supports only single/double/half/int8/uint8 precision data types.");
-}
-
 CudnnDataTensor::CudnnDataTensor()
     : tensor_(nullptr) {
 }
@@ -115,6 +110,11 @@ Status CudnnFilterDescriptor::Set(const std::vector<int64_t>& filter_dims, cudnn
                                                    rank,
                                                    w_dims.data()));
   return Status::OK();
+}
+
+template <typename ElemType>
+cudnnDataType_t CudnnTensor::GetDataType() {
+  static_assert(false, "cuDNN engine currently supports only single/double/half/int8/uint8 precision data types.");
 }
 
 template<>
