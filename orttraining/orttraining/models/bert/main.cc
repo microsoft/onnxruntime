@@ -141,6 +141,11 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         "Default is false, which means no bias correction. "
         "Use true to enable bias correction.",
         cxxopts::value<bool>()->default_value("false"))
+      ("weight_decay_mode",
+        "Chooses the weight decay mode for Adam optimizer "
+        "Default is 0, which does weight decay before updating weight. "
+        "Use 1 to do weight decay after updating weight.",
+        cxxopts::value<int64_t>()->default_value("0"))
       ("ratio_min", "Lamb min ratio parameter", cxxopts::value<float>()->default_value("0.05"))
       ("ratio_max", "Lamb max ratio parameter", cxxopts::value<float>()->default_value("5.0"))
       ("cuda_mem_limit_in_gb", "Max cuda memory ort can use, in GB", cxxopts::value<float>()->default_value("-1.0"))
@@ -317,10 +322,12 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     float beta = flags["beta"].as<float>();
     float lambda = flags["lambda"].as<float>();
     float epsilon = flags["epsilon"].as<float>();
+    int64_t weight_decay_mode = flags["weight_decay_mode"].as<int64_t>();
     float ratio_min = flags["ratio_min"].as<float>();
     float ratio_max = flags["ratio_max"].as<float>();
     ORT_RETURN_IF_NOT(alpha >= 0.f && alpha <= 1.f, "alpha is not in valid range [0.0, 1.0]");
     ORT_RETURN_IF_NOT(beta >= 0.f && beta <= 1.f, "alpha is not in valid range [0.0, 1.0]");
+    ORT_RETURN_IF_NOT(weight_decay_mode == 0 || weight_decay_mode == 1, "Only 0 and 1 are supported for weight decay mode.");
     ORT_RETURN_IF_NOT(epsilon >= 0.f, "epsilon should be non-negative.");
     ORT_RETURN_IF_NOT(epsilon >= 0.f, "epsilon should be non-negative.");
     ORT_RETURN_IF_NOT(ratio_min >= 0.f, "ratio_min should be non-negative.");
@@ -350,7 +357,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     // Optimizer's int attributes.
     params.optimizer_int_attributes = [=](const std::string& /*weight*/) {
       return std::unordered_map<std::string, int64_t>{
-          {"do_bias_correction", do_bias_correction ? static_cast<int64_t>(1) : static_cast<int64_t>(0)}
+          {"do_bias_correction", do_bias_correction ? static_cast<int64_t>(1) : static_cast<int64_t>(0)},
+          {"weight_decay_mode", weight_decay_mode}
       };
     };
 

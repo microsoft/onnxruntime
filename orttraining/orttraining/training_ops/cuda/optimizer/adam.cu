@@ -5,7 +5,7 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "orttraining/training_ops/cuda/optimizer/common.cuh"
 #include "adam.h"
-#include "common.h"
+#include "orttraining/training_ops/cuda/optimizer/common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -24,6 +24,7 @@ __global__ void _AdamOptimizer(
     const T4 epsilon,
     const T4 alpha_correction,
     const T4 beta_correction,
+    const int64_t weight_decay_mode,
     T4* moment_1_out,
     T4* moment_2_out,
     T3* weights_out,
@@ -47,8 +48,25 @@ __global__ void _AdamOptimizer(
   const T4 m2o_corrected = m2o / beta_correction;
 
   // Compute weight update.
-  const T4 denom = _Sqrt(m2o_corrected) + epsilon;
-  const T4 update = (m1o_corrected / denom) + (lambda * T4(weights[id]));
+  T4 stability_term = epsilon;
+
+  // Huggingface's Adamw implementation.
+  // Refer to https://huggingface.co/transformers/_modules/transformers/optimization.html#AdamW.
+  // The difference is that bias-correction is applied after denom is calculated.
+  // After expanding the equation, it's equivalent to dividing epsilon by square root of the corrected beta.
+  if (weight_decay_mode == 1) {
+    stability_term = epsilon / _Sqrt(beta_correction);
+  }
+  const T4 denom = _Sqrt(m2o_corrected) + stability_term;
+
+  T4 update = (m1o_corrected / denom) + (lambda * T4(weights[id]));
+  // Huggingface's Adamw implementation applies lambda on updated weights.
+  // After expanding the equation, it is equivalent to adding the following term
+  // to the delta.
+  if (weight_decay_mode == 1) {
+    update = update - T4(*eta) * lambda * m1o_corrected / denom;
+  }
+
   const T4 delta = -T4(*eta) * update;
 
   // Compute the new gradient.
@@ -84,6 +102,7 @@ void AdamOptimizerImpl(
     const T4 lambda,
     const T4 epsilon,
     const bool do_bias_correction,
+    const int64_t weight_decay_mode,
     T4* moment_1_out,
     T4* moment_2_out,
     T3* weights_out,
@@ -111,6 +130,7 @@ void AdamOptimizerImpl(
       epsilon,
       alpha_correction,
       beta_correction,
+      weight_decay_mode,
       moment_1_out,
       moment_2_out,
       weights_out,
@@ -134,6 +154,7 @@ void AdamOptimizerImpl(
       const T4 lambda,                                                     \
       const T4 epsilon,                                                    \
       const bool do_bias_correction,                                       \
+      const int64_t weight_decay_mode,                                     \
       T4* moment_1_out,                                                    \
       T4* moment_2_out,                                                    \
       T3* weights_out,                                                     \

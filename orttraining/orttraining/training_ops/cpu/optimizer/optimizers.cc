@@ -65,15 +65,30 @@ Status AdamOptimizer<T>::Compute(OpKernelContext* ctx) const {
   // Update exponentially-averaged historical squared gradient
   MakeEigenArrayMap<T>(NM2) = beta_ * MakeEigenArrayMap<T>(M2) + ((1 - beta_) * MakeEigenArrayMap<T>(G) * MakeEigenArrayMap<T>(G));
 
-  const float alpha_correction = do_bias_correction_ ?
+  const float alpha_correction = do_bias_correction_ != 0 ?
     compute_bias_correction_coefficient(alpha_, step) : 1.f;
-  const float beta_correction = do_bias_correction_ ?
+  const float beta_correction = do_bias_correction_ != 0 ?
     compute_bias_correction_coefficient(beta_, step) : 1.f;
 
+  // Huggingface's Adamw implementation.
+  // Refer to https://huggingface.co/transformers/_modules/transformers/optimization.html#AdamW.
+  // The difference is that bias-correction is applied after denom is calculated.
+  // After expanding the equation, it's equivalent to dividing epsilon by square root of the corrected beta.
+  float stability_term = epsilon_;
+  if (weight_decay_mode_ == 1) {
+    stability_term = epsilon_ / std::sqrt(beta_correction);
+  }
+
   // Compute weight update.
-  const auto& denom = (MakeEigenArrayMap<T>(NM2) / beta_correction).sqrt() + epsilon_;
-  const auto& update = ( (MakeEigenArrayMap<T>(NM1) / alpha_correction) / denom) + (lambda_ * MakeEigenArrayMap<T>(W));
-  const auto& delta = -eta * update;
+  const auto& denom = (MakeEigenArrayMap<T>(NM2) / beta_correction).sqrt() + stability_term;
+  const auto& NM1_corrected = (MakeEigenArrayMap<T>(NM1) / alpha_correction);
+  const auto& update = ( NM1_corrected / denom) + (lambda_ * MakeEigenArrayMap<T>(W));
+
+  // Huggingface's Adamw implementation applies lambda on updated weights.
+  // After expanding the equation, it is equivalent to adding the following term
+  // to mode_0's delta.
+  const auto& mode1_weight_decay_term = (float)weight_decay_mode_ * NM1_corrected * (eta) * lambda_ / denom;
+  const auto& delta = -eta * (update - mode1_weight_decay_term);
 
   // Weight, gradient, and step update.
   if (NG != nullptr) {
