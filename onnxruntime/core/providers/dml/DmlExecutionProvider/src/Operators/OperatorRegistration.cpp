@@ -332,15 +332,17 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(     11,  Concat,                             typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)}, // Adds negative axis.
     {REG_INFO_VER(  7,  Slice,                              typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
     {REG_INFO_VER( 10,  Slice,                              typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported,      {1, 2, 3}, std::nullopt, QuerySlice)},
+#if 0 // TODO:DwayneR 
     {REG_INFO_VER( 11,  Slice,                              typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported,      {1, 2, 3}, std::nullopt, QuerySlice)}, // Adds negative axes.
+#endif
     {REG_INFO(      7,  Pad,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-#if 0 // TODO:DwayneR Pads and Value are inputs. https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pad-11
+#if 0 // TODO:NickFe Pads and Value are inputs. https://microsoft.visualstudio.com/OS/_workitems/edit/24674281, https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pad-11
     {REG_INFO(     11,  Pad,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
 #endif
     {REG_INFO(      7,  SpaceToDepth,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  DepthToSpace,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
 #if 0
-    // TODO:Dwayner https://microsoft.visualstudio.com/OS/_workitems/edit/24672169
+    // TODO:Dwayner Update operator DepthToSpace-11 - added column-row-depth shuffle order mode https://microsoft.visualstudio.com/OS/_workitems/edit/24672169
     {REG_INFO(     11,  DepthToSpace,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
 #endif
     {REG_INFO(      7,  Tile,                               typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported,      {1})},
@@ -355,8 +357,6 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO_ID(   7,  Identity,                           typeNameListDefault,            supportedTypeListAllScalars,        DmGraphSupport::Supported)},
     {REG_INFO_ID(   7,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,        DmGraphSupport::Supported)},
     {REG_INFO_ID(   9,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,        DmGraphSupport::Supported)},
-    //!!!TODO:::DwayneR check remaining 11's for other work besides negative axes.
-    //Also verify that negative axes are handled.
     {REG_INFO_ID(  11,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,        DmGraphSupport::Supported)},
     {REG_INFO_ID(   7,  Squeeze,                            typeNameListDefault,            supportedTypeListAllScalars,        DmGraphSupport::Supported)},
     {REG_INFO_ID(  11,  Squeeze,                            typeNameListDefault,            supportedTypeListAllScalars,        DmGraphSupport::Supported)},
@@ -440,7 +440,7 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(      7,  Less,                               typeNameListLogicalComparison,  supportedTypeListLogicalComparison7,DmGraphSupport::Supported)},
     {REG_INFO(      9,  Less,                               typeNameListLogicalComparison,  supportedTypeListLogicalComparison9,DmGraphSupport::Supported)},
     {REG_INFO(      7,  Equal,                              typeNameListLogicalComparison,  supportedTypeListLogicalComparison7,DmGraphSupport::Supported)},
-    {REG_INFO(      11, Equal,                              typeNameListLogicalComparison,  supportedTypeListLogicalComparison9,DmGraphSupport::Supported)},
+    {REG_INFO(     11,  Equal,                              typeNameListLogicalComparison,  supportedTypeListLogicalComparison9,DmGraphSupport::Supported)},
     {REG_INFO(      7,  Not,                                typeNameListDefault,            supportedTypeListBool,              DmGraphSupport::Supported)},
     {REG_INFO(      7,  And,                                typeNameListDefault,            supportedTypeListBool,              DmGraphSupport::Supported)},
     {REG_INFO(      7,  Or,                                 typeNameListDefault,            supportedTypeListBool,              DmGraphSupport::Supported)},

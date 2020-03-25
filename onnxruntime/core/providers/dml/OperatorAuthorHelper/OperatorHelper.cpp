@@ -1005,6 +1005,16 @@ namespace OperatorHelper
         return { std::move(EdgeShapes(outputDimensions)) };
     }
 
+    void SqueezeHelper::Initialize(
+        gsl::span<const int32_t> axes,
+        gsl::span<const DimensionType> inputDimensions
+        )
+    {
+        m_axes.assign(axes.begin(), axes.end());
+        HandleNegativeAxes(/*inout*/ m_axes, gsl::narrow_cast<uint32_t>(inputDimensions.size()));
+        std::sort(m_axes.begin(), m_axes.end());
+    }
+
     std::vector<EdgeShapes> SqueezeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         auto outputDimensions = shapeInfo.GetInputTensorShape(0);
@@ -1036,6 +1046,17 @@ namespace OperatorHelper
         outputDimensions.resize(newOutputDimCount);
 
         return { std::move(outputDimensions) };
+    }
+
+    void UnsqueezeHelper::Initialize(
+        gsl::span<const int32_t> axes,
+        gsl::span<const DimensionType> inputDimensions
+        )
+    {
+        m_axes.assign(axes.begin(), axes.end());
+        const uint32_t outputDimensionCount = gsl::narrow_cast<uint32_t>(inputDimensions.size() + axes.size());
+        HandleNegativeAxes(/*inout*/ m_axes, outputDimensionCount);
+        std::sort(m_axes.begin(), m_axes.end());
     }
 
     std::vector<EdgeShapes> UnsqueezeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
