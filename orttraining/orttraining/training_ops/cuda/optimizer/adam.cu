@@ -60,9 +60,10 @@ __global__ void _AdamOptimizer(
   const T4 denom = _Sqrt(m2o_corrected) + stability_term;
 
   T4 update = (m1o_corrected / denom) + (lambda * T4(weights[id]));
+
   // Huggingface's Adamw implementation applies lambda on updated weights.
-  // After expanding the equation, it is equivalent to adding the following term
-  // to the delta.
+  // After expanding the equation, it is equivalent to substracting the following term
+  // from the update.
   if (weight_decay_mode == 1) {
     update = update - T4(*eta) * lambda * m1o_corrected / denom;
   }

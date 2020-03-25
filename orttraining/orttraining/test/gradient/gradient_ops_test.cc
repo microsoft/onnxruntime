@@ -1248,7 +1248,7 @@ TEST(OptimizerTest, AdamBiasCorrection) {
   test.Run();
 }
 
-TEST(OptimizerTest, AdamWeightUpdateMode1NoBiasCorrection) {
+TEST(OptimizerTest, AdamWeightDecayMode0NoBiasCorrection) {
   OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
   AdamOptimizerInputOutput data;
 
@@ -1262,7 +1262,53 @@ TEST(OptimizerTest, AdamWeightUpdateMode1NoBiasCorrection) {
   test.AddOutput<int64_t>("Update_Count_Out", {}, {2});
   test.AddOutput<float>("Moment_1_Out", {3}, {0.0417f, 0.0949f, 0.1229f});
   test.AddOutput<float>("Moment_2_Out", {3}, {1.7400e-04f, 8.9966e-04f, 1.5102e-03f});
-  test.AddOutput<float>("W_Out", {3}, {-1.4634f, -0.6416f, -1.2121f});
+  test.AddOutput<float>("W_Out", {3}, {-3.6210f, -2.8075f, -3.3723f});
+
+  test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
+  test.AddAttribute("lambda", 0.01f);
+  test.AddAttribute("weight_decay_mode", static_cast<int64_t>(0));
+
+  test.Run();
+}
+
+TEST(OptimizerTest, AdamWeightDecayMode0WithBiasCorrection) {
+  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  AdamOptimizerInputOutput data;
+
+  test.AddInput<float>("ETA", {}, {1.f});
+  test.AddInput<int64_t>("Update_Count", {}, {1});
+  test.AddInput<float>("W", {3}, {-0.4634f,  0.3584f, -0.2121f});
+  test.AddInput<float>("G", {3}, {0.4171f, 0.9485f, 1.2289f});
+  test.AddInput<float>("Moment_1", {3}, {0.f, 0.f, 0.f});
+  test.AddInput<float>("Moment_2", {3}, {0.f, 0.f, 0.f});
+
+  test.AddOutput<int64_t>("Update_Count_Out", {}, {2});
+  test.AddOutput<float>("Moment_1_Out", {3}, {0.0417f, 0.0949f, 0.1229f});
+  test.AddOutput<float>("Moment_2_Out", {3}, {1.7400e-04f, 8.9966e-04f, 1.5102e-03f});
+  test.AddOutput<float>("W_Out", {3}, {-1.4587f, -0.6452f, -1.2099f});
+
+  test.AddAttribute("do_bias_correction", static_cast<int64_t>(1));
+  test.AddAttribute("lambda", 0.01f);
+  test.AddAttribute("weight_decay_mode", static_cast<int64_t>(0));
+
+  test.Run();
+}
+
+TEST(OptimizerTest, AdamWeightDecayMode1NoBiasCorrection) {
+  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  AdamOptimizerInputOutput data;
+
+  test.AddInput<float>("ETA", {}, {1.f});
+  test.AddInput<int64_t>("Update_Count", {}, {1});
+  test.AddInput<float>("W", {3}, {-0.4634f,  0.3584f, -0.2121f});
+  test.AddInput<float>("G", {3}, {0.4171f, 0.9485f, 1.2289f});
+  test.AddInput<float>("Moment_1", {3}, {0.f, 0.f, 0.f});
+  test.AddInput<float>("Moment_2", {3}, {0.f, 0.f, 0.f});
+
+  test.AddOutput<int64_t>("Update_Count_Out", {}, {2});
+  test.AddOutput<float>("Moment_1_Out", {3}, {0.0417f, 0.0949f, 0.1229f});
+  test.AddOutput<float>("Moment_2_Out", {3}, {1.7400e-04f, 8.9966e-04f, 1.5102e-03f});
+  test.AddOutput<float>("W_Out", {3}, {-3.5894f, -2.7758f, -3.3406f});
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
   test.AddAttribute("lambda", 0.01f);
@@ -1271,7 +1317,7 @@ TEST(OptimizerTest, AdamWeightUpdateMode1NoBiasCorrection) {
   test.Run();
 }
 
-TEST(OptimizerTest, AdamWeightUpdateMode1WithBiasCorrection) {
+TEST(OptimizerTest, AdamWeightDecayMode1WithBiasCorrection) {
   OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
   AdamOptimizerInputOutput data;
 
@@ -1285,7 +1331,7 @@ TEST(OptimizerTest, AdamWeightUpdateMode1WithBiasCorrection) {
   test.AddOutput<int64_t>("Update_Count_Out", {}, {2});
   test.AddOutput<float>("Moment_1_Out", {3}, {0.0417f, 0.0949f, 0.1229f});
   test.AddOutput<float>("Moment_2_Out", {3}, {1.7400e-04f, 8.9966e-04f, 1.5102e-03f});
-  test.AddOutput<float>("W_Out", {3}, {-1.4634f, -0.6416f, -1.2121f});
+  test.AddOutput<float>("W_Out", {3}, {-1.4488f, -0.6352f, -1.1999f});
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(1));
   test.AddAttribute("lambda", 0.01f);
