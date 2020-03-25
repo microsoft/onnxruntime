@@ -40,6 +40,7 @@ Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified,
 
     // Construct a new shape for this input, replacing free dimensions with their overrides
     onnx::TensorShapeProto new_shape;
+    bool shape_modified = false;
     for (int32_t dim_index = 0; dim_index < input_shape->dim_size(); ++dim_index) {
       const auto& dimension = input_shape->dim(dim_index);
 
@@ -67,17 +68,24 @@ Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified,
           return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid free dimension override.");
         }
 
+        if (dimension.has_dim_value() && !dimension.has_dim_param()) {
+          continue;
+        }
+
         // Set the dimension override
         new_dimension->clear_dim_param();
         new_dimension->set_dim_value(dimension_override);
+        shape_modified = true;
       }
     }
 
-    // Set the new shape
-    auto* mutable_graph_input = graph.GetNodeArg(graph_input->Name());
-    assert(mutable_graph_input != nullptr);
-    mutable_graph_input->SetShape(new_shape);
-    modified = true;
+    if (shape_modified) {
+      // Set the new shape
+      auto* mutable_graph_input = graph.GetNodeArg(graph_input->Name());
+      assert(mutable_graph_input != nullptr);
+      mutable_graph_input->SetShape(new_shape);
+      modified = true;
+    }
   }
 
   return Status::OK();
