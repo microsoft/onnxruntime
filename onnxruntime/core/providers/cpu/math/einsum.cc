@@ -14,9 +14,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllNumericTensorTypes()),
     Einsum);
 
-// Utility class that deals with all apsects of einsum equation string
-// Covers everything from validating it to generating the output subscripts if needed
-// From the computed output subscript, the output shape is easily calculated
 class EinsumEquationParser final {
  public:
   EinsumEquationParser(const std::string& einsum_equation,
@@ -55,8 +52,16 @@ class EinsumEquationParser final {
     return input_indices_to_subscript_labels_;
   }
 
+  const std::vector<std::unique_ptr<const std::vector<int64_t>>>& GetInputDimIndicesBasedOnSubscriptLabelIndices() const {
+    return input_dim_indices_based_on_subscript_label_indices_;
+  }
+
   const std::unordered_set<char>& GetOutputSubscriptLabels() const {
     return output_subscript_labels_;
+  }
+
+  const std::vector<int64_t>& GetOutputDimIndicesBasedOnSubscriptLabelIndices() const {
+    return output_dim_indices_based_on_subscript_label_indices_;
   }
 
   const std::vector<int64_t>& GetOutputDims() const {
@@ -84,6 +89,8 @@ class EinsumEquationParser final {
 
       std::unordered_map<char, int64_t> local_subscript_label_to_dim_value;
       auto local_subscript_labels = onnxruntime::make_unique<std::unordered_set<char>>();
+      auto local_dim_indices_based_on_subscript_label_indices = onnxruntime::make_unique<std::vector<int64_t>>();
+      local_dim_indices_based_on_subscript_label_indices->reserve(rank);
 
       // Iterate through all subscript labels in the subscript
       for (auto subscript_label : subscript) {
@@ -91,18 +98,20 @@ class EinsumEquationParser final {
 
         auto dim_value = dims[dim_counter];
 
-        auto dim_value_iterator = subscript_label_to_dim_value_.find(subscript_label);
+        auto subscript_label_index_iterator = subscript_label_to_index_.find(subscript_label);
 
         // Subscript label not found in global map
         // Hence add it to both local and global maps
-        if (dim_value_iterator == subscript_label_to_dim_value_.end()) {
+        if (subscript_label_index_iterator == subscript_label_to_index_.end()) {
           local_subscript_label_to_dim_value[subscript_label] = dim_value;
           subscript_label_to_dim_value_[subscript_label] = dim_value;
           index_to_subscript_label_[global_index_counter] = subscript_label;
           subscript_label_to_index_[subscript_label] = global_index_counter;
+          local_dim_indices_based_on_subscript_label_indices->push_back(global_index_counter);
           ++global_index_counter;
         } else {
           // Subscript label found in global map
+          local_dim_indices_based_on_subscript_label_indices->push_back(subscript_label_index_iterator->second);
 
           // Check if the subscript label is found in the local map
           auto local_dim_value_iterator = local_subscript_label_to_dim_value.find(subscript_label);
@@ -135,7 +144,12 @@ class EinsumEquationParser final {
                     "Einsum subscripts string contains too many subscript labels for input ", input_index);
       }
 
+      // TODO: Accound for broadcasting
+      ORT_ENFORCE(dim_counter == rank,
+                  "Einsum subscripts does not contain enough subscript labels and there is no ellipsis for input ", input_index);
+
       input_indices_to_subscript_labels_.push_back(std::move(local_subscript_labels));
+      input_dim_indices_based_on_subscript_label_indices_.push_back(std::move(local_dim_indices_based_on_subscript_label_indices));
       ++input_index;
     }
   }
@@ -164,12 +178,14 @@ class EinsumEquationParser final {
   void CalculateOutputShape() {
     // TODO: Account for broadcasting
     output_dims_.reserve(output_subscript_.length());
+    output_dim_indices_based_on_subscript_label_indices_.reserve(output_subscript_.length());
     // Iterate through all subscript labels in the subscript
     for (auto subscript_label : output_subscript_) {
       // The output_subscript_ has already been validated to make sure that it only contains
       // known letters from inputs => won't look up a key not in the map
       output_dims_.push_back(subscript_label_to_dim_value_.find(subscript_label)->second);
       output_subscript_labels_.insert(subscript_label);
+      output_dim_indices_based_on_subscript_label_indices_.push_back(subscript_label_to_index_.find(subscript_label)->second);
     }
   }
 
@@ -205,8 +221,14 @@ class EinsumEquationParser final {
   // Used to hold each input's subscript labels
   std::vector<std::unique_ptr<const std::unordered_set<char>>> input_indices_to_subscript_labels_;
 
+  // Used to hold each input's dimension based on the assigned subscript label index
+  std::vector<std::unique_ptr<const std::vector<int64_t>>> input_dim_indices_based_on_subscript_label_indices_;
+
   // Used to hold output's subscript labels
   std::unordered_set<char> output_subscript_labels_;
+
+  // Used to hold each output's dimension based on the assigned subscript label index
+  std::vector<int64_t> output_dim_indices_based_on_subscript_label_indices_;
 
   // Flag indicating if the op is being used in explicit form
   bool is_explicit_ = false;
@@ -220,7 +242,8 @@ class EinsumProcessor final {
     // Parse the einsum equation and do the necessary pre-processing
     auto equation_parser = EinsumEquationParser(einsum_equation, input_dims);
   }
-  void Compute() {}
+
+  void Compute(OpKernelContext* /*context*/) { return; }
 };
 
 namespace EinsumOp {
@@ -230,8 +253,8 @@ namespace EinsumOp {
 // for inputs of shape (2,3) and (3,4) -> i = 2, j = 3, k = 4.
 // Then this class walks over all combinations of (i, j, k)
 // from (0, 0, 0) to (1, 2, 3)
-
 class DimensionWalker {
+ public:
   DimensionWalker(const std::unordered_map<char, int64_t>& subscript_label_to_dim_value,
                   const std::unordered_map<int64_t, char>& index_to_subscript_label)
       : subscript_label_to_dim_value_(subscript_label_to_dim_value),
@@ -273,7 +296,7 @@ class DimensionWalker {
       return pair;
     }
 
-    size_t dim = num_of_dims_ - 1;
+    int64_t dim = static_cast<int64_t>(num_of_dims_) - 1;
     while (dim >= 0) {
       pair.second.insert(index_to_subscript_label_.find(static_cast<int64_t>(dim))->second);
 
@@ -285,12 +308,17 @@ class DimensionWalker {
     }
 
     pair.first = true;
+    ++num_of_clocks_;
     return pair;
+  }
+
+  std::vector<int64_t> GetCurrentCombintation() const {
+    return current_dims_;
   }
 
   size_t num_of_dims_;
 
-  size_t num_of_clocks_;
+  mutable size_t num_of_clocks_;
   size_t max_num_of_clocks_;
 
   mutable std::vector<int64_t> current_dims_;
@@ -308,17 +336,13 @@ class Input {
         const std::vector<int64_t>& dim_indices_based_on_subscript_label_order)
       : subscript_labels_(subscript_labels),
         dim_indices_based_on_subscript_label_order_(dim_indices_based_on_subscript_label_order),
-        pitches_(TensorPitches(input)) {
-    offset_ = -1;
-    buffer_ = input->Data<T>();
-  }
-
-  const T& Next(const std::vector<int64_t>& current_combination,
-                const std::unordered_set<char>& change_from_prev) {
-    if (offset == -1 || RecalcNeeded(change_from_prev)) {
-      // TODO: Implement
+        pitches_(TensorPitches(*input)) {
+    if (input->Shape().GetDims().size() == 0) {
+      offset_ = 0;
+      scalar_ = true;
     }
-    return buffer[offset_];
+
+    buffer_ = input->Data<T>();
   }
 
   bool RecalcNeeded(const std::unordered_set<char>& change_from_prev) {
@@ -331,35 +355,42 @@ class Input {
     return false;
   }
 
- protected:
-  int64_t offset_;
-  const std::unordered_set<char>& subscript_labels_;
-  const std::vector<int64_t>& dim_indices_based_on_subscript_label_order_;
-  const TensorPitches& pitches_;
+  const T* Next(const std::vector<int64_t>& current_combination,
+                const std::unordered_set<char>& change_from_prev) {
+    if (!scalar_ && (offset_ == -1 || RecalcNeeded(change_from_prev))) {
+      offset_ = 0;
+      for (size_t i = 0; i < dim_indices_based_on_subscript_label_order_.size(); ++i) {
+        offset_ += current_combination[dim_indices_based_on_subscript_label_order_[i]] * pitches_[i];
+      }
+    }
+    return &buffer_[offset_];
+  }
 
  private:
+  bool scalar_ = false;
+  int64_t offset_ = -1;
+  const std::unordered_set<char>& subscript_labels_;
+  const std::vector<int64_t>& dim_indices_based_on_subscript_label_order_;
+  const TensorPitches pitches_;
   const T* buffer_;
 };
 
 template <typename T>
 class Output {
  public:
-  Output(const Tensor* input,
-        const std::unordered_set<char>& subscript_labels,
-        const std::vector<int64_t>& dim_indices_based_on_subscript_label_order)
+  Output(Tensor* output,
+         const std::unordered_set<char>& subscript_labels,
+         const std::vector<int64_t>& dim_indices_based_on_subscript_label_order)
       : subscript_labels_(subscript_labels),
         dim_indices_based_on_subscript_label_order_(dim_indices_based_on_subscript_label_order),
-        pitches_(TensorPitches(input)) {
-    offset_ = -1;
-    buffer_ = input->Data<T>();
-  }
-
-  const T& Next(const std::vector<int64_t>& current_combination,
-                const std::unordered_set<char>& change_from_prev) {
-    if (offset == -1 || RecalcNeeded(change_from_prev)) {
-      // TODO: Implement
+        pitches_(TensorPitches(*output)) {
+    if (output->Shape().GetDims().size() == 0) {
+      offset_ = 0;
+      scalar_ = true;
     }
-    return buffer[offset_];
+
+    buffer_ = output->template MutableData<T>();
+    memset(buffer_, 0, output->Shape().Size() * output->DataType()->Size());
   }
 
   bool RecalcNeeded(const std::unordered_set<char>& change_from_prev) {
@@ -372,31 +403,78 @@ class Output {
     return false;
   }
 
+  T* Next(const std::vector<int64_t>& current_combination,
+          const std::unordered_set<char>& change_from_prev) {
+    if (!scalar_ && (offset_ == -1 || RecalcNeeded(change_from_prev))) {
+      offset_ = 0;
+      for (size_t i = 0; i < dim_indices_based_on_subscript_label_order_.size(); ++i) {
+        offset_ += current_combination[dim_indices_based_on_subscript_label_order_[i]] * pitches_[i];
+      }
+    }
+    return &buffer_[offset_];
+  }
+
  protected:
-  int64_t offset_;
+  bool scalar_ = false;
+  int64_t offset_ = -1;
   const std::unordered_set<char>& subscript_labels_;
   const std::vector<int64_t>& dim_indices_based_on_subscript_label_order_;
-  const TensorPitches& pitches_;
+  const TensorPitches pitches_;
 
  private:
-  const T* buffer_;
+  T* buffer_;
 };
 
 }  // namespace EinsumOp
 
 Status Einsum::Compute(OpKernelContext* context) const {
   int num_inputs = context->InputCount();
-  std::vector<const Tensor*> inputs(num_inputs);
-  std::vector<const TensorShape*> input_dims(num_inputs);
 
-  // Hold the inputs and their dimensions
+  std::vector<const TensorShape*> input_dims;
+  input_dims.reserve(num_inputs);
+
+  // Hold the input dimensions
   for (int i = 0; i < num_inputs; ++i) {
     const auto* input = context->Input<Tensor>(i);
-    inputs.push_back(input);
     input_dims.push_back(&input->Shape());
   }
 
-  EinsumProcessor<float>(equation_, input_dims);
+  auto equation_parser = EinsumEquationParser(equation_, input_dims);
+
+  std::vector<EinsumOp::Input<float>> inputs;
+  inputs.reserve(num_inputs);
+  const auto& input_dim_indices_based_on_subscript_label_indices = equation_parser.GetInputDimIndicesBasedOnSubscriptLabelIndices();
+  const auto& input_indices_to_subscript_labels = equation_parser.GetInputIndicesToSubscriptLabels();
+  for (int i = 0; i < num_inputs; ++i) {
+    inputs.emplace_back(context->Input<Tensor>(i), *input_indices_to_subscript_labels[i], *input_dim_indices_based_on_subscript_label_indices[i]);
+  }
+
+  const auto& output_dims = equation_parser.GetOutputDims();
+  auto* output_tensor = context->Output(0, output_dims);
+
+  if (output_tensor->Shape().Size() == 0)
+    return Status::OK();
+
+  const auto& output_dim_indices_based_on_subscript_label_indices = equation_parser.GetOutputDimIndicesBasedOnSubscriptLabelIndices();
+  const auto& output_subscript_labels = equation_parser.GetOutputSubscriptLabels();
+  EinsumOp::Output<float> output(output_tensor, output_subscript_labels, output_dim_indices_based_on_subscript_label_indices);
+
+  EinsumOp::DimensionWalker dimension_walker(equation_parser.GetSubscriptLabelToDimValue(), equation_parser.GetIndexToSubscriptLabel());
+  while (true) {
+    auto ret = dimension_walker.Clock();
+    if (ret.first) {
+      float res = 1.f;
+      for (auto& input : inputs) {
+        res *= *input.Next(dimension_walker.GetCurrentCombintation(), ret.second);
+        if (res == 0)
+          break;
+      }
+      *output.Next(dimension_walker.GetCurrentCombintation(), ret.second) = res;
+    } else {
+      break;
+    }
+  }
+
   return Status::OK();
 }
 
