@@ -37,13 +37,13 @@ DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& in
                                                         [](int) { return onnxruntime::CreateCPUAllocator(onnxruntime::Prov_OrtMemoryInfo::Create(DNNL_CPU, OrtAllocatorType::OrtDeviceAllocator, nullptr, 0, OrtMemTypeCPUOutput)); }, std::numeric_limits<size_t>::max()});
 
   if (info.create_arena) {
-    InsertAllocator(CreateAllocator(default_memory_info));
+    Prov_InsertAllocator(CreateAllocator(default_memory_info));
 
-    InsertAllocator(CreateAllocator(cpu_memory_info));
+    Prov_InsertAllocator(CreateAllocator(cpu_memory_info));
   } else {
-    InsertAllocator(onnxruntime::CreateDummyArenaAllocator(default_memory_info.factory(0)));
+    Prov_InsertAllocator(onnxruntime::CreateDummyArenaAllocator(default_memory_info.factory(0)));
 
-    InsertAllocator(onnxruntime::CreateDummyArenaAllocator(cpu_memory_info.factory(0)));
+    Prov_InsertAllocator(onnxruntime::CreateDummyArenaAllocator(cpu_memory_info.factory(0)));
   }
 }  // namespace onnxruntime
 
@@ -53,8 +53,8 @@ DNNLExecutionProvider::~DNNLExecutionProvider() {
 namespace ort_dnnl {
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDnnlExecutionProvider, kOnnxDomain, 7, Gemm);
 
-void RegisterDNNLKernels(KernelRegistry& kernel_registry) {
-  static const BuildKernelCreateInfoFn function_table[] = {
+void RegisterDNNLKernels(Prov_KernelRegistry& kernel_registry) {
+  static const Prov_BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDnnlExecutionProvider, kOnnxDomain, 7, Gemm)>,
   };
 
@@ -63,15 +63,15 @@ void RegisterDNNLKernels(KernelRegistry& kernel_registry) {
   }
 }
 
-std::shared_ptr<KernelRegistry> GetDnnlKernelRegistry() {
-  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+std::shared_ptr<Prov_KernelRegistry> GetDnnlKernelRegistry() {
+  std::shared_ptr<Prov_KernelRegistry> kernel_registry = Prov_KernelRegistry::Create();
   RegisterDNNLKernels(*kernel_registry);
   return kernel_registry;
 }
 }  // namespace ort_dnnl
 
-std::shared_ptr<KernelRegistry> DNNLExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::ort_dnnl::GetDnnlKernelRegistry();
+std::shared_ptr<Prov_KernelRegistry> DNNLExecutionProvider::Prov_GetKernelRegistry() const {
+  static std::shared_ptr<Prov_KernelRegistry> kernel_registry = onnxruntime::ort_dnnl::GetDnnlKernelRegistry();
   return kernel_registry;
 }
 
@@ -188,13 +188,13 @@ void DNNLExecutionProvider::CreateOrUpdateDnnlNode(const Node* node,
   }
 }
 
-std::vector<std::unique_ptr<Prov_ComputeCapability>> DNNLExecutionProvider::GetCapability(
+std::vector<std::unique_ptr<Prov_ComputeCapability>> DNNLExecutionProvider::Prov_GetCapability(
     const onnxruntime::GraphViewer& graph_viewer,
-    const std::vector<const KernelRegistry*>& kernel_registries) const {
+    const std::vector<const Prov_KernelRegistry*>& kernel_registries) const {
   ORT_UNUSED_PARAMETER(kernel_registries);
 
   if (UseSubgraph(graph_viewer) == false) {
-    return Prov_IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
+    return Prov_IExecutionProvider::Prov_GetCapability(graph_viewer, kernel_registries);
   }
 
   LOGS_DEFAULT(INFO) << "Using DNNL Subgraph";

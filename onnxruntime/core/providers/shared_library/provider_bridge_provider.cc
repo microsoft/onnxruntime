@@ -34,6 +34,14 @@ Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, in
   return g_host->CreateAllocator(info, device_id);
 }
 
+std::unique_ptr<Prov_KernelDefBuilder> Prov_KernelDefBuilder::Create() {
+  return g_host->KernelDefBuilder_Create();
+}
+
+std::shared_ptr<Prov_KernelRegistry> Prov_KernelRegistry::Create() {
+  return g_host->KernelRegistry_Create();
+}
+
 std::unique_ptr<Prov_OrtMemoryInfo> Prov_OrtMemoryInfo::Create(const char* name_, OrtAllocatorType type_, Prov_OrtDevice* device_, int id_, OrtMemType mem_type_) {
   return g_host->OrtMemoryInfo_Create(name_, type_, device_, id_, mem_type_);
 }
@@ -435,6 +443,7 @@ const TensorShape& Tensor::Shape() const noexcept {
   return *(TensorShape*)nullptr;
 }
 
+#if 0
 KernelDefBuilder::KernelDefBuilder() {
   __debugbreak();
 }
@@ -470,12 +479,7 @@ std::unique_ptr<KernelDef> KernelDefBuilder::Build() {
   __debugbreak();
   return nullptr;
 }
-
-Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
-  __debugbreak();
-  create_info;
-  return Status::OK();
-}
+#endif
 
 Prov_ComputeCapability::Prov_ComputeCapability(std::unique_ptr<IndexedSubGraph> t_sub_graph) {
   __debugbreak();

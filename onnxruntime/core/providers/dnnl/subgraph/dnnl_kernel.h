@@ -22,7 +22,7 @@ class DnnlKernel {
     name_ = node.name;
     mklnode_ptr_ = std::make_shared<DnnlNode>(node);
     provider_ = provider;
-    alloc_ = provider_->GetAllocator(0, OrtMemTypeDefault);
+    alloc_ = provider_->Prov_GetAllocator(0, OrtMemTypeDefault);
   }
   virtual ~DnnlKernel(){};
 

@@ -35,7 +35,7 @@ class DNNLExecutionProvider : public Prov_IExecutionProvider {
   explicit DNNLExecutionProvider(const DNNLExecutionProviderInfo& info);
   virtual ~DNNLExecutionProvider();
 
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const /*override*/;
+  virtual std::shared_ptr<Prov_KernelRegistry> Prov_GetKernelRegistry() const override;
 
   std::shared_ptr<dnnl::memory> GetWeightsMemoryBuffer(const std::string& weight_key) {
     auto iter = weights_mem_map_.find(weight_key);
@@ -77,8 +77,8 @@ class DNNLExecutionProvider : public Prov_IExecutionProvider {
   }
 
   std::vector<std::unique_ptr<Prov_ComputeCapability>>
-  GetCapability(const onnxruntime::GraphViewer& graph,
-                const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
+  Prov_GetCapability(const onnxruntime::GraphViewer& graph,
+                     const std::vector<const Prov_KernelRegistry*>& /*kernel_registries*/) const override;
 
   common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) /*override*/;

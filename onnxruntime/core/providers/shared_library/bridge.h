@@ -72,40 +72,83 @@ struct Prov_DeviceAllocatorRegistrationInfo {
   size_t max_mem;
 };
 
+class OpKernel;      // TODO
+class OpKernelInfo;  // TODO
+
+struct Prov_KernelDef {
+  virtual ~Prov_KernelDef() {}
+};
+
+using Prov_KernelCreateFn = std::function<OpKernel*(const OpKernelInfo& info)>;
+using Prov_KernelCreatePtrFn = std::add_pointer<OpKernel*(const OpKernelInfo& info)>::type;
+
+struct Prov_KernelCreateInfo {
+  std::unique_ptr<Prov_KernelDef> kernel_def;  // Owned and stored in the global kernel registry.
+  Prov_KernelCreateFn kernel_create_func;
+
+  Prov_KernelCreateInfo(std::unique_ptr<Prov_KernelDef> definition,
+                        Prov_KernelCreateFn create_func)
+      : kernel_def(std::move(definition)),
+        kernel_create_func(create_func) {}
+
+  Prov_KernelCreateInfo(Prov_KernelCreateInfo&& other) noexcept
+      : kernel_def(std::move(other.kernel_def)),
+        kernel_create_func(std::move(other.kernel_create_func)) {}
+};
+
+using Prov_BuildKernelCreateInfoFn = Prov_KernelCreateInfo (*)();
+
+struct Prov_KernelDefBuilder {
+  static std::unique_ptr<Prov_KernelDefBuilder> Create();
+
+  virtual Prov_KernelDefBuilder& SetName(const char* op_name) = 0;
+  virtual Prov_KernelDefBuilder& SetDomain(const char* domain) = 0;
+  virtual Prov_KernelDefBuilder& SinceVersion(int since_version) = 0;
+  virtual Prov_KernelDefBuilder& Provider(const char* provider_type) = 0;
+  virtual Prov_KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType supported_type) = 0;
+
+  virtual std::unique_ptr<Prov_KernelDef> Build() = 0;
+};
+
 class GraphViewer;
-class KernelRegistry;
 struct IndexedSubGraph;
+
+struct Prov_KernelRegistry {
+  static std::shared_ptr<Prov_KernelRegistry> Create();
+  virtual Status Register(Prov_KernelCreateInfo&& create_info) = 0;
+};
 
 struct Prov_ComputeCapability {
   Prov_ComputeCapability(std::unique_ptr<IndexedSubGraph> t_sub_graph);
 };
 
+// Provides the base class implementations, since Prov_IExecutionProvider is just an interface. This is to fake the C++ inheritance used by internal IExecutionProvider implementations
 struct Prov_IExecutionProvider_Router {
   virtual ~Prov_IExecutionProvider_Router() {}
 
-  virtual std::vector<std::unique_ptr<Prov_ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph,
-                                                                             const std::vector<const KernelRegistry*>& kernel_registries) const = 0;
+  virtual std::shared_ptr<Prov_KernelRegistry> Prov_GetKernelRegistry() const = 0;
 
-  virtual Prov_AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const = 0;
-  virtual void InsertAllocator(Prov_AllocatorPtr allocator) = 0;
+  virtual std::vector<std::unique_ptr<Prov_ComputeCapability>> Prov_GetCapability(const onnxruntime::GraphViewer& graph,
+                                                                                  const std::vector<const Prov_KernelRegistry*>& kernel_registries) const = 0;
+
+  virtual Prov_AllocatorPtr Prov_GetAllocator(int id, OrtMemType mem_type) const = 0;
+  virtual void Prov_InsertAllocator(Prov_AllocatorPtr allocator) = 0;
 };
 
 struct Prov_IExecutionProvider {
   Prov_IExecutionProvider(const std::string& type);
   virtual ~Prov_IExecutionProvider() {}
 
-#if 0
-  virtual std::shared_ptr<Prov_KernelRegistry> GetKernelRegistry() const = 0;
-#endif
+  virtual std::shared_ptr<Prov_KernelRegistry> Prov_GetKernelRegistry() const { return p_->Prov_GetKernelRegistry(); }
 
-  virtual std::vector<std::unique_ptr<Prov_ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph,
-                                                                             const std::vector<const KernelRegistry*>& kernel_registries) const { return p_->GetCapability(graph, kernel_registries); }
+  virtual std::vector<std::unique_ptr<Prov_ComputeCapability>> Prov_GetCapability(const onnxruntime::GraphViewer& graph,
+                                                                                  const std::vector<const Prov_KernelRegistry*>& kernel_registries) const { return p_->Prov_GetCapability(graph, kernel_registries); }
 #if 0
   virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
 #endif
 
-  virtual Prov_AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const { return p_->GetAllocator(id, mem_type); }
-  virtual void InsertAllocator(Prov_AllocatorPtr allocator) { return p_->InsertAllocator(allocator); }
+  virtual Prov_AllocatorPtr Prov_GetAllocator(int id, OrtMemType mem_type) const { return p_->Prov_GetAllocator(id, mem_type); }
+  virtual void Prov_InsertAllocator(Prov_AllocatorPtr allocator) { return p_->Prov_InsertAllocator(allocator); }
 
   std::unique_ptr<Prov_IExecutionProvider_Router> p_;
 };
@@ -135,6 +178,9 @@ struct ProviderHost {
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
 
   virtual std::unique_ptr<Prov_OrtMemoryInfo> OrtMemoryInfo_Create(const char* name_, OrtAllocatorType type_, Prov_OrtDevice* device_, int id_, OrtMemType mem_type_) = 0;
+  virtual std::unique_ptr<Prov_KernelDefBuilder> KernelDefBuilder_Create() = 0;
+
+  virtual std::shared_ptr<Prov_KernelRegistry> KernelRegistry_Create() = 0;
 
   //  virtual OrtMemoryInfo* OrtMemoryInfo_constructor(const char* name_, OrtAllocatorType type_, OrtDevice& device_, int id_, OrtMemType mem_type_) = 0;
   //  virtual void OrtMemoryInfo_destructor(OrtMemoryInfo* proxy) = 0;
@@ -202,14 +248,7 @@ struct ProviderHost {
   virtual const Node* GraphViewer_GetNode(const GraphViewer* _this, NodeIndex p1) = 0;
   virtual int GraphViewer_MaxNodeIndex(const GraphViewer* _this) = 0;
   virtual const std::string& GraphViewer_Name(const GraphViewer* _this) = 0;
-#endif
 
-  virtual void KernelDefBuilder_Provider(void* _this, char const* p1) = 0;
-  virtual void KernelDefBuilder_SetName(void* _this, char const* p1) = 0;
-  virtual void KernelDefBuilder_SetDomain(void* _this, char const* p1) = 0;
-  virtual void KernelDefBuilder_TypeConstraint(void* _this, char const* p1, const DataTypeImpl* p2) = 0;
-
-#if 0
   virtual Status KernelRegistry_Register(KernelRegistry* _this, KernelCreateInfo&& p1) = 0;
 
   virtual const NodeAttributes& Node_GetAttributes(const Node* _this) = 0;

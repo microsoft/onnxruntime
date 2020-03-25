@@ -84,38 +84,86 @@ struct Prov_IDeviceAllocator_Impl : Prov_IDeviceAllocator {
   std::unique_ptr<IDeviceAllocator> p_;
 };
 
-struct Prov_IExecutionProvider_Router2 : Prov_IExecutionProvider_Router {
-  virtual Prov_AllocatorPtr Prov_GetAllocator(int id, OrtMemType mem_type) const = 0;
-  Prov_AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override final {
-    return Prov_GetAllocator(id, mem_type);
-  }
-
-  virtual std::vector<std::unique_ptr<Prov_ComputeCapability>> Prov_GetCapability(const onnxruntime::GraphViewer& graph,
-                                                                                  const std::vector<const KernelRegistry*>& kernel_registries) const = 0;
-  std::vector<std::unique_ptr<Prov_ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph,
-                                                                     const std::vector<const KernelRegistry*>& kernel_registries) const override final {
-    return Prov_GetCapability(graph, kernel_registries);
-  }
+struct Prov_KernelDef_Impl : Prov_KernelDef {
+  Prov_KernelDef_Impl(std::unique_ptr<KernelDef> p) : p_(std::move(p)) {}
+  std::unique_ptr<KernelDef> p_;
 };
 
-struct Prov_IExecutionProvider_Router_Impl : Prov_IExecutionProvider_Router2, IExecutionProvider {
+struct Prov_KernelDefBuilder_Impl : Prov_KernelDefBuilder {
+  Prov_KernelDefBuilder& SetName(const char* op_name) override {
+    v_.SetName(op_name);
+    return *this;
+  }
+  Prov_KernelDefBuilder& SetDomain(const char* domain) override {
+    v_.SetDomain(domain);
+    return *this;
+  }
+
+  Prov_KernelDefBuilder& SinceVersion(int since_version) override {
+    v_.SinceVersion(since_version);
+    return *this;
+  }
+  Prov_KernelDefBuilder& Provider(const char* provider_type) override {
+    v_.Provider(provider_type);
+    return *this;
+  }
+  Prov_KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType supported_type) override {
+    v_.TypeConstraint(arg_name, supported_type);
+    return *this;
+  }
+
+  std::unique_ptr<Prov_KernelDef> Build() override {
+    return std::make_unique<Prov_KernelDef_Impl>(v_.Build());
+  }
+
+  KernelDefBuilder v_;
+};
+
+struct Prov_KernelRegistry_Impl : Prov_KernelRegistry {
+  Prov_KernelRegistry_Impl(std::shared_ptr<KernelRegistry> p) : p_(p) {}
+  Prov_KernelRegistry_Impl() : p_(std::make_shared<KernelRegistry>()) {}
+
+  Status Register(Prov_KernelCreateInfo&& create_info) override {
+    KernelCreateInfo info_real(std::move(static_cast<Prov_KernelDef_Impl*>(create_info.kernel_def.get())->p_),
+                               [](const OpKernelInfo& info) -> OpKernel* {
+      __debugbreak(); info;
+      return nullptr;  /*create_info.kernel_create_func);*/ });
+
+    return p_->Register(std::move(info_real));
+  }
+
+  std::shared_ptr<KernelRegistry> p_;
+};
+
+struct Prov_IExecutionProvider_Router_Impl : Prov_IExecutionProvider_Router, IExecutionProvider {
   Prov_IExecutionProvider_Router_Impl(Prov_IExecutionProvider* outer, const std::string& type) : IExecutionProvider(type), outer_(outer) {
   }
 
   virtual ~Prov_IExecutionProvider_Router_Impl() {}
 
-#if 0
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const { return derived_->GetKernelRegistry(); }
-#endif
+  std::shared_ptr<Prov_KernelRegistry> Prov_GetKernelRegistry() const override {
+    return std::make_shared<Prov_KernelRegistry_Impl>(GetKernelRegistry());
+  }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
-    return IExecutionProvider::GetKernelRegistry();
-    //  return derived_->GetKernelRegistry();
+    return static_cast<Prov_KernelRegistry_Impl*>(&*outer_->Prov_GetKernelRegistry())->p_;
   }
 
   std::vector<std::unique_ptr<Prov_ComputeCapability>> Prov_GetCapability(const onnxruntime::GraphViewer& graph,
-                                                                          const std::vector<const KernelRegistry*>& kernel_registries) const override {
+                                                                          const std::vector<const Prov_KernelRegistry*>& kernel_registries) const override {
     __debugbreak();
+    graph;
+    kernel_registries;
+    return {};
+  }
+
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph,
+                                                                const std::vector<const KernelRegistry*>& kernel_registries) const override {
+    std::vector<const Prov_KernelRegistry*> registries;
+    for (auto p : kernel_registries)
+      registries.push_back(new Prov_KernelRegistry_Impl(p));
+
+    //	  outer_->Prov_GetCapability(graph, __debugbreak();
     graph;
     kernel_registries;
     return {};
@@ -133,7 +181,7 @@ struct Prov_IExecutionProvider_Router_Impl : Prov_IExecutionProvider_Router2, IE
     return nullptr;
   }
 
-  void InsertAllocator(Prov_AllocatorPtr allocator) override {
+  void Prov_InsertAllocator(Prov_AllocatorPtr allocator) override {
     IExecutionProvider::InsertAllocator(static_cast<Prov_IAllocator_Impl*>(allocator.get())->p_);
   }
 
@@ -174,6 +222,14 @@ struct ProviderHostImpl : ProviderHost {
 
   std::unique_ptr<Prov_OrtMemoryInfo> OrtMemoryInfo_Create(const char* name_, OrtAllocatorType type_, Prov_OrtDevice* device_, int id_, OrtMemType mem_type_) override {
     return std::make_unique<Prov_OrtMemoryInfo_Impl>(name_, type_, device_ ? static_cast<Prov_OrtDevice_Impl*>(device_)->v_ : OrtDevice(), id_, mem_type_);
+  }
+
+  std::unique_ptr<Prov_KernelDefBuilder> KernelDefBuilder_Create() override {
+    return std::make_unique<Prov_KernelDefBuilder_Impl>();
+  }
+
+  std::shared_ptr<Prov_KernelRegistry> KernelRegistry_Create() override {
+    return std::make_shared<Prov_KernelRegistry_Impl>();
   }
 
   void* IExecutionProvider_constructor(const std::string& type) override {
@@ -220,22 +276,6 @@ struct ProviderHostImpl : ProviderHost {
 
   const TensorShape& Tensor_Shape(const void* this_) override {
     return reinterpret_cast<const Tensor*>(this_)->Shape();
-  }
-
-  void KernelDefBuilder_Provider(void* this_, char const* p1) override {
-    reinterpret_cast<KernelDefBuilder*>(this_)->Provider(p1);
-  }
-
-  void KernelDefBuilder_SetName(void* this_, char const* p1) override {
-    reinterpret_cast<KernelDefBuilder*>(this_)->SetName(p1);
-  }
-
-  void KernelDefBuilder_SetDomain(void* this_, char const* p1) override {
-    reinterpret_cast<KernelDefBuilder*>(this_)->SetDomain(p1);
-  }
-
-  void KernelDefBuilder_TypeConstraint(void* this_, char const* p1, const DataTypeImpl* p2) override {
-    reinterpret_cast<KernelDefBuilder*>(this_)->TypeConstraint(p1, p2);
   }
 
 #if 0

@@ -471,49 +471,6 @@ class OpKernelContext {
 constexpr const char* kMSDomain = "com.microsoft";
 constexpr const char* kMklDnnExecutionProvider = "MKLDNNExecutionProvider";
 
-class KernelDef {
-};
-
-using KernelCreateFn = std::function<OpKernel*(const OpKernelInfo& info)>;
-using KernelCreatePtrFn = std::add_pointer<OpKernel*(const OpKernelInfo& info)>::type;
-
-struct KernelCreateInfo {
-  std::unique_ptr<KernelDef> kernel_def;  // Owned and stored in the global kernel registry.
-  KernelCreateFn kernel_create_func;
-  Status status;
-
-  KernelCreateInfo(std::unique_ptr<KernelDef> definition,
-                   KernelCreateFn create_func)
-      : kernel_def(std::move(definition)),
-        kernel_create_func(create_func) {}
-
-  KernelCreateInfo(KernelCreateInfo&& other) noexcept
-      : kernel_def(std::move(other.kernel_def)),
-        kernel_create_func(std::move(other.kernel_create_func)) {}
-};
-
-using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
-
-class KernelDefBuilder {
- public:
-  explicit KernelDefBuilder();
-
-  KernelDefBuilder& SetName(const char* op_name);
-  KernelDefBuilder& SetDomain(const char* domain);
-  KernelDefBuilder& SinceVersion(int since_version);
-  KernelDefBuilder& Provider(const char* provider_type);
-  KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType supported_type);
-
-  std::unique_ptr<KernelDef> Build();
-
-  void* this_;
-};
-
-class KernelRegistry {
- public:
-  Status Register(KernelCreateInfo&& create_info);
-};
-
 using AllocateFunc = void* (*)(void*, size_t, size_t);
 using DestroyFunc = void (*)(void*, void*);
 using AllocatorHandle = void*;
@@ -638,18 +595,18 @@ constexpr T roundUpPow2(T a) {
 #define ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name) \
   provider##_##name##_##domain##_ver##ver
 
-#define ONNX_OPERATOR_KERNEL_EX(name, domain, ver, provider, builder, ...)                                            \
-  class ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name);                                                 \
-  template <>                                                                                                         \
-  KernelCreateInfo                                                                                                    \
-  BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>() {                             \
-    return KernelCreateInfo(                                                                                          \
-        builder.SetName(#name)                                                                                        \
-            .SetDomain(domain)                                                                                        \
-            .SinceVersion(ver)                                                                                        \
-            .Provider(provider)                                                                                       \
-            .Build(),                                                                                                 \
-        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); })); \
+#define ONNX_OPERATOR_KERNEL_EX(name, domain, ver, provider, builder, ...)                                                 \
+  class ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name);                                                      \
+  template <>                                                                                                              \
+  Prov_KernelCreateInfo                                                                                                    \
+  BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>() {                                  \
+    return Prov_KernelCreateInfo(                                                                                          \
+        builder.SetName(#name)                                                                                             \
+            .SetDomain(domain)                                                                                             \
+            .SinceVersion(ver)                                                                                             \
+            .Provider(provider)                                                                                            \
+            .Build(),                                                                                                      \
+        static_cast<Prov_KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); })); \
   }
 
 #define CREATE_MESSAGE(logger, severity, category, datatype) \
