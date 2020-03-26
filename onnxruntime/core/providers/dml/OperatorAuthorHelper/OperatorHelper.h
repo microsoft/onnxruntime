@@ -75,6 +75,8 @@ void RemoveValuesByIndex(gsl::span<const uint32_t> indices, bool keepOneValue, /
   values.resize(newValuesCount);
 }
 
+void FillWithLeadingValues(/*inout*/ std::vector<uint32_t>& values, uint32_t minimumElementCount, uint32_t fillValue);
+
 int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p);
 
 class EdgeShapes {
@@ -641,7 +643,7 @@ public:
   std::vector<DimensionType> m_outputDimensions;
   std::vector<uint32_t> m_offsets;
   std::vector<uint32_t> m_sizes;
-  std::vector<uint32_t> m_strides;
+  std::vector<int32_t> m_strides;
 };
 
 class SliceHelper : public SliceHelperBase

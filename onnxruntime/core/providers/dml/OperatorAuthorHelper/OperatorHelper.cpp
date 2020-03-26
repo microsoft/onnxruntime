@@ -32,6 +32,23 @@ void HandleNegativeAxes(gsl::span<int32_t> onnxAxes, uint32_t dimCount)
     }
 }
 
+void FillWithLeadingValues(/*inout*/ std::vector<uint32_t>& values, uint32_t minimumElementCount, uint32_t fillValue)
+{
+    // e.g.
+    // input = [6,7]
+    // elementCount = 4
+    // fillValue = 1
+    // output = [1,1,6,7]
+
+    const size_t oldElementCount = values.size();
+    const size_t newElementCount = std::max(size_t(minimumElementCount), oldElementCount);
+    const size_t fillCount = newElementCount - oldElementCount;
+
+    values.resize(newElementCount);
+    std::copy_backward(values.data(), values.data() + oldElementCount, values.data() + fillCount);
+  std::fill_n(values.data(), fillCount, fillValue);
+}
+
 int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
 {
     switch (tensorDataType)
