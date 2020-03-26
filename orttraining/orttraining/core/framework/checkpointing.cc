@@ -14,10 +14,10 @@
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/endian_utils.h"
 #include "core/framework/ml_value.h"
-#include "core/framework/path_lib.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/env.h"
+#include "core/platform/path_lib.h"
 #include "orttraining/core/framework/protobuf_message_sequence.h"
 #include "core/util/protobuf_parsing_utils.h"
 

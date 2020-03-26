@@ -20,9 +20,8 @@ class TrainingSession : public InferenceSession {
                              std::vector<std::pair<size_t /*InputIndex*/, float /*value*/>>>
       ImmutableWeights;
 
-  explicit TrainingSession(const SessionOptions& session_options,
-                           logging::LoggingManager* logging_manager = nullptr)
-      : InferenceSession(session_options, logging_manager) {}
+  TrainingSession(const SessionOptions& session_options, const Environment& env)
+      : InferenceSession(session_options, env) {}
 
   /**
    * The training configuration options.

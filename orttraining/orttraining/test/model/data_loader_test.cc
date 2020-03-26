@@ -7,7 +7,7 @@
 #include "core/platform/env.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "orttraining/models/runner/training_util.h"
-#include "core/framework/path_lib.h"  // TODO fix include ordering dependency
+#include "core/platform/path_lib.h"  // TODO fix include ordering dependency
 #include "orttraining/models/runner/data_loader.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/temp_dir.h"
