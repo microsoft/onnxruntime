@@ -3,12 +3,12 @@
 ONNX Runtime provides high performance with flexibility of hardware options. Along with this flexibility comes decisions for tuning and usage options. Section 1 covers performance-related questions, and section 2 cover other commonly asked questions and issues. Before filing a new issue, please check for [existing filed issues and answers](https://github.com/microsoft/onnxruntime/issues).
 
 **Section 1: [Performance](#performance)**
-* [Performance Troublshooting Checklist](#performance-troubleshooting-checklist)
+* [Performance Troubleshooting Checklist](#performance-troubleshooting-checklist)
 * [What type of GPU is supported?](#What-type-of-GPU-is-supported)
-* [Which Execution Provider will give me the best performance?](#Which-Execution-Provider-will-give-me-the-best-performance?)
+* [Which Execution Provider will give me the best performance?](#Which-Execution-Provider-will-give-me-the-best-performance)
 * [Do the GPU builds support quantized models?](#Do-the-GPU-builds-support-quantized-models)
 * [Why is the GPU build slower than CPU?](#Why-is-the-GPU-build-slower-than-CPU)
-* [My converted Tensorflow model is so slow - why?](#My-converted-Tensorflow-model-is-so-slow-why)
+* [My converted Tensorflow model is so slow - why?](#My-converted-Tensorflow-model-is-so-slow---why)
 * [Does the Python API add any overhead to performance?](#Does-the-Python-API-add-any-overhead-to-performance)
 * [Why is ORT slower than PyTorch when using GPU?](#Why-is-ORT-slower-than-PyTorch-when-using-GPU)
 
@@ -22,7 +22,7 @@ ONNX Runtime provides high performance with flexibility of hardware options. Alo
 ***
 # Performance 
 
-## Performance Troublshooting Checklist
+## Performance Troubleshooting Checklist
 Here is a list of things to check through when assessing performance issues.
 * Have you read through the [Performance Tuning guide](./ONNX_Runtime_Perf_Tuning.md)?
 * Are you using OpenMP? OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.
