@@ -12,16 +12,53 @@ class CutEdge:
         self.edgeId = edgeId
         self.consumingNodes = consumingNodes
 
+def add_expand_shape(model, name, shape):
+    expand_edge = model.graph.value_info.add()
+    expand_edge.name = name
+    expand_edge.type.CopyFrom(shape)
+
 # Add wait/record/send/recv nodes and split the graph into disconnected subgraphs
 def split_graph(model, edgeIds):
+    ms_domain = 'com.microsoft'
+
+    # Add wait for initial inputs. This needs to be done first before new inputs
+    # are introduced from split
+    initializer_lists = [a.name for a in model.graph.initializer]
+    input_tensors = [
+        value.name for value in model.graph.input if value.name not in initializer_lists]
+
+    input_wait_signal = model.graph.input.add()
+    input_wait_signal.CopyFrom(helper.make_tensor_value_info(
+        'input_wait_signal', onnx.TensorProto.INT64, None))
+
+    input_wait = model.graph.node.add()
+    input_wait.CopyFrom(helper.make_node(
+        'WaitEvent',
+        inputs=['input_wait_signal'],
+        outputs=[],
+        domain=ms_domain))
+
+    for i in input_tensors:
+        for node in model.graph.node:
+            for j in range(len(node.input)):
+                if node.input[j] == i:
+                    print(node.input[j])
+                    node.input[j] = i + '_sync'
+
+    input_wait.input.extend(input_tensors)
+    input_wait.output.extend([i + '_sync' for i in input_tensors])
+
+    # split the graph based on edgeIds
     upstream_nodes = []
-    element_types = []
+    output_shapes =[]
 
     for id in edgeIds:
         for node in model.graph.node:
             if len(node.output) >=1 and node.output[0] == id:
                 upstream_nodes.append(node)
-                element_types.append(1) # assuming all tensors are of type float
+                for info in model.graph.value_info:
+                    if info.name == id:
+                        output_shapes.append(info.type)
 
     record_signal = model.graph.input.add()
     record_signal.CopyFrom(helper.make_tensor_value_info(
@@ -31,14 +68,6 @@ def split_graph(model, edgeIds):
     wait_signal.CopyFrom(helper.make_tensor_value_info(
         'wait_signal', onnx.TensorProto.INT64, None))
 
-    send_dst_rank = model.graph.input.add()
-    send_dst_rank.CopyFrom(helper.make_tensor_value_info(
-        'send_dst_rank', onnx.TensorProto.INT64, None))
-
-    recv_src_rank = model.graph.input.add()
-    recv_src_rank.CopyFrom(helper.make_tensor_value_info(
-        'recv_src_rank', onnx.TensorProto.INT64, None))
-
     send_signal = model.graph.input.add()
     send_signal.CopyFrom(helper.make_tensor_value_info(
         'send_signal', onnx.TensorProto.BOOL, None))
@@ -47,28 +76,38 @@ def split_graph(model, edgeIds):
     recv_signal.CopyFrom(helper.make_tensor_value_info(
         'recv_signal', onnx.TensorProto.BOOL, None))
 
-    ms_domain = 'com.microsoft'
+    # output signal from send after cut
+    send_output_signal = model.graph.output.add()
+    send_output_signal.CopyFrom(helper.make_tensor_value_info(
+        'send_output_signal', onnx.TensorProto.BOOL, None))
+
+    # output signal from receive after cut
+    receive_output_signal = model.graph.output.add()
+    receive_output_signal.CopyFrom(helper.make_tensor_value_info(
+        'receive_output_signal', onnx.TensorProto.BOOL, None))
 
     new_send = model.graph.node.add()
     new_send.CopyFrom(helper.make_node(
         'Send',
-        inputs=['send_signal', 'send_dst_rank'],
-        outputs=[],
+        inputs=['send_signal'],
+        outputs=['send_output_signal'],
         tag=0,
+        src=0, # todo：change it when split more than 2 parts
+        dst=1,
         domain=ms_domain,
-        version=12,
-        element_types=element_types,
+        element_type=1, # assuming all tensors are of type float
         name='send'))
 
     new_receive = model.graph.node.add()
     new_receive.CopyFrom(helper.make_node(
         'Recv',
-        inputs=['recv_signal', 'recv_src_rank'],
-        outputs=[],
+        inputs=['recv_signal'],
+        outputs=['receive_output_signal'],
         tag=1,
+        src=0, # todo：change it when split more than 2 parts
+        dst=1,
         domain=ms_domain,
-        version=12,
-        element_types=element_types,
+        element_type=1, # assuming all tensors are of type float
         name='receive'))
 
     new_wait = model.graph.node.add()
@@ -87,41 +126,35 @@ def split_graph(model, edgeIds):
 
     for i in range(len(upstream_nodes)):
         n = upstream_nodes[i]
+        output_type = output_shapes[i]
 
         output_nodes = find_all_output_nodes_by_edge(model, n.output[0])
 
-        # new output from send after cut
-        send_output = model.graph.output.add()
-        send_output.CopyFrom(helper.make_tensor_value_info(
-            n.output[0] + '_send_sync', onnx.TensorProto.FLOAT, None)) #TODO: how to infer the send tensor size?
+        # deal with shape inference for newly added edge
+        new_send_input_name = n.output[0] + '_send'
+        add_expand_shape(model, new_send_input_name, output_type)
 
-        # new input from receive after cut
-        receive_input = model.graph.input.add()
-        receive_input.CopyFrom(helper.make_tensor_value_info(
-            n.output[0] + '_recv_sync', onnx.TensorProto.FLOAT, None)) #TODO: how to infer the receive tensor size?
+        new_receive_output_name = n.output[0] + '_recv'
+        add_expand_shape(model, new_receive_output_name, output_type)
 
-        new_send_input = n.output[0] + '_send'
-        new_receive_output = n.output[0] + '_recv'
-        new_wait_output = n.output[0] + '_wait'
+        new_wait_output_name = n.output[0] + '_wait'
+        add_expand_shape(model, new_wait_output_name, output_type)
 
         # the order of data flow is: node-output -> record -> send -> recv -> wait -> node-input
         new_record.input.extend([n.output[0]])
-        new_record.output.extend([new_send_input])
+        new_record.output.extend([new_send_input_name])
 
-        new_send.input.extend([new_send_input])
-        new_send.output.extend([send_output.name])
+        new_send.input.extend([new_send_input_name])
+        new_receive.output.extend([new_receive_output_name])
 
-        new_receive.input.extend([receive_input.name])
-        new_receive.output.extend([new_receive_output])
-
-        new_wait.input.extend([new_receive_output])
-        new_wait.output.extend([new_wait_output])
+        new_wait.input.extend([new_receive_output_name])
+        new_wait.output.extend([new_wait_output_name])
 
         for output_node in output_nodes:
             for i in range(len(output_node.input)):
                 for edgeId in edgeIds:
                     if output_node.input[i] == edgeId:
-                        output_node.input[i] = new_wait_output
+                        output_node.input[i] = new_wait_output_name
 
     return new_send, new_receive
 
