@@ -272,7 +272,7 @@ TEST(PoolTest, MaxPool_DefaultDilations_int8) {
 
   test.AddInput<int8_t>("X", x_dims, x_vals);
   test.AddOutput<int8_t>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_DefaultDilations_uint8) {
@@ -292,7 +292,7 @@ TEST(PoolTest, MaxPool_DefaultDilations_uint8) {
 
   test.AddInput<uint8_t>("X", x_dims, x_vals);
   test.AddOutput<uint8_t>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_DilationPadding_1d) {
