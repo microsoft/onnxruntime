@@ -805,6 +805,7 @@ class SymbolicShapeInference:
         else:
             new_dim = self._new_symbolic_dim_from_output(node)
             new_shape = [self.symbolic_dims_[new_dim]]
+        self._update_computed_dims(new_shape)
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, get_shape_from_sympy_shape(new_shape)))
 
     def _infer_ReduceProd(self, node):
@@ -818,6 +819,7 @@ class SymbolicShapeInference:
     def _infer_Reshape(self, node):
         shape_value = self._try_get_value(node, 1)
         vi = self.known_vi_[node.output[0]]
+        skip_pass_on_sympy_data = False
         if shape_value is None:
             shape_shape = self._get_shape(node, 1)
             assert len(shape_shape) == 1
@@ -850,7 +852,21 @@ class SymbolicShapeInference:
 
             assert new_sympy_shape.count(-1) < 2
             if -1 in new_sympy_shape:
-                new_dim = total // non_deferred_size
+                # handle a special case where input_shape is [] and shape_value is [-1]
+                if len(input_shape) == 0 and len(shape_value) == 1:
+                    if node.output[0] in self.sympy_data_:
+                        sympy_shape = self.sympy_data_[node.output[0]][0]
+                    else:
+                        # create the sympy data if not exist
+                        self._pass_on_sympy_data(node)
+                        skip_pass_on_sympy_data = True
+                        if node.output[0] in self.sympy_data_:
+                            sympy_shape = self.sympy_data_[node.output[0]][0]
+                        else:
+                            sympy_shape = self._new_symbolic_dim_from_output(node)
+                    new_dim = sympy_shape
+                else:
+                    new_dim = total // non_deferred_size
                 new_sympy_shape[deferred_dim_idx] = new_dim
                 self._update_computed_dims(new_sympy_shape)
 
@@ -858,7 +874,8 @@ class SymbolicShapeInference:
                                                       vi.type.tensor_type.elem_type,
                                                       get_shape_from_sympy_shape(new_sympy_shape)))
 
-        self._pass_on_sympy_data(node)
+        if not skip_pass_on_sympy_data:
+            self._pass_on_sympy_data(node)
 
     def _infer_Resize(self, node):
         vi = self.known_vi_[node.output[0]]
