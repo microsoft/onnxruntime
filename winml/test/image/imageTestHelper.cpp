@@ -1,4 +1,4 @@
-#include "precomp.h"
+#include "testPch.h"
 #include "imageTestHelper.h"
 #include "robuffer.h"
 #include <MemoryBuffer.h>
@@ -8,9 +8,6 @@
 
 #define FENCE_SIGNAL_VALUE 1
 
-using namespace WEX::Common;
-using namespace WEX::Logging;
-using namespace WEX::TestExecution;
 using namespace winrt;
 using namespace winrt::Windows::AI::MachineLearning;
 using namespace winrt::Windows::Foundation::Collections;
@@ -19,224 +16,224 @@ using namespace winrt::Windows::Graphics::Imaging;
 
 namespace ImageTestHelper
 {
-    std::wstring GetModelFileName()
-    {
-        String modelFileName;
-        THROW_IF_FAILED(TestData::TryGetValue(L"ModelFileName", modelFileName));
-        return std::wstring(modelFileName);
-    }
+    // std::wstring GetModelFileName()
+    // {
+    //     String modelFileName;
+    //     WINML_EXPECT_HRESULT_SUCCEEDED(TestData::TryGetValue(L"ModelFileName", modelFileName));
+    //     return std::wstring(modelFileName);
+    // }
 
-    std::wstring GetImageFileName()
-    {
-        String imageFileName;
-        THROW_IF_FAILED(TestData::TryGetValue(L"ImageFileName", imageFileName));
-        return std::wstring(imageFileName);
-    }
+    // std::wstring GetImageFileName()
+    // {
+    //     String imageFileName;
+    //     WINML_EXPECT_HRESULT_SUCCEEDED(TestData::TryGetValue(L"ImageFileName", imageFileName));
+    //     return std::wstring(imageFileName);
+    // }
 
-    std::wstring GetInputPixelFormat()
-    {
-        String inputPixelFormat;          // Rgba8, Bgra8, Gray8
-        THROW_IF_FAILED(TestData::TryGetValue(L"InputPixelFormat", inputPixelFormat));
-        return std::wstring(inputPixelFormat);
-    }
+    // std::wstring GetInputPixelFormat()
+    // {
+    //     String inputPixelFormat;          // Rgba8, Bgra8, Gray8
+    //     WINML_EXPECT_HRESULT_SUCCEEDED(TestData::TryGetValue(L"InputPixelFormat", inputPixelFormat));
+    //     return std::wstring(inputPixelFormat);
+    // }
 
-    std::wstring GetModelPixelFormat()
-    {
-        String modelPixelFormat;          // Rgba8, Bgra8
-        THROW_IF_FAILED(TestData::TryGetValue(L"ModelPixelFormat", modelPixelFormat));
-        return std::wstring(modelPixelFormat);
-    }
+    // std::wstring GetModelPixelFormat()
+    // {
+    //     String modelPixelFormat;          // Rgba8, Bgra8
+    //     WINML_EXPECT_HRESULT_SUCCEEDED(TestData::TryGetValue(L"ModelPixelFormat", modelPixelFormat));
+    //     return std::wstring(modelPixelFormat);
+    // }
 
-    VideoFrameSource GetVideoFrameSource()
-    {
-        String videoFramesource;
-        THROW_IF_FAILED(TestData::TryGetValue(L"VideoFrameSource", videoFramesource));
-        if (L"SoftwareBitmap" == videoFramesource)
-        {
-            return VideoFrameSource::FromSoftwareBitmap;
-        }
-        else if (L"Direct3DSurface" == videoFramesource)
-        {
-            return VideoFrameSource::FromDirect3DSurface;
-        }
-        else
-        {
-            Log::Error(String().Format(L"Unsupported VideoFramesource"));
-            throw std::invalid_argument("Unsupported VideoFramesource");
-        }
-    }
-    
-    VideoFrameSource GetOutputVideoFrameSource()
-    {
-        String videoFrameSource;
-        THROW_IF_FAILED(TestData::TryGetValue(L"OutputVideoFrameSource", videoFrameSource));
-        if (L"SoftwareBitmap" == videoFrameSource)
-        {
-            return VideoFrameSource::FromSoftwareBitmap;
-        }
-        else if (L"Direct3DSurface" == videoFrameSource)
-        {
-            return VideoFrameSource::FromDirect3DSurface;
-        }
-        else if (L"UnsupportedDirect3DSurface" == videoFrameSource)
-        {
-            return VideoFrameSource::FromUnsupportedD3DSurface;
-        }
-        else
-        {
-            Log::Error(String().Format(L"Unsupported VideoFramesource"));
-            throw std::invalid_argument("Unsupported VideoFramesource");
-        }
-    }
+    // VideoFrameSource GetVideoFrameSource()
+    // {
+    //     String videoFramesource;
+    //     WINML_EXPECT_HRESULT_SUCCEEDED(TestData::TryGetValue(L"VideoFrameSource", videoFramesource));
+    //     if (L"SoftwareBitmap" == videoFramesource)
+    //     {
+    //         return VideoFrameSource::FromSoftwareBitmap;
+    //     }
+    //     else if (L"Direct3DSurface" == videoFramesource)
+    //     {
+    //         return VideoFrameSource::FromDirect3DSurface;
+    //     }
+    //     else
+    //     {
+    //         Log::Error(String().Format(L"Unsupported VideoFramesource"));
+    //         throw std::invalid_argument("Unsupported VideoFramesource");
+    //     }
+    // }
 
-    uint32_t GetBatchSize()
-    {
-        uint32_t batchSize;
-        THROW_IF_FAILED(TestData::TryGetValue(L"BatchSize", batchSize));
-        return batchSize;
-    }
+    // VideoFrameSource GetOutputVideoFrameSource()
+    // {
+    //     String videoFrameSource;
+    //     WINML_EXPECT_HRESULT_SUCCEEDED(TestData::TryGetValue(L"OutputVideoFrameSource", videoFrameSource));
+    //     if (L"SoftwareBitmap" == videoFrameSource)
+    //     {
+    //         return VideoFrameSource::FromSoftwareBitmap;
+    //     }
+    //     else if (L"Direct3DSurface" == videoFrameSource)
+    //     {
+    //         return VideoFrameSource::FromDirect3DSurface;
+    //     }
+    //     else if (L"UnsupportedDirect3DSurface" == videoFrameSource)
+    //     {
+    //         return VideoFrameSource::FromUnsupportedD3DSurface;
+    //     }
+    //     else
+    //     {
+    //         Log::Error(String().Format(L"Unsupported VideoFramesource"));
+    //         throw std::invalid_argument("Unsupported VideoFramesource");
+    //     }
+    // }
 
-    std::optional<uint32_t> GetBatchSizeOverride()
-    {
-        bool useSessionOptions;
-        THROW_IF_FAILED(TestData::TryGetValue(L"UseSessionOptions", useSessionOptions));
+    // uint32_t GetBatchSize()
+    // {
+    //     uint32_t batchSize;
+    //     WINML_EXPECT_HRESULT_SUCCEEDED(TestData::TryGetValue(L"BatchSize", batchSize));
+    //     return batchSize;
+    // }
 
-        if (useSessionOptions)
-        {
-            return std::make_optional<uint32_t>(GetBatchSize());
-        }
-        return {};
-    }
+    // std::optional<uint32_t> GetBatchSizeOverride()
+    // {
+    //     bool useSessionOptions;
+    //     WINML_EXPECT_HRESULT_SUCCEEDED(TestData::TryGetValue(L"UseSessionOptions", useSessionOptions));
 
-    std::vector<std::wstring> GetInputImages()
-    {
-        TestDataArray<String> tempInputImages;
-        THROW_IF_FAILED(TestData::TryGetValue(L"InputImages", tempInputImages));
-        std::vector<std::wstring> inputImages;
-        size_t count = tempInputImages.GetSize();
-        for (size_t i = 0; i < count; ++i)
-        {
-            inputImages.emplace_back(std::wstring(tempInputImages[i]));
-        }
-        return inputImages;
-    }
+    //     if (useSessionOptions)
+    //     {
+    //         return std::make_optional<uint32_t>(GetBatchSize());
+    //     }
+    //     return {};
+    // }
 
-    LearningModelDeviceKind GetDeviceKind()
-    {
-        String device;
-        THROW_IF_FAILED(TestData::TryGetValue(L"Device", device));
-        if (L"GPU" == device)
-        {
-            return LearningModelDeviceKind::DirectX;
-        }
-        else
-        {
-            return LearningModelDeviceKind::Cpu;
-        }
-    }
+    // std::vector<std::wstring> GetInputImages()
+    // {
+    //     TestDataArray<String> tempInputImages;
+    //     WINML_EXPECT_HRESULT_SUCCEEDED(TestData::TryGetValue(L"InputImages", tempInputImages));
+    //     std::vector<std::wstring> inputImages;
+    //     size_t count = tempInputImages.GetSize();
+    //     for (size_t i = 0; i < count; ++i)
+    //     {
+    //         inputImages.emplace_back(std::wstring(tempInputImages[i]));
+    //     }
+    //     return inputImages;
+    // }
 
-    OutputBindingStrategy GetOutputBindingStrategy()
-    {
-        // Bound, Unbound, Empty
-        String outputBindingStrategy;
-        THROW_IF_FAILED(TestData::TryGetValue(L"OutputBindingStrategy", outputBindingStrategy));
-        if (L"bound" == outputBindingStrategy)
-        {
-            return OutputBindingStrategy::Bound;
-        }
-        else if (L"unbound" == outputBindingStrategy)
-        {
-            return OutputBindingStrategy::Unbound;
-        }
-        else
-        {
-            Log::Error(String().Format(L"Unsupported OutputBindingStrategy"));
-            throw std::invalid_argument("Unsupported OutputBindingStrategy");
-        }
-    }
+    // LearningModelDeviceKind GetDeviceKind()
+    // {
+    //     String device;
+    //     WINML_EXPECT_HRESULT_SUCCEEDED(TestData::TryGetValue(L"Device", device));
+    //     if (L"GPU" == device)
+    //     {
+    //         return LearningModelDeviceKind::DirectX;
+    //     }
+    //     else
+    //     {
+    //         return LearningModelDeviceKind::Cpu;
+    //     }
+    // }
 
-    EvaluationStrategy GetEvaluationStrategy()
-    {
-        String evaluationStrategy;        // Sync or Async
-        THROW_IF_FAILED(TestData::TryGetValue(L"EvaluationStrategy", evaluationStrategy));
-        if (L"Async" == evaluationStrategy)
-        {
-            return EvaluationStrategy::Async;
-        }
-        else if (L"Sync" == evaluationStrategy)
-        {
-            return EvaluationStrategy::Sync;
-        }
-        else
-        {
-            Log::Error(String().Format(L"unsupported evaluation strategy"));
-            throw std::invalid_argument("unsupported evaluation strategy");
-        }
-    }
+    // OutputBindingStrategy GetOutputBindingStrategy()
+    // {
+    //     // Bound, Unbound, Empty
+    //     String outputBindingStrategy;
+    //     WINML_EXPECT_HRESULT_SUCCEEDED(TestData::TryGetValue(L"OutputBindingStrategy", outputBindingStrategy));
+    //     if (L"bound" == outputBindingStrategy)
+    //     {
+    //         return OutputBindingStrategy::Bound;
+    //     }
+    //     else if (L"unbound" == outputBindingStrategy)
+    //     {
+    //         return OutputBindingStrategy::Unbound;
+    //     }
+    //     else
+    //     {
+    //         Log::Error(String().Format(L"Unsupported OutputBindingStrategy"));
+    //         throw std::invalid_argument("Unsupported OutputBindingStrategy");
+    //     }
+    // }
 
-    ModelInputOutputType GetModelInputOutputType()
-    {
-        String modelInputOutputType;      // Image or Tensor
-        THROW_IF_FAILED(TestData::TryGetValue(L"ModelInputOutputType", modelInputOutputType));
-        if (L"image" == modelInputOutputType)
-        {
-            return ModelInputOutputType::Image;
-        }
-        else if (L"tensor" == modelInputOutputType)
-        {
-            return ModelInputOutputType::Tensor;
-        }
-        else
-        {
-            Log::Error(String().Format(L"unsupported ModelInputOutputType!!"));
-            throw std::invalid_argument("unsupported ModelInputOutputType!!");
-        }
-    }
+    // EvaluationStrategy GetEvaluationStrategy()
+    // {
+    //     String evaluationStrategy;        // Sync or Async
+    //     WINML_EXPECT_HRESULT_SUCCEEDED(TestData::TryGetValue(L"EvaluationStrategy", evaluationStrategy));
+    //     if (L"Async" == evaluationStrategy)
+    //     {
+    //         return EvaluationStrategy::Async;
+    //     }
+    //     else if (L"Sync" == evaluationStrategy)
+    //     {
+    //         return EvaluationStrategy::Sync;
+    //     }
+    //     else
+    //     {
+    //         Log::Error(String().Format(L"unsupported evaluation strategy"));
+    //         throw std::invalid_argument("unsupported evaluation strategy");
+    //     }
+    // }
 
-    InputImageSource GetInputImageSource()
-    {
-        String inputImageSource;
-        THROW_IF_FAILED(TestData::TryGetValue(L"InputImageSource", inputImageSource));
-        if (L"FromImageFeatureValue" == inputImageSource)
-        {
-            return InputImageSource::FromImageFeatureValue;
-        }
-        else if (L"FromVideoFrame" == inputImageSource)
-        {
-            return InputImageSource::FromVideoFrame;
-        }
-        else if (L"FromCPUResource" == inputImageSource)
-        {
-            return InputImageSource::FromCPUResource;
-        }
-        else if (L"FromGPUResource" == inputImageSource)
-        {
-            return InputImageSource::FromGPUResource;
-        }
-        throw std::invalid_argument("Unsupported InputImageSource");
-    }
+    // ModelInputOutputType GetModelInputOutputType()
+    // {
+    //     String modelInputOutputType;      // Image or Tensor
+    //     WINML_EXPECT_HRESULT_SUCCEEDED(TestData::TryGetValue(L"ModelInputOutputType", modelInputOutputType));
+    //     if (L"image" == modelInputOutputType)
+    //     {
+    //         return ModelInputOutputType::Image;
+    //     }
+    //     else if (L"tensor" == modelInputOutputType)
+    //     {
+    //         return ModelInputOutputType::Tensor;
+    //     }
+    //     else
+    //     {
+    //         Log::Error(String().Format(L"unsupported ModelInputOutputType!!"));
+    //         throw std::invalid_argument("unsupported ModelInputOutputType!!");
+    //     }
+    // }
 
-    BitmapPixelFormat GetPixelFormat(const std::wstring& inputPixelFormat)
-    {
-        // Return corresponding BitmapPixelFormat according to input string
-        if (L"Bgra8" == inputPixelFormat || L"Bgr8" == inputPixelFormat)
-        {
-            return BitmapPixelFormat::Bgra8;
-        }
-        else if (L"Rgba8" == inputPixelFormat || L"Rgb8" == inputPixelFormat)
-        {
-            return BitmapPixelFormat::Rgba8;
-        }
-        else if (L"Gray8" == inputPixelFormat)
-        {
-            return BitmapPixelFormat::Gray8;
-        }
-        else
-        {
-            Log::Error(String().Format(L"Unsupported pixelFormat"));
-            throw std::invalid_argument("Unsupported pixelFormat");
-        }
-    }
+    // InputImageSource GetInputImageSource()
+    // {
+    //     String inputImageSource;
+    //     WINML_EXPECT_HRESULT_SUCCEEDED(TestData::TryGetValue(L"InputImageSource", inputImageSource));
+    //     if (L"FromImageFeatureValue" == inputImageSource)
+    //     {
+    //         return InputImageSource::FromImageFeatureValue;
+    //     }
+    //     else if (L"FromVideoFrame" == inputImageSource)
+    //     {
+    //         return InputImageSource::FromVideoFrame;
+    //     }
+    //     else if (L"FromCPUResource" == inputImageSource)
+    //     {
+    //         return InputImageSource::FromCPUResource;
+    //     }
+    //     else if (L"FromGPUResource" == inputImageSource)
+    //     {
+    //         return InputImageSource::FromGPUResource;
+    //     }
+    //     throw std::invalid_argument("Unsupported InputImageSource");
+    // }
+
+    // BitmapPixelFormat GetPixelFormat(const std::wstring& inputPixelFormat)
+    // {
+    //     // Return corresponding BitmapPixelFormat according to input string
+    //     if (L"Bgra8" == inputPixelFormat || L"Bgr8" == inputPixelFormat)
+    //     {
+    //         return BitmapPixelFormat::Bgra8;
+    //     }
+    //     else if (L"Rgba8" == inputPixelFormat || L"Rgb8" == inputPixelFormat)
+    //     {
+    //         return BitmapPixelFormat::Rgba8;
+    //     }
+    //     else if (L"Gray8" == inputPixelFormat)
+    //     {
+    //         return BitmapPixelFormat::Gray8;
+    //     }
+    //     else
+    //     {
+    //         Log::Error(String().Format(L"Unsupported pixelFormat"));
+    //         throw std::invalid_argument("Unsupported pixelFormat");
+    //     }
+    // }
 
     TensorFloat LoadInputImageFromCPU(
         SoftwareBitmap softwareBitmap,
@@ -341,7 +338,7 @@ namespace ImageTestHelper
 
         // create the d3d device.
         com_ptr<ID3D12Device> pD3D12Device = nullptr;
-        VERIFY_NO_THROW(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), reinterpret_cast<void**>(&pD3D12Device)));
+        WINML_EXPECT_NO_THROW(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), reinterpret_cast<void**>(&pD3D12Device)));
 
         // create the command queue.
         com_ptr<ID3D12CommandQueue> dxQueue = nullptr;
@@ -407,7 +404,7 @@ namespace ImageTestHelper
         );
 
         // Create the GPU upload buffer.
-        VERIFY_NO_THROW(pD3D12Device->CreateCommittedResource(
+        WINML_EXPECT_NO_THROW(pD3D12Device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
             D3D12_HEAP_FLAG_NONE,
             &CD3DX12_RESOURCE_DESC::Buffer(bufferbytesize),
@@ -424,7 +421,7 @@ namespace ImageTestHelper
         UpdateSubresources(cmdList.get(), pGPUResource.get(), imageUploadHeap.get(), 0, 0, 1, &CPUData);
 
         // Close the command list and execute it to begin the initial GPU setup.
-        VERIFY_NO_THROW(cmdList->Close());
+        WINML_EXPECT_NO_THROW(cmdList->Close());
         ID3D12CommandList* ppCommandLists[] = { cmdList.get() };
         dxQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
@@ -434,19 +431,19 @@ namespace ImageTestHelper
 
         //Create Fence
         Microsoft::WRL::ComPtr<ID3D12Fence> spDirectFence = nullptr;
-        THROW_IF_FAILED(pD3D12Device->CreateFence(
+        WINML_EXPECT_HRESULT_SUCCEEDED(pD3D12Device->CreateFence(
             0,
             D3D12_FENCE_FLAG_NONE,
             IID_PPV_ARGS(spDirectFence.ReleaseAndGetAddressOf())));
         //Adds fence to queue
-        THROW_IF_FAILED(dxQueue->Signal(spDirectFence.Get(), FENCE_SIGNAL_VALUE));
-        THROW_IF_FAILED(spDirectFence->SetEventOnCompletion(FENCE_SIGNAL_VALUE, hDirectEvent.get()));
+        WINML_EXPECT_HRESULT_SUCCEEDED(dxQueue->Signal(spDirectFence.Get(), FENCE_SIGNAL_VALUE));
+        WINML_EXPECT_HRESULT_SUCCEEDED(spDirectFence->SetEventOnCompletion(FENCE_SIGNAL_VALUE, hDirectEvent.get()));
 
         //Wait for signal
         DWORD retVal = WaitForSingleObject(hDirectEvent.get(), INFINITE);
         if (retVal != WAIT_OBJECT_0)
         {
-            THROW_IF_FAILED(E_UNEXPECTED);
+            WINML_EXPECT_HRESULT_SUCCEEDED(E_UNEXPECTED);
         }
 
         // GPU tensorize

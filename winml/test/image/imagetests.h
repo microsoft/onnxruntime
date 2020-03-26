@@ -1,15 +1,18 @@
-﻿//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
 //
 //  Copyright (c) Microsoft Corporation. All rights reserved.
 //
 //-----------------------------------------------------------------------------
 
 #pragma once
-using namespace WEX::Common;
 
-#define TENSOR_TEST_METHOD(type) TEST_METHOD(TensorTest_##type)
+#include <string>
+#include <utility>
+
 #include <winrt/Windows.Media.h>
 #include <winrt/Windows.Graphics.Imaging.h>
+
+#include "googleTestMacros.h"
 
 class ImageTests
 {
@@ -99,12 +102,12 @@ private:
     void ValidateOutputImageMetaData(std::wstring path, winrt::Windows::Graphics::Imaging::BitmapAlphaMode expectedmode, winrt::Windows::Graphics::Imaging::BitmapPixelFormat expectedformat, bool supported);
     void TestImageBindingStyleTransfer(const wchar_t* modelFileName, const wchar_t* inputDataImageFileName, wchar_t* outputDataImageFileName);
     void SynchronizeGPUWorkloads(const wchar_t* modelFileName, const wchar_t* inputDataImageFileName);
-    
+
     enum BindingLocation {
         CPU,
         GPU
     };
-    
+
     void GetCleanSession(
         winrt::Windows::AI::MachineLearning::LearningModelDeviceKind deviceKind,
         std::wstring modelFilePath,

@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.10)
 
 include(${ML_BUILD_TOOLS_DIR}/cppwinrt_command.cmake)
 
-winml_add_library(winml_test_image SHARED 
+winml_add_library(winml_test_image SHARED
     imageTestHelper.h
     imageTestHelper.cpp
     imagetests.cpp
@@ -59,7 +59,7 @@ target_link_libraries(winml_test_image PRIVATE winml_dll)
 target_link_libraries(winml_test_image PRIVATE ${DBGHELP})
 
 install(
-    FILES 
+    FILES
         $<TARGET_FILE:winml_test_image>
         $<TARGET_PDB_FILE:winml_test_image>
         ImageTestsData.xml

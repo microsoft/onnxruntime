@@ -83,6 +83,17 @@ function(get_winml_test_concurrency_src
   set(${output_winml_test_concurrency_src} ${winml_test_concurrency_src} PARENT_SCOPE)
 endfunction()
 
+function(get_winml_test_image_src
+  winml_test_src_path
+  output_winml_test_image_src
+)
+  if (onnxruntime_USE_DML)
+    set(${output_winml_test_scenario_libs} "onnxruntime_providers_dml" PARENT_SCOPE)
+  endif()
+  file(GLOB winml_test_image_src CONFIGURE_DEPENDS "${winml_test_src_path}/image/*.cpp")
+  set(${output_winml_test_image_src} ${winml_test_image_src} PARENT_SCOPE)
+endfunction()
+
 file(GLOB winml_test_common_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/common/*.cpp")
 add_library(winml_test_common STATIC ${winml_test_common_src})
 add_dependencies(winml_test_common
@@ -127,6 +138,21 @@ endif()
 # on dev machines but not on the aiinfra agent pool
 target_link_options(winml_test_scenario PRIVATE /ignore:4199)
 
+get_winml_test_image_src(${WINML_TEST_SRC_DIR} winml_test_image_src winml_test_image_libs)
+add_winml_test(
+  TARGET winml_test_image
+  SOURCES ${winml_test_image_src}
+  LIBS winml_test_common delayimp.lib ${winml_test_image_libs}
+)
+target_precompiled_header(winml_test_image testPch.h)
+
+target_link_options(winml_test_image PRIVATE /DELAYLOAD:d2d1.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
+if (onnxruntime_USE_DML)
+  target_link_options(winml_test_image PRIVATE /DELAYLOAD:directml.dll)
+endif()
+if (EXISTS ${dxcore_header})
+  target_link_options(winml_test_image PRIVATE /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll)
+endif()
 
 get_winml_test_concurrency_src(${WINML_TEST_SRC_DIR} winml_test_concurrency_src)
 add_winml_test(
