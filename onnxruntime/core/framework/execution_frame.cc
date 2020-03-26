@@ -345,7 +345,7 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
     if (buffer_num_elements >= required_num_elements) {
       // View Operator is reusing the buffer bigger than the required size. 
       // Disabling warning message for now. The op is in the process of being deprecated.
-#ifndef ENABLE_TRINING
+#ifndef ENABLE_TRAINING
       LOGS(session_state_.Logger(), WARNING) << message;
 #endif
     } else {
