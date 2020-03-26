@@ -6,9 +6,9 @@
 #include "threadPool.h"
 
 #include <chrono>
-#include <fstream>
-#include <ctime>
 #include <cstdlib>
+#include <ctime>
+#include <fstream>
 
 using namespace winrt::Windows::AI::MachineLearning;
 using namespace winrt;
@@ -19,7 +19,7 @@ void LoadBindEvalSqueezenetRealDataWithValidationConcurrently()
 {
     WINML_SKIP_TEST("Skipping due to bug 21617097");
 
-    constexpr auto loadTestModel = [](const std::string& instance, LearningModelDeviceKind device)
+    constexpr auto load_test_model = [](const std::string& instance, LearningModelDeviceKind device)
     {
         WinML::Engine::Test::ModelValidator::SqueezeNet(instance, device, 0.00001f, false);
     };
@@ -27,11 +27,11 @@ void LoadBindEvalSqueezenetRealDataWithValidationConcurrently()
     std::vector<std::thread> threads;
     for (const auto& instance : {"1", "2", "3", "4"})
     {
-        threads.emplace_back(loadTestModel, instance, LearningModelDeviceKind::Cpu);
+        threads.emplace_back(load_test_model, instance, LearningModelDeviceKind::Cpu);
     }
     if (GPUTEST_ENABLED) {
         for (const auto& instance : {"GPU_1", "GPU_2", "GPU_3", "GPU_4"}) {
-            threads.emplace_back(loadTestModel, instance, LearningModelDeviceKind::DirectX);
+            threads.emplace_back(load_test_model, instance, LearningModelDeviceKind::DirectX);
         }
     }
 
@@ -58,24 +58,24 @@ struct EvaluationUnit
 };
 
 // Run EvalAsync for each unit concurrently and get results
-static void RunAsync(std::vector<EvaluationUnit> &evalUnits)
+static void RunAsync(std::vector<EvaluationUnit> &evaluation_units)
 {
-    std::for_each(evalUnits.begin(), evalUnits.end(), [](EvaluationUnit &unit) {
+    std::for_each(evaluation_units.begin(), evaluation_units.end(), [](EvaluationUnit &unit) {
         unit.operation = unit.session.EvaluateAsync(unit.binding, L"");
     });
     // get results
-    std::for_each(evalUnits.begin(), evalUnits.end(), [](EvaluationUnit &unit) {
+    std::for_each(evaluation_units.begin(), evaluation_units.end(), [](EvaluationUnit &unit) {
         unit.result = unit.operation.get();
     });
 }
 
-static void VerifyEvaluation(const std::vector<EvaluationUnit> &evalUnits, std::vector<uint32_t> expectedIndices)
+static void VerifyEvaluation(const std::vector<EvaluationUnit> &evaluation_units, std::vector<uint32_t> expected_indices)
 {
-    assert(evalUnits.size() == expectedIndices.size());
-    for (size_t i = 0; i < evalUnits.size(); ++i)
+    assert(evaluation_units.size() == expected_indices.size());
+    for (size_t i = 0; i < evaluation_units.size(); ++i)
     {
-        auto unit = evalUnits[i];
-        auto expectedIndex = expectedIndices[i];
+        auto unit = evaluation_units[i];
+        auto expectedIndex = expected_indices[i];
         auto result = unit.result.Outputs().Lookup(L"softmaxout_1").as<TensorFloat>().GetAsVectorView();
         int64_t maxIndex = 0;
         float maxValue = 0;
@@ -106,52 +106,52 @@ void EvalAsyncDifferentModels()
 {
     copyFile(L"model.onnx", L"model2.onnx");
 
-    std::vector<std::wstring> modelPaths = { L"model.onnx", L"model2.onnx" };
-    const unsigned int numUnits = static_cast<unsigned int>(modelPaths.size());
-    std::vector<EvaluationUnit> evalUnits(numUnits, EvaluationUnit());
+    std::vector<std::wstring> model_paths = { L"model.onnx", L"model2.onnx" };
+    const unsigned int num_units = static_cast<unsigned int>(model_paths.size());
+    std::vector<EvaluationUnit> evaluation_units(num_units, EvaluationUnit());
 
     auto ifv = FileHelpers::LoadImageFeatureValue(L"kitten_224.png");
 
-    for (unsigned int i = 0; i < numUnits; ++i)
+    for (unsigned int i = 0; i < num_units; ++i)
     {
-        evalUnits[i].model = LearningModel::LoadFromFilePath(FileHelpers::GetModulePath() + modelPaths[i]);
-        evalUnits[i].session = LearningModelSession(evalUnits[i].model);
-        evalUnits[i].binding = LearningModelBinding(evalUnits[i].session);
-        evalUnits[i].binding.Bind(L"data_0", ifv);
+        evaluation_units[i].model = LearningModel::LoadFromFilePath(FileHelpers::GetModulePath() + model_paths[i]);
+        evaluation_units[i].session = LearningModelSession(evaluation_units[i].model);
+        evaluation_units[i].binding = LearningModelBinding(evaluation_units[i].session);
+        evaluation_units[i].binding.Bind(L"data_0", ifv);
     }
 
-    RunAsync(evalUnits);
-    std::vector<uint32_t> indices(numUnits, s_IndexTabbyCat);
-    VerifyEvaluation(evalUnits, indices);
+    RunAsync(evaluation_units);
+    std::vector<uint32_t> indices(num_units, TABBY_CAT_INDEX);
+    VerifyEvaluation(evaluation_units, indices);
 }
 
 // Run evaluations with same model, different sessions
 void EvalAsyncDifferentSessions()
 {
-    unsigned int numUnits = 3;
-    std::vector<EvaluationUnit> evalUnits(numUnits, EvaluationUnit());
+    unsigned int num_units = 3;
+    std::vector<EvaluationUnit> evaluation_units(num_units, EvaluationUnit());
     auto ifv = FileHelpers::LoadImageFeatureValue(L"kitten_224.png");
 
     // same model, different session
     auto model = LearningModel::LoadFromFilePath(FileHelpers::GetModulePath() + L"model.onnx");
-    for (unsigned int i = 0; i < numUnits; ++i)
+    for (unsigned int i = 0; i < num_units; ++i)
     {
-        evalUnits[i].model = model;
-        evalUnits[i].session = LearningModelSession(evalUnits[i].model);
-        evalUnits[i].binding = LearningModelBinding(evalUnits[i].session);
-        evalUnits[i].binding.Bind(L"data_0", ifv);
+        evaluation_units[i].model = model;
+        evaluation_units[i].session = LearningModelSession(evaluation_units[i].model);
+        evaluation_units[i].binding = LearningModelBinding(evaluation_units[i].session);
+        evaluation_units[i].binding.Bind(L"data_0", ifv);
     }
 
-    RunAsync(evalUnits);
-    std::vector<uint32_t> indices(numUnits, s_IndexTabbyCat);
-    VerifyEvaluation(evalUnits, indices);
+    RunAsync(evaluation_units);
+    std::vector<uint32_t> indices(num_units, TABBY_CAT_INDEX);
+    VerifyEvaluation(evaluation_units, indices);
 }
 
 // Run evaluations with same session (and model), with different bindings
 void EvalAsyncDifferentBindings()
 {
-    unsigned int numUnits = 2;
-    std::vector<EvaluationUnit> evalUnits(numUnits, EvaluationUnit());
+    unsigned int num_units = 2;
+    std::vector<EvaluationUnit> evaluation_units(num_units, EvaluationUnit());
 
     std::vector<ImageFeatureValue> ifvs = {FileHelpers::LoadImageFeatureValue(L"kitten_224.png"),
                                            FileHelpers::LoadImageFeatureValue(L"fish.png")};
@@ -159,24 +159,24 @@ void EvalAsyncDifferentBindings()
     // same session, different binding
     auto model = LearningModel::LoadFromFilePath(FileHelpers::GetModulePath() + L"model.onnx");
     auto session = LearningModelSession(model);
-    for (unsigned int i = 0; i < numUnits; ++i)
+    for (unsigned int i = 0; i < num_units; ++i)
     {
-        evalUnits[i].model = model;
-        evalUnits[i].session = session;
-        evalUnits[i].binding = LearningModelBinding(evalUnits[i].session);
-        evalUnits[i].binding.Bind(L"data_0", ifvs[i]);
+        evaluation_units[i].model = model;
+        evaluation_units[i].session = session;
+        evaluation_units[i].binding = LearningModelBinding(evaluation_units[i].session);
+        evaluation_units[i].binding.Bind(L"data_0", ifvs[i]);
     }
 
-    RunAsync(evalUnits);
-    VerifyEvaluation(evalUnits, { s_IndexTabbyCat, s_IndexTench });
+    RunAsync(evaluation_units);
+    VerifyEvaluation(evaluation_units, { TABBY_CAT_INDEX, TENCH_INDEX });
 }
 
 winrt::Windows::AI::MachineLearning::ILearningModelFeatureDescriptor UnusedCreateFeatureDescriptor(
     std::shared_ptr<onnxruntime::Model> model,
     const std::wstring& name,
     const std::wstring& description,
-    bool isRequired,
-    const ::onnx::TypeProto *typeProto);
+    bool is_required,
+    const ::onnx::TypeProto *type_proto);
 
 // Get random number in interval [1,max_number]
 unsigned int getRandomNumber(unsigned int max_number) {
@@ -186,7 +186,7 @@ unsigned int getRandomNumber(unsigned int max_number) {
 void MultiThreadLoadModel() {
     // load same model
     auto path = FileHelpers::GetModulePath() + L"model.onnx";
-    unsigned int num_threads = getRandomNumber(s_max_threads);
+    unsigned int num_threads = getRandomNumber(MAX_THREADS);
     ThreadPool pool(num_threads);
     try {
         for (unsigned int i = 0; i < num_threads; ++i) {
@@ -207,7 +207,7 @@ void MultiThreadSession()
 {
     auto path = FileHelpers::GetModulePath() + L"model.onnx";
     auto model = LearningModel::LoadFromFilePath(path);
-    unsigned int num_threads = getRandomNumber(s_max_threads);
+    unsigned int num_threads = getRandomNumber(MAX_THREADS);
     std::vector<ImageFeatureValue> ivfs = {
         FileHelpers::LoadImageFeatureValue(L"kitten_224.png"),
         FileHelpers::LoadImageFeatureValue(L"fish.png")

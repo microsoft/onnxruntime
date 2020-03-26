@@ -20,7 +20,7 @@ public:
     template <typename F, typename...Args>
     inline auto SubmitWork(F &&f, Args&&... args) -> std::future<decltype(f(args...))> {
         auto func = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
-        auto task = std::make_shared<std::packaged_task<decltype(f(args...))()>>(func);
+        auto task = std::make_shared<std::packaged_task<decltype(f(args...))()>>(std::forward<decltype(func)>(func));
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             // wrap packed task into a void return function type so that it can be stored in queue

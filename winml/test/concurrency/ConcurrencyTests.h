@@ -26,7 +26,7 @@ WINML_TEST(ConcurrencyTests, EvalAsyncDifferentBindings)
 WINML_TEST_CLASS_END()
 
 // indices for imagenet label
-static constexpr uint32_t s_IndexTabbyCat = 281;
-static constexpr uint32_t s_IndexTench = 0;
+static constexpr uint32_t TABBY_CAT_INDEX = 281;
+static constexpr uint32_t TENCH_INDEX = 0;
 // maximum number of threads to run concurrent jobs
-static constexpr uint32_t s_max_threads = 30;
+static constexpr uint32_t MAX_THREADS = 30;
