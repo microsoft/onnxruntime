@@ -152,7 +152,7 @@ A Dockerfile is available [here](./dockerfiles#cuda).
     * To use the 14.11 toolset with a later version of Visual Studio 2017 you have two options:
      1. Setup the Visual Studio environment variables to point to the 14.11 toolset by running vcvarsall.bat, prior to running the build script. e.g. if you have VS2017 Enterprise, an x64 build would use the following command `"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64 -vcvars_ver=14.11` For convenience, .\build.amd64.1411.bat will do this and can be used in the same way as .\build.bat. e.g. ` .\build.amd64.1411.bat --use_cuda`
 
-     2. Alternatively, if you have CMake 3.12 or later you can specify the toolset version via the `--msvc_toolset` build script parameter. e.g. `.\build.bat --msvc_toolset 14.11`
+     2. Alternatively, if you have CMake 3.13 or later you can specify the toolset version via the `--msvc_toolset` build script parameter. e.g. `.\build.bat --msvc_toolset 14.11`
 
 * If you have multiple versions of CUDA installed on a Windows machine and are building with Visual Studio, CMake will use the build files for the highest version of CUDA it finds in the BuildCustomization folder.
 e.g. C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\Common7\IDE\VC\VCTargets\BuildCustomizations\.
@@ -541,10 +541,10 @@ pip3 install numpy
 # Build the latest cmake
 mkdir /code
 cd /code
-wget https://cmake.org/files/v3.12/cmake-3.12.3.tar.gz;
-tar zxf cmake-3.12.3.tar.gz
+wget https://cmake.org/files/v3.13/cmake-3.13.5.tar.gz;
+tar zxf cmake-3.13.5.tar.gz
 
-cd /code/cmake-3.12.3
+cd /code/cmake-3.13.5
 ./configure --system-curl
 make
 sudo make install
