@@ -813,7 +813,18 @@ foreach(provider_name ${ONNXRUNTIME_PROVIDER_NAMES})
   endif()
 endforeach()
 
-
+if (WINDOWS_STORE)
+  # Use onecore MSVC runtime
+  get_filename_component(msvc_onecore_runtime_path "${CMAKE_C_COMPILER}/../../../../lib/onecore/${onnxruntime_target_platform}" ABSOLUTE)
+  if (NOT EXISTS "${msvc_onecore_runtime_path}/msvcprt.lib")
+    message(FATAL_ERROR "OneCore MSVC runtime not found at ${msvc_onecore_runtime_path}")
+  endif()
+  link_directories("${msvc_onecore_runtime_path}")
+  # The onecore MSVC runtime has DEFAULTLIB:onecore.lib. onecore.lib links to kernel32 (desktop-only APIs) for some reason.
+  # We already link to windowsapp.lib (which is a UWP umbrella lib that doesn't have desktop-only references) and don't
+  # need a second umbrella lib.
+  add_link_options(-NODEFAULTLIB:onecore.lib)
+endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES log)
