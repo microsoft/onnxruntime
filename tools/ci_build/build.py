@@ -973,11 +973,20 @@ def main():
                     log.info("Cannot test on host build machine for cross-compiled ARM(64) builds. Will skip test running after build.")
                     args.test = False
             else:
-                toolset = 'host=x64'
-            if (args.cuda_version):
-                toolset += ',cuda=' + args.cuda_version
-
-            cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
+                if args.msvc_toolset == '14.16' and args.cmake_generator == 'Visual Studio 16 2019':
+                    #CUDA 10.0 requires _MSC_VER >= 1700 and _MSC_VER < 1920, aka Visual Studio version in [2012, 2019)	       
+                    #In VS2019, we have to use Side-by-side minor version MSVC toolsets from Visual Studio 2017
+                    #14.16 is MSVC version	
+                    #141 is MSVC Toolset Version	       
+                    #Cuda VS extension should be installed to C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Microsoft\VC\v160\BuildCustomizations	
+                    toolset = 'v141,host=x64,version=' + args.msvc_toolset	
+                elif args.msvc_toolset:	
+                    toolset = 'host=x64,version=' + args.msvc_toolset	
+                else:	
+                    toolset = 'host=x64'	
+                if (args.cuda_version):	
+                    toolset += ',cuda=' + args.cuda_version	
+                cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
         
             if args.enable_wcos:
                 cmake_extra_args.append('-DCMAKE_TOOLCHAIN_FILE=' + os.path.join(source_dir, 'cmake', 'wcos_toolchain.cmake'))
