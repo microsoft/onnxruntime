@@ -25,7 +25,7 @@ struct RollingWindowTransformerImpl {
     const auto* state_tensor(ctx->Input<Tensor>(0));
     const uint8_t* const state_data(state_tensor->Data<uint8_t>());
     Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
-    EstimatorT::TransformerType transformer(archive);
+    typename EstimatorT::TransformerType transformer(archive);
 
     // Get the Grains
     const auto* grains_tensor(ctx->Input<Tensor>(1));
