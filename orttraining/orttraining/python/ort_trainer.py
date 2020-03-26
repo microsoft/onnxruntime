@@ -299,7 +299,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device):
     other_export_options = {}
     # This option was added after 1.4 release.
     if LooseVersion(torch.__version__) > LooseVersion('1.4.0'):
-        other_export_options['enable_onnx_checker'] = 'False'
+        other_export_options['enable_onnx_checker'] = False
 
     torch.onnx._export(model, tuple(sample_inputs), f,
                        input_names=input_names, 
@@ -381,7 +381,6 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
-    ort_parameters.scaled_loss_output_name = scaled_loss_output_name
     ort_parameters.use_mixed_precision = use_mixed_precision
     ort_parameters.world_rank = world_rank
     ort_parameters.world_size = world_size
@@ -583,10 +582,12 @@ class ORTTrainer():
                 use_mixed_precision=use_mixed_precision, allreduce_post_accumulation=allreduce_post_accumulation,
                 partition_optimizer=partition_optimizer, enable_grad_norm_clip=self.enable_grad_norm_clip_)
 
+        self.loss_scale_input_name = self.session.loss_scale_input_name
+
         if self.use_mixed_precision:
             self.input_desc_with_lr_and_loss_scale = [
                 *self.input_desc_with_lr,
-                IODescription(self.session.loss_scale_input_name, [], torch.float32)]
+                IODescription(self.loss_scale_input_name, [], torch.float32)]
 
         # ORT backend has modified model output dtype from float32 to float16.
         for o_desc in self.model_desc_.outputs_:
