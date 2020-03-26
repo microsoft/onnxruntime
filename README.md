@@ -136,7 +136,9 @@ system.
 
 ***
 # Usage
-Please see [Samples and Tutorials](./samples) for examples.
+## [Samples and Tutorials](./samples)
+
+## [Frequently Asked Questions and Troubleshooting](./docs/faq.md)
 
 ## Getting ONNX Models
 To get an ONNX model, please view these [ONNX Tutorials](https://github.com/onnx/tutorials#getting-onnx-models).
