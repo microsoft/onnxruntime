@@ -65,7 +65,7 @@ See:
 
 NCHW and NHWC are two different memory layout for 4-D tensors.
 
-Most TensorFlow operations used by a CNN support both NHWC and NCHW data format. The Tensorflow team suggests that on GPU NCHW is faster but on CPU NHWC is sometimes faster in Tensorflow. However, ONNX only supports NCHW. As a result, if the original model is in NHWC format, when the model is converted extra transposes may be added. The latest [keras-onnx converter](https://github.com/onnx/keras-onnx) can remove many of these transposes. If you can, consider retraining the model using NCHW.
+Most TensorFlow operations used by a CNN support both NHWC and NCHW data format. The Tensorflow team suggests that on GPU NCHW is faster but on CPU NHWC is sometimes faster in Tensorflow. However, ONNX only supports NCHW. As a result, if the original model is in NHWC format, when the model is converted extra transposes may be added. The [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx) and [keras-onnx](https://github.com/onnx/keras-onnx) converters do remove many of these transposes, but if this doesn't help sufficientl, consider retraining the model using NCHW.
 
 ## Does the Python API add any overhead to performance?
 The Python API doesn't add any overhead to performance when using the CPU execution provider only. When using the GPU provider, inputs and outputs need to be copied from CPU to GPU and vice-versa and the Python API doesn't allow inputs/outputs to be setup for this to be done prior to execution (calling run). Hence this copy needs to be done on the fly as part of execution. This eats into the execution time thereby impacting performance.
