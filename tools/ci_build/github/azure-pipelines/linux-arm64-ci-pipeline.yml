@@ -3,7 +3,7 @@ jobs:
   parameters:
     AgentPool : 'ARM64 with GPU'
     JobName: 'Linux_CI_Dev_ARM64'
-    BuildCommand: './build.sh --config RelWithDebInfo --update --build --build_wheel --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu'
+    BuildCommand: './build.sh --config Debug --update --build --build_shared_lib --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu'
     #BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_llvm --use_nuphar --use_dnnl --use_tvm --use_featurizers --build_wheel --build_java --enable_language_interop_ops"'
     DoNugetPack:  'false'
     ArtifactName: 'drop-linux-arm64'

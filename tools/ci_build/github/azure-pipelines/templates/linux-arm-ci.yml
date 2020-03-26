@@ -29,4 +29,4 @@ jobs:
     - template: component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
-    - template: clean-agent-build-directory-step.yml
+        #    - template: clean-agent-build-directory-step.yml
