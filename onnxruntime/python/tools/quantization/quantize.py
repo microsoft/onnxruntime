@@ -319,7 +319,8 @@ class ONNXQuantizer:
                     new_list += self._handle_activation_ops(node, new_list)
                 elif node.op_type == 'Attention':
                     print('Attention')
-                    new_list += self._quantize_attention_integer_ops(node, new_list)
+                    new_list += self._quantize_attention_integer_ops(
+                        node, new_list)
                 else:
                     new_list += self._handle_other_ops(node, new_list)
 
@@ -1247,6 +1248,13 @@ class ONNXQuantizer:
         '''
         assert (node.op_type == "Attention")
 
+        data_found, scale_name, zp_name, scale_shape, zp_shape = self._get_quantization_params(
+            node.input[0])
+
+        if not data_found:
+            raise ValueError('Quantization Param for {} not provided.'.format(
+                node.input[0]))
+
         node_input = node.input[1]
         # Quantize the input
         initializer = _find_by_name(node_input, self.model.graph.initializer)
@@ -1266,10 +1274,13 @@ class ONNXQuantizer:
         if node.name != "":
             attention_integer_name = node.name + "_quant"
         attention_integer_node = onnx.helper.make_node(
-            "AttentionDynamicQuant", [node.input[0], quantized_weight, node.input[2], node.input[3], quantized_scale],
-            node.output, attention_integer_name)
+            "AttentionDynamicQuant", [
+                node.input[0], quantized_weight, node.input[2], node.input[3],
+                quantized_scale, scale_name
+            ], node.output, attention_integer_name)
         attention_integer_node.domain = "com.microsoft"
-        attention_integer_node.attribute.extend([onnx.helper.make_attribute("num_heads", node.attribute[0].i)])
+        attention_integer_node.attribute.extend(
+            [onnx.helper.make_attribute("num_heads", node.attribute[0].i)])
 
         return [attention_integer_node]
 
@@ -1527,6 +1538,4 @@ def quantize(model,
         quantizer.model.producer_version = __version__
         return quantizer.model
     else:
-        raise ValueError(
-            'Only 8 bit quantization is supported currently'
-        )
+        raise ValueError('Only 8 bit quantization is supported currently')
