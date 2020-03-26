@@ -429,8 +429,8 @@ class PlannerImpl {
                          }) != outer_scope_node_args_.cend()) {
           OrtValueIndex index = Index(name);
 
-          // implicit inputs do not have an entry in the kernel def.
-          // setting location for implicit inputs may cause inconsistency in nested subgraph.
+          // implicit inputs do not have an entry in the kernel def, so do nothing to them here, leaving the control
+          //   flow op (Loop, Scan, If) to do the necessary copy if the input crosses different provider.
           // matching logic is used in TransformerMemcpyImpl::ProcessDefs
           if (!is_implicit_input) {
             OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
