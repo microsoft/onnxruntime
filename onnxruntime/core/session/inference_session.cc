@@ -679,9 +679,6 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       // Pass fused function manager to subgraph
       subgraph_session_state->GetMutableFuncMgr().SetFusedFuncs(session_state.GetFuncMgr());
 
-      // Pass fused function manager to subgraph
-      subgraph_session_state->GetMutableFuncMgr().SetFusedFuncs(session_state.GetFuncMgr());
-
       // recurse
       ORT_RETURN_IF_ERROR_SESSIONID_(CreateSubgraphSessionState(*subgraph, *subgraph_session_state));
 
