@@ -15,7 +15,7 @@ class DnnlPool : public DnnlKernel {
  public:
   DnnlPool(const DnnlNode& node,
            DNNLExecutionProvider* provider,
-           const NodeAttributes& attributes,
+           const Prov_NodeAttributes& attributes,
            const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     op_name_ = node.name;
     ReadAttributes(attributes, attributes_prefix);
@@ -230,7 +230,7 @@ class DnnlPool : public DnnlKernel {
   }
 
  private:
-  void ReadAttributes(const NodeAttributes& attributes,
+  void ReadAttributes(const Prov_NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");
@@ -239,7 +239,7 @@ class DnnlPool : public DnnlKernel {
       bool attr_read = false;
       auto attr = attributes.find(attributes_prefix + "kernel_shape");
       if (attr != attributes.end()) {
-        ONNX_NAMESPACE::AttributeProto proto = attr->second;
+        auto& proto = *attr->second;
         GetIntsAttr(proto, kernel_shape_);
         attr_read = true;
       }
@@ -248,15 +248,15 @@ class DnnlPool : public DnnlKernel {
       std::string auto_padding;
       attr = attributes.find(attributes_prefix + "auto_pad");
       if (attr != attributes.end() &&
-          attr->second.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING) {
-        auto_padding = attr->second.s();
+          attr->second->type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING) {
+        auto_padding = attr->second->s();
       }
       auto_pad_ = StringToAutoPadType(auto_padding);
 
       attr_read = false;
       attr = attributes.find(attributes_prefix + "pads");
       if (attr != attributes.end()) {
-        ONNX_NAMESPACE::AttributeProto proto = attr->second;
+        auto& proto = *attr->second;
         if (GetIntsAttr(proto, pads_) == Status::OK())
           attr_read = true;
       }
@@ -267,7 +267,7 @@ class DnnlPool : public DnnlKernel {
       attr_read = false;
       attr = attributes.find(attributes_prefix + "strides");
       if (attr != attributes.end()) {
-        ONNX_NAMESPACE::AttributeProto proto = attr->second;
+        auto& proto = *attr->second;
         if (GetIntsAttr(proto, strides_) == Status::OK())
           attr_read = true;
       }
@@ -278,7 +278,7 @@ class DnnlPool : public DnnlKernel {
       attr = attributes.find(attributes_prefix + "count_include_pad");
       int64_t temp = 0;
       if (attr != attributes.end()) {
-        ONNX_NAMESPACE::AttributeProto proto = attr->second;
+        auto& proto = *attr->second;
         GetIntAttr(proto, temp);
       }
       count_include_pad_ = (temp != 0);

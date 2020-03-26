@@ -1,12 +1,48 @@
 namespace ONNX_NAMESPACE {
+enum AttributeProto_AttributeType;
+
 class ValueInfoProto;
 class TensorProto;
-class TensorShapeProto;
 class TypeProto;
-class AttributeProto;
 class OpSchema;
 // String pointer as unique TypeProto identifier.
 using DataType = const std::string*;
+
+struct Prov_AttributeProto {
+  static std::unique_ptr<Prov_AttributeProto> Create();
+
+  virtual std::unique_ptr<Prov_AttributeProto> Clone() const = 0;
+
+  virtual ::onnx::AttributeProto_AttributeType type() const = 0;
+  virtual int ints_size() const = 0;
+  virtual int64_t ints(int i) const = 0;
+  virtual int64_t i() const = 0;
+  virtual float f() const = 0;
+  virtual void set_s(const ::std::string& value) = 0;
+  virtual const ::std::string& s() const = 0;
+  virtual void set_name(const ::std::string& value) = 0;
+  virtual void set_type(::onnx::AttributeProto_AttributeType value) = 0;
+  virtual ::onnx::TensorProto* add_tensors() = 0;
+};
+
+struct Prov_AttributeProto_Copyable {
+  Prov_AttributeProto_Copyable() = default;
+  Prov_AttributeProto_Copyable(const Prov_AttributeProto_Copyable& copy) : p_{copy->Clone()} {}
+
+  void operator=(std::unique_ptr<Prov_AttributeProto>&& p) { p_ = std::move(p); }
+
+  Prov_AttributeProto& operator*() const { return *p_.get(); }
+  Prov_AttributeProto* operator->() const { return p_.get(); }
+
+  std::unique_ptr<Prov_AttributeProto> p_;
+};
+
+struct Prov_TensorShapeProto {
+  int dim_size() const { return dim_size_; }
+
+  int dim_size_;
+};
+
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -14,7 +50,6 @@ namespace onnxruntime {
 using NodeIndex = size_t;
 class Graph;
 class NodeArg;
-class Node;
 class GraphNodes;
 class TensorShape;
 
@@ -110,7 +145,98 @@ struct Prov_KernelDefBuilder {
   virtual std::unique_ptr<Prov_KernelDef> Build() = 0;
 };
 
-class GraphViewer;
+using NodeIndex = size_t;
+using Prov_NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::Prov_AttributeProto_Copyable>;
+
+using Prov_InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*>;
+
+struct Prov_NodeArg {
+  virtual const std::string& Name() const noexcept = 0;
+  virtual const ONNX_NAMESPACE::Prov_TensorShapeProto* Shape() const = 0;
+  virtual ONNX_NAMESPACE::DataType Type() const noexcept = 0;
+};
+
+struct Prov_Node {
+  virtual ~Prov_Node() {}
+
+  virtual const std::string& OpType() const noexcept = 0;
+#if 0
+  const ONNX_NAMESPACE::OpSchema* Op() const noexcept;
+#endif
+
+  virtual ConstPointerContainer<std::vector<Prov_NodeArg*>> InputDefs() const noexcept = 0;
+  virtual ConstPointerContainer<std::vector<Prov_NodeArg*>> OutputDefs() const noexcept = 0;
+  virtual NodeIndex Index() const noexcept = 0;
+
+  virtual const Prov_NodeAttributes& GetAttributes() const noexcept = 0;
+  virtual size_t GetInputEdgesCount() const noexcept = 0;
+  virtual size_t GetOutputEdgesCount() const noexcept = 0;
+
+  struct NodeConstIterator {
+    NodeConstIterator() { __debugbreak(); }
+
+    bool operator==(const NodeConstIterator& p_other) const;
+    bool operator!=(const NodeConstIterator& p_other) const {
+      __debugbreak();
+      p_other;
+      return false;
+    }
+
+    void operator++() {
+      __debugbreak();
+    }
+    void operator--();
+
+    const Prov_Node& operator*() const {
+      __debugbreak();
+      return *(Prov_Node*)nullptr;
+    }
+    const Prov_Node* operator->() const;
+  };
+
+  virtual NodeConstIterator InputNodesBegin() const noexcept = 0;
+  virtual NodeConstIterator InputNodesEnd() const noexcept = 0;
+};
+
+struct Prov_GraphViewer {
+  virtual const std::string& Name() const noexcept = 0;
+#if 0
+  virtual const std::string& Description() const noexcept = 0;
+  bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const;
+  bool CanOverrideInitializer() const noexcept;
+  const std::vector<const NodeArg*>& GetInputs() const noexcept;
+  const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept;
+  const std::vector<const NodeArg*>& GetOutputs() const noexcept;
+  const std::vector<const NodeArg*>& GetValueInfo() const noexcept;
+
+#endif
+
+  virtual const Prov_Node* GetNode(NodeIndex node_index) const = 0;
+
+#if 0
+  const GraphNodes& Nodes() const noexcept;
+  int NumberOfNodes() const noexcept;
+#endif
+
+  virtual int MaxNodeIndex() const noexcept = 0;
+
+#if 0
+  const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const;
+  const std::vector<NodeIndex>& GetRootNodes() const;
+#endif
+  virtual const Prov_InitializedTensorSet& GetAllInitializedTensors() const noexcept = 0;
+
+#if 0
+  const NodeArg* GetNodeArg(const std::string& name) const;
+#endif
+
+  virtual const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept = 0;
+#if 0
+  bool IsSubgraph() const;
+  bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const;
+#endif
+};
+
 struct IndexedSubGraph;
 
 struct Prov_KernelRegistry {
@@ -128,7 +254,7 @@ struct Prov_IExecutionProvider_Router {
 
   virtual std::shared_ptr<Prov_KernelRegistry> Prov_GetKernelRegistry() const = 0;
 
-  virtual std::vector<std::unique_ptr<Prov_ComputeCapability>> Prov_GetCapability(const onnxruntime::GraphViewer& graph,
+  virtual std::vector<std::unique_ptr<Prov_ComputeCapability>> Prov_GetCapability(const onnxruntime::Prov_GraphViewer& graph,
                                                                                   const std::vector<const Prov_KernelRegistry*>& kernel_registries) const = 0;
 
   virtual Prov_AllocatorPtr Prov_GetAllocator(int id, OrtMemType mem_type) const = 0;
@@ -141,7 +267,7 @@ struct Prov_IExecutionProvider {
 
   virtual std::shared_ptr<Prov_KernelRegistry> Prov_GetKernelRegistry() const { return p_->Prov_GetKernelRegistry(); }
 
-  virtual std::vector<std::unique_ptr<Prov_ComputeCapability>> Prov_GetCapability(const onnxruntime::GraphViewer& graph,
+  virtual std::vector<std::unique_ptr<Prov_ComputeCapability>> Prov_GetCapability(const onnxruntime::Prov_GraphViewer& graph,
                                                                                   const std::vector<const Prov_KernelRegistry*>& kernel_registries) const { return p_->Prov_GetCapability(graph, kernel_registries); }
 #if 0
   virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
@@ -176,6 +302,8 @@ struct ProviderHost {
   virtual Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, int device_id = 0) = 0;
 
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
+
+  virtual std::unique_ptr<ONNX_NAMESPACE::Prov_AttributeProto> AttributeProto_Create() = 0;
 
   virtual std::unique_ptr<Prov_OrtMemoryInfo> OrtMemoryInfo_Create(const char* name_, OrtAllocatorType type_, Prov_OrtDevice* device_, int id_, OrtMemType mem_type_) = 0;
   virtual std::unique_ptr<Prov_KernelDefBuilder> KernelDefBuilder_Create() = 0;

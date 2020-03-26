@@ -77,10 +77,10 @@ class DNNLExecutionProvider : public Prov_IExecutionProvider {
   }
 
   std::vector<std::unique_ptr<Prov_ComputeCapability>>
-  Prov_GetCapability(const onnxruntime::GraphViewer& graph,
+  Prov_GetCapability(const onnxruntime::Prov_GraphViewer& graph,
                      const std::vector<const Prov_KernelRegistry*>& /*kernel_registries*/) const override;
 
-  common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+  common::Status Compile(const std::vector<onnxruntime::Prov_Node*>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) /*override*/;
 
  private:
@@ -98,12 +98,12 @@ class DNNLExecutionProvider : public Prov_IExecutionProvider {
 
   // SUBGRAPH
  private:
-  static int GetOnnxOpSet(const GraphViewer& graph_viewer) {
+  static int GetOnnxOpSet(const Prov_GraphViewer& graph_viewer) {
     const auto& dm_to_ver = graph_viewer.DomainToVersionMap();
     return dm_to_ver.at(kOnnxDomain);
   }
 
-  std::string GetGraphName(const onnxruntime::GraphViewer& graph_viewer) const {
+  std::string GetGraphName(const onnxruntime::Prov_GraphViewer& graph_viewer) const {
     std::string graph_name;
 
     int opset = GetOnnxOpSet(graph_viewer);
@@ -121,12 +121,12 @@ class DNNLExecutionProvider : public Prov_IExecutionProvider {
     return graph_name;
   }
 
-  bool UseSubgraph(const onnxruntime::GraphViewer& graph_viewer) const;
+  bool UseSubgraph(const onnxruntime::Prov_GraphViewer& graph_viewer) const;
 
   // Some dimensions are not supported by DNNL
   // example: Pool with NumDimensions <= 3 is not supported
   // Fall back to CPU implementation
-  bool IsDimensionSupported(const Node* node) const {
+  bool IsDimensionSupported(const Prov_Node* node) const {
     bool supported = true;
     if (node->OpType() == "BatchNormalization") {
       auto node_inputs = node->InputDefs();
@@ -146,17 +146,17 @@ class DNNLExecutionProvider : public Prov_IExecutionProvider {
     return supported;
   }
 
-  void CreateOrUpdateDnnlNode(const Node* node,
+  void CreateOrUpdateDnnlNode(const Prov_Node* node,
                               std::shared_ptr<ort_dnnl::Subgraph>& subgraph_ptr,
                               ort_dnnl::Subgraph::SubgraphVariables& sub_var,
                               bool fused,
                               std::map<std::string, size_t>& output_to_source_node_map,
-                              NodeAttributes& subgraph_attributes) const;
+                              Prov_NodeAttributes& subgraph_attributes) const;
 
   // Create Dnnl node, update inputs, outputs and parent nodes
   // collect attribtes
-  void CreateMetaDef(const onnxruntime::GraphViewer& graph_viewer,
-                     const NodeAttributes& subgraph_attributes,
+  void CreateMetaDef(const onnxruntime::Prov_GraphViewer& graph_viewer,
+                     const Prov_NodeAttributes& subgraph_attributes,
                      std::shared_ptr<ort_dnnl::Subgraph>& subgraph_ptr,
                      ort_dnnl::Subgraph::SubgraphVariables& sub_var,
                      std::vector<std::unique_ptr<Prov_ComputeCapability>>& result) const;

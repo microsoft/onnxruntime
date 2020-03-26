@@ -16,7 +16,7 @@ class DnnlSum : public DnnlKernel {
  public:
   explicit DnnlSum(const DnnlNode& node,
                    DNNLExecutionProvider* provider,
-                   const NodeAttributes& attributes,
+                   const Prov_NodeAttributes& attributes,
                    const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }

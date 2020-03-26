@@ -28,6 +28,12 @@ void* operator new(size_t n) { return g_host->HeapAllocate(n); }
 void operator delete(void* p) { return g_host->HeapFree(p); }
 void operator delete(void* p, size_t /*size*/) { return g_host->HeapFree(p); }
 
+namespace onnx {
+std::unique_ptr<ONNX_NAMESPACE::Prov_AttributeProto> Prov_AttributeProto::Create() {
+  return g_host->AttributeProto_Create();
+}
+}  // namespace onnx
+
 namespace onnxruntime {
 
 Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, int device_id) {
@@ -199,10 +205,12 @@ MLDataType DataTypeImpl::GetTensorType<float>() {
 
 namespace onnx {
 
+#if 0
 int TensorShapeProto::dim_size() const {
   __debugbreak();
   return 0;
 }
+#endif
 
 ::onnx::AttributeProto_AttributeType AttributeProto::type() const {
   __debugbreak();
@@ -264,7 +272,7 @@ void IndexedSubGraph::SetMetaDef(std::unique_ptr<MetaDef>& meta_def_) {
   __debugbreak();
   meta_def_;
 }
-
+#if 0
 const std::string& NodeArg::Name() const noexcept {
   __debugbreak();
   static std::string s_string;
@@ -351,7 +359,9 @@ Node::NodeConstIterator Node::InputNodesEnd() const noexcept {
   __debugbreak();
   return *(NodeConstIterator*)nullptr;
 }
+#endif
 
+#if 0
 const std::string& GraphViewer::Name() const noexcept {
   __debugbreak();
   static std::string s_string;
@@ -378,6 +388,7 @@ const std::unordered_map<std::string, int>& GraphViewer::DomainToVersionMap() co
   __debugbreak();
   return *(std::unordered_map<std::string, int>*)nullptr;
 }
+#endif
 
 TensorShape::TensorShape() {
   __debugbreak();
@@ -591,15 +602,16 @@ void IExecutionProvider::InsertAllocator(Prov_AllocatorPtr allocator) {
 namespace logging {
 
 bool Logger::OutputIsEnabled(Severity severity, DataType data_type) const noexcept {
-  __debugbreak();
   severity;
   data_type;
   return false;
+  // TODO: Logging not essential to make it work initially, do later
 }
 
+static Logger g_default_logger;
+
 const Logger& LoggingManager::DefaultLogger() {
-  __debugbreak();
-  return *(Logger*)nullptr;
+  return g_default_logger;
 }
 
 Capture::Capture(const Logger& logger, logging::Severity severity, const char* category,

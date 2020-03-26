@@ -17,7 +17,7 @@ class DnnlLrn : public DnnlKernel {
  public:
   DnnlLrn(const DnnlNode& node,
           DNNLExecutionProvider* provider,
-          const NodeAttributes& attributes,
+          const Prov_NodeAttributes& attributes,
           const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }
@@ -135,33 +135,33 @@ class DnnlLrn : public DnnlKernel {
   }
 
  private:
-  void ReadAttributes(const NodeAttributes& attributes,
+  void ReadAttributes(const Prov_NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     auto attr = attributes.find(attributes_prefix + "size");
     if (attr != attributes.end() &&
-        attr->second.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT) {
-      size_ = attr->second.i();
+        attr->second->type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT) {
+      size_ = attr->second->i();
     }
     ORT_ENFORCE(size_ > 0);
     ORT_ENFORCE(size_ % 2 == 1);
 
     attr = attributes.find(attributes_prefix + "alpha");
     if (attr != attributes.end() &&
-        attr->second.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT) {
-      alpha_ = attr->second.f();
+        attr->second->type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT) {
+      alpha_ = attr->second->f();
     }
 
     attr = attributes.find(attributes_prefix + "beta");
     if (attr != attributes.end() &&
-        attr->second.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT) {
-      beta_ = attr->second.f();
+        attr->second->type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT) {
+      beta_ = attr->second->f();
     }
 
     bias_ = 1.0f;
     attr = attributes.find(attributes_prefix + "bias");
     if (attr != attributes.end() &&
-        attr->second.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT) {
-      bias_ = attr->second.f();
+        attr->second->type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT) {
+      bias_ = attr->second->f();
     }
   }
 

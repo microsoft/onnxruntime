@@ -28,8 +28,6 @@ struct RepeatedPtrField {};
 #endif
 
 namespace onnx {
-enum AttributeProto_AttributeType;
-
 using DataType = const std::string*;
 using OperatorSetVersion = int;
 
@@ -68,10 +66,6 @@ class ValueInfoProto {};
 class TensorProto {
 };
 
-class TensorShapeProto {
- public:
-  int dim_size() const;
-};
 class TypeProto;
 class OpSchema {
  public:
@@ -126,9 +120,6 @@ class DataTypeImpl {
 
 struct IExecutionProviderFactory;
 
-using NodeIndex = size_t;
-using NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::AttributeProto>;
-
 struct IndexedSubGraph {
   struct MetaDef {
     std::string name;    ///< Name of customized SubGraph/FunctionProto
@@ -139,7 +130,7 @@ struct IndexedSubGraph {
 
     std::vector<std::string> inputs;   ///< Inputs of customized SubGraph/FunctionProto.
     std::vector<std::string> outputs;  ///< Outputs of customized SubGraph/FunctionProto.
-    NodeAttributes attributes;         ///< Attributes of customized SubGraph/FunctionProto.
+    Prov_NodeAttributes attributes;    ///< Attributes of customized SubGraph/FunctionProto.
 
     std::string doc_string;  ///< Doc string of customized SubGraph/FunctionProto.
   };
@@ -150,184 +141,7 @@ struct IndexedSubGraph {
   void SetMetaDef(std::unique_ptr<MetaDef>& meta_def_);
 };
 
-class NodeArg {
- public:
-  /** Gets the name. */
-  const std::string& Name() const noexcept;
-
-  /** Gets the shape if NodeArg is for a Tensor.
-  @returns TensorShapeProto if shape is set. nullptr if there's no shape specified. */
-  const ONNX_NAMESPACE::TensorShapeProto* Shape() const;
-
-  /** Gets the data type. */
-  ONNX_NAMESPACE::DataType Type() const noexcept;
-};
-
-class Node {
- public:
-  /** Gets the Node's operator type. */
-  const std::string& OpType() const noexcept;
-
-  /** Gets the Node's OpSchema.
-  @remarks The graph containing this node must be resolved, otherwise nullptr will be returned. */
-  const ONNX_NAMESPACE::OpSchema* Op() const noexcept;
-
-  /** Gets the Node's input definitions.
-  @remarks requires ConstPointerContainer wrapper to apply const to the NodeArg pointers so access is read-only. */
-  ConstPointerContainer<std::vector<NodeArg*>> InputDefs() const noexcept;
-  //  { return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.input_defs); }
-
-  ConstPointerContainer<std::vector<NodeArg*>> OutputDefs() const noexcept;
-  //  { return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.output_defs);  }
-
-  /** Gets the Node's NodeIndex. */
-  NodeIndex Index() const noexcept;
-
-  /** Gets the Node's attributes. */
-  const NodeAttributes& GetAttributes() const noexcept;
-
-  /** Gets the number of input edges to this Node */
-  size_t GetInputEdgesCount() const noexcept;
-
-  /** Gets the number of output edges from this Node */
-  size_t GetOutputEdgesCount() const noexcept;
-
-  class NodeConstIterator {
-   public:
-    NodeConstIterator();
-
-    bool operator==(const NodeConstIterator& p_other) const;
-
-    bool operator!=(const NodeConstIterator& p_other) const;
-
-    void operator++();
-    void operator--();
-
-    const Node& operator*() const;
-    const Node* operator->() const;
-  };
-
-  /** Gets an iterator to the beginning of the input nodes to this Node. */
-  NodeConstIterator InputNodesBegin() const noexcept;
-  /** Gets an iterator to the end of the input nodes to this Node. */
-  NodeConstIterator InputNodesEnd() const noexcept;
-};
-
 class GraphNodes;
-
-using InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*>;
-
-class GraphViewer {
- public:
-  /**
-	Construct a GraphViewer from the provided Graph instance.
-	*/
-  explicit GraphViewer(const Graph& graph);
-
-  /** Gets the Graph name. */
-  const std::string& Name() const noexcept;
-
-  /** Gets the Graph description. */
-  const std::string& Description() const noexcept;
-
-  /**
-	Gets a tensor created from an initializer.
-	@param tensor_name The tensor name
-	@param[out] value Sets the pointer to the TensorProto if found, or nullptr if not.
-	@returns True if found. False if not.
-	*/
-  bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const;
-
-  /** Returns true if an initializer value can be overridden by a graph input with the same name. */
-  bool CanOverrideInitializer() const noexcept;
-
-  /**
-	Gets the Graph inputs, excluding initializers.
-	@returns Collection of NodeArg pointers for the graph inputs, excluding inputs that have matching initializers.
-	@remarks No nullptr values in the returned collection. The order will be the same as in the GraphProto.
-	*/
-  const std::vector<const NodeArg*>& GetInputs() const noexcept;
-
-  /**
-	Gets the Graph inputs, including any initializers.
-	@returns Collection of NodeArg pointers for all the graph inputs.
-	@remarks No nullptr values in the returned collection. The order will be the same as in the GraphProto.
-	*/
-  const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept;
-
-  /**
-	Gets the Graph outputs.
-	@returns Collection of NodeArg pointers for all the graph outputs.
-	@remarks No nullptr values in the returned collection. The order will be the same as in the GraphProto.
-	*/
-  const std::vector<const NodeArg*>& GetOutputs() const noexcept;
-
-  /** Gets all ValueInfo NodeArg instances in the Graph. */
-  const std::vector<const NodeArg*>& GetValueInfo() const noexcept;
-
-  /**
-	Gets the Node instance at the specified index.
-	@param node_index Index to retrieve Node from.
-	@remarks May return nullptr if index no longer points to a valid node due to the node being freed.
-	*/
-  const Node* GetNode(NodeIndex node_index) const;
-
-  /**  Gets an iterator over all the valid Nodes in the Graph. */
-  const GraphNodes& Nodes() const noexcept;
-
-  /** Gets the number of valid nodes in the Graph. */
-  int NumberOfNodes() const noexcept;
-
-  /** Gets the maximum NodeIndex value used by Nodes in the Graph. */
-  int MaxNodeIndex() const noexcept;
-
-  /** Gets the NodeIndex values for the Graph nodes, sorted into topological order. */
-  const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const;
-
-  /**
-	Gets the NodeIndex values for the root nodes in the Graph.
-	The root nodes are the topmost nodes in the Graph that receive inputs from the Graph inputs
-	and no other nodes in the Graph.
-	*/
-  const std::vector<NodeIndex>& GetRootNodes() const;
-
-  /** Gets all tensors created from initializers. */
-  const InitializedTensorSet& GetAllInitializedTensors() const noexcept;
-
-  /**
-	Gets the NodeArg instance for the given name.
-	@returns A NodeArg if found, a nullptr if not.
-	*/
-  const NodeArg* GetNodeArg(const std::string& name) const;
-
-  /** Gets the map of operator domains to their opset versions. */
-  const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept;
-  //{
-  //  return graph_->DomainToVersionMap();
-  //}
-
-  /** Checks if this is a Subgraph */
-  bool IsSubgraph() const;
-
-  /**
-	returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime.
-	@param check_outer_scope If true and the 'graph_' is a subgraph, check parent graph/s for 'name' if not found in 'graph_'.
-	*/
-  bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const;
-
-  /** Get the Node containing this Graph if IsSubgraph is true. Returns nullptr otherwise. */
-  //const Node* ParentNode() const noexcept { return graph_->ParentNode(); }
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);
-
-  const Graph* graph_;
-
-  // The NodeIndex values of the graph nodes sorted in topological order.
-  std::vector<NodeIndex> nodes_in_topological_order_;
-  // Graph root nodes.
-  std::vector<NodeIndex> root_nodes_;
-};
 
 class TensorShape {
  public:
