@@ -115,6 +115,8 @@ class TrainingSession : public InferenceSession {
       // The per-weight attribute map generator.
       // It should accept a weight name and return the appropriate attribute map.
       std::function<std::unordered_map<std::string, float>(const std::string&)> weight_attributes_generator{};
+      std::function<std::unordered_map<std::string, int64_t>(const std::string&)> weight_int_attributes_generator{};
+
       // Whether to use FP16 moments.
       bool use_fp16_moments{};
       // Whether to use FP16 for the all reduce.

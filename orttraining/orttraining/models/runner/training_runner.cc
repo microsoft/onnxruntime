@@ -102,6 +102,7 @@ Status TrainingRunner::Initialize() {
     opt.name = params_.training_optimizer_name;
     opt.learning_rate_input_name = params_.lr_params.feed_name;
     opt.weight_attributes_generator = params_.optimizer_attributes;
+    opt.weight_int_attributes_generator = params_.optimizer_int_attributes;
     opt.use_fp16_moments = params_.use_fp16_moments;
     opt.do_all_reduce_in_fp16 = params_.allreduce_in_fp16;
     opt.use_nccl = params_.use_nccl;
