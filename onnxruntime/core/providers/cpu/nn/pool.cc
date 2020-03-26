@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/nn/pool.h"
+#include "core/framework/data_types_internal.h"
 
 using namespace ::onnxruntime::common;
 
@@ -221,8 +222,8 @@ Status Pool<float, AveragePool>::Compute(OpKernelContext* context) const {
                                                                   : MlasAveragePoolingExcludePad);
 }
 
-template <>
-Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) const {
+template <typename T>
+Status PoolVersion12::ComputeImpl(OpKernelContext* context) const {
   // Use MLAS pooling if the index output tensor is not used
   // and also if dilation is not required
 
@@ -231,8 +232,11 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
     need_dilation |= n > 1;
   }
 
-  if (OpKernel::Node().OutputDefs().size() == 1 && !need_dilation) {
-    return PoolBase::Compute(context, MlasMaximumPooling);
+  // constexpr
+  if (std::is_same<T, float>::value) {
+    if (OpKernel::Node().OutputDefs().size() == 1 && !need_dilation) {
+      return PoolBase::Compute(context, MlasMaximumPooling);
+    }
   }
 
   const auto* X = context->Input<Tensor>(0);
@@ -247,8 +251,8 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
   Tensor* Y = context->Output(0, output_dims);
   Tensor* I = context->Output(1, output_dims);
 
-  const auto* X_data = X->template Data<float>();
-  auto* Y_data = Y->template MutableData<float>();
+  const auto* X_data = X->template Data<T>();
+  auto* Y_data = Y->template MutableData<T>();
   int64_t* I_data = I != nullptr ? I->template MutableData<int64_t>() : nullptr;
 
   // The main loop
@@ -271,13 +275,13 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
 #pragma omp parallel for
 #endif
       for (int64_t c = 0; c < total_channels; ++c) {
-        const float* x_d = X_data + c * x_step;
-        float* y_d = Y_data + c * y_step;
+        const T* x_d = X_data + c * x_step;
+        T* y_d = Y_data + c * y_step;
         int64_t* i_d = I_data ? I_data + c * y_step : nullptr;
         for (int64_t ph = 0; ph < pooled_height; ++ph) {
           int64_t hstart = ph * stride_h() - pads[0];
           int64_t hend = hstart + kernel_shape[0] * dilation_h;
-          float Yh = std::numeric_limits<float>::lowest();
+          T Yh = std::numeric_limits<T>::lowest();
           int64_t h_index = -1;
           for (int64_t h = hstart; h < hend; h += dilation_h) {
             if (math::is_a_ge_zero_and_a_lt_b(h, height)) {
@@ -306,8 +310,8 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
 #pragma omp parallel for
 #endif
       for (int64_t c = 0; c < total_channels; ++c) {
-        const float* x_d = X_data + c * x_step;
-        float* y_d = Y_data + c * y_step;
+        const T* x_d = X_data + c * x_step;
+        T* y_d = Y_data + c * y_step;
         int64_t* i_d = I_data ? I_data + c * y_step : nullptr;
 
         for (int64_t ph = 0; ph < pooled_height; ++ph) {
@@ -317,7 +321,7 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
             int64_t wstart = pw * stride_w() - pads[1];
             int64_t wend = wstart + kernel_shape[1] * dilation_w;
             const int64_t pool_index = ph * pooled_width + pw;
-            float Yh = std::numeric_limits<float>::lowest();
+            T Yh = std::numeric_limits<T>::lowest();
             int64_t h_index = -1;
             int64_t w_index = -1;
             for (int64_t h = hstart; h < hend; h += dilation_h) {
@@ -356,8 +360,8 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
 #pragma omp parallel for
 #endif
       for (int64_t c = 0; c < total_channels; ++c) {
-        const float* x_d = X_data + c * x_step;
-        float* y_d = Y_data + c * y_step;
+        const T* x_d = X_data + c * x_step;
+        T* y_d = Y_data + c * y_step;
         int64_t* i_d = I_data ? I_data + c * y_step : nullptr;
 
         for (int64_t ph = 0; ph < pooled_height; ++ph) {
@@ -371,7 +375,7 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
               int64_t dend = dstart + kernel_shape[2] * dilation_d;
               const int64_t pool_index =
                   ph * pooled_width * pooled_depth + pw * pooled_depth + pd;
-              float Yh = std::numeric_limits<float>::lowest();
+              T Yh = std::numeric_limits<T>::lowest();
               int64_t h_index = -1;
               int64_t w_index = -1;
               int64_t d_index = -1;
@@ -410,7 +414,13 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
   }
 
   return Status::OK();
-}  // namespace onnxruntime
+}
+
+Status PoolVersion12::Compute(OpKernelContext* context) const {
+  utils::MLTypeCallDispatcherRet<Status, PoolVersion12::ComputeHelper, float, int8_t, uint8_t> 
+    disp(context->Input<Tensor>(0)->GetElementType());
+  return disp.Invoke(this, context);
+}
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     AveragePool,
@@ -440,19 +450,28 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     MaxPool,
     8, 9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
-    Pool<float, MaxPool<8 /*VERSION*/>>);
+    PoolVersion12);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     MaxPool,
     10, 10,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
-    Pool<float, MaxPool<8 /*VERSION*/>>);
+    PoolVersion12);
+
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    MaxPool,
+    11, 11,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
+    PoolVersion12);
 
 ONNX_CPU_OPERATOR_KERNEL(
     MaxPool,
-    11,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
-    Pool<float, MaxPool<8 /*VERSION*/>>);
+    12,
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<int8_t>(),
+                                            DataTypeImpl::GetTensorType<uint8_t>()})
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
+    PoolVersion12);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     LpPool,

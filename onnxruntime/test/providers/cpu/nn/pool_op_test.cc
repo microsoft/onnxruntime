@@ -255,6 +255,46 @@ TEST(PoolTest, MaxPool_DefaultDilations) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(PoolTest, MaxPool_DefaultDilations_int8) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+
+  std::vector<int64_t> x_dims = {1, 3, 3};
+  std::vector<int8_t> x_vals = {0, 1, 2,
+                               3, 4, 5,
+                               6, 7, 8};
+
+  std::vector<int64_t> expected_dims = {1, 3, 2};
+  std::vector<int8_t> expected_vals = {1, 2,
+                                      4, 5,
+                                      7, 8};
+
+  test.AddInput<int8_t>("X", x_dims, x_vals);
+  test.AddOutput<int8_t>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool_DefaultDilations_uint8) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+
+  std::vector<int64_t> x_dims = {1, 3, 3};
+  std::vector<uint8_t> x_vals = {0, 1, 2,
+                                3, 4, 5,
+                                6, 7, 8};
+
+  std::vector<int64_t> expected_dims = {1, 3, 2};
+  std::vector<uint8_t> expected_vals = {1, 2,
+                                       4, 5,
+                                       7, 8};
+
+  test.AddInput<uint8_t>("X", x_dims, x_vals);
+  test.AddOutput<uint8_t>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
+}
+
 TEST(PoolTest, MaxPool_10_DilationPadding_1d) {
   OpTester test("MaxPool", 10);
 
