@@ -211,13 +211,6 @@ class TrainingSession : public InferenceSession {
   const PathString& GetModelLocation() const { return model_location_; }
 
  private:
-  /** Add a graph input for the loss scaling factor.
-  It will be a scalar float tensor.
-  @param[out] loss_scale_input_name The name of the added graph input.
-  @return Status of the graph input addition.
-  */
-  common::Status BuildLossScalingFactorInput(std::string& loss_scale_input_name);
-
   /** Configures the loss function.
   The loss function can either be provided externally or built from the provided loss function information.
   Exactly one of external_loss_name or loss_function_info should be given.

@@ -59,7 +59,7 @@ class OptimizerGraphBuilderTest : public testing::Test {
   Graph& graph_;
 };
 
-// sets up a base graph with weight and gradient NodeArgs for each weight name and a loss scaling factor NodeArg
+// sets up a base graph with weight and gradient NodeArgs for each weight name
 Status SetUpBaseGraph(Graph& graph) {
   ONNX_NAMESPACE::TypeProto float_tensor_type{};
   float_tensor_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -73,36 +73,27 @@ Status SetUpBaseGraph(Graph& graph) {
   ONNX_NAMESPACE::TensorProto weight_gradient_initializer_base{weight_initializer_base};
   weight_gradient_initializer_base.set_float_data(0, 2.0f);
 
-  std::vector<const NodeArg*> all_nodeargs{};
+  std::unordered_set<std::string> weight_and_gradient_names{};
 
   for (const auto& weight_name : k_weight_names) {
-    auto& weight_arg = graph.GetOrCreateNodeArg(weight_name, &float_tensor_type);
+    graph.GetOrCreateNodeArg(weight_name, &float_tensor_type);
     ONNX_NAMESPACE::TensorProto weight_initializer{weight_initializer_base};
     weight_initializer.set_name(weight_name);
     graph.AddInitializedTensor(weight_initializer);
 
     const std::string weight_gradient_name = GradientBuilderBase::GradientName(weight_name);
-    auto& weight_grad_arg = graph.GetOrCreateNodeArg(weight_gradient_name, &float_tensor_type);
+    graph.GetOrCreateNodeArg(weight_gradient_name, &float_tensor_type);
     ONNX_NAMESPACE::TensorProto weight_gradient_initializer{weight_gradient_initializer_base};
     weight_gradient_initializer.set_name(weight_gradient_name);
     graph.AddInitializedTensor(weight_gradient_initializer);
 
-    all_nodeargs.emplace_back(&weight_arg);
-    all_nodeargs.emplace_back(&weight_grad_arg);
+    weight_and_gradient_names.emplace(weight_name);
+    weight_and_gradient_names.emplace(weight_gradient_name);
   }
 
-  auto& loss_scaling_factor_arg = graph.GetOrCreateNodeArg(k_loss_scaling_factor_name, &float_tensor_type);
-  ONNX_NAMESPACE::TensorProto loss_scaling_factor_initializer{weight_initializer_base};
-  loss_scaling_factor_initializer.set_name(k_loss_scaling_factor_name);
-  loss_scaling_factor_initializer.set_float_data(0, 3.0f);
-  graph.AddInitializedTensor(loss_scaling_factor_initializer);
-  all_nodeargs.emplace_back(&loss_scaling_factor_arg);
-
-  // make the values persist past Graph::Resolve()
-  graph.SetInputs(all_nodeargs);
-  graph.SetOutputs(all_nodeargs);
-
-  return graph.Resolve();
+  Graph::ResolveOptions resolve_options{};
+  resolve_options.initializer_names_to_preserve = &weight_and_gradient_names;
+  return graph.Resolve(resolve_options);
 }
 
 std::unordered_map<std::string, OptimizerNodeConfig> GetOptInfoMap() {

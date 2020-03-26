@@ -595,8 +595,6 @@ class ORTTrainer():
         if self.onnx_model_ is None:
             return
 
-        self.enable_grad_norm_clip_ = enable_grad_norm_clip
-
         self.verify_fully_optimized_model(self.onnx_model_)
         self.session, self.train_io_binding, self.eval_io_binding, self.output_name, _, self.output_types = \
             create_ort_training_session_with_optimizer(
