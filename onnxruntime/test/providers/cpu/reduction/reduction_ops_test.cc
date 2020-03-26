@@ -1665,6 +1665,18 @@ TEST(ReductionOpTest, ArgMin_do_not_keepdims_2) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ArgMin_do_not_keepdims_2_select_last) {
+  OpTester test("ArgMin", 12);
+  test.AddAttribute("axis", (int64_t)0);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("select_last_index", (int64_t)1);
+  test.AddInput<float>("data", {3},
+                       {1.0f, 2.0f, 3.0f});
+  test.AddOutput<int64_t>("reduced", {}, {0});
+  test.Run();
+}
+
+
 TEST(ReductionOpTest, ArgMin_int32) {
   OpTester test("ArgMin");
   test.AddAttribute("axis", (int64_t)0);

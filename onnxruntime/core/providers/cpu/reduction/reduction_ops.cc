@@ -74,6 +74,22 @@ namespace onnxruntime {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), \
       x<int64_t>);
 
+#define REGISTER_UNARY_ELEMENTWISE_KERNEL_INT8_ONLY(x, sinceVersion)                 \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                    \
+      x,                                                                             \
+      sinceVersion,                                                                  \
+      int8_t,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int8_t>()), \
+      x<int8_t>);
+
+#define REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT8_ONLY(x, sinceVersion)                 \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                     \
+      x,                                                                              \
+      sinceVersion,                                                                   \
+      uint8_t,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()), \
+      x<uint8_t>);
+
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL1, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceL1, 11);
 
@@ -604,16 +620,47 @@ Status ArgMax<T>::Compute(OpKernelContext* ctx) const {
 
   if (no_transpose) {
     const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
-
-    for (int64_t i = 0; i < block_size; ++i) {
-      ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).maxCoeff(&maxIndex);
-      *(output_data++) = maxIndex;
+    if (select_last_index_) {
+      assert(blocks > 0);
+      for (int64_t i = 0; i < block_size; ++i) {
+        gsl::span<const T> row(input_data, blocks);
+        auto first = row.cbegin();
+        auto const end = row.cend();
+        auto max_el = first;
+        while (++first < end) {
+          if (*first >= *max_el) {
+            max_el = first;
+          }
+        }
+        *(output_data++) = max_el - row.cbegin();
+        input_data += blocks;
+      }
+    } else {
+      for (int64_t i = 0; i < block_size; ++i) {
+        ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).maxCoeff(&maxIndex);
+        *(output_data++) = maxIndex;
+      }
     }
   } else {
     auto matrixData = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks);
-    for (int i = 0; i < block_size; ++i) {
-      matrixData.row(i).maxCoeff(&maxIndex);
-      *(output_data++) = maxIndex;
+    if (select_last_index_) {
+      for (int i = 0; i < block_size; ++i) {
+        int idx = 0;
+        T max_val = matrixData(i, 0);
+        for (int c = 1; c < blocks; ++c) {
+          auto val = matrixData(i, c);
+          if (val >= max_val) {
+            idx = c;
+            max_val = val;
+          }
+        }
+        *(output_data++) = idx;
+      }
+    } else {
+      for (int i = 0; i < block_size; ++i) {
+        matrixData.row(i).maxCoeff(&maxIndex);
+        *(output_data++) = maxIndex;
+      }
     }
   }
 
@@ -634,16 +681,47 @@ Status ArgMin<T>::Compute(OpKernelContext* ctx) const {
 
   if (no_transpose) {
     const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
-
-    for (int64_t i = 0; i < block_size; ++i) {
-      ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).minCoeff(&minIndex);
-      *(output_data++) = minIndex;
+    if (select_last_index_) {
+      assert(blocks > 0);
+      for (int64_t i = 0; i < block_size; ++i) {
+        gsl::span<const T> row(input_data, blocks);
+        auto first = row.cbegin();
+        auto const end = row.cend();
+        auto min_el = first;
+        while (++first < end) {
+          if (*first <= *min_el) {
+            min_el = first;
+          }
+        }
+        *(output_data++) = min_el - row.cbegin();
+        input_data += blocks;
+      }
+    } else {
+      for (int64_t i = 0; i < block_size; ++i) {
+        ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).minCoeff(&minIndex);
+        *(output_data++) = minIndex;
+      }
     }
   } else {
     auto matrixData = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks);
-    for (int i = 0; i < block_size; ++i) {
-      matrixData.row(i).minCoeff(&minIndex);
-      *(output_data++) = minIndex;
+    if (select_last_index_) {
+      for (int i = 0; i < block_size; ++i) {
+        int idx = 0;
+        T min_val = matrixData(i, 0);
+        for (int c = 1; c < blocks; ++c) {
+          auto val = matrixData(i, c);
+          if (val <= min_val) {
+            idx = c;
+            min_val = val;
+          }
+        }
+        *(output_data++) = idx;
+      }
+    } else {
+      for (int i = 0; i < block_size; ++i) {
+        matrixData.row(i).minCoeff(&minIndex);
+        *(output_data++) = minIndex;
+      }
     }
   }
 
