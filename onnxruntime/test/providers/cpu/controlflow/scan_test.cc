@@ -275,9 +275,7 @@ static void RunTest_v8(const std::string test_name, int64_t batch_size, int64_t 
   Model model(test_name, false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   auto status = CreateSubgraph(graph, options, options.add_bad_shape ? failure_message : "");
-  if (!status.IsOK()) {
-    return;
-  }
+  ASSERT_STATUS_OK(status);
   auto& proto = graph.ToGraphProto();
 
   ScanOpTester test{8};
