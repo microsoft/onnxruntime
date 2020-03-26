@@ -33,8 +33,6 @@ TEST(FeaturizersTests, Grained_LagLead_2_grain_horizon_2_lead_1_lead_2) {
   //parameter setting
   using InputType = int64_t;
   using GrainType = std::vector<std::string>;
-  using OutputMatrixDataType = NS::Traits<InputType>::nullable_type;
-  using TransformedType = std::tuple<std::vector<std::string>, NS::RowMajMatrix<OutputMatrixDataType>>;
   NS::AnnotationMapsPtr                                            pAllColumnAnnotations(NS::CreateTestAnnotationMapsPtr(1));
   NS::Featurizers::GrainedLagLeadOperatorEstimator<InputType>      estimator(pAllColumnAnnotations, 2, {1, 2});
   using GrainedInputType = std::tuple<GrainType, InputType>;
