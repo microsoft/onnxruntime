@@ -10,6 +10,7 @@
 #include "core/session/environment.h"
 #include "core/framework/random_seed.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/hip/hip_allocator.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/framework/mpi_context.h"
@@ -22,6 +23,8 @@ namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
                                                                                size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
                                                                                onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_HIP(OrtDevice::DeviceId device_id);
 }
 
 using namespace onnxruntime;
@@ -564,6 +567,12 @@ void setup_training_params(BertParameters& params) {
     cuda_mem_limit = static_cast<size_t>(params.cuda_mem_limit_in_gb * 1024 * 1024 * 1024);
   params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id, cuda_mem_limit));
   params.input_allocator = std::make_shared<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
+#endif
+
+#ifdef USE_HIP
+  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(params.mpi_context.local_rank);
+  params.providers.emplace(kHipExecutionProvider, CreateExecutionProviderFactory_HIP(device_id));
+  params.input_allocator = std::make_shared<HIPPinnedAllocator>(device_id, CUDA_PINNED);
 #endif
 
   params.loss_func_info = LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
