@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <random>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
