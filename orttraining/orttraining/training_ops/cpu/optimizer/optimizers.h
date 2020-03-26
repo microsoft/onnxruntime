@@ -45,7 +45,7 @@ class AdamOptimizer final : public OpKernel {
   float beta_;
   float lambda_;
   float epsilon_;
-  int64_t do_bias_correction_;
+  bool do_bias_correction_;
   int64_t weight_decay_mode_;
 };
 }  // namespace contrib

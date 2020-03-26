@@ -5,7 +5,7 @@
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "orttraining/training_ops/cuda/optimizer/common.h"
-#include "adam.h"
+#include "orttraining/training_ops/cuda/optimizer/adam.h"
 
 namespace onnxruntime {
 namespace cuda {
