@@ -166,6 +166,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_telemetry", action='store_true', help="Only official builds can set this flag to enable telemetry.")
     parser.add_argument("--enable_wcos", action='store_true', help="Build for Windows Core OS.")
     parser.add_argument("--enable_lto", action='store_true', help="Enable Link Time Optimization")
+    parser.add_argument("--async-exceptions", action='store_true', help="Enable asynchronous exceptions")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -300,7 +301,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
                  "-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"),
                  "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
-                 "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android else "ON"),
                  "-DPYTHON_EXECUTABLE=" + sys.executable,
                  "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
                  "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
@@ -344,6 +344,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
                  "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
                  "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
+                 "-Donnxruntime_ASYNC_EXCEPTIONS=" + ("ON" if args.async_exceptions else "OFF")
                  ]
 
     # nGraph and TensorRT providers currently only supports full_protobuf option.
