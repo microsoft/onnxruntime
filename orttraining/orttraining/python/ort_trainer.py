@@ -613,6 +613,7 @@ class ORTTrainer():
         self.allreduce_post_accumulation_ = allreduce_post_accumulation
         self.partition_optimizer_ = partition_optimizer
         self.enable_grad_norm_clip_ = enable_grad_norm_clip
+        self.frozen_weights_ = frozen_weights
         self.loss_scale_input_name = ''
 
         self._init_session()
@@ -637,7 +638,7 @@ class ORTTrainer():
                 use_mixed_precision=self.use_mixed_precision, allreduce_post_accumulation=self.allreduce_post_accumulation_,
                 loss_scale_input_name=self.loss_scale_input_name, scaled_loss_output_name=self.scaled_loss_output_name,
                 partition_optimizer=self.partition_optimizer_, enable_grad_norm_clip=self.enable_grad_norm_clip_,
-                frozen_weights=frozen_weights)
+                frozen_weights=self.frozen_weights_)
 
         # ORT backend has modified model output dtype from float32 to float16.
         for o_desc in self.model_desc_.outputs_:
