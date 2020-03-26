@@ -80,6 +80,16 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel default_warning_level,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithGlobalThreadPools, OrtLoggingLevel default_warning_level,
+                    _In_ const char* logid, _In_ ThreadingOptions tp_options, _Outptr_ OrtEnv** out) {
+  API_IMPL_BEGIN
+  OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, default_warning_level, logid};
+  Status status;
+  *out = OrtEnv::GetInstance(lm_info, status, &tp_options);
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
+
 // enable platform telemetry
 ORT_API_STATUS_IMPL(OrtApis::EnableTelemetryEvents, _In_ const OrtEnv* ort_env) {
   API_IMPL_BEGIN
@@ -414,7 +424,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
   try {
     sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
-        model_path, env->GetLoggingManager());
+        env->GetEnvironment(), model_path);
   } catch (const std::exception& e) {
     return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }
@@ -429,7 +439,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
   try {
     sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
-        model_data, static_cast<int>(model_data_length), env->GetLoggingManager());
+        env->GetEnvironment(), model_data, static_cast<int>(model_data_length));
   } catch (const std::exception& e) {
     return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }
@@ -1362,7 +1372,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
 	In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_2 = {
+static constexpr OrtApi ort_api_1_to_3 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -1482,7 +1492,6 @@ static constexpr OrtApi ort_api_1_to_2 = {
     &OrtApis::ReleaseCustomOpDomain,
     // End of Version 1 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 2 - In development, feel free to add/remove/rearrange here
     &OrtApis::GetDenotationFromTypeInfo,
     &OrtApis::CastTypeInfoToMapTypeInfo,
     &OrtApis::CastTypeInfoToSequenceTypeInfo,
@@ -1500,6 +1509,11 @@ static constexpr OrtApi ort_api_1_to_2 = {
     &OrtApis::ModelMetadataLookupCustomMetadataMap,
     &OrtApis::ModelMetadataGetVersion,
     &OrtApis::ReleaseModelMetadata,
+    // End of Version 2 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Version 3 - In development, feel free to add/remove/rearrange here
+    &OrtApis::CreateEnvWithGlobalThreadPools,
+    &OrtApis::DisablePerSessionThreads,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
@@ -1507,8 +1521,8 @@ static constexpr OrtApi ort_api_1_to_2 = {
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
-  if (version >= 1 && version <= 2)
-    return &ort_api_1_to_2;
+  if (version >= 1 && version <= 3)
+    return &ort_api_1_to_3;
 
   return nullptr;  // Unsupported version
 }

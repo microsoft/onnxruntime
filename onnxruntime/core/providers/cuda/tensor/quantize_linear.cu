@@ -42,7 +42,6 @@ Status CudaQuantizeLinear(const float* input, T* output, const float* scale, con
     return Status::OK();
 
   int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
-  CUDA_LONG N = static_cast<CUDA_LONG>(num_of_element);
   QuantizeLinearKernel<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
       <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           input,
@@ -72,7 +71,6 @@ Status CudaDequantizeLinear(const T* input, float* output, const float* scale, c
     return Status::OK();
 
   int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
-  CUDA_LONG N = static_cast<CUDA_LONG>(num_of_element);
   DequantizeLinearKernel<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
       <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           input,

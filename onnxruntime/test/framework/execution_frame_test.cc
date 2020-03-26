@@ -277,7 +277,7 @@ TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {
   SessionOptions so;
   so.session_logid = "BadModelInvalidDimParamUsage";
 
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   Status st;
   ASSERT_TRUE((st = session_object.Load("testdata/invalid_dim_param_value_repetition.onnx")).IsOK()) << st;
   ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;

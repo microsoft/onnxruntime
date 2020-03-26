@@ -37,7 +37,7 @@ TwoDArray OpFunctionTester::RunFunctionBodyGraphOnCPU() {
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
 
-  InferenceSession cpu_session_object{so};
+  InferenceSession cpu_session_object{so, GetEnvironment()};
 
   // Run the inlined graph with cpu
   std::string s1;

@@ -69,7 +69,7 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
 
-  InferenceSession cpu_session_object{so};
+  InferenceSession cpu_session_object{so, GetEnvironment()};
 
   // first run with cpu
   std::string s1;
@@ -104,7 +104,7 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
 
   // run with target provider
 
-  InferenceSession target_session_object{so};
+  InferenceSession target_session_object{so, GetEnvironment()};
   EXPECT_TRUE(target_session_object.RegisterExecutionProvider(std::move(target_execution_provider)).IsOK());
 
   std::istringstream model_proto_str1(s1);

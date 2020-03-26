@@ -31,7 +31,7 @@ limitations under the License.
 #include "core/platform/scoped_resource.h"
 #include "core/platform/windows/telemetry.h"
 
-#include "core/framework/path_lib.h"  // for LoopDir() // TODO path_lib is moving to core/platform
+#include "core/platform/path_lib.h"  // for LoopDir()
 
 namespace onnxruntime {
 

@@ -141,17 +141,16 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_openblas", action='store_true', help="Build with OpenBLAS.")
     parser.add_argument("--use_dnnl", action='store_true', help="Build with DNNL.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
-    parser.add_argument("--use_gemmlowp", action='store_true', help="Build with gemmlowp for quantized gemm.")
     parser.add_argument("--use_featurizers", action='store_true', help="Build with ML Featurizer support.")
     parser.add_argument("--use_ngraph", action='store_true', help="Build with nGraph.")
     parser.add_argument("--use_openvino", nargs="?", const="CPU_FP32",
                         choices=["CPU_FP32","GPU_FP32","GPU_FP16","VAD-M_FP16","MYRIAD_FP16","VAD-F_FP32"], help="Build with OpenVINO for specific hardware.")
     parser.add_argument("--use_dnnlibrary", action='store_true', help="Build with DNNLibrary.")
-    parser.add_argument("--use_preinstalled_eigen", action='store_true', help="Use pre-installed eigen.")
-    parser.add_argument("--eigen_path", help="Path to pre-installed eigen.")
-    parser.add_argument("--use_tvm", action="store_true", help="Build with tvm")
-    parser.add_argument("--use_openmp", action='store_true', help="Build with OpenMP.")
-    parser.add_argument("--use_llvm", action="store_true", help="Build tvm with llvm")
+    parser.add_argument("--use_preinstalled_eigen", action='store_true', help="Use pre-installed Eigen.")
+    parser.add_argument("--eigen_path", help="Path to pre-installed Eigen.")
+    parser.add_argument("--use_tvm", action="store_true", help="Build with TVM")
+    parser.add_argument("--use_openmp", action='store_true', help="Build with OpenMP")
+    parser.add_argument("--use_llvm", action="store_true", help="Build TVM with LLVM")
     parser.add_argument("--enable_msinternal", action="store_true", help="Enable for Microsoft internal builds only.")
     parser.add_argument("--llvm_path", help="Path to llvm dir")
     parser.add_argument("--use_nuphar", action='store_true', help="Build with nuphar")
@@ -324,7 +323,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
                  "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
                  "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
-                 "-Donnxruntime_USE_GEMMLOWP=" + ("ON" if args.use_gemmlowp else "OFF"),
                  "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
                  "-Donnxruntime_USE_OPENVINO=" + ("ON" if args.use_openvino else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_MYRIAD=" + ("ON" if args.use_openvino == "MYRIAD_FP16" else "OFF"),
@@ -350,7 +348,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
                  "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
                  "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
-                 "-Donnxruntime_ENABLE_WCOS=" + ("ON" if args.enable_wcos else "OFF"),
                  "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
                  # Training related flags
                  "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
@@ -410,12 +407,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     build_number = os.getenv('Build_BuildNumber')
     source_version = os.getenv('Build_SourceVersion')
     if build_number and source_version:
-        build_matches = re.match(r"^(\d\d)(\d\d)(\d\d)-(\d\d)(\d\d)\.(\d)\.(\S+)$", build_number)
+        build_matches = re.fullmatch(r"(\d\d)(\d\d)(\d\d)(\d\d)\.(\d+)", build_number)
         if build_matches:
-            YY = build_matches.group(1)
-            MM = build_matches.group(2)
-            DD = build_matches.group(3)
-            HH = build_matches.group(4)
+            YY = build_matches.group(2)
+            MM = build_matches.group(3)
+            DD = build_matches.group(4)
 
             # Get ORT major and minor number
             with open(os.path.join(source_dir, 'VERSION_NUMBER')) as f:
@@ -433,8 +429,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 # String = 191101-2300.1.master.0bce7ae
                 cmake_args += ["-DVERSION_MAJOR_PART={}".format(ort_major),
                             "-DVERSION_MINOR_PART={}".format(ort_minor),
-                            "-DVERSION_BUILD_PART={}{}".format(YY, MM),
-                            "-DVERSION_PRIVATE_PART={}{}".format(DD, HH),
+                            "-DVERSION_BUILD_PART={}".format(YY),
+                            "-DVERSION_PRIVATE_PART={}{}".format(MM, DD),
                             "-DVERSION_STRING={}.{}.{}.{}".format(ort_major, ort_minor, build_number, source_version[0:7])]
 
     for config in configs:
@@ -633,6 +629,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
             executables = ['onnxruntime_test_all.exe']
             if args.build_shared_lib:
                 executables.append('onnxruntime_shared_lib_test.exe')
+                executables.append('onnxruntime_global_thread_pools_test.exe')
             run_subprocess(['vstest.console.exe', '--parallel', '--TestAdapterPath:..\\googletestadapter.0.17.1\\build\\_common', '/Logger:trx','/Enablecodecoverage','/Platform:x64',"/Settings:%s" % os.path.join(source_dir, 'cmake\\codeconv.runsettings')] + executables,
                        cwd=cwd2, dll_path=dll_path)
         else:
@@ -963,37 +960,38 @@ def main():
         cmake_extra_args = []
         path_to_protoc_exe = None
         if(is_windows()):
-          if (args.x86):
-            cmake_extra_args = ['-A','Win32','-T','host=x64','-G', args.cmake_generator]
-          elif (args.arm or args.arm64):
-            # Cross-compiling for ARM(64) architecture
-            # First build protoc for host to use during cross-compilation
-            path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
-            if args.arm:
-                cmake_extra_args = ['-A', 'ARM']
+            if (args.x86):
+                cmake_extra_args = ['-A','Win32','-T','host=x64','-G', args.cmake_generator]
+            elif (args.arm or args.arm64):
+                # Cross-compiling for ARM(64) architecture
+                # First build protoc for host to use during cross-compilation
+                path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
+                if args.arm:
+                    cmake_extra_args = ['-A', 'ARM']
+                else:
+                    cmake_extra_args = ['-A', 'ARM64']
+                cmake_extra_args += ['-G', args.cmake_generator]
+                # Cannot test on host build machine for cross-compiled builds (Override any user-defined behaviour for test if any)
+                if args.test:
+                    log.info("Cannot test on host build machine for cross-compiled ARM(64) builds. Will skip test running after build.")
+                    args.test = False
             else:
-                cmake_extra_args = ['-A', 'ARM64']
-            cmake_extra_args += ['-G', args.cmake_generator]
-            # Cannot test on host build machine for cross-compiled builds (Override any user-defined behaviour for test if any)
-            if args.test:
-                log.info("Cannot test on host build machine for cross-compiled ARM(64) builds. Will skip test running after build.")
-                args.test = False
-          else:
-            if args.msvc_toolset == '14.16' and args.cmake_generator == 'Visual Studio 16 2019':
-                #CUDA 10.0 requires _MSC_VER >= 1700 and _MSC_VER < 1920, aka Visual Studio version in [2012, 2019)
-                #In VS2019, we have to use Side-by-side minor version MSVC toolsets from Visual Studio 2017
-                #14.16 is MSVC version
-                #141 is MSVC Toolset Version
-                #Cuda VS extension should be installed to C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Microsoft\VC\v160\BuildCustomizations
-                toolset = 'v141,host=x64,version=' + args.msvc_toolset
-            elif args.msvc_toolset:
-                toolset = 'host=x64,version=' + args.msvc_toolset
-            else:
-                toolset = 'host=x64'
-            if (args.cuda_version):
-                toolset += ',cuda=' + args.cuda_version
-
-            cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
+                if args.msvc_toolset == '14.16' and args.cmake_generator == 'Visual Studio 16 2019':
+                    #CUDA 10.0 requires _MSC_VER >= 1700 and _MSC_VER < 1920, aka Visual Studio version in [2012, 2019)
+                    #In VS2019, we have to use Side-by-side minor version MSVC toolsets from Visual Studio 2017
+                    #14.16 is MSVC version
+                    #141 is MSVC Toolset Version
+                    #Cuda VS extension should be installed to C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Microsoft\VC\v160\BuildCustomizations
+                    toolset = 'v141,host=x64,version=' + args.msvc_toolset
+                elif args.msvc_toolset:
+                    toolset = 'host=x64,version=' + args.msvc_toolset
+                else:
+                    toolset = 'host=x64'
+                if (args.cuda_version):
+                    toolset += ',cuda=' + args.cuda_version
+                cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
+            if args.enable_wcos:
+                cmake_extra_args.append('-DCMAKE_TOOLCHAIN_FILE=' + os.path.join(source_dir, 'cmake', 'wcos_toolchain.cmake'))
         if args.android:
             # Cross-compiling for Android
             path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)

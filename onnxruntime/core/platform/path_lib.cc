@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "path_lib.h"
+#include "core/platform/path_lib.h"
 
 #include <cassert>
 #include <array>

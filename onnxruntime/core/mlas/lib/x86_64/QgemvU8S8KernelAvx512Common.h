@@ -11,7 +11,7 @@ Module Name:
 Abstract:
 
     This module contains common kernel macros and structures for the quantized
-    integer matrix/vector multiply operation (QGEMV) for the AVX512BW and
+    integer matrix/vector multiply operation (QGEMV) for the AVX512 core and
     AVX512VNNI kernels.
 
 --*/
@@ -83,7 +83,7 @@ C_UNDERSCORE(MlasGemvU8S8Kernel\Isa\()):
         mov     rcx,rbx
         mov     r10,rdx
         mov     r11,rsp                     # set ZeroMode to any non-zero value
-.ifeqs "\Isa\()", "Avx512BW"
+.ifeqs "\Isa\()", "Avx512Core"
         mov     eax,1
         vpbroadcastw zmm29,eax
 .endif
@@ -126,7 +126,7 @@ C_UNDERSCORE(MlasGemvU8S8Kernel\Isa\()):
         vpunpckhwd zmm17,zmm20,zmm22
         vpunpcklwd zmm18,zmm21,zmm23
         vpunpckhwd zmm19,zmm21,zmm23
-.ifeqs "\Isa\()", "Avx512BW"
+.ifeqs "\Isa\()", "Avx512Core"
         vpmaddubsw zmm16,zmm28,zmm16
         vpmaddwd zmm20,zmm16,zmm29
         vpmaddubsw zmm17,zmm28,zmm17
@@ -234,7 +234,7 @@ C_UNDERSCORE(MlasGemvU8S8Kernel\Isa\()):
         vinserti128 ymm5,ymm5,xmm1,1        # concatenate 256-bit vector
         vinserti128 ymm3,ymm3,xmm2,1
         vshufi32x4 zmm16,zmm5,zmm3,0x44     # concatenate 512-bit vector
-.ifeqs "\Isa\()", "Avx512BW"
+.ifeqs "\Isa\()", "Avx512Core"
         vpmaddubsw zmm16,zmm28,zmm16
         vpmaddwd zmm20,zmm16,zmm29
 .else
@@ -323,7 +323,7 @@ C_UNDERSCORE(MlasGemvU8S8Kernel\Isa\()):
         vinserti128 ymm5,ymm5,xmm1,1        # concatenate 256-bit vector
         vinserti128 ymm3,ymm3,xmm2,1
         vshufi32x4 zmm16,zmm5,zmm3,0x44     # concatenate 512-bit vector
-.ifeqs "\Isa\()", "Avx512BW"
+.ifeqs "\Isa\()", "Avx512Core"
         vpmaddubsw zmm16,zmm28,zmm16
         vpmaddwd zmm20,zmm16,zmm29
 .else

@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
                                                   -1};
 
   std::unique_ptr<Environment> env;
-  ORT_ENFORCE(Environment::Create(env) == Status::OK(), "Enviroment creation fails.");
+  ORT_ENFORCE(Environment::Create(nullptr, env) == Status::OK(), "Enviroment creation fails.");
   ORT_ENFORCE(parse_arguments(argc, argv, params) == Status::OK(), "Parsing command-line argument fails");
 
   // Set up MPI.
@@ -101,7 +101,7 @@ int main(int argc, char* argv[]) {
       overrides                          //free_dimension_overrides
   };
 
-  InferenceSession session_object{so};
+  InferenceSession session_object{so, *env};
 
   CUDAExecutionProviderInfo xp_info{static_cast<OrtDevice::DeviceId>(world_rank)};
   session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));

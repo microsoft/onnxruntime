@@ -168,7 +168,7 @@ void GradientOpTester::Run(
         continue;
 
       has_run = true;
-      onnxruntime::training::TrainingSession session_object{so};
+      onnxruntime::training::TrainingSession session_object{so, GetEnvironment()};
 
       EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
