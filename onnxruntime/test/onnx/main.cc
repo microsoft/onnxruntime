@@ -686,7 +686,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
   int result = 0;
   for (const auto& p : stat.GetFailedTest()) {
-    BrokenTest t = {p.first, ""};
+    BrokenTest t = {p.first, "onnxtip"};
     auto iter = broken_tests.find(t);
     if (iter == broken_tests.end() || (p.second != TestModelInfo::unknown_version && !iter->broken_versions_.empty() &&
                                        iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {

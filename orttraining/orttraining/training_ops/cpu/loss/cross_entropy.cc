@@ -8,6 +8,8 @@
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/util/math.h"
 #include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/cpu/tensor/transpose.h"
+#include "core/providers/cpu/controlflow/scan_utils.h"
 #include "gsl/gsl"
 
 namespace onnxruntime {
@@ -154,96 +156,143 @@ Status SoftmaxCrossEntropyGrad<T>::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
+#define REGISTER_KERNEL_TYPED(OpName, Domain, VER, T1, T2)          \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                    \
+      OpName,                                                       \
+      Domain,                                                       \
+      VER,                                                          \
+      T1##_##T2,                                                    \
+      kCpuExecutionProvider,                                        \
+      KernelDefBuilder()                                            \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())   \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T2>()), \
+      OpName<T1, T2>);
 
-ONNX_OPERATOR_KERNEL_EX(
-    SoftmaxCrossEntropyLoss,
-    kOnnxDomain,
-    12,
-    kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<MLFloat16>(),
-                                            DataTypeImpl::GetTensorType<double>()}),
-    SoftmaxCrossEntropyLoss<float>);
+REGISTER_KERNEL_TYPED(SoftmaxCrossEntropyLoss, kOnnxDomain, 12, float, int32_t)
+REGISTER_KERNEL_TYPED(SoftmaxCrossEntropyLoss, kOnnxDomain, 12, float, int64_t)
 
-template <typename T>
-Status SoftmaxCrossEntropyLoss<T>::Compute(OpKernelContext* context) const {
+template <typename T1, typename T2>
+Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const {
   const Tensor& logit = *context->Input<Tensor>(0);
   const Tensor& label = *context->Input<Tensor>(1);
 
   const TensorShape logit_shape{logit.Shape()};
   const TensorShape label_shape{label.Shape()};
-  ORT_ENFORCE(logit_shape.NumDimensions() == label_shape.NumDimensions() + 1,
+  const size_t label_dims = label_shape.NumDimensions();
+  ORT_ENFORCE(logit_shape.NumDimensions() == label_dims + 1,
               "logit_shape must be (1 + label_shape)");
-  for (size_t i = 0; i < label_shape.NumDimensions(); i++) {
-    ORT_ENFORCE(label_shape[i] == logit_shape[i], "The shape of logit and label does not match");
+
+  ORT_ENFORCE(label_shape[0] == logit_shape[0], "The shape of logit and label does not match");
+
+  if (label_dims >= 2) {
+    for (size_t i = 0; i < label_shape.NumDimensions() - 1; i++) {
+      ORT_ENFORCE(label_shape[i + 1] == logit_shape[i + 2], "The shape of logit and label does not match");
+    }
   }
 
   int64_t N = label_shape.Size();
-  int64_t D = logit_shape[logit_shape.NumDimensions() - 1];
+  int64_t D = logit_shape[label_dims];
+  const T1* logit_data = logit.template Data<T1>();
+  OrtValue transpose_output;
+  Tensor transpose_tensor;
+  std::vector<int64_t> new_shape;
+  AllocatorPtr alloc;
+  if (logit_shape.NumDimensions() > 2) {
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+
+    new_shape = {logit_shape[0], logit_shape[2], logit_shape[1]};
+    transpose_output = scan::detail::AllocateTensorInMLValue(logit.DataType(), new_shape, alloc);
+
+    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose({0, 2, 1}, logit, *transpose_output.GetMutable<Tensor>()));
+
+    logit_data = (*transpose_output.GetMutable<Tensor>()).template Data<T1>();
+    N = logit_shape[0] * logit_shape[2];
+    D = logit_shape[1];
+  }
+
   const int n = gsl::narrow_cast<int>(N);
   const int d = gsl::narrow_cast<int>(D);
   const int nd = gsl::narrow_cast<int>(N * D);
+  Tensor* loss = context->Output(0, reduction_ == ReductionType::NONE ? TensorShape({label_shape[0]}) : TensorShape({}));
 
-  Tensor* loss = context->Output(0, TensorShape({}));
-  Tensor* log_prob = context->Output(1, logit_shape);
+  T1* log_prob_data;
+  std::vector<T1> log_prob_data_buffer(0);
+  if (context->OutputCount() > 1) {
+    log_prob_data = context->Output(1, logit_shape)->template MutableData<T1>();
+  } else {
+    log_prob_data_buffer.resize(logit_shape.Size());
+    log_prob_data = log_prob_data_buffer.data();
+  }
 
-  const T* logit_data = logit.template Data<T>();
-  const int64_t* label_data = label.template Data<int64_t>();
-  T* loss_data = loss->template MutableData<T>();
-  T* log_prob_data = log_prob->template MutableData<T>();
+  const T2* label_data = label.template Data<T2>();
+  T1* loss_data = loss->template MutableData<T1>();
 
   // computation begins here
-  std::vector<T> shifted_logit(nd);
-  ComputeShareSoftmaxCrossEntropyCPU(n, d, nd, logit_data,
-                                     shifted_logit.data(),
-                                     log_prob_data);
-
-  std::vector<T> loss_sample(n);
+  std::vector<T1> shifted_logit(nd);
+  ComputeShareSoftmaxCrossEntropyCPU(n, d, nd, logit_data, shifted_logit.data(), log_prob_data);
+  std::vector<T1> loss_sample_buffer(0);
+  T1* loss_sample;
+  if (reduction_ == ReductionType::NONE) {
+    loss_sample = loss_data;
+  } else {
+    loss_sample_buffer.resize(n);
+    loss_sample = loss_sample_buffer.data();
+  }
 
   if (OpKernel::Node().InputDefs().size() == 3) {
     const Tensor& weight = *context->Input<Tensor>(2);
     const TensorShape weight_shape{weight.Shape()};
-    ORT_ENFORCE(weight_shape == label_shape, "The shape of weight and label is different");
-    const T* weight_data = weight.template Data<T>();
-    for (int i = 0; i < n; i++) {
-      loss_sample[i] = -log_prob_data[i * d + label_data[i]] * weight_data[i];
+    ORT_ENFORCE(1 == weight_shape.NumDimensions(), "Weights tensor is not 1-D.");
+    const T1* weight_data = weight.template Data<T1>();
+    T1 sum_weight = (T1)0;
+
+    if (reduction_ == ReductionType::MEAN) {
+      for (int i = 0; i < n; i++) {
+        loss_sample[i] = -log_prob_data[i * d + label_data[i]] * weight_data[label_data[i]];
+        sum_weight += weight_data[label_data[i]];
+      }
+
+    } else {
+      for (int i = 0; i < n; i++) {
+        loss_sample[i] = -log_prob_data[i * d + label_data[i]] * weight_data[label_data[i]];
+      }
     }
 
-    // Sum loss over n samples
-    math::Sum<float, CPUMathUtil>(n, loss_sample.data(), loss_data, nullptr);
+    if (reduction_ == ReductionType::NONE) {
+      return Status::OK();
+    } else {
+      // Sum loss over n samples
+      math::Sum<float, CPUMathUtil>(n, loss_sample, loss_data, nullptr);
 
-    // Average sum_loss over sum_weights
-    if (reduction_ == ReductionType::MEAN) {
-      T sum_weight;
-      math::Sum<T, CPUMathUtil>(n, weight_data, &sum_weight, nullptr);
-      *loss_data /= sum_weight;
+      // Average sum_loss over sum_weights
+      if (reduction_ == ReductionType::MEAN) {
+        *loss_data /= sum_weight;
+      }
     }
   } else {
     for (int i = 0; i < n; i++) {
       loss_sample[i] = -log_prob_data[i * d + label_data[i]];
     }
-    // Sum loss over n samples
-    math::Sum<T, CPUMathUtil>(n, loss_sample.data(), loss_data, nullptr);
 
-    if (reduction_ == ReductionType::MEAN) {
-      *loss_data /= n;
+    if (reduction_ == ReductionType::NONE) {
+      return Status::OK();
+    } else {
+      // Sum loss over n samples
+      math::Sum<T1, CPUMathUtil>(n, loss_sample, loss_data, nullptr);
+
+      if (reduction_ == ReductionType::MEAN) {
+        *loss_data /= n;
+      }
     }
   }
   return Status::OK();
 }
 
-ONNX_OPERATOR_KERNEL_EX(
-    SoftmaxCrossEntropyLossGrad,
-    kMSDomain,
-    1,
-    kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<MLFloat16>(),
-                                            DataTypeImpl::GetTensorType<double>()}),
-    SoftmaxCrossEntropyLossGrad<float>);
+REGISTER_KERNEL_TYPED(SoftmaxCrossEntropyLossGrad, kMSDomain, 1, float, int32_t)
+REGISTER_KERNEL_TYPED(SoftmaxCrossEntropyLossGrad, kMSDomain, 1, float, int64_t)
 
-template <typename T>
-Status SoftmaxCrossEntropyLossGrad<T>::Compute(OpKernelContext* context) const {
+template <typename T1, typename T2>
+Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) const {
   const Tensor& dY = *context->Input<Tensor>(0);
   const Tensor& log_prob = *context->Input<Tensor>(1);
   const Tensor& label = *context->Input<Tensor>(2);
@@ -263,19 +312,19 @@ Status SoftmaxCrossEntropyLossGrad<T>::Compute(OpKernelContext* context) const {
 
   Tensor* d_logit = context->Output(0, probability_shape);
 
-  const T* dY_data = dY.template Data<T>();
-  const T* log_prob_data = log_prob.template Data<T>();
-  const int64_t* label_data = label.template Data<int64_t>();
-  T* d_logit_data = d_logit->template MutableData<T>();
+  const T1* dY_data = dY.template Data<T1>();
+  const T1* log_prob_data = log_prob.template Data<T1>();
+  const T2* label_data = label.template Data<T2>();
+  T1* d_logit_data = d_logit->template MutableData<T1>();
 
   // computation begins here
   if (OpKernel::Node().InputDefs().size() == 4) {
     const Tensor& weight = *context->Input<Tensor>(3);
     const TensorShape weight_shape{weight.Shape()};
     ORT_ENFORCE(weight_shape == label_shape, "The shape of weight and label is different");
-    const T* weight_data = weight.template Data<T>();
+    const T1* weight_data = weight.template Data<T1>();
 
-    T dY_scaled = *dY_data;
+    T1 dY_scaled = *dY_data;
     if (reduction_ == ReductionType::MEAN) {
       float sum_weight;
       math::Sum<float, CPUMathUtil>(n, weight_data, &sum_weight, nullptr);
@@ -283,21 +332,21 @@ Status SoftmaxCrossEntropyLossGrad<T>::Compute(OpKernelContext* context) const {
     }
 
     for (int i = 0; i < n; i++) {
-      int64_t label_sample = label_data[i];
-      T weight_smaple = weight_data[i] * dY_scaled;
+      T2 label_sample = label_data[i];
+      T1 weight_smaple = weight_data[i] * dY_scaled;
       for (int j = 0; j < d; j++) {
         int index = i * d + j;
         d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == j)) * weight_smaple;
       }
     }
   } else {
-    T dY_scaled = *dY_data;
+    T1 dY_scaled = *dY_data;
     if (reduction_ == ReductionType::MEAN) {
       dY_scaled = *dY_data / n;
     }
 
     for (int i = 0; i < n; i++) {
-      int64_t label_sample = label_data[i];
+      T2 label_sample = label_data[i];
       for (int j = 0; j < d; j++) {
         int index = i * d + j;
         d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == j)) * dY_scaled;

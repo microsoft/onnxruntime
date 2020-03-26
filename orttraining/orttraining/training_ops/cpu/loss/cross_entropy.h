@@ -44,7 +44,7 @@ class SoftmaxCrossEntropyGrad final : public LossBase {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SoftmaxCrossEntropyGrad);
 };
 
-template <typename T>
+template <typename T1, typename T2>
 class SoftmaxCrossEntropyLoss final : public LossBase {
  public:
   explicit SoftmaxCrossEntropyLoss(const OpKernelInfo& info) : LossBase(info) {
@@ -56,7 +56,7 @@ class SoftmaxCrossEntropyLoss final : public LossBase {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SoftmaxCrossEntropyLoss);
 };
 
-template <typename T>
+template <typename T1, typename T2>
 class SoftmaxCrossEntropyLossGrad final : public LossBase {
  public:
   explicit SoftmaxCrossEntropyLossGrad(const OpKernelInfo& info) : LossBase(info) {
