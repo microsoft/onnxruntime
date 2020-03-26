@@ -447,12 +447,12 @@ Status TrainingSession::ConfigureLossFunction(
   loss_function_info_ = loss_function_info;
 
   if (loss_function_info_.has_value()) {
-    const auto& loss_function_info = loss_function_info_.value();
+    const auto& loss_function_info_value = loss_function_info_.value();
     ORT_RETURN_IF(
-        loss_function_info.op_def.type.empty() || loss_function_info.loss_name.empty(),
+        loss_function_info_value.op_def.type.empty() || loss_function_info_value.loss_name.empty(),
         "loss_function_info is invalid.");
 
-    loss_graph_builder_ = LossFunctionBuilder::Build(loss_function_info.op_def.type);
+    loss_graph_builder_ = LossFunctionBuilder::Build(loss_function_info_value.op_def.type);
 
     ORT_RETURN_IF_NOT(loss_graph_builder_);
   }
