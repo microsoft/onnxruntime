@@ -250,10 +250,10 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
               return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute");
             }
             len *= it->second;
+          } else if (dim.has_dim_value()) {
+            len *= dim.dim_value();
           } else {
-            if (dim.has_dim_value()) {
-              len *= dim.dim_value();
-            }
+            return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute");
           }
         }
         if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(len, ml_data_type->Size(), &size)) {
