@@ -34,7 +34,7 @@ def handle_negative_axis(axis, rank):
     assert axis < rank and axis >= -rank
     return axis if axis >= 0 else rank + axis
 
-def get_opset(mp, domain=['', 'onnx']):
+def get_opset(mp, domain=['', 'onnx', 'ai.onnx']):
     if type(domain) != list:
         domain = [domain]
     for opset in mp.opset_import:
@@ -645,9 +645,12 @@ class SymbolicShapeInference:
     def _infer_Expand(self, node):
         expand_to_shape = self._try_get_value(node, 1)
         if expand_to_shape is not None:
-            input_shape = self._get_shape(node, 0)
-            target_shape = get_shape_from_sympy_shape(expand_to_shape)
-            new_shape = self._broadcast_shapes(input_shape, target_shape)
+            sympy_shape = self._get_sympy_shape(node, 0)
+            new_sympy_shape = self._broadcast_shapes(sympy_shape, expand_to_shape)
+
+            # new_shape's dim can come from 'Expand' computation
+            self._update_computed_dims(new_sympy_shape)
+            new_shape = get_shape_from_sympy_shape(new_sympy_shape)
             vi = self.known_vi_[node.output[0]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, new_shape))
 
@@ -819,7 +822,6 @@ class SymbolicShapeInference:
     def _infer_Reshape(self, node):
         shape_value = self._try_get_value(node, 1)
         vi = self.known_vi_[node.output[0]]
-        skip_pass_on_sympy_data = False
         if shape_value is None:
             shape_shape = self._get_shape(node, 1)
             assert len(shape_shape) == 1
@@ -852,21 +854,7 @@ class SymbolicShapeInference:
 
             assert new_sympy_shape.count(-1) < 2
             if -1 in new_sympy_shape:
-                # handle a special case where input_shape is [] and shape_value is [-1]
-                if len(input_shape) == 0 and len(shape_value) == 1:
-                    if node.output[0] in self.sympy_data_:
-                        sympy_shape = self.sympy_data_[node.output[0]][0]
-                    else:
-                        # create the sympy data if not exist
-                        self._pass_on_sympy_data(node)
-                        skip_pass_on_sympy_data = True
-                        if node.output[0] in self.sympy_data_:
-                            sympy_shape = self.sympy_data_[node.output[0]][0]
-                        else:
-                            sympy_shape = self._new_symbolic_dim_from_output(node)
-                    new_dim = sympy_shape
-                else:
-                    new_dim = total // non_deferred_size
+                new_dim = total // non_deferred_size
                 new_sympy_shape[deferred_dim_idx] = new_dim
                 self._update_computed_dims(new_sympy_shape)
 
@@ -874,8 +862,7 @@ class SymbolicShapeInference:
                                                       vi.type.tensor_type.elem_type,
                                                       get_shape_from_sympy_shape(new_sympy_shape)))
 
-        if not skip_pass_on_sympy_data:
-            self._pass_on_sympy_data(node)
+        self._pass_on_sympy_data(node)
 
     def _infer_Resize(self, node):
         vi = self.known_vi_[node.output[0]]
