@@ -9,6 +9,7 @@
 
 #include "core/framework/random_seed.h"
 #include "core/framework/session_options.h"
+#include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/mpi_setup.h"
@@ -184,8 +185,14 @@ void addObjectMethodsForTraining(py::module& m) {
 
 
   py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
-  training_session.def(py::init<SessionOptions, SessionObjectInitializer>())
-      .def(py::init<SessionObjectInitializer, SessionObjectInitializer>())
+  training_session.def(py::init([](const SessionOptions& so) {
+      Environment& env = get_env();
+      return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
+      }))
+      .def(py::init([]() {
+        Environment& env = get_env();
+        return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(GetDefaultCPUSessionOptions(), env);
+      }))
       .def("finalize", [](py::object) {
 #ifdef USE_HOROVOD
         training::shutdown_horovod();

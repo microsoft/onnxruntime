@@ -4,7 +4,7 @@
 #pragma once
 
 #include <fstream>
-#include "core/framework/path_lib.h"
+#include "core/platform/path_lib.h"
 
 namespace tensorboard {
   class Event;
