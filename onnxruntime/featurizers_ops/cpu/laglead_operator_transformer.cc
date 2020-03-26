@@ -21,7 +21,7 @@ struct LagLeadOperatorTransformerImpl {
     using GrainT = std::vector<std::string>;
     using EstimatorT = Microsoft::Featurizer::Featurizers::GrainedLagLeadOperatorEstimator<T>;
     using GrainedInputType = std::tuple<GrainT, T>;
-    using OutputMatrixDataType = NS::Traits<T>::nullable_type;
+    using OutputMatrixDataType = typename NS::Traits<T>::nullable_type;
     using OutputMatrixType = NS::RowMajMatrix<OutputMatrixDataType>;
     using OutputType = std::tuple<GrainT, OutputMatrixType>;
 
