@@ -26,13 +26,13 @@ private:
   int device_id_;
 };
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_HIP(int device_id) {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_HIP(OrtDevice::DeviceId device_id) {
   return std::make_shared<onnxruntime::HIPProviderFactory>(device_id);
 }
 
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_HIP, _In_ OrtSessionOptions* options, int device_id) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_HIP(device_id));
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_HIP(static_cast<OrtDevice::DeviceId>(device_id)));
   return nullptr;
 }
