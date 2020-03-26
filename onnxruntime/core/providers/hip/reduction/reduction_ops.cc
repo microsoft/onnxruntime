@@ -254,7 +254,14 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, HipRedu
       static_cast<int>(stride));
     return Status::OK();
   }
-  //return Status::OK();
+
+  if (input_count == 1 && input_count == output_count && reduce_type == HipReduceTensorType::HIP_REDUCE_TENSOR_ADD) {
+    HIP_RETURN_IF_ERROR(hipMemcpyAsync(reinterpret_cast<HipT*>(Y->template MutableData<T>()),
+                                       reinterpret_cast<const HipT*>(X->template Data<T>()),
+                                        X->SizeInBytes(), hipMemcpyDeviceToDevice));
+    return Status::OK();
+  }
+
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "reduction is not supported");
 }
 
