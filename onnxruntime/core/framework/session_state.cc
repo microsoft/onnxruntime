@@ -461,7 +461,7 @@ void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue
   if (to_be_executed_nodes_.find(fetch_mlvalue_idxs) != to_be_executed_nodes_.end())
     return;
 
-  const Graph* graph = GetGraphViewer()->GetGraph();
+  const Graph& graph = GetGraphViewer()->GetGraph();
 
   // Get the nodes generating the fetches.
   std::vector<const Node*> nodes;
@@ -474,12 +474,12 @@ void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue
       to_be_executed_nodes_.insert(std::make_pair(fetch_mlvalue_idxs, reachable_nodes));
       return;
     }
-    auto ending_node = graph->GetProducerNode(node_arg_name);
+    auto ending_node = graph.GetProducerNode(node_arg_name);
     nodes.push_back(ending_node);
   }
 
   // Reversely traverse to get reachable nodes.
-  graph->ReverseDFSFrom(
+  graph.ReverseDFSFrom(
       nodes, {}, [&reachable_nodes](const Node* n) { reachable_nodes.insert(n->Index()); });
   to_be_executed_nodes_.insert(std::make_pair(fetch_mlvalue_idxs, reachable_nodes));
 }
