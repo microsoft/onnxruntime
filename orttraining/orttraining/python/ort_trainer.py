@@ -384,7 +384,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                map_optimizer_attributes, world_rank=-1, world_size=1,
                                                gradient_accumulation_steps=1, bind_parameters=False,
                                                use_mixed_precision=False, allreduce_post_accumulation=False,
-                                               partition_optimizer=False, enable_grad_norm_clip=True):
+                                               partition_optimizer=False, enable_grad_norm_clip=True,
+                                               frozen_weights=[]):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -408,6 +409,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     optimizer_int_attributes_map = {}
     weights_to_train = set()
     for initializer in model.graph.initializer:
+        if initializer.name in frozen_weights:
+            continue
         weights_to_train.add(initializer.name)
         if map_optimizer_attributes is not None:
             attributes = map_optimizer_attributes(initializer.name)
@@ -512,7 +515,8 @@ class ORTTrainer():
     def __init__(self, model, loss_fn, model_desc, training_optimizer_name, map_optimizer_attributes,
                  learning_rate_description, device, gradient_accumulation_steps=1, postprocess_model=None,
                  world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
-                 global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False, enable_grad_norm_clip=True):
+                 global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False,
+                 enable_grad_norm_clip=True, frozen_weights=[]):
         super(ORTTrainer, self).__init__()
         """
         Initializes ORTTrainer.
@@ -587,6 +591,7 @@ class ORTTrainer():
         self.allreduce_post_accumulation_ = allreduce_post_accumulation
         self.partition_optimizer_ = partition_optimizer
         self.enable_grad_norm_clip_ = enable_grad_norm_clip
+        self.frozen_weights_ = frozen_weights
         self.loss_scale_input_name = ''
 
         self._init_session()
@@ -603,7 +608,8 @@ class ORTTrainer():
                 self.world_rank, self.world_size,
                 self.gradient_accumulation_steps, bind_parameters=False,
                 use_mixed_precision=self.use_mixed_precision, allreduce_post_accumulation=self.allreduce_post_accumulation_,
-                partition_optimizer=self.partition_optimizer_, enable_grad_norm_clip=self.enable_grad_norm_clip_)
+                partition_optimizer=self.partition_optimizer_, enable_grad_norm_clip=self.enable_grad_norm_clip_,
+                frozen_weights=self.frozen_weights_)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
