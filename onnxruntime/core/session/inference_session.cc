@@ -179,13 +179,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         to.name = ORT_TSTR("intra-op");
       }
       // If the thread pool can use all the processors, then
-      // we set thread affinity.
-      if (to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL)
+      // we set affinity of each thread to each processor.
+      if (to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL && to.affinity_vec_len == 0)
         to.auto_set_affinity = true;
       else
         to.auto_set_affinity = false;
-      if (to.name == nullptr)
-        to.name = ORT_TSTR("intra-op");
       thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, nullptr);
     }
@@ -202,7 +200,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       inter_op_thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, nullptr);
       if (inter_op_thread_pool_ == nullptr) {
-        LOGS(*session_logger_, INFO) << "Disabling Parallel Executor";
+        LOGS(*session_logger_, INFO) << "Failed to create the inter-op thread pool for the parallel executor, setting ExecutionMode to SEQUENTIAL";
         session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
       }
     }
