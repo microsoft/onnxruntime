@@ -127,9 +127,7 @@ Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex
   auto* x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto* y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
-  result = cufftXtExec(plan_info.plan, const_cast<CudaT*>(x_data), y_data, inverse ? CUFFT_INVERSE : CUFFT_FORWARD);
-
-  ORT_ENFORCE(result == CUFFT_SUCCESS, "Failed to exec the cuFFT plan: ", result);
+  ORT_RETURN_IF_ERROR(cufftXtExec(plan_info.plan, const_cast<CudaT*>(x_data), y_data, inverse ? CUFFT_INVERSE : CUFFT_FORWARD));
 
   if (inverse) {
     PostProcess(signal_dims, Y, y_data);

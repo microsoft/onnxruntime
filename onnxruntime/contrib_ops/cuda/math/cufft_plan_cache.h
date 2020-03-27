@@ -87,18 +87,12 @@ class CuFFTPlanCache {
     size_t ws_size_t;
     CufftPlanInfo plan_info;
 
-    result = cufftCreate(&plan);
+    ORT_RETURN_IF_ERROR(cufftCreate(&plan));
 
-    //TODO: replace it with a util func
-    ORT_ENFORCE(result == CUFFT_SUCCESS, "Failed to create a cuFFT plan: ", result);
-
-    result = cufftXtMakePlanMany(plan, static_cast<int>(key.signal_ndim), reinterpret_cast<long long int*>(key.signal_dims),
-                                 /* inembed */ nullptr, /* base_istride */ 1, /* idist */ 1, key.itype,
-                                 /* onembed */ nullptr, /* base_ostride */ 1, /* odist */ 1, key.otype,
-                                 key.batch_size, &ws_size_t, key.exec_type);
-
-    //TODO: replace it with a util func
-    ORT_ENFORCE(result == CUFFT_SUCCESS, "Failed to create a cuFFT plan: ", result);
+    ORT_RETURN_IF_ERROR(cufftXtMakePlanMany(plan, static_cast<int>(key.signal_ndim), reinterpret_cast<long long int*>(key.signal_dims),
+                                            /* inembed */ nullptr, /* base_istride */ 1, /* idist */ 1, key.itype,
+                                            /* onembed */ nullptr, /* base_ostride */ 1, /* odist */ 1, key.otype,
+                                            key.batch_size, &ws_size_t, key.exec_type));
 
     plan_info.plan = plan;
     plan_info.ws_size_t = ws_size_t;

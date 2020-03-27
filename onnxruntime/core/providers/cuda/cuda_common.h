@@ -12,6 +12,7 @@
 #include "shared_inc/fast_divmod.h"
 #include "core/util/math.h"
 #include "cuda_fwd.h"
+#include "cufft.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -45,6 +46,11 @@ namespace cuda {
   ORT_RETURN_IF_ERROR(CUDNN_CALL2(expr, m)       \
                           ? common::Status::OK() \
                           : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDNN2 error executing ", #expr))
+
+#define CUFFT_RETURN_IF_ERROR(expr)              \
+  ORT_RETURN_IF_ERROR(((expr) == CUFFT_SUCCESS)  \
+                          ? common::Status::OK() \
+                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUFFT error executing ", #expr))
 
 // -----------------------------------------------------------------------
 // Base class for CUDA kernels
@@ -165,7 +171,7 @@ class CudaKernel : public OpKernel {
   inline curandGenerator_t CurandGenerator() const {
     return provider_->PerThreadCurandGenerator();
   }
-  
+
   template <typename T>
   inline const T* GetConstOnes(size_t count) const {
     return provider_->template GetConstOnes<T>(count);
