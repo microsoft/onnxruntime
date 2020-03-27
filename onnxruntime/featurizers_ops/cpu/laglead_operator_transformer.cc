@@ -14,6 +14,19 @@ namespace NS = Microsoft::Featurizer;
 namespace onnxruntime {
 namespace featurizers {
 
+double ExtractNumFromNullable(float const & nullableValue) {
+  return static_cast<double>(nullableValue);
+}
+
+double ExtractNumFromNullable(double const & nullableValue) {
+  return nullableValue;
+}
+
+template <typename T>
+double ExtractNumFromNullable(nonstd::optional<T> const & nullableValue) {
+  return nullableValue.has_value() ? static_cast<double>(*nullableValue) : NS::Traits<double>::CreateNullValue();
+}
+
 template <typename T>
 struct LagLeadOperatorTransformerImpl {
   void operator()(OpKernelContext* ctx) const {
@@ -72,8 +85,8 @@ struct LagLeadOperatorTransformerImpl {
                       output_matrix.data(),
                       output_matrix.data() + output_matrix.size(),
                       output_data,
-                      [](nonstd::optional<T> const & x) -> double {
-                        return x.has_value() ? static_cast<double>(*x) : NS::Traits<double>::CreateNullValue();
+                      [](OutputMatrixDataType const & x) -> double {
+                        return ExtractNumFromNullable(x);
                       }
                     );
     };
