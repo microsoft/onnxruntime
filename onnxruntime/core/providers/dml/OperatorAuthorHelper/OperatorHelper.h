@@ -89,7 +89,7 @@ void FillWithLeadingValues(/*inout*/ std::vector<T>& values, uint32_t minimumEle
   const size_t fillCount = newElementCount - oldElementCount;
 
   values.resize(newElementCount);
-  std::copy_backward(values.data(), values.data() + oldElementCount, values.data() + fillCount);
+  std::copy_backward(values.begin(), values.begin() + oldElementCount, values.end());
   std::fill_n(values.data(), fillCount, fillValue);
 }
 
@@ -577,6 +577,7 @@ public:
         m_outputDimensions.assign(inputDimensions.begin(), inputDimensions.end());
         m_offsets.resize(m_outputDimensions.size());
         m_sizes.resize(m_outputDimensions.size());
+        m_strides = std::move(steps);
         m_strides.resize(m_outputDimensions.size(), 1); // Only a stride of 1 element is supported by ONNX 1.2.
 
         // Set initial defaults lest 'starts' and 'ends' arrays are shorter than the dimension count.
@@ -586,13 +587,27 @@ public:
         for (int i = 0, ci = gsl::narrow_cast<int>(starts.size()); i < ci; ++i)
         {
             int dimIndex = axes.empty() ? i : axes[i];
+            int stride = m_strides[i];
             ML_CHECK_VALID_ARGUMENT(dimIndex < inputDimensions.size(), "'axes' must be valid with within actual input dimensions.");
+            ML_CHECK_VALID_ARGUMENT(stride != 0, "'steps' must not be 0.");
 
             // Positive values are offsets from 0.
-            // Negative values are offsets from the dimension's size.
+            // Negative values are offsets from back of the dimension's size.
+            // INT_MIN is a special value in ONNX which means to treat it as the smallest
+            // possible value, rather than the usual reversed from-the-back semantics.
             int dim = gsl::narrow_cast<int>(inputDimensions[dimIndex]);
             int start = (starts[i] < 0 && starts[i] > INT_MIN) ? (starts[i] + dim) : starts[i];
-            int end = (ends[i] < 0 && ends[i] < INT_MAX) ? (ends[i] + dim) : ends[i];
+            int end = (ends[i] < 0 && starts[i] > INT_MIN) ? (ends[i] + dim) : ends[i];
+
+            // For negative strides, the ONNX start and end values are off-by-one.
+            // So fix them such that the start value remains the minimum extent
+            // of the slice window, and end remains the maximum exclusive extent.
+            if (stride < 0)
+            {
+                std::swap(start, end);
+                start += (start < INT_MAX) ? 1 : 0; // Avoid overflow wrap.
+                end += (end < INT_MAX) ? 1 : 0;
+            }
 
             // Clamp the dimensions to the slice extents.
             // Clamp negative numbers to 0, per case test_slice_start_out_of_bounds.
@@ -600,7 +615,8 @@ public:
             end = std::min(end, dim);
             int size = std::max(end - start, 0);
 
-            m_outputDimensions[dimIndex] = size;
+            int absoluteStride = abs(stride);
+            m_outputDimensions[dimIndex] = (size / absoluteStride) + (size % absoluteStride != 0);
             m_offsets[dimIndex] = start;
             m_sizes[dimIndex] = gsl::narrow_cast<uint32_t>(size);
         }

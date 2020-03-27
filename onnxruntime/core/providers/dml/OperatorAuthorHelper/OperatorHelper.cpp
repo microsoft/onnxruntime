@@ -477,7 +477,7 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         return edgeShapes;
     }
 
-    std::vector<EdgeShapes> SliceHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const    
+    std::vector<EdgeShapes> SliceHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         return { m_outputDimensions };
     }
