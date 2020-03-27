@@ -10,6 +10,7 @@ import struct
 
 import numpy as np
 from onnx import onnx_pb as onnx_proto
+from onnx import shape_inference
 
 __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
@@ -268,7 +269,8 @@ class ONNXQuantizer:
 
     def __init__(self, model, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
                  quantization_params, nodes_to_quantize):
-        self.model = model
+        self.model = shape_inference.infer_shapes(model)
+        self.value_infos = {vi.name: vi for vi in self.model.graph.value_info}
         self.per_channel = per_channel  # weight-pack per channel
         self.mode = mode  # QuantizationMode.Value
         self.static = static  # use static quantization for inputs.
@@ -310,7 +312,7 @@ class ONNXQuantizer:
                     new_list += self._quantize_convolution(node, new_list)
                 elif node.op_type == 'MatMul':
                     new_list += self._quantize_matmul(node, new_list)
-                elif node.op_type == 'Gather':
+                elif node.op_type == 'Gather' and self._is_valid_quantize_value(node.input[0]):
                     new_list += self._quantize_gather_ops(node, new_list)
                 elif node.op_type == 'Relu' or node.op_type == 'Clip':
                     new_list += self._handle_activation_ops(node, new_list)
@@ -348,6 +350,10 @@ class ONNXQuantizer:
                 'Model contains conv operator weights in {}. Only float type quantization is supported.'.format(
                     type_to_name[initializer.data_type]))
         return weights
+
+    def _is_valid_quantize_value(self, value_name):
+        value_info = self.value_infos[value_name]
+        return value_info is not None and value_info.type.HasField('tensor_type') and value_info.type.tensor_type.elem_type == 1
 
     def _remove_quantized_weights(self):
         ''' Remove the weights which are already quantized from graph initializer list.
