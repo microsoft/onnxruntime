@@ -54,7 +54,7 @@ struct OpenVINOExecutionProviderInfo {
       device_id_ = "MYRIAD";
       precision_ = "FP16";
     } else if (dev_id == "VAD-M_FP16") {
-      device_id_ = "VAD-M";
+      device_id_ = "HDDL";
       precision_ = "FP16";
     } else {
       ORT_THROW("Invalid device string: " + dev_id);

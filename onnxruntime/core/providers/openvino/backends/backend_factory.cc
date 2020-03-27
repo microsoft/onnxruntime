@@ -19,7 +19,7 @@ BackendFactory::MakeBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     if(type == "CPU" || type == "GPU" || type == "MYRIAD") {
         return std::make_shared<BasicBackend>(model_proto, input_indexes,
                                               output_names, type, precision);
-    } else if (type == "VAD-M") {
+    } else if (type == "HDDL") {
         return std::make_shared<VADMBackend>(model_proto, input_indexes,
                                              output_names, type, precision);
     }
