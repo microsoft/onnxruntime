@@ -352,8 +352,12 @@ class ONNXQuantizer:
         return weights
 
     def _is_valid_quantize_value(self, value_name):
-        value_info = self.value_infos[value_name]
-        return value_info is not None and value_info.type.HasField('tensor_type') and value_info.type.tensor_type.elem_type == 1
+        if value_name in self.value_infos:
+            value_info = self.value_infos[value_name]
+            return value_info.type.HasField('tensor_type') and value_info.type.tensor_type.elem_type == 1
+        weight = _find_by_name(value_name, self.model.graph.initializer)
+        return weight is not None and weight.data_type == 1
+
 
     def _remove_quantized_weights(self):
         ''' Remove the weights which are already quantized from graph initializer list.
