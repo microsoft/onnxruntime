@@ -114,7 +114,8 @@ Status CudnnFilterDescriptor::Set(const std::vector<int64_t>& filter_dims, cudnn
 
 template <typename ElemType>
 cudnnDataType_t CudnnTensor::GetDataType() {
-  static_assert(false, "cuDNN engine currently supports only single/double/half/int8/uint8 precision data types.");
+  ORT_THROW("cuDNN engine currently supports only single/double/half/int8/uint8 precision data types. Got:",
+    typeid(ElemType).name());
   // Not reachable but GCC complains
   return 0;
 }

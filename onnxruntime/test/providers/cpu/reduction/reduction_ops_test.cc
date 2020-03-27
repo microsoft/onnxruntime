@@ -1614,7 +1614,7 @@ TEST(ReductionOpTest, ArgMax2D_select_last) {
                         9.0f, 10.0f});
   test.AddOutput<int64_t>("reduced", {3, 1},
                           {1, 0, 1});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNupharExecutionProvider});  //TensorRT: axis must be 0
 }
 
 TEST(ReductionOpTest, ArgMin) {
