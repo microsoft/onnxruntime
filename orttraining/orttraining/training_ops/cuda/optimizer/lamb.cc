@@ -5,8 +5,8 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
-#include "common.h"
-#include "lamb.h"
+#include "orttraining/training_ops/cuda/optimizer/common.h"
+#include "orttraining/training_ops/cuda/optimizer/lamb.h"
 
 namespace onnxruntime {
 namespace cuda {

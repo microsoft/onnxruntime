@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "common.h"
+#include "orttraining/training_ops/cpu/optimizer/common.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 
@@ -30,11 +30,12 @@ class AdamOptimizer final : public OpKernel {
     ORT_ENFORCE(beta_ >= 0);
     ORT_ENFORCE(lambda_ >= 0);
     ORT_ENFORCE(epsilon_ >= 0);
-
     int64_t tmp_flag = static_cast<int64_t>(0);
     ORT_ENFORCE(info.GetAttr<int64_t>("do_bias_correction", &tmp_flag).IsOK(), "Missing/Invalid do_bias_correction");
     ORT_ENFORCE(tmp_flag == 0 || tmp_flag == 1, "do_bias_correction must be either 0 or 1.");
     do_bias_correction_ = tmp_flag != 0 ? true : false;
+    info.GetAttrOrDefault("weight_decay_mode", &weight_decay_mode_, static_cast<int64_t>(0));
+    ORT_ENFORCE(weight_decay_mode_ == 0 || weight_decay_mode_ == 1, "Only 0 and 1 are supported for weight decay mode.");
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -45,6 +46,7 @@ class AdamOptimizer final : public OpKernel {
   float lambda_;
   float epsilon_;
   bool do_bias_correction_;
+  int64_t weight_decay_mode_;
 };
 }  // namespace contrib
 }  // namespace onnxruntime
