@@ -906,7 +906,7 @@ TEST(ReductionOpTest, ReduceMin_int8) {
                           9, 10,
                           11, 12});
   test.AddOutput<int8_t>("reduced", {1, 2, 1}, {1, 3});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMin_uint8) {
@@ -923,7 +923,7 @@ TEST(ReductionOpTest, ReduceMin_uint8) {
                          9, 10,
                          11, 12});
   test.AddOutput<uint8_t>("reduced", {1, 2, 1}, {1, 3});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 

@@ -115,6 +115,8 @@ Status CudnnFilterDescriptor::Set(const std::vector<int64_t>& filter_dims, cudnn
 template <typename ElemType>
 cudnnDataType_t CudnnTensor::GetDataType() {
   static_assert(false, "cuDNN engine currently supports only single/double/half/int8/uint8 precision data types.");
+  // Not reachable but GCC complains
+  return 0;
 }
 
 template<>
@@ -158,12 +160,16 @@ const float Consts<half>::Zero = 0;
 
 const float Consts<half>::One = 1;
 
+template <>
 const int8_t Consts<int8_t>::Zero = 0;
 
+template <>
 const int8_t Consts<int8_t>::One = 1;
 
+template <>
 const uint8_t Consts<uint8_t>::Zero = 0;
 
+template <>
 const uint8_t Consts<uint8_t>::One = 1;
 
 std::vector<cudaDeviceProp> DeviceProp::s_cachedDeviceProps;
