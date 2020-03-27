@@ -27,9 +27,9 @@ public:
         assert(inputTensorRank >= gsl::narrow_cast<uint32_t>(m_strides.size()));
 
         // Pad the parameters to respect DML's requirements
-        FillWithLeadingValues(/*inout*/ m_offsets, m_inputTensorDescs[0].GetDimensionCount(), 0u);
-        FillWithLeadingValues(/*inout*/ m_sizes, m_inputTensorDescs[0].GetDimensionCount(), 1u);
-        FillWithLeadingValues(/*inout*/ m_strides, m_inputTensorDescs[0].GetDimensionCount(), 1);
+        FillWithLeadingValues(/*inout*/ m_offsets, inputTensorRank, 0u);
+        FillWithLeadingValues(/*inout*/ m_sizes, inputTensorRank, 1u);
+        FillWithLeadingValues(/*inout*/ m_strides, inputTensorRank, 1);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
