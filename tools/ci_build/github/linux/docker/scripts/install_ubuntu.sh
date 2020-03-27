@@ -81,6 +81,7 @@ else # ubuntu18.04
         libicu60 \
         libtinfo-dev \
         libtool \
+        mpich libmpich-dev \
         aria2 \
         bzip2 \
         unzip \
