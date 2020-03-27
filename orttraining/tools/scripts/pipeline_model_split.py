@@ -334,13 +334,15 @@ def main():
     cut_input = {layer_output_edge, mask_output_edge}
 
     model = onnx.load(input_model_name)
-    print("input model length: ", len(model.graph.node))
+    if len(model.graph.value_info) == 0:
+        model = onnx.shape_inference.infer_shapes(model)
 
     # TODO: support split more than 2 subgraphs
     output_model_names = [input_model_name[:-5] + '_0.onnx', input_model_name[:-5] + '_1.onnx']
 
     split_edges = []
     count = 0
+    need_shape_inference = False
     # Sweep the cut edge to see if there are edges feeding into nodes from two sub-graphs. If so,
     # insert identity node after those edges with a new ID to distinguish the rest.
     for i in cut_input:
@@ -349,9 +351,13 @@ def main():
             add_identity(model, i, new_edge_name)
             count += 1
             split_edges.append(new_edge_name)
+            need_shape_inference = True
         else:
             split_edges.append(i.edgeId)
 
+    # new edge is being added, need to re-inference shape
+    if need_shape_inference:
+        model = onnx.shape_inference.infer_shapes(model)
     # after all need-to-be-cut edges identified, split the graph
     new_send, new_receive = split_graph(model, split_edges)
     model0, model1 = generate_subgraph(model, new_send, new_receive)
