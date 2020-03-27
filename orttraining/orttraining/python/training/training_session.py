@@ -26,7 +26,7 @@ class TrainingSession(InferenceSession):
         else:
             raise TypeError("Unable to load from type '{0}'".format(type(path_or_bytes)))
 
-        self.loss_scale_input_name = config_result.get_loss_scale_input_name()
+        self.loss_scale_input_name = config_result.loss_scale_input_name
 
         self._inputs_meta = self._sess.inputs_meta
         self._outputs_meta = self._sess.outputs_meta
