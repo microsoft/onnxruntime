@@ -18,8 +18,8 @@ struct RollingWindowTransformerImpl {
     // Define the type
     using GrainT = std::vector<std::string>;
     using EstimatorT = Microsoft::Featurizer::Featurizers::GrainedAnalyticalRollingWindowEstimator<T>;
-    using GrainedInputType = std::tuple<GrainT, T>;
-    using OutputType = std::vector<double>;
+    using GrainedInputType = EstimatorT::InputType;
+    using OutputType = EstimatorT::TransformedType;
 
     //Get the transformer
     const auto* state_tensor(ctx->Input<Tensor>(0));
