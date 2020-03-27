@@ -94,6 +94,7 @@ def create_backend_test(testname=None):
             '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu',  # bad expected data, needs test fix
             '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu',  # bad expected data, needs test fix
             '^test_maxunpool_export_with_output_shape_cpu',  # Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398'
+            '^test_maxpool_2d_uint8', # Invalid test. Kernel must be less than pads. Output shape inferred wrong.
         ]
 
         # Example of how to disable tests for a specific provider.

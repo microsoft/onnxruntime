@@ -264,6 +264,51 @@ TEST(PoolTest, MaxPool1D_12_With_Index_8bits) {
   MaxPool1D_12_WithIndexTest_uint8(1 /*storage_order*/);
 }
 
+//template<typename InputIter>
+//void print_vector(std::ostream& os, const std::string& txt, InputIter begin, InputIter end) {
+//  os << txt;
+//  std::copy(begin, end, std::ostream_iterator<std::iterator_traits<InputIter>::value_type>(os, ", "));
+//  os << std::endl;
+//}
+
+// The test on ONNX site is not valid. Either input or output shape is not valid.
+// Given the other things, the output shape must be {1, 1, 8, 5}
+// Also 
+// Exception during initialization :
+// D :\dev\ort_profile\onnxruntime\core / providers / cpu / nn / pool_attributes.h : 68
+// onnxruntime::PoolAttributes::PoolAttributes 
+// pads[dim] < kernel_shape[dim] && pads[dim + kernel_shape.size()] < kernel_shape[dim] was false.Pad should be smaller than kernel.TEST(PoolTest, MaxPool_2d_uint8) {
+//  OpTester test("MaxPool", 12);
+//  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 5});
+//  test.AddAttribute("pads", std::vector<int64_t>{2, 2, 2, 2});
+//
+//  OpTester::CustomOutputVerifierFn ver_fn = [](const std::vector<OrtValue>& fetches, const std::string& provider) {
+//    std::cout << "MaxPool_2d_uint8:" << provider << "\n"
+//              << std::endl;
+//
+//    for (const auto& ort_val : fetches) {
+//      if (ort_val.IsTensor()) {
+//        const auto& tensor = ort_val.Get<Tensor>();
+//        print_vector(std::cout, "Shape", tensor.Shape().GetDims().cbegin(), tensor.Shape().GetDims().cend());
+//        auto span = tensor.DataAsSpan<uint8_t>();
+//        print_vector(std::cout, "Values", span.cbegin(), span.cend());
+//      } else {
+//        std::cout << "Not a tensor!" << std::endl;
+//      }
+//    }
+//  };
+//
+//  test.AddInput<uint8_t>("Input", {1, 1, 5, 5}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25});
+//  test.AddOutput<uint8_t>("Output", {1, 1, 8, 5}, {
+//    13, 14, 15, 15, 15, 18, 19, 20,
+//    20, 20, 23, 24, 25, 25, 25, 23,
+//    24, 25, 25, 25, 23, 24, 25, 25,
+//    24, 25, 25, 25, 23, 24, 25, 25,
+//    24, 25, 25, 25, 25, 24, 25, 25
+//    });
+//  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, {}, ORT_SEQUENTIAL, ver_fn);
+//}
+
 TEST(PoolTest, MaxPool_10_Dilation_1d) {
   OpTester test("MaxPool", 10);
 
@@ -311,13 +356,13 @@ TEST(PoolTest, MaxPool_DefaultDilations_int8) {
 
   std::vector<int64_t> x_dims = {1, 3, 3};
   std::vector<int8_t> x_vals = {0, 1, 2,
-                               3, 4, 5,
-                               6, 7, 8};
+                                3, 4, 5,
+                                6, 7, 8};
 
   std::vector<int64_t> expected_dims = {1, 3, 2};
   std::vector<int8_t> expected_vals = {1, 2,
-                                      4, 5,
-                                      7, 8};
+                                       4, 5,
+                                       7, 8};
 
   test.AddInput<int8_t>("X", x_dims, x_vals);
   test.AddOutput<int8_t>("Y", expected_dims, expected_vals);
@@ -331,13 +376,13 @@ TEST(PoolTest, MaxPool_DefaultDilations_uint8) {
 
   std::vector<int64_t> x_dims = {1, 3, 3};
   std::vector<uint8_t> x_vals = {0, 1, 2,
-                                3, 4, 5,
-                                6, 7, 8};
+                                 3, 4, 5,
+                                 6, 7, 8};
 
   std::vector<int64_t> expected_dims = {1, 3, 2};
   std::vector<uint8_t> expected_vals = {1, 2,
-                                       4, 5,
-                                       7, 8};
+                                        4, 5,
+                                        7, 8};
 
   test.AddInput<uint8_t>("X", x_dims, x_vals);
   test.AddOutput<uint8_t>("Y", expected_dims, expected_vals);
@@ -435,7 +480,7 @@ TEST(PoolTest, MaxPool_10_DilationPadding_2d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-    {kCudaExecutionProvider, kTensorrtExecutionProvider});
+           {kCudaExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_Ceil0_2d) {
