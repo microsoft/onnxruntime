@@ -672,6 +672,7 @@ struct OrtApi {
 	 * This api augments OrtTypeInfo to return an OrtMapTypeInfo when the type is a map.
 	 * The OrtMapTypeInfo has additional information about the map's key type and value type.
 	 * This is used by WinML to support model reflection APIs.
+	 * This is used by WinML to support model reflection APIs.
 	 *
 	 * Don't free the 'out' value
     */
@@ -767,9 +768,10 @@ struct OrtApi {
   */
   OrtStatus*(ORT_API_CALL* DisablePerSessionThreads)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
 
-  OrtStatus*(ORT_API_CALL* CreateOrtThreadingOptions)(_Outptr_ OrtThreadingOptions** out)
+  OrtStatus*(ORT_API_CALL* CreateThreadingOptions)(_Outptr_ OrtThreadingOptions** out)
       NO_EXCEPTION;
-  void (ORT_API_CALL* ReleaseThreadingOptions)(_Frees_ptr_opt_ OrtThreadingOptions* input)NO_EXCEPTION;
+
+  ORT_CLASS_RELEASE(ThreadingOptions);
 };
 
 /*

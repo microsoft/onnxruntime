@@ -67,7 +67,7 @@ struct ModelMetadata {
   std::string graph_name;
   std::string domain;
   std::string description;
-  int64_t version;
+  int64_t version = 0;
   std::unordered_map<std::string, std::string> custom_metadata_map;
 };
 

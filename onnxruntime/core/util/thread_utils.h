@@ -17,6 +17,7 @@ struct OrtThreadPoolParams{
     //In the other case, don't set affinity
     bool auto_set_affinity = false;
     bool allow_spinning = true;
+
     unsigned int stack_size = 0;
     //Index is thread id, value is CPU ID, starting from zero
     //If the vector is empty, no explict affinity binding

@@ -8,14 +8,12 @@
 #include <thread>
 
 namespace onnxruntime {
-	namespace concurrency {
-		static inline std::vector<size_t> GenerateVectorOfN(size_t n) {
-			std::vector<size_t> ret(n);
-			for (size_t i = 0; i != n; ++i) {
-				ret[i] = i;
-			}
-			return ret;
-		}
+namespace concurrency {
+static inline std::vector<size_t> GenerateVectorOfN(size_t n) {
+  std::vector<size_t> ret(n);
+  std::iota(ret.begin(), ret.end(), 0);
+  return ret;
+                }
 #ifdef _WIN32
 		// This function doesn't support systems with more than 64 logical processors
 		static std::vector<size_t> GetNumCpuCores() {
@@ -23,9 +21,9 @@ namespace onnxruntime {
 			SYSTEM_LOGICAL_PROCESSOR_INFORMATION buffer[256];
 			DWORD returnLength = sizeof(buffer);
 			if (GetLogicalProcessorInformation(buffer, &returnLength) == FALSE) {
-				return GenerateVectorOfN(std::thread::hardware_concurrency() / 2);
-			}
-			std::vector<size_t> ret;
+                          return GenerateVectorOfN(std::thread::hardware_concurrency());
+                        }
+                        std::vector<size_t> ret;
 			int count = (int)(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
 			for (int i = 0; i != count; ++i) {
 				if (buffer[i].Relationship == RelationProcessorCore) {
@@ -33,9 +31,9 @@ namespace onnxruntime {
 				}
 			}
 			if (ret.empty())
-				return GenerateVectorOfN(std::thread::hardware_concurrency() / 2);
-			return ret;
-		}
+                          return GenerateVectorOfN(std::thread::hardware_concurrency());
+                        return ret;
+                }
 #else
 		static std::vector<size_t> GetNumCpuCores() {
 			return GenerateVectorOfN(std::thread::hardware_concurrency() / 2);
@@ -61,17 +59,15 @@ namespace onnxruntime {
 			return onnxruntime::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
 				options.allow_spinning, allocator);
 		}
-	}  // namespace concurrency
+                }  // namespace concurrency
 }  // namespace onnxruntime
 namespace OrtApis{
-ORT_API_STATUS_IMPL(CreateOrtThreadingOptions, _Outptr_ OrtThreadingOptions** out)
-{
-	*out = new OrtThreadingOptions();
-	return nullptr;
+ORT_API_STATUS_IMPL(CreateThreadingOptions, _Outptr_ OrtThreadingOptions** out) {
+  *out = new OrtThreadingOptions();
+  return nullptr;
 }
 
-ORT_API(void, ReleaseOrtThreadingOptions, _Frees_ptr_opt_ OrtThreadingOptions* p)
-{
-	delete p;
+ORT_API(void, ReleaseThreadingOptions, _Frees_ptr_opt_ OrtThreadingOptions* p) {
+  delete p;
 }
 }

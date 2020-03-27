@@ -183,6 +183,6 @@ ORT_API_STATUS_IMPL(CreateEnvWithGlobalThreadPools, OrtLoggingLevel default_logg
 ORT_ALL_ARGS_NONNULL;
 
 ORT_API_STATUS_IMPL(DisablePerSessionThreads, _In_ OrtSessionOptions* options);
-ORT_API_STATUS_IMPL(CreateOrtThreadingOptions, _Outptr_ OrtThreadingOptions** out);
-ORT_API(void, ReleaseOrtThreadingOptions, _Frees_ptr_opt_ OrtThreadingOptions*);
+ORT_API_STATUS_IMPL(CreateThreadingOptions, _Outptr_ OrtThreadingOptions** out);
+ORT_API(void, ReleaseThreadingOptions, _Frees_ptr_opt_ OrtThreadingOptions*);
 }  // namespace OrtApis
