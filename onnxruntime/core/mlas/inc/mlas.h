@@ -461,3 +461,20 @@ MlasRequantizeOutput(
     float Scale,
     uint8_t ZeroPoint
     );
+
+template<typename DataType>
+void
+MLASCALL
+MlasQLinearAdd(
+    const DataType* InputA,
+    float ScaleA,
+    DataType ZeroPointA,
+    const DataType* InputB,
+    float ScaleB,
+    DataType ZeroPointB,
+    float ScaleC,
+    DataType ZeroPointC,
+    DataType* OutputC,
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
+    );
