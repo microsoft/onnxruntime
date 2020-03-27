@@ -117,6 +117,11 @@ __global__ void _AdamOptimizer_mode1(
   // so delta = -step_size * m1o / denom - original_lr * lambda * (param - step_size * m1o / denom)
   const T4 delta = -step_size * m1o / denom - T4(*eta) * lambda * (T4(weights[id]) - step_size * m1o / denom);
 
+  // Compute the new gradient.
+  if (grads_out) {
+    grads_out[id] = T_GRAD(delta);
+  }
+  
   // Compute the new weight.
   if (weights_out) {
     weights_out[id] = weights[id] + T3(delta);

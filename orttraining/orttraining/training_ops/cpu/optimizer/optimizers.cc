@@ -100,7 +100,8 @@ Status AdamOptimizer<T>::Compute(OpKernelContext* ctx) const {
     // param_out = param' - original_lr * lambda * param'
     // then param_out = param - step_size * m1o / denom - original_lr * lambda * (param - step_size * m1o / denom)
     // so delta = -step_size * m1o / denom - original_lr * lambda * (param - step_size * m1o / denom)
-    const auto& delta = -step_size * MakeEigenArrayMap<T>(NM1) / denom - eta * lambda_ * (MakeEigenArrayMap<T>(W) - step_size * MakeEigenArrayMap<T>(NM1) / denom);
+    const auto& delta = -step_size * MakeEigenArrayMap<T>(NM1) / denom
+                        - eta * lambda_ * (MakeEigenArrayMap<T>(W) - step_size * MakeEigenArrayMap<T>(NM1) / denom);
 
     // Weight, gradient, and step update.
     if (NG != nullptr) {
