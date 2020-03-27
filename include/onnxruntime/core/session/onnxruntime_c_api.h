@@ -757,7 +757,7 @@ struct OrtApi {
   * its own thread pools.
   */
   OrtStatus*(ORT_API_CALL* CreateEnvWithGlobalThreadPools)(OrtLoggingLevel default_logging_level, _In_ const char* logid,
-                                                           _In_ const struct OrtThreadingOptions* t_options, _Outptr_ OrtEnv** out)
+                                                           _In_ const OrtThreadingOptions* t_options, _Outptr_ OrtEnv** out)
       NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
   /* TODO: Should there be a version of CreateEnvWithGlobalThreadPools with custom logging function? */
