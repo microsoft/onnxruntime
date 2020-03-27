@@ -41,6 +41,10 @@ struct OpenVINOExecutionProviderInfo {
         device_id_ = "HDDL";
         precision_ = "FP16";
       #endif
+      #ifdef OPENVINO_CONFIG_VAD_F
+        device_id_ = "HETERO:FPGA,CPU";
+        precision_ = "FP32";
+      #endif
     } else if (dev_id == "CPU_FP32") {
       device_id_ = "CPU";
       precision_ = "FP32";
@@ -56,6 +60,9 @@ struct OpenVINOExecutionProviderInfo {
     } else if (dev_id == "VAD-M_FP16") {
       device_id_ = "HDDL";
       precision_ = "FP16";
+    } else if (dev_id == "VAD-F_FP32") {
+      device_id_ = "HETERO:FPGA,CPU";
+      precision_ = "FP32";
     } else {
       ORT_THROW("Invalid device string: " + dev_id);
     }

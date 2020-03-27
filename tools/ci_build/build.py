@@ -136,7 +136,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_featurizers", action='store_true', help="Build with ML Featurizer support.")
     parser.add_argument("--use_ngraph", action='store_true', help="Build with nGraph.")
     parser.add_argument("--use_openvino", nargs="?", const="CPU_FP32",
-                        choices=["CPU_FP32","GPU_FP32","GPU_FP16","VAD-M_FP16","MYRIAD_FP16"], help="Build with OpenVINO EP for specific hardware.")
+                        choices=["CPU_FP32","GPU_FP32","GPU_FP16","VAD-M_FP16","MYRIAD_FP16", "VAD-F_FP32"], help="Build with OpenVINO EP for specific hardware.")
     parser.add_argument("--use_dnnlibrary", action='store_true', help="Build with DNNLibrary.")
     parser.add_argument("--use_preinstalled_eigen", action='store_true', help="Use pre-installed Eigen.")
     parser.add_argument("--eigen_path", help="Path to pre-installed Eigen.")
@@ -324,6 +324,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + ("ON" if args.use_openvino == "GPU_FP16" else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + ("ON" if args.use_openvino == "CPU_FP32" else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_VAD_M=" + ("ON" if args.use_openvino == "VAD-M_FP16" else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO_VAD_F=" + ("ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_BINARY=" + ("ON" if args.use_openvino else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_SOURCE=OFF",
                  "-Donnxruntime_USE_NNAPI=" + ("ON" if args.use_dnnlibrary else "OFF"),
@@ -909,6 +910,10 @@ def main():
 
     if args.build_csharp or args.build_java:
         args.build_shared_lib = True
+
+    # Disabling unit tests for VAD-F as FPGA only supports models with NCHW layout
+    if args.use_openvino == "VAD-F_FP32":
+        args.test = False
 
     configs = set(args.config)
 

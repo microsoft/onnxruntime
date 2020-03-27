@@ -698,6 +698,10 @@ if(onnxruntime_USE_OPENVINO)
 		add_definitions(-DOPENVINO_CONFIG_VAD_M=1)
 	endif()
 
+	if(onnxruntime_USE_OPENVINO_VAD_F)
+		add_definitions(-DOPENVINO_CONFIG_VAD_F=1)
+	endif()
+
 endif()
 
 if (onnxruntime_USE_OPENBLAS)
