@@ -237,10 +237,11 @@ class TestOrtTrainer(unittest.TestCase):
 
         # to update expected outcomes, enable pdb and run the test with -s and copy paste outputs
         # import pdb; pdb.set_trace()
-        rtol = 1e-04
-        assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
-        assert_allclose(expected_test_losses, actual_test_losses, rtol=rtol, err_msg="test loss mismatch")
-        assert_allclose(expected_test_accuracies, actual_accuracies, rtol=rtol, err_msg="test accuracy mismatch")
+        rtol = 1e-03
+        atol = 1e-04
+        assert_allclose(expected_losses, actual_losses, atol=atol, rtol=rtol, err_msg="loss mismatch")
+        assert_allclose(expected_test_losses, actual_test_losses, atol=atol, rtol=rtol, err_msg="test loss mismatch")
+        assert_allclose(expected_test_accuracies, actual_accuracies, atol=atol, rtol=rtol, err_msg="test accuracy mismatch")
 
     def testBertTrainingBasic(self):
         torch.manual_seed(1)
