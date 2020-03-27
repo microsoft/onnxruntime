@@ -55,7 +55,7 @@ struct TrainingParameters {
 };
 
 struct TrainingConfigurationResult {
-  std::string loss_scale_input_name;
+  optional<std::string> loss_scale_input_name;
 };
 
 // TODO: this method does not handle parallel optimization.
@@ -190,7 +190,12 @@ void addObjectMethodsForTraining(py::module& m) {
 
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())
-      .def_readonly("loss_scale_input_name", &TrainingConfigurationResult::loss_scale_input_name);
+      .def("get_loss_scale_input_name", [](const TrainingConfigurationResult& result) -> py::object {
+        if (result.loss_scale_input_name.has_value()) {
+          return py::str{result.loss_scale_input_name.value()};
+        }
+        return py::none();
+      });
 
   py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
   training_session.def(py::init<SessionOptions, SessionObjectInitializer>())
