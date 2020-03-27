@@ -32,21 +32,51 @@ void HandleNegativeAxes(gsl::span<int32_t> onnxAxes, uint32_t dimCount)
     }
 }
 
-void FillWithLeadingValues(/*inout*/ std::vector<uint32_t>& values, uint32_t minimumElementCount, uint32_t fillValue)
+void ReadCpuLocalTensorIntoInt32(
+    const MLOperatorTensor& tensor,
+    std::vector<int32_t>& result
+    )
 {
-    // e.g.
-    // input = [6,7]
-    // elementCount = 4
-    // fillValue = 1
-    // output = [1,1,6,7]
+    result.clear();
+    ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be CPU Tensor.");
 
-    const size_t oldElementCount = values.size();
-    const size_t newElementCount = std::max(size_t(minimumElementCount), oldElementCount);
-    const size_t fillCount = newElementCount - oldElementCount;
+    const std::vector<uint32_t>& tensorDimensions = tensor.GetShape();
+    const uint32_t elementCount = ComputeElementCountFromDimensions(tensorDimensions);
 
-    values.resize(newElementCount);
-    std::copy_backward(values.data(), values.data() + oldElementCount, values.data() + fillCount);
-  std::fill_n(values.data(), fillCount, fillValue);
+    switch (tensor.GetTensorDataType())
+    {
+    case MLOperatorTensorDataType::Int32:
+        {
+            const int32_t* data = tensor.GetData<int32_t>();
+            result.assign(data, data + elementCount);
+        }
+        break;
+
+    case MLOperatorTensorDataType::Int64:
+        {
+            const int64_t* data = tensor.GetData<int64_t>();
+            for (auto d : gsl::make_span(data, data + elementCount))
+            {
+                result.push_back(gsl::narrow_cast<int32_t>(d));
+            }
+        }
+        break;
+
+    default:
+        ML_INVALID_ARGUMENT("Expecting CPU local tensor of type int32 or int64.");
+        break;
+    }
+}
+
+void DowncastDimensions(gsl::span<const int64_t> inputDimensions, std::vector<DimensionType>& outputDimensions)
+{
+    outputDimensions.reserve(inputDimensions.size());
+    outputDimensions.clear();
+
+    for (int64_t dim : inputDimensions)
+    {
+        outputDimensions.push_back(gsl::narrow_cast<uint32_t>(std::clamp<int64_t>(dim, INT32_MIN, INT32_MAX)));
+    }
 }
 
 int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
@@ -1070,10 +1100,7 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
 
         // First element of shape tensor is how many dims to expand to.
         std::vector<uint32_t> desiredTensorShape;
-        for (int64_t dim : gsl::make_span(shapeData, dimCount))
-        {
-            desiredTensorShape.push_back(gsl::narrow_cast<uint32_t>(dim));
-        }
+        DowncastDimensions(gsl::make_span(shapeData, dimCount), /*out*/ desiredTensorShape);
 
         // Determine the broadcasted input shape.
         outputDimensions = OperatorHelper::BroadcastTensorShape(actualInputTensorShape, desiredTensorShape);
@@ -1098,10 +1125,7 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
 
         // First element of shape tensor is how many dims to expand to.
         std::vector<uint32_t> desiredTensorShape;
-        for (int64_t dim : gsl::make_span(shapeData, dimCount))
-        {
-            desiredTensorShape.push_back(gsl::narrow_cast<uint32_t>(dim));
-        }
+        DowncastDimensions(gsl::make_span(shapeData, dimCount), /*out*/ desiredTensorShape);
 
         return { std::move(EdgeShapes(desiredTensorShape)) };
     }
