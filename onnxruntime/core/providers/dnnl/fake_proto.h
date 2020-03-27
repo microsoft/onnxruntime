@@ -63,27 +63,11 @@ enum OperatorStatus {
 };
 
 class ValueInfoProto {};
-class TensorProto {
-};
 
 class TypeProto;
 class OpSchema {
  public:
   OperatorSetVersion SinceVersion() const;
-};
-
-class AttributeProto {
- public:
-  ::onnx::AttributeProto_AttributeType type() const;
-  int ints_size() const;
-  int64_t ints(int i) const;
-  int64_t i() const;
-  float f() const;
-  void set_s(const ::std::string& value);
-  const ::std::string& s() const;
-  void set_name(const ::std::string& value);
-  void set_type(::onnx::AttributeProto_AttributeType value);
-  ::onnx::TensorProto* add_tensors();
 };
 
 class GraphProto {

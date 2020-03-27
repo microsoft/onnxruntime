@@ -84,6 +84,16 @@ struct Prov_IDeviceAllocator_Impl : Prov_IDeviceAllocator {
   std::unique_ptr<IDeviceAllocator> p_;
 };
 
+struct Prov_TensorProto_Impl : ONNX_NAMESPACE::Prov_TensorProto {
+  Prov_TensorProto_Impl(ONNX_NAMESPACE::TensorProto* p) : p_{p} {}
+
+  void CopyFrom(const Prov_TensorProto& v) override {
+    *p_ = *static_cast<const Prov_TensorProto_Impl*>(&v)->p_;
+  }
+
+  ONNX_NAMESPACE::TensorProto* p_;
+};  // namespace onnxruntime
+
 struct Prov_AttributeProto_Impl : ONNX_NAMESPACE::Prov_AttributeProto {
   Prov_AttributeProto_Impl() = default;
   Prov_AttributeProto_Impl(const ONNX_NAMESPACE::AttributeProto& copy) : v_{copy} {}
@@ -105,9 +115,15 @@ struct Prov_AttributeProto_Impl : ONNX_NAMESPACE::Prov_AttributeProto {
   const ::std::string& s() const override { return v_.s(); }
   void set_name(const ::std::string& value) override { v_.set_name(value); }
   void set_type(::onnx::AttributeProto_AttributeType value) override { v_.set_type(value); }
-  ::onnx::TensorProto* add_tensors() override { return v_.add_tensors(); }
+  ::onnx::Prov_TensorProto* add_tensors() override {
+    if (!tensors_)
+      tensors_ = std::make_unique<Prov_TensorProto_Impl>(v_.add_tensors());
+
+    return tensors_.get();
+  }
 
   ONNX_NAMESPACE::AttributeProto v_;
+  std::unique_ptr<Prov_TensorProto_Impl> tensors_;
 };
 
 struct Prov_KernelDef_Impl : Prov_KernelDef {
@@ -201,14 +217,37 @@ struct Prov_Node_Impl : Prov_Node {
   }
   size_t GetOutputEdgesCount() const noexcept override { return p_->GetOutputEdgesCount(); }
 
-  NodeConstIterator InputNodesBegin() const noexcept override { return {}; }
-  NodeConstIterator InputNodesEnd() const noexcept override { return {}; }
+  std::unique_ptr<Prov_NodeIterator> InputNodesBegin_internal() const noexcept override;
+  std::unique_ptr<Prov_NodeIterator> InputNodesEnd_internal() const noexcept override;
 
   const Node* p_;
   mutable std::vector<Prov_NodeArg*> input_defs_;
   mutable std::vector<Prov_NodeArg*> output_defs_;
   mutable Prov_NodeAttributes attributes_;
 };
+
+struct Prov_NodeIterator_Impl : Prov_Node::Prov_NodeIterator {
+  Prov_NodeIterator_Impl(Node::NodeConstIterator&& v) : v_{std::move(v)} {}
+
+  bool operator!=(const Prov_NodeIterator& p) const override { return v_ != static_cast<const Prov_NodeIterator_Impl*>(&p)->v_; }
+
+  void operator++() override { return v_.operator++(); }
+  const Prov_Node& operator*() override {
+    node_ = Prov_Node_Impl(&*v_);
+    return node_;
+  }
+
+  Node::NodeConstIterator v_;
+  Prov_Node_Impl node_{nullptr};
+};
+
+std::unique_ptr<Prov_Node::Prov_NodeIterator> Prov_Node_Impl::InputNodesBegin_internal() const noexcept {
+  return std::make_unique<Prov_NodeIterator_Impl>(p_->InputNodesBegin());
+}
+
+std::unique_ptr<Prov_Node::Prov_NodeIterator> Prov_Node_Impl::InputNodesEnd_internal() const noexcept {
+  return std::make_unique<Prov_NodeIterator_Impl>(p_->InputNodesEnd());
+}
 
 struct Prov_GraphViewer_Impl : Prov_GraphViewer {
   Prov_GraphViewer_Impl(const GraphViewer& v) : v_{v} {
@@ -222,8 +261,16 @@ struct Prov_GraphViewer_Impl : Prov_GraphViewer {
   }
   int MaxNodeIndex() const noexcept override { return v_.MaxNodeIndex(); }
   const Prov_InitializedTensorSet& GetAllInitializedTensors() const noexcept override {
-    __debugbreak();
-    return *(Prov_InitializedTensorSet*)nullptr;
+    if (initialized_tensor_set_.empty()) {
+      initialized_tensors_.reserve(initialized_tensor_set_.size());
+
+      for (auto& v : v_.GetAllInitializedTensors()) {
+        initialized_tensors_.emplace_back(const_cast<ONNX_NAMESPACE::TensorProto*>(v.second));
+        initialized_tensor_set_.emplace(v.first, &initialized_tensors_.back());
+      }
+    }
+
+    return initialized_tensor_set_;
   }
 
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept override { return v_.DomainToVersionMap(); }
@@ -231,6 +278,9 @@ struct Prov_GraphViewer_Impl : Prov_GraphViewer {
   const GraphViewer& v_;
 
   std::vector<Prov_Node_Impl> prov_nodes_;
+
+  mutable std::vector<Prov_TensorProto_Impl> initialized_tensors_;
+  mutable Prov_InitializedTensorSet initialized_tensor_set_;
 };
 
 struct Prov_KernelRegistry_Impl : Prov_KernelRegistry {

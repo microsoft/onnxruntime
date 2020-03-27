@@ -2,15 +2,23 @@ namespace ONNX_NAMESPACE {
 enum AttributeProto_AttributeType;
 
 class ValueInfoProto;
-class TensorProto;
 class TypeProto;
 class OpSchema;
 // String pointer as unique TypeProto identifier.
 using DataType = const std::string*;
 
+struct Prov_TensorProto {
+  virtual ~Prov_TensorProto() {}
+
+  virtual void CopyFrom(const Prov_TensorProto& v) = 0;
+
+  void operator=(const Prov_TensorProto& v) { CopyFrom(v); }
+};
+
 struct Prov_AttributeProto {
   static std::unique_ptr<Prov_AttributeProto> Create();
 
+  virtual ~Prov_AttributeProto() {}
   virtual std::unique_ptr<Prov_AttributeProto> Clone() const = 0;
 
   virtual ::onnx::AttributeProto_AttributeType type() const = 0;
@@ -22,9 +30,13 @@ struct Prov_AttributeProto {
   virtual const ::std::string& s() const = 0;
   virtual void set_name(const ::std::string& value) = 0;
   virtual void set_type(::onnx::AttributeProto_AttributeType value) = 0;
-  virtual ::onnx::TensorProto* add_tensors() = 0;
+  virtual ::onnx::Prov_TensorProto* add_tensors() = 0;
+
+  void operator=(const Prov_AttributeProto& v) = delete;
 };
 
+// This is needed since Prov_NodeAttributes is a map of unique_ptr to Prov_AttributeProto and that won't work since unique_ptrs are not copyable
+// (supposedly this should work in the latest C++ STL but it didn't for me so I used this to make it copyable)
 struct Prov_AttributeProto_Copyable {
   Prov_AttributeProto_Copyable() = default;
   Prov_AttributeProto_Copyable(const Prov_AttributeProto_Copyable& copy) : p_{copy->Clone()} {}
@@ -148,7 +160,7 @@ struct Prov_KernelDefBuilder {
 using NodeIndex = size_t;
 using Prov_NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::Prov_AttributeProto_Copyable>;
 
-using Prov_InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*>;
+using Prov_InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::Prov_TensorProto*>;
 
 struct Prov_NodeArg {
   virtual const std::string& Name() const noexcept = 0;
@@ -172,31 +184,41 @@ struct Prov_Node {
   virtual size_t GetInputEdgesCount() const noexcept = 0;
   virtual size_t GetOutputEdgesCount() const noexcept = 0;
 
+  struct Prov_NodeIterator {
+    virtual ~Prov_NodeIterator() {}
+    virtual bool operator!=(const Prov_NodeIterator& p) const = 0;
+
+    virtual void operator++() = 0;
+    virtual const Prov_Node& operator*() = 0;
+  };
+
   struct NodeConstIterator {
-    NodeConstIterator() { __debugbreak(); }
+    NodeConstIterator(std::unique_ptr<Prov_NodeIterator> p) : impl_{std::move(p)} {}
 
     bool operator==(const NodeConstIterator& p_other) const;
     bool operator!=(const NodeConstIterator& p_other) const {
-      __debugbreak();
-      p_other;
-      return false;
+      return *impl_ != *p_other.impl_;
     }
 
     void operator++() {
-      __debugbreak();
+      impl_->operator++();
     }
     void operator--();
 
     const Prov_Node& operator*() const {
-      __debugbreak();
-      return *(Prov_Node*)nullptr;
+      return impl_->operator*();
     }
     const Prov_Node* operator->() const;
+
+    std::unique_ptr<Prov_NodeIterator> impl_;
   };
 
-  virtual NodeConstIterator InputNodesBegin() const noexcept = 0;
-  virtual NodeConstIterator InputNodesEnd() const noexcept = 0;
-};
+  NodeConstIterator InputNodesBegin() const noexcept { return NodeConstIterator(InputNodesBegin_internal()); }
+  NodeConstIterator InputNodesEnd() const noexcept { return NodeConstIterator(InputNodesEnd_internal()); }
+
+  virtual std::unique_ptr<Prov_NodeIterator> InputNodesBegin_internal() const noexcept = 0;
+  virtual std::unique_ptr<Prov_NodeIterator> InputNodesEnd_internal() const noexcept = 0;
+};  // namespace onnxruntime
 
 struct Prov_GraphViewer {
   virtual const std::string& Name() const noexcept = 0;

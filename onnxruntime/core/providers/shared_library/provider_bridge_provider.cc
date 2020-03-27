@@ -212,6 +212,7 @@ int TensorShapeProto::dim_size() const {
 }
 #endif
 
+#if 0
 ::onnx::AttributeProto_AttributeType AttributeProto::type() const {
   __debugbreak();
   return ::onnx::AttributeProto_AttributeType_FLOAT;
@@ -263,6 +264,7 @@ void AttributeProto::set_type(::onnx::AttributeProto_AttributeType value) {
   __debugbreak();
   return nullptr;
 }
+#endif
 
 }  // namespace onnx
 
