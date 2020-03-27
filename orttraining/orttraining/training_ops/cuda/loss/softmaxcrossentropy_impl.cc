@@ -4,6 +4,8 @@
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/math/softmax.h"
 #include "softmaxcrossentropy_impl.h"
+#include "core/providers/cuda/tensor/transpose.h"
+#include "core/providers/cpu/controlflow/scan_utils.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -194,7 +196,8 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
                                 normalize_factor_data.get(),
                                 tmp_loss_sample.get(),
                                 N,
-                                D);
+                                D,
+                                (Tin)-100);
 
   // ReduceSum on loss_per_sample
   std::vector<int64_t> output_dims(1, 1);
@@ -271,7 +274,235 @@ Status SparseSoftmaxCrossEntropyGrad<T, Tin>::ComputeInternal(OpKernelContext* c
                                     normalize_factor_data.get(),
                                     d_logit_data,
                                     N,
-                                    D);
+                                    D,
+                                    (Tin)-100);
+
+  return Status::OK();
+}
+
+template <typename T, typename Tin>
+Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) const {
+  const Tensor& logit = *ctx->Input<Tensor>(0);
+  const Tensor& label = *ctx->Input<Tensor>(1);
+
+  const TensorShape logit_shape{logit.Shape()};
+  const TensorShape label_shape{label.Shape()};
+  const size_t label_dims = label_shape.NumDimensions();
+  ORT_ENFORCE(logit_shape.NumDimensions() == label_dims + 1,
+              "logit_shape must be (1 + label_shape)");
+
+  ORT_ENFORCE(label_shape[0] == logit_shape[0], "The shape of logit and label does not match");
+
+  if (label_dims >= 2) {
+    for (size_t i = 0; i < label_shape.NumDimensions() - 1; i++) {
+      ORT_ENFORCE(label_shape[i + 1] == logit_shape[i + 2], "The shape of logit and label does not match");
+    }
+  }
+
+  int64_t N = logit_shape[0];
+  int64_t D = logit_shape.NumDimensions() > 2 ? label_shape.Size() / N : 1;
+  int64_t N_D = N * D;
+  int64_t C = logit_shape.Size() / N_D;
+
+  const TensorShape logit_reshape({N_D, C});
+  const TensorShape label_reshape({N_D});
+
+  IAllocatorUniquePtr<T> tmp_loss_sample = GetScratchBuffer<T>(N_D);
+  const T* logit_data = logit.template Data<T>();
+  const Tin* label_data = label.template Data<Tin>();
+
+  // Output 0: Loss data.
+  Tensor* total_loss = ctx->Output(0, reduction_ == ReductionType::NONE ? TensorShape({label_shape[0]}) : TensorShape({}));
+  T* total_loss_data = total_loss->template MutableData<T>();
+
+  // Output 1: Log probability data.
+  T* log_prob_data;
+  if (ctx->OutputCount() > 1) {
+    log_prob_data = ctx->Output(1, logit_shape)->template MutableData<T>();
+  } else {
+    log_prob_data = GetScratchBuffer<T>(logit_shape.Size()).get();
+  }
+
+  OrtValue transpose_output;
+  Tensor transpose_tensor;
+  std::vector<int64_t> new_shape;
+  std::vector<size_t> permutations;
+  AllocatorPtr alloc;
+  const OpKernelInfo& info = OpKernel::Info();
+  // Transpose logit from [N, C, D1, D2 .. Dk] to [N, D1, D2...Dk, C]
+  if (logit_shape.NumDimensions() > 2) {
+    ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
+
+    new_shape.emplace_back(logit_shape[0]);
+    permutations.emplace_back(0);
+    for (int index = 2; index < logit_shape.NumDimensions(); index += 1) {
+      new_shape.emplace_back(logit_shape[index]);
+      permutations.emplace_back(index);
+    }
+
+    new_shape.emplace_back(logit_shape[1]);
+    permutations.emplace_back(1);
+
+    transpose_output = scan::detail::AllocateTensorInMLValue(logit.DataType(), new_shape, alloc);
+    ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), permutations, logit, *transpose_output.GetMutable<Tensor>()));
+    logit_data = (*transpose_output.GetMutable<Tensor>()).template Data<T>();
+  }
+
+  // calculate logsoftmax
+  auto status = SoftMaxComputeHelper<T, true>(logit_data,
+                                              logit_reshape,
+                                              log_prob_data,
+                                              CudnnHandle(),
+                                              1 /*axis default*/);
+  ORT_RETURN_IF_ERROR(status);
+
+  // calculate  (label * log(softmax)) for each sample
+  const T* weight_data = nullptr;
+  if (OpKernel::Node().InputDefs().size() == 3) {
+    const Tensor& weight = *ctx->Input<Tensor>(2);
+    const TensorShape weight_shape{weight.Shape()};
+    ORT_ENFORCE(1 == weight_shape.NumDimensions(), "Weights tensor is not 1-D.");
+    weight_data = weight.template Data<T>();
+  }
+
+  auto normalize_factor_data = GetScratchBuffer<T>(1);
+  if (reduction_ == ReductionType::SUM) {
+    const T normalize_factor = static_cast<T>(1);
+    cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
+  } else if (reduction_ == ReductionType::MEAN) {
+    if (weight_data == nullptr) {
+      const T normalize_factor = static_cast<T>(N_D);
+      cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
+    } else {
+      // Compute buffer size in byte for reduction APIs.
+      const auto buffer_size = static_cast<size_t>(
+          compute_reduction_buffer_size(
+              static_cast<int>(sizeof(T)), static_cast<int>(N_D)));
+      // Allocate reduction buffer whose size is buffer_size bytes.
+      IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
+          buffer_size);
+      reduce_sum(weight_data,
+                 normalize_factor_data.get(),
+                 static_cast<int>(N_D),
+                 reinterpret_cast<T*>(reduction_buffer.get()));
+    }
+  }
+
+  SparseSoftmaxCrossEntropyImpl(log_prob_data,
+                                label_data,
+                                weight_data,
+                                normalize_factor_data.get(),
+                                tmp_loss_sample.get(),
+                                N_D,
+                                C,
+                                ignore_index_);
+
+  // ReduceSum on loss_per_sample
+  std::vector<int64_t> output_dims(1, 1);
+  ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+      tmp_loss_sample.get(),
+      label_reshape,
+      total_loss_data,
+      TensorShape({}),
+      CUDNN_REDUCE_TENSOR_ADD,
+      output_dims);
+
+  return Status::OK();
+}
+
+template <typename T, typename Tin>
+Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx) const {
+  const Tensor& dY = *ctx->Input<Tensor>(0);
+  const Tensor& log_prob = *ctx->Input<Tensor>(1);
+  const Tensor& label = *ctx->Input<Tensor>(2);
+
+  const TensorShape probability_shape{log_prob.Shape()};
+  const TensorShape label_shape{label.Shape()};
+  ORT_ENFORCE(probability_shape.NumDimensions() == label_shape.NumDimensions() + 1,
+              "logit_shape must be (1 + label_shape)");
+
+  ORT_ENFORCE(label_shape[0] == probability_shape[0], "The shape of logit and label does not match");
+
+  if (label_shape.NumDimensions() >= 2) {
+    for (size_t i = 0; i < label_shape.NumDimensions() - 1; i++) {
+      ORT_ENFORCE(label_shape[i + 1] == probability_shape[i + 2], "The shape of logit and label does not match");
+    }
+  }
+
+  int64_t N = probability_shape[0];
+  int64_t D = probability_shape.NumDimensions() > 2 ? label_shape.Size() / N : 1;
+  int64_t N_D = N * D;
+  int64_t C = probability_shape.Size() / N_D;
+
+  Tensor* d_logit = ctx->Output(0, probability_shape);
+
+  const T* dY_data = dY.template Data<T>();
+  const T* log_prob_data = log_prob.template Data<T>();
+  const Tin* label_data = label.template Data<Tin>();
+  T* d_logit_data = d_logit->template MutableData<T>();
+
+  const T* weight_data = nullptr;
+  if (OpKernel::Node().InputDefs().size() == 4) {
+    const Tensor& weight = *ctx->Input<Tensor>(3);
+    const TensorShape weight_shape{weight.Shape()};
+    ORT_ENFORCE(1 == weight_shape.NumDimensions(), "Weights tensor is not 1-D.");
+    weight_data = weight.template Data<T>();
+  }
+
+  auto normalize_factor_data = GetScratchBuffer<T>(1);
+  if (reduction_ == ReductionType::SUM) {
+    const T normalize_factor = static_cast<T>(1);
+    cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
+  } else if (reduction_ == ReductionType::MEAN) {
+    if (weight_data == nullptr) {
+      const T normalize_factor = static_cast<T>(N_D);
+      cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
+    } else {
+      // Compute buffer size in byte for reduction APIs.
+      const auto buffer_size = static_cast<size_t>(
+          compute_reduction_buffer_size(
+              static_cast<int>(sizeof(T)), static_cast<int>(N_D)));
+      // Allocate reduction buffer whose size is buffer_size bytes.
+      IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
+          buffer_size);
+      reduce_sum(weight_data,
+                 normalize_factor_data.get(),
+                 static_cast<int>(N_D),
+                 reinterpret_cast<T*>(reduction_buffer.get()));
+    }
+  }
+
+  SparseSoftmaxCrossEntropyGradImpl(dY_data,
+                                    log_prob_data,
+                                    label_data,
+                                    weight_data,
+                                    normalize_factor_data.get(),
+                                    d_logit_data,
+                                    N_D,
+                                    C,
+                                    ignore_index_);
+
+  // Transpose logit from [N, D1, D2...Dk, C] to [N, C, D1, D2 .. Dk]
+  OrtValue transpose_output;
+  Tensor transpose_tensor;
+  std::vector<size_t> permutations;
+  AllocatorPtr alloc;
+  const OpKernelInfo& info = OpKernel::Info();
+
+  if (probability_shape.NumDimensions() > 2) {
+    ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
+
+    permutations.emplace_back(0);
+    permutations.emplace_back(probability_shape.NumDimensions() - 1);
+    for (int index = 1; index < probability_shape.NumDimensions() - 1; index += 1) {
+      permutations.emplace_back(index);
+    }
+
+    transpose_output = scan::detail::AllocateTensorInMLValue(log_prob.DataType(), probability_shape, alloc);
+    ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), permutations, *d_logit, *transpose_output.GetMutable<Tensor>()));
+    auto transposed_data = (*transpose_output.GetMutable<Tensor>()).template Data<T>();
+    cudaMemcpyAsync(d_logit_data, transposed_data, sizeof(T), cudaMemcpyDeviceToDevice);
+  }
 
   return Status::OK();
 }
@@ -291,6 +522,10 @@ SPECIALIZED_COMPUTE(SoftmaxCrossEntropyGrad, float, kMSDomain, 1)
 SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropy, float, int64_t, kOnnxDomain, 9)
 // SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropyGrad, float, int32_t, kOnnxDomain, 9)
 SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropyGrad, float, int64_t, kOnnxDomain, 9)
+// SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropy, float, int32_t, kOnnxDomain, 9)
+SPECIALIZED_COMPUTE_SPARSE(SoftmaxCrossEntropyLoss, float, int64_t, kOnnxDomain, 12)
+// SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropyGrad, float, int32_t, kOnnxDomain, 9)
+SPECIALIZED_COMPUTE_SPARSE(SoftmaxCrossEntropyLossGrad, float, int64_t, kMSDomain, 1)
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -819,6 +819,24 @@ IMPLEMENT_GRADIENT_BUILDER(GetSparseSoftmaxCrossEntropyGradient) {
   }
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossGradient) {
+  if (GetSrcNodeInputSize() == 2) {
+    return std::vector<NodeDef>{
+        NodeDef(OpDef{"SoftmaxCrossEntropyLossGrad", kMSDomain, 1},
+                {GO(0), O(1), I(1)},
+                {GI(0)},
+                SrcNodeAttributes())};
+  } else if (GetSrcNodeInputSize() == 3) {
+    return std::vector<NodeDef>{
+        NodeDef(OpDef{"SoftmaxCrossEntropyLossGrad", kMSDomain, 1},
+                {GO(0), O(1), I(1), I(2)},
+                {GI(0)},
+                SrcNodeAttributes())};
+  } else {
+    ORT_ENFORCE(false, "the number of input arguments must be 2 or 3");
+  }
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
   const ArgDef& X = I(0);
 

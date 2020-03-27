@@ -34,7 +34,8 @@ void SparseSoftmaxCrossEntropyImpl(
     const T* normalize_factor,
     T* output_data,
     size_t count,
-    size_t label_depth);
+    size_t label_depth,
+    Tin ignore_index);
 
 template <typename T, typename Tin>
 void SparseSoftmaxCrossEntropyGradImpl(
@@ -45,7 +46,8 @@ void SparseSoftmaxCrossEntropyGradImpl(
     const T* normalize_factor,
     T* output_data,
     size_t count,
-    size_t label_depth);
+    size_t label_depth,
+    Tin ignore_index);
 
 class LossBase : public ReduceKernel<true> {
  public:
@@ -97,6 +99,32 @@ class SparseSoftmaxCrossEntropyGrad final : public LossBase {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+template <typename T, typename Tin>
+class SoftmaxCrossEntropyLoss final : public LossBase {
+ public:
+  SoftmaxCrossEntropyLoss(const OpKernelInfo& info) : LossBase(info) {
+    ORT_ENFORCE(info.GetAttr<Tin>("ignore_index", &ignore_index_).IsOK());
+  }
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  Tin ignore_index_;
+};
+
+template <typename T, typename Tin>
+class SoftmaxCrossEntropyLossGrad final : public LossBase {
+ public:
+  SoftmaxCrossEntropyLossGrad(const OpKernelInfo& info) : LossBase(info) {
+    ORT_ENFORCE(info.GetAttr<Tin>("ignore_index", &ignore_index_).IsOK());
+  }
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  Tin ignore_index_;
 };
 
 }  // namespace cuda

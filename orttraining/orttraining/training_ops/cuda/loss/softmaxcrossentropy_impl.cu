@@ -98,10 +98,14 @@ __global__ void _SparseSoftmaxCrossEntropy(
     const T* normalize_factor_data,
     T* output_data,
     CUDA_LONG N,
-    CUDA_LONG D) {
+    CUDA_LONG D,
+    Tin ignore_index ) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N);
   CUDA_KERNEL_ASSERT(label_data[i] >= 0 && label_data[i] < D);
-  output_data[i] = -log_prob_data[i * D + label_data[i]] / (*normalize_factor_data);
+  if (ignore_index != label_data[i])
+    output_data[i] = -log_prob_data[i * D + label_data[i]] / (*normalize_factor_data);
+  else
+    output_data[i] = 0;
 }
 
 template <typename T, typename Tin>
@@ -112,10 +116,14 @@ __global__ void _WeightedSparseSoftmaxCrossEntropy(
     const T* normalize_factor_data,
     T* output_data,
     CUDA_LONG N,
-    CUDA_LONG D) {
+    CUDA_LONG D,
+    Tin ignore_index) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N);
   CUDA_KERNEL_ASSERT(label_data[i] >= 0 && label_data[i] < D);
-  output_data[i] = -log_prob_data[i * D + label_data[i]] * weight_data[i] / (*normalize_factor_data);
+  if (ignore_index != label_data[i])
+    output_data[i] = -log_prob_data[i * D + label_data[i]] * weight_data[i] / (*normalize_factor_data);
+  else
+    output_data[i] = 0;
 }
 
 template <typename T, typename Tin>
@@ -126,7 +134,8 @@ void SparseSoftmaxCrossEntropyImpl(
     const T* normalize_factor,
     T* output_data,
     size_t count,
-    size_t label_depth) {
+    size_t label_depth,
+    Tin ignore_index) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   CUDA_LONG D = static_cast<CUDA_LONG>(label_depth);
@@ -138,7 +147,8 @@ void SparseSoftmaxCrossEntropyImpl(
       normalize_factor,
       output_data,
       N,
-      D);
+      D,
+      ignore_index);
   } else {
     _SparseSoftmaxCrossEntropy<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         log_prob,
@@ -146,7 +156,8 @@ void SparseSoftmaxCrossEntropyImpl(
         normalize_factor,
         output_data,
         N,
-        D);
+        D,
+        ignore_index);
   }
 }
 
@@ -158,7 +169,8 @@ void SparseSoftmaxCrossEntropyImpl(
       const T* normalize_factor,                          \
       T* output_data,                                     \
       size_t count,                                       \
-      size_t label_depth);
+      size_t label_depth,                                 \
+      Tin ignore_index );
 
 SPECIALIZED_IMPL_SparseSoftMaxEntropyImpl(float, int32_t)
 SPECIALIZED_IMPL_SparseSoftMaxEntropyImpl(float, int64_t)
@@ -171,11 +183,14 @@ __global__ void _SparseSoftmaxCrossEntropyGrad(
     const T* normalize_factor,
     T* output_data,
     CUDA_LONG N,
-    CUDA_LONG D) {
+    CUDA_LONG D,
+    Tin ignore_index) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N * D);
   int row = i / D;
   int d = i % D;
-  output_data[i] = (*dY) * (_Exp(log_prob[i]) - 1.0 * (d == label[row])) / (*normalize_factor);
+  if (ignore_index != label[row]) {
+    output_data[i] = (*dY) * (_Exp(log_prob[i]) - 1.0 * (d == label[row])) / (*normalize_factor);
+  }
 }
 
 template <typename T, typename Tin>
@@ -187,11 +202,14 @@ __global__ void _WeightedSparseSoftmaxCrossEntropyGrad(
     const T* normalize_factor,
     T* output_data,
     CUDA_LONG N,
-    CUDA_LONG D) {
+    CUDA_LONG D,
+    Tin ignore_index) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N * D);
   int row = i / D;
   int d = i % D;
-  output_data[i] = (*dY) * weight[row] * (_Exp(log_prob[i]) - 1.0 * (d == label[row])) / (*normalize_factor);
+  if (ignore_index != label[row]) {
+    output_data[i] = (*dY) * weight[row] * (_Exp(log_prob[i]) - 1.0 * (d == label[row])) / (*normalize_factor);
+  }
 }
 
 template <typename T, typename Tin>
@@ -203,20 +221,22 @@ void SparseSoftmaxCrossEntropyGradImpl(
     const T* normalize_factor,
     T* output_data,
     size_t count,
-    size_t label_depth) {
+    size_t label_depth,
+    Tin ignore_index) {
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   CUDA_LONG D = static_cast<CUDA_LONG>(label_depth);
   int blocksPerGrid = (int)(ceil(static_cast<float>(N * D) / GridDim::maxThreadsPerBlock));
   if (weight) {
     _WeightedSparseSoftmaxCrossEntropyGrad<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-      dY,
-      log_prob,
-      label,
-      weight,
-      normalize_factor,
-      output_data,
-      N,
-      D);
+        dY,
+        log_prob,
+        label,
+        weight,
+        normalize_factor,
+        output_data,
+        N,
+        D,
+        ignore_index);
   } else {
     _SparseSoftmaxCrossEntropyGrad<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         dY,
@@ -225,7 +245,8 @@ void SparseSoftmaxCrossEntropyGradImpl(
         normalize_factor,
         output_data,
         N,
-        D);
+        D,
+        ignore_index);
   }
 }
 
@@ -238,7 +259,8 @@ void SparseSoftmaxCrossEntropyGradImpl(
       const T* normalize_factor,                              \
       T* output_data,                                         \
       size_t count,                                           \
-      size_t label_depth);
+      size_t label_depth,                                     \
+      Tin ignore_index);
 
 SPECIALIZED_IMPL_SparseSoftMaxEntropyGradImpl(float, int32_t)
 SPECIALIZED_IMPL_SparseSoftMaxEntropyGradImpl(float, int64_t)
