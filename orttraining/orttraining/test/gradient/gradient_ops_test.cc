@@ -1230,7 +1230,7 @@ TEST(OptimizerTest, AdamBiasCorrection) {
 
   test.AddInput<float>("ETA", {}, {1.f});
   test.AddInput<int64_t>("Update_Count", {}, {1});
-  test.AddInput<float>("W", {3}, {-0.4634f,  0.3584f, -0.2121f});
+  test.AddInput<float>("W", {3}, {-0.4634f, 0.3584f, -0.2121f});
   test.AddInput<float>("G", {3}, {0.4171f, 0.9485f, 1.2289f});
   test.AddInput<float>("Moment_1", {3}, {0.f, 0.f, 0.f});
   test.AddInput<float>("Moment_2", {3}, {0.f, 0.f, 0.f});
@@ -1244,7 +1244,6 @@ TEST(OptimizerTest, AdamBiasCorrection) {
 
   test.Run();
 }
-
 
 TEST(GradientCheckerTest, GatherGrad) {
   float max_error;
@@ -2701,6 +2700,23 @@ TEST(GradientUtilsTest, ZeroGradientFloat16) {
 }
 
 #endif
+
+TEST(GradientCheckerTest, WhereGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Where"};
+
+  std::vector<int64_t> shape{4, 3, 2};
+  TensorInfo x_info(shape), y_info(shape);
+  std::function<float(float)> transformer = [](float x) {
+    return static_cast<float>(std::fmod(std::fabs(x), 1.0f) > 0.5f);
+  };
+  TensorInfo condition_info(shape, false, &transformer, DataTypeImpl::GetTensorType<bool>());
+
+  TensorShape output_shape{shape};
+  gradient_checker.ComputeGradientError(op_def, {condition_info, x_info, y_info}, {output_shape}, &max_error);
+  EXPECT_IS_TINY(max_error);
+}
 
 TEST(GradientCheckerTest, SliceGrad) {
   float max_error;
