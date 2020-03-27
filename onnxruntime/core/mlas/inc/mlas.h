@@ -474,3 +474,23 @@ MlasFindMinMaxElement(
     float* Max,
     size_t N
     );
+
+//
+// LengthA == LengthB, or (LengthA == 1 or LengthB == 1), broadcasting semantic
+//
+template<typename DataType>
+void
+MLASCALL
+MlasQLinearAdd(
+    const DataType* InputA,
+    float ScaleA,
+    DataType ZeroPointA,
+    const DataType* InputB,
+    float ScaleB,
+    DataType ZeroPointB,
+    float ScaleC,
+    DataType ZeroPointC,
+    DataType* OutputC,
+    size_t LengthA,
+    size_t LengthB
+    );
