@@ -32,7 +32,7 @@ TEST(FeaturizersTests, ShortGrainDropperTransformer_Has_CV) {
   std::uint8_t maxHorizon = 1;
   nonstd::optional<std::uint8_t> cv = static_cast<std::uint8_t>(1);
 
-  EstimatorT estimator(NS::CreateTestAnnotationMapsPtr(1), 0, windowSize, lags, maxHorizon, cv);
+  EstimatorT estimator(NS::CreateTestAnnotationMapsPtr(1), 0, windowSize, std::make_tuple(lags.begin(), lags.end()), maxHorizon, cv);
 
   std::vector<std::vector<std::vector<std::string>>> trainingBatches = NS::TestHelpers::make_vector<std::vector<std::vector<std::string>>>(
     NS::TestHelpers::make_vector<std::vector<std::string>>(
@@ -71,7 +71,7 @@ TEST(FeaturizersTests, ShortGrainDropperTransformer_No_CV) {
   std::uint8_t maxHorizon = 1;
   nonstd::optional<std::uint8_t> cv = nonstd::optional<std::uint8_t>();
 
-  EstimatorT estimator(NS::CreateTestAnnotationMapsPtr(1), 0, windowSize, lags, maxHorizon, cv);
+  EstimatorT estimator(NS::CreateTestAnnotationMapsPtr(1), 0, windowSize, std::make_tuple(lags.begin(), lags.end()), maxHorizon, cv);
 
   std::vector<std::vector<std::vector<std::string>>> trainingBatches = NS::TestHelpers::make_vector<std::vector<std::vector<std::string>>>(
     NS::TestHelpers::make_vector<std::vector<std::string>>(
