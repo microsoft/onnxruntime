@@ -1,5 +1,7 @@
-﻿// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+﻿/*All contributions by Facebook :
+Copyright(c) 2016 Facebook Inc.
+==============================================================================*/
+/* Modifications Copyright (c) Microsoft. */
 
 #pragma once
 #include "core/providers/cuda/cu_inc/common.cuh"
