@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace cuda {
 template <typename T1, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
-__global__ void _AdamOptimizer(
+__global__ void _AdamOptimizer_mode0(
     const T1* eta,
     const T3* weights,
     const T_GRAD* grads,
@@ -24,7 +24,6 @@ __global__ void _AdamOptimizer(
     const T4 epsilon,
     const T4 alpha_correction,
     const T4 beta_correction,
-    const int64_t weight_decay_mode,
     T4* moment_1_out,
     T4* moment_2_out,
     T3* weights_out,
@@ -48,25 +47,8 @@ __global__ void _AdamOptimizer(
   const T4 m2o_corrected = m2o / beta_correction;
 
   // Compute weight update.
-  T4 stability_term = epsilon;
-
-  // Huggingface's Adamw implementation.
-  // Refer to https://huggingface.co/transformers/_modules/transformers/optimization.html#AdamW.
-  // The difference is that bias-correction is applied after denom is calculated.
-  // After expanding the equation, it's equivalent to dividing epsilon by square root of the corrected beta.
-  if (weight_decay_mode == 1) {
-    stability_term = epsilon / _Sqrt(beta_correction);
-  }
-  const T4 denom = _Sqrt(m2o_corrected) + stability_term;
-
-  T4 update = (m1o_corrected / denom) + (lambda * T4(weights[id]));
-
-  // Huggingface's Adamw implementation applies lambda on updated weights.
-  // After expanding the equation, it is equivalent to substracting the following term
-  // from the update.
-  if (weight_decay_mode == 1) {
-    update = update - T4(*eta) * lambda * m1o_corrected / denom;
-  }
+  const T4 denom = _Sqrt(m2o_corrected) + epsilon;
+  const T4 update = (m1o_corrected / denom) + (lambda * T4(weights[id]));
 
   const T4 delta = -T4(*eta) * update;
 
@@ -74,6 +56,66 @@ __global__ void _AdamOptimizer(
   if (grads_out) {
     grads_out[id] = T_GRAD(delta);
   }
+
+  // Compute the new weight.
+  if (weights_out) {
+    weights_out[id] = weights[id] + T3(delta);
+
+    if (fp16_weights_out) {
+      fp16_weights_out[id] = static_cast<half>(weights_out[id]);
+    }
+  }
+
+  moment_1_out[id] = m1o;
+  moment_2_out[id] = m2o;
+}
+
+template <typename T1, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
+__global__ void _AdamOptimizer_mode1(
+    const T1* eta,
+    const T3* weights,
+    const T_GRAD* grads,
+    const T4* moment_1,
+    const T4* moment_2,
+    const T3* loss_scale,
+    const T_GRAD_NORM* grad_norm,
+    const T4 alpha,
+    const T4 beta,
+    const T4 lambda,
+    const T4 epsilon,
+    const T4 alpha_correction,
+    const T4 beta_correction,
+    T4* moment_1_out,
+    T4* moment_2_out,
+    T3* weights_out,
+    T_GRAD* grads_out,
+    half* fp16_weights_out,
+    CUDA_LONG N) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  const T4 actual_scale = _ComputeGradScale<T3, T_GRAD_NORM, T4>(loss_scale, grad_norm);
+
+  // Gradient scaling/clipping.
+  const T4 g = T4(grads[id]) / actual_scale;
+  // A shared constant.
+  const T4 one = T4(1.0f);
+
+  // Compute exponentially-averaged historical gradient.
+  const T4 m1o = alpha * moment_1[id] + (one - alpha) * g;
+
+  // Compute exponentially-averaged historical squared gradient.
+  const T4 m2o = beta * moment_2[id] + (one - beta) * g * g;
+
+  const T4 denom = _Sqrt(m2o) + epsilon;
+
+  // Apply bias correction terms on learning rate
+  const T4 step_size = T4(*eta) * _Sqrt(beta_correction) / alpha_correction;
+
+  // Huggingface updates weights in the following logic:
+  // param' = param - step_size * m1o / denom
+  // param_out = param' - original_lr * lambda * param'
+  // then param_out = param - step_size * m1o / denom - original_lr * lambda * (param - step_size * m1o / denom)
+  // so delta = -step_size * m1o / denom - original_lr * lambda * (param - step_size * m1o / denom)
+  const T4 delta = -step_size * m1o / denom - T4(*eta) * lambda * (T4(weights[id]) - step_size * m1o / denom);
 
   // Compute the new weight.
   if (weights_out) {
@@ -117,7 +159,16 @@ void AdamOptimizerImpl(
     onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count) : T4(1.f);
   const T4 beta_correction = do_bias_correction ?
     onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count) : T4(1.f);
-  _AdamOptimizer<T1, T3, T4, T_GRAD, T_GRAD_NORM><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  
+  // Currently two modes of Adamw are supported:
+  // Mode 0: Pytorch https://pytorch.org/docs/stable/_modules/torch/optim/adamw.html#AdamW,
+  //         bias correction is applied on m and v individually,
+  //         weight decay is applied before weight is updated.
+  // Mode 1: Huggingface https://huggingface.co/transformers/_modules/transformers/optimization.html#AdamW.,
+  //         bias correction is applied on learning rate,
+  //         weight decay is applied after weight is updated.
+  if (weight_decay_mode == 0) {
+    _AdamOptimizer_mode0<T1, T3, T4, T_GRAD, T_GRAD_NORM><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       eta,
       weights,
       grads,
@@ -131,13 +182,39 @@ void AdamOptimizerImpl(
       epsilon,
       alpha_correction,
       beta_correction,
-      weight_decay_mode,
       moment_1_out,
       moment_2_out,
       weights_out,
       grads_out,
       fp16_weights_out,
       N);
+  }
+  else if (weight_decay_mode == 1) {
+    _AdamOptimizer_mode1<T1, T3, T4, T_GRAD, T_GRAD_NORM><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      eta,
+      weights,
+      grads,
+      moment_1,
+      moment_2,
+      loss_scale,
+      grad_norm,
+      alpha,
+      beta,
+      lambda,
+      epsilon,
+      alpha_correction,
+      beta_correction,
+      moment_1_out,
+      moment_2_out,
+      weights_out,
+      grads_out,
+      fp16_weights_out,
+      N);
+  }
+  else {
+    // Shouldn't reach here
+    ORT_THROW("Unsupported Adamw optimizer mode.");
+  }
 }
 
 #define SPECIALIZED_AdamOptimizerImpl(T1, T2, T3, T4, T_GRAD, T_GRAD_NORM) \
