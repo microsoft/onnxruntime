@@ -14,11 +14,13 @@ template <typename T1, typename T2>
 class SoftmaxCrossEntropyLoss final : public LossBase {
  public:
   explicit SoftmaxCrossEntropyLoss(const OpKernelInfo& info) : LossBase(info) {
+    ORT_ENFORCE(info.GetAttr<int64_t>("ignore_index", &ignore_index_).IsOK());
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
+  int64_t ignore_index_;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SoftmaxCrossEntropyLoss);
 };
 
@@ -26,11 +28,13 @@ template <typename T1, typename T2>
 class SoftmaxCrossEntropyLossGrad final : public LossBase {
  public:
   explicit SoftmaxCrossEntropyLossGrad(const OpKernelInfo& info) : LossBase(info) {
+    ORT_ENFORCE(info.GetAttr<int64_t>("ignore_index", &ignore_index_).IsOK());
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
+  int64_t ignore_index_;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SoftmaxCrossEntropyLossGrad);
 };
 
