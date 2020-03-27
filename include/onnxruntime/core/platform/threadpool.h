@@ -123,6 +123,7 @@ class ThreadPool {
   // operations like I/O the hint should be set to false.
   //
   // REQUIRES: num_threads > 0
+  // The allocator parameter is only used for creating a Eigen::ThreadPoolDevice to be used with Eigen Tensor classes.
   ThreadPool(Env* env, const ThreadOptions& thread_options, const NAME_CHAR_TYPE* name, int num_threads,
              bool low_latency_hint, Eigen::Allocator* allocator = nullptr);
   // Constructs a pool that wraps around the thread::ThreadPoolInterface
@@ -137,10 +138,6 @@ class ThreadPool {
 
   // Schedules fn() for execution in the pool of threads.
   void Schedule(std::function<void()> fn);
-
-  void SetStealPartitions(const std::vector<std::pair<unsigned, unsigned>>& partitions);
-
-  void ScheduleWithHint(std::function<void()> fn, int start, int limit);
 
   // Returns the number of shards used by ParallelForFixedBlockSizeScheduling
   // with these parameters.
@@ -182,6 +179,14 @@ class ThreadPool {
   void ParallelFor(std::ptrdiff_t total, const SchedulingParams& scheduling_params,
                    const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
 
+  static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const SchedulingParams& scheduling_params,
+                             const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
+    if (tp == nullptr) {
+      fn(0, total);
+      return;
+    }
+    tp->ParallelFor(total, scheduling_params, fn);
+  }
   // Returns the number of threads in the pool.
   int NumThreads() const;
 
@@ -258,6 +263,7 @@ class ThreadPool {
 #endif
 
 #ifndef _OPENMP
+  //Deprecated. Please avoid using Eigen Tensor because it will blow up binary size quickly.
   Eigen::ThreadPoolDevice& Device() {
     return *threadpool_device_;
   }

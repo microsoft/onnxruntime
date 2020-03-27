@@ -306,19 +306,6 @@ int ThreadPool::CurrentThreadId() const {
   return underlying_threadpool_->CurrentThreadId();
 }
 
-void ThreadPool::ScheduleWithHint(std::function<void()> fn, int start, int limit) {
-  underlying_threadpool_->ScheduleWithHint(std::move(fn), start, limit);
-}
-
-void ThreadPool::SetStealPartitions(const std::vector<std::pair<unsigned, unsigned>>& partitions) {
-  // ThreadPool::SetStealPartitions is only called in the constructor of
-  // RunHandlerPool::Impl, which currently instantiates ThreadPool using a
-  // constructor that does not take user_threadpool. Thus we assume
-  // eigen_threadpool_ is not null here.
-  ORT_ENFORCE(eigen_threadpool_ != nullptr);
-  eigen_threadpool_->SetStealPartitions(partitions);
-}
-
 Eigen::ThreadPoolInterface* ThreadPool::AsEigenThreadPool() const {
   ORT_ENFORCE(underlying_threadpool_ != nullptr);
   return underlying_threadpool_;

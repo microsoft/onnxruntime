@@ -48,6 +48,7 @@ int main(int argc, char** argv) {
     OrtStatus* st = g_ort->CreateThreadingOptions(&tp_options);
     if(st != nullptr) return -1;
     ort_env.reset(new Ort::Env(tp_options, ORT_LOGGING_LEVEL_VERBOSE, "Default"));  // this is the only change from test/providers/test_main.cc
+    g_ort->ReleaseThreadingOptions(tp_options);
     status = RUN_ALL_TESTS();
   } catch (const std::exception& ex) {
     std::cerr << ex.what();
