@@ -4,6 +4,7 @@
 #include "model.h"
 #include "SqueezeNetValidator.h"
 #include "threadPool.h"
+#include "windows.ai.machinelearning.native.internal.h"
 
 #include <chrono>
 #include <cstdlib>
@@ -13,20 +14,16 @@
 using namespace winrt::Windows::AI::MachineLearning;
 using namespace winrt;
 
-namespace
-{
-void LoadBindEvalSqueezenetRealDataWithValidationConcurrently()
-{
+namespace {
+void LoadBindEvalSqueezenetRealDataWithValidationConcurrently() {
     WINML_SKIP_TEST("Skipping due to bug 21617097");
 
-    constexpr auto load_test_model = [](const std::string& instance, LearningModelDeviceKind device)
-    {
+    constexpr auto load_test_model = [](const std::string& instance, LearningModelDeviceKind device) {
         WinML::Engine::Test::ModelValidator::SqueezeNet(instance, device, 0.00001f, false);
     };
 
     std::vector<std::thread> threads;
-    for (const auto& instance : {"1", "2", "3", "4"})
-    {
+    for (const auto& instance : {"1", "2", "3", "4"}) {
         threads.emplace_back(load_test_model, instance, LearningModelDeviceKind::Cpu);
     }
     if (GPUTEST_ENABLED) {
@@ -40,14 +37,12 @@ void LoadBindEvalSqueezenetRealDataWithValidationConcurrently()
     }
 }
 
-void ConcurrencyTestsApiSetup()
-{
+void ConcurrencyTestsApiSetup() {
     init_apartment();
     std::srand(static_cast<unsigned>(std::time(nullptr)));
 }
 
-struct EvaluationUnit
-{
+struct EvaluationUnit {
     LearningModel model;
     LearningModelSession session;
     LearningModelBinding binding;
@@ -58,8 +53,7 @@ struct EvaluationUnit
 };
 
 // Run EvalAsync for each unit concurrently and get results
-static void RunAsync(std::vector<EvaluationUnit> &evaluation_units)
-{
+void RunAsync(std::vector<EvaluationUnit> &evaluation_units) {
     std::for_each(evaluation_units.begin(), evaluation_units.end(), [](EvaluationUnit &unit) {
         unit.operation = unit.session.EvaluateAsync(unit.binding, L"");
     });
@@ -69,11 +63,9 @@ static void RunAsync(std::vector<EvaluationUnit> &evaluation_units)
     });
 }
 
-static void VerifyEvaluation(const std::vector<EvaluationUnit> &evaluation_units, std::vector<uint32_t> expected_indices)
-{
+void VerifyEvaluation(const std::vector<EvaluationUnit> &evaluation_units, std::vector<uint32_t> expected_indices) {
     assert(evaluation_units.size() == expected_indices.size());
-    for (size_t i = 0; i < evaluation_units.size(); ++i)
-    {
+    for (size_t i = 0; i < evaluation_units.size(); ++i) {
         auto unit = evaluation_units[i];
         auto expectedIndex = expected_indices[i];
         auto result = unit.result.Outputs().Lookup(L"softmaxout_1").as<TensorFloat>().GetAsVectorView();
@@ -92,8 +84,7 @@ static void VerifyEvaluation(const std::vector<EvaluationUnit> &evaluation_units
     }
 }
 
-static void copyFile(LPCWSTR from, LPCWSTR to)
-{
+void CopyLocalFile(LPCWSTR from, LPCWSTR to) {
     using namespace std;
     ifstream source(FileHelpers::GetModulePath() + from, ios::binary);
     ofstream dest(FileHelpers::GetModulePath() + to, ios::binary);
@@ -102,9 +93,8 @@ static void copyFile(LPCWSTR from, LPCWSTR to)
 }
 
 // Run evaluations with different models
-void EvalAsyncDifferentModels()
-{
-    copyFile(L"model.onnx", L"model2.onnx");
+void EvalAsyncDifferentModels() {
+    CopyLocalFile(L"model.onnx", L"model2.onnx");
 
     std::vector<std::wstring> model_paths = { L"model.onnx", L"model2.onnx" };
     const unsigned int num_units = static_cast<unsigned int>(model_paths.size());
@@ -112,8 +102,7 @@ void EvalAsyncDifferentModels()
 
     auto ifv = FileHelpers::LoadImageFeatureValue(L"kitten_224.png");
 
-    for (unsigned int i = 0; i < num_units; ++i)
-    {
+    for (unsigned int i = 0; i < num_units; ++i) {
         evaluation_units[i].model = LearningModel::LoadFromFilePath(FileHelpers::GetModulePath() + model_paths[i]);
         evaluation_units[i].session = LearningModelSession(evaluation_units[i].model);
         evaluation_units[i].binding = LearningModelBinding(evaluation_units[i].session);
@@ -126,16 +115,14 @@ void EvalAsyncDifferentModels()
 }
 
 // Run evaluations with same model, different sessions
-void EvalAsyncDifferentSessions()
-{
+void EvalAsyncDifferentSessions() {
     unsigned int num_units = 3;
     std::vector<EvaluationUnit> evaluation_units(num_units, EvaluationUnit());
     auto ifv = FileHelpers::LoadImageFeatureValue(L"kitten_224.png");
 
     // same model, different session
     auto model = LearningModel::LoadFromFilePath(FileHelpers::GetModulePath() + L"model.onnx");
-    for (unsigned int i = 0; i < num_units; ++i)
-    {
+    for (unsigned int i = 0; i < num_units; ++i) {
         evaluation_units[i].model = model;
         evaluation_units[i].session = LearningModelSession(evaluation_units[i].model);
         evaluation_units[i].binding = LearningModelBinding(evaluation_units[i].session);
@@ -148,8 +135,7 @@ void EvalAsyncDifferentSessions()
 }
 
 // Run evaluations with same session (and model), with different bindings
-void EvalAsyncDifferentBindings()
-{
+void EvalAsyncDifferentBindings() {
     unsigned int num_units = 2;
     std::vector<EvaluationUnit> evaluation_units(num_units, EvaluationUnit());
 
@@ -159,8 +145,7 @@ void EvalAsyncDifferentBindings()
     // same session, different binding
     auto model = LearningModel::LoadFromFilePath(FileHelpers::GetModulePath() + L"model.onnx");
     auto session = LearningModelSession(model);
-    for (unsigned int i = 0; i < num_units; ++i)
-    {
+    for (unsigned int i = 0; i < num_units; ++i) {
         evaluation_units[i].model = model;
         evaluation_units[i].session = session;
         evaluation_units[i].binding = LearningModelBinding(evaluation_units[i].session);
@@ -179,17 +164,16 @@ winrt::Windows::AI::MachineLearning::ILearningModelFeatureDescriptor UnusedCreat
     const ::onnx::TypeProto *type_proto);
 
 // Get random number in interval [1,max_number]
-unsigned int getRandomNumber(unsigned int max_number) {
+unsigned int GetRandomNumber(unsigned int max_number) {
     return std::rand() % max_number + 1;
 }
 
 void MultiThreadLoadModel() {
     // load same model
     auto path = FileHelpers::GetModulePath() + L"model.onnx";
-    unsigned int num_threads = getRandomNumber(MAX_THREADS);
-    ThreadPool pool(num_threads);
+    ThreadPool pool(NUM_THREADS);
     try {
-        for (unsigned int i = 0; i < num_threads; ++i) {
+        for (unsigned int i = 0; i < NUM_THREADS; ++i) {
             pool.SubmitWork([&path]() {
                 auto model = LearningModel::LoadFromFilePath(path);
                 std::wstring name(model.Name());
@@ -202,12 +186,81 @@ void MultiThreadLoadModel() {
     }
 }
 
-// Create different sessions for each thread, and evaluate
-void MultiThreadSession()
-{
+void MultiThreadMultiSessionOnDevice(const LearningModelDevice& device) {
     auto path = FileHelpers::GetModulePath() + L"model.onnx";
     auto model = LearningModel::LoadFromFilePath(path);
-    unsigned int num_threads = getRandomNumber(MAX_THREADS);
+    std::vector<ImageFeatureValue> ivfs = {
+        FileHelpers::LoadImageFeatureValue(L"kitten_224.png"),
+        FileHelpers::LoadImageFeatureValue(L"fish.png")
+    };
+    std::vector<int> max_indices = {
+        281, // tabby, tabby cat
+        0 // tench, Tinca tinca
+    };
+    std::vector<float> max_values = {
+        0.9314f,
+        0.7385f
+    };
+    float tolerance = 0.001f;
+    std::vector<LearningModelSession> modelSessions(NUM_THREADS, nullptr);
+    ThreadPool pool(NUM_THREADS);
+    try {
+        device.as<IMetacommandsController>()->SetMetacommandsEnabled(false);
+        // create all the sessions
+        for (unsigned i = 0; i < NUM_THREADS; ++i) {
+            modelSessions[i] = LearningModelSession(model, device);
+        }
+        // start all the threads
+        for (unsigned i = 0; i < NUM_THREADS; ++i) {
+            LearningModelSession &model_session = modelSessions[i];
+            pool.SubmitWork([&model_session,&ivfs,&max_indices,&max_values,tolerance,i]() {
+                DWORD start_time = GetTickCount();
+                while (((GetTickCount() - start_time) / 1000) < NUM_SECONDS) {
+                    auto j = i % ivfs.size();
+                    auto input = ivfs[j];
+                    auto expected_index = max_indices[j];
+                    auto expected_value = max_values[j];
+                    LearningModelBinding bind(model_session);
+                    bind.Bind(L"data_0", input);
+                    auto result = model_session.Evaluate(bind, L"").Outputs();
+                    auto softmax = result.Lookup(L"softmaxout_1");
+                    if (auto tensor = softmax.try_as<ITensorFloat>()) {
+                        auto view = tensor.GetAsVectorView();
+                        float max_val = .0f;
+                        int max_index = -1;
+                        for (uint32_t i = 0; i < view.Size(); ++i) {
+                            auto val = view.GetAt(i);
+                            if (val > max_val)
+                            {
+                                max_index = i;
+                                max_val = val;
+                            }
+                        }
+                        WINML_EXPECT_EQUAL(expected_index, max_index);
+                        WINML_EXPECT_TRUE(std::abs(expected_value - max_val) < tolerance);
+                    }
+                }
+           });
+        }
+    }
+    catch (...) {
+        WINML_EXPECT_HRESULT_SUCCEEDED(E_FAIL, L"Failed to create session concurrently.");
+    }
+}
+
+void MultiThreadMultiSession() {
+    MultiThreadMultiSessionOnDevice(LearningModelDeviceKind::Cpu);
+    if (GPUTEST_ENABLED) {
+        MultiThreadMultiSessionOnDevice(LearningModelDeviceKind::DirectX);
+    }
+}
+
+// Create different sessions for each thread, and evaluate
+void MultiThreadSingleSessionOnDevice(const LearningModelDevice& device) {
+    auto path = FileHelpers::GetModulePath() + L"model.onnx";
+    auto model = LearningModel::LoadFromFilePath(path);
+    LearningModelSession model_session = nullptr;
+    WINML_EXPECT_NO_THROW(model_session = LearningModelSession(model, device));
     std::vector<ImageFeatureValue> ivfs = {
         FileHelpers::LoadImageFeatureValue(L"kitten_224.png"),
         FileHelpers::LoadImageFeatureValue(L"fish.png")
@@ -222,45 +275,51 @@ void MultiThreadSession()
     };
     float tolerance = 0.001f;
 
-    ThreadPool pool(num_threads);
-    try
-    {
-        for (unsigned i = 0; i < num_threads; ++i)
-        {
-           pool.SubmitWork([&model,&ivfs,&max_indices,&max_values,tolerance,i]() {
-                // TODO: add variations of CPU/GPU, etc
-                auto j = i % ivfs.size();
-                auto input = ivfs[j];
-                auto expected_index = max_indices[j];
-                auto expected_value = max_values[j];
-                LearningModelSession session(model);
-                std::wstring name(session.Model().Name());
-                LearningModelBinding bind(session);
-                bind.Bind(L"data_0", input);
-                auto result = session.Evaluate(bind, L"").Outputs();
-                auto softmax = result.Lookup(L"softmaxout_1");
-                if (auto tensor = softmax.try_as<ITensorFloat>())
-                {
-                    auto view = tensor.GetAsVectorView();
-                    float max_val = .0f;
-                    int max_index = -1;
-                    for (uint32_t k = 0; k < view.Size(); ++k)
+    ThreadPool pool(NUM_THREADS);
+    try {
+        for (unsigned i = 0; i < NUM_THREADS; ++i) {
+           pool.SubmitWork([&model_session, &ivfs, &max_indices, &max_values, tolerance, i]() {
+                DWORD start_time = GetTickCount();
+                while (((GetTickCount() - start_time) / 1000) < NUM_SECONDS) {
+                    auto j = i % ivfs.size();
+                    auto input = ivfs[j];
+                    auto expected_index = max_indices[j];
+                    auto expected_value = max_values[j];
+                    std::wstring name(model_session.Model().Name());
+                    LearningModelBinding bind(model_session);
+                    bind.Bind(L"data_0", input);
+                    auto result = model_session.Evaluate(bind, L"").Outputs();
+                    auto softmax = result.Lookup(L"softmaxout_1");
+                    if (auto tensor = softmax.try_as<ITensorFloat>())
                     {
-                        auto val = view.GetAt(k);
-                        if (val > max_val)
+                        auto view = tensor.GetAsVectorView();
+                        float max_val = .0f;
+                        int max_index = -1;
+                        for (uint32_t k = 0; k < view.Size(); ++k)
                         {
-                            max_index = k;
-                            max_val = val;
+                            auto val = view.GetAt(k);
+                            if (val > max_val)
+                            {
+                                max_index = k;
+                                max_val = val;
+                            }
                         }
+                        WINML_EXPECT_EQUAL(expected_index, max_index);
+                        WINML_EXPECT_TRUE(std::abs(expected_value - max_val) < tolerance);
                     }
-                    WINML_EXPECT_EQUAL(expected_index, max_index);
-                    WINML_EXPECT_TRUE(std::abs(expected_value - max_val) < tolerance);
                 }
            });
         }
     }
     catch (...) {
         WINML_LOG_ERROR("Failed to create session concurrently.");
+    }
+}
+
+void MultiThreadSingleSession() {
+    MultiThreadSingleSessionOnDevice(LearningModelDeviceKind::Cpu);
+    if (GPUTEST_ENABLED) {
+        MultiThreadSingleSessionOnDevice(LearningModelDeviceKind::DirectX);
     }
 }
 }
@@ -270,7 +329,8 @@ const ConcurrencyTestsApi& getapi() {
     ConcurrencyTestsApiSetup,
     LoadBindEvalSqueezenetRealDataWithValidationConcurrently,
     MultiThreadLoadModel,
-    MultiThreadSession,
+    MultiThreadMultiSession,
+    MultiThreadSingleSession,
     EvalAsyncDifferentModels,
     EvalAsyncDifferentSessions,
     EvalAsyncDifferentBindings
