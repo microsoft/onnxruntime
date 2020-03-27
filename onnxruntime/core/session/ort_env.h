@@ -44,7 +44,7 @@ struct OrtEnv {
 
   static OrtEnv* GetInstance(const LoggingManagerConstructionInfo& lm_info,
                              onnxruntime::common::Status& status,
-                             const ThreadingOptions* tp_options = nullptr);
+                             const OrtThreadingOptions* tp_options = nullptr);
 
   static void Release(OrtEnv* env_ptr);
 

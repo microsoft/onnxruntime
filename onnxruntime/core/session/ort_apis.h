@@ -179,8 +179,10 @@ ORT_API_STATUS_IMPL(GetMapValueType, _In_ const OrtMapTypeInfo* map_type_info, _
 ORT_API_STATUS_IMPL(GetSequenceElementType, _In_ const OrtSequenceTypeInfo* sequence_type_info, _Outptr_ OrtTypeInfo** type_info);
 
 ORT_API_STATUS_IMPL(CreateEnvWithGlobalThreadPools, OrtLoggingLevel default_logging_level, _In_ const char* logid,
-                    _In_ ThreadingOptions t_options, _Outptr_ OrtEnv** out)
+                    _In_ const struct OrtThreadingOptions* t_options, _Outptr_ OrtEnv** out)
 ORT_ALL_ARGS_NONNULL;
 
 ORT_API_STATUS_IMPL(DisablePerSessionThreads, _In_ OrtSessionOptions* options);
+ORT_API_STATUS_IMPL(CreateOrtThreadingOptions, _Outptr_ OrtThreadingOptions** out);
+ORT_API(void, ReleaseOrtThreadingOptions, _Frees_ptr_opt_ OrtThreadingOptions*);
 }  // namespace OrtApis

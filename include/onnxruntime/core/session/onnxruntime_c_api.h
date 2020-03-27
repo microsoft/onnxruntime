@@ -159,6 +159,8 @@ ORT_RUNTIME_CLASS(CustomOpDomain);
 ORT_RUNTIME_CLASS(MapTypeInfo);
 ORT_RUNTIME_CLASS(SequenceTypeInfo);
 ORT_RUNTIME_CLASS(ModelMetadata);
+ORT_RUNTIME_CLASS(ThreadPoolParams);
+ORT_RUNTIME_CLASS(ThreadingOptions);
 
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.
@@ -211,14 +213,6 @@ typedef enum OrtMemType {
   OrtMemTypeCPU = OrtMemTypeCPUOutput,  // temporary CPU accessible memory allocated by non-CPU execution provider, i.e. CUDA_PINNED
   OrtMemTypeDefault = 0,                // the default allocator for execution provider
 } OrtMemType;
-
-typedef struct ThreadingOptions {
-  // number of threads used to parallelize execution of an op
-  int intra_op_num_threads;  // use 0 if you want onnxruntime to choose a value for you
-
-  // number of threads used to parallelize execution across ops
-  int inter_op_num_threads;  // use 0 if you want onnxruntime to choose a value for you
-} ThreadingOptions;
 
 struct OrtApi;
 typedef struct OrtApi OrtApi;
@@ -762,7 +756,7 @@ struct OrtApi {
   * its own thread pools.
   */
   OrtStatus*(ORT_API_CALL* CreateEnvWithGlobalThreadPools)(OrtLoggingLevel default_logging_level, _In_ const char* logid,
-                                                           _In_ ThreadingOptions t_options, _Outptr_ OrtEnv** out)
+                                                           _In_ const struct OrtThreadingOptions* t_options, _Outptr_ OrtEnv** out)
       NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
   /* TODO: Should there be a version of CreateEnvWithGlobalThreadPools with custom logging function? */
@@ -772,6 +766,10 @@ struct OrtApi {
   * This API should be used in conjunction with CreateEnvWithGlobalThreadPools API.
   */
   OrtStatus*(ORT_API_CALL* DisablePerSessionThreads)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* CreateOrtThreadingOptions)(_Outptr_ OrtThreadingOptions** out)
+      NO_EXCEPTION;
+  void (ORT_API_CALL* ReleaseThreadingOptions)(_Frees_ptr_opt_ OrtThreadingOptions* input)NO_EXCEPTION;
 };
 
 /*
