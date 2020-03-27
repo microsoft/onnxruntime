@@ -101,6 +101,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Tile);
 DML_OP_EXTERN_CREATION_FUNCTION(Concat);
 DML_OP_EXTERN_CREATION_FUNCTION(Slice7);
 DML_OP_EXTERN_CREATION_FUNCTION(Slice10);
+DML_OP_EXTERN_CREATION_FUNCTION(Slice11);
 DML_OP_EXTERN_CREATION_FUNCTION(Pad);
 DML_OP_EXTERN_CREATION_FUNCTION(SpaceToDepth);
 DML_OP_EXTERN_CREATION_FUNCTION(DepthToSpace);
@@ -214,6 +215,7 @@ const static char* const typeNameListCast[2] = { "T1", "T2" };
 const static char* const typeNameListIsNan[2] = { "T1", "T2" };
 const static char* const typeNameListConstantOfShape[2] = { "T1", "T2" };
 const static char* const typeNameListScatterGather[2] = { "T", "Tind" };
+const static char* const typeNameListSlice10[2] = { "T", "Tind" };
 const static char* const typeNameListQuantize[2] = { "T1", "T2" };
 const static char* const typeNameListWhere[2] = { "B", "T" };
 const static char* const typeNameListOneHot[3] = { "T1", "T2", "T3" };
@@ -228,6 +230,7 @@ const static SupportedTensorDataTypes supportedTypeListTopK[2] = {SupportedTenso
 const static SupportedTensorDataTypes supportedTypeListIndices[1] = { SupportedTensorDataTypes::Int32|SupportedTensorDataTypes::Int64 };
 const static SupportedTensorDataTypes supportedTypeListCast[2] = { SupportedTensorDataTypes::AllScalars, SupportedTensorDataTypes::Scalars8to32 };
 const static SupportedTensorDataTypes supportedTypeListScatterGather[2] = { SupportedTensorDataTypes::NumericDefault, SupportedTensorDataTypes::Int32 | SupportedTensorDataTypes::Int64 };
+const static SupportedTensorDataTypes supportedTypeListSlice10[2] = { SupportedTensorDataTypes::NumericDefault, SupportedTensorDataTypes::Int32 | SupportedTensorDataTypes::Int64 };
 const static SupportedTensorDataTypes supportedTypeListQuantizeLinear[2] = { SupportedTensorDataTypes::Float32 | SupportedTensorDataTypes::Int32, SupportedTensorDataTypes::UInt8 | SupportedTensorDataTypes::Int8 };
 const static SupportedTensorDataTypes supportedTypeListDequantizeLinear[2] = { SupportedTensorDataTypes::Float32, SupportedTensorDataTypes::UInt8 | SupportedTensorDataTypes::Int8 | SupportedTensorDataTypes::Int32 };
 const static SupportedTensorDataTypes supportedTypeListQuantize[2] = { SupportedTensorDataTypes::Float32, SupportedTensorDataTypes::UInt8 };
@@ -297,7 +300,8 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(      7,  Transpose,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  Concat,                             typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
     {REG_INFO_VER(  7,  Slice,                              typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
-    {REG_INFO_VER(  10, Slice,                              typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported,      {1, 2, 3}, std::nullopt, QuerySlice)},
+    {REG_INFO_VER(  10, Slice,                              typeNameListSlice10,            supportedTypeListSlice10,           DmGraphSupport::Supported,      {1, 2, 3, 4}, std::nullopt, QuerySlice)},
+    {REG_INFO_VER(  11, Slice,                              typeNameListSlice10,            supportedTypeListSlice10,           DmGraphSupport::Supported,      {1, 2, 3, 4}, std::nullopt, QuerySlice)},
     {REG_INFO(      7,  Pad,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  SpaceToDepth,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  DepthToSpace,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
@@ -473,7 +477,6 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(     11,  Scan,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 
     {REG_INFO(     11,  ScatterElements,                    typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 
     {REG_INFO(     11,  ScatterND,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 
-    {REG_INFO(     11,  Slice,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 
     {REG_INFO(     11,  Softmax,                            typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 
     {REG_INFO(     11,  Split,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 
     {REG_INFO(     11,  Squeeze,                            typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 

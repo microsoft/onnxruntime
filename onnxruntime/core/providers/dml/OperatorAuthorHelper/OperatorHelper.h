@@ -75,9 +75,27 @@ void RemoveValuesByIndex(gsl::span<const uint32_t> indices, bool keepOneValue, /
   values.resize(newValuesCount);
 }
 
-void FillWithLeadingValues(/*inout*/ std::vector<uint32_t>& values, uint32_t minimumElementCount, uint32_t fillValue);
+template <typename T>
+void FillWithLeadingValues(/*inout*/ std::vector<T>& values, uint32_t minimumElementCount, T fillValue)
+{
+  // e.g.
+  // input = [6,7]
+  // elementCount = 4
+  // fillValue = 1
+  // output = [1,1,6,7]
+
+  const size_t oldElementCount = values.size();
+  const size_t newElementCount = std::max(size_t(minimumElementCount), oldElementCount);
+  const size_t fillCount = newElementCount - oldElementCount;
+
+  values.resize(newElementCount);
+  std::copy_backward(values.data(), values.data() + oldElementCount, values.data() + fillCount);
+  std::fill_n(values.data(), fillCount, fillValue);
+}
 
 int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p);
+
+void ReadCpuLocalTensorIntoInt32(const MLOperatorTensor& tensor, std::vector<int32_t>& result);
 
 class EdgeShapes {
  public:
@@ -503,56 +521,25 @@ class SplitHelper {
 class SliceHelperBase
 {
 public:
-    template<typename Info_t, typename Index_t>
+    template<typename Info_t>
     void ReadIndexTensors(
         const Info_t& operatorInfo,
-        std::vector<int32_t>& starts,
-        std::vector<int32_t>& ends,
-        std::vector<int32_t>& axes,
-        std::vector<int32_t>& steps
-    )
+        /*out*/ std::vector<int32_t>& starts,
+        /*out*/ std::vector<int32_t>& ends,
+        /*out*/ std::vector<int32_t>& axes,
+        /*out*/ std::vector<int32_t>& steps
+        )
     {
-        // Get starts, ends, optional axes and optional steps from constant inputs.
-        MLOperatorTensor startsTensor = operatorInfo.GetConstantInputTensor(1);
-        const std::vector<uint32_t>& startsTensorDimensions = startsTensor.GetShape();
-        size_t dimCount = startsTensorDimensions[0];
-        const Index_t* startsData = startsTensor.GetData<Index_t>();
-        for (size_t i = 0; i < dimCount; ++i)
+        // Get starts, ends, optional axes, and optional steps from constant inputs.
+        ReadCpuLocalTensorIntoInt32(operatorInfo.GetConstantInputTensor(1), /*out*/ starts);
+        ReadCpuLocalTensorIntoInt32(operatorInfo.GetConstantInputTensor(2), /*out*/ ends);
+        if (operatorInfo.IsInputValid(3))
         {
-            starts.push_back(gsl::narrow_cast<int32_t>(startsData[i]));
+            ReadCpuLocalTensorIntoInt32(operatorInfo.GetConstantInputTensor(3), /*out*/ axes);
         }
-
-        MLOperatorTensor endsTensor = operatorInfo.GetConstantInputTensor(2);
-        const std::vector<uint32_t>& endsTensorDimensions = endsTensor.GetShape();
-        dimCount = endsTensorDimensions[0];
-        const Index_t* endsData = endsTensor.GetData<Index_t>();
-        for (size_t i = 0; i < dimCount; ++i)
+        if (operatorInfo.IsInputValid(4))
         {
-            ends.push_back(gsl::narrow_cast<int32_t>(endsData[i]));
-        }
-        uint32_t inputCount = operatorInfo.GetInputCount();
-        if (inputCount > 3)
-        {
-            MLOperatorTensor axesTensor = operatorInfo.GetConstantInputTensor(3);
-            const std::vector<uint32_t>& axesTensorDimensions = axesTensor.GetShape();
-            dimCount = axesTensorDimensions[0];
-            const Index_t* axesData = axesTensor.GetData<Index_t>();
-            for (size_t i = 0; i < dimCount; ++i)
-            {
-                axes.push_back(gsl::narrow_cast<int32_t>(axesData[i]));
-            }
-        }
-
-        if (inputCount > 4)
-        {
-            MLOperatorTensor stepsTensor = operatorInfo.GetConstantInputTensor(4);
-            const std::vector<uint32_t>& stepsTensorDimensions = stepsTensor.GetShape();
-            dimCount = stepsTensorDimensions[0];
-            const Index_t* stepsData = stepsTensor.GetData<Index_t>();
-            for (size_t i = 0; i < dimCount; ++i)
-            {
-                steps.push_back(gsl::narrow_cast<int32_t>(stepsData[i]));
-            }
+            ReadCpuLocalTensorIntoInt32(operatorInfo.GetConstantInputTensor(4), /*out*/ steps);
         }
     }
 
@@ -567,29 +554,23 @@ public:
         std::vector<int32_t> ends;
         std::vector<int32_t> axes;
         std::vector<int32_t> steps;
+
         if (opsetVersion == 7)
         {
-            // Get starts, ends and axes from attributes
+            // Read starts, ends, and axes from attributes.
             starts = operatorInfo.GetOptionalAttributeVectorInt32(AttrName::Starts);
             ends = operatorInfo.GetOptionalAttributeVectorInt32(AttrName::Ends);
             axes = operatorInfo.GetOptionalAttributeVectorInt32(AttrName::Axes);
         }
         else if (opsetVersion == 10)
         {
-            if (operatorInfo.GetConstantInputTensor(1).GetTensorDataType() == MLOperatorTensorDataType::Int32)
-            {
-                ReadIndexTensors<Info_t, int32_t>(operatorInfo, starts, ends, axes, steps);
-            }
-            else
-            {
-                THROW_HR_IF(E_INVALIDARG, operatorInfo.GetConstantInputTensor(1).GetTensorDataType() != MLOperatorTensorDataType::Int64);
-                ReadIndexTensors<Info_t, int64_t>(operatorInfo, starts, ends, axes, steps);
-            }
+            // Read starts, ends, and axes from tensors.
+            ReadIndexTensors(operatorInfo, /*out*/ starts, /*out*/ ends, /*out*/ axes, /*out*/ steps);
         }
         
-        const uint32_t dimCount = gsl::narrow_cast<int32_t>(inputDimensions.size());
-        HandleNegativeAxes(/*inout*/ axes, dimCount); 
-         
+        const uint32_t inputDimensionCount = gsl::narrow_cast<int32_t>(inputDimensions.size());
+        HandleNegativeAxes(/*inout*/ axes, inputDimensionCount);
+
         ML_CHECK_VALID_ARGUMENT(starts.size() == ends.size(), "'starts' must equal 'ends' in size.");
         ML_CHECK_VALID_ARGUMENT(axes.empty() || starts.size() == axes.size(), "'axes' must equal 'starts' in size, or 'axes' must be empty.");
 
@@ -604,18 +585,14 @@ public:
         // Clamp selected dimensions to given 'starts' and 'ends'.
         for (int i = 0, ci = gsl::narrow_cast<int>(starts.size()); i < ci; ++i)
         {
-            int dimIndex = i;
-            if (!axes.empty())
-            {
-                dimIndex = axes[i];
-            }
+            int dimIndex = axes.empty() ? i : axes[i];
             ML_CHECK_VALID_ARGUMENT(dimIndex < inputDimensions.size(), "'axes' must be valid with within actual input dimensions.");
 
             // Positive values are offsets from 0.
             // Negative values are offsets from the dimension's size.
             int dim = gsl::narrow_cast<int>(inputDimensions[dimIndex]);
-            int start = (starts[i] < 0) ? (starts[i] + dim) : starts[i];
-            int end = (ends[i] < 0) ? (ends[i] + dim) : ends[i];
+            int start = (starts[i] < 0 && starts[i] > INT_MIN) ? (starts[i] + dim) : starts[i];
+            int end = (ends[i] < 0 && ends[i] < INT_MAX) ? (ends[i] + dim) : ends[i];
 
             // Clamp the dimensions to the slice extents.
             // Clamp negative numbers to 0, per case test_slice_start_out_of_bounds.
@@ -1195,6 +1172,7 @@ using ShapeInferenceHelper_Transpose = TransposeHelper;
 using ShapeInferenceHelper_Concat = ConcatHelper;
 using ShapeInferenceHelper_Slice7 = SliceHelper;
 using ShapeInferenceHelper_Slice10 = Slice10Helper;
+using ShapeInferenceHelper_Slice11 = Slice10Helper; // No functional change from 10.
 using ShapeInferenceHelper_Pad = PaddingHelper;
 using ShapeInferenceHelper_SpaceToDepth = SpaceToDepthHelper;
 using ShapeInferenceHelper_DepthToSpace = DepthToSpaceHelper;
