@@ -1355,7 +1355,6 @@ const WinmlAdapterApi* OnnxruntimeEngineFactory::UseWinmlAdapterApi() {
 HRESULT OnnxruntimeEngineFactory::GetOrtEnvironment(OrtEnv** ort_env) {
   RETURN_IF_FAILED(EnsureEnvironment());
   RETURN_IF_FAILED(environment_->GetOrtEnvironment(ort_env));
-  RETURN_HR_IF_NOT_OK_MSG(ort_api_->EnableTelemetryEvents(*ort_env), ort_api_);
   return S_OK;
 }
 
