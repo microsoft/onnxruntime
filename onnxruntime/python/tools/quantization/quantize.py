@@ -354,9 +354,9 @@ class ONNXQuantizer:
     def _is_valid_quantize_value(self, value_name):
         if value_name in self.value_infos:
             value_info = self.value_infos[value_name]
-            return value_info.type.HasField('tensor_type') and value_info.type.tensor_type.elem_type == 1
+            return value_info.type.HasField('tensor_type') and value_info.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT
         weight = _find_by_name(value_name, self.model.graph.initializer)
-        return weight is not None and weight.data_type == 1
+        return weight is not None and weight.data_type == onnx_proto.TensorProto.FLOAT
 
 
     def _remove_quantized_weights(self):
@@ -935,7 +935,7 @@ class ONNXQuantizer:
 
     def _dequantize_value(self, value_name, new_nodes_list):
         '''
-        Given a value (input/output) which is quantized, add a DequantizeLinear node todequantize
+        Given a value (input/output) which is quantized, add a DequantizeLinear node to dequantize
         it back to float32
 
             parameter value_name: value to dequantize
