@@ -55,6 +55,7 @@ void ReadCpuLocalTensorIntoInt32(
     case MLOperatorTensorDataType::Int64:
         {
             const int64_t* data = tensor.GetData<int64_t>();
+            result.reserve(elementCount);
             for (auto d : gsl::make_span(data, data + elementCount))
             {
                 result.push_back(gsl::narrow_cast<int32_t>(d));
