@@ -155,14 +155,14 @@ namespace OperatorHelper
         memcpy(data, tensor.GetByteData(), elementByteSize);
     }
 
-    int64_t ReadScalarTensorAsInt64(const MLOperatorTensor& tensor)
+    int64_t ReadScalarTensorCastToInt64(const MLOperatorTensor& tensor)
     {
         std::byte tensorBytes[8];
         ReadScalarTensorData(tensor, /*out*/ &tensorBytes, sizeof(tensorBytes));
         return CastToInt64(tensor.GetTensorDataType(), &tensorBytes);
     }
 
-    double ReadScalarTensorAsFloat64(const MLOperatorTensor& tensor)
+    double ReadScalarTensorCastToFloat64(const MLOperatorTensor& tensor)
     {
         std::byte tensorBytes[8];
         ReadScalarTensorData(tensor, /*out*/ &tensorBytes, sizeof(tensorBytes));
