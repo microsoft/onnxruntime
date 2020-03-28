@@ -603,7 +603,8 @@ void RegisterGradientSchemas() {
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ZeroGradient)
-      .SinceVersion(9)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(1)
       .SetDoc("reset the accumulator for gradient")
       .Input(0, "old_gradient", "historical result of accumulated gradient", "T1")
       .Input(1, "reset_signal", "if this input is available, it is ready to reset the accumulator", "T2")

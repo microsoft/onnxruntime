@@ -154,7 +154,7 @@ ArgDef BuildZeroGradientNode(const NodeArgNameGeneratorFn& nodearg_name_generato
                              const ArgDef& gradient,
                              GraphAugmenter::GraphDefs& graph_defs) {
   ArgDef gradient_zero_output(nodearg_name_generator(gradient.name + "_zero_out"), gradient.type_proto);
-  graph_defs.AddNodeDefs({NodeDef("ZeroGradient",
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"ZeroGradient", kMSDomain, 1},
                                   {gradient, control_signal},
                                   {gradient_zero_output},
                                   NodeAttributes(),
@@ -186,11 +186,11 @@ Status OptimizerGraphBuilder::BuildOptimizerNode(
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) {
   ORT_RETURN_IF_ERROR(opt_builder->Build(
-    weight_argdefs, gradient_argdefs,
-    global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
-    opt_configs, graph_defs,
-    new_initializers,
-    output_weight_argdefs, output_gradient_argdefs, opt_graph_config_.enable_grad_norm_clip));
+      weight_argdefs, gradient_argdefs,
+      global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
+      opt_configs, graph_defs,
+      new_initializers,
+      output_weight_argdefs, output_gradient_argdefs, opt_graph_config_.enable_grad_norm_clip));
 
   return Status::OK();
 }
@@ -288,9 +288,9 @@ Status OptimizerGraphBuilder::AddFiniteGradientCheck(
     ArgDef& grad_norm_finite_argdef,
     const std::string& node_name) {
   const TypeProto* const grad_norm_finite_type =
-    graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+      graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_BOOL);
   grad_norm_finite_argdef =
-    ArgDef{nodearg_name_generator(node_name), grad_norm_finite_type};
+      ArgDef{nodearg_name_generator(node_name), grad_norm_finite_type};
 
   graph_defs.AddNodeDefs({NodeDef{"IsAllFinite",
                                   grad_norm_argdefs,
@@ -409,7 +409,6 @@ Status OptimizerGraphBuilder::BuildInternal(
     std::vector<ArgDef>& gradient_argdefs,
     std::unordered_set<std::string>& optimizer_state_initializer_names,
     OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
-
   auto nodearg_name_generator = [&graph](const std::string& base_name) {
     return graph.GenerateNodeArgName(base_name);
   };
