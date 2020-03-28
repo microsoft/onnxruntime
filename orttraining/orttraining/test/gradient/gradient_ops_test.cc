@@ -865,7 +865,7 @@ TEST(GradientCheckerTest, SqueezeGrad) {
 TEST(GradientCheckerTest, BatchNormalizationGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"BatchNormalization"};
+  OpDef op_def{"BatchNormalization", kMSDomain, 1};
   float error_tolerance = 1e-2f;
   float epsilon = 1e-05f;
   float momentum = 0.1f;

@@ -1185,8 +1185,8 @@ void RegisterGradientSchemas() {
           "Constrain mean and inv_std_var to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BatchNormalizationGrad)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .SetDoc("BatchNormalization")
       .Attr("epsilon",
             "epsilon value",
