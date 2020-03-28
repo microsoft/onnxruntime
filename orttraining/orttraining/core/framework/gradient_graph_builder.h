@@ -36,7 +36,10 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Slice", {1, 2, 3, 4}},
         {"SparseSoftmaxCrossEntropy", {1, 2}},
         {"ConstantOfShape", {0}},
-        {"Scatter", {1}}};
+        {"Scatter", {1}},
+        {"OneHot", {0, 1, 2}},
+        {"Where", {0}},
+        {"Range", {0, 1, 2}}};
 
 class GradientGraphBuilder {
  public:
