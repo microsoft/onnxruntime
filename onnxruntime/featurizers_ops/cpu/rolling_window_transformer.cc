@@ -18,7 +18,7 @@ struct RollingWindowTransformerImpl {
     // Define the type
     using GrainT = std::vector<std::string>;
     using EstimatorT = Microsoft::Featurizer::Featurizers::GrainedAnalyticalRollingWindowEstimator<T>;
-    using GrainedInputType = EstimatorT::InputType;
+    using GrainedInputType = std::tuple<GrainT, T>;
     using OutputType = EstimatorT::TransformedType;
 
     //Get the transformer
@@ -42,7 +42,7 @@ struct RollingWindowTransformerImpl {
     double* output_data(0);
     bool has_allocate_output_data = false;
     std::function<void(OutputType)> callback_fn;
-    callback_fn = [&ctx, &output_data, &has_allocate_output_data, &output_dim_0](OutputType value) -> void {
+    callback_fn = [ctx, &output_data, &has_allocate_output_data, output_dim_0](OutputType value) -> void {
       //Allocate tensor memory after first output is generated
       if(!has_allocate_output_data) {
         TensorShape output_shape({output_dim_0, static_cast<int64_t>(value.size())});
@@ -61,7 +61,9 @@ struct RollingWindowTransformerImpl {
       //Prepare Input
       grains.clear();
       std::copy(grains_data, grains_data + grains_num, std::back_inserter(grains));
-      GrainedInputType const input_tuple = std::make_tuple(grains, *target_data);
+      GrainT const grains_constref = grains;
+      T const target_data_constref = *target_data;
+      GrainedInputType const input_tuple = std::make_tuple(grains_constref, target_data_constref);
 
       //Execute
       transformer.execute(input_tuple, callback_fn);
