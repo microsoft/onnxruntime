@@ -11,7 +11,7 @@
 #include "core/common/path_string.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/ml_value.h"
-#include "core/framework/path_lib.h"
+#include "core/platform/path_lib.h"
 #include "core/platform/threadpool.h"
 #include "orttraining/models/runner/training_util.h"
 

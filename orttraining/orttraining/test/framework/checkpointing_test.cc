@@ -11,10 +11,10 @@
 #include "core/common/common.h"
 #include "core/framework/data_transfer.h"
 #include "core/framework/ml_value.h"
-#include "core/framework/path_lib.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
-#include "test/util/include/gtest_utils.h"
+#include "core/platform/path_lib.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/temp_dir.h"
 
 using onnxruntime::test::TemporaryDirectory;

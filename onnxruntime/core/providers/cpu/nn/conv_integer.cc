@@ -107,6 +107,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   const auto* Xdata = X->template Data<uint8_t>();
+  const auto* Wdata = W->template Data<uint8_t>();
   auto* Ydata = Y->template MutableData<int32_t>();
 
   for (int image_id = 0; image_id < N; ++image_id) {
@@ -114,7 +115,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
       if (col_buffer_data != nullptr) {
         if (kernel_rank == 2) {
           math::Im2col<uint8_t, StorageOrder::NCHW>()(
-              Xdata + group_id * X_offset,
+              Xdata,
               C / conv_attrs_.group,
               input_shape[0],
               input_shape[1],
@@ -132,7 +133,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
               input_offset);
         } else {
           math::Im2colNd<uint8_t, StorageOrder::NCHW>()(
-              Xdata + group_id * X_offset,
+              Xdata,
               X->Shape().GetDims().data() + 1,
               col_buffer_shape.data(),
               C * input_image_size,
@@ -151,19 +152,19 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
       QGemmu8u8_s32(static_cast<int>(M / conv_attrs_.group),
                     static_cast<int>(output_image_size),
                     static_cast<int>(kernel_dim),
-                    W->template Data<uint8_t>() + group_id * W_offset,
+                    Wdata + group_id * W_offset,
                     static_cast<int>(kernel_dim),
                     filter_offset,
-                    col_buffer_data == nullptr ? Xdata + group_id * X_offset : col_buffer_data,
+                    col_buffer_data == nullptr ? Xdata : col_buffer_data,
                     static_cast<int>(output_image_size),
                     input_offset,
-                    Ydata + group_id * Y_offset,
+                    Ydata,
                     static_cast<int>(output_image_size),
                     thread_pool);
-    }
 
-    Xdata += X_offset * conv_attrs_.group;
-    Ydata += Y_offset * conv_attrs_.group;
+      Xdata += X_offset;
+      Ydata += Y_offset;
+    }
   }
 
   return Status::OK();

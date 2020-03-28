@@ -8,6 +8,7 @@
 #include "core/graph/op.h"
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets-ml.h"
+#include "onnx/defs/operator_sets-training.h"
 #ifndef DISABLE_CONTRIB_OPS
 #include "core/graph/contrib_ops/contrib_defs.h"
 #endif
@@ -19,6 +20,7 @@
 #endif
 
 #include "core/platform/env.h"
+#include "core/util/thread_utils.h"
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
@@ -38,14 +40,30 @@ using namespace ONNX_NAMESPACE;
 
 std::once_flag schemaRegistrationOnceFlag;
 
-Status Environment::Create(std::unique_ptr<Environment>& environment) {
+Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_manager,
+                           std::unique_ptr<Environment>& environment,
+                           const ThreadingOptions* tp_options,
+                           bool create_global_thread_pools) {
   environment = std::unique_ptr<Environment>(new Environment());
-  auto status = environment->Initialize();
+  auto status = environment->Initialize(std::move(logging_manager), tp_options, create_global_thread_pools);
   return status;
 }
 
-Status Environment::Initialize() {
+Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
+                               const ThreadingOptions* tp_options,
+                               bool create_global_thread_pools) {
   auto status = Status::OK();
+
+  logging_manager_ = std::move(logging_manager);
+
+  // create thread pools
+  if (create_global_thread_pools) {
+    create_global_thread_pools_ = true;
+    intra_op_thread_pool_ = concurrency::CreateThreadPool("env_global_intra_op_thread_pool",
+                                                          tp_options->intra_op_num_threads);
+    inter_op_thread_pool_ = concurrency::CreateThreadPool("env_global_inter_op_thread_pool",
+                                                          tp_options->inter_op_num_threads);
+  }
 
   try {
     // Register Microsoft domain with min/max op_set version as 1/1.
@@ -56,8 +74,8 @@ Status Environment::Initialize() {
 #ifdef USE_DML
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
 #endif
-      // Register contributed schemas.
-      // The corresponding kernels are registered inside the appropriate execution provider.
+// Register contributed schemas.
+// The corresponding kernels are registered inside the appropriate execution provider.
 #ifndef DISABLE_CONTRIB_OPS
       contrib::RegisterContribSchemas();
 #endif
@@ -69,6 +87,7 @@ Status Environment::Initialize() {
 #endif
       RegisterOnnxOperatorSetSchema();
       RegisterOnnxMLOperatorSetSchema();
+      RegisterOnnxTrainingOperatorSetSchema();
 
 #ifdef ENABLE_TRAINING
       // preserve this order: this depends on operatorsetschema registration.

@@ -5,8 +5,8 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
-#include "common.h"
-#include "lamb.h"
+#include "orttraining/training_ops/cuda/optimizer/common.h"
+#include "orttraining/training_ops/cuda/optimizer/lamb.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -161,16 +161,6 @@ Status copy_inputs_to_outputs(
   return Status::OK();
 }
 
-float compute_bias_correction_coefficient(
-  const float momentum_update_coefficient,
-  const int64_t step) {
-  if (step > 0) {
-    return 1.f - std::pow(momentum_update_coefficient, static_cast<float>(step));
-  } else {
-    return 1.f;
-  }
-}
-
 template <typename CudaT2, typename CudaT3, typename CudaT4, typename CudaT_GRAD_NORM>
 Status launch_lamb_compute_direction(
     const int64_t update_count,
@@ -188,7 +178,8 @@ Status launch_lamb_compute_direction(
     const std::vector<float>& alphas,
     const std::vector<float>& betas,
     const std::vector<float>& lambdas,
-    const std::vector<float>& epsilons) {
+    const std::vector<float>& epsilons,
+    const int64_t do_bias_correction) {
   ORT_ENFORCE(group_count == static_cast<int>(tensor_sizes.size()));
 
   ORT_ENFORCE(group_count == static_cast<int>(p_ws.size()));
@@ -213,8 +204,10 @@ Status launch_lamb_compute_direction(
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
       // For the first iteration (indexed by 0), the update count should be 2.
-      const float alpha_correction = compute_bias_correction_coefficient(alphas[i], update_count);
-      const float beta_correction = compute_bias_correction_coefficient(betas[i], update_count);
+      const float alpha_correction = do_bias_correction ?
+        onnxruntime::contrib::compute_bias_correction_coefficient(alphas[i], update_count) : 1.f;
+      const float beta_correction = do_bias_correction ?
+        onnxruntime::contrib::compute_bias_correction_coefficient(betas[i], update_count) : 1.f;
 
       LambComputeDirection(
           p_ws[i],
@@ -254,8 +247,10 @@ Status launch_lamb_compute_direction(
     std::tie(alpha, beta, lambda, epsilon) = key;
 
     // For the first iteration (indexed by 0), the update count should be 1.
-    const float alpha_correction = compute_bias_correction_coefficient(alpha, update_count);
-    const float beta_correction = compute_bias_correction_coefficient(beta, update_count);
+    const float alpha_correction =
+      do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count) : 1.f;
+    const float beta_correction =
+      do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count) : 1.f;
 
     typedef LambMultiTensorComputeDirectionFunctor<CudaT2, CudaT3, CudaT4, CudaT_GRAD_NORM> LambStage1;
     LambStage1 lamb_stage1;
@@ -640,7 +635,8 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
       p_ws, p_gs, p_m1s, p_m2s,
       p_ds,
       p_m1_news, p_m2_news,
-      alpha_, beta_, lambda_, epsilon_);
+      alpha_, beta_, lambda_, epsilon_,
+      do_bias_correction_);
 
   launch_lamb_reduction(
       group_count,

@@ -6,7 +6,7 @@
 #include "core/providers/cuda/atomic/common.cuh"
 #include "orttraining/training_ops/cuda/math/isfinite.cuh"
 #include "orttraining/training_ops/cuda/optimizer/common.cuh"
-#include "lamb.h"
+#include "orttraining/training_ops/cuda/optimizer/lamb.h"
 namespace onnxruntime {
 namespace cuda {
 template <typename T1, typename T2, typename T3>

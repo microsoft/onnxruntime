@@ -17,7 +17,7 @@
 #include "sync_api.h"
 #include "providers.h"
 #include <google/protobuf/stubs/common.h>
-#include "core/framework/path_lib.h"
+#include "core/platform/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
@@ -501,12 +501,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"shrink", "Invalid rank for input", {"onnx141"}},
       {"split_zero_size_splits", "Invalid value", {"onnxtip"}},
       {"dropout_random", "result differs", {"onnxtip"}},
-      {"adagrad", "invalid model", {"onnxtip"}},
-      {"adagrad_multiple", "invalid model", {"onnxtip"}},
       {"celu", "invalid model", {"onnxtip"}},
       {"celu_expanded", "invalid model", {"onnxtip"}},
-      {"gradient_of_add", "invalid model", {"onnxtip"}},
-      {"gradient_of_add_and_mul", "invalid model", {"onnxtip"}},
       {"max_float16", "invalid model", {"onnxtip"}},
       {"mean_square_distance_mean_3d_expanded", "invalid model", {"onnxtip"}},
       {"mean_square_distance_mean_4d_expanded", "invalid model", {"onnxtip"}},

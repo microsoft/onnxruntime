@@ -461,7 +461,7 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
   std::vector<onnxruntime::NodeArg*> node_input_defs;
   std::vector<onnxruntime::NodeArg*> output_defs;
 
-  for (auto i = 0; i < input_data_.size(); ++i) {
+  for (size_t i = 0; i < input_data_.size(); ++i) {
     node_input_defs.push_back(&input_data_[i].def_);
   }
 
@@ -691,10 +691,14 @@ void OpTester::Run(
     FillFeedsAndOutputNames(feeds, output_names);
     // Run the model
     static const std::string all_provider_types[] = {
-        kCpuExecutionProvider, kCudaExecutionProvider,
-        kDnnlExecutionProvider, kNGraphExecutionProvider,
-        kNupharExecutionProvider, kTensorrtExecutionProvider,
-        kOpenVINOExecutionProvider, kDmlExecutionProvider,
+        kCpuExecutionProvider,
+        kCudaExecutionProvider,
+        kDnnlExecutionProvider,
+        kNGraphExecutionProvider,
+        kNupharExecutionProvider,
+        kTensorrtExecutionProvider,
+        kOpenVINOExecutionProvider,
+        kDmlExecutionProvider,
         kAclExecutionProvider,
     };
 
@@ -709,7 +713,7 @@ void OpTester::Run(
         }
       }
 
-      InferenceSession session_object{so};
+      InferenceSession session_object{so, GetEnvironment()};
 
       ASSERT_TRUE(!execution_providers->empty())
           << "Empty execution providers vector.";
@@ -737,7 +741,7 @@ void OpTester::Run(
           so.enable_mem_pattern = false;
           so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
         }
-        InferenceSession session_object{so};
+        InferenceSession session_object{so, GetEnvironment()};
 
         for (auto& custom_session_registry : custom_session_registries_)
           session_object.RegisterCustomRegistry(custom_session_registry);
@@ -799,6 +803,9 @@ void OpTester::Run(
 
         if (!valid)
           continue;
+
+        for (auto& custom_session_registry : custom_session_registries_)
+          session_object.RegisterCustomRegistry(custom_session_registry);
 
         has_run = true;
 

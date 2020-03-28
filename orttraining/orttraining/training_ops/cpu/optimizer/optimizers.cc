@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "optimizers.h"
+#include "orttraining/training_ops/cpu/optimizer/optimizers.h"
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
@@ -65,20 +65,58 @@ Status AdamOptimizer<T>::Compute(OpKernelContext* ctx) const {
   // Update exponentially-averaged historical squared gradient
   MakeEigenArrayMap<T>(NM2) = beta_ * MakeEigenArrayMap<T>(M2) + ((1 - beta_) * MakeEigenArrayMap<T>(G) * MakeEigenArrayMap<T>(G));
 
-  // Compute weight update.
-  const auto& denom = MakeEigenArrayMap<T>(NM2).sqrt() + epsilon_;
-  const auto& update = (MakeEigenArrayMap<T>(NM1) / denom) + (lambda_ * MakeEigenArrayMap<T>(W));
-  const auto& delta = -eta * update;
+  const float alpha_correction = do_bias_correction_ ?
+    compute_bias_correction_coefficient(alpha_, step) : 1.f;
+  const float beta_correction = do_bias_correction_ ?
+    compute_bias_correction_coefficient(beta_, step) : 1.f;
 
-  // Weight, gradient, and step update.
-  if (NG != nullptr) {
-    MakeEigenArrayMap<T>(*NG) = delta;
+  // Currently two modes of Adamw are supported:
+  // Mode 0: Pytorch https://pytorch.org/docs/stable/_modules/torch/optim/adamw.html#AdamW,
+  //         bias correction is applied on m and v individually,
+  //         weight decay is applied before weight is updated.
+  // Mode 1: Huggingface https://huggingface.co/transformers/_modules/transformers/optimization.html#AdamW.,
+  //         bias correction is applied on learning rate,
+  //         weight decay is applied after weight is updated.
+  if(weight_decay_mode_ == 0) {
+    // Compute weight update.
+    const auto& denom = (MakeEigenArrayMap<T>(NM2) / beta_correction).sqrt() + epsilon_;
+    const auto& update = ( (MakeEigenArrayMap<T>(NM1) / alpha_correction) / denom) + (lambda_ * MakeEigenArrayMap<T>(W));
+    const auto& delta = -eta * update;
+
+    // Weight, gradient, and step update.
+    if (NG != nullptr) {
+      MakeEigenArrayMap<T>(*NG) = delta;
+    }
+    if (NW != nullptr) {
+      MakeEigenArrayMap<T>(*NW) = MakeEigenArrayMap<T>(W) + delta;
+    }
   }
-  if (NW != nullptr) {
-    MakeEigenArrayMap<T>(*NW) = MakeEigenArrayMap<T>(W) + delta;
+  else if (weight_decay_mode_ == 1) {
+    const auto& denom = MakeEigenArrayMap<T>(NM2).sqrt() + epsilon_;
+    const auto& step_size = eta * std::sqrt(beta_correction) / alpha_correction;
+
+    // Huggingface updates weights in the following logic:
+    // param' = param - step_size * m1o / denom
+    // param_out = param' - original_lr * lambda * param'
+    // then param_out = param - step_size * m1o / denom - original_lr * lambda * (param - step_size * m1o / denom)
+    // so delta = -step_size * m1o / denom - original_lr * lambda * (param - step_size * m1o / denom)
+    const auto& delta = -step_size * MakeEigenArrayMap<T>(NM1) / denom
+                        - eta * lambda_ * (MakeEigenArrayMap<T>(W) - step_size * MakeEigenArrayMap<T>(NM1) / denom);
+
+    // Weight, gradient, and step update.
+    if (NG != nullptr) {
+      MakeEigenArrayMap<T>(*NG) = delta;
+    }
+    if (NW != nullptr) {
+      MakeEigenArrayMap<T>(*NW) = MakeEigenArrayMap<T>(W) + delta;
+    }
   }
+  else {
+    // Shouldn't reach here
+    ORT_THROW("Unsupported Adamw optimizer mode.");
+  }
+
   *NS.template MutableData<int64_t>() = step + 1;
-
   return Status::OK();
 }
 

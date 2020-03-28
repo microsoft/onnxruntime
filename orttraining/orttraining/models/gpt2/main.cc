@@ -81,7 +81,9 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       ("lambda", "Adam/Lamb lambda parameter", cxxopts::value<float>()->default_value("0.01"))
       ("epsilon", "Adam/Lamb epsilon parameter", cxxopts::value<float>()->default_value("1e-8"))
       ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
-      ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"));
+      ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
+      ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
+        cxxopts::value<bool>()->default_value("true"));
   options
     .add_options("ORT configuration")
       ("ort_log_severity", "ORT minimum logging severity (see onnxruntime::logging::Severity values)",
@@ -197,6 +199,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
     }
 
     params.partition_optimizer = flags["partition_optimizer"].as<bool>();
+    params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
     float lambda = flags["lambda"].as<float>();
@@ -355,7 +358,7 @@ void setup_training_params(GPT2Parameters& params) {
   };
 }
 
-static Status RunPerformanceTest(const GPT2Parameters& params) {
+static Status RunPerformanceTest(const GPT2Parameters& params, const Environment& env) {
   // setup fake data
   const int batch_size = static_cast<int>(params.batch_size);
   std::vector<std::string> tensor_names = {"input_ids",
@@ -374,17 +377,17 @@ static Status RunPerformanceTest(const GPT2Parameters& params) {
   auto random_perf_data = std::make_shared<RandomDataSet>(num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
   auto random_perf_data_loader = onnxruntime::make_unique<SingleDataLoader>(random_perf_data, tensor_names);
 
-  TrainingRunner runner(params);
+  TrainingRunner runner(params, env);
   ORT_RETURN_IF_ERROR(runner.Initialize());
   ORT_RETURN_IF_ERROR(runner.Run(random_perf_data_loader.get(), random_perf_data_loader.get()));
 
   return Status::OK();
 }
 
-static Status RunTraining(const GPT2Parameters& params) {
+static Status RunTraining(const GPT2Parameters& params, const Environment& env) {
   const size_t max_num_files_preload = 2;
 
-  auto runner = onnxruntime::make_unique<TrainingRunner>(params);
+  auto runner = onnxruntime::make_unique<TrainingRunner>(params, env);
   ORT_RETURN_IF_ERROR(runner->Initialize());
 
   auto rank_in_data_parallel_group = params.mpi_context.world_rank / params.horizontal_parallel_size;
@@ -433,13 +436,13 @@ int main(int argc, char* argv[]) {
 
   // setup onnxruntime env
   std::unique_ptr<Environment> env;
-  RETURN_IF_FAIL(Environment::Create(env));
+  RETURN_IF_FAIL(Environment::Create(nullptr, env));
 
   // start training session
   if (params.is_perf_test) {
-    RETURN_IF_FAIL(RunPerformanceTest(params));
+    RETURN_IF_FAIL(RunPerformanceTest(params, *env));
   } else {
-    RETURN_IF_FAIL(RunTraining(params));
+    RETURN_IF_FAIL(RunTraining(params, *env));
   }
 
 #ifdef USE_HOROVOD

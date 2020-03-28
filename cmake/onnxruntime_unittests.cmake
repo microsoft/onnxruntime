@@ -200,7 +200,7 @@ if (onnxruntime_USE_NNAPI)
 endif()
 
 set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/shared_lib")
-
+set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/global_thread_pools")
 
 set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
@@ -212,7 +212,12 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc)
 if(onnxruntime_RUN_ONNX_TESTS)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_io_types.cc)
-endif() 
+endif()
+
+set (onnxruntime_global_thread_pools_test_SRC
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
+          ${ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR}/test_main.cc
+          ${ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR}/test_inference.cc)
 
 # tests from lowest level library up.
 # the order of libraries should be maintained, with higher libraries being added first in the list
@@ -391,6 +396,9 @@ set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest"
 set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src} ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src})
 if(NOT TARGET onnxruntime)
   list(APPEND all_tests ${onnxruntime_shared_lib_test_SRC})
+  if (NOT onnxruntime_USE_NNAPI)
+    list(APPEND all_tests ${onnxruntime_global_thread_pools_test_SRC})
+  endif()
 endif()
 set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
@@ -434,6 +442,9 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
   # the default logger tests conflict with the need to have an overall default logger
   # so skip in this type of
   target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
+  if (onnxruntime_USE_FEATURIZERS)
+    target_include_directories(onnxruntime_test_all PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/external/FeaturizersLibrary/src)
+  endif()
 
   if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
     target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
@@ -647,7 +658,7 @@ endif()
 file(GLOB onnxruntime_perf_test_src CONFIGURE_DEPENDS
   ${onnxruntime_perf_test_src_patterns}
   )
-add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src} ${ONNXRUNTIME_ROOT}/core/framework/path_lib.cc)
+add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src} ${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc)
 if(MSVC)
   target_compile_options(onnxruntime_perf_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
 endif()
@@ -716,6 +727,16 @@ if (onnxruntime_BUILD_SHARED_LIB)
           LIBS ${onnxruntime_shared_lib_test_LIBS}
           DEPENDS ${all_dependencies}
   )
+
+  # test inference using global threadpools
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+  AddTest(DYN
+          TARGET onnxruntime_global_thread_pools_test
+          SOURCES ${onnxruntime_global_thread_pools_test_SRC}
+          LIBS ${onnxruntime_shared_lib_test_LIBS}
+          DEPENDS ${all_dependencies}
+  )
+  endif()
 endif()
 
 #some ETW tools

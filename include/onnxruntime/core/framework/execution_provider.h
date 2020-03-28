@@ -97,7 +97,7 @@ class IExecutionProvider {
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const;
 
   /**
-     Get the device id of current excution provider
+     Get the device id of current execution provider
   */
   virtual int GetDeviceId() const { return -1; };
 

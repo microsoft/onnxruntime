@@ -15,6 +15,21 @@ from onnx import load
 from helper import get_name
 
 
+def check_list_of_map_to_float(testcase, expected_rows, actual_rows):
+    """Validate two list<map<key, float>> instances match closely enough."""
+
+    num_rows = len(expected_rows)
+    sorted_keys = sorted(expected_rows[0].keys())
+    testcase.assertEqual(num_rows, len(actual_rows))
+    testcase.assertEqual(sorted_keys, sorted(actual_rows[0].keys()))
+
+    for i in range(num_rows):
+        # use np.testing.assert_allclose so we can specify the tolerance
+        np.testing.assert_allclose([expected_rows[i][key] for key in sorted_keys],
+                                   [actual_rows[i][key] for key in sorted_keys],
+                                   rtol=1e-05, atol=1e-07)
+
+
 class TestBackend(unittest.TestCase):
 
     def testRunModel(self):
@@ -45,7 +60,8 @@ class TestBackend(unittest.TestCase):
         output_expected = [{0: 0.950599730014801, 1: 0.027834169566631317, 2: 0.02156602405011654},
                            {0: 0.9974970817565918, 1: 5.6299926654901356e-05, 2: 0.0024466661270707846},
                            {0: 0.9997311234474182, 1: 1.1918064757310276e-07, 2: 0.00026869276189245284}]
-        self.assertEqual(output_expected, res[1])
+
+        check_list_of_map_to_float(self, output_expected, res[1])
 
     def testRunModelProtoApi(self):
         name = datasets.get_example("logreg_iris.onnx")
@@ -59,7 +75,8 @@ class TestBackend(unittest.TestCase):
         output_expected = [{0: 0.950599730014801, 1: 0.027834169566631317, 2: 0.02156602405011654},
                            {0: 0.9974970817565918, 1: 5.6299926654901356e-05, 2: 0.0024466661270707846},
                            {0: 0.9997311234474182, 1: 1.1918064757310276e-07, 2: 0.00026869276189245284}]
-        self.assertEqual(output_expected, outputs[1])
+
+        check_list_of_map_to_float(self, output_expected, outputs[1])
 
     def testAllocationPlanWorksWithOnlyExecutePathToFetchesOption(self):
         """

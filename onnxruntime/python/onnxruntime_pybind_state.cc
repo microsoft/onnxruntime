@@ -1,22 +1,26 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "onnxruntime_pybind_exceptions.h"
-#include "onnxruntime_pybind_mlvalue.h"
+// needs to be included first to get around onnxruntime\cmake\external\onnx\onnx/common/constants.h(14): error C2513: 'bool': no variable declared before '='
+#include "core/framework/tensorprotoutils.h"
+
+#include "python/onnxruntime_pybind_exceptions.h"
+#include "python/onnxruntime_pybind_mlvalue.h"
+#include "python/onnxruntime_pybind_state_common.h"
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
 
+#include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/session_options.h"
 #include "core/framework/bfc_arena.h"
-#include "core/framework/random_seed.h"
+#include "core/session/IOBinding.h"
 
 #if USE_CUDA
 #define BACKEND_PROC "GPU"
@@ -87,17 +91,9 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/cpu_provider_factory.h"
 
-#ifdef ENABLE_TRAINING
-#include "core/session/IOBinding.h"
-#include "orttraining/core/session/training_session.h"
-#include "orttraining/core/graph/optimizer_config.h"
-#include "orttraining/core/framework/mpi_setup.h"
-#include "orttraining/core/framework/data_transfer_utils.h"
-#endif
-
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
-int cuda_device_id = 0;
+OrtDevice::DeviceId cuda_device_id = 0;
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
@@ -141,22 +137,11 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar
 #endif  // _MSC_VER
 
 namespace onnxruntime {
-using namespace training;
 namespace python {
 
 namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
-
-static AllocatorPtr& GetAllocator() {
-  static AllocatorPtr alloc = std::make_shared<TAllocator>();
-  return alloc;
-}
-
-static const SessionOptions& GetDefaultCPUSessionOptions() {
-  static SessionOptions so;
-  return so;
-}
 
 template <typename T>
 void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
@@ -215,34 +200,6 @@ static std::string GetDeviceName(const OrtDevice& device) {
   }
 }
 
-struct TrainingParameters {
-  std::string loss_output_name;
-  std::unordered_set<std::string> weights_to_train;
-  std::unordered_set<std::string> weights_not_to_train;
-  onnxruntime::training::TrainingSession::ImmutableWeights immutable_weights;
-
-  // optimizer
-  std::string training_optimizer_name;
-  std::string loss_scale_input_name;
-  std::string scaled_loss_output_name;
-  std::string lr_params_feed_name = "Learning_Rate";
-  std::unordered_map<std::string, std::unordered_map<std::string, float>> optimizer_attributes_map;
-  bool use_fp16_moments = false;
-
-  bool use_mixed_precision = false;
-  bool allreduce_post_accumulation = false;
-  float loss_scale = 0.0f;
-  int world_rank = 0;
-  int world_size = 1;
-  int local_rank = 0;
-  int local_size = 1;
-  int gradient_accumulation_steps = 1;
-  int data_parallel_size = 1;
-  int horizontal_parallel_size = 1;
-  bool partition_optimizer = false;
-  int seed = -1;
-};
-
 template <>
 void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
   const auto& seq_tensors = val.Get<TensorSeq>();
@@ -298,27 +255,6 @@ void AddTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   GetPyObjFromTensor(rtensor, obj);
   pyobjs.push_back(obj);
 }
-
-class SessionObjectInitializer {
- public:
-  typedef const SessionOptions& Arg1;
-  typedef logging::LoggingManager* Arg2;
-  operator Arg1() {
-    return GetDefaultCPUSessionOptions();
-  }
-
-  operator Arg2() {
-    static std::string default_logger_id{"Default"};
-    static LoggingManager default_logging_manager{std::unique_ptr<ISink>{new CErrSink{}},
-                                                  Severity::kWARNING, false, LoggingManager::InstanceType::Default,
-                                                  &default_logger_id};
-    return &default_logging_manager;
-  }
-
-  static SessionObjectInitializer Get() {
-    return SessionObjectInitializer();
-  }
-};
 
 inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
   auto p = f.CreateProvider();
@@ -409,110 +345,17 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
   OrtPybindThrowIfError(sess->Initialize());
 }
 
-// TODO: this method does not handle parallel optimization.
-static void ConfigureSessionForTraining(
-    training::TrainingSession* sess, TrainingParameters& parameters) {
-    //TODO tix, refactor the mpi related code to populate all fields correctly by default.
-    ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size);
-    ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size);
-    if (parameters.world_size % parameters.horizontal_parallel_size != 0) {
-      throw std::runtime_error("Cannot split horizontal parallel group because world_size is not divisible");
-    }
-
-    auto data_group_size = parameters.world_size / parameters.horizontal_parallel_size;
-    if (data_group_size != parameters.data_parallel_size) {
-      std::cout << "WARNING: data_parallel_size is not correct, tuned automatically to "
-                << data_group_size << std::endl;
-      parameters.data_parallel_size = data_group_size;
-    }
-#ifdef USE_HOROVOD
-  // this condition block is temporary.
-  // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
-  // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
-  bool use_nccl = parameters.allreduce_post_accumulation;
-  if (!use_nccl && parameters.world_size > 1) {
-    auto mpi_context = setup_horovod();
-    std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
-    std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
-    std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
-    std::cout << "mpi_context.local_size: " << mpi_context.local_size << std::endl;
-    parameters.local_size = mpi_context.local_size;
-    parameters.local_rank = mpi_context.local_rank;
-  }
-#endif
-
-  training::TrainingSession::TrainingConfiguration config{};
-  config.weight_names_to_train = parameters.weights_to_train;
-  config.weight_names_to_not_train = parameters.weights_not_to_train;
-  config.immutable_weights = parameters.immutable_weights;
-
-  config.set_gradients_as_graph_outputs = true;
-
-  config.gradient_accumulation_steps = parameters.gradient_accumulation_steps;
-
-  config.distributed_config.world_rank = parameters.world_rank;
-  config.distributed_config.world_size = parameters.world_size;
-  config.distributed_config.local_rank = parameters.local_rank;
-  config.distributed_config.local_size = parameters.local_size;
-  config.distributed_config.data_parallel_size = parameters.data_parallel_size;
-  config.distributed_config.horizontal_parallel_size = parameters.horizontal_parallel_size;
-
-  if (parameters.use_mixed_precision) {
-    training::TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
-    mp.add_loss_scaling = false;
-    mp.use_fp16_initializers = true;
-
-    config.mixed_precision_config = mp;
-  }
-
-  config.loss_name =
-      parameters.use_mixed_precision ? parameters.scaled_loss_output_name : parameters.loss_output_name;
-
-  if (!parameters.training_optimizer_name.empty()) {
-    training::TrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
-    opt.name = parameters.training_optimizer_name;
-    opt.learning_rate_input_name = parameters.lr_params_feed_name;
-    opt.weight_attributes_generator = [&parameters](const std::string& weight_name) {
-      const auto it = parameters.optimizer_attributes_map.find(weight_name);
-      ORT_ENFORCE(
-          it != parameters.optimizer_attributes_map.end(),
-          "Failed to find attribute map for weight ", weight_name);
-      return it->second;
-    };
-    opt.use_fp16_moments = parameters.use_fp16_moments;
-    opt.do_all_reduce_in_fp16 = true;
-    // TODO: this mapping is temporary.
-    // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
-    // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
-    // eventually we will have one all reduce kernel and let opt to have
-    // an allreduce_post_accumulation option and remove the use_nccl option.
-    opt.use_nccl = parameters.allreduce_post_accumulation;
-    opt.partition_optimizer = parameters.partition_optimizer;
-
-    config.optimizer_config = opt;
-  }
-
-  if (parameters.seed > 0) {
-    utils::SetStaticRandomSeed(static_cast<uint32_t>(parameters.seed));
-    std::cout << "Random seed is set to " << parameters.seed << std::endl;
-  }
-
-  training::TrainingSession::TrainingConfigurationResult config_result{};
-
-  OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
-}
-
-void addGlobalMethods(py::module& m) {
+void addGlobalMethods(py::module& m, const Environment& env) {
   m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
   m.def(
       "get_device", []() -> std::string { return BACKEND_DEVICE; },
       "Return the device used to compute the prediction (CPU, MKL, ...)");
   m.def(
-      "set_default_logger_severity", [](int severity) {
+      "set_default_logger_severity", [&env](int severity) {
         ORT_ENFORCE(severity >= 0 && severity <= 4,
                     "Invalid logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
-        logging::LoggingManager* default_logging_manager = SessionObjectInitializer::Get();
+        logging::LoggingManager* default_logging_manager = env.GetLoggingManager();
         default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(severity));
       },
       "Sets the default logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
@@ -586,7 +429,7 @@ void addGlobalMethods(py::module& m) {
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
 #ifdef USE_CUDA
-  m.def("set_cuda_device_id", [](const int id) { cuda_device_id = id; });
+  m.def("set_cuda_device_id", [](const int id) { cuda_device_id = static_cast<OrtDevice::DeviceId>(id); });
   m.def("set_cuda_mem_limit", [](const int64_t limit) {
     cuda_mem_limit = static_cast<size_t>(limit);
   });
@@ -706,7 +549,7 @@ void addOpSchemaSubmodule(py::module& m) {
 
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
-void addObjectMethods(py::module& m) {
+void addObjectMethods(py::module& m, Environment& env) {
   py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
       .value("ORT_DISABLE_ALL", GraphOptimizationLevel::ORT_DISABLE_ALL)
       .value("ORT_ENABLE_BASIC", GraphOptimizationLevel::ORT_ENABLE_BASIC)
@@ -774,27 +617,6 @@ void addObjectMethods(py::module& m) {
       .def("clear_binding_outputs", [](SessionIOBinding* io_binding) -> void {
         io_binding->Get()->ClearOutputs();
       });
-
-  py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
-  parameters.def(py::init())
-      .def_readwrite("loss_output_name", &TrainingParameters::loss_output_name)
-      .def_readwrite("immutable_weights", &TrainingParameters::immutable_weights)
-      .def_readwrite("weights_not_to_train", &TrainingParameters::weights_not_to_train)
-      .def_readwrite("weights_to_train", &TrainingParameters::weights_to_train)
-      .def_readwrite("loss_scale_input_name", &TrainingParameters::loss_scale_input_name)
-      .def_readwrite("scaled_loss_output_name", &TrainingParameters::scaled_loss_output_name)
-      .def_readwrite("training_optimizer_name", &TrainingParameters::training_optimizer_name)
-      .def_readwrite("lr_params_feed_name", &TrainingParameters::lr_params_feed_name)
-      .def_readwrite("optimizer_attributes_map", &TrainingParameters::optimizer_attributes_map)
-      .def_readwrite("use_fp16_moments", &TrainingParameters::use_fp16_moments)
-      .def_readwrite("use_mixed_precision", &TrainingParameters::use_mixed_precision)
-      .def_readwrite("allreduce_post_accumulation", &TrainingParameters::allreduce_post_accumulation)
-      .def_readwrite("loss_scale", &TrainingParameters::loss_scale)
-      .def_readwrite("world_rank", &TrainingParameters::world_rank)
-      .def_readwrite("world_size", &TrainingParameters::world_size)
-      .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
-      .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer)
-      .def_readwrite("seed", &TrainingParameters::seed);
 
   py::class_<SessionOptions>
       sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
@@ -954,15 +776,15 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
       // without any conversion. So this init method can be used for model file path (string)
       // and model content (bytes)
-      .def(py::init([](const SessionOptions& so, const std::string& arg, bool is_arg_file_name) {
+      .def(py::init([&env](const SessionOptions& so, const std::string& arg, bool is_arg_file_name) {
         // Given arg is the file path. Invoke the corresponding ctor().
         if (is_arg_file_name) {
-          return onnxruntime::make_unique<InferenceSession>(so, arg, SessionObjectInitializer::Get());
+          return onnxruntime::make_unique<InferenceSession>(so, env, arg);
         }
 
         // Given arg is the model content as bytes. Invoke the corresponding ctor().
         std::istringstream buffer(arg);
-        return onnxruntime::make_unique<InferenceSession>(so, buffer, SessionObjectInitializer::Get());
+        return onnxruntime::make_unique<InferenceSession>(so, env, buffer);
       }))
       .def(
           "load_model", [](InferenceSession* sess, std::vector<std::string>& provider_types) {
@@ -1058,76 +880,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       });
 
-  py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
-  training_session.def(py::init<SessionOptions, SessionObjectInitializer>())
-      .def(py::init<SessionObjectInitializer, SessionObjectInitializer>())
-      .def("finalize", [](py::object) {
-#ifdef USE_HOROVOD
-        shutdown_horovod();
-#endif
-      })
-      .def("load_model", [](onnxruntime::training::TrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
-        OrtPybindThrowIfError(sess->Load(path));
-
-        ConfigureSessionForTraining(sess, parameters);
-
-        std::vector<std::string> provider_types = {};
-        InitializeSession(sess, provider_types);
-      })
-      .def("read_bytes", [](onnxruntime::training::TrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
-        std::istringstream buffer(serialized_model);
-        OrtPybindThrowIfError(sess->Load(buffer));
-
-        ConfigureSessionForTraining(sess, parameters);
-
-        std::vector<std::string> provider_types = {};
-        InitializeSession(sess, provider_types);
-      })
-      .def("get_state", [](onnxruntime::training::TrainingSession* sess) {
-        NameMLValMap state_tensors;
-        ORT_THROW_IF_ERROR(sess->GetStateTensors(state_tensors));
-        auto& data_transfer_manager = sess->GetDataTransferManager();
-        //convert to numpy array
-        std::map<std::string, py::object> rmap;
-        for (auto& kv : state_tensors) {
-          if (kv.second.IsTensor()) {
-            py::object obj;
-            const Tensor& rtensor = kv.second.Get<Tensor>();
-            GetPyObjFromTensor(rtensor, obj, &data_transfer_manager);
-            rmap.insert({kv.first, obj});
-          } else {
-            throw std::runtime_error("Non tensor type in session state tensors is not expected.");
-          }
-        }
-        return rmap;
-      })
-      .def("load_state", [](onnxruntime::training::TrainingSession* sess, std::unordered_map<std::string, py::object>& state, bool strict) {
-        NameMLValMap state_tensors;
-        for (auto initializer : state) {
-          OrtValue ml_value;
-          auto px = sess->GetModelInputs();
-          if (!px.first.IsOK() || !px.second) {
-            throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
-          }
-          CreateGenericMLValue(px.second, GetAllocator(), initializer.first, initializer.second, &ml_value);
-          if (PyErr_Occurred()) {
-            PyObject *ptype, *pvalue, *ptraceback;
-            PyErr_Fetch(&ptype, &pvalue, &ptraceback);
-
-            PyObject* pStr = PyObject_Str(ptype);
-            std::string sType = py::reinterpret_borrow<py::str>(pStr);
-            Py_XDECREF(pStr);
-            pStr = PyObject_Str(pvalue);
-            sType += ": ";
-            sType += py::reinterpret_borrow<py::str>(pStr);
-            Py_XDECREF(pStr);
-            throw std::runtime_error(sType);
-          }
-          state_tensors.insert(std::make_pair(initializer.first, ml_value));
-        }
-        ORT_THROW_IF_ERROR(sess->SetStateTensors(state_tensors, strict));
-      });
-
   py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())
       .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)
       .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
@@ -1140,6 +892,10 @@ static struct {
   PyMemAllocatorEx raw;
   PyMemAllocatorEx obj;
 } allocators;
+#endif
+
+#ifdef ENABLE_TRAINING
+void addObjectMethodsForTraining(py::module& m);
 #endif
 
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
@@ -1190,6 +946,31 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
 #endif
 
+  // Initialization of the module
+  ([]() -> void {
+    // import_array1() forces a void return value.
+    import_array1();
+  })();
+
+  Environment& env = get_env();
+
+  addGlobalMethods(m, env);
+  addObjectMethods(m, env);
+
+#ifdef ENABLE_TRAINING
+  addObjectMethodsForTraining(m);
+#endif  // ENABLE_TRAINING
+
+#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
+  addOpSchemaSubmodule(m);
+  addOpKernelSubmodule(m);
+#endif
+}
+
+// static variable used to create inference session and training session.
+static std::unique_ptr<Environment> session_env;
+
+void initialize_env(){
   auto initialize = [&]() {
     // Initialization of the module
     ([]() -> void {
@@ -1197,8 +978,11 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       import_array1();
     })();
 
-    static std::unique_ptr<Environment> env;
-    OrtPybindThrowIfError(Environment::Create(env));
+    OrtPybindThrowIfError(Environment::Create(onnxruntime::make_unique<LoggingManager>(
+                                                  std::unique_ptr<ISink>{new CLogSink{}},
+                                                  Severity::kWARNING, false, LoggingManager::InstanceType::Default,
+                                                  &SessionObjectInitializer::default_logger_id),
+                                              session_env));
 
     static bool initialized = false;
     if (initialized) {
@@ -1207,14 +991,13 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
     initialized = true;
   };
   initialize();
+}
 
-  addGlobalMethods(m);
-  addObjectMethods(m);
-
-#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
-  addOpSchemaSubmodule(m);
-  addOpKernelSubmodule(m);
-#endif
+onnxruntime::Environment& get_env(){
+  if (!session_env){
+    initialize_env();
+  }
+  return *session_env;
 }
 
 }  // namespace python

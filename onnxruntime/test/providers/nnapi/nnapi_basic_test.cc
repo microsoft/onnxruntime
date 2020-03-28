@@ -85,7 +85,7 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
 
-  InferenceSession session_object{so};
+  InferenceSession session_object{so, GetEnvironment()};
   status = session_object.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::NnapiExecutionProvider>());
   ASSERT_TRUE(status.IsOK());
   status = session_object.Load(model_file_name);
@@ -100,4 +100,3 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
 }
 }  // namespace test
 }  // namespace onnxruntime
-

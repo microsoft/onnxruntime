@@ -82,7 +82,7 @@ struct Base {
   ~Base() { OrtRelease(p_); }
 
   operator T*() { return p_; }
-  operator const T *() const { return p_; }
+  operator const T*() const { return p_; }
 
   T* release() {
     T* p = p_;
@@ -123,6 +123,7 @@ struct ModelMetadata;
 struct Env : Base<OrtEnv> {
   Env(std::nullptr_t) {}
   Env(OrtLoggingLevel default_logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
+  Env(ThreadingOptions tp_options, OrtLoggingLevel default_logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
   Env(OrtLoggingLevel default_logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 
@@ -185,6 +186,8 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& SetLogId(const char* logid);
 
   SessionOptions& Add(OrtCustomOpDomain* custom_op_domain);
+
+  SessionOptions& DisablePerSessionThreads();
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {
@@ -289,7 +292,7 @@ struct AllocatorWithDefaultOptions {
   AllocatorWithDefaultOptions();
 
   operator OrtAllocator*() { return p_; }
-  operator const OrtAllocator *() const { return p_; }
+  operator const OrtAllocator*() const { return p_; }
 
   void* Alloc(size_t size);
   void Free(void* p);

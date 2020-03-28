@@ -39,6 +39,8 @@ class TrainingRunner {
     std::string training_optimizer_name = "SGDOptimizer";
     std::function<std::unordered_map<std::string, float>(const std::string& weight)> optimizer_attributes =
         [](const std::string&) { return std::unordered_map<std::string, float>(); };
+    std::function<std::unordered_map<std::string, int64_t>(const std::string& weight)> optimizer_int_attributes =
+        [](const std::string&) { return std::unordered_map<std::string, int64_t>(); };
     LearningRateParameters lr_params;
     int gradient_accumulation_steps = 1;
 
@@ -149,10 +151,12 @@ class TrainingRunner {
 
     int data_parallel_size = 1;
     int horizontal_parallel_size = 1;
+    // Enable gradient clipping.
+    bool enable_grad_norm_clip=true;
   };
 
-  TrainingRunner(Parameters params);
-  TrainingRunner(Parameters params, SessionOptions session_options);
+  TrainingRunner(Parameters params, const Environment& env);
+  TrainingRunner(Parameters params, const Environment& env, SessionOptions session_options);
 
   common::Status Initialize();
 
