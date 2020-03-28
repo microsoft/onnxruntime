@@ -15,7 +15,7 @@ ArgDef AdasumOptimizerGraphBuilder::BuildWeightUpdateNode(
   TypeProto* gradient_fp32_type_proto = graph_defs.CopyTypeProto(weight);
   ArgDef gradient_update_output = gradient;
   ArgDef weight_update_output = ArgDef(nodearg_name_generator(weight.name + "_update_out"), gradient_fp32_type_proto);
-  graph_defs.AddNodeDefs({NodeDef("InPlaceAccumulator",
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"InPlaceAccumulator", kMSDomain, 1},
                                   {weight, gradient_update_output, gradient_finite_argdef},
                                   {weight_update_output},
                                   NodeAttributes(),

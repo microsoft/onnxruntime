@@ -9,9 +9,11 @@
 
 namespace onnxruntime {
 namespace contrib {
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     InPlaceAccumulator,
-    9,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)  // accumulate tensors in-place
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),

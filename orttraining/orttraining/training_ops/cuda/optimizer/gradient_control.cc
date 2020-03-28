@@ -13,8 +13,8 @@ namespace cuda {
 #define REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(T, T_GRAD)                       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                    \
       InPlaceAccumulator,                                                           \
-      kOnnxDomain,                                                                  \
-      9,                                                                            \
+      kMSDomain,                                                                    \
+      1,                                                                            \
       T##_##T_GRAD,                                                                 \
       kCudaExecutionProvider,                                                       \
       KernelDefBuilder()                                                            \

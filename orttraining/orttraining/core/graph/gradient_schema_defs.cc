@@ -580,7 +580,8 @@ void RegisterGradientSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(LambOptimizer, RegisterLambOpSchema);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(InPlaceAccumulator)
-      .SinceVersion(9)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(1)
       .SetDoc("in-place accumulator for tensors")
       .Input(0, "old_sum", "historical result of accumulator", "T")
       .Input(1, "value", "the value that will be added to the accumulator", "T_GRAD")

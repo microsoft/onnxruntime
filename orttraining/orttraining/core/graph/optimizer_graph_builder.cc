@@ -56,7 +56,7 @@ ArgDef BuildGradientAccumulationNode(const NodeArgNameGeneratorFn& nodearg_name_
   }
   if (add_accumulate_buffer_as_initializers)
     graph_defs.AddInitializers({CreateTensorProto<float>(gradient_accumulate_buffer.name, 0.f, dims)});
-  graph_defs.AddNodeDefs({NodeDef("InPlaceAccumulator",
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"InPlaceAccumulator", kMSDomain, 1},
                                   {gradient_accumulate_buffer, gradient},
                                   {gradient_accumulator_output},
                                   NodeAttributes(),
