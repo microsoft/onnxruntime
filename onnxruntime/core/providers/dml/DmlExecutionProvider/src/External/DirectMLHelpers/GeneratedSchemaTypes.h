@@ -16,7 +16,7 @@ using ApiAttributeVariant = std::variant<
     const DML_SCALE_BIAS*, 
     DML_SIZE_2D, 
     DML_SCALAR_UNION
->;
+    >;
 
 namespace OperatorFieldTypes
 {
@@ -51,7 +51,7 @@ using OperatorFieldVariant = std::variant<
     OperatorFieldTypes::ScaleBias, 
     OperatorFieldTypes::Size2D, 
     OperatorFieldTypes::ScalarUnion
->;
+    >;
 
 class OperatorField
 {
