@@ -181,7 +181,7 @@ namespace Dml
         // CPU Allocator used to create buffers for the MemcpyFromHost operator.
         m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
         m_cpuOutputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUOutput);
-		
+
         CreateDmlKernelRegistry(&m_kernelRegistry, &m_internalRegInfoMap);
     }
 
@@ -500,11 +500,12 @@ namespace Dml
         std::string partitionKernelPrefix = std::to_string(m_partitionKernelPrefixVal++) + "_";
         uint32_t deviceDataTypeMask = GetSuppportedDeviceDataTypeMask();
 
-        return PartitionGraph(graph, 
+        return PartitionGraph(
+            graph,
             *m_internalRegInfoMap,
-            registries, 
-            deviceDataTypeMask, 
-            m_kernelRegistry.get(), 
+            registries,
+            deviceDataTypeMask,
+            m_kernelRegistry.get(),
             partitionKernelPrefix
         );
     }

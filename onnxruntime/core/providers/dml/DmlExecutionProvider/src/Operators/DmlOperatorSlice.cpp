@@ -58,7 +58,7 @@ public:
     }
 };
 
-void CALLBACK QuerySlice(IMLOperatorSupportQueryContextPrivate* context, bool *isSupported)
+void CALLBACK QuerySlice(IMLOperatorSupportQueryContextPrivate* context, bool* isSupported)
 {
     *isSupported = (context->GetInputCount() <= 5);
 }

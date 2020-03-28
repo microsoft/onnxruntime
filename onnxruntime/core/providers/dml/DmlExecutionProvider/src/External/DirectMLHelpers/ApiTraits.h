@@ -1594,7 +1594,6 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_SHRINK>
     using DescType = DML_ACTIVATION_SHRINK_OPERATOR_DESC;
 };
 
-
 // Calls a visitor functor, supplying an empty operator desc corresponding to the given DML_OPERATOR_TYPE as
 // the first argument.
 // 

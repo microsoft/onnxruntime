@@ -185,12 +185,13 @@ namespace OperatorHelper
         static const int sc_sinceVer_DropOut = 10;
         static const int sc_sinceVer_RoiAlign = 10;
         static const int sc_sinceVer_TopK = 10;
+        static const int sc_sinceVer_ReverseSequence = 10;
     } // namespace OnnxOperatorSet10
 
     namespace OnnxOperatorSet11
     {
-        static const int sc_sinceVer_Argmax = 11;
-        static const int sc_sinceVer_Argmin = 11;
+        static const int sc_sinceVer_ArgMax = 11;
+        static const int sc_sinceVer_ArgMin = 11;
         static const int sc_sinceVer_AveragePool = 11;
         static const int sc_sinceVer_BitShift = 11;
         static const int sc_sinceVer_Clip = 11;
@@ -206,6 +207,8 @@ namespace OperatorHelper
         static const int sc_sinceVer_Gemm = 11;
         static const int sc_sinceVer_Hardmax = 11;
         static const int sc_sinceVer_LogSoftmax = 11;
+        static const int sc_sinceVer_MaxPool = 11;
+        static const int sc_sinceVer_MaxUnpool = 11;
         static const int sc_sinceVer_OneHot = 11;
         static const int sc_sinceVer_Pad = 11;
         static const int sc_sinceVer_Range = 11;
@@ -220,9 +223,9 @@ namespace OperatorHelper
         static const int sc_sinceVer_ReduceSum = 11;
         static const int sc_sinceVer_ReduceSumSquare = 11;
         static const int sc_sinceVer_Resize = 11;
-        static const int sc_sinceVer_ReverseSequence = 11;
         static const int sc_sinceVer_Round = 11;
         static const int sc_sinceVer_Scan = 11;
+        static const int sc_sinceVer_Scatter = 11; // Deprecated alias
         static const int sc_sinceVer_ScatterElements = 11;
         static const int sc_sinceVer_ScatterND = 11;
         static const int sc_sinceVer_Slice = 11;

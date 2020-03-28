@@ -6,84 +6,84 @@
 
 namespace OperatorHelper
 {
-bool ContainsEmptyDimensions(gsl::span<const DimensionType> dimensions)
-{
-    return std::find(dimensions.begin(), dimensions.end(), 0) != dimensions.end();
-}
-
-// Convert any negative axis into an absolute axis relative to the back end.
-// So given 3 dimensions, a -1 refers to axis 2, and -3 to axis 0.
-uint32_t HandleNegativeAxis(int32_t signedOnnxAxis, uint32_t dimCount)
-{
-    if (signedOnnxAxis < 0)
+    bool ContainsEmptyDimensions(gsl::span<const DimensionType> dimensions)
     {
-        signedOnnxAxis += dimCount;
+        return std::find(dimensions.begin(), dimensions.end(), 0) != dimensions.end();
     }
-    uint32_t absoluteAxis = gsl::narrow_cast<uint32_t>(signedOnnxAxis);
-    ML_CHECK_VALID_ARGUMENT(absoluteAxis < dimCount);
-    return absoluteAxis;
-}
 
-void HandleNegativeAxes(gsl::span<int32_t> onnxAxes, uint32_t dimCount)
-{
-    for (int32_t& axis : onnxAxes)
+    // Convert any negative axis into an absolute axis relative to the back end.
+    // So given 3 dimensions, a -1 refers to axis 2, and -3 to axis 0.
+    uint32_t HandleNegativeAxis(int32_t signedOnnxAxis, uint32_t dimCount)
     {
-        axis = HandleNegativeAxis(axis, dimCount);
-    }
-}
-
-void ReadCpuLocalTensorIntoInt32(
-    const MLOperatorTensor& tensor,
-    std::vector<int32_t>& result
-    )
-{
-    result.clear();
-    ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be CPU Tensor.");
-
-    const std::vector<uint32_t>& tensorDimensions = tensor.GetShape();
-    const uint32_t elementCount = ComputeElementCountFromDimensions(tensorDimensions);
-
-    switch (tensor.GetTensorDataType())
-    {
-    case MLOperatorTensorDataType::Int32:
+        if (signedOnnxAxis < 0)
         {
-            const int32_t* data = tensor.GetData<int32_t>();
-            result.assign(data, data + elementCount);
+            signedOnnxAxis += dimCount;
         }
-        break;
+        uint32_t absoluteAxis = gsl::narrow_cast<uint32_t>(signedOnnxAxis);
+        ML_CHECK_VALID_ARGUMENT(absoluteAxis < dimCount);
+        return absoluteAxis;
+    }
 
-    case MLOperatorTensorDataType::Int64:
+    void HandleNegativeAxes(gsl::span<int32_t> onnxAxes, uint32_t dimCount)
+    {
+        for (int32_t& axis : onnxAxes)
         {
-            const int64_t* data = tensor.GetData<int64_t>();
-            result.reserve(elementCount);
-            for (auto d : gsl::make_span(data, data + elementCount))
+            axis = HandleNegativeAxis(axis, dimCount);
+        }
+    }
+
+    void ReadCpuLocalTensorIntoInt32(
+        const MLOperatorTensor& tensor,
+        std::vector<int32_t>& result
+        )
+    {
+        result.clear();
+        ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be CPU Tensor.");
+
+        const std::vector<uint32_t>& tensorDimensions = tensor.GetShape();
+        const uint32_t elementCount = ComputeElementCountFromDimensions(tensorDimensions);
+
+        switch (tensor.GetTensorDataType())
+        {
+        case MLOperatorTensorDataType::Int32:
             {
-                result.push_back(gsl::narrow_cast<int32_t>(d));
+                const int32_t* data = tensor.GetData<int32_t>();
+                result.assign(data, data + elementCount);
             }
+            break;
+
+        case MLOperatorTensorDataType::Int64:
+            {
+                const int64_t* data = tensor.GetData<int64_t>();
+                result.reserve(elementCount);
+                for (auto d : gsl::make_span(data, data + elementCount))
+                {
+                    result.push_back(gsl::narrow_cast<int32_t>(d));
+                }
+            }
+            break;
+
+        default:
+            ML_INVALID_ARGUMENT("Expecting CPU local tensor of type int32 or int64.");
+            break;
         }
-        break;
-
-    default:
-        ML_INVALID_ARGUMENT("Expecting CPU local tensor of type int32 or int64.");
-        break;
     }
-}
 
-void DowncastDimensions(gsl::span<const int64_t> inputDimensions, std::vector<DimensionType>& outputDimensions)
-{
-    outputDimensions.reserve(inputDimensions.size());
-    outputDimensions.clear();
-
-    for (int64_t dim : inputDimensions)
+    void DowncastDimensions(gsl::span<const int64_t> inputDimensions, std::vector<DimensionType>& outputDimensions)
     {
-        outputDimensions.push_back(gsl::narrow_cast<uint32_t>(std::clamp<int64_t>(dim, INT32_MIN, INT32_MAX)));
+        outputDimensions.reserve(inputDimensions.size());
+        outputDimensions.clear();
+
+        for (int64_t dim : inputDimensions)
+        {
+            outputDimensions.push_back(gsl::narrow_cast<uint32_t>(std::clamp<int64_t>(dim, INT32_MIN, INT32_MAX)));
+        }
     }
-}
 
-int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
-{
-    switch (tensorDataType)
+    int64_t CastToInt64(MLOperatorTensorDataType tensorDataType, const void* p)
     {
+        switch (tensorDataType)
+        {
         case MLOperatorTensorDataType::Float:      return static_cast<int64_t>(*reinterpret_cast<const float*>(p));
         case MLOperatorTensorDataType::UInt8:      return static_cast<int64_t>(*reinterpret_cast<const uint8_t*>(p));
         case MLOperatorTensorDataType::Int8:       return static_cast<int64_t>(*reinterpret_cast<const int8_t*>(p));
@@ -102,6 +102,71 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         case MLOperatorTensorDataType::Undefined:
         default: ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
         };
+    }
+
+    double CastToFloat64(MLOperatorTensorDataType tensorDataType, const void* p)
+    {
+        switch (tensorDataType)
+        {
+        case MLOperatorTensorDataType::Float:      return static_cast<double>(*reinterpret_cast<const float*>(p));
+        case MLOperatorTensorDataType::UInt8:      return static_cast<double>(*reinterpret_cast<const uint8_t*>(p));
+        case MLOperatorTensorDataType::Int8:       return static_cast<double>(*reinterpret_cast<const int8_t*>(p));
+        case MLOperatorTensorDataType::UInt16:     return static_cast<double>(*reinterpret_cast<const uint16_t*>(p));
+        case MLOperatorTensorDataType::Int16:      return static_cast<double>(*reinterpret_cast<const int16_t*>(p));
+        case MLOperatorTensorDataType::Int32:      return static_cast<double>(*reinterpret_cast<const int32_t*>(p));
+        case MLOperatorTensorDataType::Int64:      return static_cast<double>(*reinterpret_cast<const int64_t*>(p));
+        case MLOperatorTensorDataType::String:     ML_INVALID_ARGUMENT("MLOperatorTensorDataType::String type is unsupported for reading as an integer.");
+        case MLOperatorTensorDataType::Bool:       return static_cast<double>(*reinterpret_cast<const uint8_t*>(p));
+        case MLOperatorTensorDataType::Float16:    ML_INVALID_ARGUMENT("MLOperatorTensorDataType::Float16 type is unsupported for reading as an integer.");
+        case MLOperatorTensorDataType::Double:     return static_cast<double>(*reinterpret_cast<const double*>(p));
+        case MLOperatorTensorDataType::UInt32:     return static_cast<double>(*reinterpret_cast<const uint32_t*>(p));
+        case MLOperatorTensorDataType::UInt64:     return static_cast<double>(*reinterpret_cast<const uint64_t*>(p));
+        case MLOperatorTensorDataType::Complex64:  return static_cast<double>(*reinterpret_cast<const float*>(p)); // Read the real component.
+        case MLOperatorTensorDataType::Complex128: return static_cast<double>(*reinterpret_cast<const double*>(p)); // Read the real component.
+        case MLOperatorTensorDataType::Undefined:
+        default: ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
+        };
+    }
+
+    int64_t IsFloatDataType(MLOperatorTensorDataType tensorDataType)
+    {
+        switch (tensorDataType)
+        {
+        case MLOperatorTensorDataType::Float:
+        case MLOperatorTensorDataType::Float16:
+        case MLOperatorTensorDataType::Double:
+        case MLOperatorTensorDataType::Complex64:
+        case MLOperatorTensorDataType::Complex128:
+            return true;
+        };
+        return false;
+    }
+
+    void ReadScalarTensorData(const MLOperatorTensor& tensor, /*out*/ void* data, size_t dataByteSize)
+    {
+        // Read the tensor bytes of a scalar value into the output data,
+        // validating dimensions and byte size.
+        const uint32_t elementCount = ComputeElementCountFromDimensions(tensor.GetShape());
+        const size_t elementByteSize = GetByteSizeFromMlDataType(tensor.GetTensorDataType());
+        ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be a CPU Tensor.");
+        ML_CHECK_VALID_ARGUMENT(elementCount == 1, "Scalar tensors must have exactly 1 element.");
+        ML_CHECK_VALID_ARGUMENT(dataByteSize >= elementByteSize, "Scalar tensor element byte size is too large.");
+
+        memcpy(data, tensor.GetByteData(), elementByteSize);
+    }
+
+    int64_t ReadScalarTensorCastToInt64(const MLOperatorTensor& tensor)
+    {
+        std::byte tensorBytes[8];
+        ReadScalarTensorData(tensor, /*out*/ &tensorBytes, sizeof(tensorBytes));
+        return CastToInt64(tensor.GetTensorDataType(), &tensorBytes);
+    }
+
+    double ReadScalarTensorCastToFloat64(const MLOperatorTensor& tensor)
+    {
+        std::byte tensorBytes[8];
+        ReadScalarTensorData(tensor, /*out*/ &tensorBytes, sizeof(tensorBytes));
+        return CastToFloat64(tensor.GetTensorDataType(), &tensorBytes);
     }
 
     // Calculates the spatial dimensions from input dimensions and a kernel. The non-spatial (leading)
@@ -338,8 +403,8 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
 
     std::vector<EdgeShapes> GetOutputShapeAsInputShapeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
-        assert(shapeInfo.GetInputCount() >= 1);
-        std::vector<DimensionType> outputDimensions = shapeInfo.GetInputTensorShape(0);
+        assert(shapeInfo.GetInputCount() > m_inputTensorIndex);
+        std::vector<DimensionType> outputDimensions = shapeInfo.GetInputTensorShape(m_inputTensorIndex);
         return { std::move(outputDimensions) };
     }
 
@@ -531,15 +596,9 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         gsl::span<const DimensionType> inputDimensions
         )
     {
-        m_axis = operatorAttributes.GetOptionalAttribute<int>(AttrName::Axis, 0);
-        ML_CHECK_VALID_ARGUMENT(m_axis >= -int(inputDimensions.size()) && m_axis <= int(inputDimensions.size()) - 1);
-
-        // Adjust any negative axis, meaning it counts from the back, with -1 being the last dimension
-        // and -dimCount being the first dimension.
-        if (m_axis < 0)
-        {
-            m_axis += gsl::narrow_cast<int>(inputDimensions.size());
-        }
+        int32_t signedOnnxAxis = operatorAttributes.GetOptionalAttribute<int>(AttrName::Axis, 0);
+        uint32_t inputRank = gsl::narrow_cast<int>(inputDimensions.size());
+        m_axis = HandleNegativeAxis(signedOnnxAxis, inputRank);
     }
 
     std::vector<EdgeShapes> GatherHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -576,6 +635,30 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         {
             outputDimensions[outputDim] = inputDimensions[inputDim];
         }
+
+        return { EdgeShapes(std::move(outputDimensions)) };
+    }
+
+    std::vector<EdgeShapes> GatherNdHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        std::vector<DimensionType> inputDimensions = shapeInfo.GetInputTensorShape(0);
+        std::vector<DimensionType> indicesDimensions = shapeInfo.GetInputTensorShape(1);
+
+        // Determine the number of output dimensions.
+        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() >= 1);
+        ML_CHECK_VALID_ARGUMENT(indicesDimensions.size() >= 1);
+        const uint32_t numberOfCoordinatesPerIndex = indicesDimensions.back();
+        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() >= numberOfCoordinatesPerIndex);
+        const uint32_t numberOfOutputDimensionsFromInput = static_cast<uint32_t>(inputDimensions.size()) - numberOfCoordinatesPerIndex;
+        const uint32_t numberOfOutputDimensionsFromIndices = static_cast<uint32_t>(indicesDimensions.size()) - 1; // Strip off last dimension.
+        uint32_t outputDimensionCount = gsl::narrow_cast<uint32_t>(numberOfOutputDimensionsFromIndices + numberOfOutputDimensionsFromInput);
+        ML_CHECK_VALID_ARGUMENT(outputDimensionCount > 0 && outputDimensionCount <= NchwDimensionCount);
+
+        // Form the full expected size by concatenating the prefix part of the indices tensor shape
+        // with the suffix of the input tensor shape.
+        std::vector<DimensionType> outputDimensions;
+        outputDimensions.assign(indicesDimensions.begin(), indicesDimensions.end() - 1);
+        outputDimensions.insert(outputDimensions.end(), inputDimensions.end() - numberOfOutputDimensionsFromInput, inputDimensions.end());
 
         return { EdgeShapes(std::move(outputDimensions)) };
     }
@@ -970,6 +1053,54 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         return { std::move(EdgeShapes(outputDimensions)) };
     }
 
+    void UnpoolingHelper::Initialize()
+    {
+        ResolveAutoPadding(m_kernel, m_inputShape);
+        m_inferredOutputDimensions = InitializeKernelOutputDimsTranspose(m_inputShape, m_kernel);
+    }
+
+    std::vector<EdgeShapes> UnpoolingHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        std::vector<DimensionType> outputDimensions;
+
+        if (shapeInfo.IsInputValid(2))
+        {
+            // Read the dimensions from the output_shape tensor.
+            MLOperatorTensor outputShapeTensor = shapeInfo.GetConstantInputTensor(2);
+            ML_CHECK_VALID_ARGUMENT(outputShapeTensor.IsCpuData(), "MaxUnpool's scales tensor must be CPU Tensor.");
+
+            const std::vector<uint32_t> outputShapeTensorDimensions = outputShapeTensor.GetShape();
+            ML_CHECK_VALID_ARGUMENT(outputShapeTensorDimensions.size() == 1, "output_shape tensor must be 1D.");
+            const size_t dimCount = outputShapeTensorDimensions[0];
+            const int64_t* data = outputShapeTensor.GetData<int64_t>();
+
+            ML_CHECK_VALID_ARGUMENT(dimCount == m_inputShape.size(), "Input dimensions and output_shape must have same rank.");
+            DowncastDimensions(gsl::make_span(data, dimCount), /*out*/ outputDimensions);
+        }
+        else if (shapeInfo.HasAttribute(AttrName::OutputShape, MLOperatorAttributeType::IntArray))
+        {
+            std::vector<int64_t> outputDimensions64bit = shapeInfo.GetAttributeVector<int64_t>(AttrName::OutputShape);
+            ML_CHECK_VALID_ARGUMENT(outputDimensions64bit.size() == m_inputShape.size(), "Input dimensions and output_shape must have same rank.");
+            DowncastDimensions(outputDimensions64bit, /*out*/ outputDimensions);
+        }
+        else
+        {
+            outputDimensions = m_inferredOutputDimensions;
+        }
+
+        return { std::move(outputDimensions) };
+    }
+
+    void SqueezeHelper::Initialize(
+        gsl::span<const int32_t> axes,
+        gsl::span<const DimensionType> inputDimensions
+        )
+    {
+        m_axes.assign(axes.begin(), axes.end());
+        HandleNegativeAxes(/*inout*/ m_axes, gsl::narrow_cast<uint32_t>(inputDimensions.size()));
+        std::sort(m_axes.begin(), m_axes.end());
+    }
+
     std::vector<EdgeShapes> SqueezeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         auto outputDimensions = shapeInfo.GetInputTensorShape(0);
@@ -1001,6 +1132,17 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         outputDimensions.resize(newOutputDimCount);
 
         return { std::move(outputDimensions) };
+    }
+
+    void UnsqueezeHelper::Initialize(
+        gsl::span<const int32_t> axes,
+        gsl::span<const DimensionType> inputDimensions
+        )
+    {
+        m_axes.assign(axes.begin(), axes.end());
+        const uint32_t outputDimensionCount = gsl::narrow_cast<uint32_t>(inputDimensions.size() + axes.size());
+        HandleNegativeAxes(/*inout*/ m_axes, outputDimensionCount);
+        std::sort(m_axes.begin(), m_axes.end());
     }
 
     std::vector<EdgeShapes> UnsqueezeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1183,6 +1325,46 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
     }
 
     std::vector<EdgeShapes> ResizeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        return { m_outputDimensions };
+    }
+
+    void RangeHelper::Initialize(
+        const MLOperatorTensor& startTensor,
+        const MLOperatorTensor& limitTensor,
+        const MLOperatorTensor& deltaTensor
+        )
+    {
+        ReadScalarTensorData(startTensor, &m_valueStart, sizeof(m_valueStart));
+        ReadScalarTensorData(limitTensor, &m_valueLimit, sizeof(m_valueLimit));
+        ReadScalarTensorData(deltaTensor, &m_valueDelta, sizeof(m_valueDelta));
+        m_tensorDataType = startTensor.GetTensorDataType();
+
+        // The output size is a 1D tensor ranging from start up to limit,
+        // where:
+        //
+        //  number_of_elements = max(ceil((limit - start) / delta), 0)
+        //
+        uint32_t totalElementCount = 0;
+        if (IsFloatDataType(m_tensorDataType))
+        {
+            double start = CastToFloat64(m_tensorDataType, &m_valueStart);
+            double limit = CastToFloat64(m_tensorDataType, &m_valueLimit);
+            double delta = CastToFloat64(m_tensorDataType, &m_valueDelta);
+            totalElementCount = gsl::narrow_cast<uint32_t>(std::max(ceil((limit - start) / delta), 0.0));
+        }
+        else
+        {
+            int64_t start = CastToInt64(m_tensorDataType, &m_valueStart);
+            int64_t limit = CastToInt64(m_tensorDataType, &m_valueLimit);
+            int64_t delta = CastToInt64(m_tensorDataType, &m_valueDelta);
+            int64_t range = limit - start;
+            totalElementCount = gsl::narrow_cast<uint32_t>(std::max((range / delta) + (range % delta != 0), int64_t(0)));
+        }
+        m_outputDimensions.push_back(totalElementCount);
+    }
+
+    std::vector<EdgeShapes> RangeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         return { m_outputDimensions };
     }
