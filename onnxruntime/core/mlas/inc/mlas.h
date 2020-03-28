@@ -439,3 +439,15 @@ MlasQuantizeLinear(
     float Scale,
     int8_t ZeroPoint
     );
+
+void
+MLASCALL
+MlasRequantizeOutput(
+    const int32_t* Input,
+    uint8_t* Output,
+    const int32_t* Bias,
+    size_t M,
+    size_t N,
+    float Scale,
+    uint8_t ZeroPoint
+    );

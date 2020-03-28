@@ -3,13 +3,13 @@ parameters:
   PackageName: 'Microsoft.ML.OnnxRuntime'
   DoCompliance: 'false'
 
-jobs: 
+jobs:
 - template: ../../templates/win-ci-2019.yml
   parameters:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-nuget'
     JobName: 'Windows_CI_Dev'
-    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
@@ -29,7 +29,7 @@ jobs:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-win-x86-zip'
     JobName: 'Windows_CI_Dev_x86'
-    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --x86 --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --x86 --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x86'
     EnvSetupScript: 'setup_env_x86.bat'
     sln_platform: 'Win32'
@@ -50,7 +50,7 @@ jobs:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-win-arm64-zip'
     JobName: 'Windows_CI_Dev_arm64'
-    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --arm64 --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --arm64 --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'arm64'
@@ -71,7 +71,7 @@ jobs:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-win-arm-zip'
     JobName: 'Windows_CI_Dev_arm'
-    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --arm --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --arm --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'arm'

@@ -28,7 +28,7 @@ namespace Microsoft.ML.OnnxRuntime
             return new NamedOnnxValue(name, value);
         }
 
-        public string Name { get { return _name; } }
+        public string Name { get { return _name; } set { _name = value; } }
 
         /// <summary>
         /// Try-get value as a Tensor&lt;T&gt;.
@@ -71,7 +71,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="onnxValue"></param>
         /// <param name="pinnedMemoryHandle"></param>
-        internal void ToNativeOnnxValue(out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle)
+        /// <param name="disposeOnnxValueAfterUse"></param>
+        internal virtual void ToNativeOnnxValue(out IntPtr onnxValue, 
+                                                out MemoryHandle pinnedMemoryHandle)
         {
             //try to cast _value to Tensor<T>
             TensorElementType nativeElementType = TensorElementType.DataTypeMax; //invalid
