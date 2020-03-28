@@ -11,7 +11,7 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 static std::pair<bool, Node*> IsInputTranspose(const Graph& graph, NodeArg& node_arg) {
-  auto trans_node = graph.GetProducerNode(node_arg.Name());
+  const auto& trans_node = graph.GetProducerNode(node_arg.Name());
   if (trans_node == nullptr || trans_node->OpType() != "Transpose") {
     return std::make_pair(false, nullptr);
   }
@@ -24,7 +24,7 @@ static std::pair<bool, Node*> IsInputTranspose(const Graph& graph, NodeArg& node
 
   bool is_trans_on_last_two_dims = true;
   for (int64_t i = 0; i < rank - 2; i++) {
-    if ((int64_t)perms[i] != i) {
+    if (perms[i] != i) {
       is_trans_on_last_two_dims = false;
       break;
     }
@@ -41,32 +41,18 @@ static std::pair<bool, Node*> IsInputTranspose(const Graph& graph, NodeArg& node
   return std::make_pair(true, const_cast<Node*>(trans_node));
 }
 
-static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_map<NodeArg*, size_t>& count_map) {
-  const auto& node_consumers = graph.GetConsumerNodes(target->Name());
-  ORT_ENFORCE(!node_consumers.empty());
-  auto it = count_map.find(target);
-  if (it == count_map.end()) {
-    count_map.insert({target, node_consumers.size() - 1});
-    return node_consumers.size() - 1;
-  } else {
-    count_map[target] -= 1;
-    return count_map[target];
-  }
-}
-
 Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  std::deque<onnxruntime::NodeIndex> removed_nodes;
-
-  std::unordered_map<NodeArg*, size_t> consumer_count;
+  std::vector<std::reference_wrapper<Node>> removed_nodes;
 
   for (auto node_index : node_topology_list) {
+    removed_nodes.clear();
     auto& node = *graph.GetNode(node_index);
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if ((!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9}) &&
-         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeMatMul", {9})) ||
+         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeMatMul", {1}, kMSDomain)) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
       continue;
     }
@@ -82,16 +68,18 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     }
 
     if (left.first) {
-      size_t left_consumers = UpdateConsumerCount(graph, left_input, consumer_count);
-      if (left_consumers == 0)
-        removed_nodes.push_front(left.second->Index());
+      const auto& left_input_node = graph.GetProducerNode(left_input->Name());
+      if (left_input_node != nullptr && graph_utils::CanRemoveNode(graph, *left_input_node, logger)) {
+        removed_nodes.insert(removed_nodes.begin(), * left.second);
+      }
       left_input = left.second->MutableInputDefs()[0];
     }
 
     if (right.first) {
-      size_t right_consumers = UpdateConsumerCount(graph, right_input, consumer_count);
-      if (right_consumers == 0)
-        removed_nodes.push_front(right.second->Index());
+      const auto& right_input_node = graph.GetProducerNode(right_input->Name());
+      if (right_input_node != nullptr && graph_utils::CanRemoveNode(graph, *right_input_node, logger)) {
+        removed_nodes.insert(removed_nodes.begin(), *right.second);
+      }
       right_input = right.second->MutableInputDefs()[0];
     }
 
@@ -116,15 +104,8 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     // Assign provider to this new node. Provider should be same as the provider for old node.
     matmul_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
-    graph_utils::FinalizeNodeFusion(graph, matmul_node, node);
-  }
-
-  // Have to remove node in reversed order for now to walk around the issue in RemoveNode
-  for (onnxruntime::NodeIndex removed_node : removed_nodes) {
-    graph.RemoveNode(removed_node);
-  }
-
-  if (!removed_nodes.empty()) {
+    removed_nodes.push_back(node);
+    graph_utils::FinalizeNodeFusion(graph, removed_nodes, matmul_node);
     modified = true;
   }
 
