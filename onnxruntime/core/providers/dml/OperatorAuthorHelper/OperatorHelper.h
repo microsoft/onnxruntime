@@ -93,7 +93,11 @@ void FillWithLeadingValues(/*inout*/ std::vector<T>& values, uint32_t minimumEle
   std::fill_n(values.data(), fillCount, fillValue);
 }
 
-int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p);
+int64_t CastToInt64(MLOperatorTensorDataType tensorDataType, const void* p);
+double CastToFloat64(MLOperatorTensorDataType tensorDataType, const void* p);
+void ReadScalarTensorData(const MLOperatorTensor& tensor, /*out*/ void* data, size_t dataByteSize);
+int64_t ReadScalarTensorCastToInt64(const MLOperatorTensor& tensor);
+double ReadScalarTensorCastToFloat64(const MLOperatorTensor& tensor);
 
 void ReadCpuLocalTensorIntoInt32(const MLOperatorTensor& tensor, std::vector<int32_t>& result);
 
@@ -119,7 +123,7 @@ struct KernelArgs {
   // values beyond that may be bogus.
   uint32_t strides[NcdhwSpatialDimensionCount];
   uint32_t dilations[NcdhwSpatialDimensionCount];
-  uint32_t windowSize[NcdhwSpatialDimensionCount];
+  uint32_t windowSize[NcdhwSpatialDimensionCount]; // The filter kernel dimensions.
   uint32_t startPadding[NcdhwSpatialDimensionCount];
   uint32_t endPadding[NcdhwSpatialDimensionCount];
   uint32_t outputPadding[NcdhwSpatialDimensionCount];
@@ -194,13 +198,38 @@ class GetOutputShapeAsInputShapeHelper {
  public:
   // Info_t is used to obtain attributes which will be used for calculating the output shape later.
   // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+  // Default to first input tensor.
   template <typename Info_t, typename Shape_t>
   GetOutputShapeAsInputShapeHelper(const Info_t& info, const Shape_t& shape){
     ORT_UNUSED_PARAMETER(info);
     ORT_UNUSED_PARAMETER(shape);
   };
 
+  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+  // Pass specific tensor index.
+  template <typename Info_t, typename Shape_t>
+  GetOutputShapeAsInputShapeHelper(const Info_t& info, const Shape_t& shape, uint32_t inputTensorIndex)
+  : m_inputTensorIndex(inputTensorIndex)
+  {
+    ORT_UNUSED_PARAMETER(info);
+    ORT_UNUSED_PARAMETER(shape);
+  };
+
   std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+  uint32_t m_inputTensorIndex = 0;
+};
+
+template <uint32_t InputTensorIndex>
+class GetOutputShapeAsSpecificInputShapeHelper : public GetOutputShapeAsInputShapeHelper {
+public:
+  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+  template <typename Info_t, typename Shape_t>
+  GetOutputShapeAsSpecificInputShapeHelper(const Info_t& info, const Shape_t& shape)
+  : GetOutputShapeAsInputShapeHelper(info, shape, InputTensorIndex)
+  {}
 };
 
 class GetBroadcastedOutputShapeHelper {
@@ -349,10 +378,10 @@ public:
             );
         }
 
-    const std::vector<DimensionType> inputDimensions = shapeInfo.GetInputTensorShape(0);
-    const std::vector<DimensionType> filterDims = shapeInfo.GetInputTensorShape(1);
+        const std::vector<DimensionType> inputDimensions = shapeInfo.GetInputTensorShape(0);
+        const std::vector<DimensionType> filterDims = shapeInfo.GetInputTensorShape(1);
 
-    ML_CHECK_VALID_ARGUMENT(inputDimensions.size() > NonspatialDimensionCount, "Input dimensions must be >= 3");
+        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() > NonspatialDimensionCount, "Input dimensions must be >= 3");
 
         if (hasDynamicPads)
         {
@@ -387,39 +416,39 @@ public:
         assert(m_outputShapes[0].GetShape().size() > C);
         m_outputShapes[0].GetShape()[C] = filterDims[C] * m_groupCount;
 
-    if (!outputShape.empty()) {
-      // Start padding, end padding, and output padding are all ignored if output shape is set.
-      std::fill(m_kernel.outputPadding, m_kernel.outputPadding + m_kernel.spatialDimensionCount, 0);
+        if (!outputShape.empty()) {
+            // Start padding, end padding, and output padding are all ignored if output shape is set.
+            std::fill(m_kernel.outputPadding, m_kernel.outputPadding + m_kernel.spatialDimensionCount, 0);
 
-      if (outputShape.size() > 2) {
-        ML_CHECK_VALID_ARGUMENT(outputShape[outputShape.size() - 3] == gsl::narrow_cast<int>(m_outputShapes[0].GetShape()[C]), "Output channel must be equivalent to filter channel.");
-      }
+            if (outputShape.size() > 2) {
+                ML_CHECK_VALID_ARGUMENT(outputShape[outputShape.size() - 3] == gsl::narrow_cast<int>(m_outputShapes[0].GetShape()[C]), "Output channel must be equivalent to filter channel.");
+            }
 
-      for (size_t i = 0; i < m_kernel.spatialDimensionCount; ++i) {
-        size_t outputIndex = outputShape.size() - m_kernel.spatialDimensionCount + i;
-        ML_CHECK_VALID_ARGUMENT(outputShape[outputIndex] >= gsl::narrow_cast<int>(inputDimensions[H + i]), "Output dimension cannot be smaller than input dimension.");
-        m_outputShapes[0].GetShape()[H + i] = outputShape[outputIndex];
-      }
+            for (size_t i = 0; i < m_kernel.spatialDimensionCount; ++i) {
+                size_t outputIndex = outputShape.size() - m_kernel.spatialDimensionCount + i;
+                ML_CHECK_VALID_ARGUMENT(outputShape[outputIndex] >= gsl::narrow_cast<int>(inputDimensions[H + i]), "Output dimension cannot be smaller than input dimension.");
+                m_outputShapes[0].GetShape()[H + i] = outputShape[outputIndex];
+            }
 
-      const int dimOffset = gsl::narrow_cast<int>(inputDimensions.size() - m_kernel.spatialDimensionCount);
+            const int dimOffset = gsl::narrow_cast<int>(inputDimensions.size() - m_kernel.spatialDimensionCount);
 
-      for (size_t i = 0; i < m_kernel.spatialDimensionCount; ++i) {
-        int stride = m_kernel.strides[i];
-        int windowSize = m_kernel.windowSize[i];
+            for (size_t i = 0; i < m_kernel.spatialDimensionCount; ++i) {
+                int stride = m_kernel.strides[i];
+                int windowSize = m_kernel.windowSize[i];
 
-        // Compute padding such that in reverse order, the logical input (m_outputShapes below) is fully defined
-        // for a convolution over the logical output region (inputDimensions below).
-        //
-        // The padding required is the first windowSize element (for the first logical output element),
-        // plus (logicalOutput - 1) steps of stride (the distance between each windowed set of logical
-        // input elements), minus the actual logical input size.
-        int paddings = gsl::narrow_cast<int>((inputDimensions[i + dimOffset] - 1) * stride + windowSize - m_outputShapes[0].GetShape()[i + dimOffset]);
-        paddings = std::max<int>(0, paddings);
+                // Compute padding such that in reverse order, the logical input (m_outputShapes below) is fully defined
+                // for a convolution over the logical output region (inputDimensions below).
+                //
+                // The padding required is the first windowSize element (for the first logical output element),
+                // plus (logicalOutput - 1) steps of stride (the distance between each windowed set of logical
+                // input elements), minus the actual logical input size.
+                int paddings = gsl::narrow_cast<int>((inputDimensions[i + dimOffset] - 1) * stride + windowSize - m_outputShapes[0].GetShape()[i + dimOffset]);
+                paddings = std::max<int>(0, paddings);
 
-        m_kernel.startPadding[i] = m_kernel.autoPadSameUpper ? (paddings + 1) / 2 : paddings / 2;
-        m_kernel.endPadding[i] = paddings - m_kernel.startPadding[i];
-      }
-    }
+                m_kernel.startPadding[i] = m_kernel.autoPadSameUpper ? (paddings + 1) / 2 : paddings / 2;
+                m_kernel.endPadding[i] = paddings - m_kernel.startPadding[i];
+            }
+        }
   }
 
  protected:
@@ -895,6 +924,17 @@ class GatherHelper {
   int m_axis = 0;
 };
 
+class GatherNdHelper {
+ public:
+  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+  template <typename Info_t, typename Shape_t>
+  GatherNdHelper(const Info_t& info, const Shape_t& shape) {
+  }
+
+  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+};
+
 class PoolingHelperBase {
  public:
   // Info_t is used to obtain attributes which will be used for calculating the output shape later.
@@ -915,6 +955,32 @@ class PoolingHelperBase {
 
  protected:
   KernelArgs m_kernel;
+};
+
+class UnpoolingHelper
+{
+public:
+  // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
+  // Shape_t is used to obtain input shape which will be used for adjusting attribute value. 
+  template<typename Info_t, typename Shape_t>
+  UnpoolingHelper(
+    const Info_t& info,
+    const Shape_t& shape
+    )
+  : m_inputShape(shape.GetInputTensorShape(0)),
+    m_kernel(InitializeKernel(info, static_cast<uint32_t>(m_inputShape.size()), gsl::span<uint32_t>()))
+  {
+      Initialize();
+  }
+
+  void Initialize();
+
+  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+protected:
+    std::vector<DimensionType> m_inputShape;
+    std::vector<DimensionType> m_inferredOutputDimensions;
+    KernelArgs m_kernel;
 };
 
 class GlobalPoolingHelper : public PoolingHelperBase {
@@ -953,12 +1019,17 @@ class RoiPoolingHelper {
 
 class SqueezeHelper {
  public:
+  void Initialize(
+    gsl::span<const int32_t> axes,
+    gsl::span<const DimensionType> inputDimensions);
+
   // Info_t is used to obtain attributes which will be used for calculating the output shape later.
   // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
   template <typename Info_t, typename Shape_t>
   SqueezeHelper(const Info_t& info, const Shape_t& shape) {
-    m_axes = info.GetOptionalAttributeVectorInt32(AttrName::Axes);
-    std::sort(m_axes.begin(), m_axes.end());
+    Initialize(
+      info.GetOptionalAttributeVectorInt32(AttrName::Axes),
+      shape.GetInputTensorShape(0));
   }
 
   std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
@@ -969,12 +1040,17 @@ class SqueezeHelper {
 
 class UnsqueezeHelper {
  public:
+  void Initialize(
+    gsl::span<const int32_t> axes,
+    gsl::span<const DimensionType> inputDimensions);
+
   // Info_t is used to obtain attributes which will be used for calculating the output shape later.
   // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
   template <typename Info_t, typename Shape_t>
   UnsqueezeHelper(const Info_t& info, const Shape_t& shape) {
-    m_axes = info.GetOptionalAttributeVectorInt32(AttrName::Axes);
-    std::sort(m_axes.begin(), m_axes.end());
+    Initialize(
+      info.GetOptionalAttributeVectorInt32(AttrName::Axes),
+      shape.GetInputTensorShape(0));
   }
 
   std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
@@ -1124,6 +1200,37 @@ class ResizeHelper {
   std::vector<float> m_scales;  // Cached scales to check for updates/invalidate operator.
 };
 
+class RangeHelper {
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    RangeHelper(const Info_t& info, const Shape_t& shape)
+    {
+        auto startTensor = info.GetConstantInputTensor(0);
+        auto limitTensor = info.GetConstantInputTensor(1);
+        auto deltaTensor = info.GetConstantInputTensor(2);
+        Initialize(startTensor, limitTensor, deltaTensor);
+    }
+
+    void Initialize(
+        const MLOperatorTensor& startTensor,
+        const MLOperatorTensor& limitTensor,
+        const MLOperatorTensor& deltaTensor
+    );
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+protected:
+    std::vector<DimensionType> m_outputDimensions;
+
+    MLOperatorTensorDataType m_tensorDataType = MLOperatorTensorDataType::Undefined;
+    using TensorScalarData = typename std::aligned_storage_t<sizeof(double), alignof(double)>;
+    TensorScalarData m_valueStart;
+    TensorScalarData m_valueLimit;
+    TensorScalarData m_valueDelta;
+};
+
 class OneHotHelper {
  public:
   template <typename Info_t, typename Shape_t>
@@ -1148,7 +1255,7 @@ class OneHotHelper {
     ML_CHECK_VALID_ARGUMENT(shapeTensor.IsCpuData(), "OneHots's 'depth' tensor must be a CPU Tensor.");
     ML_CHECK_VALID_ARGUMENT(depthElementCount == 1, "OneHots's 'depth' tensor must have one element.");
     const void* tensorData = shapeTensor.GetByteData();
-    const int64_t depth64 = ReadAsInt64(shapeTensor.GetTensorDataType(), tensorData);
+    const int64_t depth64 = CastToInt64(shapeTensor.GetTensorDataType(), tensorData);
     ML_CHECK_VALID_ARGUMENT(depth64 > 0, "Negative or zero 'depth' values for OneHot are illegal.");
     const uint32_t depth = gsl::narrow_cast<uint32_t>(depth64);
     m_outputDimensions.assign(indicesShape.begin(), indicesShape.end());
@@ -1171,6 +1278,7 @@ using ShapeInferenceHelper_AveragePool = PoolingHelper;
 using ShapeInferenceHelper_GlobalAveragePool = GlobalPoolingHelper;
 using ShapeInferenceHelper_MaxPool = PoolingHelper;
 using ShapeInferenceHelper_GlobalMaxPool = GlobalPoolingHelper;
+using ShapeInferenceHelper_MaxUnpool = UnpoolingHelper;
 using ShapeInferenceHelper_LpPool = PoolingHelper;
 using ShapeInferenceHelper_GlobalLpPool = GlobalPoolingHelper;
 using ShapeInferenceHelper_MaxRoiPool = RoiPoolingHelper;
@@ -1183,7 +1291,14 @@ using ShapeInferenceHelper_LpNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_RNN = RecurrentHelper;
 using ShapeInferenceHelper_GRU = RecurrentHelper;
 using ShapeInferenceHelper_LSTM = RecurrentHelper;
+
 using ShapeInferenceHelper_Gather = GatherHelper;
+using ShapeInferenceHelper_GatherElements = GetOutputShapeAsSpecificInputShapeHelper<1>;
+using ShapeInferenceHelper_ScatterElements = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Scatter9 = ShapeInferenceHelper_ScatterElements; // Old deprecated alias for ScatterElements.
+using ShapeInferenceHelper_Scatter11 = ShapeInferenceHelper_ScatterElements; // Old deprecated alias for ScatterElements.
+using ShapeInferenceHelper_GatherND = GatherNdHelper;
+using ShapeInferenceHelper_ScatterND = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_Flatten = FlattenHelper;
 using ShapeInferenceHelper_Split = SplitHelper;
@@ -1191,7 +1306,7 @@ using ShapeInferenceHelper_Transpose = TransposeHelper;
 using ShapeInferenceHelper_Concat = ConcatHelper;
 using ShapeInferenceHelper_Slice7 = SliceHelper;
 using ShapeInferenceHelper_Slice10 = Slice10Helper;
-using ShapeInferenceHelper_Slice11 = Slice10Helper; // No functional change from 10.
+using ShapeInferenceHelper_Slice11 = Slice10Helper; // 11 and 10 are identical - no functional change.
 using ShapeInferenceHelper_Pad = PaddingHelper;
 using ShapeInferenceHelper_SpaceToDepth = SpaceToDepthHelper;
 using ShapeInferenceHelper_DepthToSpace = DepthToSpaceHelper;
@@ -1214,7 +1329,8 @@ using ShapeInferenceHelper_Log = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Abs = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Ceil = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Floor = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_Clip = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Clip7 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Clip11 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Greater = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Less = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Equal = GetBroadcastedOutputShapeHelper;
@@ -1239,7 +1355,6 @@ using ShapeInferenceHelper_Atan = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Affine = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_QuantizeLinear = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_DequantizeLinear = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_Scatter = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Sign = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_IsNan = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Erf = GetBroadcastedOutputShapeHelper;
@@ -1249,6 +1364,10 @@ using ShapeInferenceHelper_Asinh = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Acosh = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Atanh = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Where = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_IsInf = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_Mod = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_BitShift= GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_Round = GetBroadcastedOutputShapeHelper;
 
 using ShapeInferenceHelper_ReduceSum = ReduceHelper;
 using ShapeInferenceHelper_ReduceMean = ReduceHelper;
@@ -1300,6 +1419,10 @@ using ShapeInferenceHelper_RandomUniformLike = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_RandomNormal = RandomNormalHelper;
 using ShapeInferenceHelper_RandomNormalLike = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Multinomial = MultinomialHelper;
+
+using ShapeInferenceHelper_ReverseSequence = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_CumSum = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Range = RangeHelper;
 
 using ShapeInferenceHelper_FusedConv = ConvHelper;
 using ShapeInferenceHelper_FusedConvTranspose = ConvTransposeHelper;
