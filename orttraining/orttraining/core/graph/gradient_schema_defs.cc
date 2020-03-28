@@ -305,7 +305,8 @@ void RegisterGradientSchemas() {
       .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxGrad)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "dY", "Gradient of output Y", "T")
       .Input(1, "X", "Input tensor", "T")
       .Output(0, "dX", "Gradient of input X", "T")

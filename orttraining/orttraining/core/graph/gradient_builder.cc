@@ -534,7 +534,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxGradient) {
   return std::vector<NodeDef>{
-      NodeDef("SoftmaxGrad",
+      NodeDef(OpDef{"SoftmaxGrad", kMSDomain, 1},
               {GO(0), O(0)},
               {GI(0)},
               SrcNodeAttributes())};
