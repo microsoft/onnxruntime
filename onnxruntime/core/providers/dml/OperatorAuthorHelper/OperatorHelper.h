@@ -93,11 +93,11 @@ void FillWithLeadingValues(/*inout*/ std::vector<T>& values, uint32_t minimumEle
   std::fill_n(values.data(), fillCount, fillValue);
 }
 
-int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p);
-double ReadAsFloat64(MLOperatorTensorDataType tensorDataType, const void* p);
+int64_t CastToInt64(MLOperatorTensorDataType tensorDataType, const void* p);
+double CastToFloat64(MLOperatorTensorDataType tensorDataType, const void* p);
 void ReadScalarTensorData(const MLOperatorTensor& tensor, /*out*/ void* data, size_t dataByteSize);
-int64_t ReadScalarTensorAsInt64(const MLOperatorTensor& tensor);
-double ReadScalarTensorAsFloat64(const MLOperatorTensor& tensor);
+int64_t ReadScalarTensorCastToInt64(const MLOperatorTensor& tensor);
+double ReadScalarTensorCastToFloat64(const MLOperatorTensor& tensor);
 
 void ReadCpuLocalTensorIntoInt32(const MLOperatorTensor& tensor, std::vector<int32_t>& result);
 
@@ -123,7 +123,7 @@ struct KernelArgs {
   // values beyond that may be bogus.
   uint32_t strides[NcdhwSpatialDimensionCount];
   uint32_t dilations[NcdhwSpatialDimensionCount];
-  uint32_t windowSize[NcdhwSpatialDimensionCount];
+  uint32_t windowSize[NcdhwSpatialDimensionCount]; // The filter kernel dimensions.
   uint32_t startPadding[NcdhwSpatialDimensionCount];
   uint32_t endPadding[NcdhwSpatialDimensionCount];
   uint32_t outputPadding[NcdhwSpatialDimensionCount];
@@ -957,6 +957,32 @@ class PoolingHelperBase {
   KernelArgs m_kernel;
 };
 
+class UnpoolingHelper
+{
+public:
+  // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
+  // Shape_t is used to obtain input shape which will be used for adjusting attribute value. 
+  template<typename Info_t, typename Shape_t>
+  UnpoolingHelper(
+    const Info_t& info,
+    const Shape_t& shape
+    )
+  : m_inputShape(shape.GetInputTensorShape(0)),
+    m_kernel(InitializeKernel(info, static_cast<uint32_t>(m_inputShape.size()), gsl::span<uint32_t>()))
+  {
+      Initialize();
+  }
+
+  void Initialize();
+
+  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+protected:
+    std::vector<DimensionType> m_inputShape;
+    std::vector<DimensionType> m_inferredOutputDimensions;
+    KernelArgs m_kernel;
+};
+
 class GlobalPoolingHelper : public PoolingHelperBase {
  public:
   template <typename Info_t, typename Shape_t>
@@ -1229,7 +1255,7 @@ class OneHotHelper {
     ML_CHECK_VALID_ARGUMENT(shapeTensor.IsCpuData(), "OneHots's 'depth' tensor must be a CPU Tensor.");
     ML_CHECK_VALID_ARGUMENT(depthElementCount == 1, "OneHots's 'depth' tensor must have one element.");
     const void* tensorData = shapeTensor.GetByteData();
-    const int64_t depth64 = ReadAsInt64(shapeTensor.GetTensorDataType(), tensorData);
+    const int64_t depth64 = CastToInt64(shapeTensor.GetTensorDataType(), tensorData);
     ML_CHECK_VALID_ARGUMENT(depth64 > 0, "Negative or zero 'depth' values for OneHot are illegal.");
     const uint32_t depth = gsl::narrow_cast<uint32_t>(depth64);
     m_outputDimensions.assign(indicesShape.begin(), indicesShape.end());
@@ -1252,6 +1278,7 @@ using ShapeInferenceHelper_AveragePool = PoolingHelper;
 using ShapeInferenceHelper_GlobalAveragePool = GlobalPoolingHelper;
 using ShapeInferenceHelper_MaxPool = PoolingHelper;
 using ShapeInferenceHelper_GlobalMaxPool = GlobalPoolingHelper;
+using ShapeInferenceHelper_MaxUnpool = UnpoolingHelper;
 using ShapeInferenceHelper_LpPool = PoolingHelper;
 using ShapeInferenceHelper_GlobalLpPool = GlobalPoolingHelper;
 using ShapeInferenceHelper_MaxRoiPool = RoiPoolingHelper;

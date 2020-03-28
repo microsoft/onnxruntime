@@ -6,13 +6,14 @@
 namespace Dml
 {
 
-class DmlOperatorMaxUnpool : public DmlOperator
+class DmlOperatorMaxUnpool : public DmlOperator, public UnpoolingHelper
 {
 public:
     using Self = DmlOperatorMaxUnpool;
 
     DmlOperatorMaxUnpool(const MLOperatorKernelCreationContext& kernelCreationContext)
-    :   DmlOperator(kernelCreationContext)
+    :   DmlOperator(kernelCreationContext),
+        UnpoolingHelper(kernelCreationContext, kernelCreationContext.GetTensorShapeDescription())
     {
         uint32_t inputCount = kernelCreationContext.GetInputCount();
         ML_CHECK_VALID_ARGUMENT(inputCount == 2 || inputCount == 3, "MaxUnpool expects 2 or 3 inputs.");
