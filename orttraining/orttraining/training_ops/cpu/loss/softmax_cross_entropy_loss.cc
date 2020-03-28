@@ -102,7 +102,7 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
 
     new_shape.emplace_back(logit_shape[0]);
     permutations.emplace_back(0);
-    for (int index = 2; index < logit_shape.NumDimensions(); index += 1) {
+    for (size_t index = 2; index < logit_shape.NumDimensions(); index += 1) {
       new_shape.emplace_back(logit_shape[index]);
       permutations.emplace_back(index);
     }
@@ -294,7 +294,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
 
     permutations.emplace_back(0);
     permutations.emplace_back(probability_shape.NumDimensions() - 1);
-    for (int index = 1; index < probability_shape.NumDimensions() - 1; index += 1) {
+    for (size_t index = 1; index < probability_shape.NumDimensions() - 1; index += 1) {
       permutations.emplace_back(index);
     }
 
