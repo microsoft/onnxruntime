@@ -68,7 +68,6 @@ inline std::vector<OrtValue> GradientChecker<X_T, Y_T, JAC_T>::EvaluateFunctionA
     const std::vector<TensorInfo>& y_infos,
     std::vector<std::vector<X_T>>* x_datas,
     std::vector<std::vector<Y_T>>* y_datas) {
-
   // clear OpTester input/output/initializer_index
   op_session.ClearData();
 
@@ -84,6 +83,12 @@ inline std::vector<OrtValue> GradientChecker<X_T, Y_T, JAC_T>::EvaluateFunctionA
       std::vector<int32_t> int32_data(data.size());
       std::transform(data.begin(), data.end(), int32_data.begin(), [](X_T x) { return static_cast<int32_t>(x); });
       op_session.AddInput<int32_t>(name.c_str(), x_infos[data_index].shape.GetDims(), int32_data);
+    } else if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<bool>()) {
+      std::unique_ptr<bool[]> p_data(new bool[data.size()]);
+      for (size_t i = 0; i < data.size(); ++i) {
+        p_data[i] = static_cast<bool>(data[i]);
+      }
+      op_session.AddInput<bool>(name.c_str(), x_infos[data_index].shape.GetDims(), p_data.get(), data.size());
     } else {
       op_session.AddInput<X_T>(name.c_str(), x_infos[data_index].shape.GetDims(), data);
     }
@@ -140,6 +145,12 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
           std::vector<int32_t> int32_data(data.size());
           std::transform(data.begin(), data.end(), int32_data.begin(), [](X_T x) { return static_cast<int32_t>(x); });
           op_session.AddInput<int32_t>(name.c_str(), x_infos[data_index].shape.GetDims(), int32_data);
+        } else if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<bool>()) {
+          std::unique_ptr<bool[]> p_data(new bool[data.size()]);
+          for (size_t i = 0; i < data.size(); ++i) {
+            p_data[i] = static_cast<bool>(data[i]);
+          }
+          op_session.AddInput<bool>(name.c_str(), x_infos[data_index].shape.GetDims(), p_data.get(), data.size());
         } else {
           op_session.AddInput<X_T>(name.c_str(), x_infos[data_index].shape.GetDims(), data);
         }
@@ -193,7 +204,6 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGraph(
     std::vector<std::vector<Y_T>>* y_datas,
     const std::vector<AttributeProto>& attributes,
     const std::unordered_map<std::string, int>& extra_domain_to_version) {
-
   for (size_t data_index = 0; data_index < x_datas->size(); data_index++) {
     std::string name = "input" + std::to_string(data_index);
     const std::vector<X_T>& data = (*x_datas)[data_index];
@@ -206,6 +216,12 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGraph(
       std::vector<int32_t> int32_data(data.size());
       std::transform(data.begin(), data.end(), int32_data.begin(), [](X_T x) { return static_cast<int32_t>(x); });
       op_session.AddInput<int32_t>(name.c_str(), x_infos[data_index].shape.GetDims(), int32_data);
+    } else if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<bool>()) {
+      std::unique_ptr<bool[]> p_data(new bool[data.size()]);
+      for (size_t i = 0; i < data.size(); ++i) {
+        p_data[i] = static_cast<bool>(data[i]);
+      }
+      op_session.AddInput<bool>(name.c_str(), x_infos[data_index].shape.GetDims(), p_data.get(), data.size());
     } else {
       op_session.AddInput<X_T>(name.c_str(), x_infos[data_index].shape.GetDims(), data);
     }
@@ -228,8 +244,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGraph(
   status = graph.Resolve();
 
   if (!status.IsOK()) {
-      LOGS_DEFAULT(ERROR) << "Resolve failed with status: " << status.ErrorMessage();
-      EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();  
+    LOGS_DEFAULT(ERROR) << "Resolve failed with status: " << status.ErrorMessage();
+    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   }
 
   if (!status.IsOK()) {
@@ -251,7 +267,6 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGradGraph(
     std::vector<std::vector<X_T>>* x_datas,
     std::vector<std::vector<Y_T>>* y_datas,
     const std::vector<AttributeProto>& attributes) {
-
   std::unordered_map<std::string, int> extra_domain_to_version{{kMSDomain, 1}, {kOnnxDomain, 9}};
   InitOpTesterWithGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes, extra_domain_to_version);
 
