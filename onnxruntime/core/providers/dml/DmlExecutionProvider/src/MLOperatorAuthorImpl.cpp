@@ -1732,7 +1732,8 @@ void InferAndVerifyOutputSizes(
       for (uint32_t output_dim = 0; output_dim < outputShapes.GetShape(outputIndex).size(); ++output_dim) {
         if (shape.dim(output_dim).has_dim_value()) {
           int64_t expected_size = shape.dim(output_dim).dim_value();
-          ML_CHECK_BOOL(expected_size == outputShapes.GetShape(outputIndex)[output_dim]);
+          int64_t actual_size = outputShapes.GetShape(outputIndex)[output_dim];
+          ML_CHECK_BOOL(expected_size == actual_size);
         }
       }
     }
