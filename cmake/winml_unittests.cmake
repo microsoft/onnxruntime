@@ -146,10 +146,7 @@ add_winml_test(
 )
 target_precompiled_header(winml_test_image testPch.h)
 
-target_link_options(winml_test_image PRIVATE /DELAYLOAD:d2d1.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
-if (onnxruntime_USE_DML)
-  target_link_options(winml_test_image PRIVATE /DELAYLOAD:directml.dll)
-endif()
+target_link_options(winml_test_image PRIVATE /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
 if (EXISTS ${dxcore_header})
   target_link_options(winml_test_image PRIVATE /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll)
 endif()

@@ -1,10 +1,13 @@
 #include "testPch.h"
+
 #include "imageTestHelper.h"
 #include "robuffer.h"
-#include <MemoryBuffer.h>
-#include <d3dx12.h>
 #include "winrt/Windows.Storage.h"
 #include "winrt/Windows.Storage.Streams.h"
+
+#include <d3dx12.h>
+#include <MemoryBuffer.h>
+#include <wil\Resource.h>
 
 #define FENCE_SIGNAL_VALUE 1
 
@@ -14,8 +17,7 @@ using namespace winrt::Windows::Foundation::Collections;
 using namespace winrt::Windows::Media;
 using namespace winrt::Windows::Graphics::Imaging;
 
-namespace ImageTestHelper
-{
+namespace ImageTestHelper {
     // std::wstring GetModelFileName()
     // {
     //     String modelFileName;
@@ -190,55 +192,35 @@ namespace ImageTestHelper
     //     }
     // }
 
-    // InputImageSource GetInputImageSource()
-    // {
-    //     String inputImageSource;
-    //     WINML_EXPECT_HRESULT_SUCCEEDED(TestData::TryGetValue(L"InputImageSource", inputImageSource));
-    //     if (L"FromImageFeatureValue" == inputImageSource)
-    //     {
+    // InputImageSource GetInputImageSource(const std::wstring& source) {
+    //     if (L"FromImageFeatureValue" == source) {
     //         return InputImageSource::FromImageFeatureValue;
-    //     }
-    //     else if (L"FromVideoFrame" == inputImageSource)
-    //     {
+    //     } else if (L"FromVideoFrame" == source) {
     //         return InputImageSource::FromVideoFrame;
-    //     }
-    //     else if (L"FromCPUResource" == inputImageSource)
-    //     {
+    //     } else if (L"FromCPUResource" == source) {
     //         return InputImageSource::FromCPUResource;
-    //     }
-    //     else if (L"FromGPUResource" == inputImageSource)
-    //     {
+    //     } else if (L"FromGPUResource" == source) {
     //         return InputImageSource::FromGPUResource;
     //     }
     //     throw std::invalid_argument("Unsupported InputImageSource");
     // }
 
-    // BitmapPixelFormat GetPixelFormat(const std::wstring& inputPixelFormat)
-    // {
-    //     // Return corresponding BitmapPixelFormat according to input string
-    //     if (L"Bgra8" == inputPixelFormat || L"Bgr8" == inputPixelFormat)
-    //     {
-    //         return BitmapPixelFormat::Bgra8;
-    //     }
-    //     else if (L"Rgba8" == inputPixelFormat || L"Rgb8" == inputPixelFormat)
-    //     {
-    //         return BitmapPixelFormat::Rgba8;
-    //     }
-    //     else if (L"Gray8" == inputPixelFormat)
-    //     {
-    //         return BitmapPixelFormat::Gray8;
-    //     }
-    //     else
-    //     {
-    //         Log::Error(String().Format(L"Unsupported pixelFormat"));
-    //         throw std::invalid_argument("Unsupported pixelFormat");
-    //     }
-    // }
+    BitmapPixelFormat GetPixelFormat(const std::wstring& inputPixelFormat) {
+        // Return corresponding BitmapPixelFormat according to input string
+        if (L"Bgra8" == inputPixelFormat || L"Bgr8" == inputPixelFormat) {
+            return BitmapPixelFormat::Bgra8;
+        } else if (L"Rgba8" == inputPixelFormat || L"Rgb8" == inputPixelFormat) {
+            return BitmapPixelFormat::Rgba8;
+        } else if (L"Gray8" == inputPixelFormat) {
+            return BitmapPixelFormat::Gray8;
+        } else {
+            throw std::invalid_argument("Unsupported pixelFormat");
+        }
+    }
 
     TensorFloat LoadInputImageFromCPU(
         SoftwareBitmap softwareBitmap,
-        const std::wstring& modelPixelFormat)
-    {
+        const std::wstring& modelPixelFormat) {
         softwareBitmap = SoftwareBitmap::Convert(softwareBitmap, BitmapPixelFormat::Bgra8);
         BYTE* pData = nullptr;
         UINT32 size = 0;
@@ -257,20 +239,15 @@ namespace ImageTestHelper
         TensorFloat tf = TensorFloat::Create(shape);
         com_ptr<ITensorNative> itn = tf.as<ITensorNative>();
         itn->GetBuffer(reinterpret_cast<BYTE**>(&pCPUTensor), &uCapacity);
-        if (BitmapPixelFormat::Bgra8 == GetPixelFormat(modelPixelFormat))
-        {
-            for (UINT32 i = 0; i < size; i += 4)
-            {
+        if (BitmapPixelFormat::Bgra8 == GetPixelFormat(modelPixelFormat)) {
+            for (UINT32 i = 0; i < size; i += 4) {
                 UINT32 pixelInd = i / 4;
                 pCPUTensor[pixelInd] = (float)pData[i];
                 pCPUTensor[(height * width) + pixelInd] = (float)pData[i + 1];
                 pCPUTensor[(height * width * 2) + pixelInd] = (float)pData[i + 2];
             }
-        }
-        else if (BitmapPixelFormat::Rgba8 == GetPixelFormat(modelPixelFormat))
-        {
-            for (UINT32 i = 0; i < size; i += 4)
-            {
+        } else if (BitmapPixelFormat::Rgba8 == GetPixelFormat(modelPixelFormat)) {
+            for (UINT32 i = 0; i < size; i += 4) {
                 UINT32 pixelInd = i / 4;
                 pCPUTensor[pixelInd] = (float)pData[i + 2];
                 pCPUTensor[(height * width) + pixelInd] = (float)pData[i + 1];
@@ -279,17 +256,16 @@ namespace ImageTestHelper
         }
         // else if()
         // TODO: for Gray8
-        else
-        {
-            Log::Error(String().Format(L"not supportted pixelFormat"));
+        else {
+            std::cerr << "Unsupportted pixelFormat";
         }
         return tf;
     }
 
     TensorFloat LoadInputImageFromGPU(
         SoftwareBitmap softwareBitmap,
-        const std::wstring& modelPixelFormat)
-    {
+        const std::wstring& modelPixelFormat) {
+
         softwareBitmap = SoftwareBitmap::Convert(softwareBitmap, BitmapPixelFormat::Bgra8);
         BYTE* pData = nullptr;
         UINT32 size = 0;
@@ -309,20 +285,15 @@ namespace ImageTestHelper
 
         uint32_t height = softwareBitmap.PixelHeight();
         uint32_t width = softwareBitmap.PixelWidth();
-        if (BitmapPixelFormat::Bgra8 == GetPixelFormat(modelPixelFormat))
-        {
-            for (UINT32 i = 0; i < size; i += 4)
-            {
+        if (BitmapPixelFormat::Bgra8 == GetPixelFormat(modelPixelFormat)) {
+            for (UINT32 i = 0; i < size; i += 4) {
                 UINT32 pixelInd = i / 4;
                 pCPUTensor[pixelInd] = (float)pData[i];
                 pCPUTensor[(height * width) + pixelInd] = (float)pData[i + 1];
                 pCPUTensor[(height * width * 2) + pixelInd] = (float)pData[i + 2];
             }
-        }
-        else if (BitmapPixelFormat::Rgba8 == GetPixelFormat(modelPixelFormat))
-        {
-            for (UINT32 i = 0; i < size; i += 4)
-            {
+        } else if (BitmapPixelFormat::Rgba8 == GetPixelFormat(modelPixelFormat)) {
+            for (UINT32 i = 0; i < size; i += 4) {
                 UINT32 pixelInd = i / 4;
                 pCPUTensor[pixelInd] = (float)pData[i + 2];
                 pCPUTensor[(height * width) + pixelInd] = (float)pData[i + 1];
@@ -331,9 +302,8 @@ namespace ImageTestHelper
         }
         // else if()
         // TODO: for Gray8
-        else
-        {
-            Log::Error(String().Format(L"not supportted pixelFormat"));
+        else {
+            std::cerr << "unsupported pixelFormat";
         }
 
         // create the d3d device.
@@ -404,8 +374,9 @@ namespace ImageTestHelper
         );
 
         // Create the GPU upload buffer.
+        auto heap_properties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
         WINML_EXPECT_NO_THROW(pD3D12Device->CreateCommittedResource(
-            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            &heap_properties,
             D3D12_HEAP_FLAG_NONE,
             &CD3DX12_RESOURCE_DESC::Buffer(bufferbytesize),
             D3D12_RESOURCE_STATE_GENERIC_READ,
@@ -441,8 +412,7 @@ namespace ImageTestHelper
 
         //Wait for signal
         DWORD retVal = WaitForSingleObject(hDirectEvent.get(), INFINITE);
-        if (retVal != WAIT_OBJECT_0)
-        {
+        if (retVal != WAIT_OBJECT_0) {
             WINML_EXPECT_HRESULT_SUCCEEDED(E_UNEXPECTED);
         }
 
@@ -458,14 +428,13 @@ namespace ImageTestHelper
 
     bool VerifyHelper(
         VideoFrame actual,
-        VideoFrame expected)
-    {
+        VideoFrame expected) {
         // Verify two input ImageFeatureValues are identified.
         auto softwareBitmapActual = actual.SoftwareBitmap();
         auto softwareBitmapExpected = expected.SoftwareBitmap();
-        VERIFY_IS_TRUE(softwareBitmapActual.PixelHeight() == softwareBitmapExpected.PixelHeight());
-        VERIFY_IS_TRUE(softwareBitmapActual.PixelWidth() == softwareBitmapExpected.PixelWidth());
-        VERIFY_IS_TRUE(softwareBitmapActual.BitmapPixelFormat() == softwareBitmapExpected.BitmapPixelFormat());
+        WINML_EXPECT_TRUE(softwareBitmapActual.PixelHeight() == softwareBitmapExpected.PixelHeight());
+        WINML_EXPECT_TRUE(softwareBitmapActual.PixelWidth() == softwareBitmapExpected.PixelWidth());
+        WINML_EXPECT_TRUE(softwareBitmapActual.BitmapPixelFormat() == softwareBitmapExpected.BitmapPixelFormat());
 
         uint32_t size = 4 * softwareBitmapActual.PixelHeight() * softwareBitmapActual.PixelWidth();
 
@@ -490,16 +459,13 @@ namespace ImageTestHelper
         // Even given two same ImageFeatureValues, the comparison cannot exactly match.
         // So we use error rate.
         UINT errors = 0;
-        for (uint32_t i = 0; i < size; i++, pActualByte++, pExpectedByte++)
-        {
+        for (uint32_t i = 0; i < size; i++, pActualByte++, pExpectedByte++) {
             auto diff = (*pActualByte - *pExpectedByte);
-            if (diff > epsilon)
-            {
+            if (diff > epsilon) {
                 errors++;
             }
         }
-        Log::Warning(String().Format(L"total errors is %d / %d, errors rate is %f", errors, size, (float)errors / size));
-
-        return ((float)errors / size < cMaxErrorRate);
+        std::cerr << "total errors is " << errors << "/" << size << ", errors rate is " << (float)errors / size;
+        return (float)errors / size < cMaxErrorRate;
     }
 }

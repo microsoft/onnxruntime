@@ -1,15 +1,20 @@
 #include "testPch.h"
+
 #include "filehelpers.h"
 #include "imageTestHelper.h"
-#include "Imagetests.h"
 #include "robuffer.h"
+#include "windows.ai.machinelearning.native.internal.h"
 #include "winrt/Windows.Storage.h"
 #include "winrt/Windows.Storage.Streams.h"
-#include "windows.ai.machinelearning.native.internal.h"
-#include <MemoryBuffer.h>
-#include <d3dx12.h>
 
-static_assert(BUILD_GOOGLE_TEST);  // must be using googletest for value-parameterized tests
+#include <d3dx12.h>
+#include <MemoryBuffer.h>
+#include <string>
+#include <utility>
+
+#ifndef BUILD_GOOGLE_TEST
+#error Must use googletest for value-parameterized tests
+#endif
 
 using namespace winrt;
 using namespace winrt::Windows::AI::MachineLearning;
@@ -20,522 +25,578 @@ using namespace winrt::Windows::Graphics::DirectX;
 using namespace winrt::Windows::Storage;
 using namespace winrt::Windows::Storage::Streams;
 
-bool ImageTests::TestClassSetup()
-{
-    init_apartment();
-    return true;
-}
+enum BindingLocation {
+    CPU,
+    GPU
+};
 
-bool ImageTests::TestMethodSetup()
-{
-    m_model = nullptr;
-    m_device = nullptr;
-    m_session = nullptr;
+class ImageTests : public ::testing::Test {
+protected:
+    winrt::Windows::AI::MachineLearning::LearningModel m_model = nullptr;
+    winrt::Windows::AI::MachineLearning::LearningModelDevice m_device = nullptr;
+    winrt::Windows::AI::MachineLearning::LearningModelSession m_session = nullptr;
+    winrt::Windows::AI::MachineLearning::LearningModelBinding m_model_binding = nullptr;
+    winrt::Windows::AI::MachineLearning::LearningModelEvaluationResult m_result = nullptr;
 
-    return true;
-}
+    void SetUp() override {
+        init_apartment();
+    }
 
-void ImageTests::LoadModel(const std::wstring& modelPath)
-{
-    std::wstring fullPath = FileHelpers::GetModulePath() + modelPath;
-    WINML_EXPECT_NO_THROW(m_model = LearningModel::LoadFromFilePath(fullPath));
-}
+    void LoadModel(const std::wstring& model_path) {
+        std::wstring full_path = FileHelpers::GetModulePath() + model_path;
+        WINML_EXPECT_NO_THROW(m_model = LearningModel::LoadFromFilePath(full_path));
+    }
+
+    void ImageTests::PrepareModelSessionBinding(
+        const std::wstring& model_file_name,
+        LearningModelDeviceKind device_kind,
+        std::optional<uint32_t> optimized_batch_size) {
+        LoadModel(std::wstring(model_file_name));
+        WINML_EXPECT_NO_THROW(m_device = LearningModelDevice(device_kind));
+        if (optimized_batch_size.has_value()) {
+            LearningModelSessionOptions options;
+            options.BatchSizeOverride(optimized_batch_size.value());
+            WINML_EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device, options));
+        }
+        else {
+            WINML_EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
+        }
+        WINML_EXPECT_NO_THROW(m_model_binding = LearningModelBinding(m_session));
+    }
+
+    bool BindInputValue(
+        const std::wstring& image_file_name,
+        const std::wstring& input_pixel_format,
+        const std::wstring& model_pixel_format,
+        InputImageSource input_image_source,
+        LearningModelDeviceKind device_kind
+        ) {
+        std::wstring full_image_path = FileHelpers::GetModulePath() + image_file_name;
+        StorageFile image_file = StorageFile::GetFileFromPathAsync(full_image_path).get();
+        IRandomAccessStream stream = image_file.OpenAsync(FileAccessMode::Read).get();
+        BitmapDecoder bitmap_decoder = BitmapDecoder::CreateAsync(stream).get();
+        SoftwareBitmap software_bitmap = bitmap_decoder.GetSoftwareBitmapAsync().get();
+
+        // Convert the input image to PixelFormat specified
+        software_bitmap = SoftwareBitmap::Convert(
+            software_bitmap,
+            ImageTestHelper::GetPixelFormat(input_pixel_format));
+
+        auto input_feature = m_model.InputFeatures().First();
+        if (InputImageSource::FromImageFeatureValue == input_image_source) {
+            VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(software_bitmap);
+            ImageFeatureValue image_input_tensor = ImageFeatureValue::CreateFromVideoFrame(frame);
+            WINML_EXPECT_NO_THROW(m_model_binding.Bind(input_feature.Current().Name(), image_input_tensor));
+        }
+        else if (InputImageSource::FromVideoFrame == input_image_source) {
+            VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(software_bitmap);
+            WINML_EXPECT_NO_THROW(m_model_binding.Bind(input_feature.Current().Name(), frame));
+        }
+        else if (InputImageSource::FromCPUResource == input_image_source) {
+            TensorFloat tensor_float = ImageTestHelper::LoadInputImageFromCPU(software_bitmap, model_pixel_format);
+            WINML_EXPECT_NO_THROW(m_model_binding.Bind(input_feature.Current().Name(), tensor_float));
+        }
+        else if (InputImageSource::FromGPUResource == input_image_source) {
+            TensorFloat tensor_float = ImageTestHelper::LoadInputImageFromGPU(software_bitmap, model_pixel_format);
+            if (LearningModelDeviceKind::Cpu == device_kind) {
+                WINML_EXPECT_THROW_SPECIFIC(m_model_binding.Bind(input_feature.Current().Name(), tensor_float),
+                    winrt::hresult_error,
+                    [](const winrt::hresult_error& e) -> bool {
+                    return e.code() == WINML_ERR_INVALID_BINDING;
+                });
+                return false;
+            }
+            WINML_EXPECT_NO_THROW(m_model_binding.Bind(input_feature.Current().Name(), tensor_float));
+        }
+        return true;
+    }
+
+    VideoFrame BindImageOutput(
+        ModelInputOutputType model_input_output_type,
+        OutputBindingStrategy output_binding_strategy,
+        const std::wstring& model_pixel_format) {
+        std::wstring output_data_binding_name = std::wstring(m_model.OutputFeatures().First().Current().Name());
+        VideoFrame frame = nullptr;
+        if (OutputBindingStrategy::Bound == output_binding_strategy) {
+            if (ModelInputOutputType::Image == model_input_output_type) {
+                ImageFeatureDescriptor output_image_descriptor = nullptr;
+                WINML_EXPECT_NO_THROW(m_model.OutputFeatures().First().Current().as(output_image_descriptor));
+                SoftwareBitmap bitmap(
+                    ImageTestHelper::GetPixelFormat(model_pixel_format),
+                    output_image_descriptor.Height(),
+                    output_image_descriptor.Width());
+                frame = VideoFrame::CreateWithSoftwareBitmap(bitmap);
+
+            }
+            else if (ModelInputOutputType::Tensor == model_input_output_type) {
+                TensorFeatureDescriptor output_tensor_descriptor = nullptr;
+                WINML_EXPECT_NO_THROW(m_model.OutputFeatures().First().Current().as(output_tensor_descriptor));
+                auto output_tensor_shape = output_tensor_descriptor.Shape();
+                SoftwareBitmap bitmap(
+                    ImageTestHelper::GetPixelFormat(model_pixel_format),
+                    static_cast<int32_t>(output_tensor_shape.GetAt(3)),
+                    static_cast<int32_t>(output_tensor_shape.GetAt(2)));
+                frame = VideoFrame::CreateWithSoftwareBitmap(bitmap);
+            }
+            auto output_tensor = ImageFeatureValue::CreateFromVideoFrame(frame);
+            WINML_EXPECT_NO_THROW(m_model_binding.Bind(output_data_binding_name, output_tensor));
+        }
+
+        // Else for Unbound
+        return frame;
+    }
+
+    IVector<VideoFrame> BindImageOutput(
+        ModelInputOutputType model_input_output_type,
+        OutputBindingStrategy output_binding_strategy,
+        VideoFrameSource output_video_frame_source,
+        const std::wstring& model_pixel_format,
+        const uint32_t& batch_size) {
+        std::wstring output_data_binding_name = std::wstring(m_model.OutputFeatures().First().Current().Name());
+        uint32_t width = 0, height = 0;
+        if (ModelInputOutputType::Image == model_input_output_type) {
+            ImageFeatureDescriptor output_image_descriptor = nullptr;
+            WINML_EXPECT_NO_THROW(m_model.OutputFeatures().First().Current().as(output_image_descriptor));
+            width = output_image_descriptor.Width();
+            height = output_image_descriptor.Height();
+        } else {
+            TensorFeatureDescriptor output_tensor_descriptor = nullptr;
+            WINML_EXPECT_NO_THROW(m_model.OutputFeatures().First().Current().as(output_tensor_descriptor));
+            auto output_tensor_shape = output_tensor_descriptor.Shape();
+            width = static_cast<uint32_t>(output_tensor_shape.GetAt(3));
+            height = static_cast<uint32_t>(output_tensor_shape.GetAt(2));
+        }
+        IVector<VideoFrame> output_video_frames;
+        if (OutputBindingStrategy::Bound == output_binding_strategy) {
+            std::vector<VideoFrame> output_frames = {};
+            for (uint32_t i = 0; i < batch_size; ++i) {
+                VideoFrame video_frame = nullptr;
+                if (VideoFrameSource::FromSoftwareBitmap == output_video_frame_source) {
+                    video_frame = VideoFrame::CreateWithSoftwareBitmap(SoftwareBitmap(ImageTestHelper::GetPixelFormat(model_pixel_format), width, height));
+                }
+                else if (VideoFrameSource::FromDirect3DSurface == output_video_frame_source) {
+                    video_frame = VideoFrame::CreateAsDirect3D11SurfaceBacked(DirectXPixelFormat::B8G8R8A8UIntNormalized, width, height);
+                }
+                else if (VideoFrameSource::FromUnsupportedD3DSurface == output_video_frame_source) {
+                    video_frame = VideoFrame::CreateAsDirect3D11SurfaceBacked(DirectXPixelFormat::B8G8R8X8UIntNormalized, width, height);
+                }
+                output_frames.emplace_back(video_frame);
+            }
+            output_video_frames = winrt::single_threaded_vector(std::move(output_frames));
+            WINML_EXPECT_NO_THROW(m_model_binding.Bind(output_data_binding_name, output_video_frames));
+
+        }
+
+        // Else for Unbound
+        return output_video_frames;
+    }
+
+    void VerifyResults(
+        VideoFrame output_tensor,
+        const std::wstring& bm_image_path,
+        const std::wstring& model_pixel_format) {
+        SoftwareBitmap bm_software_bitmap = FileHelpers::GetSoftwareBitmapFromFile(bm_image_path);
+        bm_software_bitmap = SoftwareBitmap::Convert(
+            bm_software_bitmap,
+            ImageTestHelper::GetPixelFormat(model_pixel_format));
+        VideoFrame bm_video_frame = VideoFrame::CreateWithSoftwareBitmap(bm_software_bitmap);
+        WINML_EXPECT_TRUE(ImageTestHelper::VerifyHelper(output_tensor, bm_video_frame));
+    }
+
+    void EvaluateTest(EvaluationStrategy strategy) {
+        if (EvaluationStrategy::Async == strategy) {
+            WINML_EXPECT_NO_THROW(m_result = m_session.EvaluateAsync(m_model_binding, L"").get());
+        }
+        else if (EvaluationStrategy::Sync == strategy) {
+            WINML_EXPECT_NO_THROW(m_result = m_session.Evaluate(m_model_binding, L""));
+        }
+    }
+
+    bool ShouldSkip(
+        const std::wstring& model_file_name,
+        const std::wstring& image_file_name,
+        const InputImageSource input_image_source
+        ) {
+        // Case that the tensor's shape doesn't match model's shape should be skiped
+        if ((L"1080.jpg" == image_file_name || L"kitten_224.png" == image_file_name) &&
+            (InputImageSource::FromGPUResource == input_image_source || InputImageSource::FromCPUResource == input_image_source)) {
+            return true;
+        }
+
+        // Case that the images's shape doesn't match model's shape which expects free dimension should be skiped.
+        // Because the fns-candy is not real model that can handle free dimensional input
+        if ((L"1080.jpg" == image_file_name || L"kitten_224.png" == image_file_name) &&
+            L"fns-candy_Bgr8_freeDimInput.onnx" == model_file_name) {
+            return true;
+        }
+
+        return false;
+    }
+
+    void ValidateOutputImageMetaData(const std::wstring& path, BitmapAlphaMode expected_mode, BitmapPixelFormat expected_format, bool supported) {
+        WINML_EXPECT_NO_THROW(LoadModel(path));
+        //input does not have image metadata and output does
+
+        WINML_EXPECT_TRUE(m_model.OutputFeatures().First().HasCurrent());
+
+        std::wstring name(m_model.OutputFeatures().First().Current().Name());
+        std::wstring expected_tensor_name = L"add_3";
+        WINML_EXPECT_EQUAL(name, expected_tensor_name);
+
+        ImageFeatureDescriptor image_descriptor = nullptr;
+        if (supported) {
+            WINML_EXPECT_NO_THROW(m_model.OutputFeatures().First().Current().as(image_descriptor));
+            WINML_EXPECT_TRUE(image_descriptor != nullptr);
+
+            auto tensor_name = image_descriptor.Name();
+            WINML_EXPECT_EQUAL(tensor_name, expected_tensor_name);
+
+            auto model_data_kind = image_descriptor.Kind();
+            WINML_EXPECT_EQUAL(model_data_kind, LearningModelFeatureKind::Image);
+
+            WINML_EXPECT_TRUE(image_descriptor.IsRequired());
+
+            WINML_EXPECT_EQUAL(image_descriptor.Width(), 1920u);
+            WINML_EXPECT_EQUAL(image_descriptor.Height(), 1080u);
+            WINML_EXPECT_EQUAL(image_descriptor.BitmapAlphaMode(), expected_mode);
+            WINML_EXPECT_EQUAL(image_descriptor.BitmapPixelFormat(), expected_format);
+        }
+        else {
+            //not an image descriptor. a regular tensor
+            WINML_EXPECT_THROW_SPECIFIC(m_model.OutputFeatures().First().Current().as(image_descriptor),
+                winrt::hresult_no_interface
+                , [](const winrt::hresult_no_interface& e) -> bool {
+                return e.code() == E_NOINTERFACE;
+            });
+            TensorFeatureDescriptor tensor_descriptor = nullptr;
+            WINML_EXPECT_NO_THROW(m_model.OutputFeatures().First().Current().as(tensor_descriptor));
+
+            // Make sure we fail binding ImageFeatureValue
+            LearningModelSession session(m_model);
+            LearningModelBinding binding(session);
+            auto ifv = FileHelpers::LoadImageFeatureValue(L"1080.jpg");
+            WINML_EXPECT_THROW_SPECIFIC(binding.Bind(L"add_3", ifv),
+                winrt::hresult_error,
+                [](const winrt::hresult_error& e) -> bool {
+                return e.code() == WINML_ERR_INVALID_BINDING;
+            }
+            );
+        }
+    }
+
+    void RunConsecutiveImageBindingOnGpu(ImageFeatureValue & image1, ImageFeatureValue & image2) {
+        static const wchar_t* model_file_name = L"Add_ImageNet1920.onnx";
+        std::wstring module_path = FileHelpers::GetModulePath();
+
+        // WinML model creation
+        LearningModel model(nullptr);
+        std::wstring full_model_path = module_path + model_file_name;
+        WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(full_model_path));
+        LearningModelDeviceKind device_kind = LearningModelDeviceKind::DirectX;
+        LearningModelSession model_session(model, LearningModelDevice(device_kind));
+        LearningModelBinding model_binding(model_session);
+
+        //Input Binding
+        auto feature = model.InputFeatures().First();
+        WINML_EXPECT_NO_THROW(model_binding.Bind(feature.Current().Name(), image1));
+        feature.MoveNext();
+        WINML_EXPECT_NO_THROW(model_binding.Bind(feature.Current().Name(), image2));
+    }
+
+    static ImageFeatureValue CreateImageFeatureValue(const std::wstring& full_image_path) {
+        StorageFile image_file = StorageFile::GetFileFromPathAsync(full_image_path).get();
+        IRandomAccessStream stream = image_file.OpenAsync(FileAccessMode::Read).get();
+        SoftwareBitmap software_bitmap = (BitmapDecoder::CreateAsync(stream).get()).GetSoftwareBitmapAsync().get();
+        VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(software_bitmap);
+        ImageFeatureValue image_input_tensor = ImageFeatureValue::CreateFromVideoFrame(frame);
+        return image_input_tensor;
+    }
+};
 
 // MNIST model expects 28x28 data with
-class MnistImageTest : public testing::TestWithParam<std::pair<std:wstring, int>>
-{};
-
-TEST_P(MnistImageTest, Evaluates)
-{
+class MnistImageTest : public ImageTests, public testing::WithParamInterface<std::pair<std::wstring, unsigned int>> {};
+TEST_P(MnistImageTest, Evaluates) {
     GPUTEST;
     std::wstring filename;
-    int label;
+    unsigned int label;
     std::tie(filename, label) = GetParam();
 
     LoadModel(L"mnist.onnx");
-    auto imageFeatureValue = FileHelpers::LoadImageFeatureValue(std::wstring(filename));
+    auto image_feature_value = FileHelpers::LoadImageFeatureValue(std::wstring(filename));
 
     LearningModelDevice device(LearningModelDeviceKind::Cpu);
     m_session = LearningModelSession(m_model, device);
     LearningModelBinding binding(m_session);
-    binding.Bind(L"Input3", imageFeatureValue);
+    binding.Bind(L"Input3", image_feature_value);
 
     auto result = m_session.EvaluateAsync(binding, L"0").get();
 
     auto vector = result.Outputs().Lookup(L"Plus214_Output_0").as<TensorFloat>().GetAsVectorView();
 
-    unsigned int maxLabel = 0;
-    float maxVal = 0;
-    for (unsigned int i = 0; i < vector.Size(); ++i)
-    {
+    unsigned int max_label = 0;
+    float max_val = 0;
+    for (unsigned int i = 0; i < vector.Size(); ++i) {
         float val = vector.GetAt(i);
-        if (val > maxVal)
-        {
-            maxVal = val;
-            maxLabel = i;
+        if (val > max_val) {
+            max_val = val;
+            max_label = i;
         }
     }
-    Log::Comment(String().Format(L"Expected Label %d", label));
-    Log::Comment(String().Format(L"Evaluated Label %d", maxLabel));
-    WINML_EXPECT_TRUE(maxLabel == label);
+    std::cerr << "Expected Label " << label;
+    std::cerr << "Evaluated Label " << max_label;
+    WINML_EXPECT_TRUE(max_label == label);
 }
+INSTANTIATE_TEST_SUITE_P(MnistInputOutput, MnistImageTest,
+    testing::Values(
+        std::make_pair(L"vertical-crop.png", 5),
+        std::make_pair(L"horizontal-crop.png", 2),
+        std::make_pair(L"big.png", 8),
+        std::make_pair(L"RGB_5.png", 5)
+    ));
 
-void ImageTests::PrepareModelSessionBinding(
-    const std::wstring& modelFileName,
-    LearningModelDeviceKind deviceKind,
-    std::optional<uint32_t> optimizedBatchSize)
-{
-    LoadModel(std::wstring(modelFileName));
-    WINML_EXPECT_NO_THROW(m_device = LearningModelDevice(deviceKind));
-    if (optimizedBatchSize.has_value())
-    {
-        LearningModelSessionOptions options;
-        options.BatchSizeOverride(optimizedBatchSize.value());
-        WINML_EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device, options));
-    }
-    else
-    {
-        WINML_EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
-    }
-    WINML_EXPECT_NO_THROW(m_modelBinding = LearningModelBinding(m_session));
-}
+typedef std::tuple<std::tuple<std::wstring, ModelInputOutputType, std::wstring>, std::wstring, std::wstring, InputImageSource, EvaluationStrategy, OutputBindingStrategy, LearningModelDeviceKind> ImageTestParamTuple;
+struct ImageTestParam {
+    std::wstring model_file_name, model_pixel_format, image_file_name, input_pixel_format;
+    ModelInputOutputType model_input_output_type;
+    InputImageSource input_image_source;
+    EvaluationStrategy evaluation_strategy;
+    OutputBindingStrategy output_binding_strategy;
+    LearningModelDeviceKind device_kind;
 
-bool ImageTests::BindInputValue(
-    const std::wstring& imageFileName,
-    const std::wstring& inputPixelFormat,
-    const std::wstring& modelPixelFormat,
-    InputImageSource inputImageSource,
-    LearningModelDeviceKind deviceKind
-    )
-{
-    std::wstring fullImagePath = FileHelpers::GetModulePath() + imageFileName;
-    StorageFile imagefile = StorageFile::GetFileFromPathAsync(fullImagePath).get();
-    IRandomAccessStream stream = imagefile.OpenAsync(FileAccessMode::Read).get();
-    BitmapDecoder bitmapDecoder = BitmapDecoder::CreateAsync(stream).get();
-    SoftwareBitmap softwareBitmap = bitmapDecoder.GetSoftwareBitmapAsync().get();
-
-    // Convert the input image to PixelFormat specified
-    softwareBitmap = SoftwareBitmap::Convert(
-        softwareBitmap,
-        ImageTestHelper::GetPixelFormat(inputPixelFormat));
-
-    auto inputFeature = m_model.InputFeatures().First();
-    if (InputImageSource::FromImageFeatureValue == inputImageSource)
-    {
-        VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
-        ImageFeatureValue imageInputTensor = ImageFeatureValue::CreateFromVideoFrame(frame);
-        WINML_EXPECT_NO_THROW(m_modelBinding.Bind(inputFeature.Current().Name(), imageInputTensor));
+    ImageTestParam(ImageTestParamTuple param) {
+        std::tuple<std::wstring, ModelInputOutputType, std::wstring> model_info;
+        tie(model_info, image_file_name, input_pixel_format, input_image_source, evaluation_strategy, output_binding_strategy, device_kind) = param;
+        tie(model_file_name, model_input_output_type, model_pixel_format) = model_info;
     }
-    else if (InputImageSource::FromVideoFrame == inputImageSource)
-    {
-        VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
-        WINML_EXPECT_NO_THROW(m_modelBinding.Bind(inputFeature.Current().Name(), frame));
-    }
-    else if (InputImageSource::FromCPUResource == inputImageSource)
-    {
-        TensorFloat tensorFloat = ImageTestHelper::LoadInputImageFromCPU(softwareBitmap, modelPixelFormat);
-        WINML_EXPECT_NO_THROW(m_modelBinding.Bind(inputFeature.Current().Name(), tensorFloat));
-    }
-    else if (InputImageSource::FromGPUResource == inputImageSource)
-    {
-        TensorFloat tensorFloat = ImageTestHelper::LoadInputImageFromGPU(softwareBitmap, modelPixelFormat);
-        if (LearningModelDeviceKind::Cpu == deviceKind)
-        {
-            VERIFY_THROWS_SPECIFIC(m_modelBinding.Bind(inputFeature.Current().Name(), tensorFloat),
-                winrt::hresult_error,
-                [](const winrt::hresult_error& e) -> bool
-            {
-                return e.code() == WINML_ERR_INVALID_BINDING;
-            });
-            return false;
-        }
-        WINML_EXPECT_NO_THROW(m_modelBinding.Bind(inputFeature.Current().Name(), tensorFloat));
-    }
-    return true;
-}
+};
+class ImageTest : public ImageTests, public testing::WithParamInterface<ImageTestParamTuple> {};
 
-VideoFrame ImageTests::BindImageOutput(
-    ModelInputOutputType modelInputOutputType,
-    OutputBindingStrategy outputBindingStrategy,
-    const std::wstring& modelPixelFormat)
-{
-    std::wstring outputDataBindingName = std::wstring(m_model.OutputFeatures().First().Current().Name());
-    VideoFrame frame = nullptr;
-    if (OutputBindingStrategy::Bound == outputBindingStrategy)
-    {
-        if (ModelInputOutputType::Image == modelInputOutputType)
-        {
-            ImageFeatureDescriptor outputImageDescriptor = nullptr;
-            WINML_EXPECT_NO_THROW(m_model.OutputFeatures().First().Current().as(outputImageDescriptor));
-            SoftwareBitmap bitmap(
-                ImageTestHelper::GetPixelFormat(modelPixelFormat),
-                outputImageDescriptor.Height(),
-                outputImageDescriptor.Width());
-            frame = VideoFrame::CreateWithSoftwareBitmap(bitmap);
-
-        }
-        else if (ModelInputOutputType::Tensor == modelInputOutputType)
-        {
-            TensorFeatureDescriptor outputTensorDescriptor = nullptr;
-            WINML_EXPECT_NO_THROW(m_model.OutputFeatures().First().Current().as(outputTensorDescriptor));
-            auto outputTensorShape = outputTensorDescriptor.Shape();
-            SoftwareBitmap bitmap(
-                ImageTestHelper::GetPixelFormat(modelPixelFormat),
-                outputTensorShape.GetAt(3),
-                outputTensorShape.GetAt(2));
-            frame = VideoFrame::CreateWithSoftwareBitmap(bitmap);
-        }
-        auto outputTensor = ImageFeatureValue::CreateFromVideoFrame(frame);
-        WINML_EXPECT_NO_THROW(m_modelBinding.Bind(outputDataBindingName, outputTensor));
+TEST_P(ImageTest, ImageTest) {
+    const auto param = ImageTestParam(GetParam());
+    if (ShouldSkip(param.model_file_name, param.image_file_name, param.input_image_source)) {
+        GTEST_SKIP() << "This test is disabled";
     }
 
-    // Else for Unbound
-    return frame;
-}
-
-IVector<VideoFrame> ImageTests::BindImageOutput(
-    ModelInputOutputType modelInputOutputType,
-    OutputBindingStrategy outputBindingStrategy,
-    VideoFrameSource outputVideoFrameSource,
-    const std::wstring& modelPixelFormat,
-    const uint32_t& batchSize)
-{
-    std::wstring outputDataBindingName = std::wstring(m_model.OutputFeatures().First().Current().Name());
-    uint32_t width = 0, height = 0;
-    if (ModelInputOutputType::Image == modelInputOutputType)
-    {
-        ImageFeatureDescriptor outputImageDescriptor = nullptr;
-        WINML_EXPECT_NO_THROW(m_model.OutputFeatures().First().Current().as(outputImageDescriptor));
-        width = outputImageDescriptor.Width();
-        height = outputImageDescriptor.Height();
-    }
-    else
-    {
-        TensorFeatureDescriptor outputTensorDescriptor = nullptr;
-        WINML_EXPECT_NO_THROW(m_model.OutputFeatures().First().Current().as(outputTensorDescriptor));
-        auto outputTensorShape = outputTensorDescriptor.Shape();
-        width = outputTensorShape.GetAt(3);
-        height = outputTensorShape.GetAt(2);
-    }
-    IVector<VideoFrame> outputVideoFrames;
-    if (OutputBindingStrategy::Bound == outputBindingStrategy)
-    {
-        std::vector<VideoFrame> outputFrames = {};
-        for (uint32_t i = 0; i < batchSize; ++i)
-        {
-            VideoFrame videoFrame = nullptr;
-            if (VideoFrameSource::FromSoftwareBitmap == outputVideoFrameSource)
-            {
-                videoFrame = VideoFrame::CreateWithSoftwareBitmap(SoftwareBitmap(ImageTestHelper::GetPixelFormat(modelPixelFormat), width, height));
-            }
-            else if (VideoFrameSource::FromDirect3DSurface == outputVideoFrameSource)
-            {
-                videoFrame = VideoFrame::CreateAsDirect3D11SurfaceBacked(DirectXPixelFormat::B8G8R8A8UIntNormalized, width, height);
-            }
-            else if (VideoFrameSource::FromUnsupportedD3DSurface == outputVideoFrameSource)
-            {
-                videoFrame = VideoFrame::CreateAsDirect3D11SurfaceBacked(DirectXPixelFormat::B8G8R8X8UIntNormalized, width, height);
-            }
-            outputFrames.emplace_back(videoFrame);
-        }
-        outputVideoFrames = winrt::single_threaded_vector(std::move(outputFrames));
-        WINML_EXPECT_NO_THROW(m_modelBinding.Bind(outputDataBindingName, outputVideoFrames));
-
-    }
-
-    // Else for Unbound
-    return outputVideoFrames;
-}
-
-void ImageTests::EvaluateTest()
-{
-    EvaluationStrategy evaluationStrategy = ImageTestHelper::GetEvaluationStrategy();
-    if (EvaluationStrategy::Async == evaluationStrategy)
-    {
-        WINML_EXPECT_NO_THROW(m_result = m_session.EvaluateAsync(m_modelBinding, L"").get());
-    }
-    else if (EvaluationStrategy::Sync == evaluationStrategy)
-    {
-        WINML_EXPECT_NO_THROW(m_result = m_session.Evaluate(m_modelBinding, L""));
-    }
-}
-
-void ImageTests::VerifyResults(
-    VideoFrame outputTensor,
-    const std::wstring& bmImagePath,
-    const std::wstring& modelPixelFormat)
-{
-    SoftwareBitmap bm_softwareBitmap = FileHelpers::GetSoftwareBitmapFromFile(bmImagePath);
-    bm_softwareBitmap = SoftwareBitmap::Convert(
-        bm_softwareBitmap,
-        ImageTestHelper::GetPixelFormat(modelPixelFormat));
-    VideoFrame bm_videoFrame = VideoFrame::CreateWithSoftwareBitmap(bm_softwareBitmap);
-
-    WINML_EXPECT_TRUE(ImageTestHelper::VerifyHelper(outputTensor, bm_videoFrame));
-}
-
-bool ShouldSkip(
-    const std::wstring& modelFileName,
-    const std::wstring& imageFileName,
-    const LearningModelDeviceKind deviceKind,
-    const InputImageSource inputImageSource
-    )
-{
-    // Case that the tensor's shape doesn't match model's shape should be skiped
-    if ((L"1080.jpg" == imageFileName || L"kitten_224.png" == imageFileName) &&
-        (InputImageSource::FromGPUResource == inputImageSource || InputImageSource::FromCPUResource == inputImageSource))
-    {
-        return true;
-    }
-
-    // Case that the images's shape doesn't match model's shape which expects free dimension should be skiped.
-    // Because the fns-candy is not real model that can handle free dimensional input
-    if ((L"1080.jpg" == imageFileName || L"kitten_224.png" == imageFileName) &&
-        L"fns-candy_Bgr8_freeDimInput.onnx" == modelFileName)
-    {
-        return true;
-    }
-
-    return false;
-}
-
-void ImageTests::ImageTest()
-{
-    std::wstring modelFileName = ImageTestHelper::GetModelFileName();
-    std::wstring imageFileName = ImageTestHelper::GetImageFileName();
-    std::wstring inputPixelFormat = ImageTestHelper::GetInputPixelFormat();
-    std::wstring modelPixelFormat = ImageTestHelper::GetModelPixelFormat();
-
-    LearningModelDeviceKind deviceKind = ImageTestHelper::GetDeviceKind();
-    InputImageSource inputImageSource = ImageTestHelper::GetInputImageSource();
-
-    if (ShouldSkip(modelFileName, imageFileName, deviceKind, inputImageSource))
-    {
-        Log::Result(TestResults::Skipped, L"This test is disabled");
-        return;
-    }
-
-    if (LearningModelDeviceKind::Cpu != deviceKind || InputImageSource::FromGPUResource == inputImageSource)
-    {
+    if (LearningModelDeviceKind::Cpu != param.device_kind || InputImageSource::FromGPUResource == param.input_image_source) {
         GPUTEST;
     }
 
-    PrepareModelSessionBinding(modelFileName, deviceKind, {});
+    PrepareModelSessionBinding(param.model_file_name, param.device_kind, {});
 
     bool toContinue = BindInputValue(
-        imageFileName,
-        inputPixelFormat,
-        modelPixelFormat,
-        inputImageSource,
-        deviceKind);
+        param.image_file_name,
+        param.input_pixel_format,
+        param.model_pixel_format,
+        param.input_image_source,
+        param.device_kind);
 
     if (!toContinue) return;
 
-    OutputBindingStrategy outputBindingStrategy = ImageTestHelper::GetOutputBindingStrategy();
-    ModelInputOutputType modelInputOutputType = ImageTestHelper::GetModelInputOutputType();
+    VideoFrame output_video_frame = BindImageOutput(
+        param.model_input_output_type,
+        param.output_binding_strategy,
+        std::wstring(param.model_pixel_format));
 
-    VideoFrame outputVideoFrame = BindImageOutput(
-        modelInputOutputType,
-        outputBindingStrategy,
-        std::wstring(modelPixelFormat));
-
-    EvaluateTest();
+    EvaluateTest(param.evaluation_strategy);
 
     // benchmark used to compare with the output from model
-    std::wstring benchmarkFileName = std::wstring(
-        modelPixelFormat + L'_' + inputPixelFormat + L'_' + imageFileName);
+    std::wstring benchmark_file_name = std::wstring(
+        param.model_pixel_format + L'_' + param.input_pixel_format + L'_' + param.image_file_name);
 
     // Verify the output by comparing with the benchmark image
-    std::wstring bmImagePath = FileHelpers::GetModulePath() + L"groundTruth\\" + benchmarkFileName;
-    if (OutputBindingStrategy::Unbound == outputBindingStrategy)
-    {
-        std::wstring outputDataBindingName = std::wstring(m_model.OutputFeatures().First().Current().Name());
-        auto imageFV = m_result.Outputs().Lookup(outputDataBindingName).try_as<ImageFeatureValue>();
-        if (imageFV == nullptr)
-        {
+    std::wstring bm_image_path = FileHelpers::GetModulePath() + L"groundTruth\\" + benchmark_file_name;
+    if (OutputBindingStrategy::Unbound == param.output_binding_strategy) {
+        std::wstring output_data_binding_name = std::wstring(m_model.OutputFeatures().First().Current().Name());
+        auto image_FV = m_result.Outputs().Lookup(output_data_binding_name).try_as<ImageFeatureValue>();
+        if (image_FV == nullptr) {
             return;
         }
-        outputVideoFrame = imageFV.VideoFrame();
+        output_video_frame = image_FV.VideoFrame();
     }
-    VerifyResults(outputVideoFrame, bmImagePath, modelPixelFormat);
+    VerifyResults(output_video_frame, bm_image_path, param.model_pixel_format);
 }
+INSTANTIATE_TEST_SUITE_P(ImageTest, ImageTest,
+    testing::Combine(
+        testing::Values(
+            std::make_tuple(L"fns-candy_Bgr8.onnx", Image, L"Bgr8"),
+            std::make_tuple(L"fns-candy_Rgb8.onnx", Image, L"Rgb8"),
+            std::make_tuple(L"fns-candy_tensor.onnx", Tensor, L"Bgr8"),
+            std::make_tuple(L"fns-candy_Bgr8_freeDimInput.onnx", Image, L"Bgr8")),
+        testing::Values(L"1080.jpg", L"kitten_224.png", L"fish_720.png", L"fish_720_Gray.png"),
+        testing::Values(L"Bgra8", L"Rgba8", L"Gray8"),
+        testing::Values(FromVideoFrame, FromImageFeatureValue, FromCPUResource, FromGPUResource),
+        testing::Values(Async, Sync),
+        testing::Values(Bound, Unbound),
+        testing::Values(LearningModelDeviceKind::DirectX, LearningModelDeviceKind::Cpu)
+    ));
 
-void ImageTests::BatchSupport()
-{
-    std::wstring modelFileName = ImageTestHelper::GetModelFileName();
-    std::vector<std::wstring> inputImages = ImageTestHelper::GetInputImages();
-    uint32_t batchSize = ImageTestHelper::GetBatchSize();
-    std::optional<uint32_t> optimizedBatchSize = ImageTestHelper::GetBatchSizeOverride();
-    VideoFrameSource videoFrameSource = ImageTestHelper::GetVideoFrameSource();
-    VideoFrameSource outputVideoFrameSource = ImageTestHelper::GetOutputVideoFrameSource();
+typedef std::tuple<std::tuple<std::wstring, ModelInputOutputType, std::vector<std::wstring>, int, bool>, OutputBindingStrategy, EvaluationStrategy, VideoFrameSource, VideoFrameSource, LearningModelDeviceKind> BatchTestParamTuple;
+struct BatchTestParam {
+    std::wstring model_file_name, model_pixel_format, image_file_name, input_pixel_format;
+    ModelInputOutputType model_input_output_type;
+    std::vector<std::wstring> input_images;
+    int batch_size;
+    bool use_session_options;
+    OutputBindingStrategy output_binding_strategy;
+    EvaluationStrategy evaluation_strategy;
+    VideoFrameSource video_frame_source, output_video_frame_source;
+    LearningModelDeviceKind device_kind;
 
-    LearningModelDeviceKind deviceKind = ImageTestHelper::GetDeviceKind();
-
-    if (VideoFrameSource::FromDirect3DSurface == videoFrameSource && LearningModelDeviceKind::Cpu == deviceKind)
-    {
+    BatchTestParam(BatchTestParamTuple param) {
+        std::tuple<std::wstring, ModelInputOutputType, std::vector<std::wstring>, int, bool> model_info;
+        tie(model_info, output_binding_strategy, evaluation_strategy, video_frame_source, output_video_frame_source, device_kind) = param;
+        tie(model_file_name, model_input_output_type, input_images, batch_size, use_session_options) = model_info;
+    }
+};
+class BatchTest : public ImageTests, public testing::WithParamInterface<BatchTestParamTuple> {};
+TEST_P(BatchTest, BatchSupport) {
+    const auto param = BatchTestParam(GetParam());
+    std::optional<uint32_t> optimized_batch_size;
+    if (param.use_session_options) {
+        optimized_batch_size = param.use_session_options;
+    }
+    if (VideoFrameSource::FromDirect3DSurface == param.video_frame_source && LearningModelDeviceKind::Cpu == param.device_kind) {
         return;
     }
 
     // create model, device and session
-    PrepareModelSessionBinding(modelFileName, deviceKind, optimizedBatchSize);
+    PrepareModelSessionBinding(param.model_file_name, param.device_kind, optimized_batch_size);
 
-    // create the input videoFrames
-    std::vector<VideoFrame> inputFrames = {};
-    if (inputImages.empty())
-    {
-        for (uint32_t i = 0; i < batchSize; ++i)
-        {
-            if (VideoFrameSource::FromDirect3DSurface == videoFrameSource)
-            {
-                VideoFrame videoFrame = VideoFrame::CreateAsDirect3D11SurfaceBacked(DirectXPixelFormat::B8G8R8X8UIntNormalized, 720, 720);
-                inputFrames.emplace_back(videoFrame);
+    // create the input video_frames
+    std::vector<VideoFrame> input_frames = {};
+    if (param.input_images.empty()) {
+        for (int i = 0; i < param.batch_size; ++i) {
+            if (VideoFrameSource::FromDirect3DSurface == param.video_frame_source) {
+                VideoFrame video_frame = VideoFrame::CreateAsDirect3D11SurfaceBacked(DirectXPixelFormat::B8G8R8X8UIntNormalized, 720, 720);
+                input_frames.emplace_back(video_frame);
             }
-            else
-            {
-                VideoFrame videoFrame = VideoFrame::CreateWithSoftwareBitmap(SoftwareBitmap(BitmapPixelFormat::Bgra8, 720, 720));
-                inputFrames.emplace_back(videoFrame);
+            else {
+                VideoFrame video_frame = VideoFrame::CreateWithSoftwareBitmap(SoftwareBitmap(BitmapPixelFormat::Bgra8, 720, 720));
+                input_frames.emplace_back(video_frame);
             }
         }
     }
-    else
-    {
-        for (uint32_t i = 0; i < batchSize; ++i)
-        {
-            std::wstring fullImagePath = FileHelpers::GetModulePath() + inputImages[i];
-            StorageFile imagefile = StorageFile::GetFileFromPathAsync(fullImagePath).get();
-            IRandomAccessStream stream = imagefile.OpenAsync(FileAccessMode::Read).get();
-            SoftwareBitmap softwareBitmap = (BitmapDecoder::CreateAsync(stream).get()).GetSoftwareBitmapAsync().get();
-            VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
+    else {
+        for (int i = 0; i < param.batch_size; ++i) {
+            std::wstring full_image_path = FileHelpers::GetModulePath() + param.input_images[i];
+            StorageFile image_file = StorageFile::GetFileFromPathAsync(full_image_path).get();
+            IRandomAccessStream stream = image_file.OpenAsync(FileAccessMode::Read).get();
+            SoftwareBitmap software_bitmap = (BitmapDecoder::CreateAsync(stream).get()).GetSoftwareBitmapAsync().get();
+            VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(software_bitmap);
 
-            if (VideoFrameSource::FromDirect3DSurface == videoFrameSource) {
-                uint32_t width = softwareBitmap.PixelWidth();
-                uint32_t height = softwareBitmap.PixelHeight();
-                auto D3DVideoFrame = VideoFrame::CreateAsDirect3D11SurfaceBacked(DirectXPixelFormat::B8G8R8X8UIntNormalized, width, height);
-                frame.CopyToAsync(D3DVideoFrame);
-                inputFrames.emplace_back(D3DVideoFrame);
+            if (VideoFrameSource::FromDirect3DSurface == param.video_frame_source) {
+                uint32_t width = software_bitmap.PixelWidth();
+                uint32_t height = software_bitmap.PixelHeight();
+                auto D3D_video_frame = VideoFrame::CreateAsDirect3D11SurfaceBacked(DirectXPixelFormat::B8G8R8X8UIntNormalized, width, height);
+                frame.CopyToAsync(D3D_video_frame);
+                input_frames.emplace_back(D3D_video_frame);
             }
-            else
-            {
-                inputFrames.emplace_back(frame);
+            else {
+                input_frames.emplace_back(frame);
             }
         }
     }
-    auto videoFrames = winrt::single_threaded_vector(std::move(inputFrames));
+    auto video_frames = winrt::single_threaded_vector(std::move(input_frames));
 
-    auto inputFeatureDescriptor = m_model.InputFeatures().First();
-    WINML_EXPECT_NO_THROW(m_modelBinding.Bind(inputFeatureDescriptor.Current().Name(), videoFrames));
+    auto input_feature_descriptor = m_model.InputFeatures().First();
+    WINML_EXPECT_NO_THROW(m_model_binding.Bind(input_feature_descriptor.Current().Name(), video_frames));
 
-    OutputBindingStrategy outputBindingStrategy = ImageTestHelper::GetOutputBindingStrategy();
-    ModelInputOutputType modelInputOutputType = ImageTestHelper::GetModelInputOutputType();
-
-    auto outputVideoFrames = BindImageOutput(
-        modelInputOutputType,
-        outputBindingStrategy,
-        outputVideoFrameSource,
+    auto output_video_frames = BindImageOutput(
+        param.model_input_output_type,
+        param.output_binding_strategy,
+        param.output_video_frame_source,
         L"Bgra8",
-        batchSize);
+        param.batch_size);
 
-    EvaluateTest();
+    EvaluateTest(param.evaluation_strategy);
 
     // benchmark used to compare with the output from model
-    if (OutputBindingStrategy::Unbound == outputBindingStrategy)
-    {
-        std::wstring outputDataBindingName = std::wstring(m_model.OutputFeatures().First().Current().Name());
-        outputVideoFrames = m_result.Outputs().Lookup(outputDataBindingName).try_as<IVector<VideoFrame>>();
-        if (outputVideoFrames == nullptr)
-        {
+    if (OutputBindingStrategy::Unbound == param.output_binding_strategy) {
+        std::wstring output_data_binding_name = std::wstring(m_model.OutputFeatures().First().Current().Name());
+        output_video_frames = m_result.Outputs().Lookup(output_data_binding_name).try_as<IVector<VideoFrame>>();
+        if (output_video_frames == nullptr) {
             return;
         }
     }
-    if (!inputImages.empty())
-    {
-        for (uint32_t i = 0; i < batchSize; ++i)
-        {
-            std::wstring bmImagePath = FileHelpers::GetModulePath() + L"batchGroundTruth\\" + inputImages[i];
-            if (VideoFrameSource::FromSoftwareBitmap != outputVideoFrameSource && OutputBindingStrategy::Unbound != outputBindingStrategy)
-            {
-                VideoFrame D3DVideoFrame = outputVideoFrames.GetAt(i);
-                VideoFrame SBVideoFrame(BitmapPixelFormat::Bgra8, 720, 720);
-                D3DVideoFrame.as<IVideoFrame>().CopyToAsync(SBVideoFrame).get();
-                VerifyResults(SBVideoFrame, bmImagePath, L"Bgra8");
+    if (!param.input_images.empty()) {
+        for (int i = 0; i < param.batch_size; ++i) {
+            std::wstring bm_image_path = FileHelpers::GetModulePath() + L"batchGroundTruth\\" + param.input_images[i];
+            if (VideoFrameSource::FromSoftwareBitmap != param.output_video_frame_source && OutputBindingStrategy::Unbound != param.output_binding_strategy) {
+                VideoFrame D3D_video_frame = output_video_frames.GetAt(i);
+                VideoFrame SB_video_frame(BitmapPixelFormat::Bgra8, 720, 720);
+                D3D_video_frame.as<IVideoFrame>().CopyToAsync(SB_video_frame).get();
+                VerifyResults(SB_video_frame, bm_image_path, L"Bgra8");
             }
-            else
-            {
-                VerifyResults(outputVideoFrames.GetAt(i), bmImagePath, L"Bgra8");
+            else {
+                VerifyResults(output_video_frames.GetAt(i), bm_image_path, L"Bgra8");
             }
         }
     }
 }
 
-void ImageTests::LoadBindEvalModelWithoutImageMetadata()
-{
+TEST_F(ImageTests, LoadBindEvalModelWithoutImageMetadata) {
     GPUTEST;
 
     LoadModel(L"squeezenet_tensor_input.onnx");
 
-    auto featureValue = FileHelpers::LoadImageFeatureValue(L"doritos_227.png");
+    auto feature_value = FileHelpers::LoadImageFeatureValue(L"doritos_227.png");
 
-    LearningModelSession modelSession(m_model);
-    LearningModelBinding modelBinding(modelSession);
+    LearningModelSession model_session(m_model);
+    LearningModelBinding model_binding(model_session);
 
-    modelBinding.Bind(L"data", featureValue);
-    auto result = modelSession.Evaluate(modelBinding, L"");
+    model_binding.Bind(L"data", feature_value);
+    auto result = model_session.Evaluate(model_binding, L"");
 }
 
 
-void ImageTests::LoadBindModelWithoutImageMetadata()
-{
+TEST_F(ImageTests, LoadBindModelWithoutImageMetadata) {
     GPUTEST;
 
     // Model expecting a tensor instead of an image
     LoadModel(L"squeezenet_tensor_input.onnx");
 
-    LearningModelSession modelSession(m_model);
-    LearningModelBinding modelBinding(modelSession);
+    LearningModelSession model_session(m_model);
+    LearningModelBinding model_binding(model_session);
 
     // Should work on images (by falling back to RGB8)
-    auto featureValue = FileHelpers::LoadImageFeatureValue(L"doritos_227.png");
-    modelBinding.Bind(L"data", featureValue);
+    auto feature_value = FileHelpers::LoadImageFeatureValue(L"doritos_227.png");
+    model_binding.Bind(L"data", feature_value);
 
     // Should work on tensors
     auto tensor = TensorFloat::CreateFromIterable({ 1, 3, 227, 227 }, winrt::single_threaded_vector<float>(std::vector<float>(3 * 227 * 227)));
-    modelBinding.Bind(L"data", tensor);
+    model_binding.Bind(L"data", tensor);
 }
 
-void ImageTests::LoadInvalidBindModelWithoutImageMetadata()
-{
+TEST_F(ImageTests, LoadInvalidBindModelWithoutImageMetadata) {
     GPUTEST;
 
     LoadModel(L"squeezenet_tensor_input.onnx");
 
-    LearningModelSession modelSession(m_model);
-    LearningModelBinding modelBinding(modelSession);
+    LearningModelSession model_session(m_model);
+    LearningModelBinding model_binding(model_session);
 
     // expect not fail if image dimensions are bigger than required
-    auto featureValue = FileHelpers::LoadImageFeatureValue(L"1080.jpg");
-    WINML_EXPECT_NO_THROW(modelBinding.Bind(L"data", featureValue));
+    auto feature_value = FileHelpers::LoadImageFeatureValue(L"1080.jpg");
+    WINML_EXPECT_NO_THROW(model_binding.Bind(L"data", feature_value));
 
     // expect fail if tensor is of wrong type
-    auto tensorUint8 = TensorUInt8Bit::CreateFromIterable({ 1, 3, 227, 227 }, winrt::single_threaded_vector<uint8_t>(std::vector<uint8_t>(3 * 227 * 227)));
-    VERIFY_THROWS_SPECIFIC(modelBinding.Bind(L"data", tensorUint8),
+    auto tensor_uint8 = TensorUInt8Bit::CreateFromIterable({ 1, 3, 227, 227 }, winrt::single_threaded_vector<uint8_t>(std::vector<uint8_t>(3 * 227 * 227)));
+    WINML_EXPECT_THROW_SPECIFIC(model_binding.Bind(L"data", tensor_uint8),
         winrt::hresult_error,
-        [](const winrt::hresult_error& e) -> bool
-    {
+        [](const winrt::hresult_error& e) -> bool {
         return e.code() == WINML_ERR_INVALID_BINDING;
     });
 
     // Should fail if tensor has smaller dimensions/type
     auto tensor = TensorFloat::CreateFromIterable({ 1, 3, 22, 22 }, winrt::single_threaded_vector<float>(std::vector<float>(3 * 22 * 22)));
-    VERIFY_THROWS_SPECIFIC(modelBinding.Bind(L"data", tensor),
+    WINML_EXPECT_THROW_SPECIFIC(model_binding.Bind(L"data", tensor),
         winrt::hresult_error,
-        [](const winrt::hresult_error& e) -> bool
-    {
+        [](const winrt::hresult_error& e) -> bool {
         return e.code() == WINML_ERR_SIZE_MISMATCH;
     });
 }
 
-void ImageTests::ImageMetaDataTest()
-{
+TEST_F(ImageTests, ImageMetaDataTest) {
     // supported image metadata
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_255.onnx", BitmapAlphaMode::Premultiplied, BitmapPixelFormat::Bgra8, true);
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataRgb8_SRGB_0_255.onnx", BitmapAlphaMode::Premultiplied, BitmapPixelFormat::Rgba8, true);
@@ -549,424 +610,318 @@ void ImageTests::ImageMetaDataTest()
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_LINEAR_0_255.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Bgra8, false);
 }
 
-void ImageTests::ValidateOutputImageMetaData(std::wstring path, BitmapAlphaMode expectedmode, BitmapPixelFormat expectedformat, bool supported)
-{
-    WINML_EXPECT_NO_THROW(LoadModel(path));
-    //input does not have image metadata and output does
-
-    WINML_EXPECT_TRUE(m_model.OutputFeatures().First().HasCurrent());
-
-    std::wstring name(m_model.OutputFeatures().First().Current().Name());
-    std::wstring expectedTensorName = L"add_3";
-    VERIFY_ARE_EQUAL(name, expectedTensorName);
-
-    ImageFeatureDescriptor imageDescriptor = nullptr;
-    if (supported)
-    {
-        WINML_EXPECT_NO_THROW(m_model.OutputFeatures().First().Current().as(imageDescriptor));
-        WINML_EXPECT_TRUE(imageDescriptor != nullptr);
-
-        auto tensorName = imageDescriptor.Name();
-        VERIFY_ARE_EQUAL(tensorName, expectedTensorName);
-
-        auto modelDataKind = imageDescriptor.Kind();
-        VERIFY_ARE_EQUAL(modelDataKind, LearningModelFeatureKind::Image);
-
-        WINML_EXPECT_TRUE(imageDescriptor.IsRequired());
-
-        VERIFY_ARE_EQUAL(imageDescriptor.Width(), 1920);
-        VERIFY_ARE_EQUAL(imageDescriptor.Height(), 1080);
-        VERIFY_ARE_EQUAL(imageDescriptor.BitmapAlphaMode(), expectedmode);
-        VERIFY_ARE_EQUAL(imageDescriptor.BitmapPixelFormat(), expectedformat);
-    }
-    else
-    {
-        //not an image descriptor. a regular tensor
-        VERIFY_THROWS_SPECIFIC(m_model.OutputFeatures().First().Current().as(imageDescriptor),
-            winrt::hresult_no_interface
-            , [](const winrt::hresult_no_interface& e) -> bool
-        {
-            return e.code() == E_NOINTERFACE;
-        });
-        TensorFeatureDescriptor tensorDescriptor = nullptr;
-        WINML_EXPECT_NO_THROW(m_model.OutputFeatures().First().Current().as(tensorDescriptor));
-
-        // Make sure we fail binding ImageFeatureValue
-        LearningModelSession session(m_model);
-        LearningModelBinding binding(session);
-        auto ifv = FileHelpers::LoadImageFeatureValue(L"1080.jpg");
-        VERIFY_THROWS_SPECIFIC(binding.Bind(L"add_3", ifv),
-            winrt::hresult_error,
-            [](const winrt::hresult_error& e) -> bool
-        {
-            return e.code() == WINML_ERR_INVALID_BINDING;
-        }
-        );
-    }
-
-}
-
-static void RunConsecutiveImageBindingOnGpu(ImageFeatureValue & image1, ImageFeatureValue & image2)
-{
-    static const wchar_t* modelFileName = L"Add_ImageNet1920.onnx";
-    std::wstring modulePath = FileHelpers::GetModulePath();
-
-    // WinML model creation
-    LearningModel model(nullptr);
-    std::wstring fullModelPath = modulePath + modelFileName;
-    WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(fullModelPath));
-    LearningModelDeviceKind deviceKind = LearningModelDeviceKind::DirectX;
-    LearningModelSession modelSession(model, LearningModelDevice(deviceKind));
-    LearningModelBinding modelBinding(modelSession);
-
-    //Input Binding
-    auto feature = model.InputFeatures().First();
-    WINML_EXPECT_NO_THROW(modelBinding.Bind(feature.Current().Name(), image1));
-    feature.MoveNext();
-    WINML_EXPECT_NO_THROW(modelBinding.Bind(feature.Current().Name(), image2));
-}
-
-static ImageFeatureValue CreateImageFeatureValue(std::wstring fullImagePath)
-{
-    StorageFile imagefile = StorageFile::GetFileFromPathAsync(fullImagePath).get();
-    IRandomAccessStream stream = imagefile.OpenAsync(FileAccessMode::Read).get();
-    SoftwareBitmap softwareBitmap = (BitmapDecoder::CreateAsync(stream).get()).GetSoftwareBitmapAsync().get();
-    VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
-    ImageFeatureValue imageInputTensor = ImageFeatureValue::CreateFromVideoFrame(frame);
-    return imageInputTensor;
-}
-
 //Tests if GPU will throw TDR if the same image feature value is binded back to back for two different inputs to a model
-void ImageTests::ImageBindingTwiceSameFeatureValueOnGpu()
-{
+TEST_F(ImageTests, ImageBindingTwiceSameFeatureValueOnGpu) {
     GPUTEST;
-    std::wstring modulePath = FileHelpers::GetModulePath();
-    static const wchar_t* inputDataImageFileName = L"1080.jpg";
+    std::wstring module_path = FileHelpers::GetModulePath();
+    static const wchar_t* input_data_image_filename = L"1080.jpg";
 
-    std::wstring fullImagePath = modulePath + inputDataImageFileName;
-    ImageFeatureValue input_norm = CreateImageFeatureValue(fullImagePath);
+    std::wstring full_image_path = module_path + input_data_image_filename;
+    ImageFeatureValue input_norm = CreateImageFeatureValue(full_image_path);
 
     RunConsecutiveImageBindingOnGpu(input_norm, input_norm);
 }
 
 //Tests if GPU will throw TDR if 2 different image feature values are binded back to back for two different inputs to a model
-void ImageTests::ImageBindingTwiceDifferentFeatureValueOnGpu()
-{
+TEST_F(ImageTests, ImageBindingTwiceDifferentFeatureValueOnGpu) {
     GPUTEST;
-    std::wstring modulePath = FileHelpers::GetModulePath();
-    static const wchar_t* inputDataImageFileName = L"1080.jpg";
+    std::wstring module_path = FileHelpers::GetModulePath();
+    static const wchar_t* input_data_image_filename = L"1080.jpg";
 
-    std::wstring fullImagePath = modulePath + inputDataImageFileName;
-    ImageFeatureValue input_norm = CreateImageFeatureValue(fullImagePath);
-    ImageFeatureValue input_norm_1 = CreateImageFeatureValue(fullImagePath);
+    std::wstring full_image_path = module_path + input_data_image_filename;
+    ImageFeatureValue input_norm = CreateImageFeatureValue(full_image_path);
+    ImageFeatureValue input_norm_1 = CreateImageFeatureValue(full_image_path);
 
     RunConsecutiveImageBindingOnGpu(input_norm, input_norm_1);
 }
 
-static void RunImageBindingInputAndOutput(bool bindInputAsIInspectable)
-{
-    static const wchar_t* modelFileName = L"Add_ImageNet1920.onnx";
-    std::wstring modulePath = FileHelpers::GetModulePath();
-    static const wchar_t* inputDataImageFileName = L"1080.jpg";
-    static const wchar_t* outputDataImageFileName = L"out_Add_ImageNet_1080.jpg";
+static void RunImageBindingInputAndOutput(bool bindInputAsIInspectable) {
+    static const wchar_t* model_file_name = L"Add_ImageNet1920.onnx";
+    std::wstring module_path = FileHelpers::GetModulePath();
+    static const wchar_t* input_data_image_filename = L"1080.jpg";
+    static const wchar_t* output_data_image_filename = L"out_Add_ImageNet_1080.jpg";
 
     // WinML model creation
     LearningModel model(nullptr);
-    std::wstring fullModelPath = modulePath + modelFileName;
-    WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(fullModelPath));
-    LearningModelDeviceKind deviceKind = LearningModelDeviceKind::DirectX;
-    LearningModelSession modelSession(model, LearningModelDevice(deviceKind));
-    LearningModelBinding modelBinding(modelSession);
+    std::wstring full_model_path = module_path + model_file_name;
+    WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(full_model_path));
+    LearningModelDeviceKind device_kind = LearningModelDeviceKind::DirectX;
+    LearningModelSession model_session(model, LearningModelDevice(device_kind));
+    LearningModelBinding model_binding(model_session);
 
-    std::wstring fullImagePath = modulePath + inputDataImageFileName;
+    std::wstring full_image_path = module_path + input_data_image_filename;
 
-    StorageFile imagefile = StorageFile::GetFileFromPathAsync(fullImagePath).get();
-    IRandomAccessStream stream = imagefile.OpenAsync(FileAccessMode::Read).get();
-    SoftwareBitmap softwareBitmap = (BitmapDecoder::CreateAsync(stream).get()).GetSoftwareBitmapAsync().get();
-    VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
+    StorageFile image_file = StorageFile::GetFileFromPathAsync(full_image_path).get();
+    IRandomAccessStream stream = image_file.OpenAsync(FileAccessMode::Read).get();
+    SoftwareBitmap software_bitmap = (BitmapDecoder::CreateAsync(stream).get()).GetSoftwareBitmapAsync().get();
+    VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(software_bitmap);
 
-    if (bindInputAsIInspectable)
-    {
+    if (bindInputAsIInspectable) {
         auto feature = model.InputFeatures().First();
-        WINML_EXPECT_NO_THROW(modelBinding.Bind(feature.Current().Name(), frame));
+        WINML_EXPECT_NO_THROW(model_binding.Bind(feature.Current().Name(), frame));
         feature.MoveNext();
-        WINML_EXPECT_NO_THROW(modelBinding.Bind(feature.Current().Name(), frame));
+        WINML_EXPECT_NO_THROW(model_binding.Bind(feature.Current().Name(), frame));
     }
-    else
-    {
-        ImageFeatureValue inputimagetensor = ImageFeatureValue::CreateFromVideoFrame(frame);
+    else {
+        ImageFeatureValue input_image_tensor = ImageFeatureValue::CreateFromVideoFrame(frame);
         auto feature = model.InputFeatures().First();
-        WINML_EXPECT_NO_THROW(modelBinding.Bind(feature.Current().Name(), inputimagetensor));
+        WINML_EXPECT_NO_THROW(model_binding.Bind(feature.Current().Name(), input_image_tensor));
         feature.MoveNext();
-        WINML_EXPECT_NO_THROW(modelBinding.Bind(feature.Current().Name(), inputimagetensor));
+        WINML_EXPECT_NO_THROW(model_binding.Bind(feature.Current().Name(), input_image_tensor));
     }
 
-    auto outputtensordescriptor = model.OutputFeatures().First().Current().as<ITensorFeatureDescriptor>();
-    auto outputtensorshape = outputtensordescriptor.Shape();
-    VideoFrame outputimage(BitmapPixelFormat::Rgba8, outputtensorshape.GetAt(3), outputtensorshape.GetAt(2));
-    ImageFeatureValue outputTensor = ImageFeatureValue::CreateFromVideoFrame(outputimage);
+    auto output_tensor_descriptor = model.OutputFeatures().First().Current().as<ITensorFeatureDescriptor>();
+    auto output_tensor_shape = output_tensor_descriptor.Shape();
+    VideoFrame output_image(BitmapPixelFormat::Rgba8, static_cast<int32_t>(output_tensor_shape.GetAt(3)), static_cast<int32_t>(output_tensor_shape.GetAt(2)));
+    ImageFeatureValue output_tensor = ImageFeatureValue::CreateFromVideoFrame(output_image);
 
-    WINML_EXPECT_NO_THROW(modelBinding.Bind(model.OutputFeatures().First().Current().Name(), outputTensor));
+    WINML_EXPECT_NO_THROW(model_binding.Bind(model.OutputFeatures().First().Current().Name(), output_tensor));
 
     // Evaluate the model
-    winrt::hstring correlationId;
-    modelSession.EvaluateAsync(modelBinding, correlationId).get();
+    winrt::hstring correlation_id;
+    model_session.EvaluateAsync(model_binding, correlation_id).get();
 
     //check the output video frame object
-    StorageFolder currentfolder = StorageFolder::GetFolderFromPathAsync(modulePath).get();
-    StorageFile outimagefile = currentfolder.CreateFileAsync(outputDataImageFileName, CreationCollisionOption::ReplaceExisting).get();
-    IRandomAccessStream writestream = outimagefile.OpenAsync(FileAccessMode::ReadWrite).get();
+    StorageFolder current_folder = StorageFolder::GetFolderFromPathAsync(module_path).get();
+    StorageFile out_image_file = current_folder.CreateFileAsync(output_data_image_filename, CreationCollisionOption::ReplaceExisting).get();
+    IRandomAccessStream write_stream = out_image_file.OpenAsync(FileAccessMode::ReadWrite).get();
 
-    BitmapEncoder encoder = BitmapEncoder::CreateAsync(BitmapEncoder::JpegEncoderId(), writestream).get();
+    BitmapEncoder encoder = BitmapEncoder::CreateAsync(BitmapEncoder::JpegEncoderId(), write_stream).get();
     // Set the software bitmap
-    encoder.SetSoftwareBitmap(outputimage.SoftwareBitmap());
+    encoder.SetSoftwareBitmap(output_image.SoftwareBitmap());
 
     encoder.FlushAsync().get();
 
-    BYTE* pData = nullptr;
-    UINT32 uiCapacity = 0;
-    winrt::Windows::Graphics::Imaging::BitmapBuffer spBitmapBuffer(outputimage.SoftwareBitmap().LockBuffer(winrt::Windows::Graphics::Imaging::BitmapBufferAccessMode::Read));
-    winrt::Windows::Foundation::IMemoryBufferReference reference = spBitmapBuffer.CreateReference();
+    BYTE* data = nullptr;
+    UINT32 ui_capacity = 0;
+    winrt::Windows::Graphics::Imaging::BitmapBuffer bitmap_buffer(output_image.SoftwareBitmap().LockBuffer(winrt::Windows::Graphics::Imaging::BitmapBufferAccessMode::Read));
+    winrt::Windows::Foundation::IMemoryBufferReference reference = bitmap_buffer.CreateReference();
     auto spByteAccess = reference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
-    VERIFY_SUCCEEDED(spByteAccess->GetBuffer(&pData, &uiCapacity));
-    VERIFY_ARE_NOT_EQUAL(pData[0], 0);
+    WINML_EXPECT_HRESULT_SUCCEEDED(spByteAccess->GetBuffer(&data, &ui_capacity));
+    WINML_EXPECT_NOT_EQUAL(data[0], 0);
 }
 
-void ImageTests::ImageBindingInputAndOutput()
-{
+TEST_F(ImageTests, ImageBindingInputAndOutput) {
     GPUTEST;
     RunImageBindingInputAndOutput(false /*bindInputAsIInspectable*/);
 }
 
-void ImageTests::ImageBindingInputAndOutput_BindInputTensorAsInspectable()
-{
+TEST_F(ImageTests, ImageBindingInputAndOutput_BindInputTensorAsInspectable) {
     GPUTEST;
     RunImageBindingInputAndOutput(true /*bindInputAsIInspectable*/);
 }
 
-void ImageTests::TestImageBindingStyleTransfer(const wchar_t* modelFileName, const wchar_t* inputDataImageFileName, wchar_t* outputDataImageFileName)
-{
+static void TestImageBindingStyleTransfer(const wchar_t* model_file_name, const wchar_t* input_data_image_filename, wchar_t* output_data_image_filename) {
     GPUTEST;
 
     //this test only checks that the operation completed succefully without crashing
 
-    std::wstring modulePath = FileHelpers::GetModulePath();
+    std::wstring module_path = FileHelpers::GetModulePath();
 
     // WinML model creation
     LearningModel model(nullptr);
-    std::wstring fullModelPath = modulePath + modelFileName;
-    WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(fullModelPath));
-    LearningModelDeviceKind deviceKind = LearningModelDeviceKind::DirectX;
+    std::wstring full_model_path = module_path + model_file_name;
+    WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(full_model_path));
+    LearningModelDeviceKind device_kind = LearningModelDeviceKind::DirectX;
     LearningModelDevice device = nullptr;
-    WINML_EXPECT_NO_THROW(device = LearningModelDevice(deviceKind));
-    LearningModelSession modelSession = nullptr;
-    WINML_EXPECT_NO_THROW(modelSession = LearningModelSession(model, device));
-    LearningModelBinding modelBinding = nullptr;
-    WINML_EXPECT_NO_THROW(modelBinding = LearningModelBinding(modelSession));
+    WINML_EXPECT_NO_THROW(device = LearningModelDevice(device_kind));
+    LearningModelSession model_session = nullptr;
+    WINML_EXPECT_NO_THROW(model_session = LearningModelSession(model, device));
+    LearningModelBinding model_binding = nullptr;
+    WINML_EXPECT_NO_THROW(model_binding = LearningModelBinding(model_session));
 
-    std::wstring fullImagePath = modulePath + inputDataImageFileName;
+    std::wstring full_image_path = module_path + input_data_image_filename;
 
-    StorageFile imagefile = StorageFile::GetFileFromPathAsync(fullImagePath).get();
-    IRandomAccessStream stream = imagefile.OpenAsync(FileAccessMode::Read).get();
-    SoftwareBitmap softwareBitmap = (BitmapDecoder::CreateAsync(stream).get()).GetSoftwareBitmapAsync().get();
-    VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
+    StorageFile image_file = StorageFile::GetFileFromPathAsync(full_image_path).get();
+    IRandomAccessStream stream = image_file.OpenAsync(FileAccessMode::Read).get();
+    SoftwareBitmap software_bitmap = (BitmapDecoder::CreateAsync(stream).get()).GetSoftwareBitmapAsync().get();
+    VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(software_bitmap);
     //aizBUG:3762 Cannot bind the same tensor to 2 different input. will deal with this in a later check in
-    ImageFeatureValue input1imagetensor = ImageFeatureValue::CreateFromVideoFrame(frame);
+    ImageFeatureValue input_1_image_tensor = ImageFeatureValue::CreateFromVideoFrame(frame);
 
     auto feature = model.InputFeatures().First();
-    WINML_EXPECT_NO_THROW(modelBinding.Bind(feature.Current().Name(), input1imagetensor));
+    WINML_EXPECT_NO_THROW(model_binding.Bind(feature.Current().Name(), input_1_image_tensor));
 
-    auto outputtensordescriptor = model.OutputFeatures().First().Current().as<ITensorFeatureDescriptor>();
-    auto outputtensorshape = outputtensordescriptor.Shape();
-    VideoFrame outputimage(BitmapPixelFormat::Rgba8, outputtensorshape.GetAt(3), outputtensorshape.GetAt(2));
-    ImageFeatureValue outputTensor = ImageFeatureValue::CreateFromVideoFrame(outputimage);
+    auto output_tensor_descriptor = model.OutputFeatures().First().Current().as<ITensorFeatureDescriptor>();
+    auto output_tensor_shape = output_tensor_descriptor.Shape();
+    VideoFrame output_image(BitmapPixelFormat::Rgba8, static_cast<int32_t>(output_tensor_shape.GetAt(3)), static_cast<int32_t>(output_tensor_shape.GetAt(2)));
+    ImageFeatureValue output_tensor = ImageFeatureValue::CreateFromVideoFrame(output_image);
 
-    WINML_EXPECT_NO_THROW(modelBinding.Bind(model.OutputFeatures().First().Current().Name(), outputTensor));
+    WINML_EXPECT_NO_THROW(model_binding.Bind(model.OutputFeatures().First().Current().Name(), output_tensor));
 
     // Evaluate the model
-    winrt::hstring correlationId;
-    WINML_EXPECT_NO_THROW(modelSession.EvaluateAsync(modelBinding, correlationId).get());
+    winrt::hstring correlation_id;
+    WINML_EXPECT_NO_THROW(model_session.EvaluateAsync(model_binding, correlation_id).get());
 
     //check the output video frame object
-    StorageFolder currentfolder = StorageFolder::GetFolderFromPathAsync(modulePath).get();
-    StorageFile outimagefile = currentfolder.CreateFileAsync(outputDataImageFileName, CreationCollisionOption::ReplaceExisting).get();
-    IRandomAccessStream writestream = outimagefile.OpenAsync(FileAccessMode::ReadWrite).get();
+    StorageFolder current_folder = StorageFolder::GetFolderFromPathAsync(module_path).get();
+    StorageFile out_image_file = current_folder.CreateFileAsync(output_data_image_filename, CreationCollisionOption::ReplaceExisting).get();
+    IRandomAccessStream write_stream = out_image_file.OpenAsync(FileAccessMode::ReadWrite).get();
 
-    BitmapEncoder encoder = BitmapEncoder::CreateAsync(BitmapEncoder::JpegEncoderId(), writestream).get();
+    BitmapEncoder encoder = BitmapEncoder::CreateAsync(BitmapEncoder::JpegEncoderId(), write_stream).get();
     // Set the software bitmap
-    encoder.SetSoftwareBitmap(outputimage.SoftwareBitmap());
+    encoder.SetSoftwareBitmap(output_image.SoftwareBitmap());
 
     encoder.FlushAsync().get();
 
 }
 
-void ImageTests::ImageBindingStyleTransfer()
-{
+TEST_F(ImageTests, ImageBindingStyleTransfer) {
     //this test only checks that the operation completed succefully without crashing
     TestImageBindingStyleTransfer(L"fns-candy.onnx", L"fish_720.png", L"out_fish_720_StyleTransfer.jpg");
 }
 
-void ImageTests::ImageBindingAsGPUTensor()
-{
+TEST_F(ImageTests, ImageBindingAsGPUTensor) {
     GPUTEST;
 
-    static const wchar_t* modelFileName = L"fns-candy.onnx";
-    std::wstring modulePath = FileHelpers::GetModulePath();
-    static const wchar_t* inputDataImageFileName = L"fish_720.png";
-    static const wchar_t* outputDataImageFileName = L"out_fish_720_StyleTransfer.jpg";
+    static const wchar_t* model_file_name = L"fns-candy.onnx";
+    std::wstring module_path = FileHelpers::GetModulePath();
+    static const wchar_t* input_data_image_filename = L"fish_720.png";
+    static const wchar_t* output_data_image_filename = L"out_fish_720_StyleTransfer.jpg";
 
     // WinML model creation
     LearningModel model(nullptr);
-    std::wstring fullModelPath = modulePath + modelFileName;
-    WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(fullModelPath));
+    std::wstring full_model_path = module_path + model_file_name;
+    WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(full_model_path));
 
-    ID3D12Device* pD3D12Device = nullptr;
-    WINML_EXPECT_NO_THROW(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), reinterpret_cast<void**>(&pD3D12Device)));
-    ID3D12CommandQueue* dxQueue = nullptr;
-    D3D12_COMMAND_QUEUE_DESC commandQueueDesc = {};
-    commandQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-    pD3D12Device->CreateCommandQueue(&commandQueueDesc, __uuidof(ID3D12CommandQueue), reinterpret_cast<void**>(&dxQueue));
-    auto devicefactory = get_activation_factory<LearningModelDevice, ILearningModelDeviceFactoryNative>();
-    auto tensorfactory = get_activation_factory<TensorFloat, ITensorStaticsNative>();
+    ID3D12Device* D3D12_device = nullptr;
+    WINML_EXPECT_NO_THROW(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), reinterpret_cast<void**>(&D3D12_device)));
+    ID3D12CommandQueue* dx_queue = nullptr;
+    D3D12_COMMAND_QUEUE_DESC command_queue_desc = {};
+    command_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+    D3D12_device->CreateCommandQueue(&command_queue_desc, __uuidof(ID3D12CommandQueue), reinterpret_cast<void**>(&dx_queue));
+    auto device_factory = get_activation_factory<LearningModelDevice, ILearningModelDeviceFactoryNative>();
+    auto tensor_factory = get_activation_factory<TensorFloat, ITensorStaticsNative>();
 
 
-    com_ptr<::IUnknown> spUnk;
-    devicefactory->CreateFromD3D12CommandQueue(dxQueue, spUnk.put());
+    com_ptr<::IUnknown> p_unk;
+    device_factory->CreateFromD3D12CommandQueue(dx_queue, p_unk.put());
 
-    LearningModelDevice dmlDeviceCustom = nullptr;
-    WINML_EXPECT_NO_THROW(spUnk.as(dmlDeviceCustom));
-    LearningModelSession dmlSessionCustom = nullptr;
-    WINML_EXPECT_NO_THROW(dmlSessionCustom = LearningModelSession(model, dmlDeviceCustom));
+    LearningModelDevice dml_device_custom = nullptr;
+    WINML_EXPECT_NO_THROW(p_unk.as(dml_device_custom));
+    LearningModelSession dml_session_custom = nullptr;
+    WINML_EXPECT_NO_THROW(dml_session_custom = LearningModelSession(model, dml_device_custom));
 
-    LearningModelBinding modelBinding(dmlSessionCustom);
+    LearningModelBinding model_binding(dml_session_custom);
 
-    std::wstring fullImagePath = modulePath + inputDataImageFileName;
+    std::wstring full_image_path = module_path + input_data_image_filename;
 
-    StorageFile imagefile = StorageFile::GetFileFromPathAsync(fullImagePath).get();
-    IRandomAccessStream stream = imagefile.OpenAsync(FileAccessMode::Read).get();
-    SoftwareBitmap softwareBitmap = (BitmapDecoder::CreateAsync(stream).get()).GetSoftwareBitmapAsync().get();
+    StorageFile image_file = StorageFile::GetFileFromPathAsync(full_image_path).get();
+    IRandomAccessStream stream = image_file.OpenAsync(FileAccessMode::Read).get();
+    SoftwareBitmap software_bitmap = (BitmapDecoder::CreateAsync(stream).get()).GetSoftwareBitmapAsync().get();
 
-    UINT64 bufferbytesize = softwareBitmap.PixelWidth()*softwareBitmap.PixelHeight() * 3 * sizeof(float);
-    D3D12_HEAP_PROPERTIES heapProperties = {
+    UINT64 buffer_byte_size = software_bitmap.PixelWidth()*software_bitmap.PixelHeight() * 3 * sizeof(float);
+    D3D12_HEAP_PROPERTIES heap_properties = {
         D3D12_HEAP_TYPE_DEFAULT,
         D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
         D3D12_MEMORY_POOL_UNKNOWN,
         0,
         0
     };
-    D3D12_RESOURCE_DESC resourceDesc = {
+    D3D12_RESOURCE_DESC resource_desc = {
         D3D12_RESOURCE_DIMENSION_BUFFER,
         0,
-        bufferbytesize,
+        buffer_byte_size,
         1,
         1,
         1,
         DXGI_FORMAT_UNKNOWN,
-    { 1, 0 },
-    D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+        { 1, 0 },
+        D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
     };
 
-    com_ptr<ID3D12Resource> pGPUResource = nullptr;
-    pD3D12Device->CreateCommittedResource(
-        &heapProperties,
+    com_ptr<ID3D12Resource> GPU_resource = nullptr;
+    D3D12_device->CreateCommittedResource(
+        &heap_properties,
         D3D12_HEAP_FLAG_NONE,
-        &resourceDesc,
+        &resource_desc,
         D3D12_RESOURCE_STATE_COMMON,
         nullptr,
         __uuidof(ID3D12Resource),
-        pGPUResource.put_void()
+        GPU_resource.put_void()
     );
-    com_ptr<::IUnknown> spUnkTensor;
-    TensorFloat input1imagetensor(nullptr);
-    __int64 shape[4] = { 1,3, softwareBitmap.PixelWidth(), softwareBitmap.PixelHeight() };
-    tensorfactory->CreateFromD3D12Resource(pGPUResource.get(), shape, 4, spUnkTensor.put());
-    spUnkTensor.try_as(input1imagetensor);
+    com_ptr<::IUnknown> sp_unk_tensor;
+    TensorFloat input_1_image_tensor(nullptr);
+    __int64 shape[4] = { 1,3, software_bitmap.PixelWidth(), software_bitmap.PixelHeight() };
+    tensor_factory->CreateFromD3D12Resource(GPU_resource.get(), shape, 4, sp_unk_tensor.put());
+    sp_unk_tensor.try_as(input_1_image_tensor);
 
     auto feature = model.InputFeatures().First();
-    WINML_EXPECT_NO_THROW(modelBinding.Bind(feature.Current().Name(), input1imagetensor));
+    WINML_EXPECT_NO_THROW(model_binding.Bind(feature.Current().Name(), input_1_image_tensor));
 
-    auto outputtensordescriptor = model.OutputFeatures().First().Current().as<ITensorFeatureDescriptor>();
-    auto outputtensorshape = outputtensordescriptor.Shape();
-    VideoFrame outputimage(BitmapPixelFormat::Rgba8, outputtensorshape.GetAt(3), outputtensorshape.GetAt(2));
-    ImageFeatureValue outputTensor = ImageFeatureValue::CreateFromVideoFrame(outputimage);
+    auto output_tensor_descriptor = model.OutputFeatures().First().Current().as<ITensorFeatureDescriptor>();
+    auto output_tensor_shape = output_tensor_descriptor.Shape();
+    VideoFrame output_image(BitmapPixelFormat::Rgba8, static_cast<int32_t>(output_tensor_shape.GetAt(3)), static_cast<int32_t>(output_tensor_shape.GetAt(2)));
+    ImageFeatureValue output_tensor = ImageFeatureValue::CreateFromVideoFrame(output_image);
 
-    WINML_EXPECT_NO_THROW(modelBinding.Bind(model.OutputFeatures().First().Current().Name(), outputTensor));
+    WINML_EXPECT_NO_THROW(model_binding.Bind(model.OutputFeatures().First().Current().Name(), output_tensor));
 
     // Evaluate the model
-    winrt::hstring correlationId;
-    dmlSessionCustom.EvaluateAsync(modelBinding, correlationId).get();
+    winrt::hstring correlation_id;
+    dml_session_custom.EvaluateAsync(model_binding, correlation_id).get();
 
     //check the output video frame object
-    StorageFolder currentfolder = StorageFolder::GetFolderFromPathAsync(modulePath).get();
-    StorageFile outimagefile = currentfolder.CreateFileAsync(outputDataImageFileName, CreationCollisionOption::ReplaceExisting).get();
-    IRandomAccessStream writestream = outimagefile.OpenAsync(FileAccessMode::ReadWrite).get();
+    StorageFolder current_folder = StorageFolder::GetFolderFromPathAsync(module_path).get();
+    StorageFile out_image_file = current_folder.CreateFileAsync(output_data_image_filename, CreationCollisionOption::ReplaceExisting).get();
+    IRandomAccessStream write_stream = out_image_file.OpenAsync(FileAccessMode::ReadWrite).get();
 
-    BitmapEncoder encoder = BitmapEncoder::CreateAsync(BitmapEncoder::JpegEncoderId(), writestream).get();
+    BitmapEncoder encoder = BitmapEncoder::CreateAsync(BitmapEncoder::JpegEncoderId(), write_stream).get();
     // Set the software bitmap
-    encoder.SetSoftwareBitmap(outputimage.SoftwareBitmap());
+    encoder.SetSoftwareBitmap(output_image.SoftwareBitmap());
 
     encoder.FlushAsync().get();
 }
 
-void ImageTests::GetCleanSession(LearningModelDeviceKind deviceKind, std::wstring modelFilePath, LearningModelDevice &device, LearningModelSession &session)
-{
+static void GetCleanSession(LearningModelDeviceKind device_kind, std::wstring modelFilePath, LearningModelDevice &device, LearningModelSession &session) {
     LearningModel model(nullptr);
-    std::wstring fullModelPath = modelFilePath;
-    WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(fullModelPath));
-    WINML_EXPECT_NO_THROW(device = LearningModelDevice(LearningModelDeviceKind::DirectX));
+    std::wstring full_model_path = modelFilePath;
+    WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(full_model_path));
+    WINML_EXPECT_NO_THROW(device = LearningModelDevice(device_kind));
     WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device));
 }
 
-void ImageTests::BindInputToSession(BindingLocation bindLocation, std::wstring inputDataLocation, LearningModelSession& session, LearningModelBinding& binding)
-{
-    StorageFile imagefile = StorageFile::GetFileFromPathAsync(inputDataLocation).get();
-    IRandomAccessStream stream = imagefile.OpenAsync(FileAccessMode::Read).get();
-    SoftwareBitmap softwareBitmap = (BitmapDecoder::CreateAsync(stream).get()).GetSoftwareBitmapAsync().get();
-    VideoFrame cpuVideoFrame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
-    if (bindLocation == BindingLocation::CPU)
-    {
-        ImageFeatureValue inputImageFeatureValue = ImageFeatureValue::CreateFromVideoFrame(cpuVideoFrame);
-        WINML_EXPECT_NO_THROW(binding.Bind(session.Model().InputFeatures().First().Current().Name(), inputImageFeatureValue));
-    }
-    else
-    {
+static void BindInputToSession(BindingLocation bind_location, std::wstring input_data_location, LearningModelSession& session, LearningModelBinding& binding) {
+    StorageFile image_file = StorageFile::GetFileFromPathAsync(input_data_location).get();
+    IRandomAccessStream stream = image_file.OpenAsync(FileAccessMode::Read).get();
+    SoftwareBitmap software_bitmap = (BitmapDecoder::CreateAsync(stream).get()).GetSoftwareBitmapAsync().get();
+    VideoFrame cpu_video_frame = VideoFrame::CreateWithSoftwareBitmap(software_bitmap);
+    if (bind_location == BindingLocation::CPU) {
+        ImageFeatureValue input_image_feature_value = ImageFeatureValue::CreateFromVideoFrame(cpu_video_frame);
+        WINML_EXPECT_NO_THROW(binding.Bind(session.Model().InputFeatures().First().Current().Name(), input_image_feature_value));
+    } else {
         DirectXPixelFormat format = DirectXPixelFormat::B8G8R8X8UIntNormalized;
-        VideoFrame gpuVideoFrame = VideoFrame::CreateAsDirect3D11SurfaceBacked(DirectXPixelFormat::B8G8R8X8UIntNormalized,
-                                                                               softwareBitmap.PixelWidth(),
-                                                                               softwareBitmap.PixelHeight(),
-                                                                               session.Device().Direct3D11Device());
-        cpuVideoFrame.CopyToAsync(gpuVideoFrame).get();
-        ImageFeatureValue inputImageFeatureValue = ImageFeatureValue::CreateFromVideoFrame(gpuVideoFrame);
-        WINML_EXPECT_NO_THROW(binding.Bind(session.Model().InputFeatures().First().Current().Name(), inputImageFeatureValue));
+        VideoFrame gpu_video_frame = VideoFrame::CreateAsDirect3D11SurfaceBacked(format,
+                                                                                 software_bitmap.PixelWidth(),
+                                                                                 software_bitmap.PixelHeight(),
+                                                                                 session.Device().Direct3D11Device());
+        cpu_video_frame.CopyToAsync(gpu_video_frame).get();
+        ImageFeatureValue input_image_feature_value = ImageFeatureValue::CreateFromVideoFrame(gpu_video_frame);
+        WINML_EXPECT_NO_THROW(binding.Bind(session.Model().InputFeatures().First().Current().Name(), input_image_feature_value));
     }
 }
 
-void ImageTests::BindOutputToSession(BindingLocation bindLocation, LearningModelSession& session, LearningModelBinding& binding)
-{
-    auto outputtensordescriptor = session.Model().OutputFeatures().First().Current().as<ITensorFeatureDescriptor>();
-    auto outputtensorshape = outputtensordescriptor.Shape();
-    if (bindLocation == BindingLocation::CPU)
-    {
-        VideoFrame outputimage(BitmapPixelFormat::Rgba8, outputtensorshape.GetAt(3), outputtensorshape.GetAt(2));
-        ImageFeatureValue outputTensor = ImageFeatureValue::CreateFromVideoFrame(outputimage);
-        WINML_EXPECT_NO_THROW(binding.Bind(session.Model().OutputFeatures().First().Current().Name(), outputTensor));
+static void BindOutputToSession(BindingLocation bind_location, LearningModelSession& session, LearningModelBinding& binding) {
+    auto output_tensor_descriptor = session.Model().OutputFeatures().First().Current().as<ITensorFeatureDescriptor>();
+    auto output_tensor_shape = output_tensor_descriptor.Shape();
+    if (bind_location == BindingLocation::CPU) {
+        VideoFrame output_image(BitmapPixelFormat::Rgba8, static_cast<int32_t>(output_tensor_shape.GetAt(3)), static_cast<int32_t>(output_tensor_shape.GetAt(2)));
+        ImageFeatureValue output_tensor = ImageFeatureValue::CreateFromVideoFrame(output_image);
+        WINML_EXPECT_NO_THROW(binding.Bind(session.Model().OutputFeatures().First().Current().Name(), output_tensor));
     }
-    else
-    {
-        VideoFrame outputimage = VideoFrame::CreateAsDirect3D11SurfaceBacked(DirectXPixelFormat::B8G8R8X8UIntNormalized,
-                                                                               outputtensorshape.GetAt(3),
-                                                                               outputtensorshape.GetAt(2));
-        ImageFeatureValue outputTensor = ImageFeatureValue::CreateFromVideoFrame(outputimage);
-        WINML_EXPECT_NO_THROW(binding.Bind(session.Model().OutputFeatures().First().Current().Name(), outputTensor));
+    else {
+        VideoFrame output_image = VideoFrame::CreateAsDirect3D11SurfaceBacked(DirectXPixelFormat::B8G8R8X8UIntNormalized,
+                                                                               static_cast<int32_t>(output_tensor_shape.GetAt(3)),
+                                                                               static_cast<int32_t>(output_tensor_shape.GetAt(2)));
+        ImageFeatureValue output_tensor = ImageFeatureValue::CreateFromVideoFrame(output_image);
+        WINML_EXPECT_NO_THROW(binding.Bind(session.Model().OutputFeatures().First().Current().Name(), output_tensor));
     }
 }
 
-void ImageTests::SynchronizeGPUWorkloads(const wchar_t* modelFileName, const wchar_t* inputDataImageFileName)
-{
+static void SynchronizeGPUWorkloads(const wchar_t* model_file_name, const wchar_t* input_data_image_filename) {
     //this test only checks that the operations complete succefully without crashing
     GPUTEST;
-    std::wstring modulePath = FileHelpers::GetModulePath();
+    std::wstring module_path = FileHelpers::GetModulePath();
     LearningModelDevice device = nullptr;
     LearningModelSession session = nullptr;
     LearningModelBinding binding = nullptr;
@@ -976,38 +931,38 @@ void ImageTests::SynchronizeGPUWorkloads(const wchar_t* modelFileName, const wch
      */
 
     // Scenario 1
-    GetCleanSession(LearningModelDeviceKind::DirectX, modulePath + modelFileName, device, session);
+    GetCleanSession(LearningModelDeviceKind::DirectX, module_path + model_file_name, device, session);
 
     // input: CPU, output: CPU
     WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
-    BindInputToSession(BindingLocation::CPU, modulePath + inputDataImageFileName, session, binding);
+    BindInputToSession(BindingLocation::CPU, module_path + input_data_image_filename, session, binding);
     BindOutputToSession(BindingLocation::CPU, session, binding);
     WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
 
     // ---> verify that 11 stack is not initialized
-    VERIFY_IS_FALSE(device.as<IDeviceFenceValidator>()->SharedHandleInitialized());
+    WINML_EXPECT_FALSE(device.as<IDeviceFenceValidator>()->SharedHandleInitialized());
 
     // input: CPU, output: GPU
     WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
-    BindInputToSession(BindingLocation::CPU, modulePath + inputDataImageFileName, session, binding);
+    BindInputToSession(BindingLocation::CPU, module_path + input_data_image_filename, session, binding);
     BindOutputToSession(BindingLocation::GPU, session, binding);
     WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
 
     // Scenario 2
-    GetCleanSession(LearningModelDeviceKind::DirectX, modulePath + modelFileName, device, session);
+    GetCleanSession(LearningModelDeviceKind::DirectX, module_path + model_file_name, device, session);
 
     // input: CPU, output: CPU
     WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
-    BindInputToSession(BindingLocation::CPU, modulePath + inputDataImageFileName, session, binding);
+    BindInputToSession(BindingLocation::CPU, module_path + input_data_image_filename, session, binding);
     BindOutputToSession(BindingLocation::CPU, session, binding);
     WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
 
     // ---> verify that 11 stack is not initialized
-    VERIFY_IS_FALSE(device.as<IDeviceFenceValidator>()->SharedHandleInitialized());
+    WINML_EXPECT_FALSE(device.as<IDeviceFenceValidator>()->SharedHandleInitialized());
 
     // input: GPU, output: CPU
     WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
-    BindInputToSession(BindingLocation::GPU, modulePath + inputDataImageFileName, session, binding);
+    BindInputToSession(BindingLocation::GPU, module_path + input_data_image_filename, session, binding);
     BindOutputToSession(BindingLocation::CPU, session, binding);
     WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
 
@@ -1015,20 +970,20 @@ void ImageTests::SynchronizeGPUWorkloads(const wchar_t* modelFileName, const wch
     WINML_EXPECT_TRUE(device.as<IDeviceFenceValidator>()->SharedHandleInitialized());
 
     // Scenario 3
-    GetCleanSession(LearningModelDeviceKind::DirectX, modulePath + modelFileName, device, session);
+    GetCleanSession(LearningModelDeviceKind::DirectX, module_path + model_file_name, device, session);
 
     // input: CPU, output: CPU
     WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
-    BindInputToSession(BindingLocation::CPU, modulePath + inputDataImageFileName, session, binding);
+    BindInputToSession(BindingLocation::CPU, module_path + input_data_image_filename, session, binding);
     BindOutputToSession(BindingLocation::CPU, session, binding);
     WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
 
     // ---> verify that 11 stack is not initialized
-    VERIFY_IS_FALSE(device.as<IDeviceFenceValidator>()->SharedHandleInitialized());
+    WINML_EXPECT_FALSE(device.as<IDeviceFenceValidator>()->SharedHandleInitialized());
 
     // input: GPU, output: GPU
     WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
-    BindInputToSession(BindingLocation::GPU, modulePath + inputDataImageFileName, session, binding);
+    BindInputToSession(BindingLocation::GPU, module_path + input_data_image_filename, session, binding);
     BindOutputToSession(BindingLocation::GPU, session, binding);
     WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
 
@@ -1040,11 +995,11 @@ void ImageTests::SynchronizeGPUWorkloads(const wchar_t* modelFileName, const wch
      */
 
     // Scenario 1
-    GetCleanSession(LearningModelDeviceKind::DirectX, modulePath + modelFileName, device, session);
+    GetCleanSession(LearningModelDeviceKind::DirectX, module_path + model_file_name, device, session);
 
     // input: GPU, output: CPU
     WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
-    BindInputToSession(BindingLocation::GPU, modulePath + inputDataImageFileName, session, binding);
+    BindInputToSession(BindingLocation::GPU, module_path + input_data_image_filename, session, binding);
     BindOutputToSession(BindingLocation::CPU, session, binding);
     WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
 
@@ -1053,27 +1008,26 @@ void ImageTests::SynchronizeGPUWorkloads(const wchar_t* modelFileName, const wch
 
     // input : CPU, output : CPU
     WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
-    BindInputToSession(BindingLocation::CPU, modulePath + inputDataImageFileName, session, binding);
+    BindInputToSession(BindingLocation::CPU, module_path + input_data_image_filename, session, binding);
     BindOutputToSession(BindingLocation::CPU, session, binding);
     WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
 
     // Scenario 2
-    GetCleanSession(LearningModelDeviceKind::DirectX, modulePath + modelFileName, device, session);
+    GetCleanSession(LearningModelDeviceKind::DirectX, module_path + model_file_name, device, session);
 
     // input: CPU, output: GPU
     WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
-    BindInputToSession(BindingLocation::CPU, modulePath + inputDataImageFileName, session, binding);
+    BindInputToSession(BindingLocation::CPU, module_path + input_data_image_filename, session, binding);
     BindOutputToSession(BindingLocation::GPU, session, binding);
     WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
 
     // input : CPU, output : CPU
     WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
-    BindInputToSession(BindingLocation::CPU, modulePath + inputDataImageFileName, session, binding);
+    BindInputToSession(BindingLocation::CPU, module_path + input_data_image_filename, session, binding);
     BindOutputToSession(BindingLocation::CPU, session, binding);
     WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
 }
 
-void ImageTests::SynchronizeGPUWorkloads()
-{
+TEST_F(ImageTests, SynchronizeGPUWorkloads) {
     SynchronizeGPUWorkloads(L"fns-candy.onnx", L"fish_720.png");
 }

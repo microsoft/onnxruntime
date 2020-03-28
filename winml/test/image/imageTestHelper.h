@@ -17,34 +17,6 @@ enum VideoFrameSource { FromSoftwareBitmap, FromDirect3DSurface, FromUnsupported
 
 namespace ImageTestHelper
 {
-    winrt::Windows::AI::MachineLearning::LearningModelDeviceKind GetDeviceKind();
-
-    OutputBindingStrategy GetOutputBindingStrategy();
-
-    std::wstring GetModelFileName();
-
-    std::wstring GetImageFileName();
-
-    std::wstring GetInputPixelFormat();
-
-    std::wstring GetModelPixelFormat();
-
-    uint32_t GetBatchSize();
-
-    std::optional<uint32_t> GetBatchSizeOverride();
-
-    VideoFrameSource GetVideoFrameSource();
-
-    VideoFrameSource GetOutputVideoFrameSource();
-
-    std::vector<std::wstring> GetInputImages();
-
-    EvaluationStrategy GetEvaluationStrategy();
-
-    ModelInputOutputType GetModelInputOutputType();
-
-    InputImageSource GetInputImageSource();
-
     winrt::Windows::Graphics::Imaging::BitmapPixelFormat GetPixelFormat(const std::wstring& inputPixelFormat);
 
     winrt::Windows::AI::MachineLearning::TensorFloat LoadInputImageFromCPU(
