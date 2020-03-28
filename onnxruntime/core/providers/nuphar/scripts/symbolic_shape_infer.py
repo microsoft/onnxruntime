@@ -904,13 +904,9 @@ class SymbolicShapeInference:
         num_scan_states = len(node.input) - num_scan_inputs
         scan_input_axes = [handle_negative_axis(ax, self._get_shape_rank(node, i + num_scan_states)) for i, ax in enumerate(scan_input_axes)]
         # We may have cases where the subgraph has optionial inputs that appear in both subgraph's input and initializer,
-        # but not in the node's input. In such cases, the input model might be invalid, but let's not choke on it.
-        # Instead, let's issue a warning, skip the optional inputs, and keep going forward.
-        subgraph_inputs = subgraph.input
-        if len(subgraph_inputs) != len(node.input):
-            print("warning: skip optionial inputs for scan subgraph {} of scan node {}".format(subgraph.name, node.name))
-            subgraph_initializer_names = [i.name for i in subgraph.initializer]
-            subgraph_inputs = [i for i in subgraph.input if i.name not in subgraph_initializer_names]
+        # but not in the node's input. In such cases, the input model might be invalid, but let's skip those optional inputs.
+        assert len(subgraph.input) >= len(node.input)
+        subgraph_inputs = subgraph.input[:len(node.input)]
         for i, si in enumerate(subgraph_inputs):
             subgraph_name = si.name
             si.CopyFrom(self.known_vi_[node.input[i]])
