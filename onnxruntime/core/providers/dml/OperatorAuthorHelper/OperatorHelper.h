@@ -562,7 +562,7 @@ public:
             ends = operatorInfo.GetOptionalAttributeVectorInt32(AttrName::Ends);
             axes = operatorInfo.GetOptionalAttributeVectorInt32(AttrName::Axes);
         }
-        else if (opsetVersion == 10)
+        else if (opsetVersion == 10 || opsetVersion == 11)
         {
             // Read starts, ends, and axes from tensors.
             ReadIndexTensors(operatorInfo, /*out*/ starts, /*out*/ ends, /*out*/ axes, /*out*/ steps);
@@ -615,6 +615,9 @@ public:
             end = std::min(end, dim);
             int size = std::max(end - start, 0);
 
+            // Set the input window offsets/sizes, and compute output size based on input
+            // window size (rounding up).
+            // e.g. a window size 13 and step 3 yields 5 output elements.
             int absoluteStride = abs(stride);
             m_outputDimensions[dimIndex] = (size / absoluteStride) + (size % absoluteStride != 0);
             m_offsets[dimIndex] = start;
