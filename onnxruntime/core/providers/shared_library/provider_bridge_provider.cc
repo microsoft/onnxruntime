@@ -52,6 +52,10 @@ std::unique_ptr<Prov_OrtMemoryInfo> Prov_OrtMemoryInfo::Create(const char* name_
   return g_host->OrtMemoryInfo_Create(name_, type_, device_, id_, mem_type_);
 }
 
+std::unique_ptr<Prov_IndexedSubGraph> Prov_IndexedSubGraph::Create() {
+  return g_host->IndexedSubGraph_Create();
+}
+
 #if 0
 	template <>
 	MLDataType DataTypeImpl::GetType<bool>() {
@@ -270,11 +274,12 @@ void AttributeProto::set_type(::onnx::AttributeProto_AttributeType value) {
 
 namespace onnxruntime {
 
+#if 0
 void IndexedSubGraph::SetMetaDef(std::unique_ptr<MetaDef>& meta_def_) {
   __debugbreak();
   meta_def_;
 }
-#if 0
+
 const std::string& NodeArg::Name() const noexcept {
   __debugbreak();
   static std::string s_string;
@@ -494,10 +499,12 @@ std::unique_ptr<KernelDef> KernelDefBuilder::Build() {
 }
 #endif
 
-Prov_ComputeCapability::Prov_ComputeCapability(std::unique_ptr<IndexedSubGraph> t_sub_graph) {
+#if 0
+Prov_ComputeCapability::Prov_ComputeCapability(std::unique_ptr<Prov_IndexedSubGraph> t_sub_graph) {
   __debugbreak();
   t_sub_graph;
 }
+#endif
 
 OpKernel::OpKernel(const OpKernelInfo& info) {
   __debugbreak();

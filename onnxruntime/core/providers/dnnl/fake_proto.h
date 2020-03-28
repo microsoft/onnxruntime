@@ -102,29 +102,6 @@ class DataTypeImpl {
   static MLDataType GetTensorType();
 };
 
-struct IExecutionProviderFactory;
-
-struct IndexedSubGraph {
-  struct MetaDef {
-    std::string name;    ///< Name of customized SubGraph/FunctionProto
-    std::string domain;  ///< Domain of customized SubGraph/FunctionProto
-    int since_version;   ///< Since version of customized SubGraph/FunctionProto.
-
-    ONNX_NAMESPACE::OperatorStatus status;  ///< Status of customized SubGraph/FunctionProto.
-
-    std::vector<std::string> inputs;   ///< Inputs of customized SubGraph/FunctionProto.
-    std::vector<std::string> outputs;  ///< Outputs of customized SubGraph/FunctionProto.
-    Prov_NodeAttributes attributes;    ///< Attributes of customized SubGraph/FunctionProto.
-
-    std::string doc_string;  ///< Doc string of customized SubGraph/FunctionProto.
-  };
-
-  /** Nodes covered by this subgraph. The NodeIndex values are from the parent Graph.*/
-  std::vector<onnxruntime::NodeIndex> nodes;
-
-  void SetMetaDef(std::unique_ptr<MetaDef>& meta_def_);
-};
-
 class GraphNodes;
 
 class TensorShape {

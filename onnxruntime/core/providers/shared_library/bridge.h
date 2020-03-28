@@ -1,5 +1,6 @@
 namespace ONNX_NAMESPACE {
 enum AttributeProto_AttributeType;
+enum OperatorStatus;
 
 class ValueInfoProto;
 class TypeProto;
@@ -8,7 +9,7 @@ class OpSchema;
 using DataType = const std::string*;
 
 struct Prov_TensorProto {
-  virtual ~Prov_TensorProto() {}
+  virtual ~Prov_TensorProto() = default;
 
   virtual void CopyFrom(const Prov_TensorProto& v) = 0;
 
@@ -18,7 +19,7 @@ struct Prov_TensorProto {
 struct Prov_AttributeProto {
   static std::unique_ptr<Prov_AttributeProto> Create();
 
-  virtual ~Prov_AttributeProto() {}
+  virtual ~Prov_AttributeProto() = default;
   virtual std::unique_ptr<Prov_AttributeProto> Clone() const = 0;
 
   virtual ::onnx::AttributeProto_AttributeType type() const = 0;
@@ -148,6 +149,7 @@ using Prov_BuildKernelCreateInfoFn = Prov_KernelCreateInfo (*)();
 struct Prov_KernelDefBuilder {
   static std::unique_ptr<Prov_KernelDefBuilder> Create();
 
+  virtual ~Prov_KernelDefBuilder() = default;
   virtual Prov_KernelDefBuilder& SetName(const char* op_name) = 0;
   virtual Prov_KernelDefBuilder& SetDomain(const char* domain) = 0;
   virtual Prov_KernelDefBuilder& SinceVersion(int since_version) = 0;
@@ -163,13 +165,14 @@ using Prov_NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::Prov
 using Prov_InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::Prov_TensorProto*>;
 
 struct Prov_NodeArg {
+  virtual ~Prov_NodeArg() = default;
   virtual const std::string& Name() const noexcept = 0;
   virtual const ONNX_NAMESPACE::Prov_TensorShapeProto* Shape() const = 0;
   virtual ONNX_NAMESPACE::DataType Type() const noexcept = 0;
 };
 
 struct Prov_Node {
-  virtual ~Prov_Node() {}
+  virtual ~Prov_Node() = default;
 
   virtual const std::string& OpType() const noexcept = 0;
 #if 0
@@ -221,6 +224,7 @@ struct Prov_Node {
 };  // namespace onnxruntime
 
 struct Prov_GraphViewer {
+  virtual ~Prov_GraphViewer() = default;
   virtual const std::string& Name() const noexcept = 0;
 #if 0
   virtual const std::string& Description() const noexcept = 0;
@@ -259,15 +263,41 @@ struct Prov_GraphViewer {
 #endif
 };
 
-struct IndexedSubGraph;
+struct Prov_IndexedSubGraph {
+  static std::unique_ptr<Prov_IndexedSubGraph> Create();
+  virtual ~Prov_IndexedSubGraph() = default;
+
+  struct MetaDef {
+    std::string name;    ///< Name of customized SubGraph/FunctionProto
+    std::string domain;  ///< Domain of customized SubGraph/FunctionProto
+    int since_version;   ///< Since version of customized SubGraph/FunctionProto.
+
+    ONNX_NAMESPACE::OperatorStatus status;  ///< Status of customized SubGraph/FunctionProto.
+
+    std::vector<std::string> inputs;   ///< Inputs of customized SubGraph/FunctionProto.
+    std::vector<std::string> outputs;  ///< Outputs of customized SubGraph/FunctionProto.
+    Prov_NodeAttributes attributes;    ///< Attributes of customized SubGraph/FunctionProto.
+
+    std::string doc_string;  ///< Doc string of customized SubGraph/FunctionProto.
+  };
+
+  /** Nodes covered by this subgraph. The NodeIndex values are from the parent Graph.*/
+  std::vector<onnxruntime::NodeIndex> nodes;
+
+  virtual void SetMetaDef(std::unique_ptr<MetaDef>& meta_def_) = 0;
+};
 
 struct Prov_KernelRegistry {
   static std::shared_ptr<Prov_KernelRegistry> Create();
+
+  virtual ~Prov_KernelRegistry() {}
   virtual Status Register(Prov_KernelCreateInfo&& create_info) = 0;
 };
 
 struct Prov_ComputeCapability {
-  Prov_ComputeCapability(std::unique_ptr<IndexedSubGraph> t_sub_graph);
+  Prov_ComputeCapability(std::unique_ptr<Prov_IndexedSubGraph> t_sub_graph) : t_sub_graph_{std::move(t_sub_graph)} {}
+
+  std::unique_ptr<Prov_IndexedSubGraph> t_sub_graph_;
 };
 
 // Provides the base class implementations, since Prov_IExecutionProvider is just an interface. This is to fake the C++ inheritance used by internal IExecutionProvider implementations
@@ -331,6 +361,8 @@ struct ProviderHost {
   virtual std::unique_ptr<Prov_KernelDefBuilder> KernelDefBuilder_Create() = 0;
 
   virtual std::shared_ptr<Prov_KernelRegistry> KernelRegistry_Create() = 0;
+
+  virtual std::unique_ptr<Prov_IndexedSubGraph> IndexedSubGraph_Create() = 0;
 
   //  virtual OrtMemoryInfo* OrtMemoryInfo_constructor(const char* name_, OrtAllocatorType type_, OrtDevice& device_, int id_, OrtMemType mem_type_) = 0;
   //  virtual void OrtMemoryInfo_destructor(OrtMemoryInfo* proxy) = 0;

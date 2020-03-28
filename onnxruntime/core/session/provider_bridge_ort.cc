@@ -91,7 +91,7 @@ struct Prov_TensorProto_Impl : ONNX_NAMESPACE::Prov_TensorProto {
     *p_ = *static_cast<const Prov_TensorProto_Impl*>(&v)->p_;
   }
 
-  ONNX_NAMESPACE::TensorProto* p_;
+  ONNX_NAMESPACE::TensorProto* p_{};
 };  // namespace onnxruntime
 
 struct Prov_AttributeProto_Impl : ONNX_NAMESPACE::Prov_AttributeProto {
@@ -116,9 +116,8 @@ struct Prov_AttributeProto_Impl : ONNX_NAMESPACE::Prov_AttributeProto {
   void set_name(const ::std::string& value) override { v_.set_name(value); }
   void set_type(::onnx::AttributeProto_AttributeType value) override { v_.set_type(value); }
   ::onnx::Prov_TensorProto* add_tensors() override {
-    if (!tensors_)
-      tensors_ = std::make_unique<Prov_TensorProto_Impl>(v_.add_tensors());
-
+    // Kind of a hack, but the pointer is only valid until the next add_tensors call
+    tensors_ = std::make_unique<Prov_TensorProto_Impl>(v_.add_tensors());
     return tensors_.get();
   }
 
@@ -249,6 +248,28 @@ std::unique_ptr<Prov_Node::Prov_NodeIterator> Prov_Node_Impl::InputNodesEnd_inte
   return std::make_unique<Prov_NodeIterator_Impl>(p_->InputNodesEnd());
 }
 
+struct Prov_IndexedSubGraph_Impl : Prov_IndexedSubGraph {
+  void SetMetaDef(std::unique_ptr<MetaDef>& def_) override {
+    auto real = std::make_unique<IndexedSubGraph::MetaDef>();
+
+    real->name = std::move(def_->name);
+    real->domain = std::move(def_->domain);
+    real->since_version = def_->since_version;
+    real->status = def_->status;
+    real->inputs = std::move(def_->inputs);
+    real->outputs = std::move(def_->outputs);
+
+    for (auto& v : def_->attributes)
+      real->attributes.emplace(v.first, static_cast<Prov_AttributeProto_Impl*>(v.second.p_.get())->v_);
+
+    real->doc_string = std::move(def_->doc_string);
+
+    p_->SetMetaDef(real);
+  }
+
+  std::unique_ptr<IndexedSubGraph> p_{std::make_unique<IndexedSubGraph>()};
+};
+
 struct Prov_GraphViewer_Impl : Prov_GraphViewer {
   Prov_GraphViewer_Impl(const GraphViewer& v) : v_{v} {
     for (int i = 0; i < v_.MaxNodeIndex(); i++)
@@ -257,12 +278,15 @@ struct Prov_GraphViewer_Impl : Prov_GraphViewer {
 
   const std::string& Name() const noexcept override { return v_.Name(); }
   const Prov_Node* GetNode(NodeIndex node_index) const override {
-    return &prov_nodes_[node_index];
+    auto& node = prov_nodes_[node_index];
+    if (node.p_)
+      return &node;
+    return nullptr;
   }
   int MaxNodeIndex() const noexcept override { return v_.MaxNodeIndex(); }
   const Prov_InitializedTensorSet& GetAllInitializedTensors() const noexcept override {
     if (initialized_tensor_set_.empty()) {
-      initialized_tensors_.reserve(initialized_tensor_set_.size());
+      initialized_tensors_.reserve(v_.GetAllInitializedTensors().size());
 
       for (auto& v : v_.GetAllInitializedTensors()) {
         initialized_tensors_.emplace_back(const_cast<ONNX_NAMESPACE::TensorProto*>(v.second));
@@ -329,11 +353,13 @@ struct Prov_IExecutionProvider_Router_Impl : Prov_IExecutionProvider_Router, IEx
     for (auto p : kernel_registries)
       registries.push_back(new Prov_KernelRegistry_Impl(const_cast<KernelRegistry*>(p)));
 
-    auto result = outer_->Prov_GetCapability(Prov_GraphViewer_Impl(graph), registries);
-    __debugbreak();
-    graph;
-    kernel_registries;
-    return {};
+    auto prov_result = outer_->Prov_GetCapability(Prov_GraphViewer_Impl(graph), registries);
+    std::vector<std::unique_ptr<ComputeCapability>> result;
+
+    for (auto& p : prov_result)
+      result.emplace_back(std::make_unique<ComputeCapability>(std::move(static_cast<Prov_IndexedSubGraph_Impl*>(p->t_sub_graph_.get())->p_)));
+
+    return result;
   }
 
   common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) override {
@@ -401,6 +427,10 @@ struct ProviderHostImpl : ProviderHost {
 
   std::shared_ptr<Prov_KernelRegistry> KernelRegistry_Create() override {
     return std::make_shared<Prov_KernelRegistry_Impl>();
+  }
+
+  std::unique_ptr<Prov_IndexedSubGraph> IndexedSubGraph_Create() override {
+    return std::make_unique<Prov_IndexedSubGraph_Impl>();
   }
 
   void* IExecutionProvider_constructor(const std::string& type) override {

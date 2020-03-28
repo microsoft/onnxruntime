@@ -379,7 +379,7 @@ void DNNLExecutionProvider::CreateMetaDef(const onnxruntime::Prov_GraphViewer& g
     }
   }
 
-  auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+  auto meta_def = onnxruntime::make_unique<::onnxruntime::Prov_IndexedSubGraph::MetaDef>();
   meta_def->attributes["initializers"] = std::move(initializers);
   meta_def->name = "DnnlCustomOp" + std::to_string(subgraph_index_);
   meta_def->domain = kMSDomain;
@@ -402,7 +402,7 @@ void DNNLExecutionProvider::CreateMetaDef(const onnxruntime::Prov_GraphViewer& g
   ap->set_s(subgraph_id);
   ap->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
   meta_def->attributes["subgraph_id"] = std::move(ap);
-  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
+  auto sub_graph = onnxruntime::Prov_IndexedSubGraph::Create();
   sub_graph->nodes = sub_var.subgraph_node_indexes;
   sub_graph->SetMetaDef(meta_def);
   result.push_back(onnxruntime::make_unique<Prov_ComputeCapability>(std::move(sub_graph)));
