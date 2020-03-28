@@ -1547,7 +1547,7 @@ TEST(ReductionOpTest, ArgMax_int32) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ArgMax_int32_first_index) {
+TEST(ReductionOpTest, ArgMax_int32_last_index) {
   OpTester test("ArgMax", 12);
   test.AddAttribute("axis", (int64_t)1);
   test.AddAttribute("keepdims", (int64_t)1);
@@ -1566,7 +1566,7 @@ TEST(ReductionOpTest, ArgMax_int32_first_index) {
                           {1, 1,
                            1, 1,
                            1, 1});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMax_int32_neg_axis) {
@@ -1614,7 +1614,7 @@ TEST(ReductionOpTest, ArgMax2D_select_last) {
                         9.0f, 10.0f});
   test.AddOutput<int64_t>("reduced", {3, 1},
                           {1, 0, 1});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});  //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMin) {
@@ -1673,7 +1673,7 @@ TEST(ReductionOpTest, ArgMin_do_not_keepdims_2_select_last) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<int64_t>("reduced", {}, {0});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
 }
 
 
@@ -1713,7 +1713,8 @@ TEST(ReductionOpTest, ArgMin_int32_select_last) {
   test.AddOutput<int64_t>("reduced", {2, 2},
                           {1, 0,
                            0, 0});
-  test.Run();
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
 }
 
 #ifdef USE_CUDA
