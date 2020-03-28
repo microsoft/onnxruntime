@@ -118,6 +118,9 @@ class ReduceSum final : public ReduceKernel<true> {
   }
 
   Status Compute(OpKernelContext* context) const override;
+
+  static Tensor ComputeOutput(const Tensor& input, const std::vector<int64_t>& axes,
+                              const AllocatorPtr& allocator);
 };
 
 template <typename T>
