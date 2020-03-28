@@ -690,7 +690,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
   if (IsGradientRequiredForSrcNodeInput(0) && IsGradientRequiredForSrcNodeInput(1)) {
     return std::vector<NodeDef>{
-        NodeDef("DivGrad",
+        NodeDef(OpDef{"DivGrad", kMSDomain, 1},
                 {GO(0), I(0), I(1)},
                 {GI(0), GI(1)})};
   } else if (IsGradientRequiredForSrcNodeInput(0)) {
@@ -710,7 +710,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
     return output;
   } else if (IsGradientRequiredForSrcNodeInput(1)) {
     return std::vector<NodeDef>{
-        NodeDef("DivGrad",
+        NodeDef(OpDef{"DivGrad", kMSDomain, 1},
                 {GO(0), I(0), I(1)},
                 // TODO: this IA("") does not cause kernel to know it is unneeded.
                 // Gradient for the first input is still calculated.

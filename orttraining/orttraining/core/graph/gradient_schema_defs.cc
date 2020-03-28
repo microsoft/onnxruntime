@@ -405,7 +405,8 @@ void RegisterGradientSchemas() {
           "Constrain indices to integer types");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(DivGrad)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "dY", "Gradient of output", "T")
       .Input(1, "A", "dividend", "T")
       .Input(2, "B", "divisor", "T")
