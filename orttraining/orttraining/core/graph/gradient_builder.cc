@@ -553,7 +553,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherGradient) {
       NodeDef("Shape",
               {I(0)},
               {IA("I0_shape")}),
-      NodeDef("GatherGrad",
+      NodeDef(OpDef{"GatherGrad", kMSDomain, 1},
               {IA("I0_shape"), I(1), GO(0)},
               {GI(0)},
               SrcNodeAttributes())};

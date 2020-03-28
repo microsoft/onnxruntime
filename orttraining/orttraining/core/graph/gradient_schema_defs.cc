@@ -380,7 +380,8 @@ void RegisterGradientSchemas() {
           "Constrain input and output types to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherGrad)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "shape", "Shape of the Gather input X.", "I")
       .Input(1, "indices", "Tensor of int32/int64 indices, of any rank q.", "Tind")
       .Input(2, "dY", "Gradient of output", "T")
