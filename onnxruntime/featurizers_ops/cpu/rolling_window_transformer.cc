@@ -61,12 +61,10 @@ struct RollingWindowTransformerImpl {
       //Prepare Input
       grains.clear();
       std::copy(grains_data, grains_data + grains_num, std::back_inserter(grains));
-      GrainT const grains_constref = grains;
-      T const target_data_constref = *target_data;
-      GrainedInputType const input_tuple = std::make_tuple(grains_constref, target_data_constref);
+      GrainedInputType input_tuple = std::make_tuple(grains, *target_data);
 
       //Execute
-      transformer.execute(input_tuple, callback_fn);
+      transformer.execute(static_cast<EstimatorT::InputType>(input_tuple), callback_fn);
 
       target_data++;
       grains_data += grains_num;
