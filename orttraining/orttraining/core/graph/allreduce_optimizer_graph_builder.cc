@@ -98,7 +98,7 @@ static Status AddNcclAllReduceForGradients(
   fused_allreduce_output = ArgDef(fused_gradient_argdef.name + "AllReduce_Out", fused_gradient_argdef.type_proto);
 
   // Add NCCL Allreduce node.
-  graph_defs.AddNodeDefs({NodeDef("NcclAllReduce",
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
                                   {fused_gradient_argdef},
                                   {fused_allreduce_output},
                                   NodeAttributes(),

@@ -721,8 +721,8 @@ void RegisterGradientSchemas() {
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllReduce)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
             AttributeProto::INT,
             static_cast<int64_t>(0))
@@ -737,8 +737,8 @@ void RegisterGradientSchemas() {
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllGather)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
             AttributeProto::INT,
             static_cast<int64_t>(0))
@@ -753,8 +753,8 @@ void RegisterGradientSchemas() {
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclReduceScatter)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
             AttributeProto::INT,
             static_cast<int64_t>(0))

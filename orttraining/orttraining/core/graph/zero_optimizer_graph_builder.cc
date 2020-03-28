@@ -29,7 +29,7 @@ static Status AddNcclReduceScatterForGradients(
   }
 
   // Add NCCL ReduceScatter node.
-  graph_defs.AddNodeDefs({NodeDef("NcclReduceScatter",
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclReduceScatter", kMSDomain, 1},
                                   gradient_argdefs,
                                   reducescatter_outputs,
                                   NodeAttributes(),
@@ -49,7 +49,7 @@ static Status AddNcclAllGatherForWeights(
   }
 
   // Add NCCL AllGather node.
-  graph_defs.AddNodeDefs({NodeDef("NcclAllGather",
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllGather", kMSDomain, 1},
                                   weight_argdefs,
                                   allgather_outputs,
                                   NodeAttributes(),
@@ -75,7 +75,7 @@ static Status AddL2NormNcclAllReduce(
 
   // AllReduce the squared L2 norms.
   ArgDef allreduce_output(norm_argdef.name + "_AllReduce_Out", norm_argdef.type_proto);
-  graph_defs.AddNodeDefs({NodeDef("NcclAllReduce",
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
                                   {norm_squared},
                                   {allreduce_output},
                                   NodeAttributes(),

@@ -887,7 +887,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetBatchNormalizationGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetMegatronFGradient) {
   return std::vector<NodeDef>{
-      NodeDef("NcclAllReduce",
+      NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
               {GO(0)},
               {GI(0)},
               {MakeAttribute("group_type", static_cast<int64_t>(training::WorkerGroupType::HorizontalParallel))})};
