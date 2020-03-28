@@ -47,7 +47,7 @@ static Tensor Transpose(const Tensor& input, const std::vector<size_t>& permutat
   // Pass in allocator as that will be used as an allocator deleter by the framework
   // and it will de-allocate the memory for this intermediate tensor
   // when it goes out of scope
-  Tensor output(input.DataType(), output_dims, allocator, 0);
+  Tensor output(input.DataType(), output_dims, allocator);
   TransposeBase::DoTranspose(permutation, input, output);
   return output;
 }
@@ -74,45 +74,54 @@ static Tensor MatMul(const Tensor& input_1, const Tensor& input_2,
   ORT_ENFORCE(input1_dims[0] == input2_dims[0], "Batch dimension should match");
   ORT_ENFORCE(input1_dims[2] == input2_dims[1], "Incompatible matrix dimensions for multiplication");
 
-  std::vector<int64_t> output_dims;
-  output_dims.reserve(3);
-  output_dims.push_back(input1_dims[0]);
-  output_dims.push_back(input1_dims[1]);
-  output_dims.push_back(input2_dims[2]);
-
-  // Pass in allocator as that will be used as an allocator deleter by the framework
-  // and it will de-allocate the memory for this intermediate tensor
-  // when it goes out of scope
-  Tensor output(input_1.DataType(), output_dims, allocator, 0);
-  int64_t M = static_cast<size_t>(input1_dims[1]);
-  int64_t K = static_cast<size_t>(input1_dims[2]);
-  int64_t N = static_cast<size_t>(input2_dims[2]);
+  size_t batches = static_cast<size_t>(input1_dims[0]);
+  size_t M = static_cast<size_t>(input1_dims[1]);
+  size_t K = static_cast<size_t>(input1_dims[2]);
+  size_t N = static_cast<size_t>(input2_dims[2]);
 
   size_t left_offset = M * K;
   size_t right_offset = K * N;
   size_t output_offset = M * N;
 
+  std::vector<int64_t> output_dims;
+  output_dims.reserve(3);
+  output_dims.push_back(static_cast<int64_t>(batches));
+  output_dims.push_back(static_cast<int64_t>(M));
+  output_dims.push_back(static_cast<int64_t>(N));
+
+  // Pass in allocator as that will be used as an allocator deleter by the framework
+  // and it will de-allocate the memory for this intermediate tensor
+  // when it goes out of scope
+  Tensor output(input_1.DataType(), output_dims, allocator);
+
   // TODO: Switch on data types
+  const float* input_1_data = input_1.template Data<float>();
+  const float* input_2_data = input_2.template Data<float>();
+  float* output_data = output.template MutableData<float>();
+
   // Process each batch
-  for (size_t i = 0; i < static_cast<size_t>(input1_dims[0]); i++) {
+  for (size_t i = 0; i < batches; ++i) {
     math::MatMul<float>(
         static_cast<int>(M),
         static_cast<int>(N),
         static_cast<int>(K),
-        input_1.template Data<float>() + i * left_offset,
-        input_2.template Data<float>() + i * right_offset,
-        output.template MutableData<float>() + i * output_offset, nullptr);
+        input_1_data + i * left_offset,
+        input_2_data + i * right_offset,
+        output_data + i * output_offset, nullptr);  // TODO: Add Threadpool
   }
+
+  return output;
 }
 
-static Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& axes, const AllocatorPtr& allocator) {
+static Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& axes, OpKernelContext* ctx,
+                        const AllocatorPtr& allocator) {
   // TODO: Switch on type
-  return onnxruntime::ReduceSum<float>::ComputeOutput(input, axes, allocator);
+  return onnxruntime::foo(input, axes, ctx, allocator);
 }
 
-static Tensor ReduceSum(const Tensor& input, int64_t axis, const AllocatorPtr& allocator) {
+static Tensor ReduceSum(const Tensor& input, int64_t axis, OpKernelContext* ctx, const AllocatorPtr& allocator) {
   std::vector<int64_t> axes(1, axis);
-  ReduceSum(input, axes, allocator);
+  return ReduceSum(input, axes, ctx, allocator);
 }
 
 }  // namespace EinsumOp
@@ -122,13 +131,14 @@ static Tensor ReduceSum(const Tensor& input, int64_t axis, const AllocatorPtr& a
 // to achieve MatMul(a, b) and reduces (by summing) along specified axes
 static Tensor PairwiseOperandProcess(Tensor& left, Tensor& right,
                                      const std::vector<int64_t>& reduce_dims,
+                                     OpKernelContext* ctx,
                                      const AllocatorPtr& allocator) {
   // Make copies as we may mutate the tensor objects downstream
   std::vector<int64_t> left_dims = left.Shape().GetDims();
   std::vector<int64_t> right_dims = right.Shape().GetDims();
 
-  auto left_rank = static_cast<int64_t>(left_dims.size());
-  auto right_rank = static_cast<int64_t>(right_dims.size());
+  int64_t left_rank = static_cast<int64_t>(left_dims.size());
+  int64_t right_rank = static_cast<int64_t>(right_dims.size());
 
   // If the following error condition is hit, it is most likely a pre-processing bug
   ORT_ENFORCE(left_rank == right_rank, "Ranks of pair-wise operands must be equal");
@@ -147,29 +157,36 @@ static Tensor PairwiseOperandProcess(Tensor& left, Tensor& right,
   int64_t ro_size = 1;
   int64_t reduced_size = 1;
 
-  for (int64_t i = 0; i < left_rank; ++i) {
-    auto left_dim = left_dims[i] > 1;    // non-trivial dimension (dim_value != 1)
-    auto right_dim = right_dims[i] > 1;  // non-trivial dimension (dim_value != 1)
+  size_t reduce_dims_iter = 0;
+  size_t reduce_dims_size = reduce_dims.size();
 
-    if (reduce_dims[i] == 1) {
-      if (left_dim && right_dim) {
+  for (int64_t i = 0; i < left_rank; ++i) {
+    int64_t left_dim = left_dims[i];
+    int64_t right_dim = right_dims[i];
+
+    bool has_left_dim = left_dim > 1;    // non-trivial dimension (dim_value != 1)
+    bool has_right_dim = right_dim > 1;  // non-trivial dimension (dim_value != 1)
+
+    if (reduce_dims_iter < reduce_dims_size && reduce_dims[reduce_dims_iter] == i) {  // reduce_dims will hold the dims to be reduced in a sorted fashion
+      ++reduce_dims_iter;
+      if (has_left_dim && has_right_dim) {
         // Both the left and right operands have non-trivial dimension value along this axis
         // They must be equal
         ORT_ENFORCE(left_dim == right_dim, "TODO");
         reduced_size *= left_dim;
-      } else if (left_dim) {  // if it is only in one of left and right, we can sum right away
-        left = EinsumOp::ReduceSum(left, left_dim);
-      } else if (right_dim) {
-        right = EinsumOp::ReduceSum(right, right_dim);
+      } else if (has_left_dim) {  // if it is only in one of left and right, we can sum right away
+        left = EinsumOp::ReduceSum(left, i, ctx, allocator);
+      } else if (has_right_dim) {
+        right = EinsumOp::ReduceSum(right, i, ctx, allocator);
       }
-    } else {  // This dimension is not reduced (i.e.) it appears in the output
+    } else {  // This dimension is not reduced (i.e.) it appears in the output after processing these 2 operands
       // Both the left and right operands have non-trivial dimension value along this axis
       // They must be equal
-      if (left_dim && right_dim) {
+      if (has_left_dim && has_right_dim) {
         ORT_ENFORCE(left_dim == right_dim, "TODO");
         lro.push_back(i);
         lro_size *= left_dim;
-      } else if (left_dim) {
+      } else if (has_left_dim) {
         // The left operand has non-trivial dimension value
         lo.push_back(i);
         lo_size *= left_dim;
@@ -196,10 +213,10 @@ static Tensor PairwiseOperandProcess(Tensor& left, Tensor& right,
   // Permutate the right operand so that the axes order go like this: [lro, reduce_dims, ro, lo]
   std::vector<size_t> right_permutation;
   right_permutation.reserve(lro.size() + lo.size() + reduce_dims.size() + ro.size());
-  right_permutation.insert(left_permutation.end(), lro.begin(), lro.end());
-  right_permutation.insert(left_permutation.end(), reduce_dims.begin(), reduce_dims.end());
-  right_permutation.insert(left_permutation.end(), ro.begin(), ro.end());
-  right_permutation.insert(left_permutation.end(), lo.begin(), lo.end());
+  right_permutation.insert(right_permutation.end(), lro.begin(), lro.end());
+  right_permutation.insert(right_permutation.end(), reduce_dims.begin(), reduce_dims.end());
+  right_permutation.insert(right_permutation.end(), ro.begin(), ro.end());
+  right_permutation.insert(right_permutation.end(), lo.begin(), lo.end());
   right = EinsumOp::Transpose(right, right_permutation, allocator);
   EinsumOp::CreateReshapedView(right, {lro_size, reduced_size, ro_size});
 
@@ -230,7 +247,8 @@ static Tensor PairwiseOperandProcess(Tensor& left, Tensor& right,
   // the output is permutated as well with respect to the original ordering of the axes.
   // The permutated order will be the dims in: [lro, lo, reduced_dims, ro]
   // Hence invert the permutation by a permutation that puts the axes in the same ordering
-  std::vector<size_t> output_permutation(lro.size() + lo.size() + reduce_dims.size() + ro.size(), -1);
+  std::vector<size_t> output_permutation;
+  output_permutation.resize(lro.size() + lo.size() + reduce_dims.size() + ro.size(), 0);
   size_t iter = 0;
   for (size_t i = 0; i < lro.size(); ++i) {
     output_permutation[lro[i]] = iter++;
@@ -293,6 +311,18 @@ class EinsumPreprocessor final {
     return output_dims_;
   }
 
+  std::vector<Tensor>& GetPreprocessedTensors() {
+    return preprocessed_inputs_;
+  }
+
+  const std::vector<int64_t>& GetMappedIndicesToLastInputIndex() const {
+    return mapped_indices_to_last_input_index_;
+  }
+
+  const int64_t GetNumSubscriptLabels() const {
+    return num_subscript_labels_;
+  }
+
  private:
   void CollectMetadata() {
     std::stringstream str(left_equation_);
@@ -332,7 +362,7 @@ class EinsumPreprocessor final {
 
         // Subscript label not found in global subscript label array
         // Hence add it to both local and global subscript arrays
-        if (subscript_labels_to_dim_value_[dim_value] == -1) {
+        if (subscript_labels_to_index_[index] == -1) {
           subscript_labels_to_dim_value_[index] = dim_value;
           subscript_labels_to_index_[index] = num_subscript_labels_++;
         } else {  // This subscript label has been seen in atleast one other operand's subscript
@@ -372,7 +402,7 @@ class EinsumPreprocessor final {
     }
 
     // Remap the subscript_labels_to_last_input_index_ based on the remapped indices
-    mapped_indices_to_last_input_index_.reserve(num_subscript_labels_);
+    mapped_indices_to_last_input_index_.resize(num_subscript_labels_, -1);
 
     int64_t temp_counter = 0;
     for (size_t i = 0; i < EinsumOp::num_of_letters; ++i) {
@@ -406,7 +436,7 @@ class EinsumPreprocessor final {
 
     //std::vector<int64_t> temp_mapped_indices_to_output_dim_indices_(num_subscript_labels_, -1);
 
-    int64_t iter = 0;
+    //int64_t iter = 0;
     // Iterate through all subscript labels in the output subscript
     for (auto subscript_label : output_subscript_) {
       ORT_ENFORCE(subscript_label >= 'a' && subscript_label <= 'z',
@@ -454,7 +484,7 @@ class EinsumPreprocessor final {
       }
 
       std::vector<size_t> permutation;
-      permutation.resize(input_dims.size());
+      permutation.reserve(input_dims.size());
 
       for (auto& d : subscript_label_to_input_index) {
         if (d != -1) {
@@ -536,7 +566,7 @@ class EinsumPreprocessor final {
   // For example, if the input_dim is [2,3] and the subscript for the input is "ij"
   // and the num_subscript_labels_ is 3 (Order: i, j, k), the homogenized dims
   // will be [2, 3, 1]
-  std::vector<std::vector<int64_t>> homogenized_input_dims_;
+  // std::vector<std::vector<int64_t>> homogenized_input_dims_;
 
   AllocatorPtr allocator_;
 };
@@ -561,6 +591,50 @@ Status Einsum::Compute(OpKernelContext* context) const {
 
   auto einsum_preprocessor = EinsumPreprocessor(equation_, inputs, allocator);
 
+  const auto& mapped_indices_to_last_input_index = einsum_preprocessor.GetMappedIndicesToLastInputIndex();
+
+  auto& preprocessed_tensors = einsum_preprocessor.GetPreprocessedTensors();
+
+  auto num_subscript_labels = einsum_preprocessor.GetNumSubscriptLabels();
+
+  const auto& output_dims = einsum_preprocessor.GetOutputDims();
+
+  auto* output = context->Output(0, output_dims);
+
+  // Preprocess the first input so as to reduce any dims that only it has
+  Tensor result;
+  {
+    std::vector<int64_t> reduced_dims;
+    reduced_dims.reserve(num_subscript_labels);  // num_subscript_labels is the upper bound. No harm in over-reserving.
+    for (int64_t i = 0; i < num_subscript_labels; ++i) {
+      if (mapped_indices_to_last_input_index[i] == 0) {
+        reduced_dims.push_back(i);
+      }
+    }
+    if (reduced_dims.size() != 0) {
+      preprocessed_tensors[0] = EinsumOp::ReduceSum(preprocessed_tensors[0], reduced_dims, context, allocator);
+    }
+    result = std::move(preprocessed_tensors[0]);
+  }
+
+  // Keep processing each input pair-wise
+  if (num_inputs > 1) {
+    for (int input = 1; input < num_inputs; ++input) {
+      std::vector<int64_t> reduced_dims;
+      reduced_dims.reserve(num_subscript_labels);  // num_subscript_labels is the upper bound. No harm in over-reserving.
+      for (int64_t dim = 0; dim < num_subscript_labels; ++dim) {
+        if (mapped_indices_to_last_input_index[dim] == input) {
+          // This is the last input we are seeing this dimension (and it doesn't occur in the output), so reduce along the dimension
+          reduced_dims.push_back(dim);
+        }
+      }
+      result = PairwiseOperandProcess(result, preprocessed_tensors[input], reduced_dims, context, allocator);
+    }
+  }
+
+  // Create a reshaped view of the final result (based on the required output shape for this op)
+  EinsumOp::CreateReshapedView(result, output_dims);
+  *output = std::move(result);
   return Status::OK();
 }
 
