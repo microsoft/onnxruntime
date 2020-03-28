@@ -1123,7 +1123,7 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape, const std::
   std::function<float(float)> transformer_index = [](float x) { return std::fmod(std::fabs(x) * 5.0f, 7.0f); };
   std::function<float(float)> transformer_weight = [](float x) { return std::fmod(std::fabs(x), 2.0f); };
 
- /* // without weight
+  // without weight
   {
     std::vector<int64_t> logit_shape(index_shape.GetDims());
     auto it = logit_shape.begin() + 1;
@@ -1154,7 +1154,7 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape, const std::
                                           {{}, {logit_shape, false}}, &max_error,
                                           {MakeAttribute("reduction", reduction)});
     EXPECT_IS_TINY(max_error);
-  }*/
+  }
 
   // with ignore index
   {
