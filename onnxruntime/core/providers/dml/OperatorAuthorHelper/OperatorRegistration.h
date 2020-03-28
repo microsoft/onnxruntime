@@ -208,6 +208,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Hardmax = 11;
         static const int sc_sinceVer_LogSoftmax = 11;
         static const int sc_sinceVer_MaxPool = 11;
+        static const int sc_sinceVer_MaxUnpool = 11;
         static const int sc_sinceVer_OneHot = 11;
         static const int sc_sinceVer_Pad = 11;
         static const int sc_sinceVer_Range = 11;

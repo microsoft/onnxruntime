@@ -32,7 +32,7 @@ public:
             std::byte tensorBytes[8];
             MLOperatorTensor axisTensor = kernelCreationContext.GetConstantInputTensor(1);
             ReadScalarTensorData(axisTensor, /*out*/ tensorBytes, sizeof(tensorBytes));
-            onnxAxis = gsl::narrow_cast<int32_t>(ReadAsInt64(axisTensor.GetTensorDataType(), /*out*/ tensorBytes));
+            onnxAxis = gsl::narrow_cast<int32_t>(CastToInt64(axisTensor.GetTensorDataType(), /*out*/ tensorBytes));
         }
         uint32_t dmlAxis = GetDmlAdjustedAxis(onnxAxis, kernelCreationContext, m_inputTensorDescs.front().GetDimensionCount());
 
