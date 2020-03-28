@@ -1244,8 +1244,8 @@ void RegisterGradientSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(IsAllFinite)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("IsAllFinite")
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .TypeConstraint(
           "V",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
