@@ -877,6 +877,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       // check whether input shapes match with shapes of program inputs
       migraphx::onnx_options options;
       bool input_shape_match = true;
+      std::size_t param_index = 0;
       for (auto&& name : param_shapes.names())
       {
         if (map_input_index.count(param_index) > 0)
@@ -900,13 +901,13 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       // re-compile the program
       if (!input_shape_match)
       {
-        prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
-        prog.compile(t_);
+        prog = migraphx::parse_onnx_buffer(onnx_string, options);
+        prog.compile(t);
         mgx_state->prog = prog;
       }
 
       std::vector<std::size_t> prog_output_indices;
-      std::size_t param_index = 0;
+      param_index = 0;
       for (auto&& name : param_shapes.names())
       {
         if (map_input_index.count(param_index) > 0)
