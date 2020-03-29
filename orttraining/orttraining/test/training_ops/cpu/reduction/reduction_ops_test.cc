@@ -86,7 +86,7 @@ TEST(AllOpTest, All_1d_large) {
 }
 
 TEST(ReductionOpTest, ReduceAllL2) {
-  OpTester test("ReduceAllL2", 9, onnxruntime::kOnnxDomain, true);
+  OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
   std::vector<float> data0 = {1.0f, 2.0f, 3.0f};
   std::vector<float> data1 = {-1.0f, -2.0f};
 
@@ -97,7 +97,7 @@ TEST(ReductionOpTest, ReduceAllL2) {
 }
 
 TEST(ReductionOpTest, ReduceAllL2HalfHalf) {
-  OpTester test("ReduceAllL2", 9, onnxruntime::kOnnxDomain, true);
+  OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
 
   std::vector<float> data0 = {1.0f, 2.0f, 3.0f};
   std::vector<MLFloat16> data0_half(3);
@@ -119,7 +119,7 @@ TEST(ReductionOpTest, ReduceAllL2HalfHalf) {
 }
 
 TEST(ReductionOpTest, ReduceAllL2FloatHalf) {
-  OpTester test("ReduceAllL2", 9, onnxruntime::kOnnxDomain, true);
+  OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
 
   std::vector<float> data0 = {1.0f, 2.0f, 3.0f};
   std::vector<float> data1 = {-1.0f, -2.0f};
@@ -136,7 +136,7 @@ TEST(ReductionOpTest, ReduceAllL2FloatHalf) {
 }
 
 TEST(ReductionOpTest, ReduceAllL2HalfFloat) {
-  OpTester test("ReduceAllL2", 9, onnxruntime::kOnnxDomain, true);
+  OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
 
   std::vector<float> data0 = {1.0f, 2.0f, 3.0f};
   std::vector<MLFloat16> data0_half(3);
@@ -161,7 +161,7 @@ void TestMultiTensorReduce(
     const int max_tensor_size,
     const float min,
     const float max) {
-  OpTester test("ReduceAllL2", 9, onnxruntime::kOnnxDomain, true);
+  OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
 
   // Set up random number generator.
   std::random_device random_device;

@@ -1356,8 +1356,8 @@ Return true if all elements are true and false otherwise.
           "Constrain input and output types to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceAllL2)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Multi-tensor version of ReduceL2.")
       .Input(0, "X", "inputs", "TIn", OpSchema::Variadic)
