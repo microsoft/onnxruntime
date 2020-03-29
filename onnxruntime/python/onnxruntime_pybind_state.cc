@@ -79,7 +79,13 @@
 #define BACKEND_OPENBLAS ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS
+#if USE_DML
+#define BACKEND_DML "-DML"
+#else
+#define BACKEND_DML ""
+#endif
+
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_DML
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -107,6 +113,9 @@ std::string nuphar_settings;
 #ifdef USE_BRAINSLICE
 #include "core/providers/brainslice/brainslice_provider_factory.h"
 #endif
+#ifdef USE_DML
+#include "core/providers/dml/dml_provider_factory.h"
+#endif
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
@@ -117,6 +126,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t ip, int, int, bool, const char*, const char*, const char*);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -294,6 +304,9 @@ const std::vector<std::string>& GetAvailableProviders() {
 #ifdef USE_BRAINSLICE
     available_providers.push_back(kBrainSliceExecutionProvider);
 #endif
+#ifdef USE_DML
+    available_providers.push_back(kDmlExecutionProvider);
+#endif
     return available_providers;
   };
   static std::vector<std::string> available_providers = InitializeProviders();
@@ -333,6 +346,10 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
     } else if (type == kBrainSliceExecutionProvider) {
 #ifdef USE_BRAINSLICE
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_BrainSlice(0, -1, -1, false, "", "", ""));
+#endif
+    } else if (type == kDmlExecutionProvider) {
+#ifdef USE_DML
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_DML(0));
 #endif
     } else {
       // unknown provider
@@ -418,6 +435,9 @@ void addGlobalMethods(py::module& m, const Environment& env) {
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(0)
+#endif
+#ifdef USE_DML
+            onnxruntime::CreateExecutionProviderFactory_DML(0)
 #endif
         };
 
