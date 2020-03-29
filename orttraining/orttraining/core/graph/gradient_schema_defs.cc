@@ -1286,8 +1286,8 @@ Return true if all elements are true and false otherwise.
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MixedPrecisionScale)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("MixedPrecisionScale")
       .Input(0, "S", "scale", "ScaleT")

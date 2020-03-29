@@ -104,7 +104,7 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
     for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
       inputs.emplace_back(gradient_argdefs[i]);
     }
-    graph_defs.AddNodeDefs({NodeDef("MixedPrecisionScale",
+    graph_defs.AddNodeDefs({NodeDef(OpDef{"MixedPrecisionScale", kMSDomain, 1},
                                     inputs,
                                     {fused_gradient_argdef},
                                     std::vector<AttributeProto>({ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(target_type)),
@@ -119,7 +119,7 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
 
       ArgDef scaled_gradient_argdef = ArgDef(nodearg_name_generator(gradient_argdef.name + "_scaled"),
                                              scaled_gradient_type_proto);
-      graph_defs.AddNodeDefs({NodeDef("MixedPrecisionScale",
+      graph_defs.AddNodeDefs({NodeDef(OpDef{"MixedPrecisionScale", kMSDomain, 1},
                                       {pre_allreduce_scale, gradient_argdef},
                                       {scaled_gradient_argdef},
                                       {ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(target_type))},

@@ -53,7 +53,7 @@ static Status AddReducedGradientScalingNodes(const NodeArgNameGeneratorFn& nodea
     ArgDef scaled_gradient_argdef = ArgDef(nodearg_name_generator(gradient_argdef.name + "_reduced_scaled"),
                                            scaled_gradient_type_proto);
     auto target_type = scaled_gradient_type_proto->mutable_tensor_type()->elem_type();
-    graph_defs.AddNodeDefs({NodeDef("MixedPrecisionScale",
+    graph_defs.AddNodeDefs({NodeDef(OpDef{"MixedPrecisionScale", kMSDomain, 1},
                                     {gradient_scale_argdef, gradient_argdef},
                                     {scaled_gradient_argdef},
                                     {ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(target_type))},
