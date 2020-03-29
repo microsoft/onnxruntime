@@ -547,6 +547,13 @@ void RegisterGradientSchemas() {
           "Compute unbiased 1st and 2nd momentums.",
           AttributeProto::INT,
           static_cast<int64_t>(1))
+      .Attr(
+          "weight_decay_mode",
+          "Modes for applying weight decay, "
+          "0 means applying decay before weight update, "
+          "1 means applying decay after weight update.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
       .TypeConstraint(
           "T1",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
