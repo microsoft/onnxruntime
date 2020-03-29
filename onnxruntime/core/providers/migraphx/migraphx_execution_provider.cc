@@ -826,6 +826,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     // compile the program
     prog.compile(t_);
     map_progs_[fused_node->Name()] = prog;
+    map_onnx_string_[fused_node->Name()] = onnx_string_buffer;
 
     std::unordered_map<std::size_t, std::size_t> input_index_map;
     std::unordered_map<std::size_t, std::size_t> output_index_map;
@@ -849,8 +850,9 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
       std::unique_ptr<MIGraphXFuncState> p = onnxruntime::make_unique<MIGraphXFuncState>();
-      *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_[context->node_name], t_,
-            map_input_index_[context->node_name], map_output_index_[context->node_name], &mgx_mu_};
+      *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_[context->node_name], 
+            map_onnx_string_[context->node_name], t_, map_input_index_[context->node_name], 
+            map_output_index_[context->node_name], &mgx_mu_};
       *state = p.release();
       return 0;
     };
@@ -864,13 +866,44 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       Ort::CustomOpApi ort{*api};
       MIGraphXFuncState* mgx_state = reinterpret_cast<MIGraphXFuncState*>(state);
       std::unordered_map<std::size_t, std::size_t>& map_input_index = mgx_state->input_indexes;
-      //std::unordered_map<std::size_t, std::size_t>& map_output_index = mgx_state->output_indexes;
       migraphx::target t = mgx_state->t;
       migraphx::program& prog = mgx_state->prog;
+      std::string& onnx_string = mgx_state->onnx_string;
 
       migraphx::program_parameter_shapes param_shapes = prog.get_parameter_shapes();
       migraphx::program_parameters m;
       auto prog_output_shapes = prog.get_output_shapes();
+
+      // check whether input shapes match with shapes of program inputs
+      migraphx::onnx_options options;
+      bool input_shape_match = true;
+      for (auto&& name : param_shapes.names())
+      {
+        if (map_input_index.count(param_index) > 0)
+        {
+          const OrtValue* input_tensor = ort.KernelContext_GetInput(context, map_input_index[param_index]);
+          auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+          const auto& tensor_shape = ort.GetTensorShape(tensor_info);
+          std::vector<std::size_t> ort_lens(tensor_shape.begin(), tensor_shape.end());
+
+          auto mgx_s = param_shapes[name];
+          auto mgx_lens = mgx_s.lengths();
+          if (mgx_lens != ort_lens)
+          {
+            input_shape_match = false;
+          }
+          options.add_parameter_shape(name, ort_lens);
+        }
+      }
+
+      // input shapes are different, needs to re-parse onnx and 
+      // re-compile the program
+      if (!input_shape_match)
+      {
+        prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
+        prog.compile(t_);
+        mgx_state->prog = prog;
+      }
 
       std::vector<std::size_t> prog_output_indices;
       std::size_t param_index = 0;
