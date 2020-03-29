@@ -11,7 +11,7 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 static std::pair<bool, Node*> IsInputTranspose(const Graph& graph, NodeArg& node_arg) {
-  auto trans_node = graph.GetProducerNode(node_arg.Name());
+  const auto& trans_node = graph.GetProducerNode(node_arg.Name());
   if (trans_node == nullptr || trans_node->OpType() != "Transpose") {
     return std::make_pair(false, nullptr);
   }
@@ -24,7 +24,7 @@ static std::pair<bool, Node*> IsInputTranspose(const Graph& graph, NodeArg& node
 
   bool is_trans_on_last_two_dims = true;
   for (int64_t i = 0; i < rank - 2; i++) {
-    if ((int64_t)perms[i] != i) {
+    if (perms[i] != i) {
       is_trans_on_last_two_dims = false;
       break;
     }
@@ -66,7 +66,7 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if ((!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9}) &&
-         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeMatMul", {9})) ||
+         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeMatMul", {1}, kMSDomain)) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
       continue;
     }
