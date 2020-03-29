@@ -46,6 +46,10 @@ elif '--use_nuphar' in sys.argv:
     package_name = 'onnxruntime-nuphar'
     sys.argv.remove('--use_nuphar')
 
+elif '--use_dml' in sys.argv:
+    package_name = 'onnxruntime-dml'
+    sys.argv.remove('--use_dml')
+
 if '--nightly_build' in sys.argv:
     package_name = 'ort-nightly'
     nightly_build = True
