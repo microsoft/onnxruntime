@@ -1271,8 +1271,8 @@ Return true if all elements are true and false otherwise.
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(All)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .Input(0, "X", "input", "T")
       .Output(0, "Y", "output.", "T")
