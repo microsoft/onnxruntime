@@ -11,8 +11,8 @@ namespace cuda {
 #define REGISTER_ISFINITE_KERNEL_TYPED(T)                             \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
       IsFinite,                                                       \
-      kOnnxDomain,                                                    \
-      9,                                                              \
+      kMSDomain,                                                      \
+      1,                                                              \
       T,                                                              \
       kCudaExecutionProvider,                                         \
       KernelDefBuilder()                                              \

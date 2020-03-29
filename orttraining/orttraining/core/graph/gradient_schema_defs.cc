@@ -583,7 +583,7 @@ void RegisterGradientSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(LambOptimizer, RegisterLambOpSchema);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(InPlaceAccumulator)
-      .SetDomain(kOnnxDomain)
+      .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc("in-place accumulator for tensors")
       .Input(0, "old_sum", "historical result of accumulator", "T")
@@ -607,7 +607,7 @@ void RegisterGradientSchemas() {
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ZeroGradient)
-      .SetDomain(kOnnxDomain)
+      .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc("reset the accumulator for gradient")
       .Input(0, "old_gradient", "historical result of accumulated gradient", "T1")
@@ -1222,8 +1222,8 @@ void RegisterGradientSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(IsFinite)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("IsFinite")
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},

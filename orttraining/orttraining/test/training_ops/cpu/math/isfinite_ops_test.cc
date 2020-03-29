@@ -12,7 +12,7 @@ namespace test {
 
 #ifdef USE_CUDA
 TEST(IsFiniteTest, Float) {
-  OpTester test("IsFinite", 9);
+  OpTester test("IsFinite", 1, kMSDomain);
 
   std::vector<int64_t> shape = {3};
   std::vector<float> input = {std::numeric_limits<float>::infinity(),
@@ -25,7 +25,7 @@ TEST(IsFiniteTest, Float) {
 }
 
 TEST(IsFiniteTest, Double) {
-  OpTester test("IsFinite", 9);
+  OpTester test("IsFinite", 1, kMSDomain);
 
   std::vector<int64_t> shape = {3};
   std::vector<double> input = {std::numeric_limits<double>::infinity(),
@@ -38,7 +38,7 @@ TEST(IsFiniteTest, Double) {
 }
 
 TEST(IsFiniteTest, MLFloat16) {
-  OpTester test("IsFinite", 9);
+  OpTester test("IsFinite", 1, kMSDomain);
 
   std::vector<int64_t> shape = {3};
   std::vector<float> input = {std::numeric_limits<float>::infinity(),
