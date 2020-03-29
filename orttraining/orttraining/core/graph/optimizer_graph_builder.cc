@@ -71,7 +71,7 @@ ArgDef BuildGroupNode(const std::string& group_output_name,
                       GraphAugmenter::GraphDefs& graph_defs) {
   ArgDef group_output(group_output_name,
                       graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_BOOL));
-  graph_defs.AddNodeDefs({NodeDef("Group",
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"Group", kMSDomain, 1},
                                   input_argdefs,
                                   {group_output},
                                   NodeAttributes(),
