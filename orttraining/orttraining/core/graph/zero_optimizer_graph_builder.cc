@@ -116,7 +116,7 @@ static std::vector<ArgDef> AddViewForParameter(
     view_outputs.push_back(view_argdef);
   }
 
-  graph_defs.AddNodeDefs({NodeDef("View",
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"View", kMSDomain, 1},
                                   view_inputs,
                                   view_outputs,
                                   NodeAttributes(),

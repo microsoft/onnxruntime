@@ -127,7 +127,7 @@ static Status AddNcclAllReduceForGradients(
     allreduce_outputs[i] = ArgDef(gradient_argdefs[i].name + "_AllReduce_Out", allreduced_gradient_type_proto);
   }
 
-  graph_defs.AddNodeDefs({NodeDef("View",
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"View", kMSDomain, 1},
                                   view_inputs,
                                   allreduce_outputs,
                                   NodeAttributes(),

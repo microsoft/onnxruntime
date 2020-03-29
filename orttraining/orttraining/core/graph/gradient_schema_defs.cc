@@ -1341,8 +1341,8 @@ Return true if all elements are true and false otherwise.
   ONNX_CONTRIB_OPERATOR_SCHEMA(View)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("View. The output tensors are views of the input, according to the shapes provided.")
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "input", "Input tensor.", "T")
       .Input(1, "shapes", "Shapes of each view output. The shapes must adds up to the input buffer size.",
              "tensor(int64)",
