@@ -78,7 +78,7 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
 
   // On Cuda it is impossible to dereference indecies memory on CPU so the check can not run
   test.Run(OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=1000 must be within the inclusive range [-3,2]",
-           {kCudaExecutionProvider, kDnnlExecutionProvider, kNupharExecutionProvider, kTensorrtExecutionProvider});
+           {kCudaExecutionProvider, kNGraphExecutionProvider, kDnnlExecutionProvider, kNupharExecutionProvider, kTensorrtExecutionProvider});
 }
 
 #ifdef USE_CUDA
