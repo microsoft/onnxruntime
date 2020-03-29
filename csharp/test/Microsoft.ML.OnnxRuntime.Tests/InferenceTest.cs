@@ -1024,11 +1024,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        // TODO: enable this test when native implementation is fixed.
-        //
-        // a non-zero status code should be returned by native ONNXRuntime when passing pre-allocated string tensors
-        //
-        // [Fact]
+        [Fact]
         private void TestReusingFixedBufferOnnxValueStringType()
         {
             // model takes 1x5 input of fixed type, echoes back
@@ -1040,10 +1036,47 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var ovIn = FixedBufferOnnxValue.CreateFromTensor(tensorIn);
                 var ovOut = FixedBufferOnnxValue.CreateFromTensor(tensorOut);
 
-                Assert.Throws<OnnxRuntimeException>(() =>
+                Assert.Throws<ArgumentException>("outputValues", () =>
                 {
                     session.Run(new[] { "input" }, new[] { ovIn }, new[] { "output" }, new[] { ovOut });
                 });
+            }
+        }
+
+        [Fact]
+        private void TestReusingFixedBufferOnnxValueNonStringTypeMultiInferences()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_INT32.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var bufferInput = new int[5];
+                var bufferOutput = new int[5];
+                var tensorInput = new DenseTensor<int>(bufferInput, new int[] { 1, 5 });
+                var tensorOutput = new DenseTensor<int>(bufferOutput, new int[] { 1, 5 });
+
+                using (FixedBufferOnnxValue valueInput = FixedBufferOnnxValue.CreateFromTensor(tensorInput),
+                                            valueOutput = FixedBufferOnnxValue.CreateFromTensor(tensorOutput))
+                {
+                    var inputNames = new[] { "input" };
+                    var outputNames = new[] { "output" };
+                    var inputValues = new[] { valueInput };
+                    var outputValues = new[] { valueOutput };
+
+                    // run the model for multiple times
+                    for (var i = 0; i < 1000; i++)
+                    {
+                        // feed inputs
+                        var inputs = new int[] { 1, 2, 3, 4, 5 };
+                        inputs.CopyTo(bufferInput, 0);
+
+                        // run inference
+                        session.Run(inputNames, inputValues, outputNames, outputValues);
+
+                        // use outputs
+                        Assert.Equal(inputs, bufferOutput);
+                    }
+                }
             }
         }
 

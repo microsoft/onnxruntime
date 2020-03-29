@@ -23,10 +23,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="value"></param>
         /// <param name="onnxValue"></param>
         /// <param name="pinnedMemoryHandle"></param>
-        internal static void CreateNativeOnnxValue(Object value, out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle)
+        /// <param name="elementType"></param>
+        internal static void CreateNativeOnnxValue(Object value, out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle, out OnnxValueType onnxValueType, out TensorElementType elementType)
         {
             //try to cast _value to Tensor<T>
-            TensorElementType nativeElementType = TensorElementType.DataTypeMax; //invalid
+            elementType = TensorElementType.DataTypeMax; //invalid
             IntPtr dataBufferPointer = IntPtr.Zero;
             int dataBufferLength = 0;
             ReadOnlySpan<int> shape = null;
@@ -40,7 +41,7 @@ namespace Microsoft.ML.OnnxRuntime
                                           out dataBufferLength,
                                           out shape,
                                           out rank,
-                                          out nativeElementType))
+                                          out elementType))
                 {
                 }
                 else if (TryPinAsTensor<double>(value, out pinnedMemoryHandle,
@@ -48,7 +49,7 @@ namespace Microsoft.ML.OnnxRuntime
                                           out dataBufferLength,
                                           out shape,
                                           out rank,
-                                          out nativeElementType))
+                                          out elementType))
                 {
                 }
                 else if (TryPinAsTensor<int>(value, out pinnedMemoryHandle,
@@ -56,7 +57,7 @@ namespace Microsoft.ML.OnnxRuntime
                                           out dataBufferLength,
                                           out shape,
                                           out rank,
-                                          out nativeElementType))
+                                          out elementType))
                 {
                 }
                 else if (TryPinAsTensor<uint>(value, out pinnedMemoryHandle,
@@ -64,7 +65,7 @@ namespace Microsoft.ML.OnnxRuntime
                                           out dataBufferLength,
                                           out shape,
                                           out rank,
-                                          out nativeElementType))
+                                          out elementType))
                 {
                 }
                 else if (TryPinAsTensor<long>(value, out pinnedMemoryHandle,
@@ -72,7 +73,7 @@ namespace Microsoft.ML.OnnxRuntime
                                           out dataBufferLength,
                                           out shape,
                                           out rank,
-                                          out nativeElementType))
+                                          out elementType))
                 {
                 }
                 else if (TryPinAsTensor<ulong>(value, out pinnedMemoryHandle,
@@ -80,7 +81,7 @@ namespace Microsoft.ML.OnnxRuntime
                                           out dataBufferLength,
                                           out shape,
                                           out rank,
-                                          out nativeElementType))
+                                          out elementType))
                 {
                 }
                 else if (TryPinAsTensor<short>(value, out pinnedMemoryHandle,
@@ -88,7 +89,7 @@ namespace Microsoft.ML.OnnxRuntime
                                           out dataBufferLength,
                                           out shape,
                                           out rank,
-                                          out nativeElementType))
+                                          out elementType))
                 {
                 }
                 else if (TryPinAsTensor<ushort>(value, out pinnedMemoryHandle,
@@ -96,7 +97,7 @@ namespace Microsoft.ML.OnnxRuntime
                                           out dataBufferLength,
                                           out shape,
                                           out rank,
-                                          out nativeElementType))
+                                          out elementType))
                 {
                 }
                 else if (TryPinAsTensor<byte>(value, out pinnedMemoryHandle,
@@ -104,7 +105,7 @@ namespace Microsoft.ML.OnnxRuntime
                                           out dataBufferLength,
                                           out shape,
                                           out rank,
-                                          out nativeElementType))
+                                          out elementType))
                 {
                 }
                 else if (TryPinAsTensor<sbyte>(value, out pinnedMemoryHandle,
@@ -112,7 +113,7 @@ namespace Microsoft.ML.OnnxRuntime
                                           out dataBufferLength,
                                           out shape,
                                           out rank,
-                                          out nativeElementType))
+                                          out elementType))
                 {
                 }
                 else if (TryPinAsTensor<bool>(value, out pinnedMemoryHandle,
@@ -120,7 +121,7 @@ namespace Microsoft.ML.OnnxRuntime
                                           out dataBufferLength,
                                           out shape,
                                           out rank,
-                                          out nativeElementType))
+                                          out elementType))
                 {
                 }
                 //TODO: add other types
@@ -131,6 +132,8 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 Debug.Assert(dataBufferPointer != IntPtr.Zero, "dataBufferPointer must be non-null after obtaining the pinned buffer");
+
+                onnxValueType = OnnxValueType.ONNX_TYPE_TENSOR; // set onnx value type to tensor
 
                 // copy to an ulong[] shape to match size_t[]
                 long[] longShape = new long[rank];
@@ -145,7 +148,7 @@ namespace Microsoft.ML.OnnxRuntime
                         (UIntPtr)(dataBufferLength),
                         longShape,
                         (UIntPtr)rank,
-                        nativeElementType,
+                        elementType,
                         out onnxValue
                     );
                 try
@@ -225,6 +228,9 @@ namespace Microsoft.ML.OnnxRuntime
 
                 onnxValue = nativeTensor; // set the output
                 pinnedMemoryHandle = default; // dummy value for the output
+
+                onnxValueType = OnnxValueType.ONNX_TYPE_TENSOR; // set onnx value type to tensor
+                elementType = TensorElementType.String; // set tensor element type to string
             }
         }
 
@@ -344,6 +350,99 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             return false;
+        }
+    }
+
+    internal enum TensorElementType
+    {
+        Float = 1,
+        UInt8 = 2,
+        Int8 = 3,
+        UInt16 = 4,
+        Int16 = 5,
+        Int32 = 6,
+        Int64 = 7,
+        String = 8,
+        Bool = 9,
+        Float16 = 10,
+        Double = 11,
+        UInt32 = 12,
+        UInt64 = 13,
+        Complex64 = 14,
+        Complex128 = 15,
+        BFloat16 = 16,
+        DataTypeMax = 17
+    }
+
+    public enum OnnxValueType
+    {
+        ONNX_TYPE_UNKNOWN = 0,
+        ONNX_TYPE_TENSOR = 1,
+        ONNX_TYPE_SEQUENCE = 2,
+        ONNX_TYPE_MAP = 3,
+        ONNX_TYPE_OPAQUE = 4,
+        ONNX_TYPE_SPARSETENSOR = 5,
+    }
+
+    internal static class TensorElementTypeConverter
+    {
+        public static void GetTypeAndWidth(TensorElementType elemType, out Type type, out int width)
+        {
+            switch (elemType)
+            {
+                case TensorElementType.Float:
+                    type = typeof(float);
+                    width = sizeof(float);
+                    break;
+                case TensorElementType.Double:
+                    type = typeof(double);
+                    width = sizeof(double);
+                    break;
+                case TensorElementType.Int16:
+                    type = typeof(short);
+                    width = sizeof(short);
+                    break;
+                case TensorElementType.UInt16:
+                    type = typeof(ushort);
+                    width = sizeof(ushort);
+                    break;
+                case TensorElementType.Int32:
+                    type = typeof(int);
+                    width = sizeof(int);
+                    break;
+                case TensorElementType.UInt32:
+                    type = typeof(uint);
+                    width = sizeof(uint);
+                    break;
+                case TensorElementType.Int64:
+                    type = typeof(long);
+                    width = sizeof(long);
+                    break;
+                case TensorElementType.UInt64:
+                    type = typeof(ulong);
+                    width = sizeof(ulong);
+                    break;
+                case TensorElementType.UInt8:
+                    type = typeof(byte);
+                    width = sizeof(byte);
+                    break;
+                case TensorElementType.Int8:
+                    type = typeof(sbyte);
+                    width = sizeof(sbyte);
+                    break;
+                case TensorElementType.String:
+                    type = typeof(string);
+                    width = sizeof(byte);
+                    break;
+                case TensorElementType.Bool:
+                    type = typeof(bool);
+                    width = sizeof(bool);
+                    break;
+                default:
+                    type = null;
+                    width = 0;
+                    break;
+            }
         }
     }
 }

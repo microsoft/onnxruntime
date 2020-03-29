@@ -13,11 +13,15 @@ namespace Microsoft.ML.OnnxRuntime
     {
         internal MemoryHandle PinnedMemory { get; private set; }
         internal IntPtr Value { get; private set; }
+        internal OnnxValueType OnnxValueType { get; private set; }
+        internal TensorElementType ElementType { get; private set; }
 
-        internal FixedBufferOnnxValue(MemoryHandle pinnedMemory, IntPtr onnxValue)
+        internal FixedBufferOnnxValue(MemoryHandle pinnedMemory, IntPtr onnxValue, OnnxValueType onnxValueType, TensorElementType elementType)
         {
             PinnedMemory = pinnedMemory;
             Value = onnxValue;
+            OnnxValueType = onnxValueType;
+            ElementType = elementType;
         }
 
         /// <summary>
@@ -28,8 +32,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns></returns>
         public static FixedBufferOnnxValue CreateFromTensor<T>(Tensor<T> value)
         {
-            NativeOnnxValueHelper.CreateNativeOnnxValue(value, out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle);
-            return new FixedBufferOnnxValue(pinnedMemoryHandle, onnxValue);
+            NativeOnnxValueHelper.CreateNativeOnnxValue(value, out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle, out OnnxValueType onnxValueType, out TensorElementType elementType);
+            return new FixedBufferOnnxValue(pinnedMemoryHandle, onnxValue, onnxValueType, elementType);
         }
 
         #region IDisposable Support

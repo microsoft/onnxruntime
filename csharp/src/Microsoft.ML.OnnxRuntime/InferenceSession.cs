@@ -143,7 +143,12 @@ namespace Microsoft.ML.OnnxRuntime
                 inputNamesArray[inputIndex] = input.Name;
 
                 // create Tensor from the input if feasible, else throw notsupported exception for now
-                input.ToNativeOnnxValue(out inputValuesArray[inputIndex], out pinnedInputBufferHandles[inputIndex], out disposeInputs[inputIndex]);
+                input.ToNativeOnnxValue(
+                    out inputValuesArray[inputIndex],
+                    out pinnedInputBufferHandles[inputIndex],
+                    out OnnxValueType onnxValueType,
+                    out TensorElementType elementType,
+                    out disposeInputs[inputIndex]);
 
                 inputIndex++;
             }
@@ -166,8 +171,8 @@ namespace Microsoft.ML.OnnxRuntime
             try
             {
                 NativeApiStatus.VerifySuccess(status);
-                var result = new DisposableList<DisposableNamedOnnxValue>();
-                for (uint i = 0; i < outputValuesArray.Length; i++)
+                var result = new DisposableList<DisposableNamedOnnxValue>(outputValuesArray.Length);
+                for (int i = 0; i < outputValuesArray.Length; i++)
                 {
                     result.Add(DisposableNamedOnnxValue.CreateFromOnnxValue(outputNamesArray[i], outputValuesArray[i]));
                 }
@@ -279,8 +284,8 @@ namespace Microsoft.ML.OnnxRuntime
             try
             {
                 NativeApiStatus.VerifySuccess(status);
-                var result = new DisposableList<DisposableNamedOnnxValue>();
-                for (uint i = 0; i < outputValuesArray.Length; i++)
+                var result = new DisposableList<DisposableNamedOnnxValue>(outputValuesArray.Length);
+                for (int i = 0; i < outputValuesArray.Length; i++)
                 {
                     result.Add(DisposableNamedOnnxValue.CreateFromOnnxValue(outputNamesArray[i], outputValuesArray[i]));
                 }
@@ -365,6 +370,12 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 outputValuesArray[outputIndex] = output.Value;
 
+                // for pre-allocated output, only numberic tensors are supported
+                if (output.OnnxValueType != OnnxValueType.ONNX_TYPE_TENSOR || output.ElementType == TensorElementType.String)
+                {
+                    throw new ArgumentException("Only numberic tensors can be used as pre-allocated output.", nameof(outputValues));
+                }
+
                 outputIndex++;
             }
 
@@ -409,53 +420,69 @@ namespace Microsoft.ML.OnnxRuntime
             IReadOnlyCollection<NamedOnnxValue> outputs,
             RunOptions options)
         {
-            // prepare inputs
             var inputNamesArray = new string[inputs.Count];
             var inputValuesArray = new IntPtr[inputs.Count];
             var pinnedInputBufferHandles = new System.Buffers.MemoryHandle[inputs.Count];
             var disposeInputs = new bool[inputs.Count];
 
-            int inputIndex = 0;
-            foreach (var input in inputs)
-            {
-                inputNamesArray[inputIndex] = input.Name;
-
-                // create native OrtValue from the input if feasible, else throw notsupported exception for now
-                input.ToNativeOnnxValue(out inputValuesArray[inputIndex], out pinnedInputBufferHandles[inputIndex], out disposeInputs[inputIndex]);
-
-                inputIndex++;
-            }
-
-            // prepare outputs
             var outputNamesArray = new string[outputs.Count];
             var outputValuesArray = new IntPtr[outputs.Count];
             var pinnedOutputBufferHandles = new System.Buffers.MemoryHandle[outputs.Count];
             var disposeOutputs = new bool[outputs.Count];
 
-            int outputIndex = 0;
-            foreach (var output in outputs)
-            {
-                outputNamesArray[outputIndex] = output.Name;
-
-                // create native OrtValue from the output if feasible, else throw notsupported exception for now
-                output.ToNativeOnnxValue(out outputValuesArray[outputIndex], out pinnedOutputBufferHandles[outputIndex], out disposeOutputs[outputIndex]);
-
-                outputIndex++;
-            }
-
-            IntPtr status = NativeMethods.OrtRun(
-                                                _nativeHandle,
-                                                options.Handle,
-                                                inputNamesArray,
-                                                inputValuesArray,
-                                                (UIntPtr)inputs.Count,
-                                                outputNamesArray,
-                                                (UIntPtr)outputs.Count,
-                                                outputValuesArray /* pointers to Pre-allocated OrtValue instances */
-                                                );
-
             try
             {
+                // prepare inputs
+                int inputIndex = 0;
+                foreach (var input in inputs)
+                {
+                    inputNamesArray[inputIndex] = input.Name;
+
+                    // create native OrtValue from the input if feasible, else throw notsupported exception for now
+                    input.ToNativeOnnxValue(
+                        out inputValuesArray[inputIndex],
+                        out pinnedInputBufferHandles[inputIndex],
+                        out OnnxValueType onnxValueType,
+                        out TensorElementType elementType,
+                        out disposeInputs[inputIndex]);
+
+                    inputIndex++;
+                }
+
+                // prepare outputs
+                int outputIndex = 0;
+                foreach (var output in outputs)
+                {
+                    outputNamesArray[outputIndex] = output.Name;
+
+                    // create native OrtValue from the output if feasible, else throw notsupported exception for now
+                    output.ToNativeOnnxValue(
+                        out outputValuesArray[outputIndex],
+                        out pinnedOutputBufferHandles[outputIndex],
+                        out OnnxValueType onnxValueType,
+                        out TensorElementType elementType,
+                        out disposeOutputs[outputIndex]);
+
+                    // for pre-allocated output, only numberic tensors are supported
+                    if (onnxValueType != OnnxValueType.ONNX_TYPE_TENSOR || elementType == TensorElementType.String)
+                    {
+                        throw new ArgumentException("Only numberic tensors can be used as pre-allocated output.", nameof(outputs));
+                    }
+
+                    outputIndex++;
+                }
+
+                IntPtr status = NativeMethods.OrtRun(
+                                                    _nativeHandle,
+                                                    options.Handle,
+                                                    inputNamesArray,
+                                                    inputValuesArray,
+                                                    (UIntPtr)inputs.Count,
+                                                    outputNamesArray,
+                                                    (UIntPtr)outputs.Count,
+                                                    outputValuesArray /* pointers to Pre-allocated OrtValue instances */
+                                                    );
+
                 NativeApiStatus.VerifySuccess(status);
             }
             finally
@@ -518,47 +545,60 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new ArgumentException($"Length of {nameof(outputNames)} ({outputNames.Count}) must match that of {nameof(outputValues)} ({outputValues.Count}).");
             }
 
-            // prepare inputs
+
             var inputNamesArray = new string[inputs.Count];
             var inputValuesArray = new IntPtr[inputs.Count];
             var pinnedInputBufferHandles = new System.Buffers.MemoryHandle[inputs.Count];
             var disposeInputs = new bool[inputs.Count];
 
-            int inputIndex = 0;
-            foreach (var input in inputs)
-            {
-                inputNamesArray[inputIndex] = input.Name;
-
-                // create native OrtValue from the input if feasible, else throw notsupported exception for now
-                input.ToNativeOnnxValue(out inputValuesArray[inputIndex], out pinnedInputBufferHandles[inputIndex], out disposeInputs[inputIndex]);
-
-                inputIndex++;
-            }
-
-            // prepare outputs
-            string[] outputNamesArray = outputNames as string[] ?? outputNames.ToArray();
-            IntPtr[] outputValuesArray = new IntPtr[outputNames.Count];
-            int outputIndex = 0;
-            foreach (var output in outputValues)
-            {
-                outputValuesArray[outputIndex] = output.Value;
-
-                outputIndex++;
-            }
-
-            IntPtr status = NativeMethods.OrtRun(
-                                                _nativeHandle,
-                                                options.Handle,
-                                                inputNamesArray,
-                                                inputValuesArray,
-                                                (UIntPtr)inputs.Count,
-                                                outputNamesArray,
-                                                (UIntPtr)outputNames.Count,
-                                                outputValuesArray /* pointers to Pre-allocated OrtValue instances */
-                                                );
-
             try
             {
+                // prepare inputs
+                int inputIndex = 0;
+                foreach (var input in inputs)
+                {
+                    inputNamesArray[inputIndex] = input.Name;
+
+                    // create native OrtValue from the input if feasible, else throw notsupported exception for now
+                    input.ToNativeOnnxValue(
+                        out inputValuesArray[inputIndex],
+                        out pinnedInputBufferHandles[inputIndex],
+                        out OnnxValueType onnxValueType,
+                        out TensorElementType elementType,
+                        out disposeInputs[inputIndex]);
+
+                    inputIndex++;
+                }
+
+                // prepare outputs
+                string[] outputNamesArray = outputNames as string[] ?? outputNames.ToArray();
+                IntPtr[] outputValuesArray = new IntPtr[outputNames.Count];
+                int outputIndex = 0;
+                foreach (var output in outputValues)
+                {
+                    outputValuesArray[outputIndex] = output.Value;
+
+                    // for pre-allocated output, only numberic tensors are supported
+                    if (output.OnnxValueType != OnnxValueType.ONNX_TYPE_TENSOR || output.ElementType == TensorElementType.String)
+                    {
+                        throw new ArgumentException("Only numberic tensors can be used as pre-allocated output.", nameof(outputValues));
+                    }
+
+                    outputIndex++;
+                }
+
+                IntPtr status = NativeMethods.OrtRun(
+                                                    _nativeHandle,
+                                                    options.Handle,
+                                                    inputNamesArray,
+                                                    inputValuesArray,
+                                                    (UIntPtr)inputs.Count,
+                                                    outputNamesArray,
+                                                    (UIntPtr)outputNames.Count,
+                                                    outputValuesArray /* pointers to Pre-allocated OrtValue instances */
+                                                    );
+
+
                 NativeApiStatus.VerifySuccess(status);
             }
             finally
@@ -611,47 +651,60 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new ArgumentException($"Length of {nameof(inputNames)} ({inputNames.Count}) must match that of {nameof(inputValues)} ({inputValues.Count}).");
             }
 
-            // prepare inputs
-            string[] inputNamesArray = inputNames as string[] ?? inputNames.ToArray();
-            IntPtr[] inputValuesArray = new IntPtr[inputNames.Count];
-            int inputIndex = 0;
-            foreach (var input in inputValues)
-            {
-                inputValuesArray[inputIndex] = input.Value;
-
-                inputIndex++;
-            }
-
-            // prepare outputs
             var outputNamesArray = new string[outputs.Count];
             var outputValuesArray = new IntPtr[outputs.Count];
             var pinnedOutputBufferHandles = new System.Buffers.MemoryHandle[outputs.Count];
             var disposeOutputs = new bool[outputs.Count];
 
-            int outputIndex = 0;
-            foreach (var output in outputs)
-            {
-                outputNamesArray[outputIndex] = output.Name;
-
-                // create native OrtValue from the output if feasible, else throw notsupported exception for now
-                output.ToNativeOnnxValue(out outputValuesArray[outputIndex], out pinnedOutputBufferHandles[outputIndex], out disposeOutputs[outputIndex]);
-
-                outputIndex++;
-            }
-
-            IntPtr status = NativeMethods.OrtRun(
-                                                _nativeHandle,
-                                                options.Handle,
-                                                inputNamesArray,
-                                                inputValuesArray,
-                                                (UIntPtr)inputNames.Count,
-                                                outputNamesArray,
-                                                (UIntPtr)outputs.Count,
-                                                outputValuesArray /* pointers to Pre-allocated OrtValue instances */
-                                                );
-
             try
             {
+                // prepare inputs
+                string[] inputNamesArray = inputNames as string[] ?? inputNames.ToArray();
+                IntPtr[] inputValuesArray = new IntPtr[inputNames.Count];
+                int inputIndex = 0;
+                foreach (var input in inputValues)
+                {
+                    inputValuesArray[inputIndex] = input.Value;
+
+                    inputIndex++;
+                }
+
+                // prepare outputs
+
+                int outputIndex = 0;
+                foreach (var output in outputs)
+                {
+                    outputNamesArray[outputIndex] = output.Name;
+
+                    // create native OrtValue from the output if feasible, else throw notsupported exception for now
+                    output.ToNativeOnnxValue(
+                        out outputValuesArray[outputIndex],
+                        out pinnedOutputBufferHandles[outputIndex],
+                        out OnnxValueType onnxValueType,
+                        out TensorElementType elementType,
+                        out disposeOutputs[outputIndex]);
+
+                    // for pre-allocated output, only numberic tensors are supported
+                    if (onnxValueType != OnnxValueType.ONNX_TYPE_TENSOR || elementType == TensorElementType.String)
+                    {
+                        throw new ArgumentException("Only numberic tensors can be used as pre-allocated output.", nameof(outputs));
+                    }
+
+                    outputIndex++;
+                }
+
+                IntPtr status = NativeMethods.OrtRun(
+                                                    _nativeHandle,
+                                                    options.Handle,
+                                                    inputNamesArray,
+                                                    inputValuesArray,
+                                                    (UIntPtr)inputNames.Count,
+                                                    outputNamesArray,
+                                                    (UIntPtr)outputs.Count,
+                                                    outputValuesArray /* pointers to Pre-allocated OrtValue instances */
+                                                    );
+
+
                 NativeApiStatus.VerifySuccess(status);
             }
             finally
