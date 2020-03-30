@@ -54,9 +54,63 @@ REGISTER_KERNEL_TYPED_QL(uint8_t, MLFloat16)
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
+template<typename T>
+void AttentionDynamicQuant<T>::CacheWeights(const OpKernelInfo& info){
+  // Cache the weight
+  const Tensor* W;
+  cache_weight = info.TryGetConstantInput(1, &W);
+
+  if (cache_weight) {
+    const auto dims = W->Shape().GetDims();
+    int k = static_cast<int>(dims[0]);
+    int m = static_cast<int>(dims[1]);
+
+    float transformAlpha = 1.0f;
+    float transformBeta = 0.0f;
+    cublasLtOrder_t order_COL32 = CUBLASLT_ORDER_COL32;
+    cublasLtOrder_t order_COL4_4R2_8C = CUBLASLT_ORDER_COL4_4R2_8C;
+
+    int ldatransform = 32 * m;
+
+    a_transform = cuda_kernel->GetScratchBuffer<int8_t>(roundoff(k, 32) / 32 * ldatransform);
+
+    CUBLAS_CALL_THROW(cublasLtMatrixTransformDescCreate(&transform_desc, CUDA_R_32F));
+
+    // Create descriptors for the original matrices
+    CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&a_desc, CUDA_R_8I, m, k, m));
+
+    // Create descriptors for the transformed matrices
+    CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&AtransformDesc, CUDA_R_8I, m, k, ldatransform));
+    CUBLAS_CALL_THROW(cublasLtMatrixLayoutSetAttribute(AtransformDesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &order_COL32, sizeof(order_COL32)));
+
+    // Transforms and computation
+    CUBLAS_CALL_THROW(cublasLtMatrixTransform(Base::CublasLtHandle(),,
+                                              transform_desc,
+                                              &transformAlpha,
+                                              W->template Data<int8_t>(),
+                                              a_desc,
+                                              &transformBeta,
+                                              NULL,
+                                              NULL,
+                                              a_transform.get(),
+                                              AtransformDesc,
+                                              0));
+  }
+}
+
 template <typename T>
 AttentionDynamicQuant<T>::AttentionDynamicQuant(const OpKernelInfo& info) : CudaKernel(info),
                                                                             AttentionBase(info) {
+  CacheWeights(info);
+}
+
+template <typename T>
+AttentionDynamicQuant<T>::~AttentionDynamicQuant(const OpKernelInfo& info) {
+  // Descriptors are no longer needed as all GPU work was already
+  // enqueued.
+  if (AtransformDesc) cublasLtMatrixLayoutDestroy(AtransformDesc);
+  if (a_desc) cublasLtMatrixLayoutDestroy(a_desc);
+  if (transform_desc) cublasLtMatrixTransformDescDestroy(transform_desc);
 }
 
 template <typename T>
@@ -188,7 +242,8 @@ Status AttentionDynamicQuant<T>::ComputeInternal(OpKernelContext* context) const
   int beta = 0;
   auto gemm_buffer_quantized = GetScratchBuffer<int32_t>(batch_size * sequence_length * 3 * hidden_size);
 
-  LtIgemmTensor(Base::CublasLtHandle(),
+  if(cache_weight){
+    LtIgemmTensor(Base::CublasLtHandle(),AtransformDesc, a_transform, transform_desc,
                 n,
                 m,
                 k,
@@ -201,6 +256,22 @@ Status AttentionDynamicQuant<T>::ComputeInternal(OpKernelContext* context) const
                 gemm_buffer_quantized.get(),
                 n,
                 this);
+  }
+  else{
+    LtIgemmTensor(Base::CublasLtHandle(),
+                n,
+                m,
+                k,
+                alpha,
+                beta,
+                b_ptr,
+                static_cast<int>(n + b_pad_size),
+                a_ptr,
+                static_cast<int>(k + a_pad_size),
+                gemm_buffer_quantized.get(),
+                n,
+                this);
+  }
 
   /*
   CUBLAS_RETURN_IF_ERROR(cublasGemmEx(

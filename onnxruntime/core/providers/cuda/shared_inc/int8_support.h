@@ -41,4 +41,23 @@ void LtIgemmTensor(cublasLtHandle_t ltHandle,
                           int ldc,
                           const CudaKernel* cuda_kernel);
 }
+
+void LtIgemmTensorPrepackB(cublasLtHandle_t ltHandle,
+                           cublasLtMatrixLayout_t AtransformDesc;
+                           IAllocatorUniquePtr<int8_t>& a_transform;
+                           cublasLtMatrixTransformDesc_t transform_desc;
+                          int m,
+                          int n,
+                          int k,
+                          int32_t alpha,
+                          int32_t beta,
+                          const int8_t* A,
+                          int lda,
+                          const int8_t* B,
+                          int ldb,
+                          int32_t* C,
+                          int ldc,
+                          const CudaKernel* cuda_kernel);
+}
+
 }

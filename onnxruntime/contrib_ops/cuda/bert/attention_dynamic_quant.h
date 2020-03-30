@@ -19,6 +19,7 @@ class AttentionDynamicQuant final : public CudaKernel, public AttentionBase {
  using Base = CudaKernel;
  public:
   AttentionDynamicQuant(const OpKernelInfo& info);
+  ~AttentionDynamicQuant();
 
   Status PadMatrix(
       int row,
@@ -29,6 +30,14 @@ class AttentionDynamicQuant final : public CudaKernel, public AttentionBase {
       IAllocatorUniquePtr<int8_t>& temp_mem_holder) const;
 
   Status ComputeInternal(OpKernelContext* context) const override;
+  
+  private:
+  void CacheWeights(const OpKernelInfo& info);
+  bool cache_weight;
+  cublasLtMatrixLayout_t a_desc;
+  cublasLtMatrixLayout_t AtransformDesc;
+  IAllocatorUniquePtr<int8_t> a_transform;
+  cublasLtMatrixTransformDesc_t transform_desc;
 };
 
 }  // namespace cuda
