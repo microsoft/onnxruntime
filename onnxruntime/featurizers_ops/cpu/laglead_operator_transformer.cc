@@ -33,7 +33,7 @@ struct LagLeadOperatorTransformerImpl {
 
     using GrainT = std::vector<std::string>;
     using EstimatorT = Microsoft::Featurizer::Featurizers::GrainedLagLeadOperatorEstimator<T>;
-    using GrainedInputType = std::tuple<GrainT, T>;
+    using GrainedInputType = EstimatorT::InputType;
     using OutputMatrixDataType = typename NS::Traits<T>::nullable_type;
     using OutputMatrixType = NS::RowMajMatrix<OutputMatrixDataType>;
     using OutputType = std::tuple<GrainT, OutputMatrixType>;
@@ -98,7 +98,7 @@ struct LagLeadOperatorTransformerImpl {
       //Prepare Input and Output
       grains.clear();
       std::copy(grains_data, grains_data + grains_num, std::back_inserter(grains));
-      GrainedInputType const input_tuple = std::make_tuple(grains, *target_data);
+      GrainedInputType const input_tuple(grains, *target_data);
       //Execute
       transformer.execute(input_tuple, callback_fn);
       //Pointer Increment
