@@ -11,7 +11,7 @@
 
     <!--internal build related properties-->
     <OnnxRuntimeRoot>..\..\..</OnnxRuntimeRoot>
-    <OnnxRuntimeCsharpRoot>$(OnnxRuntimeBuildDirectory)\csharp</OnnxRuntimeCsharpRoot>
+    <OnnxRuntimeCsharpRoot>$(OnnxRuntimeRoot)\csharp</OnnxRuntimeCsharpRoot>
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
     <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
     <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>  
