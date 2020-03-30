@@ -986,7 +986,7 @@ def main():
                     toolset = 'host=x64'
                 if (args.cuda_version):
                     toolset += ',cuda=' + args.cuda_version
-                cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]        
+                cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_args.append('-DCMAKE_TOOLCHAIN_FILE=' + os.path.join(source_dir, 'cmake', 'wcos_toolchain.cmake'))
         
