@@ -288,15 +288,15 @@ class EinsumPreprocessor final {
     if (mid_index != std::string::npos) {
       // Separate right and left hand sides of the equation
       left_equation_ = einsum_equation_.substr(0, mid_index);
-      output_subscript_ = einsum_equation_.substr(mid_index + 2);
+      right_equation_ = einsum_equation_.substr(mid_index + 2);
       is_explicit_ = true;
     } else {
       left_equation_ = einsum_equation_;
-    }
+    };
 
-    subscript_labels_to_dim_value_.fill(-1);
+    letter_to_index_.fill(-1);
 
-    subscript_labels_to_index_.fill(-1);
+    letter_to_count_.fill(0);
 
     CollectMetadata();
 
@@ -315,8 +315,8 @@ class EinsumPreprocessor final {
     return preprocessed_inputs_;
   }
 
-  const std::vector<int64_t>& GetMappedIndicesToLastInputIndex() const {
-    return mapped_indices_to_last_input_index_;
+  const std::vector<int64_t>& GetMappedSubscriptIndicesToLastInputIndex() const {
+    return index_to_last_input_;
   }
 
   const int64_t GetNumSubscriptLabels() const {
@@ -331,10 +331,7 @@ class EinsumPreprocessor final {
     // Holds mapping between input indices to its corresponding subscript labels
     int64_t input_index = 0;
 
-    std::array<int64_t, EinsumOp::num_of_letters> subscript_labels_to_last_input_index_;
-    subscript_labels_to_last_input_index_.fill(-1);
-
-    mapped_indices_to_input_dim_indices_.reserve(inputs_.size());
+    input_dim_indices_to_subscript_indices_.reserve(inputs_.size());
 
     while (std::getline(str, subscript, ',')) {
       const auto& shape = inputs_[input_index]->Shape();
@@ -342,11 +339,13 @@ class EinsumPreprocessor final {
       size_t rank = dims.size();
       size_t dim_counter = 0;
 
-      std::unordered_map<int64_t, int64_t> mapped_indices_to_input_dim_index;
+      std::vector<int64_t> current_input_dim_indices_to_subscript_indices_;
+      current_input_dim_indices_to_subscript_indices_.reserve(rank);
 
       // Keep track of the subscript labels seen in this specific subscript alone
-      std::array<int64_t, EinsumOp::num_of_letters> local_subscript_labels_seen;
-      local_subscript_labels_seen.fill(-1);
+      std::array<int64_t, EinsumOp::num_of_letters>
+          current_subscript_labels_seen;
+      current_subscript_labels_seen.fill(-1);
 
       // Iterate through all subscript labels in the subscript
       int64_t iter = 0;
@@ -354,23 +353,26 @@ class EinsumPreprocessor final {
         ORT_ENFORCE(subscript_label >= 'a' && subscript_label <= 'z',
                     "The only subscript labels allowed are lowercase letters (a-z)");
 
-        auto index = subscript_label - 'a';
+        auto letter_index = subscript_label - 'a';
         auto dim_value = dims[dim_counter];
-
-        // Update the last input index for this subscript label
-        subscript_labels_to_last_input_index_[index] = input_index;
 
         // Subscript label not found in global subscript label array
         // Hence add it to both local and global subscript arrays
-        if (subscript_labels_to_index_[index] == -1) {
-          subscript_labels_to_dim_value_[index] = dim_value;
-          subscript_labels_to_index_[index] = num_subscript_labels_++;
+        if (letter_to_count_[letter_index] == 0) {
+          ++letter_to_count_[letter_index];
+          letter_to_index_[letter_index] = num_subscript_labels_++;
+          index_to_dim_value_.push_back(dim_value);
+          index_to_last_input_.push_back(input_index);
         } else {  // This subscript label has been seen in atleast one other operand's subscript
           // It must be equal unless one of them is a 1 (Numpy allows this)
-          if (subscript_labels_to_dim_value_[index] != dim_value) {
+          auto mapped_index = letter_to_index_[letter_index];
+
+          index_to_last_input_[mapped_index] = input_index;
+
+          if (index_to_dim_value_[mapped_index] != dim_value) {
             // Set the value to the new dim value if the value is 1 in the map
-            if (subscript_labels_to_dim_value_[index] == 1) {
-              subscript_labels_to_dim_value_[index] = dim_value;
+            if (index_to_dim_value_[mapped_index] == 1) {
+              index_to_dim_value_[mapped_index] = dim_value;
             } else {
               ORT_ENFORCE(dim_value == 1,
                           "Einsum operands could not be broadcast together. "
@@ -379,15 +381,16 @@ class EinsumPreprocessor final {
           }
 
           // This subscript label hasn't been seen in this subscript before
-          if (local_subscript_labels_seen[index] == -1) {
-            local_subscript_labels_seen[index] = 1;
+          if (current_subscript_labels_seen[letter_index] == -1) {
+            current_subscript_labels_seen[letter_index] = 1;
           } else {
-            ++local_subscript_labels_seen[index];
+            ++current_subscript_labels_seen[letter_index];
             ORT_ENFORCE(false, "Diagonal parsing supported yet");
           }
         }
 
-        mapped_indices_to_input_dim_index[subscript_labels_to_index_[index]] = iter++;
+      // TODO: Account for broadcasting
+        current_input_dim_indices_to_subscript_indices_.push_back(letter_to_index_[letter_index]);
 
         ORT_ENFORCE(++dim_counter <= rank,
                     "Einsum subscripts string contains too many subscript labels for input ", input_index);
@@ -397,22 +400,9 @@ class EinsumPreprocessor final {
       ORT_ENFORCE(dim_counter == rank,
                   "Einsum subscripts does not contain enough subscript labels and there is no ellipsis for input ", input_index);
 
-      mapped_indices_to_input_dim_indices_.push_back(std::move(mapped_indices_to_input_dim_index));
+      input_dim_indices_to_subscript_indices_.push_back(std::move(current_input_dim_indices_to_subscript_indices_));
       ++input_index;
     }
-
-    // Remap the subscript_labels_to_last_input_index_ based on the remapped indices
-    mapped_indices_to_last_input_index_.resize(num_subscript_labels_, -1);
-
-    int64_t temp_counter = 0;
-    for (size_t i = 0; i < EinsumOp::num_of_letters; ++i) {
-      auto val = subscript_labels_to_last_input_index_[i];
-      if (val != -1) {
-        ++temp_counter;
-        mapped_indices_to_last_input_index_[subscript_labels_to_index_[i]] = val;
-      }
-    }
-    ORT_ENFORCE(temp_counter == num_subscript_labels_);
   }
 
   // Check if the Einsum equation has an explicit form (equation string contains "->")
@@ -420,7 +410,7 @@ class EinsumPreprocessor final {
   // If it is of implicit form (equation string does not contain "->"), compose the output subscript
   // If the output subscript is an empty string, the result is a scalar
   void ParseOrCreateOutputSubscript() {
-    // Implicit form - construct the output subscript.
+    // Implicit form - construct the output subscript
     // Explicit form - no op as the output would have been parsed while parsing the input
     if (!is_explicit_) {
       return;
@@ -432,26 +422,26 @@ class EinsumPreprocessor final {
   void CalculateOutputShape() {
     // TODO: Account for broadcasting
 
-    output_dims_.reserve(output_subscript_.length());
+    output_dims_.reserve(right_equation_.length());
 
     //std::vector<int64_t> temp_mapped_indices_to_output_dim_indices_(num_subscript_labels_, -1);
 
     //int64_t iter = 0;
     // Iterate through all subscript labels in the output subscript
-    for (auto subscript_label : output_subscript_) {
+    for (auto subscript_label : right_equation_) {
       ORT_ENFORCE(subscript_label >= 'a' && subscript_label <= 'z',
                   "The only subscript labels allowed are lowercase letters (a-z)");
 
-      auto index = subscript_label - 'a';
-
-      ORT_ENFORCE(subscript_labels_to_index_[index] != -1,
+      auto letter_index = subscript_label - 'a';
+      auto mapped_index = letter_to_index_[letter_index];
+      ORT_ENFORCE(mapped_index != -1,
                   "Output subscript contains letters not seen in the inputs");
 
-      output_dims_.push_back(subscript_labels_to_dim_value_[index]);
+      output_dims_.push_back(index_to_dim_value_[mapped_index]);
 
       // Reset the last input index for this subscript label
       // given that it is seen in the output and hence can't be reduced
-      mapped_indices_to_last_input_index_[subscript_labels_to_index_[index]] = -1;
+      index_to_last_input_[mapped_index] = -1;
 
       //temp_mapped_indices_to_output_dim_indices_[subscript_labels_to_index_[index]] = iter++;
     }
@@ -462,14 +452,7 @@ class EinsumPreprocessor final {
 
   void PreprocessInputs() {
     preprocessed_inputs_.reserve(inputs_.size());
-
-    // Pre-process inputs by permutating the dims and homogenizing input dims
-    // Example: For an input with dim [2, 3], with subscript label "kj", and
-    // subscript_labels_to_index_ - {i -> 0, j->1, k->2}, since "j" comes ahead of "k"
-    // in the order, we would have to permutate the input with permutation [1, 0].
-    // After this the shape is [3, 2], we would have to account for the unseen subscript label
-    // and unsqueeze the corresponding dim to make the final shape: [1, 3, 2]
-
+    // TODO: Write comments
     int64_t iter = 0;
     for (const auto* input : inputs_) {
       const auto& input_dims = input->Shape().GetDims();
@@ -477,10 +460,9 @@ class EinsumPreprocessor final {
       std::vector<int64_t> subscript_label_to_input_index(num_subscript_labels_, -1);
       std::vector<int64_t> homogenized_input_dims(num_subscript_labels_, 1);
 
-      auto mapped_index_to_input_dim_indices_ = mapped_indices_to_input_dim_indices_[iter];
-      for (auto pair : mapped_index_to_input_dim_indices_) {
-        homogenized_input_dims[pair.first] = input_dims[pair.second];
-        subscript_label_to_input_index[pair.first] = pair.second;
+      auto current_input_dim_indices_to_subscript_indices_ = input_dim_indices_to_subscript_indices_[iter];
+      for (size_t i = 0; i < current_input_dim_indices_to_subscript_indices_.size(); ++i) {
+        subscript_label_to_input_index[current_input_dim_indices_to_subscript_indices_[i]] = i;
       }
 
       std::vector<size_t> permutation;
@@ -520,7 +502,7 @@ class EinsumPreprocessor final {
   bool is_explicit_ = false;
 
   // Holds constructed or parsed output subscript
-  std::string output_subscript_;
+  std::string right_equation_;
 
   // All original inputs to the op
   const std::vector<const Tensor*>& inputs_;
@@ -528,47 +510,44 @@ class EinsumPreprocessor final {
   // All preprocessed inputs
   std::vector<Tensor> preprocessed_inputs_;
 
-  // Hold the dim value corresponding to the subscript labels seen
-  // `-1` means the corresponding label wasn't seen at all
-  // The size is fixed at 26 (one for each letter of the alphabet - 'a' to 'z')
-  std::array<int64_t, EinsumOp::num_of_letters> subscript_labels_to_dim_value_;
-
-  // Hold the assigned index corresponding to the subscript labels seen
-  // `-1` means the corresponding label wasn't seen at all
-  std::array<int64_t, EinsumOp::num_of_letters> subscript_labels_to_index_;
-
-  // Holds the input index of the last operand to have the correpesponding subscript label
-  // (based on the index which is given by the subscript_labels_to_index_)
-  // If the value is `-1`, then the subscript label is never seen (or)
-  // it appears in the output
-  std::vector<int64_t> mapped_indices_to_last_input_index_;
-
   // Count of unique subscript labels
-  // E.g.: With equation -> 'ij, jk -> ik'
+  // E.g. 1 : With equation -> 'ij, jk -> ik'
   // num_subscript_labels_ = 3 (i, j, k)
+  // E.g. 2 : With equation -> '...ij', 'jk' -> '...ik'
+  // num_subscript_labels_ = 3 + rank corresponding to the dims specified
+  // by the ellipses (across all inputs)
   int64_t num_subscript_labels_ = 0;
+
+  // Hold the count corresponding to the letter seen
+  // `0` means the corresponding letter wasn't seen at all
+  std::array<int64_t, EinsumOp::num_of_letters> letter_to_count_;
+
+  // Hold the assigned index corresponding to the letter seen
+  // `-1` means the corresponding letter wasn't seen at all
+  std::array<int64_t, EinsumOp::num_of_letters> letter_to_index_;
+
+  // Holds the input index of the last input to have the index correpesponding to the subscript label
+  // If the value is `-1`, then the subscript label is never seen (or) it appears in the output
+  std::vector<int64_t> index_to_last_input_;
+
+  // Hold the dim value of the index correpesponding to the subscript label
+  // `-1` means the corresponding label wasn't seen at all
+  std::vector<int64_t> index_to_dim_value_;
 
   // Holds the final calculated output dimensions
   std::vector<int64_t> output_dims_;
 
-  // Holds the actual index of the output dims in the index corresponding to a subscript label
-  // (based on the index which is given by the subscript_labels_to_index_)
-  // A value of `-1` means that the subscript label is not present in the output
-  //std::vector<int64_t> mapped_indices_to_output_dim_indices_;
+  // TODO: Fill in description
+  std::vector<std::vector<int64_t>> input_dim_indices_to_subscript_indices_;
 
-  // For each input, Holds the actual index of the input dim (value)
-  // in the index corresponding to a subscript label (key)
-  // (The key is based on the index which is given by the subscript_labels_to_index_)
-  // A value of `-1` means that the subscript label is not present in the input
-  std::vector<std::unordered_map<int64_t, int64_t>> mapped_indices_to_input_dim_indices_;
-
+  // TODO: Unfinalized
   // For each input, holds its corresponding input_dims which have been "homogenized"
   // For example, if the input_dim is [2,3] and the subscript for the input is "ij"
   // and the num_subscript_labels_ is 3 (Order: i, j, k), the homogenized dims
   // will be [2, 3, 1]
   // std::vector<std::vector<int64_t>> homogenized_input_dims_;
 
-  AllocatorPtr allocator_;
+  const AllocatorPtr& allocator_;
 };
 
 Status Einsum::Compute(OpKernelContext* context) const {
@@ -591,7 +570,7 @@ Status Einsum::Compute(OpKernelContext* context) const {
 
   auto einsum_preprocessor = EinsumPreprocessor(equation_, inputs, allocator);
 
-  const auto& mapped_indices_to_last_input_index = einsum_preprocessor.GetMappedIndicesToLastInputIndex();
+  const auto& mapped_indices_to_last_input_index = einsum_preprocessor.GetMappedSubscriptIndicesToLastInputIndex();
 
   auto& preprocessed_tensors = einsum_preprocessor.GetPreprocessedTensors();
 
