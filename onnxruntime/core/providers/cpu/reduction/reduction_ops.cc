@@ -462,7 +462,7 @@ Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
   if (no_transpose) {
     const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
 
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp parallel for
 #endif
     for (int64_t i = 0; i < block_size; ++i) {
@@ -538,7 +538,7 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
   if (no_transpose) {
     const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
 
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp parallel for
 #endif
     for (int64_t i = 0; i < block_size; ++i) {

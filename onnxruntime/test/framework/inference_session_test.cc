@@ -1996,13 +1996,13 @@ TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
   ASSERT_TRUE((st = session_object_1.Load()).IsOK()) << st.ErrorMessage();
   ASSERT_TRUE((st = session_object_1.Initialize()).IsOK()) << st.ErrorMessage();
 
-  // The default value for inter_op_num_threads is 0
-  // The model requests for inter_op_num_threads to be 5
-  ASSERT_TRUE(session_object_1.GetSessionOptions().inter_op_num_threads == 5);
+  // The default value for inter_op_param.thread_pool_size is 0
+  // The model requests for inter_op_param.thread_pool_size to be 5
+  ASSERT_TRUE(session_object_1.GetSessionOptions().inter_op_param.thread_pool_size == 5);
 
-  // The default value for intra_op_num_threads is 0
-  // The model requests for intra_op_num_threads to be 2
-  ASSERT_TRUE(session_object_1.GetSessionOptions().intra_op_num_threads == 2);
+  // The default value for intra_op_param.thread_pool_size is 0
+  // The model requests for intra_op_param.thread_pool_size to be 2
+  ASSERT_TRUE(session_object_1.GetSessionOptions().intra_op_param.thread_pool_size == 2);
 
   // The default value for execution_mode is ORT_SEQUENTIAL
   // The model's config doesn't explicitly request a mode in the ORT config Json - hence the default should be used
@@ -2024,7 +2024,7 @@ TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
 #endif
 
   // Change from default value for one option
-  so.intra_op_num_threads = 2;
+  so.intra_op_param.thread_pool_size = 2;
 
   // Create session
   InferenceSession session_object_2{so, GetEnvironment(), model_path};
@@ -2039,8 +2039,8 @@ TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
   ASSERT_FALSE(session_object_2.GetSessionOptions().enable_profiling);
 
   // In the session options object fed in at session creation,
-  // the request was for intra_op_num_threads to be 2 - that should be honored
-  ASSERT_TRUE(session_object_2.GetSessionOptions().intra_op_num_threads == 2);
+  // the request was for intra_op_param.thread_pool_size to be 2 - that should be honored
+  ASSERT_TRUE(session_object_2.GetSessionOptions().intra_op_param.thread_pool_size == 2);
 }
 
 TEST(InferenceSessionTests, LoadModelWithInValidOrtConfigJson) {
@@ -2072,7 +2072,7 @@ TEST(InferenceSessionTests, LoadModelWithInValidOrtConfigJson) {
 #endif
 
   // Change from default value for one option
-  so.intra_op_num_threads = 2;
+  so.intra_op_param.thread_pool_size = 2;
 
   // Create session
   InferenceSession session_object_2{so, GetEnvironment(), model_path};
@@ -2086,8 +2086,8 @@ TEST(InferenceSessionTests, LoadModelWithInValidOrtConfigJson) {
   ASSERT_TRUE(session_object_2.GetSessionOptions().execution_mode == ExecutionMode::ORT_SEQUENTIAL);
 
   // In the session options object fed in at session creation,
-  // the request was for intra_op_num_threads to be 2 - that should be honored
-  ASSERT_TRUE(session_object_2.GetSessionOptions().intra_op_num_threads == 2);
+  // the request was for intra_op_param.thread_pool_size to be 2 - that should be honored
+  ASSERT_TRUE(session_object_2.GetSessionOptions().intra_op_param.thread_pool_size == 2);
 }
 
 TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
@@ -2100,7 +2100,7 @@ TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
 
   SessionOptions so;
   // Change from default value for one option
-  so.intra_op_num_threads = 2;
+  so.intra_op_param.thread_pool_size = 2;
 
   std::string model_path = "testdata/transform/abs-id-max.onnx";
 
@@ -2112,10 +2112,10 @@ TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
   ASSERT_TRUE((st = session_object_1.Load()).IsOK()) << st.ErrorMessage();
   ASSERT_TRUE((st = session_object_1.Initialize()).IsOK()) << st.ErrorMessage();
 
-  // The custom session options instance requested intra_op_num_threads == 2,
+  // The custom session options instance requested intra_op_param.thread_pool_size == 2,
   // but since the session tried to look into the model for the config, and didn't find any
   // the defaults would be used for session creation
-  ASSERT_TRUE(session_object_1.GetSessionOptions().intra_op_num_threads == 0);
+  ASSERT_TRUE(session_object_1.GetSessionOptions().intra_op_param.thread_pool_size == 0);
 
   // Part 2 - Load config from model feature disabled
   // The missing config json should not come into the picture
@@ -2126,15 +2126,15 @@ TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
 #endif
 
   // Create session
-  InferenceSession session_object_2{so, GetEnvironment(), model_path};  // so has inter_op_num_threads set to 2
+  InferenceSession session_object_2{so, GetEnvironment(), model_path};  // so has inter_op_param.thread_pool_size set to 2
 
   // Load() and Initialize() the session
   ASSERT_TRUE((st = session_object_2.Load()).IsOK()) << st.ErrorMessage();
   ASSERT_TRUE((st = session_object_2.Initialize()).IsOK()) << st.ErrorMessage();
 
   // In the session options object fed in at session creation,
-  // the request was for intra_op_num_threads to be 2 - that should be honored
-  ASSERT_TRUE(session_object_2.GetSessionOptions().intra_op_num_threads == 2);
+  // the request was for intra_op_param.thread_pool_size to be 2 - that should be honored
+  ASSERT_TRUE(session_object_2.GetSessionOptions().intra_op_param.thread_pool_size == 2);
 }
 
 TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
@@ -2237,7 +2237,7 @@ TEST(InferenceSessionTests, CheckIfGlobalThreadPoolsAreBeingUsed) {
       LoggingManager::InstanceType::Temporal);
 
   std::unique_ptr<Environment> env;
-  ThreadingOptions tp_options{0, 0};
+  OrtThreadingOptions tp_options;
   auto st = Environment::Create(std::move(logging_manager), env, &tp_options, true /*create_global_thread_pools*/);
   ASSERT_TRUE(st.IsOK());
 
@@ -2275,7 +2275,7 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
       LoggingManager::InstanceType::Temporal);
 
   std::unique_ptr<Environment> env;
-  ThreadingOptions tp_options{0, 0};
+  OrtThreadingOptions tp_options;
   auto st = Environment::Create(std::move(logging_manager), env, &tp_options, true /*create_global_thread_pools*/);
   ASSERT_TRUE(st.IsOK());
 
