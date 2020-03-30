@@ -19,7 +19,7 @@ jobs:
         pythonInterpreter: '/usr/bin/python3'
         workingDirectory: $(Build.BinariesDirectory)
     
-    # The latest TensorRT container (R19.09) only supports ubuntu18.04
+    # Latest TensorRT container only supports ubuntu18.04
     - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu18.04 -d tensorrt -r $(Build.BinariesDirectory) -p 3.6 -x "--build_wheel"'
 
       displayName: 'Command Line Script'

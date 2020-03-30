@@ -183,7 +183,9 @@ public:
     void
     ExecuteShort(
         void
-        ) = 0;
+        )
+    {
+    }
 
     //
     // Contains tests that can run slowly to more exhaustively test that
@@ -194,7 +196,9 @@ public:
     void
     ExecuteLong(
         void
-        ) = 0;
+        )
+    {
+    }
 };
 
 template <typename T>
@@ -396,6 +400,7 @@ public:
                 for (size_t a = 0; a < _countof(multipliers); a++) {
                     for (size_t b = 0; b < _countof(multipliers); b++) {
                         Test(1, N, K, multipliers[a], multipliers[b]);
+                        Test(N, 1, K, multipliers[a], multipliers[b]);
                     }
                 }
             }
@@ -1080,8 +1085,7 @@ protected:
         MLAS_ACTIVATION Activation;
         Activation.ActivationKind = MlasIdentityActivation;
 
-        MlasNchwcConv(2,
-                      InputShape,
+        MlasNchwcConv(InputShape,
                       KernelShape,
                       DilationShape,
                       Padding,
@@ -1100,7 +1104,7 @@ protected:
         // Reorder the output buffer.
         //
 
-        MlasReorderOutput(OutputShape, NchwcOutput, Output);
+        MlasReorderOutputNchw(OutputShape, NchwcOutput, Output);
     }
 
     const size_t BlockSize = MlasNchwcGetBlockSize();
@@ -1498,7 +1502,6 @@ protected:
         MlasReorderInput(InputShape, Input, NchwcInput);
 
         MlasNchwcPool(PoolingKind,
-                      2,
                       NchwcInputShape,
                       KernelShape,
                       nullptr,
@@ -1509,7 +1512,7 @@ protected:
                       NchwcOutput,
                       nullptr);
 
-        MlasReorderOutput(OutputShape, NchwcOutput, Output);
+        MlasReorderOutputNchw(OutputShape, NchwcOutput, Output);
     }
 
     MatrixGuardBuffer<float> BufferNchwcInput;
@@ -1962,12 +1965,107 @@ public:
             }
         }
     }
+};
+
+class MlasReorderOutputTest : public MlasTestBase
+{
+private:
+    const size_t BlockSize = MlasNchwcGetBlockSize();
+
+    MatrixGuardBuffer<float> BufferInput;
+    MatrixGuardBuffer<float> BufferOutput;
+    MatrixGuardBuffer<float> BufferOutput2;
+    MatrixGuardBuffer<float> BufferOutputReference;
 
     void
-    ExecuteLong(
+    Test(
+        size_t BatchCount,
+        size_t Channels,
+        size_t Height,
+        size_t Width
+        )
+    {
+        size_t NchwcChannels = (Channels + BlockSize - 1) & ~(BlockSize - 1);
+
+        size_t InputBufferElements = BatchCount * NchwcChannels * Height * Width;
+        size_t OutputBufferElements = BatchCount * Channels * Height * Width;
+
+        const float* Input = BufferInput.GetBuffer(InputBufferElements);
+        float* Output = BufferOutput.GetBuffer(OutputBufferElements);
+        float* OutputReference = BufferOutputReference.GetBuffer(OutputBufferElements);
+
+        int64_t NchwOutputShape[] = { int64_t(BatchCount), int64_t(Channels), int64_t(Height), int64_t(Width) };
+
+        std::fill_n(Output, OutputBufferElements, -0.5f);
+        std::fill_n(OutputReference, OutputBufferElements, -0.5f);
+
+        MlasReorderOutputNchw(NchwOutputShape, Input, Output);
+        ReferenceReorderOutput(BatchCount, Channels, Height, Width, Input, OutputReference, false);
+
+        if (memcmp(Output, OutputReference, OutputBufferElements * sizeof(float)) != 0) {
+            printf("mismatch ReorderOutputNchw: batch=%zd channels=%zd height=%zd width=%zd\n",
+                BatchCount, Channels, Height, Width);
+        }
+
+        int64_t NhwcOutputShape[] = { int64_t(BatchCount), int64_t(Height), int64_t(Width), int64_t(Channels) };
+
+        std::fill_n(Output, OutputBufferElements, -0.5f);
+        std::fill_n(OutputReference, OutputBufferElements, -0.5f);
+
+        MlasReorderOutputNhwc(NhwcOutputShape, Input, Output);
+        ReferenceReorderOutput(BatchCount, Channels, Height, Width, Input, OutputReference, true);
+
+        if (memcmp(Output, OutputReference, OutputBufferElements * sizeof(float)) != 0) {
+            printf("mismatch ReorderOutputNhwc: batch=%zd channels=%zd height=%zd width=%zd\n",
+                BatchCount, Channels, Height, Width);
+        }
+    }
+
+    void
+    ReferenceReorderOutput(
+        size_t BatchCount,
+        size_t Channels,
+        size_t Height,
+        size_t Width,
+        const float* Input,
+        float* Output,
+        bool NhwcFormat
+        )
+    {
+        size_t NchwcChannels = (Channels + (BlockSize - 1)) & ~(BlockSize - 1);
+        size_t SpatialSize = Height * Width;
+
+        size_t ChannelStride = NhwcFormat ? 1 : SpatialSize;
+        size_t SpatialStride = NhwcFormat ? Channels : 1;
+
+        for (size_t n = 0; n < BatchCount; n++) {
+
+            for (size_t c = 0; c < Channels; c++) {
+
+                const float* input = Input + ((c & ~(BlockSize - 1)) * SpatialSize) + (c & (BlockSize - 1));
+                float* output = Output + (c * ChannelStride);
+
+                for (size_t hw = 0; hw < SpatialSize; hw++) {
+                    output[hw * SpatialStride] = input[hw * BlockSize];
+                }
+            }
+
+            Input += NchwcChannels * SpatialSize;
+            Output += Channels * SpatialSize;
+        }
+    }
+
+public:
+    void
+    ExecuteShort(
         void
         ) override
     {
+        for (size_t c = 1; c < 48; c++) {
+            Test(1, c, 112, 112);
+            Test(4, c, 15, 21);
+            Test(16, c, 11, 11);
+        }
     }
 };
 
@@ -2009,9 +2107,6 @@ main(
         printf("Pool3D tests.\n");
         onnxruntime::make_unique<MlasPool3DTest>()->ExecuteShort();
 
-        printf("Activation tests.\n");
-        onnxruntime::make_unique<MlasActivationTest>()->ExecuteShort();
-
         printf("Done.\n");
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
         if(threadpool != nullptr) threadpool = new onnxruntime::concurrency::ThreadPool("test", 2);
@@ -2022,5 +2117,14 @@ main(
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
     delete threadpool;
 #endif
+
+    printf("Activation tests.\n");
+    onnxruntime::make_unique<MlasActivationTest>()->ExecuteShort();
+
+    printf("ReorderOutput tests.\n");
+    if (MlasNchwcGetBlockSize() > 1) {
+        onnxruntime::make_unique<MlasReorderOutputTest>()->ExecuteShort();
+    }
+
     return 0;
 }

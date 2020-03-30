@@ -347,6 +347,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 skipModels["test_vgg19"] = "Get preallocated buffer for initializer conv4_4_b_0 failed";
                 skipModels["tf_pnasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_5/comb_iter_1/left/bn_sep_7x7_1/beta:0_203 failed";
                 skipModels["tf_nasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_11/beginning_bn/beta:0_331 failed";
+                skipModels["test_zfnet512"] = "System out of memory";
+                skipModels["test_bvlc_reference_caffenet"] = "System out of memory";
             }
 
             return skipModels;
@@ -577,7 +579,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
+        [SkipNonPackageTests]
         private void TestRegisterCustomOpLibrary()
         {
             using (var option = new SessionOptions())
@@ -726,6 +728,100 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var tensorOut = res.First().AsTensor<bool>();
                     Assert.True(tensorOut.SequenceEqual(tensorIn));
                 }
+            }
+        }
+
+        [Fact]
+        private void TestReusingRunOutputNonStringType()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_BOOL.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<bool>(new bool[] { true, false, true, false, true }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                var res1 = session.Run(container);
+
+                // change the name of the DisposableNamedOnnxValue
+                res1.First().Name = "input";
+
+                // Run inferencing 2 times using the output of the first Run()
+                for(int i=0; i<2; ++i)
+                { 
+                    using (var res2 = session.Run(res1))
+                    {
+                        var tensorOut = res2.First().AsTensor<bool>();
+                        Assert.True(tensorOut.SequenceEqual(tensorIn));
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        private void TestReusingRunOutputStringType()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_STRING.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<string>(new string[] { "a", "b", "c", "d", "e" }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                var res1 = session.Run(container);
+
+                // change the name of the DisposableNamedOnnxValue
+                res1.First().Name = "input";
+
+                // Run inferencing 2 times using the output of the first Run()
+                for (int i = 0; i < 2; ++i)
+                {
+                    using (var res2 = session.Run(res1))
+                    {
+                        var tensorOut = res2.First().AsTensor<string>();
+                        Assert.True(tensorOut.SequenceEqual(tensorIn));
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        private void TestReusingDisposedRunOutput()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_BOOL.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<bool>(new bool[] { true, false, true, false, true }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                var res1 = session.Run(container);
+
+                // Dispose the result tensor
+                res1.First().Dispose();
+
+                bool succeeded = false;
+
+                // Now try using the disposed output as input to another Run()
+                try
+                {
+                    // Run() should fail with a user friendly error message.
+                    session.Run(res1);
+                }
+
+                catch (ObjectDisposedException e)
+                {
+                    var errorString = "This instance of DisposableNamedOnnxValue has already been disposed";
+
+                    Assert.True(e.Message.Contains(errorString));
+
+                    succeeded = true;
+                }
+
+                Assert.True(succeeded);
             }
         }
 
@@ -1457,6 +1553,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 if (testOnGpu == null || !testOnGpu.Equals("ON"))
                 {
                     Skip = "GPU testing not enabled";
+                }
+            }
+        }
+
+        private class SkipNonPackageTests : FactAttribute
+        {
+            public SkipNonPackageTests()
+            {
+                var skipNonPackageTests = System.Environment.GetEnvironmentVariable("SKIPNONPACKAGETESTS");
+                if (skipNonPackageTests != null && skipNonPackageTests.Equals("ON"))
+                {
+                    Skip = "Test skipped while testing the package as it is not within the scope";
                 }
             }
         }

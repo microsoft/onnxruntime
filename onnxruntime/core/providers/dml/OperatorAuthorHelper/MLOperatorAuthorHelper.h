@@ -734,7 +734,7 @@ public:
 
 using MLOperatorTypeInferenceFunction = void (CALLBACK*)(IMLOperatorTypeInferenceContext*);
 using MLOperatorShapeInferenceFunction = void (CALLBACK*)(IMLOperatorShapeInferenceContext*);
-using MLOperatorKernelCreateFn = void(*)(IMLOperatorKernelCreationContext*, IMLOperatorKernel**);
+using MLOperatorKernelCreateFn = void(CALLBACK*)(IMLOperatorKernelCreationContext*, IMLOperatorKernel**);
 using MLOperatorSupportQueryFunction = void (CALLBACK*)(IMLOperatorSupportQueryContextPrivate*, bool*);
 
 class MLOperatorShapeInferrer : public Microsoft::WRL::RuntimeClass<

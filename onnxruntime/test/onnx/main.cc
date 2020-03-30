@@ -17,7 +17,7 @@
 #include "sync_api.h"
 #include "providers.h"
 #include <google/protobuf/stubs/common.h>
-#include "core/framework/path_lib.h"
+#include "core/platform/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
@@ -354,16 +354,55 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.SetGraphOptimizationLevel(graph_optimization_level);
     }
 
+    // Permanently exclude following tests because ORT support only opset staring from 7,
+    // Please make no more changes to the list
+    static const ORTCHAR_T* immutable_broken_tests[] =
+        {
+            ORT_TSTR("AvgPool1d"),
+            ORT_TSTR("AvgPool1d_stride"),
+            ORT_TSTR("AvgPool2d"),
+            ORT_TSTR("AvgPool2d_stride"),
+            ORT_TSTR("AvgPool3d"),
+            ORT_TSTR("AvgPool3d_stride"),
+            ORT_TSTR("AvgPool3d_stride1_pad0_gpu_input"),
+            ORT_TSTR("BatchNorm1d_3d_input_eval"),
+            ORT_TSTR("BatchNorm2d_eval"),
+            ORT_TSTR("BatchNorm2d_momentum_eval"),
+            ORT_TSTR("BatchNorm3d_eval"),
+            ORT_TSTR("BatchNorm3d_momentum_eval"),
+            ORT_TSTR("GLU"),
+            ORT_TSTR("GLU_dim"),
+            ORT_TSTR("Linear"),
+            ORT_TSTR("PReLU_1d"),
+            ORT_TSTR("PReLU_1d_multiparam"),
+            ORT_TSTR("PReLU_2d"),
+            ORT_TSTR("PReLU_2d_multiparam"),
+            ORT_TSTR("PReLU_3d"),
+            ORT_TSTR("PReLU_3d_multiparam"),
+            ORT_TSTR("PoissonNLLLLoss_no_reduce"),
+            ORT_TSTR("Softsign"),
+            ORT_TSTR("operator_add_broadcast"),
+            ORT_TSTR("operator_add_size1_broadcast"),
+            ORT_TSTR("operator_add_size1_right_broadcast"),
+            ORT_TSTR("operator_add_size1_singleton_broadcast"),
+            ORT_TSTR("operator_addconstant"),
+            ORT_TSTR("operator_addmm"),
+            ORT_TSTR("operator_basic"),
+            ORT_TSTR("operator_mm"),
+            ORT_TSTR("operator_non_float_params"),
+            ORT_TSTR("operator_params"),
+            ORT_TSTR("operator_pow")};
+
     static const ORTCHAR_T* cuda_flaky_tests[] = {
         ORT_TSTR("fp16_inception_v1"),
         ORT_TSTR("fp16_shufflenet"), ORT_TSTR("fp16_tiny_yolov2")};
-    static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mlperf_ssd_mobilenet_300"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn")};
+    static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mlperf_ssd_mobilenet_300"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("zfnet512")};
     static const ORTCHAR_T* dnnl_disabled_tests[] = {ORT_TSTR("test_densenet121"), ORT_TSTR("test_resnet18v2"), ORT_TSTR("test_resnet34v2"), ORT_TSTR("test_resnet50v2"), ORT_TSTR("test_resnet101v2"),
                                                      ORT_TSTR("test_resnet101v2"), ORT_TSTR("test_vgg19"), ORT_TSTR("tf_inception_resnet_v2"), ORT_TSTR("tf_inception_v1"), ORT_TSTR("tf_inception_v3"), ORT_TSTR("tf_inception_v4"), ORT_TSTR("tf_mobilenet_v1_1.0_224"),
                                                      ORT_TSTR("tf_mobilenet_v2_1.0_224"), ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"), ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"),
                                                      ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152")};
 
-    std::unordered_set<std::basic_string<ORTCHAR_T> > all_disabled_tests;
+    std::unordered_set<std::basic_string<ORTCHAR_T> > all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
     }
@@ -567,8 +606,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"vgg19", "failed: bad allocation"});
 #endif
 
-#ifdef DISABLE_CONTRIB_OPS
+  // Disable mask_rcnn_keras as this model currently has an invalid contrib op version set to 10
   broken_tests.insert({"mask_rcnn_keras", "This model uses contrib ops."});
+
+#ifdef DISABLE_CONTRIB_OPS
   broken_tests.insert({"coreml_SqueezeNet_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Permute_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_ReLU_ImageNet", "This model uses contrib ops."});
@@ -632,9 +673,6 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "%s\n", ex.what());
     retval = -1;
   }
-  // Release the protobuf library if we failed to create an env (the env will release it automatically on destruction)
-  if (!env) {
-    ::google::protobuf::ShutdownProtobufLibrary();
-  }
+  ::google::protobuf::ShutdownProtobufLibrary();
   return retval;
 }

@@ -18,6 +18,7 @@ jobs:
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
@@ -36,9 +37,9 @@ jobs:
     DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage
-     cd $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\
+     cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
      ren *.nupkg win-x86.zip
-     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
@@ -78,7 +79,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_featurizers --enable_onnx_tests --disable_contrib_ops && cd /build/Release && make install DESTDIR=/build/linux-x64"
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --enable_onnx_tests --disable_contrib_ops && cd /build/Release && make install DESTDIR=/build/linux-x64"
         workingDirectory: $(Build.SourcesDirectory)
     - script: |
        set -e -x
@@ -175,40 +176,44 @@ jobs:
      powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
      powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
      set PATH=%CD%;%PATH%
+     SETLOCAL EnableDelayedExpansion
      FOR /R %%i IN (*.nupkg) do (
-         rename %%~ni.nupkg %%~ni.zip
-         unzip %%~ni.zip -d %%~ni
-         del /Q %%~ni.zip
-         unzip win-x86.zip -d win-x86
-         unzip win10-arm.zip -d win10-arm
-         unzip linux-x64.zip -d linux-x64
-         mkdir %%~ni\runtimes\win-x86
-         mkdir %%~ni\runtimes\win10-arm
-         mkdir %%~ni\runtimes\linux-x64
-         mkdir %%~ni\runtimes\win-x86\native
-         mkdir %%~ni\runtimes\win10-arm\native
-         mkdir %%~ni\runtimes\linux-x64\native
-         move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
-         move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
-         move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
-         move win10-arm\runtimes\win10-arm\native\onnxruntime.lib %%~ni\runtimes\win10-arm\native\onnxruntime.lib
-         move win10-arm\runtimes\win10-arm\native\onnxruntime.dll %%~ni\runtimes\win10-arm\native\onnxruntime.dll
-         move win10-arm\runtimes\win10-arm\native\onnxruntime.pdb %%~ni\runtimes\win10-arm\native\onnxruntime.pdb
-         move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
-         unzip osx-x64.zip -d osx-x64
-         dir osx-x64 /s
-         mkdir %%~ni\runtimes\osx-x64
-         mkdir %%~ni\runtimes\osx-x64\native
-         move osx-x64\osx-x64\libonnxruntime.dylib %%~ni\runtimes\osx-x64\native\libonnxruntime.dylib
-         move osx-x64\osx-x64\libonnxruntime.dylib.dSYM %%~ni\runtimes\osx-x64\native\libonnxruntime.dylib.dSYM
-         pushd %%~ni
-         zip -r ..\%%~ni.zip .
-         popd
-         move %%~ni.zip %%~ni.nupkg
+         set filename=%%~ni
+         IF NOT "!filename:~25,7!"=="Managed" (
+             rename %%~ni.nupkg %%~ni.zip
+             unzip %%~ni.zip -d %%~ni
+             del /Q %%~ni.zip
+             unzip win-x86.zip -d win-x86
+             unzip win10-arm.zip -d win10-arm
+             unzip linux-x64.zip -d linux-x64
+             mkdir %%~ni\runtimes\win-x86
+             mkdir %%~ni\runtimes\win10-arm
+             mkdir %%~ni\runtimes\linux-x64
+             mkdir %%~ni\runtimes\win-x86\native
+             mkdir %%~ni\runtimes\win10-arm\native
+             mkdir %%~ni\runtimes\linux-x64\native
+             move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
+             move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
+             move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
+             move win10-arm\runtimes\win10-arm\native\onnxruntime.lib %%~ni\runtimes\win10-arm\native\onnxruntime.lib
+             move win10-arm\runtimes\win10-arm\native\onnxruntime.dll %%~ni\runtimes\win10-arm\native\onnxruntime.dll
+             move win10-arm\runtimes\win10-arm\native\onnxruntime.pdb %%~ni\runtimes\win10-arm\native\onnxruntime.pdb
+             move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
+             unzip osx-x64.zip -d osx-x64
+             dir osx-x64 /s
+             mkdir %%~ni\runtimes\osx-x64
+             mkdir %%~ni\runtimes\osx-x64\native
+             move osx-x64\osx-x64\libonnxruntime.dylib %%~ni\runtimes\osx-x64\native\libonnxruntime.dylib
+             move osx-x64\osx-x64\libonnxruntime.dylib.dSYM %%~ni\runtimes\osx-x64\native\libonnxruntime.dylib.dSYM
+             pushd %%~ni
+             zip -r ..\%%~ni.zip .
+             popd
+             move %%~ni.zip %%~ni.nupkg
+         )
      )
      popd
      copy $(Build.BinariesDirectory)\nuget-artifact\*.nupkg $(Build.ArtifactStagingDirectory)
-    displayName: 'Bundle NuGet and other binaries'
+    displayName: 'Bundle Native NuGet and other binaries'
 
   - template: ../../templates/esrp_nuget.yml
     parameters:
@@ -219,6 +224,7 @@ jobs:
   - template: ../../templates/validate-nuget.yml
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)'
+      NugetPackage: 'Microsoft.ML.OnnxRuntime.*nupkg'
       PlatformsSupported: 'win-x64,win-x86,win10-arm,linux-x64,osx-x64'
       VerifyNugetSigning: ${{ parameters.DoEsrp }}
 

@@ -53,7 +53,6 @@ template <typename T>
 const OrtApi& Global<T>::api_ = *OrtGetApiBase()->GetApi(ORT_API_VERSION);
 #endif
 
-
 // This returns a reference to the OrtApi interface in use, in case someone wants to use the C API functions
 inline const OrtApi& GetApi() { return Global<void>::api_; }
 
@@ -71,6 +70,7 @@ ORT_DEFINE_RELEASE(SessionOptions);
 ORT_DEFINE_RELEASE(TensorTypeAndShapeInfo);
 ORT_DEFINE_RELEASE(TypeInfo);
 ORT_DEFINE_RELEASE(Value);
+ORT_DEFINE_RELEASE(ModelMetadata);
 
 // This is used internally by the C++ API. This is the common base class used by the wrapper objects.
 template <typename T>
@@ -118,10 +118,12 @@ struct MemoryInfo;
 struct Env;
 struct TypeInfo;
 struct Value;
+struct ModelMetadata;
 
 struct Env : Base<OrtEnv> {
   Env(std::nullptr_t) {}
   Env(OrtLoggingLevel default_logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
+  Env(ThreadingOptions tp_options, OrtLoggingLevel default_logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
   Env(OrtLoggingLevel default_logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 
@@ -184,6 +186,20 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& SetLogId(const char* logid);
 
   SessionOptions& Add(OrtCustomOpDomain* custom_op_domain);
+
+  SessionOptions& DisablePerSessionThreads();
+};
+
+struct ModelMetadata : Base<OrtModelMetadata> {
+  explicit ModelMetadata(std::nullptr_t) {}
+  explicit ModelMetadata(OrtModelMetadata* p) : Base<OrtModelMetadata>{p} {}
+
+  char* GetProducerName(OrtAllocator* allocator) const;
+  char* GetGraphName(OrtAllocator* allocator) const;
+  char* GetDomain(OrtAllocator* allocator) const;
+  char* GetDescription(OrtAllocator* allocator) const;
+  char* LookupCustomMetadataMap(const char* key, OrtAllocator* allocator) const;
+  int64_t GetVersion() const;
 };
 
 struct Session : Base<OrtSession> {
@@ -205,6 +221,8 @@ struct Session : Base<OrtSession> {
   char* GetInputName(size_t index, OrtAllocator* allocator) const;
   char* GetOutputName(size_t index, OrtAllocator* allocator) const;
   char* GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const;
+  char* EndProfiling(OrtAllocator* allocator) const;
+  ModelMetadata GetModelMetadata() const;
 
   TypeInfo GetInputTypeInfo(size_t index) const;
   TypeInfo GetOutputTypeInfo(size_t index) const;

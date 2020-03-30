@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
@@ -152,5 +153,10 @@ ORT_API_STATUS_IMPL(OrtApis::SetInterOpNumThreads, _In_ OrtSessionOptions* optio
 ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverride, _Inout_ OrtSessionOptions* options,
                     _In_ const char* symbolic_dim, _In_ int64_t dim_override) {
   options->value.free_dimension_overrides.push_back(onnxruntime::FreeDimensionOverride{symbolic_dim, dim_override});
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DisablePerSessionThreads, _In_ OrtSessionOptions* options) {
+  options->value.use_per_session_threads = false;
   return nullptr;
 }

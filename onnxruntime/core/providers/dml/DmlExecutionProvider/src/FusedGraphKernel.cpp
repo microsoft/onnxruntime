@@ -6,7 +6,7 @@
 #include "MLOperatorAuthorImpl.h"
 #include "FusedGraphKernel.h"
 
-using namespace winrt::Windows::AI::MachineLearning::implementation;
+using namespace Windows::AI::MachineLearning::Adapter;
 
 namespace Dml
 {
@@ -170,7 +170,7 @@ namespace Dml
                     }
                     else
                     {
-                        std::tie(unpackedTensor, tensorByteSize) = winrt::Windows::AI::MachineLearning::implementation::UnpackTensor(initializer);
+                        std::tie(unpackedTensor, tensorByteSize) = UnpackTensor(initializer);
                         tensorPtr = unpackedTensor.get(); 
                     }
 
@@ -289,7 +289,7 @@ namespace Dml
             if (persistentResourceSize > 0)
             {
                 THROW_IF_FAILED(m_provider->AllocatePooledResource(
-                    persistentResourceSize,
+                    static_cast<size_t>(persistentResourceSize),
                     AllocatorRoundingMode::Disabled,
                     m_persistentResource.GetAddressOf(),
                     m_persistentResourceAllocatorUnk.GetAddressOf()));
@@ -589,7 +589,7 @@ namespace Dml
                 // which is scheduled up to the point that this method returns has completed.
                 ComPtr<IUnknown> tempAlloc;
                 uint64_t tempAllocId = 0;
-                THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(execBindingProps.TemporaryResourceSize, tempAlloc.GetAddressOf(), &tempAllocId));
+                THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(static_cast<size_t>(execBindingProps.TemporaryResourceSize), tempAlloc.GetAddressOf(), &tempAllocId));
 
                 ComPtr<IUnknown> tempResourceUnk;
                 m_winmlProvider->GetABIDataInterface(false, tempAlloc.Get(), &tempResourceUnk);
@@ -726,7 +726,7 @@ namespace Dml
         ComPtr<IDMLCompiledOperator> m_compiledExecutionPlanOperator;
         std::vector<bool> m_inputsUsed;
         const void* m_executionHandle = nullptr;
-        ComPtr<winrt::Windows::AI::MachineLearning::implementation::IWinmlExecutionProvider> m_winmlProvider;
+        ComPtr<IWinmlExecutionProvider> m_winmlProvider;
         ComPtr<Dml::IExecutionProvider> m_provider;
         EdgeShapes m_outputShapes;
 

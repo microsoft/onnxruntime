@@ -6,105 +6,111 @@
 # Setup Java compilation
 include(FindJava)
 find_package(Java REQUIRED)
-find_package(JNI REQUIRED)
 include(UseJava)
-include_directories(${JNI_INCLUDE_DIRS})
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+    find_package(JNI REQUIRED)
+    include_directories(${JNI_INCLUDE_DIRS})
+endif()
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11")
 
 set(JAVA_ROOT ${REPO_ROOT}/java)
-set(CMAKE_JAVA_COMPILE_FLAGS "-source" "1.8" "-target" "1.8" "-encoding" "UTF-8")
+set(JAVA_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/java)
 if (onnxruntime_RUN_ONNX_TESTS)
   set(JAVA_DEPENDS onnxruntime ${test_data_target})
 else()
   set(JAVA_DEPENDS onnxruntime)
 endif()
 
+# use the gradle wrapper if it exists
+if(EXISTS "${JAVA_ROOT}/gradlew")
+    set(GRADLE_EXECUTABLE "${JAVA_ROOT}/gradlew")
+else()
+    # fall back to gradle on our PATH
+    find_program(GRADLE_EXECUTABLE gradle)
+    if(NOT GRADLE_EXECUTABLE)
+        message(SEND_ERROR "Gradle installation not found")
+    endif()
+endif()
+message(STATUS "Using gradle: ${GRADLE_EXECUTABLE}")
+
 # Specify the Java source files
-set(onnxruntime4j_src
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/MapInfo.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/NodeInfo.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxRuntime.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxJavaType.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxMap.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxSequence.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxTensor.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxValue.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtAllocator.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtEnvironment.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtException.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtSession.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtUtil.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/package-info.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/SequenceInfo.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/TensorInfo.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/ValueInfo.java
-        )
+file(GLOB_RECURSE onnxruntime4j_gradle_files "${JAVA_ROOT}/*.gradle")
+file(GLOB_RECURSE onnxruntime4j_src "${JAVA_ROOT}/src/main/java/ai/onnxruntime/*.java")
+set(JAVA_OUTPUT_JAR ${JAVA_ROOT}/build/libs/onnxruntime.jar)
+# this jar is solely used to signalling mechanism for dependency management in CMake
+# if any of the Java sources change, the jar (and generated headers) will be regenerated and the onnxruntime4j_jni target will be rebuilt
+add_custom_command(OUTPUT ${JAVA_OUTPUT_JAR} COMMAND ${GRADLE_EXECUTABLE} clean jar WORKING_DIRECTORY ${JAVA_ROOT} DEPENDS ${onnxruntime4j_gradle_files} ${onnxruntime4j_src})
+add_custom_target(onnxruntime4j DEPENDS ${JAVA_OUTPUT_JAR})
+set_source_files_properties(${JAVA_OUTPUT_JAR} PROPERTIES GENERATED TRUE)
+set_property(TARGET onnxruntime4j APPEND PROPERTY ADDITIONAL_CLEAN_FILES "${JAVA_OUTPUT_DIR}")
 
-# Build the jar and generate the native headers
-add_jar(onnxruntime4j SOURCES ${onnxruntime4j_src} VERSION ${ORT_VERSION} GENERATE_NATIVE_HEADERS onnxruntime4j_generated DESTINATION ${REPO_ROOT}/java/src/main/native/)
-
-# Specify the native sources (without the generated headers)
+# Specify the native sources
 file(GLOB onnxruntime4j_native_src 
-    "${REPO_ROOT}/java/src/main/native/*.c"
-    "${REPO_ROOT}/java/src/main/native/OrtJniUtil.h"
+    "${JAVA_ROOT}/src/main/native/*.c"
+    "${JAVA_ROOT}/src/main/native/*.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/*.h"
     )
-
 # Build the JNI library
-add_library(onnxruntime4j_jni SHARED ${onnxruntime4j_native_src} ${onnxruntime4j_generated})
-onnxruntime_add_include_to_target(onnxruntime4j_jni onnxruntime_session)
-target_include_directories(onnxruntime4j_jni PRIVATE ${REPO_ROOT}/include ${REPO_ROOT}/java/src/main/native)
-target_link_libraries(onnxruntime4j_jni PUBLIC onnxruntime onnxruntime4j_generated)
+add_library(onnxruntime4j_jni SHARED ${onnxruntime4j_native_src})
 
-# Now the jar, jni binary and shared lib binary have been built, now to build the jar with the binaries added.
-
-# This blob creates the new jar name
-get_property(onnxruntime_jar_name TARGET onnxruntime4j PROPERTY JAR_FILE)
-get_filename_component(onnxruntime_jar_abs ${onnxruntime_jar_name} ABSOLUTE)
-get_filename_component(jar_path ${onnxruntime_jar_abs} DIRECTORY)
-set(onnxruntime_jar_binaries_name "${jar_path}/onnxruntime4j-${ORT_VERSION}-with-binaries.jar")
-set(onnxruntime_jar_binaries_platform "$<SHELL_PATH:${onnxruntime_jar_binaries_name}>")
-
-# Copy the current jar
-add_custom_command(TARGET onnxruntime4j_jni PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_jar_name}
-        ${onnxruntime_jar_binaries_platform})
-
-# Make a temp directory to store the binaries
-add_custom_command(TARGET onnxruntime4j_jni POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/java-libs/lib")
-
-# Copy the binaries
-add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:onnxruntime4j_jni>" ${CMAKE_CURRENT_BINARY_DIR}/java-libs/lib/)
-
-if (WIN32) 
-add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:onnxruntime>" ${CMAKE_CURRENT_BINARY_DIR}/java-libs/lib/)
-# Update the with-binaries jar so it includes the binaries
-add_custom_command(
-            TARGET onnxruntime4j_jni POST_BUILD
-            COMMAND ${Java_JAR_EXECUTABLE} -uf ${onnxruntime_jar_binaries_platform} -C ${CMAKE_CURRENT_BINARY_DIR}/java-libs lib/$<TARGET_FILE_NAME:onnxruntime4j_jni> -C ${CMAKE_CURRENT_BINARY_DIR}/java-libs lib/$<TARGET_FILE_NAME:onnxruntime>
-            DEPENDS onnxruntime4j
-            COMMENT "Rebuilding Java archive ${_JAVA_TARGET_OUTPUT_NAME}"
-            VERBATIM
-        )
-else ()
-add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_LINKER_FILE:onnxruntime>" ${CMAKE_CURRENT_BINARY_DIR}/java-libs/lib/)
-# Update the with-binaries jar so it includes the binaries
-add_custom_command(
-            TARGET onnxruntime4j_jni POST_BUILD
-            COMMAND ${Java_JAR_EXECUTABLE} -uf ${onnxruntime_jar_binaries_platform} -C ${CMAKE_CURRENT_BINARY_DIR}/java-libs lib/$<TARGET_FILE_NAME:onnxruntime4j_jni> -C ${CMAKE_CURRENT_BINARY_DIR}/java-libs lib/$<TARGET_LINKER_FILE_NAME:onnxruntime>
-            DEPENDS onnxruntime4j
-            COMMENT "Rebuilding Java archive ${_JAVA_TARGET_OUTPUT_NAME}"
-            VERBATIM
-        )
+# Tell the JNI code about the requested providers
+if (onnxruntime_USE_CUDA)
+  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_CUDA=1)
+endif()
+if (onnxruntime_USE_DNNL)
+  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_DNNL=1)
+endif()
+if (onnxruntime_USE_NGRAPH)
+  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_NGRAPH=1)
+endif()
+if (onnxruntime_USE_OPENVINO)
+  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_OPENVINO=1)
+endif()
+if (onnxruntime_USE_TENSORRT)
+  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_TENSORRT=1)
+endif()
+if (onnxruntime_USE_NNAPI)
+  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_NNAPI=1)
+endif()
+if (onnxruntime_USE_NUPHAR)
+  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_NUPHAR=1)
 endif()
 
-create_javadoc(onnxruntime4j_javadoc
-           FILES ${onnxruntime4j_src}
-           DOCTITLE "Onnx Runtime Java API"
-           WINDOWTITLE "OnnxRuntime-Java-API"
-           AUTHOR FALSE
-           USE TRUE
-           VERSION FALSE
-           )
+# depend on java sources. if they change, the JNI should recompile
+add_dependencies(onnxruntime4j_jni onnxruntime4j)
+onnxruntime_add_include_to_target(onnxruntime4j_jni onnxruntime_session)
+# the JNI headers are generated in the onnxruntime4j target
+target_include_directories(onnxruntime4j_jni PRIVATE ${REPO_ROOT}/include ${JAVA_ROOT}/build/headers)
+target_link_libraries(onnxruntime4j_jni PUBLIC onnxruntime)
+
+set(JAVA_PACKAGE_OUTPUT_DIR ${JAVA_OUTPUT_DIR}/build)
+file(MAKE_DIRECTORY ${JAVA_PACKAGE_OUTPUT_DIR})
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set(ANDROID_PACKAGE_OUTPUT_DIR ${JAVA_PACKAGE_OUTPUT_DIR}/android)
+    file(MAKE_DIRECTORY ${ANDROID_PACKAGE_OUTPUT_DIR})
+endif()
+# expose native libraries to the gradle build process
+set(JAVA_PACKAGE_DIR ai/onnxruntime/native/)
+set(JAVA_NATIVE_LIB_DIR ${JAVA_OUTPUT_DIR}/native-lib)
+set(JAVA_NATIVE_JNI_DIR ${JAVA_OUTPUT_DIR}/native-jni)
+set(JAVA_PACKAGE_LIB_DIR ${JAVA_NATIVE_LIB_DIR}/${JAVA_PACKAGE_DIR})
+set(JAVA_PACKAGE_JNI_DIR ${JAVA_NATIVE_JNI_DIR}/${JAVA_PACKAGE_DIR})
+file(MAKE_DIRECTORY ${JAVA_PACKAGE_LIB_DIR})
+file(MAKE_DIRECTORY ${JAVA_PACKAGE_JNI_DIR})
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set(ANDROID_PACKAGE_JNILIBS_DIR ${JAVA_OUTPUT_DIR}/android)
+    set(ANDROID_PACKAGE_ABI_DIR ${ANDROID_PACKAGE_JNILIBS_DIR}/${ANDROID_ABI})
+    file(MAKE_DIRECTORY ${ANDROID_PACKAGE_JNILIBS_DIR})
+    file(MAKE_DIRECTORY ${ANDROID_PACKAGE_ABI_DIR})
+endif()
+add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
+add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime4j_jni> ${JAVA_PACKAGE_JNI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni>)
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime> ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
+    add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime4j_jni> ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni>)
+endif()
+# run the build process (this copies the results back into CMAKE_CURRENT_BINARY_DIR)
+add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} cmakeBuild -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${JAVA_ROOT})
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} -b build-android.gradle -c settings-android.gradle build -DjniLibsDir=${ANDROID_PACKAGE_JNILIBS_DIR} -DbuildDir=${ANDROID_PACKAGE_OUTPUT_DIR} WORKING_DIRECTORY ${JAVA_ROOT})
+endif()

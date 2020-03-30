@@ -7,19 +7,21 @@
 #include "test/providers/provider_test_utils.h"
 
 #include "Featurizers/ImputationMarkerFeaturizer.h"
+#include "Featurizers/../Archive.h"
 
 namespace ft = Microsoft::Featurizer;
 
 namespace onnxruntime {
 namespace test {
-
-template<typename T>
-std::vector<uint8_t> GetStream () {
+namespace {
+template <typename T>
+std::vector<uint8_t> GetStream() {
   ft::Archive ar;
   ft::Featurizers::ImputationMarkerTransformer<T> inst;
   inst.save(ar);
   return ar.commit();
 }
+}  // namespace
 
 //TEST (FeaturizersTests, ImputationMarker_int8) {
 //  OpTester test("ImputationMarkerTransformer", 1, onnxruntime::kMSFeaturizersDomain);

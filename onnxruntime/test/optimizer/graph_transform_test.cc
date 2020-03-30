@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/graph/onnx_protobuf.h"
 
 #include "core/session/inference_session.h"
 #include "core/framework/data_types.h"
@@ -32,6 +33,7 @@
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/attention_fusion.h"
+#include "core/optimizer/fast_gelu_fusion.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/util/math.h"
@@ -261,7 +263,7 @@ TEST(GraphTransformationTests, SubgraphWithConstantInputs) {
   SessionOptions so;
   so.graph_optimization_level = TransformerLevel::Level2;
   so.session_logid = "GraphTransformationTests.LoadModelToTransform";
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
   std::shared_ptr<Model> p_model;
@@ -633,7 +635,7 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
 
   SessionOptions so;
   so.session_logid = "GraphTransformationTests.LoadModelToTransform";
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
   std::shared_ptr<Model> p_model;
@@ -688,7 +690,8 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
 TEST(GraphTransformationTests, ReluClip6Fusion) {
   // Clip op schema changed for opset version 11. Until Clip op is updated in ORT hard coding this model to use
   // older opset.
-  Model model("ReluClip6Fusion", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 10}}, {}, DefaultLoggingManager().DefaultLogger());
+  Model model("ReluClip6Fusion", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 10}},
+              {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;
@@ -853,17 +856,17 @@ TEST(GraphTransformationTests, ReluClip11Fusion) {
         if (&node == &clip1) {
           // fusion with float16 data and min set to 0
           EXPECT_EQ(type, ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_FLOAT16);
-          MLFloat16 value = *Initializer(*min_input).data<MLFloat16>();
+          MLFloat16 value = *Initializer(*min_input, graph.ModelPath()).data<MLFloat16>();
           EXPECT_EQ(math::halfToFloat(value.val), 0.f) << "Min was not 0.f. Got:" << math::halfToFloat(value.val);
         } else if (&node == &clip2) {
           // fusion with float data and min untouched
           EXPECT_EQ(type, ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_FLOAT);
-          float value = *Initializer(*min_input).data<float>();
+          float value = *Initializer(*min_input, graph.ModelPath()).data<float>();
           EXPECT_EQ(value, 1.0) << "Min should have remained unchanged but is now " << value;
         } else if (&node == &clip3) {
           // fusion with no min so type comes from input
           EXPECT_EQ(type, ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_FLOAT);
-          float value = *Initializer(*min_input).data<float>();
+          float value = *Initializer(*min_input, graph.ModelPath()).data<float>();
           EXPECT_EQ(value, 0.f) << "Min was not 0.f. Got:" << value;
 
         } else {
@@ -898,7 +901,7 @@ TEST(GraphTransformationTests, ReshapeFusionTest) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
       ASSERT_TRUE(tensor_proto != nullptr);
 
-      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
+      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       EXPECT_EQ(initializer->size(), 4);
 
@@ -935,7 +938,7 @@ TEST(GraphTransformationTests, ReshapeFusionOneConstTest) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
       ASSERT_TRUE(tensor_proto != nullptr);
 
-      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
+      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       EXPECT_EQ(initializer->size(), 3);
 
@@ -960,7 +963,7 @@ static void ValidateAttention(Graph& graph) {
       ASSERT_TRUE(tensor_proto != nullptr);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
-      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
+      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(initializer->size(), 192);
 
       // Validate two rows (2x24 items) for sanity check.
@@ -1024,7 +1027,7 @@ static void ValidateAttention(Graph& graph) {
       ASSERT_TRUE(tensor_proto != nullptr);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
-      auto initializer2 = onnxruntime::make_unique<Initializer>(*tensor_proto);
+      auto initializer2 = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(initializer2->size(), 24);
 
       std::vector<double> expected_value2 = {
@@ -1128,6 +1131,63 @@ TEST(GraphTransformationTests, GeluFusionTest) {
   ASSERT_TRUE(op_to_count["Gelu"] == 1);
 }
 
+TEST(GraphTransformationTests, GeluFusionTestSwitchOrderFormat2) {
+  auto model_uri = MODEL_FOLDER "fusion/gelu_format2_0.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Erf"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["Gelu"] == 1);
+}
+
+TEST(GraphTransformationTests, GeluFusionTestFormat2) {
+  auto model_uri = MODEL_FOLDER "fusion/gelu_format2_1.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Erf"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["Gelu"] == 1);
+}
+
+TEST(GraphTransformationTests, GeluFusionTestFormat2GraphInput) {
+  auto model_uri = MODEL_FOLDER "fusion/gelu_format2_1_use_graph_input.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Erf"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["Gelu"] == 1);
+}
+
 TEST(GraphTransformationTests, BiasGeluTest) {
   auto model_uri = MODEL_FOLDER "fusion/bias_gelu_fusion.onnx";
   std::shared_ptr<Model> p_model;
@@ -1198,6 +1258,163 @@ TEST(GraphTransformationTests, GeluApproximation_Gelu_Add_MatMul) {
   EXPECT_EQ(op_to_count["BiasGelu"], 0);
   EXPECT_EQ(op_to_count["MatMul"], 1);
   EXPECT_EQ(op_to_count["FastGelu"], 1);
+}
+
+TEST(GraphTransformationTests, FastGeluFusionTest) {
+  auto model_uri = MODEL_FOLDER "fusion/fast_gelu.onnx";
+  std::shared_ptr<Model> p_model;
+  auto load_ret = Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(load_ret.IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 2);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Tanh"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+}
+
+TEST(GraphTransformationTests, FastGeluUseGraphInputFusionTest) {
+  auto model_uri = MODEL_FOLDER "fusion/fast_gelu_use_graph_input.onnx";
+  std::shared_ptr<Model> p_model;
+  auto load_ret = Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(load_ret.IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Tanh"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+}
+
+TEST(GraphTransformationTests, FastGeluWithBiasFusionTest) {
+  auto model_uri = MODEL_FOLDER "fusion/fast_gelu_with_bias.onnx";
+  std::shared_ptr<Model> p_model;
+  auto load_ret = Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(load_ret.IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGelu>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Tanh"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+}
+
+TEST(GraphTransformationTests, FastGeluWithBiasUseGraphInputFusionTest) {
+  auto model_uri = MODEL_FOLDER "fusion/fast_gelu_with_bias_use_graph_input.onnx";
+  std::shared_ptr<Model> p_model;
+  auto load_ret = Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(load_ret.IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGelu>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Tanh"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+}
+
+TEST(GraphTransformationTests, FastGeluFusionTest2) {
+  auto model_uri = MODEL_FOLDER "fusion/fast_gelu2.onnx";
+  std::shared_ptr<Model> p_model;
+  auto load_ret = Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(load_ret.IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Tanh"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+}
+
+TEST(GraphTransformationTests, FastGeluUseGraphInputFusionTest2) {
+  auto model_uri = MODEL_FOLDER "fusion/fast_gelu2_use_graph_input.onnx";
+  std::shared_ptr<Model> p_model;
+  auto load_ret = Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(load_ret.IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Tanh"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+}
+
+TEST(GraphTransformationTests, FastGeluWithBiasFusionTest2) {
+  auto model_uri = MODEL_FOLDER "fusion/fast_gelu2_with_bias.onnx";
+  std::shared_ptr<Model> p_model;
+  auto load_ret = Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(load_ret.IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGelu>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Tanh"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+}
+
+TEST(GraphTransformationTests, FastGeluWithBiasUseGraphInputFusionTest2) {
+  auto model_uri = MODEL_FOLDER "fusion/fast_gelu2_with_bias_use_graph_input.onnx";
+  std::shared_ptr<Model> p_model;
+  auto load_ret = Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(load_ret.IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGelu>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Tanh"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
 }
 
 TEST(GraphTransformationTests, LayerNormFusionTest) {
@@ -1285,22 +1502,22 @@ static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_pat
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Div"] == 0);
-  ASSERT_TRUE(op_to_count["Add"] == add_count );
+  ASSERT_TRUE(op_to_count["Add"] == add_count);
   ASSERT_TRUE(op_to_count["Sub"] == 0);
   ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
   ASSERT_TRUE(op_to_count["Pow"] == 0);
   ASSERT_TRUE(op_to_count["Sqrt"] == 0);
-  ASSERT_TRUE(op_to_count["LayerNormalization"] == ln_count );
-  ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == skip_ln_count );
+  ASSERT_TRUE(op_to_count["LayerNormalization"] == ln_count);
+  ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == skip_ln_count);
 }
 
 TEST(GraphTransformationTests, SkipLayerNormFusionTest) {
   TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1.onnx", 0, 0, 1);
-  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2.onnx", 0, 0, 1 );
-  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3.onnx", 0, 0, 1 );
-  TestSkipLayerNormFusion( MODEL_FOLDER "fusion/skip_layer_norm_format1_partial.onnx", 1, 0, 1 );
-  TestSkipLayerNormFusion( MODEL_FOLDER "fusion/skip_layer_norm_format2_partial.onnx", 1, 0, 1 );
-  TestSkipLayerNormFusion( MODEL_FOLDER "fusion/skip_layer_norm_format3_no_fusion.onnx", 1, 1, 0 );
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2.onnx", 0, 0, 1);
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3.onnx", 0, 0, 1);
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1_partial.onnx", 1, 0, 1);
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2_partial.onnx", 1, 0, 1);
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3_no_fusion.onnx", 1, 1, 0);
 }
 
 TEST(GraphTransformationTests, EmbedLayerNormFusionFormat1) {
@@ -1433,7 +1650,7 @@ TEST(GraphTransformationTests, EmbedLayerNormFusionFormat5) {
       ASSERT_TRUE(tensor_proto != nullptr);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
-      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
+      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(initializer->size(), 12);
 
       std::vector<double> expected_value = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 8.0, 7.0, 6.0};

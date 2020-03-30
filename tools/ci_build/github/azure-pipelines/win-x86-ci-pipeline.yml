@@ -34,17 +34,17 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy     
+     python -m pip install -q pyopenssl setuptools wheel numpy
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
-    
+
   - task: PythonScript@0
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --use_featurizers --x86 --use_openmp --build_shared_lib --enable_onnx_tests'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --use_winml --update --cmake_generator "Visual Studio 16 2019" --build_wheel --use_featurizers --x86 --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos'
       workingDirectory: '$(Build.BinariesDirectory)'
-     
+
   - task: VSBuild@1
     displayName: 'Build'
     inputs:
@@ -115,8 +115,8 @@ jobs:
      set /p WHEEL_FILENAME=<wheel_filename_file
      del wheel_filename_file
      python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019"  --x86 --build_wheel --enable_onnx_tests
-   
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --use_winml --test --cmake_generator "Visual Studio 16 2019"  --x86 --build_wheel --enable_onnx_tests --enable_wcos
+
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run tests'
 
