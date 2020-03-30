@@ -95,7 +95,7 @@ class ForecastingPivotTransformer final : public OpKernel {
     //     t_disp(ctx->Input<Tensor>(1)->GetElementType());
     // t_disp.Invoke(ctx);
 
-    using T = float;
+    using T = double;
 
     using TransformerT = Microsoft::Featurizer::Featurizers::ForecastingPivotTransformer<T>;
     using MatrixT = NS::RowMajMatrix<T>;
@@ -112,6 +112,7 @@ class ForecastingPivotTransformer final : public OpKernel {
     // Get the Number of Rows
     const auto* input_tensor_temp(ctx->Input<Tensor>(1));
     const int64_t row_num = input_tensor_temp->Shape()[0];
+    std::cout << "row_num: " << row_num << std::endl;
 
     // Prepare the Output
     double* output_data;
@@ -129,7 +130,9 @@ class ForecastingPivotTransformer final : public OpKernel {
     };
 
     // Transform
-    const int64_t input_count = onnxruntime::OpKernel::Node().InputArgCount().front();
+    //const int64_t input_count = onnxruntime::OpKernel::Node().InputArgCount().front();
+    const int64_t input_count = 3;
+    std::cout << "input_count: " << input_count << std::endl;
     InputType input;
     input.reserve(input_count - 1);
     std::unordered_map<int, std::tuple<const T*,int64_t, int64_t>> dataPtrMap;
@@ -143,14 +146,20 @@ class ForecastingPivotTransformer final : public OpKernel {
           const T* input_data(input_tensor->template Data<T>());
           // Matrix Eigen raw buffer mapping
           const int64_t input_dim_1 = input_tensor->Shape()[1];
+          std::cout << "_dim1: " << input_dim_1 << std::endl;
           const int64_t input_dim_2 = input_tensor->Shape()[2];
+          std::cout << "_dim2: " << input_dim_2 << std::endl;
 
-          dataPtrMap.insert(std::pair<int, std::tuple<const T*,int64_t, int64_t>>(index, std::make_tuple<const T*,int64_t, int64_t>(input_data, input_dim_1, input_dim_2)));
+          std::tuple<const T*,int64_t, int64_t> infoTuple = std::make_tuple(input_data, input_dim_1, input_dim_2);
+          dataPtrMap.insert(std::pair<int, std::tuple<const T*,int64_t, int64_t>>(index, infoTuple));
         }
         const T* input_data = std::get<0>(dataPtrMap.at(index));
         const int64_t input_dim_1 = std::get<1>(dataPtrMap.at(index));
+        std::cout << "dim1: " << input_dim_1 << std::endl;
         const int64_t input_dim_2 = std::get<2>(dataPtrMap.at(index));
+        std::cout << "dim2: " << input_dim_2 << std::endl;
         InputMatrixT input_matrix(input_data, input_dim_1, input_dim_2);
+        std::cout << "size: " << input_matrix.size() << std::endl;
         input.emplace_back(input_matrix);
 
         input_data += input_matrix.size(); // maybe not correct
@@ -159,7 +168,6 @@ class ForecastingPivotTransformer final : public OpKernel {
       transformer.execute(input, callback_fn);
     }
     transformer.flush(callback_fn);
-
 
     return Status::OK();
   }
@@ -172,8 +180,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T0", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>()
-                              //DataTypeImpl::GetTensorType<double>()
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<double>()
+                              //DataTypeImpl::GetTensorType<float>()
                               }),
     ForecastingPivotTransformer);
 }  // namespace featurizers
