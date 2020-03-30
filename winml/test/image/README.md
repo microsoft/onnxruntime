@@ -5,7 +5,7 @@ ImageTests are to test all kinds of scenarios that are related to images.
 
 # Purpose
 
-To make image related tests data driven and increase test code corverage.
+To make image related tests data driven and increase test code coverage.
 
 # Image Test Data Table
 
@@ -43,8 +43,6 @@ To make image related tests data driven and increase test code corverage.
 
 * Unbound
 
-
-
 ### 4. Models
 > Des: Currently, we are using four models, FNS-candy_Bgr8_freeDimInput, FNS-candy_Bgr8, FNS-candy_Rgb8, and FNS-candy_Tensor. We would try to get more models to cover the following listed cases.
 
@@ -58,13 +56,13 @@ a. [Input Image Metadata](https://github.com/onnx/onnx/blob/master/docs/Metadata
 	* Gray8
 	* Bgra8 (**TODO**, not supported in RS5)
 	* Rgba8 (**TODO**, not supported in RS5)
-	* yuv (**TODO**, not in  onnx1.2.2 spec)
+	* yuv (**TODO**, not in ONNX1.2.2 spec)
 
 * ColorSpaceGamma
 	* sRGB
 	* Linear (**TODO**, not supported in RS5)
 
-* NomialPixelRange
+* NominalPixelRange
 	*  NominalRange_0_255
 	* Normalized_0_1 (No such model)
 	* Normalized_1_1 (No such model)
@@ -77,7 +75,7 @@ b. Model Input Output Type
 
 c. Models we are using.
 
-* Model takes Gray8 image as input and also output image (**TODO**, Mnist outputs tensor)
+* Model takes Gray8 image as input and also output image (**TODO**, MNIST outputs tensor)
 * FNS-candy_Bgr8_freeDimInput
 * FNS-candy_Bgr8
 * FNS-candy_Rgb8
@@ -116,15 +114,14 @@ b. Multiple inputs (**TODO**)
 2. Test models require multiple inputs
 
 c. Bind with Property (**TODO**)
-* _If bind with Property, what properties should be tested ?, and how to make properties as parameters ?_
+* _If bind with Property, what properties should be tested? And how to make properties as parameters?_
 
 ### 7. InputPixelFormats
-> We could convert the input image to the following PixelFormats, and then used as input of model. The pixel format expected from model input can be different from the pixel format of real input. But winml can handle the conversion between them.
+> We could convert the input image to the following PixelFormats, and then used as input of model. The pixel format expected from model input can be different from the pixel format of real input. But WinML can handle the conversion between them.
 
 * Bgra8
 * Rgba8
 * Gray8
 
-# Inplement
-Basically, we would use Data Driven Testing, which is being used in winmlmodeltests.dll.
-[Table Data Source]( https://docs.microsoft.com/en-us/windows-hardware/drivers/taef/table-data-source)
+# Implementation
+Googletest's [value parameterized tests](https://github.com/google/googletest/blob/master/googletest/docs/advanced.md#value-parameterized-tests) are used.
