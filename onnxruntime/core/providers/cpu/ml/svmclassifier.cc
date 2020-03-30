@@ -370,7 +370,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
 
   // TODO: Refine this rough metric to choose when to parallelize.
   if (num_batches > 512) {
-    concurrency::ThreadPool::TryBatchParallelFor(threadpool, num_batches, finalize_batch);
+    concurrency::ThreadPool::TryBatchParallelFor(threadpool, num_batches, finalize_batch, -1);
   } else {
     {
       for (int32_t i = 0; i < num_batches; ++i) {
