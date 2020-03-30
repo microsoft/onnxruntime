@@ -102,6 +102,10 @@ option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
 
+if (onnxruntime_ENABLE_TRAINING AND onnxruntime_USE_HOROVOD)
+  set(onnxruntime_BUILD_FOR_NATIVE_MACHINE ON) # required for Horovod
+endif()
+
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
