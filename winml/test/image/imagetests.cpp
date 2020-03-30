@@ -539,7 +539,7 @@ TEST_F(ImageTests, LoadBindEvalModelWithoutImageMetadata) {
 
     LoadModel(L"squeezenet_tensor_input.onnx");
 
-    auto feature_value = FileHelpers::LoadImageFeatureValue(L"doritos_227.png");
+    auto feature_value = FileHelpers::LoadImageFeatureValue(L"227x227.png");
 
     LearningModelSession model_session(m_model);
     LearningModelBinding model_binding(model_session);
@@ -559,7 +559,7 @@ TEST_F(ImageTests, LoadBindModelWithoutImageMetadata) {
     LearningModelBinding model_binding(model_session);
 
     // Should work on images (by falling back to RGB8)
-    auto feature_value = FileHelpers::LoadImageFeatureValue(L"doritos_227.png");
+    auto feature_value = FileHelpers::LoadImageFeatureValue(L"227x227.png");
     model_binding.Bind(L"data", feature_value);
 
     // Should work on tensors
