@@ -16,6 +16,7 @@ using namespace onnxruntime::cuda;
 
 template <typename T>
 class AttentionDynamicQuant final : public CudaKernel, public AttentionBase {
+ using Base = CudaKernel;
  public:
   AttentionDynamicQuant(const OpKernelInfo& info);
 
