@@ -519,6 +519,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"maxpool_2d_dilations", "maxpool dilations not supported"});
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "test pass on dev box but fails on CI build"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+    broken_tests.insert({"maxpool_2d_uint8", "Does not work on DNNL, NNAPI"});
   }
 
   if (enable_openvino) {
@@ -548,6 +549,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"range_float_type_positive_delta_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"range_int32_type_negative_delta_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+    broken_tests.insert({"maxpool_2d_uint8", "Does not work on DNNL, NNAPI"});
   }
 
   if (enable_tensorrt) {

@@ -302,7 +302,7 @@ TEST(PoolTest, MaxPool2D_uint8) {
         ASSERT_TRUE(false);
       } else {
         auto span = tensor.DataAsSpan<uint8_t>();
-        if (!std::equal(output.cbegin(), output.cend(), span.cbegin(), span.cend())) {
+        if (!std::equal(output.cbegin(), output.cend(), span.cbegin())) {
           std::cout << "MaxPool_2d_uint8:" << provider
                     << std::endl;
           std::cout << "Values expected do not match received" << std::endl;
