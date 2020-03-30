@@ -246,6 +246,7 @@ class OpKernelContext {
 constexpr const char* kMSDomain = "com.microsoft";
 constexpr const char* kMklDnnExecutionProvider = "MKLDNNExecutionProvider";
 
+#if 0
 using AllocateFunc = void* (*)(void*, size_t, size_t);
 using DestroyFunc = void (*)(void*, void*);
 using AllocatorHandle = void*;
@@ -271,6 +272,7 @@ struct NodeComputeInfo {
   ComputeFunc compute_func;
   DestroyFunctionStateFunc release_state_func;
 };
+#endif
 
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;

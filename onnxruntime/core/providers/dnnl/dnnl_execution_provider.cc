@@ -412,8 +412,8 @@ void DNNLExecutionProvider::CreateMetaDef(const onnxruntime::Prov_GraphViewer& g
   sub_var.Reset();
 }
 
-Status DNNLExecutionProvider::Compile(const std::vector<onnxruntime::Prov_Node*>& fused_nodes,
-                                      std::vector<NodeComputeInfo>& node_compute_funcs) {
+Status DNNLExecutionProvider::Prov_Compile(const std::vector<onnxruntime::Prov_Node*>& fused_nodes,
+                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto* fused_node : fused_nodes) {
     auto attributes = fused_node->GetAttributes();
     NodeComputeInfo compute_info;

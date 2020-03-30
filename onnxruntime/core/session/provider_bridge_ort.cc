@@ -11,6 +11,7 @@
 #include "core/platform/env.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/compute_capability.h"
+#define PROVIDER_BRIDGE_IMPL
 #include "core/providers/shared_library/bridge.h"
 #include "core/common/logging/logging.h"
 //#include "core/common/cpuid_info.h"
@@ -249,6 +250,9 @@ std::unique_ptr<Prov_Node::Prov_NodeIterator> Prov_Node_Impl::InputNodesEnd_inte
 }
 
 struct Prov_IndexedSubGraph_Impl : Prov_IndexedSubGraph {
+  Prov_IndexedSubGraph_Impl() = default;
+  Prov_IndexedSubGraph_Impl(std::unique_ptr<IndexedSubGraph> p) : p_{std::move(p)} {}
+
   void SetMetaDef(std::unique_ptr<MetaDef>& def_) override {
     auto real = std::make_unique<IndexedSubGraph::MetaDef>();
 
@@ -341,10 +345,16 @@ struct Prov_IExecutionProvider_Router_Impl : Prov_IExecutionProvider_Router, IEx
 
   std::vector<std::unique_ptr<Prov_ComputeCapability>> Prov_GetCapability(const onnxruntime::Prov_GraphViewer& graph,
                                                                           const std::vector<const Prov_KernelRegistry*>& kernel_registries) const override {
-    __debugbreak();
-    graph;
-    kernel_registries;
-    return {};
+    std::vector<const KernelRegistry*> kernel_registries_internal;
+    for (auto& v : kernel_registries)
+      kernel_registries_internal.emplace_back(static_cast<const Prov_KernelRegistry_Impl*>(v)->p_);
+
+    auto capabilities_internal = IExecutionProvider::GetCapability(static_cast<const Prov_GraphViewer_Impl*>(&graph)->v_, kernel_registries_internal);
+
+    std::vector<std::unique_ptr<Prov_ComputeCapability>> capabilities;
+    for (auto& v : capabilities_internal)
+      capabilities.emplace_back(std::make_unique<Prov_ComputeCapability>(std::make_unique<Prov_IndexedSubGraph_Impl>(std::move(v->sub_graph))));
+    return capabilities;
   }
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph,
@@ -359,12 +369,22 @@ struct Prov_IExecutionProvider_Router_Impl : Prov_IExecutionProvider_Router, IEx
     for (auto& p : prov_result)
       result.emplace_back(std::make_unique<ComputeCapability>(std::move(static_cast<Prov_IndexedSubGraph_Impl*>(p->t_sub_graph_.get())->p_)));
 
+    for (auto p : registries)
+      delete p;
+
     return result;
   }
 
   common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) override {
-    return IExecutionProvider::Compile(fused_nodes, node_compute_funcs);
-    //  return derived_->Compile(fused_nodes, node_compute_funcs);
+    std::vector<Prov_Node_Impl> prov_fused_nodes_values;
+    std::vector<Prov_Node*> prov_fused_nodes;
+    prov_fused_nodes_values.reserve(fused_nodes.size());
+    for (auto& p : fused_nodes) {
+      prov_fused_nodes_values.emplace_back(p);
+      prov_fused_nodes.emplace_back(&prov_fused_nodes_values.back());
+    }
+
+    return outer_->Prov_Compile(prov_fused_nodes, node_compute_funcs);
   }
 
   Prov_AllocatorPtr Prov_GetAllocator(int id, OrtMemType mem_type) const override {
@@ -378,7 +398,7 @@ struct Prov_IExecutionProvider_Router_Impl : Prov_IExecutionProvider_Router, IEx
     IExecutionProvider::InsertAllocator(static_cast<Prov_IAllocator_Impl*>(allocator.get())->p_);
   }
 
-  Prov_IExecutionProvider* outer_;
+  std::unique_ptr<Prov_IExecutionProvider> outer_;
 };
 
 struct ProviderHostImpl : ProviderHost {
@@ -641,7 +661,7 @@ struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     auto provider = p_->CreateProvider();
-    return std::unique_ptr<IExecutionProvider>(static_cast<Prov_IExecutionProvider_Router_Impl*>(provider.release()->p_.release()));
+    return std::unique_ptr<IExecutionProvider>(static_cast<Prov_IExecutionProvider_Router_Impl*>(provider.release()->p_));
   }
 
   std::shared_ptr<Prov_IExecutionProviderFactory> p_;

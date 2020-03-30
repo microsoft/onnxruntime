@@ -80,8 +80,8 @@ class DNNLExecutionProvider : public Prov_IExecutionProvider {
   Prov_GetCapability(const onnxruntime::Prov_GraphViewer& graph,
                      const std::vector<const Prov_KernelRegistry*>& /*kernel_registries*/) const override;
 
-  common::Status Compile(const std::vector<onnxruntime::Prov_Node*>& fused_nodes,
-                         std::vector<NodeComputeInfo>& node_compute_funcs) /*override*/;
+  common::Status Prov_Compile(const std::vector<onnxruntime::Prov_Node*>& fused_nodes,
+                              std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
  private:
   // dnnl weights(filer data) memory blocks from first iteration
