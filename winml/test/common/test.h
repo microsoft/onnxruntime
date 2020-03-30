@@ -15,10 +15,6 @@ constexpr bool alwaysFalse() {
 #define WINML_SUPRESS_UNREACHABLE_BELOW(statement)    \
     if (alwaysTrue()) { statement; }
 
-#if !defined(BUILD_GOOGLE_TEST) && !defined(BUILD_TAEF_TEST)
-#define BUILD_GOOGLE_TEST
-#endif
-
 #ifdef BUILD_GOOGLE_TEST
 #include "googleTestMacros.h"
 #else
