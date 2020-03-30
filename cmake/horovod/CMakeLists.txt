@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 11)
 
 set(THIRD_PARTY_ROOT ${HOROVOD_ROOT}/third_party)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -B /data/anaconda/envs/ort/compiler_compat -Wl,--sysroot=/ -Wsign-compare -DNDEBUG -g -fwrapv -O3 -Wall -fPIC -DHAVE_MPI")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -Wl,--sysroot=/ -Wsign-compare -DNDEBUG -g -fwrapv -O3 -Wall -fPIC -DHAVE_MPI")
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=strict-aliasing -Wno-error=unused-parameter -Wno-error=ignored-qualifiers -Wno-error=maybe-uninitialized")
 
@@ -52,6 +52,8 @@ target_compile_options(horovod PRIVATE -Wno-error=sign-compare)
 target_compile_options(horovod PRIVATE -Wno-reorder)
 target_compile_options(horovod PRIVATE -Wno-unused-variable)
 target_include_directories(horovod PRIVATE
+    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+    ${MPI_CXX_INCLUDE_PATH}
     ${REPO_ROOT}/cmake/external/eigen # use ORT's eigen instead of ${THIRD_PARTY_ROOT}/eigen
     ${THIRD_PARTY_ROOT}/lbfgs/include
     ${THIRD_PARTY_ROOT}/boost/assert/include
@@ -67,6 +69,4 @@ target_include_directories(horovod PRIVATE
     ${THIRD_PARTY_ROOT}/boost/static_assert/include
     ${THIRD_PARTY_ROOT}/boost/type_traits/include
     ${THIRD_PARTY_ROOT}/boost/utility/include
-    ${THIRD_PARTY_ROOT}/flatbuffers/include
-    /usr/local/cuda/include
-    ${MPI_CXX_INCLUDE_PATH})
+    ${THIRD_PARTY_ROOT}/flatbuffers/include)
