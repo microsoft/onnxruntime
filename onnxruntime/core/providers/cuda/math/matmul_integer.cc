@@ -5,6 +5,7 @@
 #include "matmul_integer.cuh"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "core/providers/cuda/shared_inc/int8_support.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/common.h"
 #include <cublasLt.h>
@@ -140,7 +141,8 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
                   a_ptr + helper.LeftOffsets()[batch] + helper.LeftOffsets()[batch] / helper.K() * a_pad_size,
                   static_cast<int>(helper.K() + a_pad_size),
                   output_ptr + helper.OutputOffsets()[batch],
-                  static_cast<int>(helper.N()));
+                  static_cast<int>(helper.N()),
+                  this);
     //CUBLAS_RETURN_IF_ERROR(cublasGemmEx(
     //    Base::CublasHandle(),
     //    CUBLAS_OP_N,
