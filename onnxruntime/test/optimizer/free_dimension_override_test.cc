@@ -58,6 +58,12 @@ TEST(FreeDimensionOverrideTransformerTest, Test) {
   ASSERT_TRUE(input_shape->dim(1).denotation() == onnx::DATA_CHANNEL);
   ASSERT_TRUE(input_shape->dim(1).has_dim_value());
   ASSERT_TRUE(input_shape->dim(1).dim_value() == 42);
+
+  graph_transformer = onnxruntime::make_unique<FreeDimensionOverrideTransformer>(overrides);
+  bool modified = false;
+  ASSERT_TRUE(graph_transformer->Apply(graph, modified,
+    DefaultLoggingManager().DefaultLogger()).IsOK());
+  ASSERT_FALSE(modified); // no overrides apply anymore
 }
 
 }  // namespace test
