@@ -64,7 +64,7 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 
-  if (before_dims > 0 && block_size_inside_axis_dim > 0) {
+  if (input_tensor->Shape().Size() > 0) {
     output_ptr.CopyToGpu();
 
     CudaAsyncBuffer<int64_t> split_sizes_gpu(this, split_sizes);
