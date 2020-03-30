@@ -25,7 +25,7 @@ void PutAllNodesOnOneProvider(Graph& graph, const std::string& provider_type) {
 
 namespace test {
 TEST(MemcpyTest, copy1) {
-  concurrency::ThreadPool tp{"test", 1};
+  concurrency::ThreadPool tp(&onnxruntime::Env::Default(), ThreadOptions(), ORT_TSTR("MemcpyTest"), 2, true);
 
   ExecutionProviders execution_providers;
   CPUExecutionProviderInfo epi;
