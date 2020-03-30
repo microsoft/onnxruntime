@@ -50,7 +50,6 @@ target_compile_definitions(horovod PRIVATE
     HOROVOD_GPU_BROADCAST='M')
 
 target_compile_options(horovod PRIVATE
-    -pthread
     -Wl,--sysroot=/
     -fwrapv
     -fPIC
