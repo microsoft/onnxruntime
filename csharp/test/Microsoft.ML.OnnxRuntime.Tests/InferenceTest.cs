@@ -1063,11 +1063,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var inputValues = new[] { valueInput };
                     var outputValues = new[] { valueOutput };
 
+                    var rand = new Random();
+
                     // run the model for multiple times
                     for (var i = 0; i < 1000; i++)
                     {
-                        // feed inputs
-                        var inputs = new int[] { 1, 2, 3, 4, 5 };
+                        // feed inputs ( 5 random integers )
+                        var inputs = Enumerable.Range(0, 5).Select(x => rand.Next()).ToArray();
                         inputs.CopyTo(bufferInput, 0);
 
                         // run inference
