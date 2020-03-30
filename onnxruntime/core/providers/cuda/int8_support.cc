@@ -44,7 +44,9 @@ void LtIgemmTensor(cublasLtHandle_t ltHandle,
                           int ldc,
                           const CudaKernel* cuda_kernel) {
   cublasLtMatmulDesc_t matmulDesc = NULL;
-  cublasLtMatrixLayout_t a_desc = NULL, b_desc = NULL, c_desc = NULL;
+  cublasLtMatrixLayout_t a_desc = NULL;
+  cublasLtMatrixLayout_t b_desc = NULL;
+  cublasLtMatrixLayout_t c_desc = NULL;
   cublasOperation_t op_transpose = CUBLAS_OP_T;
 
   // The tensor op igemm kernels require specialized memory order of data

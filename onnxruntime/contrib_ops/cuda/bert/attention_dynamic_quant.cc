@@ -7,6 +7,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/math/matmul_integer.cuh"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "core/providers/cuda/shared_inc/int8_support.h"
 #include "core/providers/cuda/tensor/quantize_linear.h"
 #include "attention_impl.h"
 #include "attention_dynamic_quant_impl.cuh"
@@ -186,6 +187,22 @@ Status AttentionDynamicQuant<T>::ComputeInternal(OpKernelContext* context) const
   int alpha = 1;
   int beta = 0;
   auto gemm_buffer_quantized = GetScratchBuffer<int32_t>(batch_size * sequence_length * 3 * hidden_size);
+
+  LtIgemmTensor(Base::CublasLtHandle(),
+                n,
+                m,
+                k,
+                alpha,
+                beta,
+                b_ptr,
+                static_cast<int>(n + b_pad_size),
+                a_ptr,
+                static_cast<int>(k + a_pad_size),
+                gemm_buffer_quantized.get(),
+                n,
+                this);
+
+  /*
   CUBLAS_RETURN_IF_ERROR(cublasGemmEx(
       cublas,
       CUBLAS_OP_N,
@@ -205,7 +222,7 @@ Status AttentionDynamicQuant<T>::ComputeInternal(OpKernelContext* context) const
       CUDA_R_32I,
       n,
       CUDA_R_32I,
-      CUBLAS_GEMM_DFALT));
+      CUBLAS_GEMM_DFALT));*/
 
   // scale back and bias
   CudaDequantizeWithBias(
