@@ -54,6 +54,7 @@ target_compile_options(horovod PRIVATE
     -fwrapv
     -fPIC
     ${MPI_CXX_COMPILE_FLAGS}
+    -march=native
     -Wall
     -Wno-error=ignored-qualifiers
     -Wno-error=sign-compare
