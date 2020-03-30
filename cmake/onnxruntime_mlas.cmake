@@ -129,19 +129,12 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
     )
   elseif(ARM64)
-    if(IOS)
-      set(mlas_platform_srcs
-        ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
-      )
-    else()
-      enable_language(ASM)
-      set(mlas_platform_srcs
-        ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemmKernelNeon.S
-      )
-    endif()
+    enable_language(ASM)
+    set(mlas_platform_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemmKernelNeon.S
+    )
   elseif(X86)
     enable_language(ASM)
-
     set(mlas_platform_srcs_sse2
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelSse2.S
     )
