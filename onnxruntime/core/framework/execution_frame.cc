@@ -340,7 +340,7 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
 
     // be generous and use the buffer if it's large enough. log a warning though as it indicates a bad model
     if (buffer_num_elements >= required_num_elements) {
-      LOGS(session_state_.Logger(), WARNING) << message;
+      LOGS(session_state_.Logger(), INFO) << message;
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
     }

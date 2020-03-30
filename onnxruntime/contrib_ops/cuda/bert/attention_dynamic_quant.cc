@@ -68,11 +68,10 @@ void AttentionDynamicQuant<T>::CacheWeights(const OpKernelInfo& info){
     float transformAlpha = 1.0f;
     float transformBeta = 0.0f;
     cublasLtOrder_t order_COL32 = CUBLASLT_ORDER_COL32;
-    cublasLtOrder_t order_COL4_4R2_8C = CUBLASLT_ORDER_COL4_4R2_8C;
 
     int ldatransform = 32 * m;
 
-    a_transform = cuda_kernel->GetScratchBuffer<int8_t>(roundoff(k, 32) / 32 * ldatransform);
+    a_transform = GetScratchBuffer<int8_t>(roundoff(k, 32) / 32 * ldatransform);
 
     CUBLAS_CALL_THROW(cublasLtMatrixTransformDescCreate(&transform_desc, CUDA_R_32F));
 
@@ -84,7 +83,7 @@ void AttentionDynamicQuant<T>::CacheWeights(const OpKernelInfo& info){
     CUBLAS_CALL_THROW(cublasLtMatrixLayoutSetAttribute(AtransformDesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &order_COL32, sizeof(order_COL32)));
 
     // Transforms and computation
-    CUBLAS_CALL_THROW(cublasLtMatrixTransform(Base::CublasLtHandle(),,
+    CUBLAS_CALL_THROW(cublasLtMatrixTransform(Base::CublasLtHandle(),
                                               transform_desc,
                                               &transformAlpha,
                                               W->template Data<int8_t>(),
@@ -105,7 +104,7 @@ AttentionDynamicQuant<T>::AttentionDynamicQuant(const OpKernelInfo& info) : Cuda
 }
 
 template <typename T>
-AttentionDynamicQuant<T>::~AttentionDynamicQuant(const OpKernelInfo& info) {
+AttentionDynamicQuant<T>::~AttentionDynamicQuant() {
   // Descriptors are no longer needed as all GPU work was already
   // enqueued.
   if (AtransformDesc) cublasLtMatrixLayoutDestroy(AtransformDesc);
@@ -243,14 +242,12 @@ Status AttentionDynamicQuant<T>::ComputeInternal(OpKernelContext* context) const
   auto gemm_buffer_quantized = GetScratchBuffer<int32_t>(batch_size * sequence_length * 3 * hidden_size);
 
   if(cache_weight){
-    LtIgemmTensor(Base::CublasLtHandle(),AtransformDesc, a_transform, transform_desc,
+    LtIgemmTensorPrepackB(Base::CublasLtHandle(),AtransformDesc, a_transform, transform_desc,
                 n,
                 m,
                 k,
                 alpha,
                 beta,
-                b_ptr,
-                static_cast<int>(n + b_pad_size),
                 a_ptr,
                 static_cast<int>(k + a_pad_size),
                 gemm_buffer_quantized.get(),

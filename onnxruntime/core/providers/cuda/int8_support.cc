@@ -11,15 +11,13 @@
 // NV_TODO: optimize speed -- pass things needed in, optimize kernel speed, add half2
 // NV_TODO: investigate cub support for half
 
+#include "core/providers/cuda/shared_inc/int8_support.h"
+
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
 namespace onnxruntime {
 namespace cuda {
-
-static inline int roundoff(int v, int d) {
-  return (v + d - 1) / d * d;
-}
 
 // Use cublasLtMatmul to perform the tensor op Igemm with the memory
 // order transforms on all buffers.
@@ -162,16 +160,14 @@ void LtIgemmTensor(cublasLtHandle_t ltHandle,
 }
 
 void LtIgemmTensorPrepackB(cublasLtHandle_t ltHandle,
-                           cublasLtMatrixLayout_t AtransformDesc;
-                           IAllocatorUniquePtr<int8_t>& a_transform;
-                           cublasLtMatrixTransformDesc_t transform_desc;
+                           cublasLtMatrixLayout_t AtransformDesc,
+                           const IAllocatorUniquePtr<int8_t>& a_transform,
+                           cublasLtMatrixTransformDesc_t transform_desc,
                           int m,
                           int n,
                           int k,
                           int32_t alpha,
                           int32_t beta,
-                          const int8_t* A,
-                          int lda,
                           const int8_t* B,
                           int ldb,
                           int32_t* C,
