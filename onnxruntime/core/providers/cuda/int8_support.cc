@@ -19,6 +19,39 @@
 namespace onnxruntime {
 namespace cuda {
 
+// Define some error checking macros.
+#define cudaErrCheck(stat) { cudaErrCheck_((stat), __FILE__, __LINE__); }
+void cudaErrCheck_(cudaError_t stat, const char *file, int line) {
+  if (stat != cudaSuccess) {
+    fprintf(stderr, "CUDA Error: %s %s %d\n", cudaGetErrorString(stat), file, line);
+  }
+}
+
+#define cublasErrCheck(stat) { cublasErrCheck_((stat), __FILE__, __LINE__); }
+void cublasErrCheck_(cublasStatus_t stat, const char *file, int line) {
+  if (stat != CUBLAS_STATUS_SUCCESS) {
+    fprintf(stderr, "cuBLAS Error: %d %s %d\n", stat, file, line);
+  }
+}
+
+#define profile_declare() \
+  cudaEvent_t startcublas; \
+  cudaEvent_t stopcublas; \
+  float cublasTime, cublasTimeTot = 0.0f; \
+  cudaErrCheck(cudaEventCreate(&startcublas)); \
+  cudaErrCheck(cudaEventCreate(&stopcublas));
+
+#define profile_start() cudaErrCheck(cudaEventRecord(startcublas));
+
+#define profile_end() \
+  cudaErrCheck(cudaEventRecord(stopcublas)); \
+  cudaErrCheck(cudaEventSynchronize(stopcublas)); \
+  cudaErrCheck(cudaEventElapsedTime(&cublasTime, startcublas, stopcublas)); \
+  cublasTimeTot += cublasTime; \
+  printf("cublas igemm create time (ms): %f\n", cublasTime);
+
+#define profile_total() printf("cublas igemm create time (ms): %f\n", cublasTimeTot);
+
 // Use cublasLtMatmul to perform the tensor op Igemm with the memory
 // order transforms on all buffers.
 //
@@ -41,6 +74,8 @@ void LtIgemmTensor(cublasLtHandle_t ltHandle,
                           int32_t* C,
                           int ldc,
                           const CudaKernel* cuda_kernel) {
+   profile_declare();
+   profile_start()
   cublasLtMatmulDesc_t matmulDesc = NULL;
   cublasLtMatrixLayout_t a_desc = NULL;
   cublasLtMatrixLayout_t b_desc = NULL;
@@ -92,6 +127,8 @@ void LtIgemmTensor(cublasLtHandle_t ltHandle,
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&CtransformDesc, CUDA_R_32I, m, n, ldctransform));
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutSetAttribute(CtransformDesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &order_COL32, sizeof(order_COL32)));
 
+  profile_end();
+  profile_start();
   // Transforms and computation
   CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
                                             transform_desc,
@@ -104,6 +141,8 @@ void LtIgemmTensor(cublasLtHandle_t ltHandle,
                                             a_transform.get(),
                                             AtransformDesc,
                                             0));
+    profile_end();
+  profile_start();
   CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
                                             transform_desc,
                                             &transformAlpha,
@@ -115,7 +154,8 @@ void LtIgemmTensor(cublasLtHandle_t ltHandle,
                                             b_transform.get(),
                                             BtransformDesc,
                                             0));
-
+  profile_end();
+  profile_start();
   // No need to transform C matrix as beta is assumed to be 0
   CUBLAS_CALL_THROW(cublasLtMatmul(ltHandle,
                                    matmulDesc,
@@ -133,7 +173,8 @@ void LtIgemmTensor(cublasLtHandle_t ltHandle,
                                    NULL,
                                    0,
                                    0));
-
+  profile_end();
+  profile_start();
   //// Transform the outputs to COL order
   CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
                                             transform_desc,
@@ -146,7 +187,8 @@ void LtIgemmTensor(cublasLtHandle_t ltHandle,
                                             C,
                                             c_desc,
                                             0));
-
+  profile_end();
+  profile_start();
   // Descriptors are no longer needed as all GPU work was already
   // enqueued.
   if (CtransformDesc) cublasLtMatrixLayoutDestroy(CtransformDesc);
@@ -157,6 +199,9 @@ void LtIgemmTensor(cublasLtHandle_t ltHandle,
   if (a_desc) cublasLtMatrixLayoutDestroy(a_desc);
   if (matmulDesc) cublasLtMatmulDescDestroy(matmulDesc);
   if (transform_desc) cublasLtMatrixTransformDescDestroy(transform_desc);
+    profile_end();
+  profile_start();
+  prfile_total();
 }
 
 void LtIgemmTensorPrepackB(cublasLtHandle_t ltHandle,
@@ -173,6 +218,8 @@ void LtIgemmTensorPrepackB(cublasLtHandle_t ltHandle,
                           int32_t* C,
                           int ldc,
                           const CudaKernel* cuda_kernel) {
+   profile_declare();
+   profile_start()
   cublasLtMatmulDesc_t matmulDesc = NULL;
   cublasLtMatrixLayout_t b_desc = NULL;
   cublasLtMatrixLayout_t c_desc = NULL;
@@ -212,7 +259,8 @@ void LtIgemmTensorPrepackB(cublasLtHandle_t ltHandle,
 
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&CtransformDesc, CUDA_R_32I, m, n, ldctransform));
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutSetAttribute(CtransformDesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &order_COL32, sizeof(order_COL32)));
-
+      profile_end();
+  profile_start();
   // Transforms and computation
   CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
                                             transform_desc,
@@ -225,7 +273,8 @@ void LtIgemmTensorPrepackB(cublasLtHandle_t ltHandle,
                                             b_transform.get(),
                                             BtransformDesc,
                                             0));
-
+      profile_end();
+  profile_start();
   // No need to transform C matrix as beta is assumed to be 0
   CUBLAS_CALL_THROW(cublasLtMatmul(ltHandle,
                                    matmulDesc,
@@ -243,7 +292,8 @@ void LtIgemmTensorPrepackB(cublasLtHandle_t ltHandle,
                                    NULL,
                                    0,
                                    0));
-
+      profile_end();
+  profile_start();
   //// Transform the outputs to COL order
   CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
                                             transform_desc,
@@ -256,7 +306,8 @@ void LtIgemmTensorPrepackB(cublasLtHandle_t ltHandle,
                                             C,
                                             c_desc,
                                             0));
-
+      profile_end();
+  profile_start();
   // Descriptors are no longer needed as all GPU work was already
   // enqueued.
   if (CtransformDesc) cublasLtMatrixLayoutDestroy(CtransformDesc);
@@ -264,6 +315,10 @@ void LtIgemmTensorPrepackB(cublasLtHandle_t ltHandle,
   if (c_desc) cublasLtMatrixLayoutDestroy(c_desc);
   if (b_desc) cublasLtMatrixLayoutDestroy(b_desc);
   if (matmulDesc) cublasLtMatmulDescDestroy(matmulDesc);
+
+      profile_end();
+  profile_start();
+  prfile_total();
 }
 
 }
