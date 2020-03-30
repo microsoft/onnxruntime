@@ -51,4 +51,22 @@ target_compile_options(horovod PRIVATE -march=native)
 target_compile_options(horovod PRIVATE -Wno-error=sign-compare)
 target_compile_options(horovod PRIVATE -Wno-reorder)
 target_compile_options(horovod PRIVATE -Wno-unused-variable)
-target_include_directories(horovod PRIVATE ${THIRD_PARTY_ROOT}/eigen ${THIRD_PARTY_ROOT}/lbfgs/include ${THIRD_PARTY_ROOT}/boost/assert/include ${THIRD_PARTY_ROOT}/boost/config/include ${THIRD_PARTY_ROOT}/boost/core/include ${THIRD_PARTY_ROOT}/boost/detail/include ${THIRD_PARTY_ROOT}/boost/iterator/include ${THIRD_PARTY_ROOT}/boost/lockfree/include ${THIRD_PARTY_ROOT}/boost/mpl/include ${THIRD_PARTY_ROOT}/boost/parameter/include ${THIRD_PARTY_ROOT}/boost/predef/include ${THIRD_PARTY_ROOT}/boost/preprocessor/include ${THIRD_PARTY_ROOT}/boost/static_assert/include ${THIRD_PARTY_ROOT}/boost/type_traits/include ${THIRD_PARTY_ROOT}/boost/utility/include ${THIRD_PARTY_ROOT}/flatbuffers/include /usr/local/cuda/include ${MPI_CXX_INCLUDE_PATH})
+target_include_directories(horovod PRIVATE
+    ${REPO_ROOT}/cmake/external/eigen # use ORT's eigen instead of ${THIRD_PARTY_ROOT}/eigen
+    ${THIRD_PARTY_ROOT}/lbfgs/include
+    ${THIRD_PARTY_ROOT}/boost/assert/include
+    ${THIRD_PARTY_ROOT}/boost/config/include
+    ${THIRD_PARTY_ROOT}/boost/core/include
+    ${THIRD_PARTY_ROOT}/boost/detail/include
+    ${THIRD_PARTY_ROOT}/boost/iterator/include
+    ${THIRD_PARTY_ROOT}/boost/lockfree/include
+    ${THIRD_PARTY_ROOT}/boost/mpl/include
+    ${THIRD_PARTY_ROOT}/boost/parameter/include
+    ${THIRD_PARTY_ROOT}/boost/predef/include
+    ${THIRD_PARTY_ROOT}/boost/preprocessor/include
+    ${THIRD_PARTY_ROOT}/boost/static_assert/include
+    ${THIRD_PARTY_ROOT}/boost/type_traits/include
+    ${THIRD_PARTY_ROOT}/boost/utility/include
+    ${THIRD_PARTY_ROOT}/flatbuffers/include
+    /usr/local/cuda/include
+    ${MPI_CXX_INCLUDE_PATH})
