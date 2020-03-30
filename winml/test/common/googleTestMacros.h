@@ -51,7 +51,7 @@
 #endif
 
 #define WINML_SKIP_TEST(message) \
-  GTEST_SKIP() << message;
+  WINML_SUPRESS_UNREACHABLE_BELOW(GTEST_SKIP() << message)
 
 #define WINML_EXPECT_NO_THROW(statement) EXPECT_NO_THROW(statement)
 #define WINML_EXPECT_TRUE(statement) EXPECT_TRUE(statement)
@@ -69,13 +69,16 @@
 
 #ifndef USE_DML
 #define GPUTEST \
-  WINML_SUPRESS_UNREACHABLE_BELOW(WINML_SKIP_TEST("GPU tests disabled because this is a WinML only build (no DML)"))
+  WINML_SKIP_TEST("GPU tests disabled because this is a WinML only build (no DML)")
+#define GPUTEST_ENABLED alwaysFalse()
 #else
-#define GPUTEST                                                                         \
-  if (auto noGpuTests = RuntimeParameters::Parameters.find("noGPUtests");               \
-      noGpuTests != RuntimeParameters::Parameters.end() && noGpuTests->second != "0") { \
-    WINML_SKIP_TEST("GPU tests disabled");                                              \
+#define GPUTEST                                                                             \
+  if (auto no_gpu_tests = RuntimeParameters::Parameters.find("noGPUtests");                 \
+      no_gpu_tests != RuntimeParameters::Parameters.end() && no_gpu_tests->second != "0") { \
+    WINML_SKIP_TEST("GPU tests disabled");                                                  \
   }
+#define GPUTEST_ENABLED auto _no_gpu_tests = RuntimeParameters::Parameters.find("noGPUtests");    \
+      _no_gpu_tests == RuntimeParameters::Parameters.end() || _no_gpu_tests->second == "0"
 #endif
 
 #define SKIP_EDGECORE                                                                   \

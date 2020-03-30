@@ -29,6 +29,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         public string Name { get { return _name; } set { _name = value; } }
+        public Object Value { get { return _value; } set { _value = value; } }
 
         /// <summary>
         /// Try-get value as a Tensor&lt;T&gt;.

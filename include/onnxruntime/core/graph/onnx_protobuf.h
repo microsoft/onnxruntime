@@ -4,9 +4,13 @@
 #pragma once
 //TODO(): delete this file from public interface
 #ifdef __GNUC__
+#include "onnxruntime_config.h"
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wignored-qualifiers"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#ifdef HAS_DEPRECATED_DECLARATIONS
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 #else
 #pragma warning(push)
 #pragma warning(disable : 4018) /*'expression' : signed/unsigned mismatch */
