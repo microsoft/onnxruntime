@@ -74,7 +74,9 @@ def generate_dependencies(list, package_name, version):
     list.append('</group>')
 
     if (package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or package_name == 'Microsoft.ML.OnnxRuntime'):
+        list.append('<group>')
         list.append('<dependency id="Microsoft.Windows.CppWinRT"' + ' version="2.0.200316.3"/>')
+        list.append('</group>')
 
     list.append('</dependencies>')
 
