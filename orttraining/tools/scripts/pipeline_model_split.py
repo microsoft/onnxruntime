@@ -247,18 +247,8 @@ def find_all_connected_nodes(model, node):
     return connected_nodes, inputs, outputs
 
 
-def get_node_index(model, node):
-    found = [i for i, n in enumerate(model.graph.node) if n == node]
-    return found[0] if found else None
-
-
-def get_input_index(model, input):
-    found = [i for i, n in enumerate(model.graph.input) if n == input]
-    return found[0] if found else None
-
-
-def get_output_index(model, output):
-    found = [i for i, n in enumerate(model.graph.output) if n == output]
+def get_index(node_list, node):
+    found = [i for i, n in enumerate(node_list) if n == node]
     return found[0] if found else None
 
 # traverse the graph, group connected nodes and generate subgraph
@@ -298,19 +288,20 @@ def generate_subgraph(model, start_nodes):
         # gather visited nodes
         visited_nodes = []
         for n in visited0:
-            visited_nodes.append(get_node_index(main_graph, n))
+            visited_nodes.append(get_index(main_graph.graph.node, n))
         visited_nodes.sort(reverse=True)
 
         # gather visited inputs
         visited_inputs = []
         for n in inputs0:
-            visited_inputs.append(get_input_index(main_graph, n))
+            visited_inputs.append(get_index(main_graph.graph.input, n))
         visited_inputs.sort(reverse=True)
 
         # gather visited outputs
         visited_outputs = []
         for n in outputs0:
-            visited_outputs.append(get_output_index(main_graph, n))
+            visited_outputs.append(
+                get_index(main_graph.graph.output, n))
         visited_outputs.sort(reverse=True)
 
         for i in reversed(range(len(main_graph.graph.node))):
@@ -350,10 +341,6 @@ def generate_subgraph(model, start_nodes):
     # as the subgraphs were added in reverse order (the last split is added first), reverse the order back before return
     subgraphs.reverse()
     return subgraphs
-
-
-def write_model(model, file_name):
-    onnx.save(model, file_name)
 
 
 def main():
@@ -409,7 +396,7 @@ def main():
 
     for i in range(stage_count):
         sub_graphs[i] = onnx.shape_inference.infer_shapes(sub_graphs[i])
-        write_model(sub_graphs[i], output_model_names[i])
+        onnx.save(sub_graphs[i], output_model_names[i])
 
 
 if __name__ == "__main__":
