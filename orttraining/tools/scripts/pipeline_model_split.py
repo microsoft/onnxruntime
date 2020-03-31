@@ -1,4 +1,5 @@
 import sys
+import os
 import onnx
 from onnx import helper
 from onnx import TensorProto
@@ -59,12 +60,16 @@ def split_graph(model, split_edge_groups):
 
         # split the graph based on edgeIds
         upstream_nodes = []
+        upstream_nodes_output_index = []
         output_shapes = []
 
         for id in edgeIds:
             for node in model.graph.node:
-                if len(node.output) >= 1 and node.output[0] == id:
-                    upstream_nodes.append(node)
+                if len(node.output) >= 1:
+                    for i, j in enumerate(node.output):
+                        if j == id:
+                            upstream_nodes.append(node)
+                            upstream_nodes_output_index.append(i)
                     for info in model.graph.value_info:
                         if info.name == id:
                             output_shapes.append(info.type)
@@ -135,22 +140,26 @@ def split_graph(model, split_edge_groups):
 
         for i in range(len(upstream_nodes)):
             n = upstream_nodes[i]
+            idx = upstream_nodes_output_index[i]
             output_type = output_shapes[i]
+            output_edge_name = n.output[idx]
 
-            output_nodes = find_all_output_nodes_by_edge(model, n.output[0])
+            output_nodes = find_all_output_nodes_by_edge(
+                model, output_edge_name)
 
             # deal with shape inference for newly added edge
-            new_send_input_name = n.output[0] + '_send' + str(cut_index)
+            new_send_input_name = output_edge_name + '_send' + str(cut_index)
             add_expand_type(model, new_send_input_name, output_type)
 
-            new_receive_output_name = n.output[0] + '_recv' + str(cut_index)
+            new_receive_output_name = output_edge_name + \
+                '_recv' + str(cut_index)
             add_expand_type(model, new_receive_output_name, output_type)
 
-            new_wait_output_name = n.output[0] + '_wait' + str(cut_index)
+            new_wait_output_name = output_edge_name + '_wait' + str(cut_index)
             add_expand_type(model, new_wait_output_name, output_type)
 
             # the order of data flow is: node-output -> record -> send -> recv -> wait -> node-input
-            new_record.input.extend([n.output[0]])
+            new_record.input.extend([output_edge_name])
             new_record.output.extend([new_send_input_name])
 
             new_send.input.extend([new_send_input_name])
@@ -179,13 +188,8 @@ def find_all_input_nodes(model, node):
 
     if node:
         for inputId in node.input:
-            for node in model.graph.node:
-                for output in node.output:
-                    if output == inputId:
-                        nodes.append(node)
-            for input in model.graph.input:
-                if input.name == inputId:
-                    inputs.append(input)
+            nodes.extend([n for n in model.graph.node if inputId in n.output])
+            inputs.extend([n for n in model.graph.input if inputId in n.name])
     return nodes, inputs
 
 
@@ -194,22 +198,14 @@ def find_all_output_nodes(model, node):
     outputs = []
     if node:
         for outputId in node.output:
-            for node in model.graph.node:
-                for input in node.input:
-                    if input == outputId:
-                        nodes.append(node)
-            for output in model.graph.output:
-                if output.name == outputId:
-                    outputs.append(output)
+            nodes.extend([n for n in model.graph.node if outputId in n.input])
+            outputs.extend(
+                [n for n in model.graph.output if outputId in n.name])
     return nodes, outputs
 
 
 def find_all_output_nodes_by_edge(model, arg):
-    result = []
-    for node in model.graph.node:
-        for input in node.input:
-            if input == arg:
-                result.append(node)
+    result = [n for n in model.graph.node if arg in n.input]
     return result
 
 # Insert identity nodes to separate same output edge which feeds into different sub-graph.
@@ -219,9 +215,11 @@ def add_identity(model, cuttingEdge, newEdgeIdName):
     output_nodes = None
     edgeId = cuttingEdge.edgeId
     for node in model.graph.node:
-        if len(node.output) >= 1 and node.output[0] == edgeId:
-            output_nodes = find_all_output_nodes_by_edge(model, node.output[0])
-            break
+        if len(node.output) >= 1:
+            for output in node.output:
+                if output == edgeId:
+                    output_nodes = find_all_output_nodes_by_edge(model, output)
+                    break
 
     assert output_nodes, "no output node"
 
@@ -232,10 +230,11 @@ def add_identity(model, cuttingEdge, newEdgeIdName):
     new_identity.output.extend([newEdgeIdName])
 
     for i in range(len(output_nodes)):
-        if output_nodes[i].output[0] in cuttingEdge.consumingNodes:
-            for j in range(len(output_nodes[i].input)):
-                if output_nodes[i].input[j] == edgeId:
-                    output_nodes[i].input[j] = newEdgeIdName
+        for output in output_nodes[i].output:
+            if output in cuttingEdge.consumingNodes:
+                for j in range(len(output_nodes[i].input)):
+                    if output_nodes[i].input[j] == edgeId:
+                        output_nodes[i].input[j] = newEdgeIdName
 
     return newEdgeIdName
 
@@ -249,24 +248,18 @@ def find_all_connected_nodes(model, node):
 
 
 def get_node_index(model, node):
-    for i in range(len(model.graph.node)):
-        if model.graph.node[i] == node:
-            return i
-    return None
+    found = [i for i, n in enumerate(model.graph.node) if n == node]
+    return found[0] if found else None
 
 
 def get_input_index(model, input):
-    for i in range(len(model.graph.input)):
-        if model.graph.input[i] == input:
-            return i
-    return None
+    found = [i for i, n in enumerate(model.graph.input) if n == input]
+    return found[0] if found else None
 
 
 def get_output_index(model, output):
-    for i in range(len(model.graph.output)):
-        if model.graph.output[i] == output:
-            return i
-    return None
+    found = [i for i, n in enumerate(model.graph.output) if n == output]
+    return found[0] if found else None
 
 # traverse the graph, group connected nodes and generate subgraph
 
@@ -360,9 +353,7 @@ def generate_subgraph(model, start_nodes):
 
 
 def write_model(model, file_name):
-    f = open(file_name, "wb")
-    f.write(model.SerializeToString())
-    f.close()
+    onnx.save(model, file_name)
 
 
 def main():
@@ -381,7 +372,7 @@ def main():
 
     print("original model length ", len(model.graph.node))
 
-    output_model_names = [input_model_name[:-5] + '_' +
+    output_model_names = [os.path.splitext(input_model_name)[0] + '_' +
                           str(i) + '.onnx' for i in range(stage_count)]
 
     split_edge_groups = []
