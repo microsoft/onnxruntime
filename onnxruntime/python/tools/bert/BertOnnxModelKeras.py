@@ -174,7 +174,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         reshape_nodes = self.get_nodes_by_op_type("Reshape")
         for reshape_node in reshape_nodes:
             parent = self.get_parent(reshape_node, 0)
-            if parent is None or parent.op_type == "Reshape":
+            if parent is not None and parent.op_type == "Reshape":
                 reshape_node.input[0] = parent.input[0]
                 count += 1
 
@@ -346,7 +346,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         for skiplayernorm_node in skiplayernorm_nodes:
             path = self.match_parent_path(
                 skiplayernorm_node,
-                ['Add', 'Reshape', 'MatMul', 'Reshape', 'Gelu', 'Add', 'Reshape', 'MatMul', 'Reshape', 'SkipLayerNormalization']
+                ['Add', 'Reshape', 'MatMul', 'Reshape', 'Gelu', 'Add', 'Reshape', 'MatMul', 'Reshape', 'SkipLayerNormalization'],
                 [None, 0, 0, 0, 0, 0, 0, 0, 0, 0]) # yapf: disable
             if path is None:
                 continue

@@ -596,10 +596,22 @@ class BertOnnxModel(OnnxModel):
             if len(concat_node.input) == 3 and self.get_initializer(concat_node.input[2]) is None:
                 path2 = self.match_parent_path(concat_node, ['Unsqueeze', 'Mul', 'Gather', 'Shape'], [2, 0, 0, 0],
                                                output_name_to_node)
+                if path2 is None:
+                    path2 = self.match_parent_path(
+                        concat_node, ['Unsqueeze', 'Mul', 'Squeeze', 'Slice', 'Shape'], [2, 0, 0, 0, 0],
+                        output_name_to_node)  # GPT2 exported by PyTorch 1.4 with opset_version=11
+                    if path2 is None:
+                        continue
+
                 path3 = self.match_parent_path(concat_node, ['Unsqueeze', 'Mul', 'Gather', 'Shape'], [2, 0, 1, 0],
                                                output_name_to_node)
-                if path2 is None or path3 is None:
-                    continue
+                if path3 is None:
+                    path3 = self.match_parent_path(
+                        concat_node, ['Unsqueeze', 'Mul', 'Squeeze', 'Slice', 'Shape'], [2, 0, 1, 0, 0],
+                        output_name_to_node)  # GPT2 exported by PyTorch 1.4 with opset_version=11
+                    if path3 is None:
+                        continue
+
                 shape_nodes.extend([path2[-1], path3[-1]])
                 shape.append(-1)
             elif (len(concat_node.input) > 2):
@@ -613,11 +625,18 @@ class BertOnnxModel(OnnxModel):
                     shape.append(concat_value)
 
             if len(concat_node.input) == 4 and self.get_initializer(concat_node.input[3]) is None:
+                if -1 in shape:
+                    continue
+
                 path2 = self.match_parent_path(concat_node, ['Unsqueeze', 'Div', 'Gather', 'Shape'], [3, 0, 0, 0],
                                                output_name_to_node)
+                if path2 is None:
+                    path2 = self.match_parent_path(
+                        concat_node, ['Unsqueeze', 'Div', 'Squeeze', 'Slice', 'Shape'], [3, 0, 0, 0, 0],
+                        output_name_to_node)  # GPT2 exported by PyTorch 1.4 with opset_version=11
+                    if path2 is None:
+                        continue
                 shape_nodes.extend([path2[-1]])
-                if path2 is None or -1 in shape:
-                    continue
                 shape.append(-1)
             elif (len(concat_node.input) > 3):
                 concat_3 = self.get_initializer(concat_node.input[3])
@@ -1078,6 +1097,6 @@ class BertOnnxModel(OnnxModel):
         layer_norm = op_count['LayerNormalization'] + op_count['SkipLayerNormalization']
         is_optimized = (embed > 0) and (attention > 0) and (attention == gelu) and (layer_norm >= 2 * attention)
         logger.info(
-            f"EmbedLayer={embed}, Attention={attention}, Gelu={gelu}, LayerNormalization={layer_norm}, Succesful={is_optimized}"
+            f"EmbedLayer={embed}, Attention={attention}, Gelu={gelu}, LayerNormalization={layer_norm}, Successful={is_optimized}"
         )
         return is_optimized
