@@ -40,6 +40,7 @@ Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified,
 
     // Construct a new shape for this input, replacing free dimensions with their overrides
     onnx::TensorShapeProto new_shape;
+    bool shape_modified = false;
     for (int32_t dim_index = 0; dim_index < input_shape->dim_size(); ++dim_index) {
       const auto& dimension = input_shape->dim(dim_index);
 
@@ -56,28 +57,32 @@ Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified,
 
         int64_t dimension_override = it->second;
 
-        // If this dimension actually has a value but it doesn't match the override value, return an
-        // error.
-        if (dimension.has_dim_value() && dimension.dim_value() != dimension_override) {
+        if (dimension.has_dim_value()) {
+          // If this dimension actually has a value but it doesn't match the override value, return an
+          // error.
+          if (dimension.dim_value() != dimension_override) {
             LOGS(logger, ERROR) << "The model has input '" << graph_input->Name() << "' "
                                 << "with a fixed dimension denotation '" << dimension.denotation() << "' "
                                 << "but the size of this dimension " << dimension.dim_value() << " "
                                 << "does not equal the specified override of" << dimension_override << ".";
 
-          return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid free dimension override.");
+            return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid free dimension override.");
+          }
+        } else {
+          // Set the dimension override
+          new_dimension->set_dim_value(dimension_override);
+          shape_modified = true;
         }
-
-        // Set the dimension override
-        new_dimension->clear_dim_param();
-        new_dimension->set_dim_value(dimension_override);
       }
     }
 
-    // Set the new shape
-    auto* mutable_graph_input = graph.GetNodeArg(graph_input->Name());
-    assert(mutable_graph_input != nullptr);
-    mutable_graph_input->SetShape(new_shape);
-    modified = true;
+    if (shape_modified) {
+      // Set the new shape
+      auto* mutable_graph_input = graph.GetNodeArg(graph_input->Name());
+      assert(mutable_graph_input != nullptr);
+      mutable_graph_input->SetShape(new_shape);
+      modified = true;
+    }
   }
 
   return Status::OK();

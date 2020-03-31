@@ -43,8 +43,12 @@ int main(int argc, char** argv) {
   int status = 0;
   try {
     ::testing::InitGoogleTest(&argc, argv);
-    ThreadingOptions tp_options{0, 0};
+    const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    OrtThreadingOptions* tp_options;
+    OrtStatus* st = g_ort->CreateThreadingOptions(&tp_options);
+    if(st != nullptr) return -1;
     ort_env.reset(new Ort::Env(tp_options, ORT_LOGGING_LEVEL_VERBOSE, "Default"));  // this is the only change from test/providers/test_main.cc
+    g_ort->ReleaseThreadingOptions(tp_options);
     status = RUN_ALL_TESTS();
   } catch (const std::exception& ex) {
     std::cerr << ex.what();
