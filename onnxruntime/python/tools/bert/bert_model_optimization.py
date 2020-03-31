@@ -23,6 +23,7 @@
 #      PyTorch 1.2 or above, and exported to Onnx using opset version 10 or 11.
 
 import logging
+import coloredlogs
 import onnx
 import os
 import sys
@@ -33,6 +34,7 @@ from onnx import ModelProto, TensorProto, numpy_helper
 from BertOnnxModel import BertOnnxModel
 from BertOnnxModelTF import BertOnnxModelTF
 from BertOnnxModelKeras import BertOnnxModelKeras
+from Gpt2OnnxModel import Gpt2OnnxModel
 
 logger = logging.getLogger('')
 
@@ -40,9 +42,9 @@ logger = logging.getLogger('')
 MODEL_CLASSES = {
     "bert": (BertOnnxModel, "pytorch", True),
     "bert_tf": (BertOnnxModelTF, "tf2onnx", False),
-    "bert_keras": (BertOnnxModelKeras, "keras2onnx", False)
+    "bert_keras": (BertOnnxModelKeras, "keras2onnx", False),
+    "gpt2": (Gpt2OnnxModel, "pytorch", True)
 }
-
 
 def optimize_by_onnxruntime(onnx_model_path, use_gpu, optimized_model_path=None, opt_level=99):
     """
@@ -179,25 +181,16 @@ def optimize_model(input,
 
     return bert_model
 
+def setup_logger(verbose):
+    if verbose:
+        coloredlogs.install(level='DEBUG', fmt='[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s')
+    else:
+        coloredlogs.install(fmt='%(funcName)20s: %(message)s')
 
 def main():
     args = parse_arguments()
 
-    # output logging to stdout
-    log_handler = logging.StreamHandler(sys.stdout)
-    if args.verbose:
-        log_handler.setFormatter(logging.Formatter('[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s'))
-        logging_level = logging.DEBUG
-    else:
-        log_handler.setFormatter(logging.Formatter('%(filename)20s: %(message)s'))
-        logging_level = logging.INFO
-    log_handler.setLevel(logging_level)
-
-    # Avoid duplicated handlers when runing this script in multiple cells of Jupyter Notebook.
-    if not logger.hasHandlers():
-        logger.addHandler(log_handler)
-
-    logger.setLevel(logging_level)
+    setup_logger(args.verbose)
 
     bert_model = optimize_model(args.input, args.model_type, args.gpu_only, args.num_heads, args.hidden_size,
                                 args.sequence_length, args.input_int32, args.float16, args.opt_level)
