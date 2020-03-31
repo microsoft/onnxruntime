@@ -29,9 +29,10 @@ TEST(FeaturizersTests, RollingWindow_Transformer_Grained_Mean_1_grain_window_siz
   //parameter setting
   EstimatorT      estimator(NS::CreateTestAnnotationMapsPtr(1), NS::Featurizers::AnalyticalRollingWindowCalculation::Mean, 1, 1);
   using GrainType = std::vector<std::string>;
-  using GrainedInputType = std::tuple<GrainType, int32_t>;
+  using GrainedInputType = EstimatorT::InputType;
   GrainType const grain({"one"});
-  GrainedInputType const tup1 = std::make_tuple(grain, 1);
+  int32_t const value1(static_cast<int32_t>(10));
+  GrainedInputType const tup1(grain, value1);
   std::vector<std::tuple<std::vector<std::string> const &, std::int32_t const &>> const training_batch = {tup1};
 
   auto stream = GetStream(estimator, training_batch);
@@ -49,9 +50,10 @@ TEST(FeaturizersTests, RollingWindow_Transformer_Grained_Mean_1_grain_window_siz
   //parameter setting
   EstimatorT      estimator(NS::CreateTestAnnotationMapsPtr(1), NS::Featurizers::AnalyticalRollingWindowCalculation::Mean, 2, 2, 2);
   using GrainType = std::vector<std::string>;
-  using GrainedInputType = std::tuple<GrainType, int32_t>;
+  using GrainedInputType = EstimatorT::InputType;
   GrainType const grain({"one"});
-  GrainedInputType const tup1 = std::make_tuple(grain, 1);
+  int32_t const value1(static_cast<int32_t>(1));
+  GrainedInputType const tup1(grain, value1);
   std::vector<std::tuple<std::vector<std::string> const &, std::int32_t const &>> const training_batch = {tup1};
 
   auto stream = GetStream(estimator, training_batch);
@@ -75,11 +77,13 @@ TEST(FeaturizersTests, RollingWindow_Transformer_Grained_Mean_1_grain_window_siz
 TEST(FeaturizersTests, RollingWindow_Transformer_Grained_Mean_2_grain_window_size_2_horizon_2_min_window_size_2) {
   EstimatorT      estimator(NS::CreateTestAnnotationMapsPtr(1), NS::Featurizers::AnalyticalRollingWindowCalculation::Mean, 2, 2);
   using GrainType = std::vector<std::string>;
-  using GrainedInputType = std::tuple<GrainType, std::int32_t>;
+  using GrainedInputType = EstimatorT::InputType;
   const GrainType grainOne({"one"});
   const GrainType grainTwo({"two"});
-  const GrainedInputType tup1 = std::make_tuple(grainOne, 1);
-  const GrainedInputType tup2 = std::make_tuple(grainTwo, 1);
+  const int32_t value1(static_cast<int32_t>(1));
+  const int32_t value2(static_cast<int32_t>(1));
+  const GrainedInputType tup1(grainOne, value1);
+  const GrainedInputType tup2(grainTwo, value2);
   const std::vector<std::tuple<std::vector<std::string> const &, std::int32_t const &>> training_batch = {tup1, tup2};
 
   auto stream = GetStream(estimator, training_batch);
