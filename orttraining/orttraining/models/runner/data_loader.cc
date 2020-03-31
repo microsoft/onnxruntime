@@ -68,7 +68,7 @@ DataLoader::DataLoader(const MapStringToString& input_name_map,
   }
 
   data_loader_thread_pool_ = onnxruntime::make_unique<onnxruntime::concurrency::ThreadPool>(
-      "DataLoaderPool", thread_pool_size_);
+      &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), ORT_TSTR("DataLoaderPool"), thread_pool_size_, true);
 }
 
 Status DataLoader::InitializeDataSetIndex(size_t initial_data_set_index) {

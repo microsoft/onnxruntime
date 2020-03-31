@@ -214,13 +214,7 @@ class WindowsEnv : public Env {
     return Status::OK();
   }
 
-<<<<<<< HEAD
-  Status MapFileIntoMemory(
-      const PathChar*, FileOffsetType, size_t,
-      MappedMemoryPtr&) const override {
-=======
   Status MapFileIntoMemory(const ORTCHAR_T*, FileOffsetType, size_t, MappedMemoryPtr&) const override {
->>>>>>> origin/master
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "MapFileIntoMemory is not implemented on Windows.");
   }
 
@@ -356,7 +350,7 @@ class WindowsEnv : public Env {
     // adapted from MSVC STL std::filesystem::canonical() implementation
     // https://github.com/microsoft/STL/blob/ed3cbf36416a385828e7a5987ca52cb42882d84b/stl/inc/filesystem#L2986
 
-    ScopedFileHandle file_handle{CreateFileW(
+    wil::unique_hfile file_handle{CreateFileW(
         path.c_str(),
         FILE_READ_ATTRIBUTES,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
@@ -365,8 +359,10 @@ class WindowsEnv : public Env {
         FILE_FLAG_BACKUP_SEMANTICS,
         nullptr)};
 
-    ORT_RETURN_IF_NOT(
-        file_handle.IsValid(), "CreateFile() failed: ", GetLastError());
+    if (file_handle.get() == INVALID_HANDLE_VALUE) {
+      const int err = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(path), " fail, errcode = ", err);
+    }
 
     constexpr DWORD initial_buffer_size = MAX_PATH;
     std::vector<PathChar> result_buffer{};
@@ -374,7 +370,7 @@ class WindowsEnv : public Env {
 
     while (true) {
       const DWORD result_length = GetFinalPathNameByHandleW(
-          file_handle.Get(),
+          file_handle.get(),
           result_buffer.data(),
           static_cast<DWORD>(result_buffer.size()),
           0);

@@ -12,19 +12,6 @@ from helper import get_name
 
 class TestInferenceSession(unittest.TestCase):
 
-    def get_name(self, name):
-        if os.path.exists(name):
-            return name
-        rel = os.path.join("testdata", name)
-        if os.path.exists(rel):
-            return rel
-        this = os.path.dirname(__file__)
-        data = os.path.join(this, "..", "testdata")
-        res = os.path.join(data, name)
-        if os.path.exists(res):
-            return res
-        raise FileNotFoundError("Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res))
-
     def run_model(self, session_object, run_options):
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = session_object.get_inputs()[0].name
@@ -66,7 +53,7 @@ class TestInferenceSession(unittest.TestCase):
     def testSessionProviders(self):
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
             # create session from scratch, but constrain it to only use the CPU.
-            sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"), providers=['CPUExecutionProvider'])
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=['CPUExecutionProvider'])
             self.assertEqual(['CPUExecutionProvider'], sess.get_providers())
 
     def testRunModel(self):
@@ -117,7 +104,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testRunModel2Contiguous(self):
-        sess = onnxrt.InferenceSession(self.get_name("matmul_1.onnx"))
+        sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"))
         x = np.array([[2.0, 1.0], [4.0, 3.0], [6.0, 5.0]], dtype=np.float32)[:, [1, 0]]
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -138,7 +125,7 @@ class TestInferenceSession(unittest.TestCase):
         so = onnxrt.SessionOptions()
         so.log_verbosity_level = 1
         so.logid = "MultiThreadsTest"
-        sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"), sess_options=so)
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
         ro1 = onnxrt.RunOptions()
         ro1.logid = "thread1"
         t1 = threading.Thread(target=self.run_model, args=(sess, ro1))
@@ -219,7 +206,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(output_expected, res[0])
 
     def testStringInput1(self):
-        sess = onnxrt.InferenceSession(self.get_name("identity_string.onnx"))
+        sess = onnxrt.InferenceSession(get_name("identity_string.onnx"))
         x = np.array(['this', 'is', 'identity', 'test'], dtype=np.str).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
@@ -240,7 +227,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(x, res[0])
 
     def testStringInput2(self):
-        sess = onnxrt.InferenceSession(self.get_name("identity_string.onnx"))
+        sess = onnxrt.InferenceSession(get_name("identity_string.onnx"))
         x = np.array(['Olá', '你好', '여보세요', 'hello'], dtype=np.unicode).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
@@ -282,7 +269,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(x, res[0].astype('|S8'))
 
     def testInputObject(self):
-        sess = onnxrt.InferenceSession(self.get_name("identity_string.onnx"))
+        sess = onnxrt.InferenceSession(get_name("identity_string.onnx"))
         x = np.array(['this', 'is', 'identity', 'test'], object).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
@@ -303,7 +290,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(x, res[0])
 
     def testInputVoid(self):
-        sess = onnxrt.InferenceSession(self.get_name("identity_string.onnx"))
+        sess = onnxrt.InferenceSession(get_name("identity_string.onnx"))
         x = np.array([b'this', b'is', b'identity', b'test'], np.void).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
@@ -327,7 +314,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(expr, res[0])
 
     def testZipMapStringFloat(self):
-        sess = onnxrt.InferenceSession(self.get_name("zipmap_stringfloat.onnx"))
+        sess = onnxrt.InferenceSession(get_name("zipmap_stringfloat.onnx"))
         x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3))
 
         x_name = sess.get_inputs()[0].name
@@ -353,7 +340,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_expected, res[0])
 
     def testZipMapInt64Float(self):
-        sess = onnxrt.InferenceSession(self.get_name("zipmap_int64float.onnx"))
+        sess = onnxrt.InferenceSession(get_name("zipmap_int64float.onnx"))
         x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3))
 
         x_name = sess.get_inputs()[0].name
@@ -392,7 +379,7 @@ class TestInferenceSession(unittest.TestCase):
     def testProfilerWithSessionOptions(self):
         so = onnxrt.SessionOptions()
         so.enable_profiling = True
-        sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"), sess_options=so)
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         sess.run([], {'X': x})
         profile_file = sess.end_profiling()
@@ -407,7 +394,7 @@ class TestInferenceSession(unittest.TestCase):
             self.assertTrue(']' in lines[8])
 
     def testDictVectorizer(self):
-        sess = onnxrt.InferenceSession(self.get_name("pipeline_vectorize.onnx"))
+        sess = onnxrt.InferenceSession(get_name("pipeline_vectorize.onnx"))
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "float_input")
         input_type = str(sess.get_inputs()[0].type)
@@ -521,7 +508,7 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([], {'input1:0': a, 'input:0': b})
 
     def testSequenceLength(self):
-        sess = onnxrt.InferenceSession(self.get_name("sequence_length.onnx"))
+        sess = onnxrt.InferenceSession(get_name("sequence_length.onnx"))
         x = [
             np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3)),
             np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3))
@@ -542,7 +529,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_expected, res[0])
 
     def testSequenceConstruct(self):
-        sess = onnxrt.InferenceSession(self.get_name("sequence_construct.onnx"))
+        sess = onnxrt.InferenceSession(get_name("sequence_construct.onnx"))
 
         self.assertEqual(sess.get_inputs()[0].type, 'tensor(int64)')
         self.assertEqual(sess.get_inputs()[1].type, 'tensor(int64)')
