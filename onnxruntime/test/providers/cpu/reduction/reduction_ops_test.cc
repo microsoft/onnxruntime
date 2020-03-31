@@ -1547,7 +1547,7 @@ TEST(ReductionOpTest, ArgMax_int32) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ArgMax_int32_last_index) {
+TEST(ReductionOpTest, ArgMax_int32_last_index_nodups) {
   OpTester test("ArgMax", 12);
   test.AddAttribute("axis", (int64_t)1);
   test.AddAttribute("keepdims", (int64_t)1);
@@ -1566,6 +1566,28 @@ TEST(ReductionOpTest, ArgMax_int32_last_index) {
                           {1, 1,
                            1, 1,
                            1, 1});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+}
+
+TEST(ReductionOpTest, ArgMax_int32_last_index_dups) {
+  OpTester test("ArgMax", 12);
+  test.AddAttribute("axis", (int64_t)1);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddAttribute("select_last_index", (int64_t)1);
+
+  test.AddInput<int32_t>("data", {3, 2, 2},
+                         {2, 4,
+                          3, 4,
+
+                          8, 6,
+                          7, 8,
+
+                          9, 13,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {3, 1, 2},
+                          {1, 1,
+                           0, 1,
+                           1, 0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
 }
 
