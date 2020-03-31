@@ -751,8 +751,13 @@ class ThreadPoolTempl : public Eigen::ThreadPoolInterface {
     PerThread* pt = GetPerThread();
     const unsigned size = static_cast<unsigned>(limit - start);
     unsigned r = Rand(&pt->rand);
-    unsigned victim = r % size;
-    unsigned inc = all_coprimes_[size - 1][r % all_coprimes_[size - 1].size()];
+    // Reduce r into [0, size) range, this utilizes trick from
+    // https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
+    eigen_plain_assert(all_coprimes_[size - 1].size() < (1<<30));
+    unsigned victim = ((uint64_t)r * (uint64_t)size) >> 32;
+    unsigned index = ((uint64_t) all_coprimes_[size - 1].size() * (uint64_t)r) >> 32;
+    unsigned inc = all_coprimes_[size - 1][index];
+
 
     for (unsigned i = 0; i < size; i++) {
       assert(start + victim < limit);
