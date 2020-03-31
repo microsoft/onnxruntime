@@ -1359,6 +1359,41 @@ Scale and zero point must have same shape. They must be either scalar (per tenso
         updateOutputShape(ctx, 0, input_shape);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Scaler)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0,
+             "x",
+             "N-D Input tensor to scale.",
+             "T1")
+      .Input(
+          1,
+          "x_scale",
+          "Scale for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization."
+          "If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
+          "T2")
+      .Output(
+          0,
+          "y",
+          "N-D output tensor. It has same shape as input 'x'.",
+          "T2")
+      .TypeConstraint(
+          "T1",
+          {"tensor(int32)", "tensor(float)", "tensor(float16)" },
+          "Input Constrain.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(float)", "tensor(float16)"},
+          "Constrain of output and scale.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        auto& input_shape = getInputShape(ctx, 0);
+        updateOutputShape(ctx, 0, input_shape);
+      });
+
   static const char* Tokenizer_ver1_doc = R"DOC(
   Tokenizer divides each string in X into a vector of strings along the last axis. Allowed input shapes are [C] and [N, C].
   If the maximum number of tokens found per input string is D, the output shape would be [N, C, D] when input shape is [N, C].
