@@ -120,13 +120,16 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
   int rank = (int)input_dims.size();
   auto* output_tensor = context->Output(0, input_data_shape);
 
-  CudaAsyncBuffer<int64_t> buffer_input_dims(this, input_dims);
+  TArray<int64_t> buffer_input_dims(input_dims);
   TensorPitches input_strides(input_dims);
-  CudaAsyncBuffer<int64_t> buffer_input_strides(this, input_strides);
+  TArray<int64_t> buffer_input_strides(input_strides);
 
-  CudaAsyncBuffer<int64_t> buffer_indices_dims(this, indices_dims);
-  CudaAsyncBuffer<fast_divmod> fdm_indices_strides(this, rank);
-  ORT_ENFORCE(CalculateFdmStrides(fdm_indices_strides.CpuSpan(), indices_dims));
+  TArray<int64_t> buffer_indices_dims(indices_dims);
+  TArray<fast_divmod> fdm_indices_strides(rank);
+  TensorPitches indices_strides(indices_dims);
+  for (auto i = 0; i < rank; i++) {
+    fdm_indices_strides[i] = fast_divmod(static_cast<int>(indices_strides[i]));
+  }
 
   MLDataType Tin_type = indices_tensor->DataType();
   MLDataType T_type = data_tensor->DataType();

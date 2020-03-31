@@ -121,7 +121,7 @@ ImageFeatureValue BindImageOutput(
 
 
 void ModelValidator::FnsCandy16(
-    std::string instance,
+    const std::string& instance,
     LearningModelDeviceKind deviceKind,
     OutputBindingStrategy outputBindingStrategy,
     bool bindInputsAsIInspectable,
@@ -193,7 +193,7 @@ void ModelValidator::FnsCandy16(
 }
 
 void ModelValidator::SqueezeNet(
-    std::string instance,
+    const std::string& instance,
     LearningModelDeviceKind deviceKind,
     float dataTolerance,
     bool bindAsImage,
@@ -251,7 +251,7 @@ void ModelValidator::SqueezeNet(
         outputBindingStrategy, modelBinding, outputDataBindingName, expectedResultsTensor.Shape());
 
     // Evaluate the model
-    std::cout << "Calling EvaluateSync on instance" << instance << "\n";
+    std::cout << "Calling EvaluateSync on instance " << instance << "\n";
     LearningModelEvaluationResult result = nullptr;
     result = modelSession.Evaluate(modelBinding, {});
 

@@ -24,6 +24,8 @@ struct LearningModelBindingAPITestApi {
   VoidTest BindInvalidInputName;
   VoidTest VerifyOutputAfterEvaluateAsyncCalledTwice;
   VoidTest VerifyOutputAfterImageBindCalledTwice;
+  VoidTest SequenceLengthTensorFloat;
+  VoidTest SequenceConstructTensorString;
 };
 const LearningModelBindingAPITestApi& getapi();
 
@@ -40,6 +42,8 @@ WINML_TEST(LearningModelBindingAPITest, ZipMapInt64Unbound)
 WINML_TEST(LearningModelBindingAPITest, ZipMapString)
 WINML_TEST(LearningModelBindingAPITest, VerifyOutputAfterEvaluateAsyncCalledTwice)
 WINML_TEST(LearningModelBindingAPITest, VerifyOutputAfterImageBindCalledTwice)
+WINML_TEST(LearningModelBindingAPITest, SequenceLengthTensorFloat)
+WINML_TEST(LearningModelBindingAPITest, SequenceConstructTensorString)
 WINML_TEST_CLASS_END()
 
 WINML_TEST_CLASS_BEGIN_WITH_SETUP(LearningModelBindingAPITestGpu, LearningModelBindingAPITestGpuSetup)
