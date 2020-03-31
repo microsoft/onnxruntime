@@ -23,6 +23,8 @@ class FFTBase : public ::onnxruntime::cuda::CudaKernel {
                 "Expected signal_ndim to be 1, 2, or 3, but got signal_ndim=", signal_ndim_);
     info.GetAttr("normalized", &normalized_);
     info.GetAttr("onesided", &onesided_);
+    ORT_ENFORCE(normalized_ == 0, "Don't support normalized FFT yet.");
+    ORT_ENFORCE(onesided_ != 0, "Only support onesided FFT.");
   }
 
  protected:
