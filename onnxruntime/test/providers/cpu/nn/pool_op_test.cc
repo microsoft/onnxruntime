@@ -288,32 +288,6 @@ TEST(PoolTest, MaxPool2D_uint8) {
       23, 24, 25, 25, 25,
       23, 24, 25, 25, 25};
 
-  OpTester::CustomOutputVerifierFn ver_fn = [&output_shape, &output](const std::vector<OrtValue>& fetches, const std::string& provider) {
-    for (const auto& ort_val : fetches) {
-      ASSERT_TRUE(ort_val.IsTensor());
-      const auto& tensor = ort_val.Get<Tensor>();
-      if (output_shape != tensor.Shape().GetDims()) {
-        std::cout << "MaxPool_2d_uint8:" << provider
-                  << std::endl;
-        print_vector(std::cout, "Fetch shape does not match: ", tensor.Shape().GetDims().cbegin(), tensor.Shape().GetDims().cend());
-        auto span = tensor.DataAsSpan<uint8_t>();
-        print_vector(std::cout, "Values expected: ", output.cbegin(), output.cend());
-        print_vector(std::cout, "Values received: ", span.cbegin(), span.cend());
-        ASSERT_TRUE(false);
-      } else {
-        auto span = tensor.DataAsSpan<uint8_t>();
-        if (!std::equal(output.cbegin(), output.cend(), span.cbegin())) {
-          std::cout << "MaxPool_2d_uint8:" << provider
-                    << std::endl;
-          std::cout << "Values expected do not match received" << std::endl;
-          print_vector(std::cout, "Values Expected: ", output.cbegin(), output.cend());
-          print_vector(std::cout, "Values received: ", span.cbegin(), span.cend());
-          ASSERT_TRUE(false);
-        }
-      }
-    }
-  };
-
   test.AddInput<uint8_t>("Input", {1, 1, 5, 5}, {
     1, 2, 3, 4, 5,
     6, 7, 8, 9, 10,
@@ -322,7 +296,7 @@ TEST(PoolTest, MaxPool2D_uint8) {
     21, 22, 23, 24, 25});
 
   test.AddOutput<uint8_t>("Output", output_shape, output);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, {}, ORT_SEQUENTIAL, ver_fn);
+  test.Run();
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_1d) {
