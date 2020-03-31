@@ -52,6 +52,7 @@ static void RegisterOneHotEncoderFeaturizerVer1();
 static void RegisterNormalizeFeaturizerVer1();
 static void RegisterPCAFeaturizerVer1();
 static void RegisterRobustScalerFeaturizerVer1();
+static void RegisterRollingWindowFeaturizerVer1();
 static void RegisterShortGrainDropperFeaturizerVer1();
 static void RegisterStandardScaleWrapperFeaturizerVer1();
 static void RegisterStringFeaturizerVer1();
@@ -82,6 +83,7 @@ void RegisterMSFeaturizersSchemas() {
   RegisterOneHotEncoderFeaturizerVer1();
   RegisterPCAFeaturizerVer1();
   RegisterRobustScalerFeaturizerVer1();
+  RegisterRollingWindowFeaturizerVer1();
   RegisterNormalizeFeaturizerVer1();
   RegisterShortGrainDropperFeaturizerVer1();
   RegisterStandardScaleWrapperFeaturizerVer1();
@@ -1429,6 +1431,98 @@ void RegisterRobustScalerFeaturizerVer1() {
 
             if (hasInputShape(ctx, 1)) {
               propagateShapeFromInputToOutput(ctx, 1, 0);
+            }
+          });
+}
+
+void RegisterRollingWindowFeaturizerVer1() {
+  //static const char* doc = R"DOC(
+  //  Calculates data based on a rolling window. Currently supports mean. Works for any data set that is already sorted.
+  //  Input type for this featurizer is a tuple of the grain columns and target value column. It is assumed that the data is sorted in the correct order.
+  //  C++-style pseudo signature:
+  //  template <typename T> std::vector<double> execute(std::tuple<std::vector<std::string> const &, T const &> value);
+  //  Examples:
+  //      A simple example would be horizon = 1, window size = 2, and we want to take the mean.
+  //      +-----------+-------+-------------------+
+  //      | grain     | target| target_mean       |
+  //      +===========+=======+===================+
+  //      | A         | 10    | [NAN]             |
+  //      +-----------+-------+-------------------+
+  //      | A         | 4     | [10]              |
+  //      +-----------+-------+-------------------+
+  //      | A         | 6     | [7]               |
+  //      +-----------+-------+-------------------+
+  //      | A         | 11    | [5]               |
+  //      +-----------+-------+-------------------+
+  //      A more complex example would be, assuming we have horizon = 2, window size = 2, min window periods = 2, and we want the mean
+  //      +-----------+-------+-------------------+
+  //      | grain     | target| target_max        |
+  //      +===========+=======+===================+
+  //      | A         | 10    | [NAN, NAN]        |
+  //      +-----------+-------+-------------------+
+  //      | A         | 4     | [NAN, NAN]        |
+  //      +-----------+-------+-------------------+
+  //      | A         | 6     | [NAN, 7]          |
+  //      +-----------+-------+-------------------+
+  //      | A         | 11    | [7, 5]            |
+  //      +-----------+-------+-------------------+
+  //)DOC";
+
+  MS_FEATURIZERS_OPERATOR_SCHEMA(RollingWindowTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "T0")
+      .Input(
+          1,
+          "Grains",
+          "Grains tensor of shape [R][K].",
+          "GrainT")
+      .Input(
+          2,
+          "Target",
+          "Target tensor of shape [R]",
+          "T")
+      .Output(
+          0,
+          "Output",
+          "Output tensor of shape [R][M]",
+          "OutputT")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
+      .TypeConstraint(
+          "GrainT",
+          {"tensor(string)"},
+          "No information is available")
+      .TypeConstraint(
+          "T",
+          {"tensor(int8)", "tensor(uint8)", "tensor(int16)",  "tensor(uint16)", "tensor(int32)", "tensor(uint32)", "tensor(int64)", "tensor(uint64)", "tensor(float)", "tensor(double)"},
+          "No information is available")
+      .TypeConstraint(
+          "OutputT",
+          {"tensor(double)"},
+          "No information is available")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, 0);
+            if (hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
+              const auto& grains_shape = getInputShape(ctx, 1);
+              const auto& target_shape = getInputShape(ctx, 2);
+              if (grains_shape.dim_size() != 2) {
+                fail_shape_inference("Expecting Grains to have 2 dimensions");
+              }
+              if (target_shape.dim_size() != 1) {
+                fail_shape_inference("Expecting Target to have 1 dimensions");
+              }
+              ONNX_NAMESPACE::TensorShapeProto shape;
+              *shape.add_dim() = grains_shape.dim(0);
+              shape.add_dim();
+              ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape);
             }
           });
 }
