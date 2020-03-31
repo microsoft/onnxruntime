@@ -187,12 +187,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
                              node.Name());
 
-    std::string node_name = node.Name();
-    if (node_name.empty()) {
-      // Node name field is often blank in execution graph, so derive something meaningful for profile traces and logs.
-      node_name = node.OpType() + "_" + std::to_string(node_index);
-    }
-
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     LARGE_INTEGER kernel_start;
     QueryPerformanceCounter(&kernel_start);
@@ -241,7 +235,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node());
 #endif
 
+    std::string node_name;
     if (is_profiler_enabled) {
+      // Node name field is often blank in execution graph, so derive something meaningful for profile traces and logs.
+      node_name = node.Name().empty() ? node.OpType() + "_" + std::to_string(node_index) : node.Name();
+
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      node_name + "_fence_before",
                                                      sync_time_begin,
@@ -251,9 +249,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       VLOGS(logger, 1) << "Computing kernel: " << node_name;
 
       kernel_begin_time = session_state.Profiler().StartTime();
-    }
 
-    if (is_profiler_enabled) {
       // Calculate total input sizes for this operation.
       CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
                                input_activation_sizes,input_parameter_sizes, node_name);
@@ -366,7 +362,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 
     // free ml-values corresponding to this node
-    VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << node_name;
+    VLOGS(logger, 1) << "Releasing node ML values.";
     ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
   }
 

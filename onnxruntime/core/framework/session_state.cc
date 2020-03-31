@@ -477,10 +477,8 @@ void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue
 
   for (auto idx : fetch_mlvalue_idxs) {
     std::string node_arg_name;
-    if (!this->GetOrtValueNameIdxMap().GetName(idx, node_arg_name).IsOK()) {
-      to_be_executed_nodes_.insert(std::make_pair(sorted_idxs, reachable_nodes));
-      return;
-    }
+    const auto status = this->GetOrtValueNameIdxMap().GetName(idx, node_arg_name);
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     auto ending_node = graph.GetProducerNode(node_arg_name);
     nodes.push_back(ending_node);
   }
