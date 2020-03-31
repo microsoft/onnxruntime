@@ -8,6 +8,8 @@
 namespace onnxruntime {
 namespace test {
 TEST(ContribOpTest, Rfft) {
+  if (DefaultCudaExecutionProvider() == nullptr) return;
+
   OpTester test("Rfft", 1, onnxruntime::kMSDomain);
   test.AddAttribute("signal_ndim", static_cast<int64_t>(2));
   test.AddAttribute("onesided", static_cast<int64_t>(1));
@@ -20,6 +22,8 @@ TEST(ContribOpTest, Rfft) {
 }
 
 TEST(ContribOpTest, Irfft) {
+  if (DefaultCudaExecutionProvider() == nullptr) return;
+
   OpTester test("Irfft", 1, onnxruntime::kMSDomain);
   test.AddAttribute("signal_ndim", static_cast<int64_t>(2));
   test.AddAttribute("onesided", static_cast<int64_t>(1));
