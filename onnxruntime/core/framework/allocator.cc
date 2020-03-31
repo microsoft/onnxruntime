@@ -32,7 +32,7 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   return ok;
 }
 
-#ifdef USE_MIMALLOC
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
 void* MiMallocAllocator::Alloc(size_t size) {
   return mi_malloc(size);
 }

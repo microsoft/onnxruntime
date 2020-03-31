@@ -189,6 +189,7 @@ static void not_compatible(ILearningModelFeatureValue value, ILearningModelFeatu
   not_compatible_hr(WINML_ERR_INVALID_BINDING, value, descriptor);
 }
 
+// This method is used in validating sequeance and map type's internal element, key and value types.
 static HRESULT verify(ILearningModelFeatureDescriptor first, ILearningModelFeatureDescriptor second) {
   RETURN_HR_IF(WINML_ERR_INVALID_BINDING, first.Kind() != second.Kind());
 
@@ -209,16 +210,6 @@ static HRESULT verify(ILearningModelFeatureDescriptor first, ILearningModelFeatu
     auto tensorSecond = second.try_as<TensorFeatureDescriptor>();
     RETURN_HR_IF_NULL(WINML_ERR_INVALID_BINDING, tensorSecond);
     RETURN_HR_IF(WINML_ERR_INVALID_BINDING, tensorFirst.TensorKind() != tensorSecond.TensorKind());
-
-    // since we only really support scalars inside maps and sequences,
-    // make sure that each dimension is either -1 or 1.
-    // Note that they don't have be the same since they're still compatible.
-    for (auto&& dim : tensorFirst.Shape()) {
-      RETURN_HR_IF(WINML_ERR_INVALID_BINDING, (dim != -1 && dim != 1));
-    }
-    for (auto&& dim : tensorSecond.Shape()) {
-      RETURN_HR_IF(WINML_ERR_INVALID_BINDING, (dim != -1 && dim != 1));
-    }
     return S_OK;
   }
 
@@ -380,10 +371,10 @@ void verify<K::Image, K::Tensor>(
 static void (*FeatureKindCompatibilityMatrix[4][4])(ILearningModelFeatureValue, ILearningModelFeatureDescriptor) =
     {
         //                 Tensor,                          Sequence,                           Map,                    Image
-        /* Tensor */ {verify<K::Tensor, K::Tensor>, not_compatible, not_compatible, verify<K::Tensor, K::Image>},
-        /* Sequence */ {not_compatible, verify<K::Sequence, K::Sequence>, not_compatible, not_compatible},
-        /* Map */ {not_compatible, not_compatible, verify<K::Map, K::Map>, not_compatible},
-        /* Image */ {verify<K::Image, K::Tensor>, not_compatible, not_compatible, verify<K::Image, K::Image>}};
+        /* Tensor */       {verify<K::Tensor, K::Tensor>,   not_compatible,                     not_compatible,         verify<K::Tensor, K::Image>},
+        /* Sequence */     {not_compatible,                 verify<K::Sequence, K::Sequence>,   not_compatible,         not_compatible},
+        /* Map */          {not_compatible,                 not_compatible,                     verify<K::Map, K::Map>, not_compatible},
+        /* Image */        {verify<K::Image, K::Tensor>,    not_compatible,                     not_compatible,         verify<K::Image, K::Image>}};
 }  // namespace compatibility_details
 
 inline void VerifyFeatureValueCompatibleWithDescriptor(

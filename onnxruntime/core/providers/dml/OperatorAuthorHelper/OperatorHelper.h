@@ -607,7 +607,7 @@ public:
             {
                 dimIndex = axes[i];
             }
-            ML_CHECK_VALID_ARGUMENT(dimIndex < inputDimensions.size(), "'axes' must be valid with within actual input dimensions.");
+            ML_CHECK_VALID_ARGUMENT(dimIndex < static_cast<int>(inputDimensions.size()), "'axes' must be valid with within actual input dimensions.");
 
             // Positive values are offsets from 0.
             // Negative values are offsets from the dimension's size.

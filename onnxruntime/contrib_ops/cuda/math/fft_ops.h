@@ -1,5 +1,7 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+/*All contributions by Facebook :
+Copyright(c) 2016 Facebook Inc.
+==============================================================================*/
+/* Modifications Copyright (c) Microsoft. */
 
 #pragma once
 #include "core/providers/cuda/cuda_common.h"
@@ -21,6 +23,8 @@ class FFTBase : public ::onnxruntime::cuda::CudaKernel {
                 "Expected signal_ndim to be 1, 2, or 3, but got signal_ndim=", signal_ndim_);
     info.GetAttr("normalized", &normalized_);
     info.GetAttr("onesided", &onesided_);
+    ORT_ENFORCE(normalized_ == 0, "Don't support normalized FFT yet.");
+    ORT_ENFORCE(onesided_ != 0, "Only support onesided FFT.");
   }
 
  protected:

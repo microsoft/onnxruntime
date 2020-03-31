@@ -116,7 +116,7 @@ __global__ void EmbedLayerNormKernel(
   __shared__ int word_id;
   __shared__ int segment_id;
 
-  const T rld = T(1.f) / T(hidden_size);
+  const T rld = T(1.f / hidden_size);
   const int sequence_position = blockIdx.y * gridDim.x + blockIdx.x;
   if (threadIdx.x == 0) {
     word_id = input_ids[sequence_position];

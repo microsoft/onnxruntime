@@ -1,5 +1,7 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+/*All contributions by Facebook :
+Copyright(c) 2016 Facebook Inc.
+==============================================================================*/
+/* Modifications Copyright (c) Microsoft. */
 
 #pragma once
 #include "core/providers/cuda/cuda_common.h"
@@ -61,7 +63,6 @@ struct ParamsEqual {
 };
 
 class CuFFTPlanCache {
-  //TODO: adding GC and LRU
  public:
   CufftPlanInfo TryEmplaceValue(FFTState& key) {
     std::lock_guard<std::mutex> lock(mutex);
@@ -83,22 +84,15 @@ class CuFFTPlanCache {
  private:
   CufftPlanInfo CreatePlanInfo(FFTState& key) {
     cufftHandle plan;
-    cufftResult result;
     size_t ws_size_t;
     CufftPlanInfo plan_info;
 
-    result = cufftCreate(&plan);
+    CUFFT_CALL_THROW(cufftCreate(&plan));
 
-    //TODO: replace it with a util func
-    ORT_ENFORCE(result == CUFFT_SUCCESS, "Failed to create a cuFFT plan: ", result);
-
-    result = cufftXtMakePlanMany(plan, static_cast<int>(key.signal_ndim), reinterpret_cast<long long int*>(key.signal_dims),
-                                 /* inembed */ nullptr, /* base_istride */ 1, /* idist */ 1, key.itype,
-                                 /* onembed */ nullptr, /* base_ostride */ 1, /* odist */ 1, key.otype,
-                                 key.batch_size, &ws_size_t, key.exec_type);
-
-    //TODO: replace it with a util func
-    ORT_ENFORCE(result == CUFFT_SUCCESS, "Failed to create a cuFFT plan: ", result);
+    CUFFT_CALL_THROW(cufftXtMakePlanMany(plan, static_cast<int>(key.signal_ndim), reinterpret_cast<long long int*>(key.signal_dims),
+                                         /* inembed */ nullptr, /* base_istride */ 1, /* idist */ 1, key.itype,
+                                         /* onembed */ nullptr, /* base_ostride */ 1, /* odist */ 1, key.otype,
+                                         key.batch_size, &ws_size_t, key.exec_type));
 
     plan_info.plan = plan;
     plan_info.ws_size_t = ws_size_t;

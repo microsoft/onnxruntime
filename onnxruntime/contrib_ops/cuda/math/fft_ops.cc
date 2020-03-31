@@ -1,5 +1,7 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+/*All contributions by Facebook :
+Copyright(c) 2016 Facebook Inc.
+==============================================================================*/
+/* Modifications Copyright (c) Microsoft. */
 
 #include "fft_ops.h"
 #include "fft_ops_impl.h"
@@ -114,9 +116,6 @@ Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex
     output_dims.push_back(2);
   }
 
-  //Making plan
-  //TODO: add plan cache
-  cufftResult result;
   FFTState fft_state;
 
   SetFFTState(&fft_state, signal_ndim_, signal_dims, itype, otype, batch_size, exec_type);
@@ -127,9 +126,7 @@ Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex
   auto* x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto* y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
-  result = cufftXtExec(plan_info.plan, const_cast<CudaT*>(x_data), y_data, inverse ? CUFFT_INVERSE : CUFFT_FORWARD);
-
-  ORT_ENFORCE(result == CUFFT_SUCCESS, "Failed to exec the cuFFT plan: ", result);
+  CUFFT_RETURN_IF_ERROR(cufftXtExec(plan_info.plan, const_cast<CudaT*>(x_data), y_data, inverse ? CUFFT_INVERSE : CUFFT_FORWARD));
 
   if (inverse) {
     PostProcess(signal_dims, Y, y_data);

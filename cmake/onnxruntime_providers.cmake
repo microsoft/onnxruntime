@@ -95,14 +95,14 @@ endif()
 
 add_library(onnxruntime_providers ${onnxruntime_providers_src})
 if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-   target_compile_options(onnxruntime_providers PRIVATE "/wd4244")   
+   target_compile_options(onnxruntime_providers PRIVATE "/wd4244")
 endif()
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf safeint_interface)
 
 if (onnxruntime_USE_FEATURIZERS)
-  add_dependencies(onnxruntime_providers onnxruntime_featurizers onnxruntime_featurizers_comp)
+  add_dependencies(onnxruntime_providers onnxruntime_featurizers)
   onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_featurizers)
-  target_link_libraries(onnxruntime_providers onnxruntime_featurizers onnxruntime_featurizers_comp)
+  target_link_libraries(onnxruntime_providers onnxruntime_featurizers)
 endif()
 
 if(HAS_DEPRECATED_COPY)
@@ -117,8 +117,7 @@ if(HAS_DEPRECATED_COPY)
   set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/where_op.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
 endif()
 
-set(re2_src ${ONNXRUNTIME_ROOT}/../cmake/external/re2)
-target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${gemmlowp_src} ${re2_src})
+target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${gemmlowp_src} ${RE2_INCLUDE_DIR})
 add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cpu  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 set_target_properties(onnxruntime_providers PROPERTIES LINKER_LANGUAGE CXX)
@@ -147,6 +146,8 @@ if (onnxruntime_USE_CUDA)
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
+  elseif(HAS_D2FH4)
+    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /d2FH4->")
   endif()
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
   add_dependencies(onnxruntime_providers_cuda ${onnxruntime_EXTERNAL_DEPENDENCIES} ${onnxruntime_tvm_dependencies})
@@ -425,7 +426,7 @@ if (onnxruntime_USE_DML)
     "${ONNXRUNTIME_ROOT}/core/providers/dml/*.cc"
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dml_cc_srcs})
-  add_library(onnxruntime_providers_dml ${onnxruntime_providers_dml_cc_srcs}) 
+  add_library(onnxruntime_providers_dml ${onnxruntime_providers_dml_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_dml onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
   add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dml PRIVATE ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/../cmake/external/wil/include)
@@ -434,6 +435,7 @@ if (onnxruntime_USE_DML)
     if(NOT onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_target_platform STREQUAL "x64")
       message(FATAL_ERROR "Target platform ${onnxruntime_target_platform} is not supported by DML")
     endif()
+
     foreach(file "DirectML.dll" "DirectML.pdb" "DirectML.Debug.dll" "DirectML.Debug.pdb")
       add_custom_command(TARGET onnxruntime_providers_dml
         POST_BUILD
@@ -452,7 +454,7 @@ if (onnxruntime_USE_DML)
   target_add_dml(onnxruntime_providers_dml)
   target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib delayimp.lib)
   set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll")
-  
+
   # The DML EP requires C++17
   set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD 17)
   set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD_REQUIRED ON)
