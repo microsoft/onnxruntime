@@ -89,7 +89,7 @@ class FastGelu : public OpKernel {
       int64_t elem_count = X->Shape().Size();
       const auto coefficient = kAlpha * kGamma;
       if (elem_count > task_count) {
-        tp->ParallelFor(task_count, [ input,
+        tp->SimpleParallelFor(task_count, [ input,
                                       output,
                                       elem_count,
                                       task_count,
