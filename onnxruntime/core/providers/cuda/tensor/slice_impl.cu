@@ -29,15 +29,13 @@ __global__ void _SliceKernel(const int32_t dimension_count,
       break;
     }
 
-    output_strides.data_[dim].divmod(value, div, mod);
-    input_index += (starts.data_[dim] + div * steps.data_[dim]) * input_strides.data_[dim];
+    output_strides[dim].divmod(value, div, mod);
+    input_index += (starts[dim] + div * steps[dim]) * input_strides[dim];
     value = mod;
   }
-  input_index += starts.data_[dim] + mod * steps.data_[dim];
-  if (is_grad)
-    output_data[input_index] = input_data[id];
-  else
-    output_data[id] = input_data[input_index];
+
+  input_index += starts[dim] + mod * steps[dim];
+  output_data[id] = input_data[input_index];
 }
 
 Status SliceImpl(const size_t element_size,

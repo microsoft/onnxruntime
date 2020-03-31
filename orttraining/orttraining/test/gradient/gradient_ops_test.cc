@@ -5,6 +5,7 @@
 #include <bitset>
 #include <cmath>
 #include <random>
+#include <thread>
 
 #include "gtest/gtest.h"
 #include "core/framework/random_seed.h"

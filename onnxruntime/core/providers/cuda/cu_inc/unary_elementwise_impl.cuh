@@ -13,7 +13,7 @@ template <typename InT, typename OutT, typename FuncT, int NumThreadsPerBlock, i
 __global__ void _UnaryElementWise(
     const InT* input_data,
     OutT* output_data,
-    const FuncT& functor,
+    const FuncT functor,
     CUDA_LONG N) {
   CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   InT value[NumElementsPerThread];

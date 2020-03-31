@@ -18,6 +18,9 @@ namespace wgdx = winrt::Windows::Graphics::DirectX;
 namespace winrt::Windows::Graphics::Imaging {}
 namespace wgi = ::winrt::Windows::Graphics::Imaging;
 
+namespace winrt::Windows::Media {}
+namespace wm = ::winrt::Windows::Media;
+
 namespace winrt::Windows::Storage {}
 namespace ws = ::winrt::Windows::Storage;
 
