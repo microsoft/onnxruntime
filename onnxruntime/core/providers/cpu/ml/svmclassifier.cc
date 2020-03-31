@@ -305,7 +305,8 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
   auto finalize_batch = [this, &final_scores, final_scores_per_batch,
                          have_proba, &probsp2_data, class_count_squared,
                          &classifier_scores_data, num_classifiers, &votes_data, &Y,
-                         num_scores_per_batch, write_additional_scores](int32_t n) {
+                         num_scores_per_batch, write_additional_scores](ptrdiff_t idx) {
+    int n = SafeInt<int32_t>(idx);  // convert to a usable sized type
     auto cur_scores = final_scores.subspan(n * final_scores_per_batch, final_scores_per_batch);
 
     if (mode_ == SVM_TYPE::SVM_SVC && have_proba) {
@@ -373,7 +374,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
     concurrency::ThreadPool::TryBatchParallelFor(threadpool, num_batches, finalize_batch, -1);
   } else {
     {
-      for (int32_t i = 0; i < num_batches; ++i) {
+      for (ptrdiff_t i = 0; i < num_batches; ++i) {
         finalize_batch(i);
       }
     }
