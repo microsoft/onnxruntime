@@ -38,9 +38,6 @@ class BertOnnxModel(OnnxModel):
 
         self.bert_inputs = []
 
-    def normalize_children_types(self):
-        return ['MatMul', 'MatMul', 'MatMul', 'SkipLayerNormalization']
-
     def cast_graph_input_to_int32(self, input_name):
         graph_input = self.find_graph_input(input_name)
         if graph_input is not None and graph_input.type.tensor_type.elem_type != TensorProto.INT32:
@@ -165,21 +162,27 @@ class BertOnnxModel(OnnxModel):
         for normalize_node in skip_layer_norm_nodes:
             # SkipLayerNormalization has two inputs, and one of them is the
             # root input for attention.
-            qkv_nodes = None
-            root_input = None
+            qkv_nodes = self.match_parent_path(normalize_node,
+                                               ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
+                                               [None, 0, 0, 0, 0])
+            if qkv_nodes is None:
+                continue
+
+            other_inputs = []
             for i, input in enumerate(normalize_node.input):
                 if input not in output_name_to_node:
                     continue
-                children = input_name_to_nodes[input]
-                children_types = sorted([child.op_type for child in children])
-                if children_types != self.normalize_children_types():
-                    qkv_nodes = self.match_parent_path(normalize_node,
-                                                       ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
-                                                       [i, 0, 0, 0, 0])
-                else:
-                    root_input = input
 
-            if root_input is None or qkv_nodes is None:
+                if input == qkv_nodes[0].output[0]:
+                    continue
+                other_inputs.append(input)
+            if len(other_inputs) != 1:
+                continue
+
+            root_input = other_inputs[0]
+            children = input_name_to_nodes[root_input]
+            children_types = [child.op_type for child in children]
+            if children_types.count('MatMul') != 3:
                 continue
 
             (add_qkv, matmul_qkv, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
@@ -1051,7 +1054,9 @@ class BertOnnxModel(OnnxModel):
         self.fuse_reshape()
 
         self.fuse_skip_layer_norm()
+
         self.fuse_attention()
+
         self.fuse_embed_layer()
 
         # Fuse Gelu and Add Bias before it.
