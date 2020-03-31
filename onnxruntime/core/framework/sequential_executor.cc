@@ -238,7 +238,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     const std::string node_name_for_profiling = [&]() -> std::string {
       if (!is_profiler_enabled) return {};
       // Derive something meaningful for profile traces and logs if node name field is blank in execution graph 
-      return node.Name().empty() ? MakeString(node.OpType(), "_", std::to_string(node_index)) : node.Name();
+      return node.Name().empty() ? MakeString(node.OpType(), "_", node_index) : node.Name();
     }();
 
     if (is_profiler_enabled) {
