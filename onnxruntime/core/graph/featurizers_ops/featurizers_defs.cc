@@ -1510,19 +1510,22 @@ void RegisterRollingWindowFeaturizerVer1() {
       .TypeAndShapeInferenceFunction(
           [](ONNX_NAMESPACE::InferenceContext& ctx) {
             propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, 0);
-            if (hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
+            if (hasInputShape(ctx, 1)) {
               const auto& grains_shape = getInputShape(ctx, 1);
-              const auto& target_shape = getInputShape(ctx, 2);
               if (grains_shape.dim_size() != 2) {
                 fail_shape_inference("Expecting Grains to have 2 dimensions");
               }
-              if (target_shape.dim_size() != 1) {
-                fail_shape_inference("Expecting Target to have 1 dimensions");
-              }
+
               ONNX_NAMESPACE::TensorShapeProto shape;
               *shape.add_dim() = grains_shape.dim(0);
               shape.add_dim();
               ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape);
+            }
+            if (hasInputShape(ctx, 2)) {
+              const auto& target_shape = getInputShape(ctx, 2);
+              if (target_shape.dim_size() != 1) {
+                fail_shape_inference("Expecting Target to have 1 dimensions");
+              }
             }
           });
 }

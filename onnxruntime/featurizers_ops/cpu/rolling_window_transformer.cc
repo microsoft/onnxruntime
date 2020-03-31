@@ -18,7 +18,7 @@ struct RollingWindowTransformerImpl {
     // Define the type
     using GrainT = std::vector<std::string>;
     using EstimatorT = Microsoft::Featurizer::Featurizers::GrainedAnalyticalRollingWindowEstimator<T>;
-    using GrainedInputType = std::tuple<GrainT, T>;
+    using GrainedInputType = EstimatorT::InputType;
     using OutputType = typename EstimatorT::TransformedType;
 
     //Get the transformer
@@ -50,8 +50,7 @@ struct RollingWindowTransformerImpl {
         output_data = output_tensor->MutableData<double>();
         has_allocate_output_data = true;
       }
-      std::copy(value.begin(), value.end(), output_data);
-      output_data += value.size();
+      output_data = std::copy(value.begin(), value.end(), output_data);
     };
 
     // Transform
@@ -61,10 +60,12 @@ struct RollingWindowTransformerImpl {
       //Prepare Input
       grains.clear();
       std::copy(grains_data, grains_data + grains_num, std::back_inserter(grains));
-      GrainedInputType input_tuple = std::make_tuple(grains, *target_data);
+      GrainT const grains_const_ref(grains);
+      T const target_data_const_ref(static_cast<T>(*target_data));
+      GrainedInputType const input_tuple(grains_const_ref, target_data_const_ref);
 
       //Execute
-      transformer.execute(static_cast<typename EstimatorT::InputType>(input_tuple), callback_fn);
+      transformer.execute(input_tuple, callback_fn);
 
       target_data++;
       grains_data += grains_num;
