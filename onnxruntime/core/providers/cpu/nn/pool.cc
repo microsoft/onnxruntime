@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/nn/pool.h"
+#include "core/framework/data_types_internal.h"
 #include "core/platform/threadpool.h"
 #include "core/util/eigen_common_wrapper.h"
 #include "pool_functors.h"
@@ -11,7 +12,7 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 template <typename T>
-static void RunLoop(concurrency::ThreadPool* tp, Eigen::Index total_channels, T&& task) {
+inline static void RunLoop(concurrency::ThreadPool* tp, Eigen::Index total_channels, T&& task) {
   concurrency::ThreadPool::TryParallelFor(tp, total_channels, task.Cost(), task);
 }
 
@@ -134,13 +135,30 @@ Status Pool<float, AveragePool>::Compute(OpKernelContext* context) const {
 // version 8: Added storage_order And Indices
 // version 10: Added ceil_mode
 // version 11: Added dilations
-template <typename T>
+// version 12: Added int8/uint8 support
+
 class MaxPoolV8 : public OpKernel, public PoolBase {
+
+  template <typename T>
+  struct ComputeHelper {
+    Status operator()(const MaxPoolV8* inst, OpKernelContext* context) const {
+      return inst->ComputeImpl<T>(context);
+    }
+  };
+
  public:
-  MaxPoolV8(const OpKernelInfo& info) : OpKernel(info), PoolBase(info) {
+  explicit MaxPoolV8(const OpKernelInfo& info) : OpKernel(info), PoolBase(info) {
   }
 
   Status Compute(OpKernelContext* context) const override {
+    utils::MLTypeCallDispatcherRet<Status, ComputeHelper, float, double, int8_t, uint8_t>
+        t_disp(context->Input<Tensor>(0)->GetElementType());
+    return t_disp.Invoke(this, context);
+  }
+
+ private:
+  template <typename T>
+  Status ComputeImpl(OpKernelContext* context) const {
     concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
     // Use MLAS pooling if the index output tensor is not used
     // and also if dilation is not required
@@ -150,8 +168,11 @@ class MaxPoolV8 : public OpKernel, public PoolBase {
       need_dilation |= n > 1;
     }
 
-    if (OpKernel::Node().OutputDefs().size() == 1 && pool_attrs_.storage_order == 0 && !need_dilation) {
-      return PoolBase::Compute(context, MlasMaximumPooling);
+    // MLAS implementation currently supports only floats
+    if (std::is_same<T, float>::value) {
+      if (OpKernel::Node().OutputDefs().size() == 1 && pool_attrs_.storage_order == 0 && !need_dilation) {
+        return PoolBase::Compute(context, MlasMaximumPooling);
+      }
     }
 
     const auto* X = context->Input<Tensor>(0);
@@ -210,10 +231,10 @@ class MaxPoolV8 : public OpKernel, public PoolBase {
         const int64_t dilation_w = pool_attrs_.dilations[1];
         const int64_t dilation_d = pool_attrs_.dilations[2];
         RunLoop<MaxPool3DTask<T>>(tp, total_channels,
-                                  {X_data,       Y_data,     I_data,       x_step,        y_step,
-                                   dilation_h,   dilation_w, dilation_d,   pooled_height, pooled_width,
-                                   pooled_depth, stride_h(), stride_w(),   stride_d(),    height,
-                                   width,        depth,      kernel_shape, pads,          pool_attrs_.storage_order});
+                                  {X_data, Y_data, I_data, x_step, y_step,
+                                   dilation_h, dilation_w, dilation_d, pooled_height, pooled_width,
+                                   pooled_depth, stride_h(), stride_w(), stride_d(), height,
+                                   width, depth, kernel_shape, pads, pool_attrs_.storage_order});
         break;
       }
       default:
@@ -222,9 +243,6 @@ class MaxPoolV8 : public OpKernel, public PoolBase {
 
     return Status::OK();
   }
-
- private:
-  PoolProcessContext pool_context_;
 };
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(AveragePool, 7, 9,
@@ -242,17 +260,21 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(MaxPool, 1, 7,
                                    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                                    Pool<float, MaxPool<1 /*VERSION*/>>);
 
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(MaxPool, 8, 11, float,
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(MaxPool, 8, 11, 
                                          KernelDefBuilder()
-                                             .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+                                             .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                   DataTypeImpl::GetTensorType<double>()})
                                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
-                                         MaxPoolV8<float>);
+                                         MaxPoolV8);
 
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(MaxPool, 8, 11, double,
-                                         KernelDefBuilder()
-                                             .TypeConstraint("T", DataTypeImpl::GetTensorType<double>())
-                                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
-                                         MaxPoolV8<double>);
+ONNX_CPU_OPERATOR_KERNEL(MaxPool, 12,
+                         KernelDefBuilder()
+                             .TypeConstraint("T", {DataTypeImpl::GetTensorType<double>(),
+                                                   DataTypeImpl::GetTensorType<float>(),
+                                                   DataTypeImpl::GetTensorType<int8_t>(),
+                                                   DataTypeImpl::GetTensorType<uint8_t>()})
+                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
+                         MaxPoolV8);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(LpPool, 2, 10,
                                    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),

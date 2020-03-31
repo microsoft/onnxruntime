@@ -24,5 +24,4 @@ class Pool : public OpKernel, public PoolBase {
  private:
   PoolProcessContext pool_context_;
 };
-
 }  // namespace onnxruntime
