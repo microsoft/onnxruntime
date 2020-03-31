@@ -16,6 +16,11 @@ static std::pair<bool, Node*> IsInputTranspose(const Graph& graph, NodeArg& node
     return std::make_pair(false, nullptr);
   }
 
+  // if the node has Graph output, skip it too
+  if (!graph.GetNodeOutputsInGraphOutputs(*trans_node).empty()) {
+    return std::make_pair(false, nullptr);
+  }
+
   auto perms = RetrieveValues<int64_t>(trans_node->GetAttributes().at("perm"));
   int64_t rank = perms.size();
   if (rank < 2) {
@@ -31,7 +36,7 @@ static std::pair<bool, Node*> IsInputTranspose(const Graph& graph, NodeArg& node
   }
 
   if (is_trans_on_last_two_dims) {
-    is_trans_on_last_two_dims = (int64_t)perms[rank - 2] == rank - 1 && (int64_t)perms[rank - 1] == rank - 2;
+    is_trans_on_last_two_dims = perms[rank - 2] == rank - 1 && perms[rank - 1] == rank - 2;
   }
 
   if (!is_trans_on_last_two_dims) {
@@ -111,8 +116,8 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     if (node.OpType() == "TransposeMatMul") {
       transpose_right ^= static_cast<bool>(node.GetAttributes().at("transB").i());
     }
-    matmul_node.AddAttribute("transA", (int64_t)transpose_left);
-    matmul_node.AddAttribute("transB", (int64_t)transpose_right);
+    matmul_node.AddAttribute("transA", static_cast<int64_t>(transpose_left));
+    matmul_node.AddAttribute("transB", static_cast<int64_t>(transpose_right));
     // Assign provider to this new node. Provider should be same as the provider for old node.
     matmul_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
