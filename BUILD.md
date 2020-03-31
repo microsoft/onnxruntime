@@ -176,6 +176,12 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
    * The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
 
 #### Build Instructions
+##### Windows
+
+```
+.\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home>
+```
+
 ##### Linux
 
 ```
