@@ -7,17 +7,22 @@ from onnx import OperatorSetIdProto
 # Edge that needs to be cut for the split.
 # If the edge is feeding into more than one nodes, and not all the nodes belong to the same cut,
 # specify those consuming nodes that need to be cut
+
+
 class CutEdge:
     def __init__(self, edgeId, consumingNodes=None):
         self.edgeId = edgeId
         self.consumingNodes = consumingNodes
 
-def add_expand_shape(model, name, shape):
+
+def add_expand_type(model, name, type):
     expand_edge = model.graph.value_info.add()
     expand_edge.name = name
-    expand_edge.type.CopyFrom(shape)
+    expand_edge.type.CopyFrom(type)
 
 # Add wait/record/send/recv nodes and split the graph into disconnected subgraphs
+
+
 def split_graph(model, split_edge_groups):
     ms_domain = 'com.microsoft'
 
@@ -54,11 +59,11 @@ def split_graph(model, split_edge_groups):
 
         # split the graph based on edgeIds
         upstream_nodes = []
-        output_shapes =[]
+        output_shapes = []
 
         for id in edgeIds:
             for node in model.graph.node:
-                if len(node.output) >=1 and node.output[0] == id:
+                if len(node.output) >= 1 and node.output[0] == id:
                     upstream_nodes.append(node)
                     for info in model.graph.value_info:
                         if info.name == id:
@@ -99,7 +104,7 @@ def split_graph(model, split_edge_groups):
             src=cut_index,
             dst=cut_index + 1,
             domain=ms_domain,
-            element_type=7, # assuming all tensors are of type float
+            element_type=7,  # assuming all tensors are of type float
             name='send'))
 
         new_receive = model.graph.node.add()
@@ -111,7 +116,7 @@ def split_graph(model, split_edge_groups):
             src=cut_index,
             dst=cut_index + 1,
             domain=ms_domain,
-            element_type=7, # assuming all tensors are of type float
+            element_type=7,  # assuming all tensors are of type float
             name='receive'))
 
         new_wait = model.graph.node.add()
@@ -136,13 +141,13 @@ def split_graph(model, split_edge_groups):
 
             # deal with shape inference for newly added edge
             new_send_input_name = n.output[0] + '_send' + str(cut_index)
-            add_expand_shape(model, new_send_input_name, output_type)
+            add_expand_type(model, new_send_input_name, output_type)
 
             new_receive_output_name = n.output[0] + '_recv' + str(cut_index)
-            add_expand_shape(model, new_receive_output_name, output_type)
+            add_expand_type(model, new_receive_output_name, output_type)
 
             new_wait_output_name = n.output[0] + '_wait' + str(cut_index)
-            add_expand_shape(model, new_wait_output_name, output_type)
+            add_expand_type(model, new_wait_output_name, output_type)
 
             # the order of data flow is: node-output -> record -> send -> recv -> wait -> node-input
             new_record.input.extend([n.output[0]])
@@ -167,6 +172,7 @@ def split_graph(model, split_edge_groups):
 
     return new_send_nodes, new_recv_nodes
 
+
 def find_all_input_nodes(model, node):
     nodes = []
     inputs = []
@@ -182,6 +188,7 @@ def find_all_input_nodes(model, node):
                     inputs.append(input)
     return nodes, inputs
 
+
 def find_all_output_nodes(model, node):
     nodes = []
     outputs = []
@@ -196,6 +203,7 @@ def find_all_output_nodes(model, node):
                     outputs.append(output)
     return nodes, outputs
 
+
 def find_all_output_nodes_by_edge(model, arg):
     result = []
     for node in model.graph.node:
@@ -205,11 +213,13 @@ def find_all_output_nodes_by_edge(model, arg):
     return result
 
 # Insert identity nodes to separate same output edge which feeds into different sub-graph.
+
+
 def add_identity(model, cuttingEdge, newEdgeIdName):
     output_nodes = None
     edgeId = cuttingEdge.edgeId
     for node in model.graph.node:
-        if len(node.output) >=1 and node.output[0] == edgeId:
+        if len(node.output) >= 1 and node.output[0] == edgeId:
             output_nodes = find_all_output_nodes_by_edge(model, node.output[0])
             break
 
@@ -229,6 +239,7 @@ def add_identity(model, cuttingEdge, newEdgeIdName):
 
     return newEdgeIdName
 
+
 def find_all_connected_nodes(model, node):
     nodes0, inputs = find_all_input_nodes(model, node)
     nodes1, outputs = find_all_output_nodes(model, node)
@@ -236,17 +247,20 @@ def find_all_connected_nodes(model, node):
     connected_nodes = nodes0 + nodes1
     return connected_nodes, inputs, outputs
 
+
 def get_node_index(model, node):
     for i in range(len(model.graph.node)):
         if model.graph.node[i] == node:
             return i
     return None
 
+
 def get_input_index(model, input):
     for i in range(len(model.graph.input)):
         if model.graph.input[i] == input:
             return i
     return None
+
 
 def get_output_index(model, output):
     for i in range(len(model.graph.output)):
@@ -255,6 +269,8 @@ def get_output_index(model, output):
     return None
 
 # traverse the graph, group connected nodes and generate subgraph
+
+
 def generate_subgraph(model, start_nodes):
     subgraphs = []
 
@@ -276,7 +292,8 @@ def generate_subgraph(model, start_nodes):
                 tranversed_node += 1
                 visited0.append(node)
                 all_visited_nodes.append(node)
-                connected_nodes, inputs, outputs = find_all_connected_nodes(main_graph, node)
+                connected_nodes, inputs, outputs = find_all_connected_nodes(
+                    main_graph, node)
 
                 stack0 = stack0 + connected_nodes
                 inputs0 = inputs0 + inputs
@@ -341,10 +358,12 @@ def generate_subgraph(model, start_nodes):
     subgraphs.reverse()
     return subgraphs
 
+
 def write_model(model, file_name):
     f = open(file_name, "wb")
     f.write(model.SerializeToString())
     f.close()
+
 
 def main():
     # temporary hard coded the cutting edge structure
@@ -362,7 +381,8 @@ def main():
 
     print("original model length ", len(model.graph.node))
 
-    output_model_names = [input_model_name[:-5] + '_' + str(i) + '.onnx' for i in range(stage_count)]
+    output_model_names = [input_model_name[:-5] + '_' +
+                          str(i) + '.onnx' for i in range(stage_count)]
 
     split_edge_groups = []
     count = 0
@@ -396,11 +416,10 @@ def main():
     new_sends, new_receives = split_graph(model, split_edge_groups)
     sub_graphs = generate_subgraph(model, new_receives)
 
-
     for i in range(stage_count):
         sub_graphs[i] = onnx.shape_inference.infer_shapes(sub_graphs[i])
         write_model(sub_graphs[i], output_model_names[i])
 
+
 if __name__ == "__main__":
     main()
-
