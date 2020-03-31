@@ -109,7 +109,7 @@ class GraphViewer {
   bool IsSubgraph() const;
 
   /** Get the internal graph*/
-  const Graph* GetGraph() const { return graph_; }
+  const Graph& GetGraph() const { return *graph_; }
 
   /**
   returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime.
