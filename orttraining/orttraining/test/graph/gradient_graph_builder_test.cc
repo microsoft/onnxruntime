@@ -292,6 +292,34 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithProfiler) {
 }
 
 #ifdef USE_CUDA
+static TrainingSession::TrainingConfiguration MakeBertTrainingConfig() {
+  TrainingSession::TrainingConfiguration config{};
+  config.model_with_training_graph_path = ORT_TSTR("testdata/bert_toy_optimized_bw.onnx");
+  config.loss_function_config = TrainingSession::TrainingConfiguration::LossFunctionConfiguration{};
+  config.loss_function_config.value().loss_function_info =
+      LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
+                       "total_loss",
+                       {/*prediction_masked_lm*/ "prediction_scores",
+                        /*prediction_next_sentence*/ "seq_relationship_score",
+                        /*masked_lm_positions*/ "masked_lm_positions",
+                        /*masked_lm_ids*/ "masked_lm_ids",
+                        /*masked_lm_weights*/ "masked_lm_weights",
+                        /*next_sentence_labels*/ "next_sentence_labels",
+                        /*mlm_loss*/ "mlm_loss",
+                        /*nsp_loss*/ "nsp_loss"});
+  config.weight_names_to_not_train = {
+      "position_01",            // Slice's dat input
+      "op_min_ends_expand_10",  //op_min_ends_expand_10
+  };
+  config.immutable_weights = {
+      {"Div", {{1, 8.0f}, {1, 1.4142135381698608f}}},
+      {"Add", {{1, 1.0f}, {1, 9.999999960041972e-13f}}},
+      {"Mul", {{1, 0.5f}, {1, -10000.0f}}},
+      {"Sub", {{0, 1.0f}}}};
+
+  return config;
+}
+
 static void RunBertTrainingWithChecks(
     const SessionOptions& so,
     const PathString& backprop_model_file) {
@@ -462,29 +490,7 @@ static void RunBertTrainingWithChecks(
 TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
   const auto model_path = ORT_TSTR("testdata/bert_toy_optimized.onnx");
 
-  TrainingSession::TrainingConfiguration config{};
-  config.model_with_training_graph_path = ORT_TSTR("testdata/bert_toy_optimized_bw.onnx");
-  config.loss_function_config = TrainingSession::TrainingConfiguration::LossFunctionConfiguration{};
-  config.loss_function_config.value().loss_function_info =
-      LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
-                       "total_loss",
-                       {/*prediction_masked_lm*/ "prediction_scores",
-                        /*prediction_next_sentence*/ "seq_relationship_score",
-                        /*masked_lm_positions*/ "masked_lm_positions",
-                        /*masked_lm_ids*/ "masked_lm_ids",
-                        /*masked_lm_weights*/ "masked_lm_weights",
-                        /*next_sentence_labels*/ "next_sentence_labels",
-                        /*mlm_loss*/ "mlm_loss",
-                        /*nsp_loss*/ "nsp_loss"});
-  config.weight_names_to_not_train = {
-      "position_01",            // Slice's dat input
-      "op_min_ends_expand_10",  //op_min_ends_expand_10
-  };
-  config.immutable_weights = {
-      {"Div", {{1, 8.0f}, {1, 1.4142135381698608f}}},
-      {"Add", {{1, 1.0f}, {1, 9.999999960041972e-13f}}},
-      {"Mul", {{1, 0.5f}, {1, -10000.0f}}},
-      {"Sub", {{0, 1.0f}}}};
+  TrainingSession::TrainingConfiguration config = MakeBertTrainingConfig();
 
   PathString backprop_model_file;
   ASSERT_STATUS_OK(BuildBackPropGraph(model_path, config, backprop_model_file));
@@ -497,66 +503,70 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
 
 class PipelineSplitter {
  public:
-  struct UnidirectionCutInfo {
-    // nodes are identified by its output[0]
-    std::vector<std::string> nodes;
-    // inputs for sync between sub models
-    std::vector<std::string> sync_inputs;
-    // outputs for sync between sub models
-    // note there might be some graph ouputs do not need to sync
-    std::vector<std::string> sync_outputs;
-    // dependencies for maintaining topological order
-    std::vector<std::string> wait_depends;
-    std::vector<std::string> record_depends;
-  };
-
-  struct CutInfo {
-    UnidirectionCutInfo fw;
-    UnidirectionCutInfo bw;
-  };
-
   PipelineSplitter() = default;
 
-  void Split(
-      PathString backprop_model_file,
-      const std::vector<PathString>& sub_model_files,
-      const std::vector<CutInfo>& cuts) {
-    const int num_subs = (int)cuts.size();
+  struct CutConfig {
+    struct Edge {
+      std::string def_name;    // name of node_arg
+      std::string to_node_id;  // receiver node of the tensor, using the node's first output since node name might be empty or not unique
+    };
+    std::vector<Edge> fw_input_edges;
+    std::vector<Edge> fw_output_edges;
+    std::vector<Edge> bw_input_edges;
+    std::vector<Edge> bw_output_edges;
+    PathString sub_model_file;
+  };
 
-    ONNX_NAMESPACE::ModelProto mp;
-    ASSERT_STATUS_OK(Model::Load(backprop_model_file, mp));
+  void Split(PathString backprop_model_file,
+             const std::vector<CutConfig>& cut_configs) {
+    std::shared_ptr<Model> model;
+    ASSERT_TRUE(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+    GraphViewer main_graph(model->MainGraph());
 
-    const auto& main_gp = mp.graph();
-    ONNX_NAMESPACE::ModelProto sub_mps[3];
+    GenerateCuts(main_graph, cut_configs);
+    const int num_subs = (int)cuts_.size();
+
+    ONNX_NAMESPACE::ModelProto mp = model->ToProto();
+    std::vector<ONNX_NAMESPACE::ModelProto> sub_mps(num_subs);
     for (int i = 0; i < num_subs; ++i) {
       auto& sub = sub_mps[i];
       sub.CopyFrom(mp);
       sub.clear_graph();
-      FillInputWait(sub.mutable_graph(), main_gp, cuts[i].fw.sync_inputs, cuts[i].fw.wait_depends, i, /*bw*/ false);
+      // add inputs and wait nodes before FW
+      FillInputWait(sub.mutable_graph(), main_graph, cuts_[i].fw.sync_inputs, cuts_[i].fw.wait_depends, i, /*bw*/ false);
     }
 
-    for (const auto& n : main_gp.node()) {
+    std::vector<size_t> num_fw_nodes(num_subs, 0);
+    std::vector<size_t> num_bw_nodes(num_subs, 0);
+    for (const auto& node_idx : main_graph.GetNodesInTopologicalOrder()) {
+      const Node* node = main_graph.GetNode(node_idx);
+      std::string node_id = node_ids_[node];
+
+      ONNX_NAMESPACE::NodeProto node_proto;
+      node->ToProto(node_proto);
       // check which sub_model the node should be in
       int sub_id = -1;
       for (int i = 0; i < num_subs; ++i) {
-        const auto& cut = cuts[i];
-        if (std::count(cut.fw.nodes.cbegin(), cut.fw.nodes.cend(), n.output()[0])) {
+        const auto& cut = cuts_[i];
+        if (std::count(cut.fw.node_ids.cbegin(), cut.fw.node_ids.cend(), node_id) > 0) {
+          ++num_fw_nodes[i];
           sub_id = i;
           break;
         }
-        if (std::count(cut.bw.nodes.cbegin(), cut.bw.nodes.cend(), n.output()[0])) {
+        if (std::count(cut.bw.node_ids.cbegin(), cut.bw.node_ids.cend(), node_id) > 0) {
+          ++num_bw_nodes[i];
           sub_id = i;
           break;
         }
       }
-      EXPECT_TRUE(sub_id != -1);
+      ORT_ENFORCE(sub_id != -1);
       auto* sub_gp = sub_mps[sub_id].mutable_graph();
-      const auto& cut = cuts[sub_id];
+      const auto& cut = cuts_[sub_id];
 
       // add WaitEvent node at the beginning of bw
-      if (!cut.bw.nodes.empty() && n.output()[0] == cut.bw.nodes.front()) {
+      if (!cut.bw.node_ids.empty() && cut.bw.node_ids.count(node_id) > 0 && num_bw_nodes[sub_id] == 1) {
         FillInputWait(sub_gp,
-                      main_gp,
+                      main_graph,
                       cut.bw.sync_inputs,
                       cut.bw.wait_depends,
                       sub_id,
@@ -564,36 +574,39 @@ class PipelineSplitter {
       }
 
       // copy node to sub model
-      sub_gp->mutable_node()->Add()->CopyFrom(n);
-      for (auto i = n.input().cbegin(); i != n.input().cend(); ++i) {
-        AddItemByName(sub_gp->mutable_initializer(), main_gp.initializer(), *i, *i);
+      sub_gp->mutable_node()->Add()->CopyFrom(node_proto);
+      for (auto i = node_proto.input().cbegin(); i != node_proto.input().cend(); ++i) {
+        const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+        if (main_graph.GetInitializedTensor(*i, initializer)) {
+          *sub_gp->mutable_initializer()->Add() = *initializer;
+        }
         if (0 == std::count(cut.fw.sync_inputs.cbegin(), cut.fw.sync_inputs.cend(), *i) &&
             0 == std::count(cut.bw.sync_inputs.cbegin(), cut.bw.sync_inputs.cend(), *i)) {
           // carry over original graph's input, if not in sync_inputs
-          AddItemByName(sub_gp->mutable_input(), main_gp.input(), *i, *i);
+          AddItemByName(sub_gp->mutable_input(), main_graph.GetInputs(), *i, *i);
         }
       };
-      for (auto i = n.output().cbegin(); i != n.output().cend(); ++i) {
+      for (auto i = node_proto.output().cbegin(); i != node_proto.output().cend(); ++i) {
         if (std::count(cut.fw.sync_outputs.cbegin(), cut.fw.sync_outputs.cend(), *i) ||
             std::count(cut.bw.sync_outputs.cbegin(), cut.bw.sync_outputs.cend(), *i))
           continue;  // sync_ouputs already handled, skip
 
         // add graph output
-        if (!AddItemByName(sub_gp->mutable_output(), main_gp.output(), *i, *i)) {
+        if (!AddItemByName(sub_gp->mutable_output(), main_graph.GetOutputs(), *i, *i)) {
           // for non-output, add shape info
-          AddItemByName(sub_gp->mutable_value_info(), main_gp.value_info(), *i, *i);
+          AddItemByName(sub_gp->mutable_value_info(), main_graph.GetValueInfo(), *i, *i);
         }
       };
 
       // add RecordEvent node at the end of fw and bw
-      if ((!cut.fw.nodes.empty() && n.output()[0] == cut.fw.nodes.back()) ||
-          (!cut.bw.nodes.empty() && n.output()[0] == cut.bw.nodes.back())) {
-        bool bw = (n.output()[0] == cut.bw.nodes.back());
+      if ((!cut.fw.node_ids.empty() && cut.fw.node_ids.count(node_id) > 0 && num_fw_nodes[sub_id] == cut.fw.node_ids.size()) ||
+          (!cut.bw.node_ids.empty() && cut.bw.node_ids.count(node_id) > 0 && num_bw_nodes[sub_id] == cut.bw.node_ids.size())) {
+        bool bw = cut.bw.node_ids.count(node_id) > 0;
         const auto& sync_outputs = (bw ? cut.bw.sync_outputs : cut.fw.sync_outputs);
         const auto& dependencies = (bw ? cut.bw.record_depends : cut.fw.record_depends);
 
         FillOutputRecord(sub_gp,
-                         main_gp,
+                         main_graph,
                          sync_outputs,
                          dependencies,
                          sub_id,
@@ -603,26 +616,30 @@ class PipelineSplitter {
 
     // save sub models
     for (int sub_id = 0; sub_id < num_subs; ++sub_id) {
-      std::ofstream ofs(sub_model_files[sub_id], std::ofstream::binary);
+      std::ofstream ofs(cut_configs[sub_id].sub_model_file, std::ofstream::binary);
       sub_mps[sub_id].SerializeToOstream(&ofs);
       ofs.close();
     }
   }
 
- private:
-  // add RepeatedField item by name from another RepeatedFields
+ protected:
+  // add ValueInfoProto item by looking up name from src of InputDefList,
+  // if a NodeArg is found, its content would be copied to the new ValueInfoProto entry with a new_name
   // return true if the name exists in dst
-  template <typename TD, typename TS>
-  bool AddItemByName(TD* dst, const TS& src, const std::string& name, const std::string& new_name) {
+  bool
+  AddItemByName(google::protobuf::RepeatedPtrField<ONNX_NAMESPACE::ValueInfoProto>* dst,
+                const InputDefList& src,
+                const std::string& name,
+                const std::string& new_name) {
     for (auto iter = dst->cbegin(); iter != dst->cend(); ++iter) {
       if (iter->name() == new_name) {
         return true;
       }
     }
     for (auto iter = src.cbegin(); iter != src.cend(); ++iter) {
-      if (iter->name() == name) {
+      if ((*iter)->Name() == name) {
         auto* p = dst->Add();
-        p->CopyFrom(*iter);
+        p->CopyFrom((*iter)->ToProto());
         *p->mutable_name() = new_name;
         return true;
       }
@@ -630,21 +647,347 @@ class PipelineSplitter {
     return false;
   }
 
+ protected:
+  // derived class can overload these functions to insert nodes for send/recv data and sync
+  virtual void FillInputWait(
+      ONNX_NAMESPACE::GraphProto* /*sub_gp*/,
+      const GraphViewer& /*main_gp*/,
+      const std::unordered_set<std::string>& /*sync_inputs*/,
+      const std::unordered_set<std::string>& /*dependencies*/,
+      int /*sub_id*/,
+      bool /*bw*/) {
+  }
+
+  virtual void FillOutputRecord(
+      ONNX_NAMESPACE::GraphProto* /*sub_gp*/,
+      const GraphViewer& /*main_gp*/,
+      const std::unordered_set<std::string>& /*sync_outputs*/,
+      const std::unordered_set<std::string>& /*dependencies*/,
+      int /*sub_id*/,
+      bool /*bw*/) {
+  }
+
+ private:
+  void GenerateCuts(const GraphViewer& graph, const std::vector<CutConfig>& cut_configs) {
+    size_t num_subs = cut_configs.size();
+    cuts_.resize(num_subs);
+
+    // nodes that have been assigned to subgraphs
+    std::unordered_map<std::string, size_t> assigned_node_ids;
+    std::vector<std::unordered_map<std::string, std::unordered_set<std::string>>> fw_output_edges(num_subs);
+    std::vector<std::unordered_map<std::string, std::unordered_set<std::string>>> bw_output_edges(num_subs);
+
+    // handle cut configs
+    std::unordered_set<std::string> all_sync_inputs;
+    for (size_t i_sub = 0; i_sub < num_subs; ++i_sub) {
+      auto& cut = cuts_[i_sub];
+      const auto& cut_config = cut_configs[i_sub];
+
+      auto add_output_edge =
+          [](std::unordered_map<std::string, std::unordered_set<std::string>>& edges,
+             const std::string& def_name,
+             const std::string& to_node_id) {
+            if (edges.count(def_name) == 0) {
+              edges.insert(std::make_pair(def_name, std::unordered_set<std::string>()));
+            }
+            edges.at(def_name).insert(to_node_id);
+          };
+
+      // fill in input info in FW
+      for (const auto& input : cut_config.fw_input_edges) {
+        cut.fw.sync_inputs.insert(input.def_name);
+        cut.fw.node_ids.insert(input.to_node_id);
+        assigned_node_ids.insert(std::make_pair(input.to_node_id, i_sub));
+        all_sync_inputs.insert(input.def_name);
+      }
+      // fill in output info in FW
+      for (const auto& output : cut_config.fw_output_edges) {
+        cut.fw.sync_outputs.insert(output.def_name);
+        add_output_edge(fw_output_edges[i_sub], output.def_name, output.to_node_id);
+
+        // fw sync_output needs to be wait_dependency on BW to guarantee topological order
+        // note the def is named with "_sync" postfix
+        cut.bw.wait_depends.insert(output.def_name + "_sync");
+      }
+      // fill in input info in BW
+      for (const auto& input : cut_config.bw_input_edges) {
+        cut.bw.sync_inputs.insert(input.def_name);
+        cut.bw.node_ids.insert(input.to_node_id);
+        assigned_node_ids.insert(std::make_pair(input.to_node_id, i_sub));
+        all_sync_inputs.insert(input.def_name);
+      }
+      // fill in output info in BW
+      for (const auto& output : cut_config.bw_output_edges) {
+        cut.bw.sync_outputs.insert(output.def_name);
+        add_output_edge(bw_output_edges[i_sub], output.def_name, output.to_node_id);
+      }
+    }
+
+    // remember which node is the node_arg from, and mapping from const Node* to node_id
+    node_ids_.clear();
+    std::unordered_map<std::string, std::pair<std::string, const Node*>> output_from;
+    for (const auto& node : graph.Nodes()) {
+      std::string node_id;
+      Node::ForEachWithIndex(
+          node.OutputDefs(),
+          [&](const NodeArg& def, size_t) {
+            if (node_id.empty()) {
+              node_id = def.Name();
+              node_ids_.emplace(&node, def.Name());
+            }
+            output_from.insert(std::make_pair(def.Name(), std::make_pair(node_id, &node)));
+            return Status::OK();
+          });
+    }
+
+    // find orphan nodes:
+    // 1. nodes that does not have internal input (no input from other nodes or all_sync_inputs)
+    // 2. nodes that that only has internal inputs from existing orphan nodes, not from other nodes or all_sync_inputs
+    std::unordered_map<std::string, std::unordered_set<std::string>> orphan_node_infos;
+    for (auto i_node : graph.GetNodesInTopologicalOrder()) {
+      const Node* node = graph.GetNode(i_node);
+      std::string node_id = node_ids_.at(node);
+
+      bool has_internal_inputs = false;
+      bool all_internal_inputs_are_orphan = true;
+      std::unordered_set<std::string> orphan_input_node_ids;
+      Node::ForEachWithIndex(
+          node->InputDefs(),
+          [&](const NodeArg& def, size_t) {
+            const auto& def_name = def.Name();
+            if (output_from.count(def_name)) {
+              has_internal_inputs = true;
+              const auto& from_node_id = output_from[def_name].first;
+              if (orphan_node_infos.count(from_node_id) == 0) {
+                all_internal_inputs_are_orphan = false;
+              } else {
+                orphan_input_node_ids.insert(from_node_id);
+              }
+            } else if (all_sync_inputs.count(def_name)) {
+              // treat sync_inputs as internal input so nodes starting with them won't be orphan
+              has_internal_inputs = true;
+              all_internal_inputs_are_orphan = false;
+            }
+            return Status::OK();
+          });
+      if (!has_internal_inputs || all_internal_inputs_are_orphan) {
+        orphan_node_infos.emplace(node_id, orphan_input_node_ids);
+      }
+    }
+
+    // process graph with cut config
+    for (size_t sub_id = 0; sub_id < num_subs; ++sub_id) {
+      auto& cut = cuts_[sub_id];
+      for (auto i_node : graph.GetNodesInTopologicalOrder()) {
+        const Node* node = graph.GetNode(i_node);
+        std::string node_id = node_ids_.at(node);
+
+        // skip assigned or orphan nodes
+        // orphan nodes will be assigned when it's downstream node is assigned
+        if (assigned_node_ids.count(node_id) > 0 ||
+            orphan_node_infos.count(node_id) > 0)
+          continue;
+
+        // the special mark for nodes in bw
+        bool is_bw = (node->Description() == "Backward pass");
+        bool should_in_fw = !is_bw;
+        bool should_in_bw = is_bw;
+
+        // remember input orphan nodes
+        std::unordered_set<std::string> input_orphan_node_ids;
+        Node::ForEachWithIndex(
+            node->InputDefs(),
+            [&](const NodeArg& def, size_t /*arg_idx*/) {
+              const auto& def_name = def.Name();
+
+              // for initializer or graph input, no need to check
+              if (!output_from.count(def_name))
+                return Status::OK();
+
+              std::string from_node_id = output_from.at(def_name).first;
+
+              if (should_in_fw) {
+                // check if from_node_id is in fw nodes, and not on fw_output_edges
+                if (cut.fw.node_ids.count(from_node_id)) {
+                  auto iter_edge = fw_output_edges[sub_id].find(def_name);
+                  if (iter_edge != fw_output_edges[sub_id].end()) {
+                    if (iter_edge->second.count(node_id)) {
+                      should_in_fw = false;
+                    }
+                  }
+                } else if (!cut.fw.sync_inputs.count(def_name)) {
+                  // if input is from orphan nodes, don't mark as not in subgraph
+                  if (orphan_node_infos.count(from_node_id)) {
+                    input_orphan_node_ids.insert(from_node_id);
+                  } else {
+                    should_in_fw = false;
+                  }
+                }
+              }
+
+              if (should_in_bw) {
+                // check if from_node_id is in bw nodes, and not on bw_output_edges
+                // note that bw input may come from fw
+                if (cut.bw.node_ids.count(from_node_id)) {
+                  auto iter_edge = bw_output_edges[sub_id].find(def_name);
+                  if (iter_edge != bw_output_edges[sub_id].end()) {
+                    if (iter_edge->second.count(node_id)) {
+                      should_in_bw = false;
+                    }
+                  }
+                } else if (cut.bw.sync_inputs.count(def_name) == 0 &&
+                           cut.fw.sync_inputs.count(def_name) == 0 &&
+                           cut.fw.node_ids.count(from_node_id) == 0) {
+                  // bw node could take input from fw/bw inputs, or intermediate output in fw
+                  // if input is from orphan nodes, don't mark as not in subgraph
+                  if (orphan_node_infos.count(from_node_id)) {
+                    input_orphan_node_ids.insert(from_node_id);
+                  } else {
+                    should_in_bw = false;
+                  }
+                }
+              }
+
+              return Status::OK();
+            });
+
+        if (should_in_fw) {
+          cut.fw.node_ids.insert(node_id);
+        } else if (should_in_bw) {
+          cut.bw.node_ids.insert(node_id);
+        }
+
+        if (should_in_fw || should_in_bw) {
+          assigned_node_ids.insert(std::make_pair(node_id, sub_id));
+
+          // when a node is assigned, its input orphan nodes got recursively assigned too
+          typedef std::function<void(const std::unordered_set<std::string>& input_orphans)> RecursiveAssignInputOrphaNodeFunc;
+          RecursiveAssignInputOrphaNodeFunc recursively_assign_input_orphan_nodes =
+              [&](const std::unordered_set<std::string>& input_orphans) {
+                if (input_orphans.empty())
+                  return;
+
+                for (const auto& input_orphan_node_id : input_orphans) {
+                  // skip if the input orphan node is already assigned
+                  if (assigned_node_ids.count(input_orphan_node_id) > 0)
+                    continue;
+
+                  if (should_in_fw) {
+                    cut.fw.node_ids.insert(input_orphan_node_id);
+                  } else {
+                    cut.bw.node_ids.insert(input_orphan_node_id);
+                  }
+                  assigned_node_ids.insert(std::make_pair(input_orphan_node_id, sub_id));
+                  recursively_assign_input_orphan_nodes(orphan_node_infos[input_orphan_node_id]);
+                  // remove input orphan nodes after recursion
+                  orphan_node_infos.erase(input_orphan_node_id);
+                }
+              };
+
+          recursively_assign_input_orphan_nodes(input_orphan_node_ids);
+        }
+      }
+
+      typedef std::function<void(std::unordered_set<const Node*>&, const std::unordered_set<std::string>&)> SearchUsedNodesFunc;
+      SearchUsedNodesFunc search_used_nodes_recursive =
+          [&](std::unordered_set<const Node*>& used_nodes,
+              const std::unordered_set<std::string>& sync_inputs) {
+            std::unordered_set<const Node*> input_nodes;
+            for (const auto* node : used_nodes) {
+              std::string node_id = node_ids_[node];
+              Node::ForEachWithIndex(
+                  node->InputDefs(),
+                  [&](const NodeArg& def, size_t) {
+                    const auto& def_name = def.Name();
+                    if (output_from.count(def_name) && sync_inputs.count(def_name) == 0) {
+                      input_nodes.insert(output_from[def_name].second);
+                    }
+                    return Status::OK();
+                  });
+            }
+            if (input_nodes.size() > 0) {
+              search_used_nodes_recursive(input_nodes, sync_inputs);
+              used_nodes.insert(input_nodes.begin(), input_nodes.end());
+            }
+          };
+
+      auto FillInDependences =
+          [&](UnidirectionCutInfo& uni_cut) {
+            std::unordered_set<const Node*> used_nodes;
+            for (const auto& o : uni_cut.sync_outputs) {
+              used_nodes.insert(output_from[o].second);
+            }
+            search_used_nodes_recursive(used_nodes, uni_cut.sync_inputs);
+
+            uni_cut.record_depends = uni_cut.node_ids;
+            for (const Node* node : used_nodes) {
+              const std::string& node_id = node_ids_[node];
+              uni_cut.record_depends.erase(node_id);
+            }
+          };
+
+      if (sub_id != num_subs - 1) {  // no need to add record dependency for last stage FW
+        FillInDependences(cut.fw);
+      }
+      FillInDependences(cut.bw);
+    }
+
+    if (assigned_node_ids.size() != graph.NumberOfNodes()) {
+      // if not all nodes assigned, the missing node might be gradient sum from different stages
+      // print info for debugging
+      for (const auto& n : graph.Nodes()) {
+        std::string node_id = node_ids_[&n];
+        if (assigned_node_ids.count(node_id) == 0) {
+          std::cout << "Unassigned node " << n.Name() << " id: " << node_id << std::endl;
+        }
+      }
+      ORT_ENFORCE(false);
+    }
+  }
+
+  struct UnidirectionCutInfo {
+    // nodes are identified by its valid output def name
+    std::unordered_set<std::string> node_ids;
+    // inputs for sync between sub models
+    std::unordered_set<std::string> sync_inputs;
+    // outputs for sync between sub models
+    // note there might be some graph ouputs do not need to sync
+    std::unordered_set<std::string> sync_outputs;
+    // dependencies for maintaining topological order
+    std::unordered_set<std::string> wait_depends;
+    std::unordered_set<std::string> record_depends;
+  };
+
+  struct CutInfo {
+    UnidirectionCutInfo fw;
+    UnidirectionCutInfo bw;
+  };
+
+  std::unordered_map<const Node*, std::string> node_ids_;
+
+  std::vector<CutInfo> cuts_;
+};
+
+// simple pipeline splitter for this unit test
+// the execution of different pipeline stages are in the same process,
+// which just need WaitEvent/recordEvent for data dependency other than send/recv between stages
+class PipelineSimpleSplitter : public PipelineSplitter {
+ protected:
+  // Handle input with Wait/RecordEvent, graph input/value_info creation
+  // Note data is gated by Wait/RecordEvent, so name with postfix "_sync"
+  // In distributed training, the pattern is:
+  //   wait_data -> recv -> wait_pipeline -> fw/bw -> record_pipeline -> send -> record_data
+  // Here wait_data/record_data is to ensure execution order due to data dependency (same batch across pipelines),
+  // while wait_pipeline/recorde_pipeline is to ensure pipeline execution order.
+  // This test simplifies the graph to omit send/recv,
+  // but we still need to have double wait and record to sync data and pipeline separately
   void FillInputWait(
       ONNX_NAMESPACE::GraphProto* sub_gp,
-      const ONNX_NAMESPACE::GraphProto& main_gp,
-      const std::vector<std::string>& sync_inputs,
-      const std::vector<std::string>& dependencies,
+      const GraphViewer& main_gp,
+      const std::unordered_set<std::string>& sync_inputs,
+      const std::unordered_set<std::string>& dependencies,
       int sub_id,
-      bool bw) {
-    // input/output with Wait/RecordEvent
-    // Note data is gated by Wait/RecordEvent, so name with postfix "_sync"
-    // In distributed training, the pattern is:
-    //   wait_data -> recv -> wait_pipeline -> fw/bw -> record_pipeline -> send -> record_data
-    // Here wait_data/record_data is to ensure execution order due to data dependency (same batch across pipelines),
-    // while wait_pipeline/recorde_pipeline is to ensure pipeline execution order.
-    // This test simplifies the graph to omit send/recv,
-    // but we still need to have double wait and record to sync data and pipeline separately
+      bool bw) override {
     ONNX_NAMESPACE::NodeProto* wait_data_np = nullptr;
     ONNX_NAMESPACE::NodeProto* wait_pipeline_np = nullptr;
     std::string wait_data_id = "wait_data_" + std::to_string(sub_id) + (bw ? "_bw" : "_fw");
@@ -675,28 +1018,28 @@ class PipelineSplitter {
       *wait_pipeline_np->mutable_output()->Add() = name;
       // some input comes graph input
       if (AddItemByName(sub_gp->mutable_input(),
-                        main_gp.input(),
+                        main_gp.GetInputs(),
                         name,
                         input_name)) {
         ASSERT_TRUE(is_first);
         // add shape info
         EXPECT_TRUE(AddItemByName(sub_gp->mutable_value_info(),
-                                  main_gp.input(),
+                                  main_gp.GetInputs(),
                                   name,
                                   name));
       } else {
         // some input comes from the middle of the graph
         AddItemByName(sub_gp->mutable_input(),
-                      main_gp.value_info(),
+                      main_gp.GetValueInfo(),
                       name,
                       input_name);
         // add shape info
         AddItemByName(sub_gp->mutable_value_info(),
-                      main_gp.value_info(),
+                      main_gp.GetValueInfo(),
                       name,
                       recv_name);
         AddItemByName(sub_gp->mutable_value_info(),
-                      main_gp.value_info(),
+                      main_gp.GetValueInfo(),
                       name,
                       name);
       }
@@ -721,13 +1064,14 @@ class PipelineSplitter {
     }
   }
 
+  //Handle output with RecordEvent node, graph output/value_info creation
   void FillOutputRecord(
       ONNX_NAMESPACE::GraphProto* sub_gp,
-      const ONNX_NAMESPACE::GraphProto& main_gp,
-      const std::vector<std::string>& sync_outputs,
-      const std::vector<std::string>& dependencies,
+      const GraphViewer& main_gp,
+      const std::unordered_set<std::string>& sync_outputs,
+      const std::unordered_set<std::string>& dependencies,
       int sub_id,
-      bool bw) {
+      bool bw) override {
     ONNX_NAMESPACE::NodeProto* record_pipeline_np = nullptr;
     ONNX_NAMESPACE::NodeProto* record_data_np = nullptr;
     std::string record_pipeline_id = "record_pipeline_" + std::to_string(sub_id) + (bw ? "_bw" : "_fw");
@@ -779,17 +1123,17 @@ class PipelineSplitter {
     // add graph output and shape info
     for (const auto& name : sync_outputs) {
       AddItemByName(sub_gp->mutable_output(),
-                    main_gp.value_info(),
+                    main_gp.GetValueInfo(),
                     name,
                     name + "_sync");
       if (!is_last) {
         AddItemByName(sub_gp->mutable_value_info(),
-                      main_gp.value_info(),
+                      main_gp.GetValueInfo(),
                       name,
                       name + "_send");
       }
       AddItemByName(sub_gp->mutable_value_info(),
-                    main_gp.value_info(),
+                    main_gp.GetValueInfo(),
                     name,
                     name);
     }
@@ -955,55 +1299,42 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   ASSERT_STATUS_OK(BuildBackPropGraph(ORIGINAL_MODEL_PATH, config, backprop_model_file));
 
   // cut the model using outputs
-  const std::vector<PipelineSplitter::CutInfo> cuts = {
+  std::vector<PipelineSplitter::CutConfig> cuts = {
       //sub model 0
-      {{{"T1", "T2", "T3"},
-        {"X"},
-        {"T3"},
-        {},
-        {}},
-       {{"T2_grad", "T1_grad", "B1_grad", "W1_grad"},
-        {"T3_grad"},
-        {},
-        {"T3_sync"},
-        {"B1_grad", "W1_grad"}}},
+      {
+          {{"X", "T1"}},             // fw input edges
+          {{"T3", "T4"}},            // fw output edges
+          {{"T3_grad", "T2_grad"}},  // bw input edges
+          {}                         // bw output edges
+      },
       // sub model 1
-      {{{"T4", "T5", "T6"},
-        {"T3"},
-        {"T6"},
-        {},
-        {}},
-       {{"T5_grad", "T4_grad", "T3_grad", "B2_grad", "W2_grad"},
-        {"T6_grad"},
-        {"T3_grad"},
-        {"T6_sync"},
-        {"B2_grad", "W2_grad"}}},
+      {
+          {{"T3", "T4"}},            // fw input edges
+          {{"T6", "T7"}},            // fw output edges
+          {{"T6_grad", "T5_grad"}},  // bw input edges
+          {{"T3_grad", "T2_grad"}}   // bw output edges
+      },
       // sub model 2
-      {{{"T7", "MeanSquaredError_diff", "MeanSquaredError_diff_square", "loss", "predictions"},
-        {"T6"},
-        {},
-        {},
-        {}},
-       {{"MeanSquaredError_reduce_mean_Grad/Unqueezed_Grad", "MeanSquaredError_reduce_mean_Grad/Tiled_Grad", "MeanSquaredError_diff_square_grad", "MeanSquaredError_diff_grad", "predictions_grad", "B3_grad", "T7_grad", "W3_grad", "T6_grad"},
-        {},
-        {"T6_grad"},
-        {},
-        {"loss", "predictions", "B3_grad", "W3_grad"}}}};
+      {
+          {{"T6", "T7"}},            // fw input edges
+          {},                        // fw output edges
+          {},                        // bw input edges
+          {{"T6_grad", "T5_grad"}},  // bw output edges
+      }};
 
   const int num_subs = (int)cuts.size();
 
-  std::vector<PathString> sub_model_files(num_subs);
   for (int sub_id = 0; sub_id < num_subs; ++sub_id) {
 #ifdef _WIN32
     auto sub_id_str = std::to_wstring(sub_id);
 #else
     auto sub_id_str = std::to_string(sub_id);
 #endif
-    sub_model_files[sub_id] = ORT_TSTR("sub_") + sub_id_str + ORT_TSTR(".onnx");
+    cuts[sub_id].sub_model_file = ORT_TSTR("sub_") + sub_id_str + ORT_TSTR(".onnx");
   }
 
-  PipelineSplitter splitter;
-  splitter.Split(backprop_model_file, sub_model_files, cuts);
+  PipelineSimpleSplitter splitter;
+  splitter.Split(backprop_model_file, cuts);
 
   // create training sessions
   std::unique_ptr<Environment> env;
@@ -1030,7 +1361,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
     sub_sess.run_options.run_tag = sub_sess.so.session_logid;
 
     sub_sess.sess = onnxruntime::make_unique<TrainingSession>(sub_sess.so, *env);
-    EXPECT_TRUE(sub_sess.sess->Load(sub_model_files[sub_id]).IsOK());
+    EXPECT_TRUE(sub_sess.sess->Load(cuts[sub_id].sub_model_file).IsOK());
     EXPECT_TRUE(sub_sess.sess->Initialize().IsOK());
   }
 
@@ -1258,6 +1589,166 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   // finish profiler
   for (int sub_id = 0; sub_id < num_subs; ++sub_id) {
     subs[sub_id].sess->EndProfiling();
+  }
+}
+
+TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline_BertToy) {
+  TrainingSession::TrainingConfiguration config = MakeBertTrainingConfig();
+
+#if 0
+  // disable on-the-fly BuildBackPropGraph as it generates slightly different graph from time to time
+  // to run the index_mask pass-on code, you might try multiple times to get a model to pass cut later
+  // TODO: enable and remove bert_toy_optimized_bw_for_pipeline_test.onnx once gradient graph builder is stable
+  PathString model_path = ORT_TSTR("testdata/bert_toy_optimized.onnx");
+
+  // edit the model to change input_mask to use identity to pass on from stage to stage
+  std::shared_ptr<Model> pModel;
+  EXPECT_TRUE(Model::Load(model_path, pModel, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  GraphViewer graph(pModel->MainGraph());
+  ONNX_NAMESPACE::ModelProto mp;
+  mp.CopyFrom(pModel->ToProto());
+  auto* gp = mp.mutable_graph();
+  gp->clear_node();
+  std::string to_replace_def = "103";
+  int replace_count = 0;
+  std::string old_def = to_replace_def;
+  std::string new_def;
+  for (NodeIndex i_node : graph.GetNodesInTopologicalOrder()) {
+    const Node* node = graph.GetNode(i_node);
+    bool replace_input = false;
+    Node::ForEachWithIndex(
+        node->InputDefs(),
+        [&](const NodeArg& def, size_t) {
+          if (def.Name() == to_replace_def) {
+            new_def = to_replace_def + "_" + std::to_string(replace_count);
+            replace_input = (replace_count > 0);  // skip first replace as its in the same cut as input_mask
+            ++replace_count;
+          }
+          return Status::OK();
+        });
+    ONNX_NAMESPACE::NodeProto np;
+    node->ToProto(np);
+    if (replace_input) {
+      // add a identity node first
+      auto* identity_np = gp->mutable_node()->Add();
+      *identity_np->mutable_op_type() = "Identity";
+      identity_np->add_input(old_def);
+      identity_np->add_output(new_def);
+      // modify input
+      for (int i = 0; i < np.mutable_input()->size(); ++i) {
+        std::string& def_name = *(np.mutable_input()->Mutable(i));
+        if (def_name == to_replace_def)
+          def_name = new_def;
+      }
+      old_def = new_def;
+    }
+    gp->mutable_node()->Add(std::move(np));
+  }
+  std::ofstream ofs("mod_bert_toy.onnx", std::ofstream::binary);
+  mp.SerializeToOstream(&ofs);
+  ofs.close();
+
+  PathString backprop_model_file;
+  ASSERT_STATUS_OK(BuildBackPropGraph(L"mod_bert_toy.onnx", config, backprop_model_file));
+#else
+  PathString backprop_model_file = ORT_TSTR("testdata/bert_toy_optimized_bw_for_pipeline_test.onnx");
+#endif
+
+  // cut the model using outputs
+  std::vector<PipelineSplitter::CutConfig> cuts = {
+      //sub model 0
+      {
+          // fw input edges
+          {{"input_ids", "105"}, {"input_ids", "107"}, {"token_type_ids", "109"}, {"input_mask", "97"}},
+          // fw output edges
+          {{"227", "239"}, {"103", "103_1"}},
+          // bw input edges
+          {{"227_grad", "226_grad"}, {"227_grad", "212_grad_1"}, {"bert.embeddings.word_embeddings.weight_grad_1", "bert.embeddings.word_embeddings.weight_grad"}},
+          // bw output edges
+          {}},
+
+      // sub model 1
+      {
+          // fw input edges
+          {{"227", "239"}, {"103", "103_1"}},
+          // fw output edges
+          {{"343", "355"}},
+          // bw input edges
+          {{"343_grad", "342_grad"}, {"343_grad", "328_grad_1"}},
+          // bw output edges
+          {{"227_grad", "226_grad"}, {"227_grad", "212_grad_1"}}},
+
+      // sub model 2
+      {
+          // fw input edges
+          {{"343", "355"}, {"103_1", "103_2"}},
+          // fw output edges
+          {{"459", "471"}},
+          // bw input edges
+          {{"459_grad", "458_grad"}, {"459_grad", "444_grad_1"}},
+          // bw output edges
+          {{"343_grad", "342_grad"}, {"343_grad", "328_grad_1"}}},
+
+      // sub model 3
+      {
+          // fw input edges
+          {{"459", "471"}, {"103_2", "103_3"}},
+          // fw output edges
+          {{"575", "587"}},
+          // bw input edges
+          {{"575_grad", "574_grad"}, {"575_grad", "560_grad_1"}},
+          // bw output edges
+          {{"459_grad", "458_grad"}, {"459_grad", "444_grad_1"}}},
+
+      // sub model 4
+      {
+          // fw input edges
+          {{"575", "587"}, {"103_3", "103_4"}},
+          // fw output edges
+          {},
+          // bw input edges
+          {},
+          // bw output edges
+          {{"575_grad", "574_grad"},
+           {"575_grad", "560_grad_1"},
+           {"bert.embeddings.word_embeddings.weight_grad_1", "bert.embeddings.word_embeddings.weight_grad"}}}};
+
+  const int num_subs = (int)cuts.size();
+
+  for (int sub_id = 0; sub_id < num_subs; ++sub_id) {
+#ifdef _WIN32
+    auto sub_id_str = std::to_wstring(sub_id);
+#else
+    auto sub_id_str = std::to_string(sub_id);
+#endif
+    cuts[sub_id].sub_model_file = ORT_TSTR("sub_") + sub_id_str + ORT_TSTR(".onnx");
+  }
+
+  PipelineSimpleSplitter splitter;
+  splitter.Split(backprop_model_file, cuts);
+
+  // create training sessions
+  std::unique_ptr<Environment> env;
+  EXPECT_TRUE(Environment::Create(nullptr, env).IsOK());
+
+  struct SubSession {
+    std::unique_ptr<TrainingSession> sess;
+    SessionOptions so;
+    RunOptions run_options;
+  };
+
+  std::vector<SubSession> subs(num_subs);
+  for (int sub_id = 0; sub_id < num_subs; ++sub_id) {
+    auto& sub_sess = subs[sub_id];
+    sub_sess.run_options.run_log_verbosity_level = sub_sess.so.session_log_verbosity_level;
+    sub_sess.run_options.run_tag = sub_sess.so.session_logid;
+
+    sub_sess.sess = onnxruntime::make_unique<TrainingSession>(sub_sess.so, *env);
+
+    CUDAExecutionProviderInfo xp_info;
+    ASSERT_TRUE(sub_sess.sess->RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)).IsOK());
+    ASSERT_TRUE(sub_sess.sess->Load(cuts[sub_id].sub_model_file).IsOK());
+    ASSERT_TRUE(sub_sess.sess->Initialize().IsOK());
   }
 }
 
