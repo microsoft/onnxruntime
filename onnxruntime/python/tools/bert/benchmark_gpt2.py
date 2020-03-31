@@ -201,7 +201,7 @@ def main():
     if args.enable_optimization:
         from bert_model_optimization import optimize_model
         m = optimize_model(export_model_path,
-                           model_type='bert',
+                           model_type='gpt2',
                            gpu_only=False,
                            num_heads=12,
                            hidden_size=768,
