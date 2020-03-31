@@ -4,7 +4,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Profile the execution of a simple model &#8212; ONNX Runtime 1.1.0 documentation</title>
+    <title>Profile the execution of a simple model &#8212; ONNX Runtime 1.2.0 documentation</title>
     <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
     <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
     <link rel="stylesheet" type="text/css" href="../_static/gallery.css" />
@@ -16,8 +16,8 @@
     <script type="text/javascript" src="../_static/language_data.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="ONNX Runtime Backend for ONNX" href="plot_backend.html" />
-    <link rel="prev" title="Load and predict with ONNX Runtime and a very simple model" href="plot_load_and_predict.html" />
+    <link rel="next" title="ONNX Runtime for Keras" href="plot_dl_keras.html" />
+    <link rel="prev" title="Metadata" href="plot_metadata.html" />
    
   <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
   
@@ -42,14 +42,27 @@
 <span id="l-example-profiling"></span><span id="sphx-glr-auto-examples-plot-profiling-py"></span><h1>Profile the execution of a simple model<a class="headerlink" href="#profile-the-execution-of-a-simple-model" title="Permalink to this headline">¶</a></h1>
 <p><em>ONNX Runtime</em> can profile the execution of the model.
 This example shows how to interpret the results.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="kn">as</span> <span class="nn">rt</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">onnx</span>
+<span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="kn">as</span> <span class="nn">rt</span>
 <span class="kn">import</span> <span class="nn">numpy</span>
 <span class="kn">from</span> <span class="nn">onnxruntime.datasets</span> <span class="kn">import</span> <span class="n">get_example</span>
+
+
+<span class="k">def</span> <span class="nf">change_ir_version</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">ir_version</span><span class="o">=</span><span class="mi">6</span><span class="p">):</span>
+    <span class="s2">&quot;onnxruntime==1.2.0 does not support opset &lt;= 7 and ir_version &gt; 6&quot;</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">model</span> <span class="o">=</span> <span class="n">onnx</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+    <span class="n">model</span><span class="o">.</span><span class="n">ir_version</span> <span class="o">=</span> <span class="mi">6</span>
+    <span class="k">if</span> <span class="n">model</span><span class="o">.</span><span class="n">opset_import</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">version</span> <span class="o">&lt;=</span> <span class="mi">7</span><span class="p">:</span>
+        <span class="n">model</span><span class="o">.</span><span class="n">opset_import</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">version</span> <span class="o">=</span> <span class="mi">11</span>
+    <span class="k">return</span> <span class="n">model</span>
 </pre></div>
 </div>
 <p>Let’s load a very simple model and compute some prediction.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">example1</span> <span class="o">=</span> <span class="n">get_example</span><span class="p">(</span><span class="s2">&quot;mul_1.onnx&quot;</span><span class="p">)</span>
-<span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="n">example1</span><span class="p">)</span>
+<span class="n">onnx_model</span> <span class="o">=</span> <span class="n">change_ir_version</span><span class="p">(</span><span class="n">example1</span><span class="p">)</span>
+<span class="n">onnx_model_str</span> <span class="o">=</span> <span class="n">onnx_model</span><span class="o">.</span><span class="n">SerializeToString</span><span class="p">()</span>
+<span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="n">onnx_model_str</span><span class="p">)</span>
 <span class="n">input_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
 
 <span class="n">x</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">5.0</span><span class="p">,</span> <span class="mf">6.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
@@ -67,7 +80,7 @@ This example shows how to interpret the results.</p>
 before running the predictions.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">options</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">SessionOptions</span><span class="p">()</span>
 <span class="n">options</span><span class="o">.</span><span class="n">enable_profiling</span> <span class="o">=</span> <span class="bp">True</span>
-<span class="n">sess_profile</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="n">example1</span><span class="p">,</span> <span class="n">options</span><span class="p">)</span>
+<span class="n">sess_profile</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="n">onnx_model_str</span><span class="p">,</span> <span class="n">options</span><span class="p">)</span>
 <span class="n">input_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
 
 <span class="n">x</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">5.0</span><span class="p">,</span> <span class="mf">6.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
@@ -78,7 +91,7 @@ before running the predictions.</p>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>onnxruntime_profile__2019-12-19_16-47-06.json
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>onnxruntime_profile__2020-03-31_18-11-48.json
 </pre></div>
 </div>
 <p>The results are stored un a file in JSON format.
@@ -93,23 +106,23 @@ Let’s see what it contains.</p>
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[{&#39;args&#39;: {},
   &#39;cat&#39;: &#39;Session&#39;,
-  &#39;dur&#39;: 100,
+  &#39;dur&#39;: 65,
   &#39;name&#39;: &#39;model_loading_from_saved_proto&#39;,
   &#39;ph&#39;: &#39;X&#39;,
-  &#39;pid&#39;: 27824,
-  &#39;tid&#39;: 13820,
-  &#39;ts&#39;: 10},
+  &#39;pid&#39;: 19296,
+  &#39;tid&#39;: 12580,
+  &#39;ts&#39;: 8},
  {&#39;args&#39;: {},
   &#39;cat&#39;: &#39;Session&#39;,
-  &#39;dur&#39;: 200,
+  &#39;dur&#39;: 123,
   &#39;name&#39;: &#39;session_initialization&#39;,
   &#39;ph&#39;: &#39;X&#39;,
-  &#39;pid&#39;: 27824,
-  &#39;tid&#39;: 13820,
-  &#39;ts&#39;: 123}]
+  &#39;pid&#39;: 19296,
+  &#39;tid&#39;: 12580,
+  &#39;ts&#39;: 83}]
 </pre></div>
 </div>
-<p><strong>Total running time of the script:</strong> ( 0 minutes  0.027 seconds)</p>
+<p><strong>Total running time of the script:</strong> ( 0 minutes  0.052 seconds)</p>
 <div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-profiling-py">
 <div class="sphx-glr-download docutils container">
 <p><a class="reference download internal" download="" href="../_downloads/e4ee07af6afb721729db3bf156693fa2/plot_profiling.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_profiling.py</span></code></a></p>
@@ -141,10 +154,10 @@ Let’s see what it contains.</p>
 
 
 <h3>Navigation</h3>
-<ul class="current">
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="../tutorial.html">Tutorial</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api_summary.html">API Summary</a></li>
-<li class="toctree-l1 current"><a class="reference internal" href="index.html">Gallery of examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="index.html">Gallery of examples</a></li>
 </ul>
 
 <div class="relations">
@@ -152,8 +165,8 @@ Let’s see what it contains.</p>
 <ul>
   <li><a href="../index.html">Documentation overview</a><ul>
   <li><a href="index.html">Gallery of examples</a><ul>
-      <li>Previous: <a href="plot_load_and_predict.html" title="previous chapter">Load and predict with ONNX Runtime and a very simple model</a></li>
-      <li>Next: <a href="plot_backend.html" title="next chapter">ONNX Runtime Backend for ONNX</a></li>
+      <li>Previous: <a href="plot_metadata.html" title="previous chapter">Metadata</a></li>
+      <li>Next: <a href="plot_dl_keras.html" title="next chapter">ONNX Runtime for Keras</a></li>
   </ul></li>
   </ul></li>
 </ul>
@@ -168,6 +181,14 @@ Let’s see what it contains.</p>
     </div>
 </div>
 <script type="text/javascript">$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
         </div>
       </div>
       <div class="clearer"></div>
@@ -176,8 +197,8 @@ Let’s see what it contains.</p>
       &copy;2018-2019, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.3.0</a>
-      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.11</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.2.1</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
       <a href="../_sources/auto_examples/plot_profiling.rst.txt"

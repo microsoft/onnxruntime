@@ -4,7 +4,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Common errors with onnxruntime &#8212; ONNX Runtime 1.1.0 documentation</title>
+    <title>Common errors with onnxruntime &#8212; ONNX Runtime 1.2.0 documentation</title>
     <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
     <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
     <link rel="stylesheet" type="text/css" href="../_static/gallery.css" />
@@ -44,7 +44,7 @@
 in which <em>onnxruntime</em> does not return the model
 prediction but raises an exception instead.
 It starts by loading the model trained in example
-<a class="reference internal" href="plot_train_convert_predict.html#l-logreg-example"><span class="std std-ref">Train, convert and predict with ONNX Runtime</span></a> which produced a logistic regression
+<a class="reference internal" href="../tutorial.html#l-logreg-example"><span class="std std-ref">Step 1: Train a model using your favorite framework</span></a> which produced a logistic regression
 trained on <em>Iris</em> datasets. The model takes
 a vector of dimension 2 and returns a class among three.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="kn">as</span> <span class="nn">rt</span>
@@ -103,7 +103,7 @@ and <em>onnxruntime</em> will then return all the outputs.</p>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>All outputs
-[array([0, 0, 0], dtype=int64), [{0: 0.950599730014801, 1: 0.027834169566631317, 2: 0.02156602405011654}, {0: 0.9974970817565918, 1: 5.6299926654901356e-05, 2: 0.0024466661270707846}, {0: 0.9997311234474182, 1: 1.1918064757310276e-07, 2: 0.00026869276189245284}]]
+[array([0, 0, 0], dtype=int64), [{0: 0.9505997896194458, 1: 0.027834143489599228, 2: 0.021566055715084076}, {0: 0.9974970817565918, 1: 5.6270167988259345e-05, 2: 0.0024466365575790405}, {0: 0.9997311234474182, 1: 1.787709464906584e-07, 2: 0.0002686927327886224}]]
 </pre></div>
 </div>
 <p>The same goes if the input name is misspelled.</p>
@@ -198,7 +198,7 @@ ERROR with Shape=(1, 1, 3) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid
 ERROR with Shape=(2, 1, 2) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid rank for input: float_input Got: 3 Expected: 2 Please fix either the inputs or the model.
 </pre></div>
 </div>
-<p><strong>Total running time of the script:</strong> ( 0 minutes  0.049 seconds)</p>
+<p><strong>Total running time of the script:</strong> ( 0 minutes  0.006 seconds)</p>
 <div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-common-errors-py">
 <div class="sphx-glr-download docutils container">
 <p><a class="reference download internal" download="" href="../_downloads/8547b931339c42011a7c05ff3b5f5373/plot_common_errors.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_common_errors.py</span></code></a></p>
@@ -230,10 +230,10 @@ ERROR with Shape=(2, 1, 2) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid
 
 
 <h3>Navigation</h3>
-<ul class="current">
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="../tutorial.html">Tutorial</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api_summary.html">API Summary</a></li>
-<li class="toctree-l1 current"><a class="reference internal" href="index.html">Gallery of examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="index.html">Gallery of examples</a></li>
 </ul>
 
 <div class="relations">
@@ -257,6 +257,14 @@ ERROR with Shape=(2, 1, 2) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid
     </div>
 </div>
 <script type="text/javascript">$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
         </div>
       </div>
       <div class="clearer"></div>
@@ -265,8 +273,8 @@ ERROR with Shape=(2, 1, 2) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid
       &copy;2018-2019, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.3.0</a>
-      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.11</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.2.1</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
       <a href="../_sources/auto_examples/plot_common_errors.rst.txt"

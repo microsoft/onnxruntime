@@ -88,7 +88,7 @@ and we show the confusion matrix.
 
  .. code-block:: none
 
-    0.8163803375363765
+    0.8417222124633904
 
 
 Conversion to ONNX format
@@ -208,14 +208,14 @@ We compare them to the model's ones.
 
  .. code-block:: none
 
-    0.9999999999998694
+    0.9999999999999309
 
 
 Very similar. *ONNX Runtime* uses floats instead of doubles,
 that explains the small discrepencies.
 
 
-**Total running time of the script:** ( 0 minutes  1.223 seconds)
+**Total running time of the script:** ( 0 minutes  3.262 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_convert_pipeline_vectorizer.py:

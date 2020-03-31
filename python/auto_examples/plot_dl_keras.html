@@ -4,7 +4,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>ONNX Runtime for Keras &#8212; ONNX Runtime 1.1.0 documentation</title>
+    <title>ONNX Runtime for Keras &#8212; ONNX Runtime 1.2.0 documentation</title>
     <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
     <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
     <link rel="stylesheet" type="text/css" href="../_static/gallery.css" />
@@ -17,7 +17,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Train, convert and predict with ONNX Runtime" href="plot_convert_pipeline_vectorizer.html" />
-    <link rel="prev" title="Metadata" href="plot_metadata.html" />
+    <link rel="prev" title="Profile the execution of a simple model" href="plot_profiling.html" />
    
   <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
   
@@ -57,6 +57,7 @@ to compute the predictions.</p>
 
     <span class="kn">from</span> <span class="nn">keras2onnx</span> <span class="kn">import</span> <span class="n">convert_keras</span>
     <span class="n">onx</span> <span class="o">=</span> <span class="n">convert_keras</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s1">&#39;dense121.onnx&#39;</span><span class="p">)</span>
+    <span class="n">onx</span><span class="o">.</span><span class="n">ir_version</span> <span class="o">=</span> <span class="mi">6</span>
     <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;dense121.onnx&quot;</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
         <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">onx</span><span class="o">.</span><span class="n">SerializeToString</span><span class="p">())</span>
 </pre></div>
@@ -119,8 +120,8 @@ image shape: (960, 1280, 3)
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[5.3862054e-06 6.1927537e-08 2.0104133e-07 1.3239808e-06 1.0415122e-06
- 6.7792627e-08 3.1348068e-07 3.2683040e-08 1.0914272e-07 1.1627122e-06]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[2.0848038e-05 9.0344531e-07 1.6248682e-06 4.8086035e-06 6.5069275e-06
+ 9.4027422e-07 1.9977892e-06 4.6639599e-07 9.4333433e-07 3.2267465e-06]
 </pre></div>
 </div>
 <p>Let’s get more comprehensive results.</p>
@@ -134,15 +135,15 @@ image shape: (960, 1280, 3)
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>class_id        name         P
-0  n09468604      valley  0.785549
-1  n09193705         alp  0.187054
-2  n09399592  promontory  0.010602
-3  n09246464       cliff  0.005537
-4  n02417914        ibex  0.001997
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>class_id           name         P
+0  n09468604         valley  0.673278
+1  n09193705            alp  0.267429
+2  n09399592     promontory  0.013859
+3  n09246464          cliff  0.013251
+4  n03792972  mountain_tent  0.007756
 </pre></div>
 </div>
-<p><strong>Total running time of the script:</strong> ( 0 minutes  56.895 seconds)</p>
+<p><strong>Total running time of the script:</strong> ( 0 minutes  4.889 seconds)</p>
 <div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-dl-keras-py">
 <div class="sphx-glr-download docutils container">
 <p><a class="reference download internal" download="" href="../_downloads/b81c8c31615f9400a26ee60f0641af3f/plot_dl_keras.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_dl_keras.py</span></code></a></p>
@@ -174,10 +175,10 @@ image shape: (960, 1280, 3)
 
 
 <h3>Navigation</h3>
-<ul class="current">
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="../tutorial.html">Tutorial</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api_summary.html">API Summary</a></li>
-<li class="toctree-l1 current"><a class="reference internal" href="index.html">Gallery of examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="index.html">Gallery of examples</a></li>
 </ul>
 
 <div class="relations">
@@ -185,7 +186,7 @@ image shape: (960, 1280, 3)
 <ul>
   <li><a href="../index.html">Documentation overview</a><ul>
   <li><a href="index.html">Gallery of examples</a><ul>
-      <li>Previous: <a href="plot_metadata.html" title="previous chapter">Metadata</a></li>
+      <li>Previous: <a href="plot_profiling.html" title="previous chapter">Profile the execution of a simple model</a></li>
       <li>Next: <a href="plot_convert_pipeline_vectorizer.html" title="next chapter">Train, convert and predict with ONNX Runtime</a></li>
   </ul></li>
   </ul></li>
@@ -201,6 +202,14 @@ image shape: (960, 1280, 3)
     </div>
 </div>
 <script type="text/javascript">$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
         </div>
       </div>
       <div class="clearer"></div>
@@ -209,8 +218,8 @@ image shape: (960, 1280, 3)
       &copy;2018-2019, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.3.0</a>
-      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.11</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.2.1</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
       <a href="../_sources/auto_examples/plot_dl_keras.rst.txt"
