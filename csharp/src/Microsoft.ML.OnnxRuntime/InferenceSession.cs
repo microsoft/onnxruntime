@@ -370,10 +370,10 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 outputValuesArray[outputIndex] = output.Value;
 
-                // for pre-allocated output, only numberic tensors are supported
+                // for pre-allocated output, only numeric tensors are supported
                 if (output.OnnxValueType != OnnxValueType.ONNX_TYPE_TENSOR || output.ElementType == TensorElementType.String)
                 {
-                    throw new ArgumentException("Only numberic tensors can be used as pre-allocated output.", nameof(outputValues));
+                    throw new ArgumentException("Only numeric tensors can be used as pre-allocated output.", nameof(outputValues));
                 }
 
                 outputIndex++;
@@ -463,10 +463,10 @@ namespace Microsoft.ML.OnnxRuntime
                         out TensorElementType elementType,
                         out disposeOutputs[outputIndex]);
 
-                    // for pre-allocated output, only numberic tensors are supported
+                    // for pre-allocated output, only numeric tensors are supported
                     if (onnxValueType != OnnxValueType.ONNX_TYPE_TENSOR || elementType == TensorElementType.String)
                     {
-                        throw new ArgumentException("Only numberic tensors can be used as pre-allocated output.", nameof(outputs));
+                        throw new ArgumentException("Only numeric tensors can be used as pre-allocated output.", nameof(outputs));
                     }
 
                     outputIndex++;
@@ -578,10 +578,10 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     outputValuesArray[outputIndex] = output.Value;
 
-                    // for pre-allocated output, only numberic tensors are supported
+                    // for pre-allocated output, only numeric tensors are supported
                     if (output.OnnxValueType != OnnxValueType.ONNX_TYPE_TENSOR || output.ElementType == TensorElementType.String)
                     {
-                        throw new ArgumentException("Only numberic tensors can be used as pre-allocated output.", nameof(outputValues));
+                        throw new ArgumentException("Only numeric tensors can be used as pre-allocated output.", nameof(outputValues));
                     }
 
                     outputIndex++;
@@ -684,7 +684,7 @@ namespace Microsoft.ML.OnnxRuntime
                         out TensorElementType elementType,
                         out disposeOutputs[outputIndex]);
 
-                    // for pre-allocated output, only numberic tensors are supported
+                    // for pre-allocated output, only numeric tensors are supported
                     if (onnxValueType != OnnxValueType.ONNX_TYPE_TENSOR || elementType == TensorElementType.String)
                     {
                         throw new ArgumentException("Only numberic tensors can be used as pre-allocated output.", nameof(outputs));
