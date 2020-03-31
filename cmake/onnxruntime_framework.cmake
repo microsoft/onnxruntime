@@ -30,6 +30,3 @@ if (WIN32)
     set_target_properties(onnxruntime_framework PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/ConfigureVisualStudioCodeAnalysis.props)
 endif()
 
-if(onnxruntime_ENABLE_TRAINING)
-    target_compile_definitions(onnxruntime_framework PUBLIC ENABLE_TRAINING)
-endif()
