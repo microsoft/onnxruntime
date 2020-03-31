@@ -343,65 +343,182 @@ class EinsumPreprocessor final {
       current_input_dim_indices_to_subscript_indices_.reserve(rank);
 
       // Keep track of the subscript labels seen in this specific subscript alone
-      std::array<int64_t, EinsumOp::num_of_letters>
-          current_subscript_labels_seen;
-      current_subscript_labels_seen.fill(-1);
+      std::array<int64_t, EinsumOp::num_of_letters> current_letters_seen;
+      current_letters_seen.fill(0);
+
+      // Temp variables to deal with "ellipsis" in the input
+      bool is_in_middle_of_ellipsis = false;
+      int64_t ellipsis_char_count = 0;
 
       // Iterate through all subscript labels in the subscript
       int64_t iter = 0;
       for (auto subscript_label : subscript) {
-        ORT_ENFORCE(subscript_label >= 'a' && subscript_label <= 'z',
-                    "The only subscript labels allowed are lowercase letters (a-z)");
+        // Broadcasting based dims
+        if (subscript_label == '.') {
+          is_in_middle_of_ellipsis = true;
+          // Make sure there aren't more than 3 '.'s in the current subscript
+          ORT_ENFORCE(++ellipsis_char_count <= 3, "Found a . not part of an ellipsis in input: ", input_index);
 
-        auto letter_index = subscript_label - 'a';
-        auto dim_value = dims[dim_counter];
+          // We have seen all 3 '.'s. We can safely process the ellipsis now.
+          if (ellipsis_char_count == 3) {
+            is_in_middle_of_ellipsis = false;
 
-        // Subscript label not found in global subscript label array
-        // Hence add it to both local and global subscript arrays
-        if (letter_to_count_[letter_index] == 0) {
-          ++letter_to_count_[letter_index];
-          letter_to_index_[letter_index] = num_subscript_labels_++;
-          index_to_dim_value_.push_back(dim_value);
-          index_to_last_input_.push_back(input_index);
-        } else {  // This subscript label has been seen in atleast one other operand's subscript
-          // It must be equal unless one of them is a 1 (Numpy allows this)
-          auto mapped_index = letter_to_index_[letter_index];
+            // Example for the following line of code
+            // Subscript "...ij" for an input of rank 6
+            // num_of_ellipsis_dims = 6 - 5 + 3 = 4
+            int64_t current_num_of_ellipsis_dims = rank - subscript.length() + 3;
+            ORT_ENFORCE(current_num_of_ellipsis_dims >= 0,
+                        "Einsum subscripts string contains too many subscript labels when compared to the rank of the input ",
+                        input_index);
 
-          index_to_last_input_[mapped_index] = input_index;
+            // Theoretically, current_num_of_ellipsis_dims could be 0
+            // Example: For an input of rank 2 paired with a subscript "...ij"
+            if (current_num_of_ellipsis_dims != 0) {
+              // We have seen a ellipsis before - make sure ranks align as per the ONNX spec -
+              // "Ellipsis must indicate a fixed number of dimensions."
+              if (num_of_ellipsis_dims_ != 0) {
+                ORT_ENFORCE(num_of_ellipsis_dims_ == current_num_of_ellipsis_dims,
+                            "Ellipsis must indicate a fixed number of dimensions across all inputs");
+              } else {
+                num_of_ellipsis_dims_ = current_num_of_ellipsis_dims;
+              }
 
-          if (index_to_dim_value_[mapped_index] != dim_value) {
-            // Set the value to the new dim value if the value is 1 in the map
-            if (index_to_dim_value_[mapped_index] == 1) {
-              index_to_dim_value_[mapped_index] = dim_value;
+              // We reserve '26' for broadcasted dims as we only allow 'a' - 'z' (0 - 25) for non-broadcasted dims
+              // We will assign an appropriate indices during broadcasting related post-processing
+              for (int64_t i = 0; i < num_of_ellipsis_dims_; ++i) {
+                current_input_dim_indices_to_subscript_indices_.push_back(26);
+              }
+            }
+          }
+        } else {  // regular letter based dimension -> 'i', 'j', etc.
+          ORT_ENFORCE(!is_in_middle_of_ellipsis, "Found '.' not part of an ellipsis in input: ", input_index);
+
+          ORT_ENFORCE(subscript_label >= 'a' && subscript_label <= 'z',
+                      "The only subscript labels allowed are lowercase letters (a-z)");
+
+          auto letter_index = subscript_label - 'a';
+          auto dim_value = dims[dim_counter];
+
+          // Subscript label not found in global subscript label array
+          // Hence add it to both local and global subscript arrays
+          if (letter_to_count_[letter_index] == 0) {
+            ++letter_to_count_[letter_index];
+            letter_to_index_[letter_index] = num_subscript_labels_++;
+            index_to_dim_value_.push_back(dim_value);
+            index_to_last_input_.push_back(input_index);
+          } else {  // This subscript label has been seen in atleast one other operand's subscript
+            // It must be equal unless one of them is a 1 (Numpy allows this)
+            auto mapped_index = letter_to_index_[letter_index];
+
+            index_to_last_input_[mapped_index] = input_index;
+
+            if (index_to_dim_value_[mapped_index] != dim_value) {
+              // Set the value to the new dim value if the value is 1 in the map
+              if (index_to_dim_value_[mapped_index] == 1) {
+                index_to_dim_value_[mapped_index] = dim_value;
+              } else {
+                ORT_ENFORCE(dim_value == 1,
+                            "Einsum operands could not be broadcast together. "
+                            "Please check input shapes/equation provided.");
+              }
+            }
+
+            // This subscript label hasn't been seen in this subscript before
+            if (current_letters_seen[letter_index] == 0) {
+              current_letters_seen[letter_index] = 1;
             } else {
-              ORT_ENFORCE(dim_value == 1,
-                          "Einsum operands could not be broadcast together. "
-                          "Please check input shapes/equation provided.");
+              ++current_letters_seen[letter_index];
+              ORT_ENFORCE(false, "Diagonal parsing supported yet");
             }
           }
 
-          // This subscript label hasn't been seen in this subscript before
-          if (current_subscript_labels_seen[letter_index] == -1) {
-            current_subscript_labels_seen[letter_index] = 1;
-          } else {
-            ++current_subscript_labels_seen[letter_index];
-            ORT_ENFORCE(false, "Diagonal parsing supported yet");
-          }
+          current_input_dim_indices_to_subscript_indices_.push_back(letter_to_index_[letter_index]);
+
+          ORT_ENFORCE(++dim_counter <= rank,
+                      "Einsum subscripts string contains too many subscript labels when compared to the rank of the input ",
+                      input_index);
         }
-
-      // TODO: Account for broadcasting
-        current_input_dim_indices_to_subscript_indices_.push_back(letter_to_index_[letter_index]);
-
-        ORT_ENFORCE(++dim_counter <= rank,
-                    "Einsum subscripts string contains too many subscript labels for input ", input_index);
       }
 
-      // TODO: Account for broadcasting
-      ORT_ENFORCE(dim_counter == rank,
-                  "Einsum subscripts does not contain enough subscript labels and there is no ellipsis for input ", input_index);
+      // If no broadcasting is requested, the number of subscript labels (dim_counter) should match input rank
+      if (num_of_ellipsis_dims_ == 0) {
+        ORT_ENFORCE(dim_counter == rank,
+                    "Einsum subscripts does not contain enough subscript labels and there is no ellipsis for input ", input_index);
+      }
 
       input_dim_indices_to_subscript_indices_.push_back(std::move(current_input_dim_indices_to_subscript_indices_));
       ++input_index;
+    }
+  }
+
+  // A function to process bradcasted dims (ellipsis) of inputs that they occur in
+  void PostProcessingEllipses() {
+    // Pay the cost of this function only if we saw an ellipsis in any of the inputs
+    if (num_of_ellipsis_dims_ > 0) {
+      // extend the number of subscript labels to include each ellipsis dim as
+      // theoretically each ellipsis dim does correspond to a "virtual" subscript label
+      num_subscript_labels_ += num_of_ellipsis_dims_;
+
+      for (size_t i = 0; i < EinsumOp::num_of_letters; ++i) {
+        if (letter_to_index_[i] != -1) {
+          letter_to_index_[i] += num_of_ellipsis_dims_;
+        }
+      }
+
+      std::vector<int64_t> temp_index_to_last_input(num_subscript_labels_, -1);
+      for (size_t i = 0; i < index_to_last_input_.size(); ++i) {
+        temp_index_to_last_input[i + num_of_ellipsis_dims_] = index_to_last_input_[i];
+      }
+      index_to_last_input_ = std::move(temp_index_to_last_input);
+
+      std::vector<int64_t> temp_index_to_dim_value(num_subscript_labels_, -1);
+      for (size_t i = 0; i < index_to_dim_value_.size(); ++i) {
+        temp_index_to_dim_value[i + num_of_ellipsis_dims_] = index_to_dim_value_[i];
+      }
+      index_to_dim_value_ = std::move(temp_index_to_dim_value);
+
+      for (size_t i = 0; i < input_dim_indices_to_subscript_indices_.size(); ++i) {
+        auto& current_input_dim_indices_to_subscript_indices = input_dim_indices_to_subscript_indices_[i];
+        std::vector<int64_t> temp_current_input_dim_indices_to_subscript_indices;
+        temp_current_input_dim_indices_to_subscript_indices.reserve(current_input_dim_indices_to_subscript_indices.size());
+
+        const auto& dims = inputs_[i]->Shape().GetDims();
+        auto rank = dims.size();
+
+        size_t dim_iter = 0;
+        size_t num_broadcasted_indices = 0;
+        while (dim_iter < current_input_dim_indices_to_subscript_indices.size()) {
+          auto value = current_input_dim_indices_to_subscript_indices[dim_iter];
+          if (value == 26) { //This is a broadcasted dim
+            // Shouldn't hit this error - just a sanity check 
+            ORT_ENFORCE(num_broadcasted_indices < num_of_ellipsis_dims_);
+            temp_current_input_dim_indices_to_subscript_indices.push_back(static_cast<int64_t>(num_broadcasted_indices));
+            index_to_last_input_[num_broadcasted_indices] = i;
+
+            // This is the first time we are seeing this broadcasted dim
+            if (index_to_dim_value_[num_broadcasted_indices] == -1) {
+              index_to_dim_value_[num_broadcasted_indices] = dims[dim_iter];
+            } else {  // We have seen this broadcasted dim before
+              // Check if the previous value is equal to the current value
+              if (index_to_dim_value_[num_broadcasted_indices] != dims[dim_iter]) {
+                // If they are not equal, one of them needs to be 1
+                if (index_to_dim_value_[num_broadcasted_indices] == 1) {
+                  index_to_dim_value_[num_broadcasted_indices] = dims[dim_iter];
+                } else {
+                  ORT_ENFORCE(dims[dim_iter] == 1, "Given inputs are not broadcastable");
+                }
+              }
+            }
+            ++num_broadcasted_indices;
+          } else { // This is a regular dim - offset it by number of broadcasted dims
+            temp_current_input_dim_indices_to_subscript_indices.push_back(value + num_of_ellipsis_dims_);
+          }
+          ++dim_iter;
+        }
+        // Shouldn't hit this error - just a sanity check
+        ORT_ENFORCE(dim_iter == rank);
+        current_input_dim_indices_to_subscript_indices = std::move(temp_current_input_dim_indices_to_subscript_indices);
+      }
     }
   }
 
@@ -498,11 +615,17 @@ class EinsumPreprocessor final {
   // (e.g.) Einsum equation = 'i,j', then left_equation_ = 'i,j'
   std::string left_equation_;
 
+  // Holds constructed or parsed output subscript
+  std::string right_equation_;
+
   // Flag indicating if the op is being used in explicit form
   bool is_explicit_ = false;
 
-  // Holds constructed or parsed output subscript
-  std::string right_equation_;
+  // Flag indicating if einsum equation has an ellipsis (requests broadcasting support if so)
+  bool has_ellipses_ = false;
+
+  // The number of dims that encompasses an "ellipsis"
+  int64_t num_of_ellipsis_dims_ = 0;
 
   // All original inputs to the op
   const std::vector<const Tensor*>& inputs_;
@@ -514,8 +637,7 @@ class EinsumPreprocessor final {
   // E.g. 1 : With equation -> 'ij, jk -> ik'
   // num_subscript_labels_ = 3 (i, j, k)
   // E.g. 2 : With equation -> '...ij', 'jk' -> '...ik'
-  // num_subscript_labels_ = 3 + rank corresponding to the dims specified
-  // by the ellipses (across all inputs)
+  // num_subscript_labels_ = 3 (i, j, k) + number of dims specified by an ellipsis (across all inputs)
   int64_t num_subscript_labels_ = 0;
 
   // Hold the count corresponding to the letter seen
@@ -526,6 +648,7 @@ class EinsumPreprocessor final {
   // `-1` means the corresponding letter wasn't seen at all
   std::array<int64_t, EinsumOp::num_of_letters> letter_to_index_;
 
+  // TODO: Reserve appropriately for the following vectors
   // Holds the input index of the last input to have the index correpesponding to the subscript label
   // If the value is `-1`, then the subscript label is never seen (or) it appears in the output
   std::vector<int64_t> index_to_last_input_;
