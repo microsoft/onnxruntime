@@ -351,7 +351,6 @@ class EinsumPreprocessor final {
       int64_t ellipsis_char_count = 0;
 
       // Iterate through all subscript labels in the subscript
-      int64_t iter = 0;
       for (auto subscript_label : subscript) {
         // Broadcasting based dims
         if (subscript_label == '.') {
@@ -579,7 +578,9 @@ class EinsumPreprocessor final {
 
       auto current_input_dim_indices_to_subscript_indices_ = input_dim_indices_to_subscript_indices_[iter];
       for (size_t i = 0; i < current_input_dim_indices_to_subscript_indices_.size(); ++i) {
-        subscript_label_to_input_index[current_input_dim_indices_to_subscript_indices_[i]] = i;
+        auto temp_index = current_input_dim_indices_to_subscript_indices_[i];
+        subscript_label_to_input_index[temp_index] = i;
+        homogenized_input_dims[temp_index] = input_dims[i];
       }
 
       std::vector<size_t> permutation;
