@@ -18,7 +18,7 @@ struct RollingWindowTransformerImpl {
     // Define the type
     using GrainT = std::vector<std::string>;
     using EstimatorT = Microsoft::Featurizer::Featurizers::GrainedAnalyticalRollingWindowEstimator<T>;
-    using GrainedInputType = EstimatorT::InputType;
+    using GrainedInputType = typename EstimatorT::InputType;
     using OutputType = typename EstimatorT::TransformedType;
 
     //Get the transformer
