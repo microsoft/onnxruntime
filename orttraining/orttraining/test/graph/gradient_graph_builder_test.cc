@@ -1305,14 +1305,16 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
           {{"X", "T1"}},             // fw input edges
           {{"T3", "T4"}},            // fw output edges
           {{"T3_grad", "T2_grad"}},  // bw input edges
-          {}                         // bw output edges
+          {},                        // bw output edges
+          ORT_TSTR(""),
       },
       // sub model 1
       {
           {{"T3", "T4"}},            // fw input edges
           {{"T6", "T7"}},            // fw output edges
           {{"T6_grad", "T5_grad"}},  // bw input edges
-          {{"T3_grad", "T2_grad"}}   // bw output edges
+          {{"T3_grad", "T2_grad"}},  // bw output edges
+          ORT_TSTR(""),
       },
       // sub model 2
       {
@@ -1320,6 +1322,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
           {},                        // fw output edges
           {},                        // bw input edges
           {{"T6_grad", "T5_grad"}},  // bw output edges
+          ORT_TSTR(""),
       }};
 
   const int num_subs = (int)cuts.size();
@@ -1665,40 +1668,48 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline_BertToy) {
           // bw input edges
           {{"227_grad", "226_grad"}, {"227_grad", "212_grad_1"}, {"bert.embeddings.word_embeddings.weight_grad_1", "bert.embeddings.word_embeddings.weight_grad"}},
           // bw output edges
-          {}},
+          {},
+          ORT_TSTR(""),
+      },
 
       // sub model 1
       {
           // fw input edges
           {{"227", "239"}, {"103", "103_1"}},
           // fw output edges
-          {{"343", "355"}},
+          {{"343", "355"}, {"103_1", "103_2"}},
           // bw input edges
           {{"343_grad", "342_grad"}, {"343_grad", "328_grad_1"}},
           // bw output edges
-          {{"227_grad", "226_grad"}, {"227_grad", "212_grad_1"}}},
+          {{"227_grad", "226_grad"}, {"227_grad", "212_grad_1"}},
+          ORT_TSTR(""),
+      },
 
       // sub model 2
       {
           // fw input edges
           {{"343", "355"}, {"103_1", "103_2"}},
           // fw output edges
-          {{"459", "471"}},
+          {{"459", "471"}, {"103_2", "103_3"}},
           // bw input edges
           {{"459_grad", "458_grad"}, {"459_grad", "444_grad_1"}},
           // bw output edges
-          {{"343_grad", "342_grad"}, {"343_grad", "328_grad_1"}}},
+          {{"343_grad", "342_grad"}, {"343_grad", "328_grad_1"}},
+          ORT_TSTR(""),
+      },
 
       // sub model 3
       {
           // fw input edges
           {{"459", "471"}, {"103_2", "103_3"}},
           // fw output edges
-          {{"575", "587"}},
+          {{"575", "587"}, {"103_3", "103_4"}},
           // bw input edges
           {{"575_grad", "574_grad"}, {"575_grad", "560_grad_1"}},
           // bw output edges
-          {{"459_grad", "458_grad"}, {"459_grad", "444_grad_1"}}},
+          {{"459_grad", "458_grad"}, {"459_grad", "444_grad_1"}},
+          ORT_TSTR(""),
+      },
 
       // sub model 4
       {
@@ -1711,7 +1722,9 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline_BertToy) {
           // bw output edges
           {{"575_grad", "574_grad"},
            {"575_grad", "560_grad_1"},
-           {"bert.embeddings.word_embeddings.weight_grad_1", "bert.embeddings.word_embeddings.weight_grad"}}}};
+           {"bert.embeddings.word_embeddings.weight_grad_1", "bert.embeddings.word_embeddings.weight_grad"}},
+          ORT_TSTR(""),
+      }};
 
   const int num_subs = (int)cuts.size();
 
