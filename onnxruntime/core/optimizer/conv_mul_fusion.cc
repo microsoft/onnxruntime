@@ -53,8 +53,8 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
     }
   }
 
-  auto conv_W = onnxruntime::make_unique<Initializer>(*conv_W_tensor_proto);
-  auto mul_B = onnxruntime::make_unique<Initializer>(*mul_B_tensor_proto);
+  Initializer conv_W{*conv_W_tensor_proto, graph.ModelPath()};
+  Initializer mul_B{*mul_B_tensor_proto, graph.ModelPath()};
 
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
   std::unique_ptr<Initializer> conv_B = nullptr;
@@ -70,23 +70,23 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
       return Status::OK();
     }
 
-    conv_B = onnxruntime::make_unique<Initializer>(*conv_B_tensor_proto);
+    conv_B = onnxruntime::make_unique<Initializer>(*conv_B_tensor_proto, graph.ModelPath());
   }
 
   // Calculate new value of initializers of conv node
-  conv_W->scale_by_axis(*mul_B, 1);
+  conv_W.scale_by_axis(mul_B, 1);
 
-  if (conv_inputs.size() == 3) {
+  if (is_3d) {
     if (mul_B_tensor_proto->dims_size() != 0) {
-      conv_B->mul(*mul_B);
+      conv_B->mul(mul_B);
     } else {
-      conv_B->scale_by_axis(*mul_B, 0);
+      conv_B->scale_by_axis(mul_B, 0);
     }
   }
 
   // Create new initializers of conv
   ONNX_NAMESPACE::TensorProto new_conv_W_tensor_proto(*conv_W_tensor_proto);
-  conv_W->ToProto(new_conv_W_tensor_proto);
+  conv_W.ToProto(new_conv_W_tensor_proto);
 
   auto new_W_name = graph.GenerateNodeArgName("ConvMulFusion_W_" + conv_W_tensor_proto->name());
   new_conv_W_tensor_proto.set_name(new_W_name);

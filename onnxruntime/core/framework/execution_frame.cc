@@ -290,13 +290,13 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
           // fed in, so use VERBOSE as the log level as it's expected.
           // TODO: Should we re-use the block if the size is large enough? Would probably need to allow it
           // to be freed if the size difference was too large so our memory usage doesn't stick at a high water mark
-          LOGS_DEFAULT(VERBOSE) << "For ort_value with index: " << ort_value_index
-                                << ", block in memory pattern size is: " << block->size_
-                                << " but the actually size is: " << size
-                                << ", fall back to default allocation behavior";
+          LOGS(session_state_.Logger(), VERBOSE) << "For ort_value with index: " << ort_value_index
+                                                 << ", block in memory pattern size is: " << block->size_
+                                                 << " but the actually size is: " << size
+                                                 << ", fall back to default allocation behavior";
         } else if (it == buffers_.end()) {
-          LOGS_DEFAULT(WARNING) << "For ort_value with index: " << ort_value_index
-                                << ", block not found in target location. fall back to default allocation behavior";
+          LOGS(session_state_.Logger(), WARNING) << "For ort_value with index: " << ort_value_index
+                                                 << ", block not found in target location. fall back to default allocation behavior";
         }
       }
     }
@@ -340,7 +340,7 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
 
     // be generous and use the buffer if it's large enough. log a warning though as it indicates a bad model
     if (buffer_num_elements >= required_num_elements) {
-      LOGS_DEFAULT(WARNING) << message;
+      LOGS(session_state_.Logger(), WARNING) << message;
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
     }
@@ -377,7 +377,7 @@ static Status AllocateTraditionalMLValue(OrtValue& ort_value, const NonTensorTyp
   return Status::OK();
 }
 
-static Status AllocateTensorSequence (OrtValue& ort_value) {
+static Status AllocateTensorSequence(OrtValue& ort_value) {
   auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
   auto p_tensor_sequence = onnxruntime::make_unique<TensorSeq>();
   ort_value.Init(p_tensor_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());

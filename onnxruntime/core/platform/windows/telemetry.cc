@@ -56,7 +56,7 @@ TRACELOGGING_DEFINE_PROVIDER(telemetry_provider_handle, "Microsoft.ML.ONNXRuntim
 
 OrtMutex WindowsTelemetry::mutex_;
 uint32_t WindowsTelemetry::global_register_count_ = 0;
-bool WindowsTelemetry::enabled_ = false;
+bool WindowsTelemetry::enabled_ = true;
 
 
 WindowsTelemetry::WindowsTelemetry() {
@@ -218,6 +218,24 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
+#ifdef _WIN32
+  HRESULT hr = common::StatusCodeToHRESULT(static_cast<common::StatusCode>(status.Code()));
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "RuntimeError",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    // Telemetry info
+                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingHResult(hr, "hResult"),
+                    TraceLoggingUInt32(session_id, "sessionId"),
+                    TraceLoggingUInt32(status.Code(), "errorCode"),
+                    TraceLoggingUInt32(status.Category(), "errorCategory"),
+                    TraceLoggingString(status.ErrorMessage().c_str(), "errorMessage"),
+                    TraceLoggingString(file, "file"),
+                    TraceLoggingString(function, "function"),
+                    TraceLoggingInt32(line, "line"));
+#else
   TraceLoggingWrite(telemetry_provider_handle,
                     "RuntimeError",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -232,6 +250,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingString(file, "file"),
                     TraceLoggingString(function, "function"),
                     TraceLoggingInt32(line, "line"));
+#endif
 }
 
 void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last) const {
@@ -240,6 +259,7 @@ void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_s
 
   TraceLoggingWrite(telemetry_provider_handle,
                     "RuntimePerf",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     // Telemetry info

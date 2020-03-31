@@ -4,15 +4,13 @@
 
 # Minimum CMake required
 cmake_minimum_required(VERSION 3.13)
-
-# Project
-project(onnxruntime C CXX)
 cmake_policy(SET CMP0069 NEW)
-set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
-
 if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.15")
   cmake_policy(SET CMP0092 NEW)
 endif()
+
+# Project
+project(onnxruntime C CXX)
 
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
@@ -60,7 +58,6 @@ option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_MKLML "Build DNNL with MKL-ML binary dependency" OFF)
-option(onnxruntime_USE_GEMMLOWP "Build with gemmlowp for quantized gemm" OFF)
 option(onnxruntime_USE_FEATURIZERS "Build ML Featurizers support" OFF)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
@@ -122,6 +119,11 @@ else()
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /d2FH4-")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /d2FH4-")
   endif()
+  if(WINDOWS_STORE)
+    # cmake/external/protobuf/src/google/protobuf/compiler/subprocess.cc and onnxruntime/core/platform/windows/env.cc call a bunch of Win32 APIs.
+    # For now, we'll set the API family to desktop globally to expose Win32 symbols in headers; this must be fixed!
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/FI${CMAKE_CURRENT_SOURCE_DIR}/set_winapi_family_desktop.h>")
+  endif()
 endif()
 
 if(onnxruntime_USE_OPENMP)
@@ -129,7 +131,6 @@ if(onnxruntime_USE_OPENMP)
   if (OPENMP_FOUND)
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    add_definitions(-DUSE_OPENMP)
     # MKLML and NGraph depend on their own OpenMP library that may be different with the compiler's.
     # Disable the options to build mklml/NGraph and OpenMP together.
     if(onnxruntime_USE_MKLML)
@@ -162,6 +163,9 @@ file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" ORT_VERSION)
 # Guarantee that the Eigen code that you are #including is licensed
 # under the MPL2 and possibly more permissive licenses (like BSD).
 add_definitions(-DEIGEN_MPL2_ONLY)
+if(MSVC)
+  add_definitions(-DEIGEN_HAS_CONSTEXPR -DEIGEN_HAS_VARIADIC_TEMPLATES -DEIGEN_HAS_CXX11_MATH -DEIGEN_HAS_CXX11_ATOMIC)
+endif()
 
 if(onnxruntime_CROSS_COMPILING)
   set(CMAKE_CROSSCOMPILING ON)
@@ -205,7 +209,7 @@ if (MSVC)
     set(gtest_force_shared_crt ON CACHE BOOL "Use shared (DLL) run-time lib for gtest" FORCE)
   endif()
   #Always enable exception handling, even for Windows ARM
-  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")  
+  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
   if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
@@ -234,7 +238,7 @@ else()
     string(APPEND CMAKE_C_FLAGS_RELEASE " -march=native -mtune=native")
     string(APPEND CMAKE_CXX_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
     string(APPEND CMAKE_C_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
-  endif()  
+  endif()
 endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -278,7 +282,6 @@ if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
     find_package(PythonLibs 3.5 REQUIRED)
   else()
     find_package(PythonInterp 3.4 REQUIRED)
-    find_package(PythonLibs 3.4 REQUIRED)
   endif()
 endif()
 
@@ -295,7 +298,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
     # We will not need to install benchmark since we link it statically.
     set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Disable benchmark install to avoid overwriting vendor install.")
     add_subdirectory(${PROJECT_SOURCE_DIR}/external/onnx/third_party/benchmark EXCLUDE_FROM_ALL)
-  endif()  
+  endif()
 endif()
 
 if(NOT WIN32)
@@ -321,16 +324,16 @@ if(Protobuf_FOUND OR Protobuf_FOUND)
   message("Use protobuf from preinstalled system lib")
   if (onnxruntime_USE_FULL_PROTOBUF)
     set(PROTOBUF_LIB protobuf::libprotobuf)
-    #We have a check here but most of the cmake users don't know the Protobuf_USE_STATIC_LIBS 
+    #We have a check here but most of the cmake users don't know the Protobuf_USE_STATIC_LIBS
     # variable exists and may leave it in a wrong state.
     if(NOT Protobuf_USE_STATIC_LIBS)
-      #Indeed here should be a warning, not a fatal error. ONNX Runtime itself can work in such a 
+      #Indeed here should be a warning, not a fatal error. ONNX Runtime itself can work in such a
       #setting but it may cause compatibility issue when ONNX Runtime is integrated with the other ONNX ecosystem softwares.
       message(FATAL_ERROR "Please enable Protobuf_USE_STATIC_LIBS")
     endif()
   else()
     set(PROTOBUF_LIB protobuf::libprotobuf-lite)
-  endif()  
+  endif()
 else()
   message("Use protobuf from submodule")
   # use protobuf as a submodule
@@ -397,11 +400,11 @@ set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
 
 if(onnxruntime_PREFER_SYSTEM_LIB)
-  find_package(re2)  
+  find_package(re2)
 endif()
 
 set(SAFEINT_INCLUDE_DIR ${REPO_ROOT}/cmake/external/SafeInt)
-add_library(safeint_interface INTERFACE) 
+add_library(safeint_interface INTERFACE)
 target_include_directories(safeint_interface INTERFACE ${SAFEINT_INCLUDE_DIR})
 
 if(NOT TARGET re2::re2)
@@ -501,8 +504,8 @@ if (onnxruntime_USE_TVM)
 endif()
 
 if (APPLE)
-  #onnx/onnx/proto_utils.h:34:16: error: 'SetTotalBytesLimit' is deprecated: Please use the single 
-  #parameter version of SetTotalBytesLimit(). The second parameter is ignored. 
+  #onnx/onnx/proto_utils.h:34:16: error: 'SetTotalBytesLimit' is deprecated: Please use the single
+  #parameter version of SetTotalBytesLimit(). The second parameter is ignored.
   #  coded_stream.SetTotalBytesLimit((2048LL << 20) - 1, 512LL << 20);
   #TODO: fix the warning in ONNX and re-enable this flag
   string(APPEND CMAKE_CXX_FLAGS " -Wno-deprecated")
@@ -540,7 +543,7 @@ if (WIN32)
             # disable warning because there are many occurrences from test macros
             " /wd6326 " # potential comparison of a constant with another constant
         )
-    endif()  
+    endif()
 
     # Treat warning as error if onnxruntime_DEV_MODE is ON
     # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
@@ -588,6 +591,7 @@ else()
   check_cxx_compiler_flag(-Wmissing-braces HAS_MISSING_BRACES)
   check_cxx_compiler_flag(-Wignored-attributes HAS_IGNORED_ATTRIBUTES)
   check_cxx_compiler_flag(-Wdeprecated-copy HAS_DEPRECATED_COPY)
+  check_cxx_compiler_flag(-Wdeprecated-declarations HAS_DEPRECATED_DECLARATIONS)
   check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
   check_cxx_compiler_flag(-Wmaybe-uninitialized HAS_MAYBE_UNINITIALIZED)
 
@@ -603,7 +607,7 @@ else()
   endif()
   if(HAS_DEPRECATED_COPY)
     #too many such errors in eigen and gemmlowp
-    string(APPEND CMAKE_CXX_FLAGS_DEBUG " -Wno-deprecated-copy")
+    string(APPEND CMAKE_CXX_FLAGS " -Wno-deprecated-copy")
   endif()
   if(HAS_PARENTHESES)
     string(APPEND CMAKE_CXX_FLAGS " -Wno-parentheses")
@@ -611,7 +615,7 @@ else()
 endif()
 set(onnxruntime_DELAYLOAD_FLAGS "")
 if (onnxruntime_USE_JEMALLOC)
-  if (onnxruntime_USE_MIMALLOC)
+  if (onnxruntime_USE_MIMALLOC_STL_ALLOCATOR OR onnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR)
     message( FATAL_ERROR "You cannot specify both jemalloc and mimalloc." )
   endif()
 
@@ -628,10 +632,6 @@ include_directories(
   ${ONNXRUNTIME_INCLUDE_DIR}
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
-
-if(onnxruntime_USE_GEMMLOWP)
-  add_definitions(-DUSE_GEMMLOWP=1)
-endif()
 
 if (onnxruntime_USE_MKLML)
   add_definitions(-DUSE_MKLML=1 -DUSE_MKLML_FOR_BLAS=1)
@@ -694,7 +694,6 @@ if(onnxruntime_USE_OPENVINO)
 
 endif()
 
-
 if (onnxruntime_USE_OPENBLAS)
   add_definitions(-DUSE_OPENBLAS=1)
   if (WIN32)
@@ -715,7 +714,12 @@ if (onnxruntime_USE_CUDA)
   if ( CMAKE_CUDA_FLAGS )
     list(REMOVE_ITEM CMAKE_CUDA_FLAGS "-cudart static")
   endif()
-  string(APPEND CMAKE_CUDA_FLAGS "-cudart shared")
+  if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.17.0")
+    # cmake 3.17.0 introduces CMAKE_CUDA_RUNTIME which must be used instead of explicit -cudart shared flag
+    set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
+  else()
+    string(APPEND CMAKE_CUDA_FLAGS "-cudart shared")
+  endif()
   enable_language(CUDA)
   set(CMAKE_CUDA_STANDARD 11)
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
@@ -724,12 +728,14 @@ if (onnxruntime_USE_CUDA)
   if (WIN32)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
 
-    file(GLOB cuda_dll_paths "${onnxruntime_CUDA_HOME}/bin/cublas64_*" "${onnxruntime_CUDA_HOME}/bin/cudart64_*" "${onnxruntime_CUDA_HOME}/bin/cufft64_*")
-    set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:cudnn64_7.dll")
-    foreach(cuda_dll_path ${cuda_dll_paths})
-        get_filename_component(cuda_dll_file_name ${cuda_dll_path} NAME)
-        set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:${cuda_dll_file_name}")
-    endforeach(cuda_dll_path)
+    # delayload causes crash on exit, so disable for now
+    #file(GLOB cuda_dll_paths "${onnxruntime_CUDA_HOME}/bin/cublas64_*" "${onnxruntime_CUDA_HOME}/bin/cudart64_*" "${onnxruntime_CUDA_HOME}/bin/curand64_*"
+     "${onnxruntime_CUDA_HOME}/bin/cufft64_*")
+    #set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:cudnn64_7.dll")
+    #foreach(cuda_dll_path ${cuda_dll_paths})
+    #    get_filename_component(cuda_dll_file_name ${cuda_dll_path} NAME)
+    #    set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:${cuda_dll_file_name}")
+    #endforeach(cuda_dll_path)
 
   else()
     link_directories(${onnxruntime_CUDNN_HOME}/lib64)
@@ -811,7 +817,7 @@ foreach(provider_name ${ONNXRUNTIME_PROVIDER_NAMES})
       target_compile_options(onnxruntime_providers_${provider_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
     else()
       target_compile_definitions(onnxruntime_providers_${provider_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
-      target_include_directories(onnxruntime_providers_${provider_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")      
+      target_include_directories(onnxruntime_providers_${provider_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
     endif()
   endif()
 endforeach()
@@ -826,26 +832,26 @@ if(WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES Shlwapi)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES debug Dbghelp)
 else()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)  
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
 endif()
 
-# Default version parts for Windows.AI.MachineLearning.dll and onnxruntime.dll in non-ADO pipeline local builds 
+# Default version parts for Windows.AI.MachineLearning.dll and onnxruntime.dll in non-ADO pipeline local builds
 set(VERSION_MAJOR_PART   0 CACHE STRING "First part of numeric file/product version.")
 set(VERSION_MINOR_PART   0 CACHE STRING "Second part of numeric file/product version.")
 set(VERSION_BUILD_PART       0 CACHE STRING "Third part of numeric file/product version.")
 set(VERSION_PRIVATE_PART     0 CACHE STRING "Fourth part of numeric file/product version.")
 set(VERSION_STRING       "Internal Build" CACHE STRING "String representation of file/product version.")
+include(wil.cmake)
 
 if (onnxruntime_USE_WINML)
-  # WINML uses and depends on the shared lib.  Note:  You can build WINML without DML and you will get a 
+  # WINML uses and depends on the shared lib.  Note:  You can build WINML without DML and you will get a
   # CPU only WINML
   if (NOT onnxruntime_BUILD_SHARED_LIB)
     message(
-        FATAL_ERROR 
+        FATAL_ERROR
         "Option onnxruntime_USE_WINML can only be used when onnxruntime_BUILD_SHARED_LIB is also enabled")
   endif()
-  include(wil.cmake)
   include(winml.cmake)
 endif() # if(onnxruntime_USE_WINML)
 
@@ -880,4 +886,3 @@ if (onnxruntime_BUILD_CSHARP)
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
   include(onnxruntime_csharp.cmake)
 endif()
-

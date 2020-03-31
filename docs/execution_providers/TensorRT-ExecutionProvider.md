@@ -13,14 +13,25 @@ The TensorRT execution provider for ONNX Runtime is built and tested with Tensor
 ### C/C++
 The TensorRT execution provider needs to be registered with ONNX Runtime to enable in the inference session. 
 ```
-InferenceSession session_object{so};
+string log_id = "Foo";
+auto logging_manager = std::make_unique<LoggingManager>
+(std::unique_ptr<ISink>{new CLogSink{}},
+                                  static_cast<Severity>(lm_info.default_warning_level),
+                                  false,
+                                  LoggingManager::InstanceType::Default,
+                                  &log_id)
+Environment::Create(std::move(logging_manager), env)
+InferenceSession session_object{so,env};
 session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::TensorrtExecutionProvider>());
 status = session_object.Load(model_file_name);
 ```
 The C API details are [here](../C_API.md#c-api).
 
+#### Shape Inference for TensorRT Subgraphs
+If some operators in the model are not supported by TensorRT, ONNX Runtime will partition the graph and only send supported subgraphs to TensorRT execution provider. Because TensorRT requires that all inputs of the subgraphs have shape specified, ONNX Runtime will throw error if there is no input shape info. In this case please run shape inference for the entire model first by running script [here](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/nuphar/scripts/symbolic_shape_infer.py).
+
 #### Sample
-To run Faster R-CNN model on TensorRT execution provider,
+This example shows how to run Faster R-CNN model on TensorRT execution provider,
 
 First, download Faster R-CNN onnx model from onnx model zoo [here](https://github.com/onnx/models/tree/master/vision/object_detection_segmentation/faster-rcnn).
 

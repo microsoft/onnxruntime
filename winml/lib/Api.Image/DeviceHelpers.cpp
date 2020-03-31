@@ -13,28 +13,55 @@
 #include "LearningModelDevice.h"
 
 namespace DeviceHelpers {
+
+
+HRESULT IsWarpAdapter(IDXGIAdapter1* pAdapter, bool* isWarpAdapter) {
+  DXGI_ADAPTER_DESC1 pDesc;
+  RETURN_IF_FAILED(pAdapter->GetDesc1(&pDesc));
+
+  // see here for documentation on filtering WARP adapter:
+  // https://docs.microsoft.com/en-us/windows/desktop/direct3ddxgi/d3d10-graphics-programming-guide-dxgi#new-info-about-enumerating-adapters-for-windows-8
+  auto isBasicRenderDriverVendorId = pDesc.VendorId == 0x1414;
+  auto isBasicRenderDriverDeviceId = pDesc.DeviceId == 0x8c;
+  auto isSoftwareAdapter = pDesc.Flags == DXGI_ADAPTER_FLAG_SOFTWARE;
+  *isWarpAdapter = isSoftwareAdapter || (isBasicRenderDriverVendorId && isBasicRenderDriverDeviceId);
+  return S_OK;
+}
+
 HRESULT GetDXGIHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, IDXGIAdapter1** ppAdapter) {
-  winrt::com_ptr<IDXGIFactory6> spFactory;
-  RETURN_IF_FAILED(CreateDXGIFactory1(IID_PPV_ARGS(spFactory.put())));
 
   winrt::com_ptr<IDXGIAdapter1> spAdapter;
   UINT i = 0;
-  while (spFactory->EnumAdapterByGpuPreference(i, preference, IID_PPV_ARGS(spAdapter.put())) != DXGI_ERROR_NOT_FOUND) {
-    DXGI_ADAPTER_DESC1 pDesc;
-    spAdapter->GetDesc1(&pDesc);
-
-    // see here for documentation on filtering WARP adapter:
-    // https://docs.microsoft.com/en-us/windows/desktop/direct3ddxgi/d3d10-graphics-programming-guide-dxgi#new-info-about-enumerating-adapters-for-windows-8
-    auto isBasicRenderDriverVendorId = pDesc.VendorId == 0x1414;
-    auto isBasicRenderDriverDeviceId = pDesc.DeviceId == 0x8c;
-    auto isSoftwareAdapter = pDesc.Flags == DXGI_ADAPTER_FLAG_SOFTWARE;
-    if (!isSoftwareAdapter && !(isBasicRenderDriverVendorId && isBasicRenderDriverDeviceId)) {
-      spAdapter.copy_to(ppAdapter);
-      return S_OK;
+  // Avoids using EnumAdapterByGpuPreference for standard GPU path to enable downlevel to RS3
+  if (preference == DXGI_GPU_PREFERENCE::DXGI_GPU_PREFERENCE_UNSPECIFIED) {
+    winrt::com_ptr<IDXGIFactory1> spFactory;
+    RETURN_IF_FAILED(CreateDXGIFactory1(IID_PPV_ARGS(spFactory.put())));
+   
+    while (spFactory->EnumAdapters1(i, spAdapter.put()) != DXGI_ERROR_NOT_FOUND) {
+      bool isWarpAdapter = false;
+      RETURN_IF_FAILED(IsWarpAdapter(spAdapter.get(), &isWarpAdapter));
+      if (!isWarpAdapter) {
+        spAdapter.copy_to(ppAdapter);
+        return S_OK;
+      }
+      spAdapter = nullptr;
+      ++i;
     }
+  }
+  else {
+    winrt::com_ptr<IDXGIFactory6> spFactory;
+    RETURN_IF_FAILED(CreateDXGIFactory1(IID_PPV_ARGS(spFactory.put())));
 
-    spAdapter = nullptr;
-    ++i;
+    while (spFactory->EnumAdapterByGpuPreference(i, preference, IID_PPV_ARGS(spAdapter.put())) != DXGI_ERROR_NOT_FOUND) {
+      bool isWarpAdapter = false;
+      RETURN_IF_FAILED(IsWarpAdapter(spAdapter.get(), &isWarpAdapter));
+      if (!isWarpAdapter) {
+        spAdapter.copy_to(ppAdapter);
+        return S_OK;
+      }
+      spAdapter = nullptr;
+      ++i;
+    }
   }
   return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 }

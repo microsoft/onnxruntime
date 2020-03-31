@@ -35,8 +35,7 @@ TEST(TensorOpTest, SpaceToDepthTest_1) {
       1.1f, 1.3f,
       3.1f, 3.3f};
   test.AddOutput<float>("output", {N, C * blocksize * blocksize, H / blocksize, W / blocksize}, result);
-  // TensorRT has error: Expected output shape [{1,8,1,2}] did not match run output shape [{8,1,1,2}] for output
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(TensorOpTest, SpaceToDepthTest_2) {
@@ -70,8 +69,7 @@ TEST(TensorOpTest, SpaceToDepthTest_2) {
       98., 101., 66., 69., 84., 87., 102., 105., 67., 70., 85.,
       88., 103., 106., 68., 71., 86., 89., 104., 107.};
   test.AddOutput<float>("output", {2, 27, 1, 2}, result);
-  // TensorRT has error: Expected output shape [{2,27,1,2}] did not match run output shape [{54,1,1,2}] for output
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(TensorOpTest, DepthToSpaceTest_1) {
@@ -102,8 +100,7 @@ TEST(TensorOpTest, DepthToSpaceTest_1) {
        2.0f, 2.1f, 2.2f, 2.3f,
        3.0f, 3.1f, 3.2f, 3.3f};
   test.AddOutput<float>("output", {N, C / (blocksize * blocksize), H * blocksize, W * blocksize}, result);
-  // TensorRT output shape mismatches
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(TensorOpTest, DepthToSpaceTest_2) {
@@ -146,8 +143,7 @@ TEST(TensorOpTest, DepthToSpaceTest_2) {
       122., 140., 123., 141., 88., 106., 89., 107., 124., 142., 125.,
       143.};
   test.AddOutput<float>("output", {2, 3, 6, 4}, result);
-  // TensorRT output shape mismatches 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(TensorOpTest, DepthToSpaceTest_3) {
@@ -190,8 +186,7 @@ TEST(TensorOpTest, DepthToSpaceTest_3) {
       122., 140., 123., 141., 88., 106., 89., 107., 124., 142., 125.,
       143.};
   test.AddOutput<float>("output", {2, 3, 6, 4}, result);
-  // TensorRT output shape mismatches 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(TensorOpTest, DepthToSpaceTest_4) {
@@ -235,8 +230,7 @@ TEST(TensorOpTest, DepthToSpaceTest_4) {
       122., 140., 123., 141., 88., 106., 89., 107., 124., 142., 125.,
       143.};
   test.AddOutput<float>("output", {2, 3, 6, 4}, result);
-  // TensorRT output shape mismatches 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(TensorOpTest, DepthToSpaceTest_5) {
@@ -263,8 +257,7 @@ TEST(TensorOpTest, DepthToSpaceTest_5) {
                                     21., 30., 22., 31., 23., 32.};
 
   test.AddOutput<float>("output", {1, 1, 4, 6}, result);
-  // TensorRT output shape mismatches
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 }  // namespace test

@@ -31,6 +31,7 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 #### Notes
 
 * Please note that these instructions build the debug build, which may have performance tradeoffs
+* To build the version from each release (which include Windows, Linux, and Mac variants), see these .yml files for reference: [CPU](./tools/ci_build/github/azure-pipelines/nuget/cpu-esrp-pipeline.yml), [GPU](./tools/ci_build/github/azure-pipelines/nuget/gpu-esrp-pipeline.yml)
 * The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
 * If you need to install protobuf 3.6.1 from source code (cmake/external/protobuf), please note:
    * CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
@@ -151,7 +152,7 @@ A Dockerfile is available [here](./dockerfiles#cuda).
     * To use the 14.11 toolset with a later version of Visual Studio 2017 you have two options:
      1. Setup the Visual Studio environment variables to point to the 14.11 toolset by running vcvarsall.bat, prior to running the build script. e.g. if you have VS2017 Enterprise, an x64 build would use the following command `"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64 -vcvars_ver=14.11` For convenience, .\build.amd64.1411.bat will do this and can be used in the same way as .\build.bat. e.g. ` .\build.amd64.1411.bat --use_cuda`
 
-     2. Alternatively, if you have CMake 3.12 or later you can specify the toolset version via the `--msvc_toolset` build script parameter. e.g. `.\build.bat --msvc_toolset 14.11`
+     2. Alternatively, if you have CMake 3.13 or later you can specify the toolset version via the `--msvc_toolset` build script parameter. e.g. `.\build.bat --msvc_toolset 14.11`
 
 * If you have multiple versions of CUDA installed on a Windows machine and are building with Visual Studio, CMake will use the build files for the highest version of CUDA it finds in the BuildCustomization folder.
 e.g. C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\Common7\IDE\VC\VCTargets\BuildCustomizations\.
@@ -274,18 +275,18 @@ To build ONNX Runtime with the NN API EP, first install Android NDK (see [Androi
 
 #### Build Instructions
 
-The basic build commands are below. There are also some other parameters for building the Android version under See [Android Build instructions](#android) for more details.
+The basic build commands are below. There are also some other parameters for building the Android version. See [Android Build instructions](#android) for more details.
 
 ##### Cross compiling on Windows
 
 ```bash
-./build.bat --android --android_ndk_path <android ndk path> --dnnlibrary
+./build.bat --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --dnnlibrary
 ```
 
 ##### Cross compiling on Linux
 
 ```bash
-./build.sh --android --android_ndk_path <android ndk path> --dnnlibrary
+./build.sh --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --dnnlibrary
 ```
 
 ---
@@ -540,10 +541,10 @@ pip3 install numpy
 # Build the latest cmake
 mkdir /code
 cd /code
-wget https://cmake.org/files/v3.12/cmake-3.12.3.tar.gz;
-tar zxf cmake-3.12.3.tar.gz
+wget https://cmake.org/files/v3.13/cmake-3.13.5.tar.gz;
+tar zxf cmake-3.13.5.tar.gz
 
-cd /code/cmake-3.12.3
+cd /code/cmake-3.13.5
 ./configure --system-curl
 make
 sudo make install
@@ -580,21 +581,22 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 
 #### Pre-Requisites
 
-Install Android NDK from https://developer.android.com/ndk/downloads
+Install Android NDK in Android Studio or https://developer.android.com/ndk/downloads
 
 #### Build Instructions
 
 ##### Cross compiling on Windows
 
 ```bash
-./build.bat --android --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
+./build.bat --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
 ```
 
 ##### Cross compiling on Linux
 
 ```bash
-./build.sh --android --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
+./build.sh --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
 ```
 
-If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar.
 
+If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).

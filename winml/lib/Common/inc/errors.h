@@ -44,7 +44,7 @@
   {                                                                                  \
     auto _result = hr;                                                               \
     telemetry_helper.LogRuntimeError(_result, "", __FILE__, __FUNCTION__, __LINE__); \
-    throw winrt::hresult_error(_result);                                             \
+    throw winrt::hresult_error(_result, winrt::hresult_error::from_abi);             \
   }
 
 #define WINML_THROW_IF_FAILED(hr)                                                  \
@@ -52,7 +52,7 @@
     HRESULT _hr = hr;                                                              \
     if (FAILED(_hr)) {                                                             \
       telemetry_helper.LogRuntimeError(_hr, "", __FILE__, __FUNCTION__, __LINE__); \
-      throw winrt::hresult_error(_hr);                                             \
+      throw winrt::hresult_error(_hr, winrt::hresult_error::from_abi);             \
     }                                                                              \
   } while (0)
 
