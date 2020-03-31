@@ -211,7 +211,7 @@ if (MSVC)
     set(protobuf_MSVC_STATIC_RUNTIME OFF CACHE BOOL "Link protobuf to static runtime libraries" FORCE)
     set(gtest_force_shared_crt ON CACHE BOOL "Use shared (DLL) run-time lib for gtest" FORCE)
   endif()
-  #A compile option improve the code generation time, mostly for Eigen.
+  #A compile option to improve code generation time, mostly for the code that heavily uses eigen.
   check_cxx_compiler_flag(/d2ReducedOptimizeHugeFunctions HAS_D2ROHF)
   if(HAS_D2ROHF)
     SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /d2ReducedOptimizeHugeFunctions")
