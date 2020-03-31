@@ -36,7 +36,7 @@ enum ResizeCoordinateTransformationMode {
 };
 
 enum ResizeNearestMode {
-  SIMPLE = 0, // For resize op 10
+  SIMPLE = 0,  // For resize op 10
   ROUND_PREFER_FLOOR = 1,
   ROUND_PREFER_CEIL = 2,
   FLOOR = 3,
@@ -47,17 +47,16 @@ enum ResizeNearestMode {
 class UpsampleBase {
  protected:
   UpsampleBase(OpKernelInfo info) : scales_cached_(false), roi_cached_(false), use_extrapolation_(false) {
-    int start;
-    int end;
-    info.GetKernelDef().SinceVersion(&start, &end);
-    is_resize_ = (start >= 10);
+    const auto& node = info.node();
+    auto opset = node.Op()->SinceVersion();
+    is_resize_ = (opset >= 10);
 
     std::string mode;
     ORT_ENFORCE(info.GetAttr<std::string>("mode", &mode).IsOK());
     mode_ = StringToUpsampleMode(mode);
 
     auto input_count = info.GetInputCount();
-    if (input_count == 1) {
+    if (input_count == 1) {  // opset < 10
       ORT_ENFORCE(info.GetAttrs<float>("scales", scales_).IsOK());
       ScalesValidation(scales_, mode_);
       scales_cached_ = true;
@@ -66,17 +65,17 @@ class UpsampleBase {
     extrapolation_value_ = info.GetAttrOrDefault<float>("extrapolation_value", 0.0f);
 
     // Coordinate transformation mode attr was introduced in version 11, before that asymmetric mode was the only available transformation mode
-    std::string coordinate_transform_mode_name = start > 10
-                                                    ? info.GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
-                                                    : "asymmetric";
+    std::string coordinate_transform_mode_name = opset > 10
+                                                     ? info.GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
+                                                     : "asymmetric";
     coordinate_transform_mode_ = StringToCoordinateTransformationMode(coordinate_transform_mode_name);
     get_original_coordinate_ = GetOriginalCoordinateFromResizedCoordinate(coordinate_transform_mode_);
     use_extrapolation_ = need_roi_input_ = (coordinate_transform_mode_ == TF_CROP_AND_RESIZE);
 
-    std::string nearest_mode_name = (mode_ == NN && start >= 11)
+    std::string nearest_mode_name = (mode_ == NN && opset >= 11)
                                         ? info.GetAttrOrDefault<std::string>("nearest_mode", "round_prefer_floor")
                                         : "";
-    nearest_mode_ = StringToNearstMode(nearest_mode_name);
+    nearest_mode_ = StringToNearestMode(nearest_mode_name);
     get_nearest_pixel_ = GetNearestPixelFromOriginal(nearest_mode_);
 
     cubic_coeff_a_ = info.GetAttrOrDefault<float>("cubic_coeff_a", -0.75f);
@@ -86,15 +85,13 @@ class UpsampleBase {
       ORT_THROW("exclude_outside can be set to 1 only when mode is CUBIC. Current mode is set to " + mode);
     }
 
-    // after version 11 update, this optimization is no longer applicable for all the available modes...
-    // TODO : needs more testing to enable this for version 11
-    use_nearest2x_optimization_ = start > 10 ? false : true;
+    InitCanUseNearest2xOptimization(opset, node);
 
-    if (start > 10) {
+    if (opset > 10) {
       roi_input_idx_ = 1;
       scales_input_idx_ = 2;
       sizes_input_idx_ = 3;
-    } else if (start <= 10 && input_count > 1) {
+    } else if (opset <= 10 && input_count > 1) {
       scales_input_idx_ = 1;
     }
 
@@ -129,6 +126,7 @@ class UpsampleBase {
   float cubic_coeff_a_;
   bool exclude_outside_;
   float extrapolation_value_;
+  bool can_use_nearest2x_optimization_with_scales_check_ = false;
   bool use_nearest2x_optimization_ = false;
 
   std::vector<float> scales_;
@@ -213,19 +211,19 @@ class UpsampleBase {
     }
   }
 
-  ResizeNearestMode StringToNearstMode(const std::string& nearst_mode_name) {
-    if (nearst_mode_name == "round_prefer_floor") {
+  ResizeNearestMode StringToNearestMode(const std::string& nearest_mode_name) {
+    if (nearest_mode_name == "round_prefer_floor") {
       return ROUND_PREFER_FLOOR;
-    } else if (nearst_mode_name == "round_prefer_ceil") {
+    } else if (nearest_mode_name == "round_prefer_ceil") {
       return ROUND_PREFER_CEIL;
-    } else if (nearst_mode_name == "floor") {
+    } else if (nearest_mode_name == "floor") {
       return FLOOR;
-    } else if (nearst_mode_name == "ceil") {
+    } else if (nearest_mode_name == "ceil") {
       return CEIL;
-    } else if (nearst_mode_name == "") {
+    } else if (nearest_mode_name == "") {
       return SIMPLE;
     }
-    ORT_THROW("nearst_mode:[" + nearst_mode_name + "] is not supportted!");
+    ORT_THROW("nearest_mode:[" + nearest_mode_name + "] is not supported!");
   }
 
   GetNearestPixelFunc GetNearestPixelFromOriginal(ResizeNearestMode nearest_mode) {
@@ -263,7 +261,7 @@ class UpsampleBase {
     }
   }
 
-  void  ScalesValidation(const std::vector<float>& scales, const UpsampleMode mode) const {
+  void ScalesValidation(const std::vector<float>& scales, const UpsampleMode mode) const {
     if (!is_resize_) {
       for (auto& scale : scales) {
         ORT_ENFORCE(scale >= 1, "Scale value should be greater than or equal to 1.");
@@ -317,7 +315,10 @@ class UpsampleBase {
       output_dims[i] = static_cast<int64_t>(scales[i] * input_dims[i]);
     }
   }
-};  // UpsampleBase 
+
+  void InitCanUseNearest2xOptimization(int opset, const Node& node);
+  bool CanUseNearest2xOptimization(const std::vector<float>& scales) const;
+};  // UpsampleBase
 
 template <typename T>
 class Upsample : public UpsampleBase, public OpKernel {

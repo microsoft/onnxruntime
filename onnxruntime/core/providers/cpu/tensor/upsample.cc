@@ -3,6 +3,8 @@
 
 #include "core/providers/cpu/tensor/upsample.h"
 #include "core/common/safeint.h"
+#include "core/graph/graph_utils.h"
+#include "core/framework/tensorprotoutils.h"
 #include <sstream>
 
 using namespace onnxruntime::common;
@@ -581,6 +583,66 @@ void ResizeBiCubic(
   }
 }
 
+void UpsampleBase::InitCanUseNearest2xOptimization(int opset, const onnxruntime::Node& node) {
+  if (opset < 11) {
+    use_nearest2x_optimization_ = true;
+    return;
+  }
+
+  // for opset 11 and on we need to check a number of different things before enabling nearest2x optimization
+
+  use_nearest2x_optimization_ = false;
+  can_use_nearest2x_optimization_with_scales_check_ = false;
+
+  // Only support the nearest interpolation mode (the default value).
+  if (mode_ != UpsampleMode::NN)
+    return;
+
+  // Only support the asymmetric coordinate transformation mode.
+  if (coordinate_transform_mode_ != ResizeCoordinateTransformationMode::ASYMMETRIC)
+    return;
+
+  // Only support the floor rounding mode.
+  if (nearest_mode_ != ResizeNearestMode::FLOOR)
+    return;
+
+  // Bail out if Resize has the optional "sizes" tensor.
+  if (node.InputDefs().size() != 3)
+    return;
+
+  // check scales at runtime even if they're in a constant initializer.
+  // When this kernel is being created the initializers have been moved from the Graph instance to SessionState
+  // but the latter isn't available here.
+  can_use_nearest2x_optimization_with_scales_check_ = true;
+}
+
+bool UpsampleBase::CanUseNearest2xOptimization(const std::vector<float>& scales) const {
+  if (use_nearest2x_optimization_)
+    return true;
+
+  if (!can_use_nearest2x_optimization_with_scales_check_)
+    return false;
+
+  // check scales
+  // Cast the scales to integers and verify that the scales are positive and
+  // round trip back to floating point.
+  std::vector<int64_t> scales_attr(4);
+  for (size_t n = 0; n < 4; n++) {
+    int64_t scale_value = static_cast<int64_t>(scales[n]);
+    if (scale_value <= 0 || static_cast<float>(scale_value) != scales[n]) {
+      return false;
+    }
+    scales_attr[n] = scale_value;
+  }
+
+  // Only support spatial scaling at this time (batch and channel are unscaled).
+  if (scales_attr[0] != 1 || scales_attr[1] != 1) {
+    return false;
+  }
+
+  return true;
+}
+
 template <typename T>
 Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 const std::vector<float>& roi,
@@ -614,9 +676,10 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
   switch (mode_) {
     case UpsampleMode::NN:
-      return UpsampleNearest<T>(X->template Data<T>(), Y->template MutableData<T>(), X->Shape(), Y->Shape(), scales, roi,
-                                is_resize_, use_extrapolation_, extrapolation_value_, use_nearest2x_optimization_,
-                                get_original_coordinate_, get_nearest_pixel_);
+
+      return UpsampleNearest<T>(X->template Data<T>(), Y->template MutableData<T>(), X->Shape(), Y->Shape(),
+                                scales, roi, is_resize_, use_extrapolation_, extrapolation_value_,
+                                CanUseNearest2xOptimization(scales), get_original_coordinate_, get_nearest_pixel_);
     case UpsampleMode::LINEAR: {
       //The correct behavior of 'linear' mode for an N-D input is not clear right now,
       //so only support 'bilinear' with 2-D or 4-D input tensor with outermost 2 scales as 1 in the 4-D case

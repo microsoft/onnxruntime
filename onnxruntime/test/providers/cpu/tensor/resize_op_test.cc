@@ -67,7 +67,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapol
 
 TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_4DBilinear) {
   OpTester test("Resize", 11);
-  std::vector<float> roi{};  
+  std::vector<float> roi{};
   std::vector<float> scales{1.0f, 1.0f, 0.6f, 0.6f};
 
   test.AddAttribute("mode", "linear");
@@ -126,7 +126,6 @@ TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_2DBilinear_pytorch_half_pixel) 
       5.0f, 6.0f, 7.0f, 8.0f,
       9.0f, 10.0f, 11.0f, 12.0f,
       13.0f, 14.0f, 15.0f, 16.0f};
-  
 
   test.AddInput<float>("X", {H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
@@ -229,7 +228,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest) {
   OpTester test("Resize", 11);
   std::vector<float> scales{1.0f, 1.0f, 0.6f, 0.6f};
   std::vector<float> roi{};
- 
+
   test.AddAttribute("mode", "nearest");
 
   const int64_t N = 1, C = 1, H = 2, W = 4;
@@ -285,8 +284,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_tf_half_pixel) {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
       9.0f, 10.0f, 11.0f, 12.0f,
-      13.0f, 14.0f, 15.0f, 16.0f
-};
+      13.0f, 14.0f, 15.0f, 16.0f};
 
   test.AddInput<float>("X", {N, C, H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
@@ -376,7 +374,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSampleTest_WithSizes_CeilMode) {
                           3.0f, 3.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f,
                           3.0f, 3.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f,
                           3.0f, 3.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f};
-  
+
   test.AddOutput<float>("Y", {N, C, sizes[2], sizes[3]}, Y);
   test.Run();
 }
@@ -415,12 +413,40 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Floor_Align_Corners) {
   test.Run();
 }
 
+TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization) {
+  OpTester test("Resize", 11);
+
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 1.0f, 2.0f, 2.0f};
+
+  test.AddAttribute("mode", "nearest");
+  test.AddAttribute("coordinate_transformation_mode", "asymmetric");
+  test.AddAttribute("nearest_mode", "floor");
+
+  const int64_t N = 1, C = 1, H = 2, W = 2;
+  std::vector<float> X = {
+      1.0f, 2.0f,
+      3.0f, 4.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {1.0f, 1.0f, 2.0f, 2.0f,
+                          1.0f, 1.0f, 2.0f, 2.0f,
+                          3.0f, 3.0f, 4.0f, 4.0f,
+                          3.0f, 3.0f, 4.0f, 4.0f};
+
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+  test.Run();
+}
+
 TEST(ResizeOpTest, ResizeOpCubicDownSampleTest) {
   OpTester test("Resize", 11);
   std::vector<float> scales{1.0f, 1.0f, 0.8f, 0.8f};
   std::vector<float> roi{};
 
-  test.AddAttribute("mode", "cubic");  
+  test.AddAttribute("mode", "cubic");
 
   const int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
@@ -492,7 +518,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_coeff) {
 
   std::vector<float> Y = {1.38574f, 2.68359f, 4.00684f,
                           6.57715f, 7.875f, 9.19824f,
-                          11.8701f, 13.168f, 14.4912f,};
+                          11.8701f, 13.168f, 14.4912f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
   test.Run();
@@ -578,7 +604,7 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest) {
                           9.0f, 9.40625f, 10.0f, 10.5f, 11.0f, 11.5938f, 12.0f, 12.0938f,
                           11.375f, 11.7813f, 12.375f, 12.875f, 13.375f, 13.9688f, 14.375f, 14.4688f,
                           13.0f, 13.4063f, 14.0f, 14.5f, 15.0f, 15.5938f, 16.0f, 16.0938f,
-                          13.375f, 13.7813f, 14.375f, 14.875f, 15.375f, 15.9688f, 16.375f, 16.4688f,};
+                          13.375f, 13.7813f, 14.375f, 14.875f, 15.375f, 15.9688f, 16.375f, 16.4688f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
   test.Run();
@@ -602,8 +628,7 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest_MultiChannel) {
       16.0f, 17.0f, 18.0f, 19.0f,
       20.0f, 21.0f, 22.0f, 23.0f,
       24.0f, 25.0f, 26.0f, 27.0f,
-      28.0f, 29.0f, 30.0f, 31.0f,
-  };
+      28.0f, 29.0f, 30.0f, 31.0f};
 
   test.AddInput<float>("X", {N, C, H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
@@ -611,24 +636,24 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest_MultiChannel) {
   test.AddInput<int64_t>("sizes", {4}, sizes);
 
   std::vector<float> Y = {-0.543341f, -0.308515f, 0.0807175f, 0.644203f, 1.06533f, 1.48645f, 2.04994f, 2.43917f, 2.674f,
-                           0.395961f, 0.630787f, 1.02002f, 1.5835f, 2.00463f, 2.42575f, 2.98924f, 3.37847f, 3.6133f,
-                           1.95289f, 2.18772f, 2.57695f, 3.14043f, 3.56156f, 3.98268f, 4.54617f, 4.9354f, 5.17023f,
-                           4.20683f, 4.44166f, 4.83089f, 5.39437f, 5.8155f, 6.23662f, 6.80011f, 7.18934f, 7.42417f,
-                           5.89133f, 6.12616f, 6.51539f, 7.07887f, 7.5f, 7.92112f, 8.48461f, 8.87384f, 9.10867f,
-                           7.57583f, 7.81066f, 8.19989f, 8.76337f, 9.1845f, 9.60562f, 10.1691f, 10.5583f, 10.7932f,
-                           9.82977f, 10.0646f, 10.4538f, 11.0173f, 11.4384f, 11.8596f, 12.423f, 12.8123f, 13.0471f,
-                           11.3867f, 11.6215f, 12.0108f, 12.5742f, 12.9954f, 13.4165f, 13.98f, 14.3692f, 14.604f,
-                           12.326f, 12.5608f, 12.9501f, 13.5135f, 13.9347f, 14.3558f, 14.9193f, 15.3085f, 15.5433f,
+                          0.395961f, 0.630787f, 1.02002f, 1.5835f, 2.00463f, 2.42575f, 2.98924f, 3.37847f, 3.6133f,
+                          1.95289f, 2.18772f, 2.57695f, 3.14043f, 3.56156f, 3.98268f, 4.54617f, 4.9354f, 5.17023f,
+                          4.20683f, 4.44166f, 4.83089f, 5.39437f, 5.8155f, 6.23662f, 6.80011f, 7.18934f, 7.42417f,
+                          5.89133f, 6.12616f, 6.51539f, 7.07887f, 7.5f, 7.92112f, 8.48461f, 8.87384f, 9.10867f,
+                          7.57583f, 7.81066f, 8.19989f, 8.76337f, 9.1845f, 9.60562f, 10.1691f, 10.5583f, 10.7932f,
+                          9.82977f, 10.0646f, 10.4538f, 11.0173f, 11.4384f, 11.8596f, 12.423f, 12.8123f, 13.0471f,
+                          11.3867f, 11.6215f, 12.0108f, 12.5742f, 12.9954f, 13.4165f, 13.98f, 14.3692f, 14.604f,
+                          12.326f, 12.5608f, 12.9501f, 13.5135f, 13.9347f, 14.3558f, 14.9193f, 15.3085f, 15.5433f,
 
-                           15.4567f, 15.6915f, 16.0807f, 16.6442f, 17.0653f, 17.4865f, 18.0499f, 18.4392f, 18.674f,
-                           16.396f, 16.6308f, 17.02f, 17.5835f, 18.0046f, 18.4258f, 18.9892f, 19.3785f, 19.6133f,
-                           17.9529f, 18.1877f, 18.5769f, 19.1404f, 19.5616f, 19.9827f, 20.5462f, 20.9354f, 21.1702f,
-                           20.2068f, 20.4417f, 20.8309f, 21.3944f, 21.8155f, 22.2366f, 22.8001f, 23.1893f, 23.4242f,
-                           21.8913f, 22.1262f, 22.5154f, 23.0789f, 23.5f, 23.9211f, 24.4846f, 24.8738f, 25.1087f,
-                           23.5758f, 23.8107f, 24.1999f, 24.7634f, 25.1845f, 25.6056f, 26.1691f, 26.5583f, 26.7932f,
-                           25.8298f, 26.0646f, 26.4538f, 27.0173f, 27.4384f, 27.8596f, 28.423f, 28.8123f, 29.0471f,
-                           27.3867f, 27.6215f, 28.0108f, 28.5742f, 28.9954f, 29.4165f, 29.98f, 30.3692f, 30.604f,
-                           28.326f, 28.5608f, 28.9501f, 29.5135f, 29.9347f, 30.3558f, 30.9193f, 31.3085f, 31.5433f,};
+                          15.4567f, 15.6915f, 16.0807f, 16.6442f, 17.0653f, 17.4865f, 18.0499f, 18.4392f, 18.674f,
+                          16.396f, 16.6308f, 17.02f, 17.5835f, 18.0046f, 18.4258f, 18.9892f, 19.3785f, 19.6133f,
+                          17.9529f, 18.1877f, 18.5769f, 19.1404f, 19.5616f, 19.9827f, 20.5462f, 20.9354f, 21.1702f,
+                          20.2068f, 20.4417f, 20.8309f, 21.3944f, 21.8155f, 22.2366f, 22.8001f, 23.1893f, 23.4242f,
+                          21.8913f, 22.1262f, 22.5154f, 23.0789f, 23.5f, 23.9211f, 24.4846f, 24.8738f, 25.1087f,
+                          23.5758f, 23.8107f, 24.1999f, 24.7634f, 25.1845f, 25.6056f, 26.1691f, 26.5583f, 26.7932f,
+                          25.8298f, 26.0646f, 26.4538f, 27.0173f, 27.4384f, 27.8596f, 28.423f, 28.8123f, 29.0471f,
+                          27.3867f, 27.6215f, 28.0108f, 28.5742f, 28.9954f, 29.4165f, 29.98f, 30.3692f, 30.604f,
+                          28.326f, 28.5608f, 28.9501f, 29.5135f, 29.9347f, 30.3558f, 30.9193f, 31.3085f, 31.5433f};
 
   test.AddOutput<float>("Y", {N, C, sizes[2], sizes[3]}, Y);
   test.Run();
@@ -659,7 +684,7 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest_tf_half_pixel_for_nn) {
                           10.5195f, 10.9961f, 11.625f, 12.0313f, 12.6602f, 13.1367f, 13.4336f, 13.3633f,
                           12.4258f, 12.9023f, 13.5313f, 13.9375f, 14.5664f, 15.043f, 15.3398f, 15.2695f,
                           13.6133f, 14.0898f, 14.7188f, 15.125f, 15.7539f, 16.2305f, 16.5273f, 16.457f,
-                          13.332f, 13.8086f, 14.4375f, 14.8438f, 15.4727f, 15.9492f, 16.2461f, 16.1758f,};
+                          13.332f, 13.8086f, 14.4375f, 14.8438f, 15.4727f, 15.9492f, 16.2461f, 16.1758f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
   test.Run();
