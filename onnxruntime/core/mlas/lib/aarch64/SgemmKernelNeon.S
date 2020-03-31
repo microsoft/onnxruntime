@@ -15,10 +15,8 @@ Abstract:
 
 --*/
 
-
-#include "asmmacro.h"
-
         .text
+
 //
 // ClearRowAccumulators
 //
@@ -428,11 +426,9 @@ Return Value:
 
         .macro  SgemmKernelNeonFunction Mode
 
-        .globl  C_UNDERSCORE(MlasSgemmKernel\Mode\())
-#ifndef __APPLE__
-        .type   C_UNDERSCORE(MlasSgemmKernel\Mode\()),%function
-#endif 
-C_UNDERSCORE(MlasSgemmKernel\Mode\()):
+        .globl  MlasSgemmKernel\Mode\()
+        .type   MlasSgemmKernel\Mode\(),%function
+MlasSgemmKernel\Mode\():
 
         stp     d8,d9,[sp,#-32]!
         stp     d10,d11,[sp,#16]

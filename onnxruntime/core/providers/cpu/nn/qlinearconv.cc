@@ -213,7 +213,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
                            real_multiplier,
                            Y_zero_point_value);
 #else
-      GemmlowpMultiplyu8u8_u8(Wdata + group_id * W_offset,
+      GemmlowpMultiplyu8u8_u8(W->template Data<uint8_t>() + group_id * W_offset,
                               col_buffer_data == nullptr ? Xdata : col_buffer_data,
                               Ydata,
                               W_zero_point_value,
