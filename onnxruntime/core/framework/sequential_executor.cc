@@ -235,24 +235,26 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node());
 #endif
 
-    std::string node_name;
-    if (is_profiler_enabled) {
-      // Node name field is often blank in execution graph, so derive something meaningful for profile traces and logs.
-      node_name = node.Name().empty() ? node.OpType() + "_" + std::to_string(node_index) : node.Name();
+    const std::string node_name_for_profiling = [&]() -> std::string {
+      if (!is_profiler_enabled) return {};
+      // Derive something meaningful for profile traces and logs if node name field is blank in execution graph 
+      return node.Name().empty() ? MakeString(node.OpType(), "_", std::to_string(node_index)) : node.Name();
+    }();
 
+    if (is_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     node_name + "_fence_before",
+                                                     node_name_for_profiling + "_fence_before",
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
 
       // call compute on the kernel
-      VLOGS(logger, 1) << "Computing kernel: " << node_name;
+      VLOGS(logger, 1) << "Computing kernel: " << node_name_for_profiling;
 
       kernel_begin_time = session_state.Profiler().StartTime();
 
       // Calculate total input sizes for this operation.
       CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
-                               input_activation_sizes,input_parameter_sizes, node_name);
+                               input_activation_sizes,input_parameter_sizes, node_name_for_profiling);
     }
 
 #ifdef CONCURRENCY_VISUALIZER
@@ -282,12 +284,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     if (is_profiler_enabled) {
       // Calculate total output sizes for this operation.
-      CalculateTotalOutputSizes(&op_kernel_context, total_output_sizes, node_name);
+      CalculateTotalOutputSizes(&op_kernel_context, total_output_sizes, node_name_for_profiling);
 
 #if defined(TRACE_EXECUTION)
       // Trace execution step.
       const Node& node = p_op_kernel->Node();
-      std::cout << "Executed op kernel node " << node_name
+      std::cout << "Executed op kernel node " << node_name_for_profiling
                 << " Index=" << node.Index()
                 << " OpType=" << node.OpType()
                 << " Name=" << node.Name()
@@ -298,7 +300,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     node_name + "_kernel_time",
+                                                     node_name_for_profiling + "_kernel_time",
                                                      kernel_begin_time,
                                                      // Log additional operation args / info.
                                                      {
@@ -352,7 +354,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
     if (is_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     node_name + "_fence_after",
+                                                     node_name_for_profiling + "_fence_after",
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
