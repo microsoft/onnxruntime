@@ -10,6 +10,7 @@ import struct
 
 import numpy as np
 from onnx import onnx_pb as onnx_proto
+from onnx import shape_inference
 
 __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
@@ -268,7 +269,8 @@ class ONNXQuantizer:
 
     def __init__(self, model, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
                  quantization_params, nodes_to_quantize):
-        self.model = model
+        self.model = shape_inference.infer_shapes(model)
+        self.value_infos = {vi.name: vi for vi in self.model.graph.value_info}
         self.per_channel = per_channel  # weight-pack per channel
         self.mode = mode  # QuantizationMode.Value
         self.static = static  # use static quantization for inputs.
@@ -310,12 +312,14 @@ class ONNXQuantizer:
                     new_list += self._quantize_convolution(node, new_list)
                 elif node.op_type == 'MatMul':
                     new_list += self._quantize_matmul(node, new_list)
-                elif node.op_type == 'Gather':
+                elif node.op_type == 'Gather' and self._is_valid_quantize_value(node.input[0]):
                     new_list += self._quantize_gather_ops(node, new_list)
                 elif node.op_type == 'Relu' or node.op_type == 'Clip':
                     new_list += self._handle_activation_ops(node, new_list)
                 else:
                     new_list += self._handle_other_ops(node, new_list)
+
+        new_list += self._dequantize_outputs(new_list)
 
         # extend is used to append to the list for a protobuf fields
         # https://developers.google.com/protocol-buffers/docs/reference/python-generated?csw=1#fields
@@ -346,6 +350,14 @@ class ONNXQuantizer:
                 'Model contains conv operator weights in {}. Only float type quantization is supported.'.format(
                     type_to_name[initializer.data_type]))
         return weights
+
+    def _is_valid_quantize_value(self, value_name):
+        if value_name in self.value_infos:
+            value_info = self.value_infos[value_name]
+            return value_info.type.HasField('tensor_type') and value_info.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT
+        weight = _find_by_name(value_name, self.model.graph.initializer)
+        return weight is not None and weight.data_type == onnx_proto.TensorProto.FLOAT
+
 
     def _remove_quantized_weights(self):
         ''' Remove the weights which are already quantized from graph initializer list.
@@ -921,6 +933,31 @@ class ONNXQuantizer:
 
         return (quantized_input_names, zero_point_names, scale_names, nodes)
 
+    def _dequantize_value(self, value_name, new_nodes_list):
+        '''
+        Given a value (input/output) which is quantized, add a DequantizeLinear node to dequantize
+        it back to float32
+
+            parameter value_name: value to dequantize
+            parameter new_nodes_list: List of new nodes created before processing current node
+            return: None if there is already a DequantizeLinear node that dequantizes it
+                    A DequantizeLinear node otherwise
+        '''
+        if value_name in self.quantized_value_map:
+            quantized_value = self.quantized_value_map[value_name]
+            # Add DequantizeLinear Node for this input
+            dqlinear_name = value_name + "_DequantizeLinear"
+            dqlinear_node = _find_node_by_name(dqlinear_name, self.model.graph, new_nodes_list)
+            if dqlinear_node is None:
+                dqlinear_inputs = [quantized_value.q_name, quantized_value.scale_name, quantized_value.zp_name]
+                dequantize_node = onnx.helper.make_node("DequantizeLinear", dqlinear_inputs, [value_name],
+                                                        dqlinear_name)
+                return dequantize_node
+            else:
+                # DQ op is already present, assert it's output matches the input of current node
+                assert (value_name == dqlinear_node.output[0])
+        return None
+
     def _handle_other_ops(self, node, new_nodes_list):
         '''
         Given a node which does not support quantization(Conv, Matmul, Gather), this method
@@ -933,24 +970,27 @@ class ONNXQuantizer:
         '''
         nodes = []
         for index, node_input in enumerate(node.input):
-            if node_input in self.quantized_value_map:
-                node_input_altered = True
-                input_name = node.input[index]
-                quantized_value = self.quantized_value_map[input_name]
-                # Add DequantizeLinear Node for this input
-                dqlinear_name = input_name + "_DequantizeLinear"
-                dqlinear_node = _find_node_by_name(dqlinear_name, self.model.graph, new_nodes_list)
-                if dqlinear_node is None:
-                    dqlinear_inputs = [quantized_value.q_name, quantized_value.scale_name, quantized_value.zp_name]
-                    dequantize_node = onnx.helper.make_node("DequantizeLinear", dqlinear_inputs, [input_name],
-                                                            dqlinear_name)
-                    nodes.append(dequantize_node)
-                else:
-                    # DQ op is already present, assert it's output matches the input of current node
-                    assert (input_name == dqlinear_node.output[0])
+            dequantize_node = self._dequantize_value(node_input, new_nodes_list)
+            if dequantize_node is not None:
+                nodes.append(dequantize_node)
 
         # Append the original node
         nodes.append(node)
+        return nodes
+
+    def _dequantize_outputs(self, new_nodes_list):
+        '''
+        Dequantize output if it is quantized
+
+            parameter new_nodes_list: List of new nodes created before processing current node
+            return: List of new nodes created
+        '''
+        nodes = []
+        for output in self.model.graph.output:
+            dequantize_node = self._dequantize_value(output.name, new_nodes_list)
+            if dequantize_node is not None:
+                nodes.append(dequantize_node)
+
         return nodes
 
     def _handle_activation_ops(self, node, new_node_list):
