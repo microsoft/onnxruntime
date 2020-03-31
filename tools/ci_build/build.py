@@ -123,6 +123,11 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--android_sdk_path", type=str, help='Path to the Android SDK')
     parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
 
+    parser.add_argument("--ios", action='store_true', help="build for ios")
+    parser.add_argument("--ios_sysroot", default="", help="Path to ios sysroot")
+    parser.add_argument("--ios_toolchain_dir", default="", help="Path to ios toolchain binaries")
+
+
     # Arguments needed by CI
     parser.add_argument("--cmake_path", default="cmake", help="Path to the CMake program.")
     parser.add_argument("--ctest_path", default="ctest", help="Path to the CTest program.")
@@ -373,6 +378,23 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path + "/build/cmake/android.toolchain.cmake",
                 "-DANDROID_PLATFORM=android-" + str(args.android_api),
                 "-DANDROID_ABI=" + str(args.android_abi)]
+    
+    if args.ios:
+        needed_args = [len(args.ios_sysroot) == 0, not args.arm64 and not args.arm, len(args.ios_toolchain_dir) == 0]
+        arg_names = ["--ios_sysroot <path to sysroot>", "--arm or --arm64", "--ios_toolchain_dir <path to toolchain>"]
+        if any(needed_args):
+            raise BuildError("iOS build canceled due to missing arguments: " + (val + "," for val, cond in zip(arg_names, needed_args) if cond))
+        compilers = sorted(glob.glob(args.ios_toolchain_dir + "/bin/*-clang*"))
+        os.environ["PATH"] = args.ios_toolchain_dir + "/bin:" + os.environ.get("PATH", "")
+        os.environ["LD_LIBRARY_PATH"] = args.ios_toolchain_dir + "/lib:" + os.environ.get("LD_LIBRARY_PATH", "")
+        if len(compilers) != 2:
+            raise BuildError("error identifying compilers in ios_toolchain_dir")
+        cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + ("arm64" if args.arm64 else "arm"),
+                       "-DCMAKE_SYSTEM_NAME=iOSCross",
+                       "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
+                       "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot, 
+                       "-DCMAKE_C_COMPILER=" + compilers[0], 
+                       "-DCMAKE_CXX_COMPILER=" + compilers[1]]
 
     if path_to_protoc_exe:
         cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
@@ -805,8 +827,8 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use
         run_subprocess(args, cwd=cwd)
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
-    if (args.arm or args.arm64) and not is_windows():
-        raise BuildError('Currently only support building protoc for Windows host while cross-compiling for ARM/ARM64 arch')
+    if (args.arm or args.arm64) and (not is_windows() and not args.ios):
+        raise BuildError('Currently only support building protoc for Windows host while cross-compiling for ARM/ARM64 arch and linux cross-compiling iOS')
 
     log.info("Building protoc for host to be used in cross-compiled build process")
     protoc_build_dir = os.path.join(os.getcwd(), build_dir, 'host_protoc')
@@ -967,9 +989,13 @@ def main():
                 cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_args.append('-DCMAKE_TOOLCHAIN_FILE=' + os.path.join(source_dir, 'cmake', 'wcos_toolchain.cmake'))
-        if args.android:
-            # Cross-compiling for Android
+        
+        if (args.android or args.ios) and not args.path_to_protoc_exe:
+            # Cross-compiling for Android and iOS
             path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
+        else :
+            path_to_protoc_exe = args.path_to_protoc_exe
+            
         if is_ubuntu_1604():
             if (args.arm or args.arm64):
                 raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
@@ -984,8 +1010,6 @@ def main():
         if args.enable_onnx_tests:
             setup_test_data(build_dir, configs)
 
-        if args.path_to_protoc_exe:
-            path_to_protoc_exe = args.path_to_protoc_exe
 
         generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, tensorrt_home, path_to_protoc_exe, configs, cmake_extra_defines,
                             args, cmake_extra_args)
