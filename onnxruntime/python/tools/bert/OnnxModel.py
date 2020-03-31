@@ -304,6 +304,18 @@ class OnnxModel:
 
         return -1
 
+    def is_constant_with_specified_dimension(self, output_name, dimensions, description):
+        value = self.get_constant_value(output_name)
+        if value is None:
+            logger.debug(f"{description} {output_name} is not initializer.")
+            return False
+
+        if len(value.shape) != dimensions:
+            logger.debug(f"{description} {output_name} shall have {dimensions} dimensions. Got shape {value.shape}")
+            return False
+
+        return True
+
     def has_constant_input(self, node, expected_value, delta=0.000001):
         return self.find_constant_input(node, expected_value, delta) >= 0
 

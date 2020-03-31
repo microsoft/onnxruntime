@@ -991,10 +991,17 @@ class BertOnnxModel(OnnxModel):
                                                   output_name_to_node):
                     continue
 
-                nodes_to_remove.extend(subgraph_nodes)
-
                 weight_input = mul_node.input[1 - self.input_index(div_node.output[0], mul_node)]
                 bias_input = last_add_node.input[1 - self.input_index(mul_node.output[0], last_add_node)]
+
+                if not self.is_constant_with_specified_dimension(weight_input, 1, "layernorm weight"):
+                    continue
+
+                if not self.is_constant_with_specified_dimension(bias_input, 1, "layernorm bias"):
+                    continue
+
+                nodes_to_remove.extend(subgraph_nodes)
+
                 normalize_node = onnx.helper.make_node('LayerNormalization',
                                                        inputs=[node.input[0], weight_input, bias_input],
                                                        outputs=[last_add_node.output[0]])
