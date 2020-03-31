@@ -56,6 +56,11 @@ namespace Dml
         
         void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
 
+        bool HasUnsubmittedWork() override
+        {
+            return m_operationsRecordedInCurrentCommandList || !m_pendingCommandLists.empty();
+        }
+
     private:
 
         std::shared_ptr<CommandQueue> m_queue;
