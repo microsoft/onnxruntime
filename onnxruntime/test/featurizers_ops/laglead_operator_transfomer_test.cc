@@ -16,8 +16,6 @@ namespace onnxruntime {
 namespace test {
 namespace {
 
-//using InputTupleType = std::tuple<std::vector<std::string> const &, int64_t const &>;
-//using EstimatorT = NS::Featurizers::GrainedLagLeadOperatorEstimator<int64_t>;
 template<typename EstimatorT, typename InputTupleType>
 std::vector<uint8_t> GetStream(EstimatorT& estimator, const std::vector<InputTupleType>& trainingBatches) {
   NS::TestHelpers::Train<EstimatorT, InputTupleType>(estimator, trainingBatches);
@@ -31,19 +29,25 @@ std::vector<uint8_t> GetStream(EstimatorT& estimator, const std::vector<InputTup
 
 TEST(FeaturizersTests, Grained_LagLead_2_grain_horizon_2_lead_1_lead_2_long) {
   //parameter setting
-  using InputType = int64_t;
+  using InputType = float;
   using GrainType = std::vector<std::string>;
   NS::AnnotationMapsPtr                                            pAllColumnAnnotations(NS::CreateTestAnnotationMapsPtr(1));
   NS::Featurizers::GrainedLagLeadOperatorEstimator<InputType>      estimator(pAllColumnAnnotations, 2, {1, 2});
-  using GrainedInputType = std::tuple<GrainType const&, InputType const&>;
+  using GrainedInputType = typename NS::Featurizers::GrainedLagLeadOperatorEstimator<InputType>::InputType;
   const GrainType grain1({"one"});
-  const GrainedInputType tup1(grain1, static_cast<InputType>(10));
-  const GrainedInputType tup2(grain1, static_cast<InputType>(11));
-  const GrainedInputType tup3(grain1, static_cast<InputType>(12));
+  const InputType value1(static_cast<InputType>(10));
+  const InputType value2(static_cast<InputType>(11));
+  const InputType value3(static_cast<InputType>(12));
+  const GrainedInputType tup1(grain1, value1);
+  const GrainedInputType tup2(grain1, value2);
+  const GrainedInputType tup3(grain1, value3);
   const GrainType grain2({"two"});
-  const GrainedInputType tup4 (grain2, static_cast<InputType>(20));
-  const GrainedInputType tup5 (grain2, static_cast<InputType>(21));
-  const GrainedInputType tup6 (grain2, static_cast<InputType>(22));
+  const InputType value4(static_cast<InputType>(20));
+  const InputType value5(static_cast<InputType>(21));
+  const InputType value6(static_cast<InputType>(22));
+  const GrainedInputType tup4 (grain2, value4);
+  const GrainedInputType tup5 (grain2, value5);
+  const GrainedInputType tup6 (grain2, value6);
   auto training_batch = NS::TestHelpers::make_vector<std::tuple<GrainType const &, InputType const &>>(tup1, tup2, tup3, tup4, tup5, tup6);
 
   auto stream = GetStream(estimator, training_batch);
@@ -51,14 +55,14 @@ TEST(FeaturizersTests, Grained_LagLead_2_grain_horizon_2_lead_1_lead_2_long) {
   OpTester test("LagLeadOperatorTransformer", 1, onnxruntime::kMSFeaturizersDomain);
   test.AddInput<uint8_t>("State", {dim}, stream);
   test.AddInput<std::string>("Grains", {6, 1}, {"one", "one", "one", "two", "two", "two"});
-  test.AddInput<int64_t>("Target", {6}, {10, 11, 12, 20, 21, 22});
+  test.AddInput<float>("Target", {6}, {10, 11, 12, 20, 21, 22});
   test.AddOutput<std::string>("OutputGrains", {6, 1}, {"one", "two", "one", "one", "two", "two"});
-  test.AddOutput<double>("Output", {6, 2, 2}, {10, 11, 11, 12,
+  test.AddOutput<float>("Output", {6, 2, 2}, {10, 11, 11, 12,
                                                20, 21, 21, 22,
-                                               11, 12, 12, NS::Traits<double>::CreateNullValue(),
-                                               12, NS::Traits<double>::CreateNullValue(), NS::Traits<double>::CreateNullValue(), NS::Traits<double>::CreateNullValue(),
-                                               21, 22, 22, NS::Traits<double>::CreateNullValue(),
-                                               22, NS::Traits<double>::CreateNullValue(), NS::Traits<double>::CreateNullValue(), NS::Traits<double>::CreateNullValue()});
+                                               11, 12, 12, NS::Traits<float>::CreateNullValue(),
+                                               12, NS::Traits<float>::CreateNullValue(), NS::Traits<float>::CreateNullValue(), NS::Traits<float>::CreateNullValue(),
+                                               21, 22, 22, NS::Traits<float>::CreateNullValue(),
+                                               22, NS::Traits<float>::CreateNullValue(), NS::Traits<float>::CreateNullValue(), NS::Traits<float>::CreateNullValue()});
 
   test.Run();
 }
@@ -69,15 +73,21 @@ TEST(FeaturizersTests, Grained_LagLead_2_grain_horizon_2_lead_1_lead_2_double) {
   using GrainType = std::vector<std::string>;
   NS::AnnotationMapsPtr                                            pAllColumnAnnotations(NS::CreateTestAnnotationMapsPtr(1));
   NS::Featurizers::GrainedLagLeadOperatorEstimator<InputType>      estimator(pAllColumnAnnotations, 2, {1, 2});
-  using GrainedInputType = std::tuple<GrainType const&, InputType const&>;
+  using GrainedInputType = typename NS::Featurizers::GrainedLagLeadOperatorEstimator<InputType>::InputType;
   const GrainType grain1({"one"});
-  const GrainedInputType tup1(grain1, static_cast<InputType>(10));
-  const GrainedInputType tup2(grain1, static_cast<InputType>(11));
-  const GrainedInputType tup3(grain1, static_cast<InputType>(12));
+  const InputType value1(static_cast<InputType>(10));
+  const InputType value2(static_cast<InputType>(11));
+  const InputType value3(static_cast<InputType>(12));
+  const GrainedInputType tup1(grain1, value1);
+  const GrainedInputType tup2(grain1, value2);
+  const GrainedInputType tup3(grain1, value3);
   const GrainType grain2({"two"});
-  const GrainedInputType tup4(grain2, static_cast<InputType>(20));
-  const GrainedInputType tup5(grain2, static_cast<InputType>(21));
-  const GrainedInputType tup6(grain2, static_cast<InputType>(22));
+  const InputType value4(static_cast<InputType>(20));
+  const InputType value5(static_cast<InputType>(21));
+  const InputType value6(static_cast<InputType>(22));
+  const GrainedInputType tup4 (grain2, value4);
+  const GrainedInputType tup5 (grain2, value5);
+  const GrainedInputType tup6 (grain2, value6);
   auto training_batch = NS::TestHelpers::make_vector<std::tuple<GrainType const &, InputType const &>>(tup1, tup2, tup3, tup4, tup5, tup6);
 
   auto stream = GetStream(estimator, training_batch);

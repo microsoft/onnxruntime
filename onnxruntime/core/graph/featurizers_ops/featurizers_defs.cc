@@ -749,7 +749,7 @@ void RegisterLagLeadOperatorFeaturizerVer1() {
           1,
           "Output",
           "Output tensor of shape [R][P][Q]",
-          "OutputT")
+          "T")
       .TypeConstraint(
           "T0",
           {"tensor(uint8)"},
@@ -760,24 +760,23 @@ void RegisterLagLeadOperatorFeaturizerVer1() {
           "No information is available")
       .TypeConstraint(
           "T",
-          {"tensor(int8)", "tensor(uint8)", "tensor(int16)",  "tensor(uint16)", "tensor(int32)", "tensor(uint32)", "tensor(int64)", "tensor(uint64)", "tensor(float)", "tensor(double)"},
-          "No information is available")
-      .TypeConstraint(
-          "OutputT",
-          {"tensor(double)"},
+          {"tensor(float)", "tensor(double)"},
           "No information is available")
       .TypeAndShapeInferenceFunction(
           [](ONNX_NAMESPACE::InferenceContext& ctx) {
             propagateElemTypeFromInputToOutput(ctx, 1, 0);
-            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, 1);
-            if (hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
+            auto input_elem_type = ctx.getInputType(2)->tensor_type().elem_type();
+            if (input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+              propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1);
+            } else if (input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
+              propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, 1);
+            } else {
+              fail_type_inference("input 2 is expected to have an accepted type");
+            }
+            if (hasInputShape(ctx, 1)) {
               const auto& grains_shape = getInputShape(ctx, 1);
-              const auto& target_shape = getInputShape(ctx, 2);
               if (grains_shape.dim_size() != 2) {
                 fail_shape_inference("Expecting Grains to have 2 dimensions");
-              }
-              if (target_shape.dim_size() != 1) {
-                fail_shape_inference("Expecting Target to have 1 dimensions");
               }
               propagateShapeFromInputToOutput(ctx, 1, 0);
               ONNX_NAMESPACE::TensorShapeProto shape;
@@ -785,6 +784,12 @@ void RegisterLagLeadOperatorFeaturizerVer1() {
               shape.add_dim();
               shape.add_dim();
               ONNX_NAMESPACE::updateOutputShape(ctx, 1, shape);
+            }
+            if (hasInputShape(ctx, 2)) {
+              const auto& target_shape = getInputShape(ctx, 2);
+              if (target_shape.dim_size() != 1) {
+                fail_shape_inference("Expecting Target to have 1 dimensions");
+              }
             }
           });
 }
