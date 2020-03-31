@@ -14,18 +14,18 @@ namespace NS = Microsoft::Featurizer;
 namespace onnxruntime {
 namespace featurizers {
 
-double ExtractNumFromNullable(float const & nullableValue) {
-  return static_cast<double>(nullableValue);
-}
+// double ExtractNumFromNullable(float const & nullableValue) {
+//   return static_cast<double>(nullableValue);
+// }
 
-double ExtractNumFromNullable(double const & nullableValue) {
-  return nullableValue;
-}
+// double ExtractNumFromNullable(double const & nullableValue) {
+//   return nullableValue;
+// }
 
-template <typename T>
-double ExtractNumFromNullable(nonstd::optional<T> const & nullableValue) {
-  return nullableValue.has_value() ? static_cast<double>(*nullableValue) : NS::Traits<double>::CreateNullValue();
-}
+// template <typename T>
+// double ExtractNumFromNullable(nonstd::optional<T> const & nullableValue) {
+//   return nullableValue.has_value() ? static_cast<double>(*nullableValue) : NS::Traits<double>::CreateNullValue();
+// }
 
 template <typename T>
 struct LagLeadOperatorTransformerImpl {
@@ -33,7 +33,7 @@ struct LagLeadOperatorTransformerImpl {
 
     using GrainT = std::vector<std::string>;
     using EstimatorT = Microsoft::Featurizer::Featurizers::GrainedLagLeadOperatorEstimator<T>;
-    using GrainedInputType = EstimatorT::InputType;
+    using GrainedInputType = typename EstimatorT::InputType;
     using OutputMatrixDataType = typename NS::Traits<T>::nullable_type;
     using OutputMatrixType = NS::RowMajMatrix<OutputMatrixDataType>;
     using OutputType = std::tuple<GrainT, OutputMatrixType>;
@@ -61,34 +61,20 @@ struct LagLeadOperatorTransformerImpl {
     // Prepare the Output
     const int64_t output_dim_0 = grains_tensor->Shape()[0];
 
-    double* output_data;
+    T* output_data;
     bool has_allocate_output_data = false;
     std::function<void(OutputType)> callback_fn;
-    callback_fn = [&ctx, &output_grains_data, &output_data, &has_allocate_output_data, &output_dim_0](OutputType value) -> void {
-      GrainT output_grains = std::get<GrainT>(value);
-      OutputMatrixType output_matrix = std::get<OutputMatrixType>(value);
+    callback_fn = [ctx, &output_grains_data, &output_data, &has_allocate_output_data, output_dim_0](OutputType value) -> void {
+      GrainT const output_grains(std::get<GrainT>(value));
+      OutputMatrixType const output_matrix(std::get<OutputMatrixType>(value));
       if (!has_allocate_output_data) {
         TensorShape output_shape({output_dim_0, output_matrix.rows(), output_matrix.cols()});
         Tensor* output_tensor(ctx->Output(1, output_shape));
-        output_data = output_tensor->MutableData<double>();
+        output_data = output_tensor->MutableData<T>();
         has_allocate_output_data = true;
       }
-      output_grains_data = std::transform(
-                             output_grains.begin(),
-                             output_grains.end(),
-                             output_grains_data,
-                             [](std::string const & s) -> std::string {
-                               return s;
-                             }
-                           );
-      output_data = std::transform(
-                      output_matrix.data(),
-                      output_matrix.data() + output_matrix.size(),
-                      output_data,
-                      [](OutputMatrixDataType const & x) -> double {
-                        return ExtractNumFromNullable(x);
-                      }
-                    );
+      output_grains_data = std::copy(output_grains.begin(), output_grains.end(), output_grains_data);
+      output_data = std::copy(output_matrix.data(), output_matrix.data() + output_matrix.size(), output_data);
     };
 
     // Transform
@@ -98,7 +84,9 @@ struct LagLeadOperatorTransformerImpl {
       //Prepare Input and Output
       grains.clear();
       std::copy(grains_data, grains_data + grains_num, std::back_inserter(grains));
-      GrainedInputType const input_tuple(grains, *target_data);
+      GrainT const grains_const_ref(grains);
+      T const target_data_const_ref(static_cast<T>(*target_data));
+      GrainedInputType const input_tuple(grains_const_ref, target_data_const_ref);
       //Execute
       transformer.execute(input_tuple, callback_fn);
       //Pointer Increment
@@ -115,8 +103,7 @@ class LagLeadOperatorTransformer final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    utils::MLTypeCallDispatcher<LagLeadOperatorTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
-                                int64_t, uint64_t, float, double>
+    utils::MLTypeCallDispatcher<LagLeadOperatorTransformerImpl, float, double>
         t_disp(ctx->Input<Tensor>(2)->GetElementType());
     t_disp.Invoke(ctx);
     return Status::OK();
@@ -131,15 +118,7 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T0", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("GrainT", DataTypeImpl::GetTensorType<std::string>())
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<int8_t>(),
-                              DataTypeImpl::GetTensorType<uint8_t>(),
-                              DataTypeImpl::GetTensorType<int16_t>(),
-                              DataTypeImpl::GetTensorType<uint16_t>(),
-                              DataTypeImpl::GetTensorType<int32_t>(),
-                              DataTypeImpl::GetTensorType<uint32_t>(),
-                              DataTypeImpl::GetTensorType<int64_t>(),
-                              DataTypeImpl::GetTensorType<uint64_t>(),
-                              DataTypeImpl::GetTensorType<float>(),
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>()
                               }),
     LagLeadOperatorTransformer);
