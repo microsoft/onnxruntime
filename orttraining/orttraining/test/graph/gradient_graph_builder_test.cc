@@ -291,7 +291,6 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithProfiler) {
   ASSERT_TRUE(count > 1);
 }
 
-#ifdef USE_CUDA
 static TrainingSession::TrainingConfiguration MakeBertTrainingConfig() {
   TrainingSession::TrainingConfiguration config{};
   config.model_with_training_graph_path = ORT_TSTR("testdata/bert_toy_optimized_bw.onnx");
@@ -320,6 +319,7 @@ static TrainingSession::TrainingConfiguration MakeBertTrainingConfig() {
   return config;
 }
 
+#ifdef USE_CUDA
 static void RunBertTrainingWithChecks(
     const SessionOptions& so,
     const PathString& backprop_model_file) {
@@ -1727,6 +1727,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline_BertToy) {
   PipelineSimpleSplitter splitter;
   splitter.Split(backprop_model_file, cuts);
 
+#ifdef USE_CUDA
   // create training sessions
   std::unique_ptr<Environment> env;
   EXPECT_TRUE(Environment::Create(nullptr, env).IsOK());
@@ -1750,6 +1751,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline_BertToy) {
     ASSERT_TRUE(sub_sess.sess->Load(cuts[sub_id].sub_model_file).IsOK());
     ASSERT_TRUE(sub_sess.sess->Initialize().IsOK());
   }
+#endif
 }
 
 }  // namespace test
