@@ -393,9 +393,7 @@ class PlannerImpl {
       // Identify where each output of this node should be allocated.
       // This is determined by the opkernel bound to the node.
       const KernelCreateInfo* kernel_create_info = nullptr;
-      auto st = kernel_registry_.SearchKernelRegistry(*pnode, &kernel_create_info);
-      if (!st.IsOK())
-        return Status(ONNXRUNTIME, NOT_IMPLEMENTED, st.ErrorMessage());
+      ORT_RETURN_IF_ERROR(kernel_registry_.SearchKernelRegistry(*pnode, &kernel_create_info));
       auto p_kernel_def = kernel_create_info->kernel_def.get();
       if (nullptr == p_kernel_def) {
         std::ostringstream errormsg;
@@ -404,7 +402,7 @@ class PlannerImpl {
           errormsg << "(" << pnode->Op()->since_version() << ")";
         }
         if (!pnode->Name().empty()) errormsg << " (node " << pnode->Name() << ")";
-        return Status(ONNXRUNTIME, NOT_IMPLEMENTED, errormsg.str());
+        return Status(ONNXRUNTIME, FAIL, errormsg.str());
       }
 
       auto exec_provider = execution_providers_.Get(*pnode);
