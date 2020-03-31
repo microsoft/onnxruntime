@@ -45,7 +45,7 @@ TopK<inputk>::TopK(const OpKernelInfo& info) : CudaKernel(info) {
 #define TOPKIMPL(T) TopKImpl<T>(this, tensor_X->Data<T>(),                         \
                                 static_cast<T*>(tensor_V->MutableDataRaw()),       \
                                 static_cast<int64_t*>(tensor_I->MutableDataRaw()), \
-                                elem_nums_cuda.GpuPtr(),                           \
+                                elem_nums_cuda,                                    \
                                 elem_nums.size(),                                  \
                                 axis, K_, largest_, sorted_, N, dimension)
 
@@ -53,8 +53,8 @@ template <bool inputk>
 Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {
   auto tensor_X = ctx->Input<Tensor>(0);
   ORT_ENFORCE(nullptr != tensor_X);
-  auto rank = static_cast<int64_t>(tensor_X->Shape().NumDimensions());
-  auto axis = axis_ < 0 ? rank + axis_ : axis_;
+  int32_t rank = static_cast<int32_t>(tensor_X->Shape().NumDimensions());
+  int32_t axis = static_cast<int32_t>(axis_ < 0 ? rank + axis_ : axis_);
   ORT_ENFORCE(axis > -1 && axis < rank);
 
   if (inputk) {
@@ -80,8 +80,7 @@ Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   auto N = elem_nums[0] / dimension;
-  CudaAsyncBuffer<int64_t> elem_nums_cuda(this, elem_nums);
-  ORT_RETURN_IF_ERROR(elem_nums_cuda.CopyToGpu());
+  TArray<int64_t> elem_nums_cuda(elem_nums);
 
   auto prim_type = tensor_X->DataType()->AsPrimitiveDataType();
   if (prim_type == nullptr) {

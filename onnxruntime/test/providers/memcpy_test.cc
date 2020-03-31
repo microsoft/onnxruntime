@@ -10,7 +10,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/utils.h"
-#include "core/framework/path_lib.h"
+#include "core/platform/path_lib.h"
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "test/test_environment.h"
 
@@ -25,7 +25,7 @@ void PutAllNodesOnOneProvider(Graph& graph, const std::string& provider_type) {
 
 namespace test {
 TEST(MemcpyTest, copy1) {
-  concurrency::ThreadPool tp{"test", 1};
+  concurrency::ThreadPool tp(&onnxruntime::Env::Default(), ThreadOptions(), ORT_TSTR("MemcpyTest"), 2, true);
 
   ExecutionProviders execution_providers;
   CPUExecutionProviderInfo epi;

@@ -15,7 +15,7 @@ class SqeuclideanTest : public ::testing::Test {
 
 using MyTypes = Types<Sqeuclidean<double>, SqeuclideanWithEigen<double> >;
 
-TYPED_TEST_CASE(SqeuclideanTest, MyTypes);
+TYPED_TEST_SUITE(SqeuclideanTest, MyTypes);
 
 TYPED_TEST(SqeuclideanTest, test1) {
   double a = 10;

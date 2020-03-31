@@ -12,6 +12,15 @@
 * Setting graph optimization level for each session.
 * Dynamically loading custom ops. [Instructions](/docs/AddingCustomOp.md)
 * Ability to load a model from a byte array. See ```OrtCreateSessionFromArray``` in [onnxruntime_c_api.h](/include/onnxruntime/core/session/onnxruntime_c_api.h).
+* **Global/shared threadpools:** By default each session creates its own set of threadpools. In situations where multiple
+sessions need to be created (to infer different models) in the same process, you end up with several threadpools created
+by each session. In order to address this inefficiency we introduce a new feature called global/shared threadpools.
+The basic idea here is to share a set of global threadpools across multiple sessions. Typical usage of this feature
+is as follows
+   * Populate ```ThreadingOptions```. Use the value of 0 for ORT to pick the defaults.
+   * Create env using ```CreateEnvWithGlobalThreadPools()```
+   * Create session and call ```DisablePerSessionThreads()``` on the session options object
+   * Call ```Run()``` as usual
 
 ## Usage Overview
 

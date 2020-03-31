@@ -21,13 +21,13 @@
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gelu_approximation.h"
+#include "core/optimizer/fast_gelu_fusion.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/mlas/inc/mlas.h"
-#include "core/session/inference_session.h"
 
 namespace onnxruntime {
 
@@ -135,6 +135,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
       std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
       transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(cuda_execution_providers));
 #endif
     } break;
 

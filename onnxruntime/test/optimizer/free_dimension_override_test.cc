@@ -30,10 +30,10 @@ TEST(FreeDimensionOverrideTransformerTest, Test) {
   // and DATA_CHANNEL. Supplying these overrides to the transformer should replace those free
   // dimensions with values of 1 and 42, respectively.
   std::vector<FreeDimensionOverride> overrides =
-  {
-    FreeDimensionOverride{ onnx::DATA_BATCH, 1 },
-    FreeDimensionOverride{ onnx::DATA_CHANNEL, 42 },
-  };
+      {
+          FreeDimensionOverride{onnx::DATA_BATCH, 1},
+          FreeDimensionOverride{onnx::DATA_CHANNEL, 42},
+      };
 
   auto graph_transformer = onnxruntime::make_unique<FreeDimensionOverrideTransformer>(overrides);
 
@@ -46,10 +46,10 @@ TEST(FreeDimensionOverrideTransformerTest, Test) {
   // Verify that the shape of the input graph has the correct values
 
   const auto& graph_inputs = graph.GetInputs();
-  ASSERT_TRUE(graph_inputs.size() == 1); // This model only has a single input ('x')
+  ASSERT_TRUE(graph_inputs.size() == 1);  // This model only has a single input ('x')
 
   const auto* input_shape = graph_inputs[0]->Shape();
-  ASSERT_TRUE(input_shape->dim_size() == 3); // Model takes a 3D tensor as input; two of those dimensions are (were) free dimensions
+  ASSERT_TRUE(input_shape->dim_size() == 3);  // Model takes a 3D tensor as input; two of those dimensions are (were) free dimensions
 
   ASSERT_TRUE(input_shape->dim(0).denotation() == onnx::DATA_BATCH);
   ASSERT_TRUE(input_shape->dim(0).has_dim_value());
@@ -58,6 +58,12 @@ TEST(FreeDimensionOverrideTransformerTest, Test) {
   ASSERT_TRUE(input_shape->dim(1).denotation() == onnx::DATA_CHANNEL);
   ASSERT_TRUE(input_shape->dim(1).has_dim_value());
   ASSERT_TRUE(input_shape->dim(1).dim_value() == 42);
+
+  graph_transformer = onnxruntime::make_unique<FreeDimensionOverrideTransformer>(overrides);
+  bool modified = false;
+  ASSERT_TRUE(graph_transformer->Apply(graph, modified,
+    DefaultLoggingManager().DefaultLogger()).IsOK());
+  ASSERT_FALSE(modified); // no overrides apply anymore
 }
 
 }  // namespace test

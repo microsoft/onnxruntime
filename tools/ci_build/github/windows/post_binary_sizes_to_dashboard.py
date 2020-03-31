@@ -54,13 +54,6 @@ def write_to_db(binary_size_data, args):
     try:
         cursor = cnx.cursor()
 
-        #delete old records
-        delete_query = ('DELETE FROM onnxruntime.binary_size '
-            'WHERE build_time < DATE_SUB(Now(), INTERVAL 30 DAY);'
-        )
-        
-        cursor.execute(delete_query)
-
         #insert current records
         for row in binary_size_data:
             insert_query = ('INSERT INTO onnxruntime.binary_size '

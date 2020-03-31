@@ -1085,8 +1085,7 @@ protected:
         MLAS_ACTIVATION Activation;
         Activation.ActivationKind = MlasIdentityActivation;
 
-        MlasNchwcConv(2,
-                      InputShape,
+        MlasNchwcConv(InputShape,
                       KernelShape,
                       DilationShape,
                       Padding,
@@ -1503,7 +1502,6 @@ protected:
         MlasReorderInput(InputShape, Input, NchwcInput);
 
         MlasNchwcPool(PoolingKind,
-                      2,
                       NchwcInputShape,
                       KernelShape,
                       nullptr,
@@ -2111,7 +2109,9 @@ main(
 
         printf("Done.\n");
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
-        if(threadpool != nullptr) threadpool = new onnxruntime::concurrency::ThreadPool("test", 2);
+        if (threadpool != nullptr)
+          threadpool = new onnxruntime::concurrency::ThreadPool(
+              &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 2, true, nullptr);
 #else
         break;
 #endif
