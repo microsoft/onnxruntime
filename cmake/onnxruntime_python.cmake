@@ -230,18 +230,6 @@ if (onnxruntime_USE_NGRAPH)
   )
 endif()
 
-#TODO: This is temporary till we build OV from binary
-if (onnxruntime_USE_OPENVINO)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${OPENVINO_NGRAPH_LIB_DIR}/libngraph.so
-        ${OPENVINO_LIB_DIR}/libinference_engine.so
-        ${OPENVINO_LIB_DIR}/plugins.xml
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
-    )
-endif()
-
 if (onnxruntime_USE_TVM)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
@@ -274,7 +262,7 @@ if (onnxruntime_USE_NUPHAR)
 endif()
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  include(onnxruntime_language_interop_ops.cmake)  
+  include(onnxruntime_language_interop_ops.cmake)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy

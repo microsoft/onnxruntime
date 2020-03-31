@@ -34,7 +34,7 @@ elif '--use_cuda' in sys.argv:
 elif '--use_ngraph' in sys.argv:
     package_name = 'onnxruntime-ngraph'
     sys.argv.remove('--use_ngraph')
-    
+
 elif '--use_dnnl' in sys.argv:
     package_name = 'onnxruntime-dnnl'
     sys.argv.remove('--use_dnnl')
@@ -123,12 +123,8 @@ if platform.system() == 'Linux':
   libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
   # nGraph Libs
   libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
-  # OpenVINO Libs (Temporary. Can remove when we are building from binary)
-  libs.extend(['libinference_engine.so'])
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
-  # Openvino Libs
-  libs.extend(['libcpu_extension.so'])
   if nightly_build:
     libs.extend(['libonnxruntime_pywrapper.so'])
 elif platform.system() == "Darwin":
