@@ -259,9 +259,7 @@ else()
   elseif  (onnxruntime_USE_AVX2)
     SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx2")
   elseif  (onnxruntime_USE_AVX512)
-    SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx512f  -mavx512pf  -mavx512er  -mavx512cd  -mavx512vl"
-            " -mavx512bw  -mavx512dq  -mavx512ifma  -mavx512vbmi -mavx512vbmi2 -mavx512vpopcntdq -mavx5124fmaps"
-            " -mavx512vnni -mavx5124vnniw")
+    SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl")
   endif()
 endif()
 
