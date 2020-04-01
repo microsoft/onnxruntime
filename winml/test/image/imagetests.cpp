@@ -710,7 +710,7 @@ TEST_F(ImageTests, ImageBindingInputAndOutput_BindInputTensorAsInspectable) {
 static void TestImageBindingStyleTransfer(const wchar_t* model_file_name, const wchar_t* input_data_image_filename, wchar_t* output_data_image_filename) {
     GPUTEST;
 
-    //this test only checks that the operation completed succefully without crashing
+    //this test only checks that the operation completed successfully without crashing
 
     std::wstring module_path = FileHelpers::GetModulePath();
 
@@ -763,7 +763,7 @@ static void TestImageBindingStyleTransfer(const wchar_t* model_file_name, const 
 }
 
 TEST_F(ImageTests, ImageBindingStyleTransfer) {
-    //this test only checks that the operation completed succefully without crashing
+    //this test only checks that the operation completed successfully without crashing
     TestImageBindingStyleTransfer(L"fns-candy.onnx", L"fish_720.png", L"out_fish_720_StyleTransfer.jpg");
 }
 
@@ -915,7 +915,7 @@ static void BindOutputToSession(BindingLocation bind_location, LearningModelSess
 }
 
 static void SynchronizeGPUWorkloads(const wchar_t* model_file_name, const wchar_t* input_data_image_filename) {
-    //this test only checks that the operations complete succefully without crashing
+    //this test only checks that the operations complete successfully without crashing
     GPUTEST;
     std::wstring module_path = FileHelpers::GetModulePath();
     LearningModelDevice device = nullptr;
