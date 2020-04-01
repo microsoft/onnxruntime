@@ -10,8 +10,8 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-static std::pair<bool, Node*> IsInputTranspose(const Graph& graph, NodeArg& node_arg) {
-  const auto& trans_node = graph.GetProducerNode(node_arg.Name());
+static std::pair<bool, Node*> IsInputTranspose(Graph& graph, NodeArg& node_arg) {
+  Node* trans_node = graph.GetMutableProducerNode(node_arg.Name());
   if (trans_node == nullptr || trans_node->OpType() != "Transpose") {
     return std::make_pair(false, nullptr);
   }
@@ -43,7 +43,7 @@ static std::pair<bool, Node*> IsInputTranspose(const Graph& graph, NodeArg& node
     return std::make_pair(false, nullptr);
   }
 
-  return std::make_pair(true, const_cast<Node*>(trans_node));
+  return std::make_pair(true, trans_node);
 }
 
 static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_map<NodeArg*, size_t>& count_map) {
