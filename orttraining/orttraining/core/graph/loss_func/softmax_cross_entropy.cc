@@ -114,6 +114,7 @@ GraphAugmenter::GraphDefs SoftmaxCrossEntropyLoss::operator()(
 
     if (args.size() == 3) {
       const std::string& weight_name = args[2];
+      // TODO(mzs): change this to return 1-D weights.
       TypeProto* weight_type_proto = GetSparseTypeProto(prediction_arg,
                                                         ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
                                                         graph_defs);

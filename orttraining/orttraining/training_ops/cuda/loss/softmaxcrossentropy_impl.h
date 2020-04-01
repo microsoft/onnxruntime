@@ -105,7 +105,8 @@ template <typename T, typename Tin>
 class SoftmaxCrossEntropyLoss final : public LossBase {
  public:
   SoftmaxCrossEntropyLoss(const OpKernelInfo& info) : LossBase(info) {
-    ORT_ENFORCE(info.GetAttr<Tin>("ignore_index", &ignore_index_).IsOK());
+    int64_t default_ignore_index = -1;
+    info.GetAttrOrDefault<int64_t>("ignore_index", &ignore_index_, default_ignore_index);
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -118,7 +119,8 @@ template <typename T, typename Tin>
 class SoftmaxCrossEntropyLossGrad final : public LossBase {
  public:
   SoftmaxCrossEntropyLossGrad(const OpKernelInfo& info) : LossBase(info) {
-    ORT_ENFORCE(info.GetAttr<Tin>("ignore_index", &ignore_index_).IsOK());
+    int64_t default_ignore_index = -1;
+    info.GetAttrOrDefault<int64_t>("ignore_index", &ignore_index_, default_ignore_index);
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
