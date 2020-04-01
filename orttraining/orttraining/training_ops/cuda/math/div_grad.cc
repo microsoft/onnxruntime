@@ -9,19 +9,19 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-#define DIVGRAD_REGISTER_KERNEL_TYPED(ver, T)                                   \
+#define DIVGRAD_REGISTER_KERNEL_TYPED(T)                                        \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       DivGrad,                                                                  \
-      kOnnxDomain,                                                              \
-      ver,                                                                      \
+      kMSDomain,                                                                \
+      1,                                                                        \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       DivGrad<T>);
 
-DIVGRAD_REGISTER_KERNEL_TYPED(9, MLFloat16)
-DIVGRAD_REGISTER_KERNEL_TYPED(9, float)
-DIVGRAD_REGISTER_KERNEL_TYPED(9, double)
+DIVGRAD_REGISTER_KERNEL_TYPED(MLFloat16)
+DIVGRAD_REGISTER_KERNEL_TYPED(float)
+DIVGRAD_REGISTER_KERNEL_TYPED(double)
 
 std::vector<int64_t> prepended_dimension_1(const TensorShape& shape, size_t total_rank) {
   size_t input_rank = shape.NumDimensions();

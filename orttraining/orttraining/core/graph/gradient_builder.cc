@@ -534,7 +534,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxGradient) {
   return std::vector<NodeDef>{
-      NodeDef("SoftmaxGrad",
+      NodeDef(OpDef{"SoftmaxGrad", kMSDomain, 1},
               {GO(0), O(0)},
               {GI(0)},
               SrcNodeAttributes())};
@@ -553,7 +553,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherGradient) {
       NodeDef("Shape",
               {I(0)},
               {IA("I0_shape")}),
-      NodeDef("GatherGrad",
+      NodeDef(OpDef{"GatherGrad", kMSDomain, 1},
               {IA("I0_shape"), I(1), GO(0)},
               {GI(0)},
               SrcNodeAttributes())};
@@ -690,7 +690,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
   if (IsGradientRequiredForSrcNodeInput(0) && IsGradientRequiredForSrcNodeInput(1)) {
     return std::vector<NodeDef>{
-        NodeDef("DivGrad",
+        NodeDef(OpDef{"DivGrad", kMSDomain, 1},
                 {GO(0), I(0), I(1)},
                 {GI(0), GI(1)})};
   } else if (IsGradientRequiredForSrcNodeInput(0)) {
@@ -710,7 +710,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
     return output;
   } else if (IsGradientRequiredForSrcNodeInput(1)) {
     return std::vector<NodeDef>{
-        NodeDef("DivGrad",
+        NodeDef(OpDef{"DivGrad", kMSDomain, 1},
                 {GO(0), I(0), I(1)},
                 // TODO: this IA("") does not cause kernel to know it is unneeded.
                 // Gradient for the first input is still calculated.
@@ -862,7 +862,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGeluGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetLayerNormalizationGradient) {
   return std::vector<NodeDef>{
-      NodeDef("LayerNormalizationGrad",
+      NodeDef(OpDef{"LayerNormalizationGrad", kMSDomain, 1},
               {GO(0), I(0), I(1), O(1), O(2)},
               {GI(0), GI(1), GI(2)},
               {SrcNodeAttributes()})};
@@ -873,13 +873,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetBatchNormalizationGradient) {
   if (attributes.find("epsilon") != attributes.end()) {
     float epsilon = attributes.at("epsilon").f();
     return std::vector<NodeDef>{
-        NodeDef("BatchNormalizationGrad",
+        NodeDef(OpDef{"BatchNormalizationGrad", kMSDomain, 1},
                 {GO(0), I(0), I(1), O(3), O(4)},
                 {GI(0), GI(1), GI(2)},
                 {MakeAttribute("epsilon", epsilon)})};
   } else {
     return std::vector<NodeDef>{
-        NodeDef("BatchNormalizationGrad",
+        NodeDef(OpDef{"BatchNormalizationGrad", kMSDomain, 1},
                 {GO(0), I(0), I(1), O(3), O(4)},
                 {GI(0), GI(1), GI(2)})};
   }
@@ -887,7 +887,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetBatchNormalizationGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetMegatronFGradient) {
   return std::vector<NodeDef>{
-      NodeDef("NcclAllReduce",
+      NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
               {GO(0)},
               {GI(0)},
               {MakeAttribute("group_type", static_cast<int64_t>(training::WorkerGroupType::HorizontalParallel))})};

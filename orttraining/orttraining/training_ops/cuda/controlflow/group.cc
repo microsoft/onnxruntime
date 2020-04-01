@@ -9,8 +9,8 @@ namespace cuda {
 
 ONNX_OPERATOR_KERNEL_EX(
     Group,
-    kOnnxDomain,
-    9,
+    kMSDomain,
+    1,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .OutputMemoryType<OrtMemTypeCPUOutput>(0)

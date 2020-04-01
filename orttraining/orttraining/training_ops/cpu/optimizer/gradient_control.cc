@@ -9,9 +9,11 @@
 
 namespace onnxruntime {
 namespace contrib {
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     InPlaceAccumulator,
-    9,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)  // accumulate tensors in-place
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
@@ -50,9 +52,11 @@ Status ZeroGradient<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     ZeroGradient,
-    9,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)  // reset gradients in-place
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())

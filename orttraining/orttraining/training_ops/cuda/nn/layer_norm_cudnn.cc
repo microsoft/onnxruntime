@@ -114,8 +114,8 @@ Status LayerNormCudnn<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) 
 #define REGISTER_GRADIENT_KERNEL_TYPED(T)                         \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       LayerNormalizationGrad,                                     \
-      kOnnxDomain,                                                \
-      9,                                                          \
+      kMSDomain,                                                  \
+      1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
