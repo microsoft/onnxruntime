@@ -116,6 +116,7 @@ class SessionState {
    */
   const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
 
+#ifdef ENABLE_TRAINING
   /**
   Get some initialized tensors (weights).
   @param interested_weights The names of the weights to retrieve.
@@ -133,6 +134,7 @@ class SessionState {
   Any names in interested_weights with no corresponding weight are ignored.
   */
   NameMLValMap GetInitializedTensors(const std::unordered_set<std::string>& interested_weights) const;
+#endif
 
   // execution plan
   void SetExecutionPlan(std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan);
@@ -249,10 +251,12 @@ class SessionState {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
+#ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(
       const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
       const std::vector<int>& feed_mlvalue_idxs,
       MemoryPatternGroup* output) const;
+#endif
 
   // cache of the constructed kernels to avoid spending construction
   // time per executor
