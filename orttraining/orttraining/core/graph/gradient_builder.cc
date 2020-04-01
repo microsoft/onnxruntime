@@ -938,6 +938,22 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetWhereGradient) {
+  std::vector<NodeDef> result;
+  const int64_t data_type = static_cast<int64_t>(I(1).type_proto->tensor_type().elem_type());
+  if (IsGradientRequiredForSrcNodeInput(1)) {
+    result.push_back(NodeDef("Cast", {I(0)}, {IA("Positive_Mask")}, {MakeAttribute("to", data_type)}));
+    result.push_back(NodeDef("Mul", {GO(0), IA("Positive_Mask")}, {GI(1)}));
+  }
+
+  if (IsGradientRequiredForSrcNodeInput(2)) {
+    result.push_back(NodeDef("Not", {I(0)}, {IA("Not_Condition", IType(0))}));
+    result.push_back(NodeDef("Cast", {IA("Not_Condition")}, {IA("Negative_Mask")}, {MakeAttribute("to", data_type)}));
+    result.push_back(NodeDef("Mul", {GO(0), IA("Negative_Mask")}, {GI(2)}));
+  }
+  return result;
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetSendGradient) {
   // Send inputs: signal A, remote, data; outputs: signal B
   // Recv inputs: signal B, remote; outputs: signal A', data'

@@ -11,7 +11,6 @@ namespace training {
 GradientDef GetGradientForOp(const Node* node,
                              const std::unordered_set<std::string>& output_args_need_grad,
                              const std::unordered_set<std::string>& input_args_need_grad) {
-
   // REVIEW(mzs): The below condition does not seem correct, it needs to be >= GRADIENT_OP_VERSION
   // but changing it will break bunch of tests since many operators like sqrt are version 6,
   // yet have a grad operator. However changing the opset requires changing the operator
@@ -23,7 +22,7 @@ GradientDef GetGradientForOp(const Node* node,
   // REVIEW(bahuang): We don't have a version control for forward to backward op mapping.
   // Current SliceGrad(kMSDomain, 1) only supports Slice(kOnnxDomain, 10/11) because adding grad operator for versions
   // less than 9 is not supported and for Slice we have Slice-1, Slice-10 and Slice-11.
-  
+
   /*ORT_ENFORCE(
       node->Op()->SinceVersion() <= GRADIENT_OP_VERSION,
       "Gradients are supported for opset version" + std::to_string(node->Op()->SinceVersion()) +
@@ -90,6 +89,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("MegatronG", GetMegatronGGradient);
   REGISTER_GRADIENT_BUILDER("Slice", GetSliceGradient);
   REGISTER_GRADIENT_BUILDER("FastGelu", GetFastGeluGradient);
+  REGISTER_GRADIENT_BUILDER("Where", GetWhereGradient);
   REGISTER_GRADIENT_BUILDER("Send", GetSendGradient);
   REGISTER_GRADIENT_BUILDER("Recv", GetRecvGradient);
 };

@@ -2895,7 +2895,7 @@ Graph::~Graph() {
 std::ostream& operator<<(std::ostream& out, const Graph& graph) {
   out << "Inputs:\n";
   for (auto* x : graph.GetInputs()) {
-    out << "   " << x->Name() << " : " << *x->Type() << std::endl;
+    out << "   " << x->Name() << " : " << *x->Type() << "\n";
   }
   out << "Nodes:\n";
   for (auto& node : graph.Nodes()) {
@@ -2913,11 +2913,11 @@ std::ostream& operator<<(std::ostream& out, const Graph& graph) {
       }
       out << ", ";
     }
-    out << std::endl;
+    out << "\n";
   }
   out << "Outputs:\n";
   for (auto* x : graph.GetOutputs()) {
-    out << "   " << x->Name() << " : " << *x->Type() << std::endl;
+    out << "   " << x->Name() << " : " << *x->Type() << "\n";
   }
   return out;
 }
