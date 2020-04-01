@@ -4,6 +4,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 #include "core/util/math_cpuonly.h"
+#include "contrib_ops/cpu/bert/fast_gelu_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -18,27 +19,13 @@ ONNX_OPERATOR_KERNEL_EX(
 
 template <typename T>
 Status BiasGelu<T>::Compute(OpKernelContext* ctx) const {
+  ORT_RETURN_IF_ERROR(fast_gelu::CheckInputs(ctx));
+
   const Tensor* X = ctx->Input<Tensor>(0);
-  const auto input_dims = X->Shape().GetDims();
-  if (input_dims.size() < 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Shape of Input 0 is expected to have at least 1 dimension, got ", input_dims.size());
-  }
-
   const Tensor* B = ctx->Input<Tensor>(1);
-  const auto bias_dims = B->Shape().GetDims();
-  if (bias_dims.size() != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 1 is expected to have 1 dimension, got ", bias_dims.size());
-  }
-
-  int64_t bias_len = bias_dims[0];
-  if (bias_len != input_dims[input_dims.size() - 1]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "dimension 0 of Input 1 should have same length as the last dimension of input 0");
-  }
-
   Tensor* Y = ctx->Output(0, X->Shape());
+
+  int64_t bias_len = B->Shape().Size();
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
