@@ -315,12 +315,13 @@ def parse_arguments():
                         default=0,
                         help="number of times to run per sample. By default, the value is 1000 / samples")
 
-    parser.add_argument('--opt_level',
-                        required=False,
-                        type=int,
-                        choices=[0, 1, 2, 99],
-                        default=99,
-                        help="onnxruntime optimization level. 0 will disable onnxruntime.")
+    parser.add_argument(
+        '--opt_level',
+        required=False,
+        type=int,
+        choices=[0, 1, 2, 99],
+        default=99,
+        help="onnxruntime optimization level: 0 - disable all, 1 - basic, 2 - extended, 99 - enable all.")
 
     parser.add_argument('--seed',
                         required=False,
