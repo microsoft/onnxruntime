@@ -621,7 +621,7 @@ void UpsampleBase::InitCanUseNearest2xOptimization(const OpKernelInfo& info) {
 
       // check conditions that rule out optimization completely first
       if ((x_shape != nullptr && x_shape->dim_size() != 4) ||
-          (sizes_shape != nullptr && (sizes_shape->dim_size() != 1))) {
+          (sizes_shape != nullptr && sizes_shape->dim_size() != 1)) {
         return;  // optimization not possible.
       }
 
@@ -634,7 +634,7 @@ void UpsampleBase::InitCanUseNearest2xOptimization(const OpKernelInfo& info) {
         break;  // need to check at runtime
       }
 
-      if (!sizes_shape->dim()[0].has_dim_value()) {
+      if (!utils::HasDimValue(sizes_shape->dim()[0])) {
         break;  // symbolic dim. need to check at runtime
       }
 
@@ -670,27 +670,27 @@ void UpsampleBase::InitCanUseNearest2xOptimization(const OpKernelInfo& info) {
 }
 
 bool UpsampleBase::CanUseNearest2xOptimization(const std::vector<float>& scales) const {
-  if (use_nearest2x_optimization_)
+  if (use_nearest2x_optimization_) {
     return true;
+  }
 
-  if (!can_use_nearest2x_optimization_with_scales_check_)
+  if (!can_use_nearest2x_optimization_with_scales_check_) {
     return false;
+  }
 
   // check scales
   // Cast the scales to integers and verify that the scales are positive and
   // round trip back to floating point.
-  std::vector<int64_t> scales_attr(4);
   for (size_t n = 0; n < 4; n++) {
     int64_t scale_value = static_cast<int64_t>(scales[n]);
     if (scale_value <= 0 || static_cast<float>(scale_value) != scales[n]) {
       return false;
     }
-    scales_attr[n] = scale_value;
-  }
 
-  // Only support spatial scaling at this time (batch and channel are unscaled).
-  if (scales_attr[0] != 1 || scales_attr[1] != 1) {
-    return false;
+    // Only support spatial scaling at this time (batch and channel are unscaled).
+    if (n < 2 && scale_value != 1) {
+      return false;
+    }
   }
 
   return true;
