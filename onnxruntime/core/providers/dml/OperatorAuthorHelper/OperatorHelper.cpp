@@ -56,9 +56,16 @@ namespace OperatorHelper
             {
                 const int64_t* data = tensor.GetData<int64_t>();
                 result.reserve(elementCount);
+
+                // Use clamped cast rather than static_cast/narrow_cast,
+                // because it's not uncommon for a model to specify a
+                // 64-bit INTMAX constant as a sentinel value to mean
+                // the largest possible value (even though the actual
+                // dimension values come nowhere close to that, far
+                // less than 32-bit INTMAX).
                 for (auto d : gsl::make_span(data, data + elementCount))
                 {
-                    result.push_back(gsl::narrow_cast<int32_t>(d));
+                    result.push_back(clamp_cast<int32_t>(d));
                 }
             }
             break;
