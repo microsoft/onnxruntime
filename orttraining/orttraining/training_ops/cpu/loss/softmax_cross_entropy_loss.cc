@@ -68,7 +68,7 @@ void GetPermutationAndShape(bool ncd_to_ndc, TensorShape tensor_shape, std::vect
   } else {
     new_shape.emplace_back(tensor_shape[0]);
     permutations.emplace_back(0);
-    new_shape.emplace_back(tensor_shape.NumDimensions() - 1);
+    new_shape.emplace_back(tensor_shape[tensor_shape.NumDimensions() - 1]);
     permutations.emplace_back(tensor_shape.NumDimensions() - 1);
     for (size_t index = 1; index < tensor_shape.NumDimensions() - 1; index += 1) {
       new_shape.emplace_back(tensor_shape[index]);
