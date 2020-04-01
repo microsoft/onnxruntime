@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "cross_entropy.h"
 #include "core/framework/op_kernel.h"
+#include "orttraining/training_ops/cpu/loss/cross_entropy.h"
 #include "orttraining/training_ops/cpu/loss/reduction_type.h"
 
 namespace onnxruntime {
@@ -39,6 +39,11 @@ class SoftmaxCrossEntropyLossGrad final : public LossBase {
   int64_t ignore_index_;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SoftmaxCrossEntropyLossGrad);
 };
+
+void VerifyLogitAndLabelShape(TensorShape logit_shape, TensorShape label_shape);
+void GetNDCFromLogitAndLabelShape(TensorShape logit_shape, TensorShape label_shape, int64_t& N, int64_t& D, int64_t& C);
+void GetPermutationAndShape(bool ncd_to_ndc, TensorShape tensor_shape, std::vector<int64_t>& new_shape,
+                            std::vector<size_t>& permutations);
 
 }  // namespace contrib
 }  // namespace onnxruntime

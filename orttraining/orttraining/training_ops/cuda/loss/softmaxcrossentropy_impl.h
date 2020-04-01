@@ -34,8 +34,7 @@ void SparseSoftmaxCrossEntropyImpl(
     const T* normalize_factor,
     T* output_data,
     size_t count,
-    size_t label_depth,
-    Tin ignore_index);
+    size_t label_depth);
 
 template <typename T, typename Tin>
 void SparseSoftmaxCrossEntropyGradImpl(
@@ -46,8 +45,16 @@ void SparseSoftmaxCrossEntropyGradImpl(
     const T* normalize_factor,
     T* output_data,
     size_t count,
+    size_t label_depth);
+
+template <typename T, typename Tin>
+void ComputeWeightsSoftmaxCrossEntropyImpl(
+    T* weight_data_nd,
+    const Tin* label,
+    const T* weight,
+    size_t count,
     size_t label_depth,
-    Tin ignore_index);
+    int64_t ignore_index);
 
 class LossBase : public ReduceKernel<true> {
  public:
@@ -112,7 +119,7 @@ class SoftmaxCrossEntropyLoss final : public LossBase {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  Tin ignore_index_;
+  int64_t ignore_index_;
 };
 
 template <typename T, typename Tin>
@@ -126,7 +133,7 @@ class SoftmaxCrossEntropyLossGrad final : public LossBase {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  Tin ignore_index_;
+  int64_t ignore_index_;
 };
 
 }  // namespace cuda
