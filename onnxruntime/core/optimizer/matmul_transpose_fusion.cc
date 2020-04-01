@@ -10,21 +10,21 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-static std::pair<bool, Node*> IsInputTranspose(Graph& graph, NodeArg& node_arg) {
+static Node* GetTransposeNodeFromOutput(Graph& graph, NodeArg& node_arg) {
   Node* trans_node = graph.GetMutableProducerNode(node_arg.Name());
   if (trans_node == nullptr || trans_node->OpType() != "Transpose") {
-    return std::make_pair(false, nullptr);
+    return nullptr;
   }
 
   // if the node has Graph output, skip it too
   if (!graph.GetNodeOutputsInGraphOutputs(*trans_node).empty()) {
-    return std::make_pair(false, nullptr);
+    return nullptr;
   }
 
   auto perms = RetrieveValues<int64_t>(trans_node->GetAttributes().at("perm"));
   int64_t rank = perms.size();
   if (rank < 2) {
-    return std::make_pair(false, nullptr);
+    return nullptr;
   }
 
   bool is_trans_on_last_two_dims = true;
@@ -40,10 +40,10 @@ static std::pair<bool, Node*> IsInputTranspose(Graph& graph, NodeArg& node_arg) 
   }
 
   if (!is_trans_on_last_two_dims) {
-    return std::make_pair(false, nullptr);
+    return nullptr;
   }
 
-  return std::make_pair(true, trans_node);
+  return trans_node;
 }
 
 static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_map<NodeArg*, size_t>& count_map) {
@@ -77,27 +77,27 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     }
 
     NodeArg* left_input = node.MutableInputDefs()[0];
-    auto left = IsInputTranspose(graph, *left_input);
+    auto left = GetTransposeNodeFromOutput(graph, *left_input);
 
     NodeArg* right_input = node.MutableInputDefs()[1];
-    auto right = IsInputTranspose(graph, *right_input);
+    auto right = GetTransposeNodeFromOutput(graph, *right_input);
 
-    if (!left.first && !right.first) {
+    if (!left && !right) {
       continue;
     }
 
-    if (left.first) {
+    if (left) {
       size_t left_consumers = UpdateConsumerCount(graph, left_input, consumer_count);
       if (left_consumers == 0)
-        removed_nodes.push_front(left.second->Index());
-      left_input = left.second->MutableInputDefs()[0];
+        removed_nodes.push_front(left->Index());
+      left_input = left->MutableInputDefs()[0];
     }
 
-    if (right.first) {
+    if (right) {
       size_t right_consumers = UpdateConsumerCount(graph, right_input, consumer_count);
       if (right_consumers == 0)
-        removed_nodes.push_front(right.second->Index());
-      right_input = right.second->MutableInputDefs()[0];
+        removed_nodes.push_front(right->Index());
+      right_input = right->MutableInputDefs()[0];
     }
 
     const std::vector<NodeArg*> input_defs{left_input, right_input};
@@ -108,11 +108,11 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
                                       "fused MatMul and Transpose ",
                                       input_defs,
                                       output_defs, {}, kMSDomain);
-    bool transpose_left = left.first;
+    bool transpose_left = (left != nullptr);
     if (node.OpType() == "TransposeMatMul") {
       transpose_left ^= static_cast<bool>(node.GetAttributes().at("transA").i());
     }
-    bool transpose_right = right.first;
+    bool transpose_right = (right != nullptr);
     if (node.OpType() == "TransposeMatMul") {
       transpose_right ^= static_cast<bool>(node.GetAttributes().at("transB").i());
     }
