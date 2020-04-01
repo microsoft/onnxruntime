@@ -163,7 +163,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--skip_winml_tests", action='store_true', help="Explicitly disable all WinML related tests")
     parser.add_argument("--enable_msvc_static_runtime", action='store_true', help="Enable static linking of MSVC runtimes.")
     parser.add_argument("--enable_language_interop_ops", action='store_true', help="Enable operator implemented in language other than cpp")
-    parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019'],
+    parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019', 'Ninja'],
                         default='Visual Studio 15 2017', help="Specify the generator that CMake invokes. This is only supported on Windows")
     parser.add_argument("--enable_multi_device_test", action='store_true', help="Test with multi-device. Mostly used for multi-device GPU")
     parser.add_argument("--use_dml", action='store_true', help="Build with DirectML.")
@@ -840,10 +840,9 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
                 '-Dprotobuf_WITH_ZLIB_DEFAULT=OFF',
                 '-Dprotobuf_BUILD_SHARED_LIBS=OFF']
     if is_windows():
-        cmd_args += ['-T',
-                'host=x64',
-                '-G',
-                args.cmake_generator]
+        if args.cmake_generator != 'Ninja':
+            cmd_args += ['-T', 'host=x64']
+        cmd_args += ['-G', args.cmake_generator]
     run_subprocess(cmd_args, cwd= protoc_build_dir)
     # Build step
     cmd_args = [cmake_path,
@@ -957,7 +956,11 @@ def main():
         cmake_extra_args = []
         path_to_protoc_exe = args.path_to_protoc_exe
         if(is_windows()):
-            if (args.x86):
+            if args.cmake_generator == 'Ninja':
+                if args.x86 or args.arm or args.arm64:
+                    raise BuildError("To cross-compile with Ninja, load the toolset environment for the target processor (e.g. Cross Tools Command Prompt for VS)")
+                cmake_extra_args = ['-G', args.cmake_generator]
+            elif (args.x86):
                 cmake_extra_args = ['-A','Win32','-T','host=x64','-G', args.cmake_generator]
             elif (args.arm or args.arm64):
                 # Cross-compiling for ARM(64) architecture
