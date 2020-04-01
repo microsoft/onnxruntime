@@ -428,24 +428,6 @@ TEST(SplitOperatorTest, SplitAttributeSumTooSmall) {
   RunTest<float>(axis, splits, input, outputs, false, true, "Cannot split using values in 'split' attribute");  //TensorRT parser: Assertion failed: axis != BATCH_DIM
 }
 
-TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
-  const int64_t axis = 0;
-  std::vector<ShapeAndFloatData> outputs;
-
-  // input shape and data
-  ShapeAndFloatData input = {{4, 2},  // shape
-                             {1.f, 2.f,
-                              3.f, 4.f,
-                              5.f, 6.f,
-                              7.f, 8.f}};
-
-  std::vector<int64_t> splits{1, 0, 3};  // 0 is not valid
-  outputs.push_back({{1, 2}, {1.f, 2.f}});
-  outputs.push_back({{3, 2}, {3.f, 4.f, 5.f, 6.f, 7.f, 8.f}});
-
-  RunTest<float>(axis, splits, input, outputs, false, true, "Invalid value in 'split' attribute");  //TensorRT parser: Assertion failed: axis != BATCH_DIM
-}
-
 /*
 Python to replicate processing:
 
