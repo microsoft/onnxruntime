@@ -60,6 +60,14 @@ template <typename T>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
                     /*out*/ T* p_data, size_t expected_size);
 
+// Convert the NodeProto from a Constant node into a TensorProto that can be used as an initializer
+common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
+                                              ONNX_NAMESPACE::TensorProto& tensor);
+
+// Convert a SparseTensorProto to a dense TensorProto
+common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
+                                                   ONNX_NAMESPACE::TensorProto& dense);
+
 inline bool HasDimValue(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim) {
   return dim.value_case() == ONNX_NAMESPACE::TensorShapeProto_Dimension::kDimValue;
 }
@@ -197,6 +205,14 @@ inline bool HasModelVersion(const ONNX_NAMESPACE::ModelProto& m_proto) {
 inline bool HasName(const ONNX_NAMESPACE::NodeProto& node_proto) {
   //XXX: Figure out proto3 style
   return node_proto.has_name();
+}
+
+// UnpackTensor from either raw data or the type specific data field.
+template <typename T>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, /*out*/ T* p_data, size_t expected_size) {
+  return HasRawData(tensor)
+             ? UnpackTensor(tensor, tensor.raw_data().data(), tensor.raw_data().size(), p_data, expected_size)
+             : UnpackTensor(tensor, nullptr, 0, p_data, expected_size);
 }
 
 }  // namespace utils
