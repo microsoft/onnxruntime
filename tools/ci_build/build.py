@@ -163,7 +163,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--skip_winml_tests", action='store_true', help="Explicitly disable all WinML related tests")
     parser.add_argument("--enable_msvc_static_runtime", action='store_true', help="Enable static linking of MSVC runtimes.")
     parser.add_argument("--enable_language_interop_ops", action='store_true', help="Enable operator implemented in language other than cpp")
-    parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019'],
+    parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019', 'Ninja'],
                         default='Visual Studio 15 2017', help="Specify the generator that CMake invokes. This is only supported on Windows")
     parser.add_argument("--enable_multi_device_test", action='store_true', help="Test with multi-device. Mostly used for multi-device GPU")
     parser.add_argument("--use_dml", action='store_true', help="Build with DirectML.")
@@ -378,22 +378,22 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path + "/build/cmake/android.toolchain.cmake",
                 "-DANDROID_PLATFORM=android-" + str(args.android_api),
                 "-DANDROID_ABI=" + str(args.android_abi)]
-    
+
     if args.ios:
-        needed_args = [len(args.ios_sysroot) == 0, not args.arm64 and not args.arm, len(args.ios_toolchain_dir) == 0]
+        needed_args = [args.ios_sysroot, args.arm64 or args.arm, args.ios_toolchain_dir]
         arg_names = ["--ios_sysroot <path to sysroot>", "--arm or --arm64", "--ios_toolchain_dir <path to toolchain>"]
-        if any(needed_args):
-            raise BuildError("iOS build canceled due to missing arguments: " + (val + "," for val, cond in zip(arg_names, needed_args) if cond))
+        if not all(needed_args):
+            raise BuildError("iOS build canceled due to missing arguments: " + ', '.join(val for val, cond in zip(arg_names, needed_args) if not cond))
         compilers = sorted(glob.glob(args.ios_toolchain_dir + "/bin/*-clang*"))
-        os.environ["PATH"] = args.ios_toolchain_dir + "/bin:" + os.environ.get("PATH", "")
-        os.environ["LD_LIBRARY_PATH"] = args.ios_toolchain_dir + "/lib:" + os.environ.get("LD_LIBRARY_PATH", "")
+        os.environ["PATH"] = os.path.join(args.ios_toolchain_dir, "bin") + os.pathsep + os.environ.get("PATH", "")
+        os.environ["LD_LIBRARY_PATH"] = os.path.join(args.ios_toolchain_dir, "/lib") + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
         if len(compilers) != 2:
             raise BuildError("error identifying compilers in ios_toolchain_dir")
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + ("arm64" if args.arm64 else "arm"),
                        "-DCMAKE_SYSTEM_NAME=iOSCross",
                        "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
-                       "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot, 
-                       "-DCMAKE_C_COMPILER=" + compilers[0], 
+                       "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
+                       "-DCMAKE_C_COMPILER=" + compilers[0],
                        "-DCMAKE_CXX_COMPILER=" + compilers[1]]
 
     if path_to_protoc_exe:
@@ -840,10 +840,9 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
                 '-Dprotobuf_WITH_ZLIB_DEFAULT=OFF',
                 '-Dprotobuf_BUILD_SHARED_LIBS=OFF']
     if is_windows():
-        cmd_args += ['-T',
-                'host=x64',
-                '-G',
-                args.cmake_generator]
+        if args.cmake_generator != 'Ninja':
+            cmd_args += ['-T', 'host=x64']
+        cmd_args += ['-G', args.cmake_generator]
     run_subprocess(cmd_args, cwd= protoc_build_dir)
     # Build step
     cmd_args = [cmake_path,
@@ -955,14 +954,19 @@ def main():
     log.info("Build started")
     if (args.update):
         cmake_extra_args = []
-        path_to_protoc_exe = None
+        path_to_protoc_exe = args.path_to_protoc_exe
         if(is_windows()):
-            if (args.x86):
+            if args.cmake_generator == 'Ninja':
+                if args.x86 or args.arm or args.arm64:
+                    raise BuildError("To cross-compile with Ninja, load the toolset environment for the target processor (e.g. Cross Tools Command Prompt for VS)")
+                cmake_extra_args = ['-G', args.cmake_generator]
+            elif (args.x86):
                 cmake_extra_args = ['-A','Win32','-T','host=x64','-G', args.cmake_generator]
             elif (args.arm or args.arm64):
                 # Cross-compiling for ARM(64) architecture
                 # First build protoc for host to use during cross-compilation
-                path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
+                if path_to_protoc_exe is None:
+                    path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
                 if args.arm:
                     cmake_extra_args = ['-A', 'ARM']
                 else:
@@ -989,13 +993,11 @@ def main():
                 cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_args.append('-DCMAKE_TOOLCHAIN_FILE=' + os.path.join(source_dir, 'cmake', 'wcos_toolchain.cmake'))
-        
-        if (args.android or args.ios) and not args.path_to_protoc_exe:
+
+        if (args.android or args.ios) and args.path_to_protoc_exe is None:
             # Cross-compiling for Android and iOS
             path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
-        else :
-            path_to_protoc_exe = args.path_to_protoc_exe
-            
+
         if is_ubuntu_1604():
             if (args.arm or args.arm64):
                 raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
