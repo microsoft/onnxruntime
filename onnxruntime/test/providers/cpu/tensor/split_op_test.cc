@@ -429,7 +429,7 @@ TEST(SplitOperatorTest, SplitAttributeSumTooSmall) {
 }
 
 TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
-  const int64_t axis = 0;
+  const int64_t axis = -1;
   std::vector<ShapeAndFloatData> outputs;
 
   // input shape and data
