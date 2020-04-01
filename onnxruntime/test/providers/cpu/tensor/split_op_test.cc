@@ -443,7 +443,7 @@ TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
   outputs.push_back({{1, 2}, {1.f, 2.f}});
   outputs.push_back({{3, 2}, {3.f, 4.f, 5.f, 6.f, 7.f, 8.f}});
 
-  RunTest<float>(axis, splits, input, outputs, false, true, "Cannot split using values in 'split' attribute");  //TensorRT parser: Assertion failed: axis != BATCH_DIM
+  RunTest<float>(axis, splits, input, outputs, false, true, "in 'split' attribute");  //TensorRT parser: Assertion failed: axis != BATCH_DIM
 }
 
 /*
