@@ -129,7 +129,6 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_ENFORCE(scales != nullptr);
 
   if (scales_cached_) {
-    ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
     ComputeOutputShape(scales_, X->Shape().GetDims(), output_dims);
     return BaseCompute(context, roi, scales_, output_dims);
   }
