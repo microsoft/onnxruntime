@@ -51,7 +51,7 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
     }
   }
 
-  return Status(ONNXRUNTIME, FAIL, create_error_message("Failed to find kernel for "));
+  return Status(ONNXRUNTIME, NOT_IMPLEMENTED, create_error_message("Failed to find kernel for "));
 }
 
 Status KernelRegistryManager::RegisterKernels(const ExecutionProviders& execution_providers) {
@@ -119,7 +119,7 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
   errormsg << "Failed to find kernel for " << node.OpType();
   if (node.Op() != nullptr) errormsg << "(" << node.Op()->since_version() << ")";
   if (!node.Name().empty()) errormsg << " (node " << node.Name() << ")";
-  return Status(ONNXRUNTIME, FAIL, errormsg.str());
+  return Status(ONNXRUNTIME, NOT_IMPLEMENTED, errormsg.str());
 }
 
 }  // namespace onnxruntime
