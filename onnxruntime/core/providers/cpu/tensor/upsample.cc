@@ -583,37 +583,90 @@ void ResizeBiCubic(
   }
 }
 
-void UpsampleBase::InitCanUseNearest2xOptimization(int opset, const onnxruntime::Node& node) {
+void UpsampleBase::InitCanUseNearest2xOptimization(const OpKernelInfo& info) {
+  const auto& node = info.node();
+  auto opset = node.Op()->SinceVersion();
+
   if (opset < 11) {
     use_nearest2x_optimization_ = true;
     return;
   }
 
   // for opset 11 and on we need to check a number of different things before enabling nearest2x optimization
-
   use_nearest2x_optimization_ = false;
   can_use_nearest2x_optimization_with_scales_check_ = false;
 
-  // Only support the nearest interpolation mode (the default value).
-  if (mode_ != UpsampleMode::NN)
+  // Requires nearest interpolation mode (the default value), asymmetric coordinate transformation mode,
+  // and the floor rounding mode.
+  if ((mode_ != UpsampleMode::NN) ||
+      (coordinate_transform_mode_ != ResizeCoordinateTransformationMode::ASYMMETRIC) ||
+      (nearest_mode_ != ResizeNearestMode::FLOOR)) {
     return;
+  }
 
-  // Only support the asymmetric coordinate transformation mode.
-  if (coordinate_transform_mode_ != ResizeCoordinateTransformationMode::ASYMMETRIC)
-    return;
+  // If possible, check if the 'scales' equate to {1,1,2,2} now. May need to do it at runtime.
+  // Requires either 'scales' to be provided and constant (scales_cached_ would be true in this case);
+  // or 'sizes' to be provided and constant, and the input shape to be known and concrete (no symbolic dims) so that
+  // we can calculate 'scales' from that information.
 
-  // Only support the floor rounding mode.
-  if (nearest_mode_ != ResizeNearestMode::FLOOR)
-    return;
+  // 4th input of 'sizes' is optional. Use 'scales' (3rd input) otherwise.
+  bool has_sizes = node.InputDefs().size() == 4;
 
-  // Bail out if Resize has the optional "sizes" tensor.
-  if (node.InputDefs().size() != 3)
-    return;
+  if (has_sizes) {
+    do {
+      // input: needs to have rank of 4, all dims must be concrete (no symbolic dims)
+      // sizes: must have shape {4}, and be constant
+      const auto* x_shape = node.InputDefs()[0]->Shape();
+      const auto* sizes_shape = node.InputDefs()[sizes_input_idx_]->Shape();
 
-  // check scales at runtime even if they're in a constant initializer.
-  // When this kernel is being created the initializers have been moved from the Graph instance to SessionState
-  // but the latter isn't available here.
+      // check conditions that rule out optimization completely first
+      if ((x_shape != nullptr && x_shape->dim_size() != 4) ||
+          (sizes_shape != nullptr && (sizes_shape->dim_size() != 1))) {
+        return;  // optimization not possible.
+      }
+
+      if (sizes_shape != nullptr && utils::HasDimValue(sizes_shape->dim()[0]) &&
+          sizes_shape->dim()[0].dim_value() != 4) {
+        return;  // optimization not possible
+      }
+
+      if (!x_shape || !sizes_shape) {
+        break;  // need to check at runtime
+      }
+
+      if (!sizes_shape->dim()[0].has_dim_value()) {
+        break;  // symbolic dim. need to check at runtime
+      }
+
+      const Tensor* sizes;
+      if (!info.TryGetConstantInput(sizes_input_idx_, &sizes)) {
+        break;  // need to check at runtime
+      }
+
+      TensorShape input_shape = utils::GetTensorShapeFromTensorShapeProto(*x_shape);
+      if (input_shape.Size() < 0) {
+        break;  // symbolic dim in input. need to check at runtime.
+      }
+
+      // we have a concrete input shape and constant sizes so can calculate the scales
+      // NOTE: This requires InferenceSession::CheckShapes to validate that the shape of input when running the model
+      // matches the shape in the graph.
+      auto sizes_entries = sizes->DataAsSpan<int64_t>();
+      std::vector<int64_t> sizes_data(sizes_entries.cbegin(), sizes_entries.cend());
+      scales_.resize(4);
+      ParseScalesDataFromOutputSize(sizes_data, input_shape.GetDims(), scales_);
+      scales_cached_ = true;
+    } while (false);
+  }
+
+  // check at runtime
   can_use_nearest2x_optimization_with_scales_check_ = true;
+
+  if (scales_cached_) {
+    use_nearest2x_optimization_ = CanUseNearest2xOptimization(scales_);
+    // use_nearest2x_optimization_ is set to final value so we don't want to allow runtime checks if that is false
+    can_use_nearest2x_optimization_with_scales_check_ = false;
+  }
 }
 
 bool UpsampleBase::CanUseNearest2xOptimization(const std::vector<float>& scales) const {
@@ -764,8 +817,6 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(scales != nullptr);
 
   if (scales_cached_) {
-    ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
-
     // Compute output shape from scales and input dims
     ComputeOutputShape(scales_, X->Shape().GetDims(), output_dims);
     return BaseCompute(context, *roi_ptr, scales_, output_dims);
@@ -775,15 +826,13 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   std::vector<float> scales_array(X->Shape().GetDims().size());
 
   if (scales != nullptr && scales->Shape().Size() != 0) {
-    ORT_ENFORCE(sizes == nullptr,
-                "Only one of scales or sizes must be provided as input.");
+    ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
     ParseScalesData(scales, scales_array);
 
     // Compute output shape from scales and input dims
     ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
   } else {
-    ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0,
-                "Either scales or sizes MUST be provided as input.");
+    ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0, "Either scales or sizes MUST be provided as input.");
 
     // When sizes input is available directly populate it into the output_dims array.
     memcpy(output_dims.data(), sizes->template Data<int64_t>(), sizes->Shape().Size() * sizeof(int64_t));

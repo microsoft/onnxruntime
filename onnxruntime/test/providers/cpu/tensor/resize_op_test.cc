@@ -413,32 +413,111 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Floor_Align_Corners) {
   test.Run();
 }
 
-TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization) {
-  OpTester test("Resize", 11);
+// custom OpTester to make 'scales' or 'sizes' a constant initializer if needed
+class ResizeOpTester : public OpTester {
+ public:
+  ResizeOpTester(bool scales_in_initializer, bool sizes_in_initializer)
+      : OpTester("Resize", 11),
+        scales_in_initializer_(scales_in_initializer),
+        sizes_in_initializer_(sizes_in_initializer) {
+  }
 
-  std::vector<float> roi{};
-  std::vector<float> scales{1.0f, 1.0f, 2.0f, 2.0f};
+ protected:
+  void AddNodes(onnxruntime::Graph& graph,
+                std::vector<onnxruntime::NodeArg*>& graph_input_defs,
+                std::vector<onnxruntime::NodeArg*>& graph_output_defs,
+                std::vector<std::function<void(onnxruntime::Node& node)>>& add_attribute_funcs) override {
+    // adding the node will result in a copy of the NodeArg (as it currently only exists in the OpTester)
+    // so we need to do that first before calling Graph::SetInputs so the address of the 'real' NodeArg is in that
+    // list
+    OpTester::AddNodes(graph, graph_input_defs, graph_output_defs, add_attribute_funcs);
 
-  test.AddAttribute("mode", "nearest");
-  test.AddAttribute("coordinate_transformation_mode", "asymmetric");
-  test.AddAttribute("nearest_mode", "floor");
+    // set the Graph inputs to just X and roi (exclude 'scales') so the 'scales' are a constant initializer
+    if (scales_in_initializer_) {
+      // this isn't intended to work with a scenario where the optional 'sizes' input is provided
+      ASSERT_TRUE(graph_input_defs.size() == 3);
+      graph.SetInputs({graph.GetNodeArg(graph_input_defs[0]->Name()),
+                       graph.GetNodeArg(graph_input_defs[1]->Name())});
+    }
 
-  const int64_t N = 1, C = 1, H = 2, W = 2;
-  std::vector<float> X = {
-      1.0f, 2.0f,
-      3.0f, 4.0f};
+    if (sizes_in_initializer_) {
+      ASSERT_TRUE(graph_input_defs.size() == 4);  // 'sizes' is 4th input
+      graph.SetInputs({graph.GetNodeArg(graph_input_defs[0]->Name()),
+                       graph.GetNodeArg(graph_input_defs[1]->Name()),
+                       graph.GetNodeArg(graph_input_defs[2]->Name())});
+    }
+  }
 
-  test.AddInput<float>("X", {N, C, H, W}, X);
-  test.AddInput<float>("roi", {0}, roi);
-  test.AddInput<float>("scales", {4}, scales);
+ private:
+  bool scales_in_initializer_;
+  bool sizes_in_initializer_;
+};
 
-  std::vector<float> Y = {1.0f, 1.0f, 2.0f, 2.0f,
-                          1.0f, 1.0f, 2.0f, 2.0f,
-                          3.0f, 3.0f, 4.0f, 4.0f,
-                          3.0f, 3.0f, 4.0f, 4.0f};
+TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Scales) {
+  auto run_test = [](bool scales_in_initializer) {
+    ResizeOpTester test(scales_in_initializer, false);
 
-  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+    std::vector<float> roi{};
+    std::vector<float> scales{1.0f, 1.0f, 2.0f, 2.0f};
+
+    test.AddAttribute("mode", "nearest");
+    test.AddAttribute("coordinate_transformation_mode", "asymmetric");
+    test.AddAttribute("nearest_mode", "floor");
+
+    const int64_t N = 1, C = 1, H = 2, W = 2;
+    std::vector<float> X = {
+        1.0f, 2.0f,
+        3.0f, 4.0f};
+
+    test.AddInput<float>("X", {N, C, H, W}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
+
+    std::vector<float> Y = {1.0f, 1.0f, 2.0f, 2.0f,
+                            1.0f, 1.0f, 2.0f, 2.0f,
+                            3.0f, 3.0f, 4.0f, 4.0f,
+                            3.0f, 3.0f, 4.0f, 4.0f};
+
+    test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+    test.Run();
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
+TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Sizes) {
+  auto run_test = [](bool sizes_in_initializer) {
+    ResizeOpTester test(false, sizes_in_initializer);
+
+    std::vector<float> roi{};
+    std::vector<int64_t> sizes{1, 1, 4, 4};
+
+    test.AddAttribute("mode", "nearest");
+    test.AddAttribute("coordinate_transformation_mode", "asymmetric");
+    test.AddAttribute("nearest_mode", "floor");
+
+    const int64_t N = 1, C = 1, H = 2, W = 2;
+    std::vector<float> X = {
+        1.0f, 2.0f,
+        3.0f, 4.0f};
+
+    test.AddInput<float>("X", {N, C, H, W}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {0}, {});
+    test.AddInput<int64_t>("sizes", {4}, sizes, sizes_in_initializer);
+
+    std::vector<float> Y = {1.0f, 1.0f, 2.0f, 2.0f,
+                            1.0f, 1.0f, 2.0f, 2.0f,
+                            3.0f, 3.0f, 4.0f, 4.0f,
+                            3.0f, 3.0f, 4.0f, 4.0f};
+
+    test.AddOutput<float>("Y", {N, C, sizes[2], sizes[3]}, Y);
+    test.Run();
+  };
+
+  run_test(false);
+  run_test(true);
 }
 
 TEST(ResizeOpTest, ResizeOpCubicDownSampleTest) {

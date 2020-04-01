@@ -85,8 +85,6 @@ class UpsampleBase {
       ORT_THROW("exclude_outside can be set to 1 only when mode is CUBIC. Current mode is set to " + mode);
     }
 
-    InitCanUseNearest2xOptimization(opset, node);
-
     if (opset > 10) {
       roi_input_idx_ = 1;
       scales_input_idx_ = 2;
@@ -104,6 +102,9 @@ class UpsampleBase {
         scales_cached_ = true;
       }
     }
+
+    // must be after *_input_idx_ and scales_cached_ are set
+    InitCanUseNearest2xOptimization(info);
 
     // roi is only needed when coordinate transformation mode is tf_crop_and_resize
     // for all other modes no need to read roi input
@@ -300,10 +301,10 @@ class UpsampleBase {
   }
 
   void ParseScalesDataFromOutputSize(const std::vector<int64_t>& output_dims,
-                                     const std::vector<int64_t>& intput_dims,
+                                     const std::vector<int64_t>& input_dims,
                                      std::vector<float>& scales) const {
-    for (size_t i = 0, end = intput_dims.size(); i < end; ++i) {
-      scales[i] = static_cast<float>(output_dims[i]) / static_cast<float>(intput_dims[i]);
+    for (size_t i = 0, end = input_dims.size(); i < end; ++i) {
+      scales[i] = static_cast<float>(output_dims[i]) / static_cast<float>(input_dims[i]);
     }
     ScalesValidation(scales, mode_);
   }
@@ -316,7 +317,7 @@ class UpsampleBase {
     }
   }
 
-  void InitCanUseNearest2xOptimization(int opset, const Node& node);
+  void InitCanUseNearest2xOptimization(const OpKernelInfo& info);
   bool CanUseNearest2xOptimization(const std::vector<float>& scales) const;
 };  // UpsampleBase
 
