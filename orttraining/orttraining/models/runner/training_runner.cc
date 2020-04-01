@@ -20,6 +20,16 @@
 namespace onnxruntime {
 namespace training {
 
+void run_training_session(
+  TrainingSession* sess,
+  const RunOptions run_options,
+  const std::vector<std::string> feed_names,
+  const std::vector<MLValue> feeds,
+  const std::vector<std::string> fetch_names,
+  std::vector<MLValue>* fetches) {
+  sess->Run(run_options, feed_names, feeds, fetch_names, fetches);
+}
+
 static std::vector<FreeDimensionOverride> overrides = {};
 static SessionOptions SESSION_OPTION = {
     ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
@@ -57,9 +67,14 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
   ORT_ENFORCE(!params_.training_optimizer_name.empty());
   if (params.partition_optimizer)
     ORT_ENFORCE(params.use_nccl, "Optimizer partitioning is only supported with NCCL distributed training.");
+
+    num_pipeline_stages_ = 2;
+    workers_.resize(num_pipeline_stages_);
+    worker_states_.resize(num_pipeline_stages_);
 }
 
 Status TrainingRunner::Initialize() {
+  std::cout << "(training_runner.cc) load" << std::endl;
   ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
 
   TrainingSession::TrainingConfiguration config{};
@@ -133,6 +148,12 @@ Status TrainingRunner::Initialize() {
 
   TrainingSession::TrainingConfigurationResult config_result{};
 
+  std::cout << "(training_runner.cc) configure for training" << std::endl;
+  // [TODO] Pass event names to ConfigureForTraining and set values there.
+  waited_forward_event = "waited_forward_event_id";
+  recorded_forward_event = "recorded_forward_event_id";
+  waited_backward_event = "waited_backward_event";
+  recorded_backward_event = "recorded_backward_event";
   ORT_RETURN_IF_ERROR(session_.ConfigureForTraining(config, config_result));
 
   if (config_result.mixed_precision_config_result.has_value() &&
@@ -155,19 +176,23 @@ Status TrainingRunner::Initialize() {
   for (const auto& it : opt_graph_outputs_) {
     fetch_names.push_back(it.second);
   }
+  std::cout << "(training_runner.cc) override graph outputs" << std::endl;
   ORT_RETURN_IF_ERROR(session_.OverrideGraphOutputs(fetch_names));
 
+  std::cout << "(training_runner.cc) register execution provider" << std::endl;
   for (const auto& factory : params_.providers) {
     auto provider = factory.second->CreateProvider();
     ORT_ENFORCE(factory.first == provider->Type());
     ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::move(provider)));
   }
 
+  std::cout << "(training_runner.cc) start profiling" << std::endl;
   if (params_.use_profiler && !session_options_.enable_profiling) {
     // Profiling has not already been enabled, so override from command line options.
     session_.StartProfiling(session_options_.profile_file_prefix);
   }
 
+  std::cout << "(training_runner.cc) initialize" << std::endl;
   ORT_RETURN_IF_ERROR(session_.Initialize());
 
   // Checkpointing initialization
@@ -188,6 +213,7 @@ Status TrainingRunner::Initialize() {
 }
 
 Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader) {
+  std::cout << "(training_runner)Run" << std::endl;
   if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
   }
@@ -293,11 +319,36 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         auto start = std::chrono::high_resolution_clock::now();
 
         if (is_weight_update_step) {
+          for (size_t i = 0; i < workers_.size(); ++i) {
+            if (workers_[i].joinable())
+              workers_[i].join();
+          }
+
+          const size_t worker_id = batch % num_pipeline_stages_;
+
+          worker_states_[worker_id].run_options = RunOptions();
+          worker_states_[worker_id].feed_names = feed_names;
+          worker_states_[worker_id].feeds = feeds;
+          worker_states_[worker_id].fetch_names = fetch_names;
+          worker_states_[worker_id].fetches.empty();
+
+          workers_[worker_id] = std::thread(
+            run_training_session,
+            &session_,
+            worker_states_[worker_id].run_options,
+            worker_states_[worker_id].feed_names,
+            worker_states_[worker_id].feeds,
+            worker_states_[worker_id].fetch_names,
+            &worker_states_[worker_id].fetches);
+          workers_[worker_id].join();
+          fetches = worker_states_[worker_id].fetches;
+          /*
           ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
                                            feed_names,
                                            feeds,
                                            fetch_names,
                                            &fetches));
+          */
 
           if (loss_scaler_) {
             auto it = std::find(fetch_names.begin(), fetch_names.end(), opt_graph_outputs_[OptimizerOutputKey::GradientAllIsFinite]);
@@ -322,11 +373,32 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         } else {
           RunOptions run_options;
           run_options.only_execute_path_to_fetches = true;
+          const size_t worker_id = batch % num_pipeline_stages_;
+
+          worker_states_[worker_id].run_options = RunOptions();
+          worker_states_[worker_id].feed_names = feed_names;
+          worker_states_[worker_id].feeds = feeds;
+          worker_states_[worker_id].fetch_names = fetch_grad_accumulator_output;
+          worker_states_[worker_id].fetches.empty();
+
+          workers_[worker_id] = std::thread(
+            run_training_session,
+            &session_,
+            worker_states_[worker_id].run_options,
+            worker_states_[worker_id].feed_names,
+            worker_states_[worker_id].feeds,
+            worker_states_[worker_id].fetch_names,
+            &worker_states_[worker_id].fetches);
+          workers_[worker_id].join();
+          fetches = worker_states_[worker_id].fetches;
+
+          /*
           ORT_RETURN_IF_ERROR(session_.Run(run_options,
                                            feed_names,
                                            feeds,
                                            fetch_grad_accumulator_output,
                                            &fetches));
+                                           */
           gradient_accumulation_step_count++;
         }
         step_++;

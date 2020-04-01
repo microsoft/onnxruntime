@@ -17,6 +17,23 @@
 
 namespace onnxruntime {
 namespace training {
+
+void run_training_session(
+  TrainingSession* sess,
+  const RunOptions run_options,
+  const std::vector<std::string> feed_names,
+  const std::vector<MLValue> feeds,
+  const std::vector<std::string> fetch_names,
+  std::vector<MLValue>* fetches);
+
+struct WorkerState {
+  RunOptions run_options;
+  std::vector<std::string> feed_names;
+  std::vector<MLValue> feeds;
+  std::vector<std::string> fetch_names;
+  std::vector<MLValue> fetches;
+};
+
 class TrainingRunner {
  public:
   struct Parameters {
@@ -193,6 +210,15 @@ class TrainingRunner {
   AllocatorPtr input_allocator_;
 
   std::unique_ptr<CheckpointRegistry> checkpoint_registry_;
+
+  size_t num_pipeline_stages_;
+  std::vector<std::thread> workers_;
+  std::vector<WorkerState> worker_states_;
+  // waited_forward_event, recorded_forward_event, waited_backward_event, recorded_backward_event
+  std::string waited_forward_event;
+  std::string recorded_forward_event;
+  std::string waited_backward_event;
+  std::string recorded_backward_event;
 };
 
 }  // namespace training
