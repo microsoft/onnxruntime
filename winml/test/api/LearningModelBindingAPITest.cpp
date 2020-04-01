@@ -646,6 +646,74 @@ static void VerifyOutputAfterImageBindCalledTwice()
     WINML_EXPECT_FALSE(isSame);
 }
 
+static void SequenceLengthTensorFloat()
+{
+  // Tests sequence of tensor float as an input
+  LearningModel learningModel = nullptr;
+  LearningModelBinding learningModelBinding = nullptr;
+  LearningModelDevice learningModelDevice = nullptr;
+  LearningModelSession learningModelSession = nullptr;
+  std::wstring filePath = FileHelpers::GetModulePath() + L"sequence_length.onnx";
+  WINML_EXPECT_NO_THROW(learningModelDevice = LearningModelDevice(LearningModelDeviceKind::Default));
+  WINML_EXPECT_NO_THROW(learningModel = LearningModel::LoadFromFilePath(filePath));
+  WINML_EXPECT_TRUE(learningModel != nullptr);
+  WINML_EXPECT_NO_THROW(learningModelSession = LearningModelSession(learningModel, learningModelDevice));
+  WINML_EXPECT_NO_THROW(learningModelBinding = LearningModelBinding(learningModelSession));
+
+  auto input = winrt::single_threaded_vector<TensorFloat>();
+  for (int i = 0; i < 3; i++){
+    std::vector<int64_t> shape = {5, 3*i + 1};
+    std::vector<float> data(static_cast<size_t>(std::accumulate(shape.begin(), shape.end(), static_cast<int64_t>(1), std::multiplies())));
+    input.Append(TensorFloat::CreateFromShapeArrayAndDataArray(shape, data));
+  }
+
+  WINML_EXPECT_NO_THROW(learningModelBinding.Bind(L"X", input));
+  auto results = learningModelSession.Evaluate(learningModelBinding, L"");
+
+  WINML_EXPECT_EQUAL(3, results.Outputs().Lookup(L"Y").as<TensorInt64Bit>().GetAsVectorView().GetAt(0));
+}
+
+static void SequenceConstructTensorString()
+{
+  LearningModel learningModel = nullptr;
+  LearningModelBinding learningModelBinding = nullptr;
+  LearningModelDevice learningModelDevice = nullptr;
+  LearningModelSession learningModelSession = nullptr;
+  std::wstring filePath = FileHelpers::GetModulePath() + L"sequence_construct.onnx";
+  WINML_EXPECT_NO_THROW(learningModelDevice = LearningModelDevice(LearningModelDeviceKind::Default));
+  WINML_EXPECT_NO_THROW(learningModel = LearningModel::LoadFromFilePath(filePath));
+  WINML_EXPECT_TRUE(learningModel != nullptr);
+  WINML_EXPECT_NO_THROW(learningModelSession = LearningModelSession(learningModel, learningModelDevice));
+  WINML_EXPECT_NO_THROW(learningModelBinding = LearningModelBinding(learningModelSession));
+
+  std::vector<int64_t> shape1 = {2, 3};
+  std::vector<int64_t> data1(static_cast<size_t>(std::accumulate(shape1.begin(), shape1.end(), static_cast<int64_t>(1), std::multiplies())));
+  auto input1 = TensorInt64Bit::CreateFromShapeArrayAndDataArray(shape1, data1);
+  std::vector<int64_t> shape2 = {2, 3};
+  std::vector<int64_t> data2(static_cast<size_t>(std::accumulate(shape2.begin(), shape2.end(), static_cast<int64_t>(1), std::multiplies())));
+  auto input2 = TensorInt64Bit::CreateFromShapeArrayAndDataArray(shape2, data2);
+
+  WINML_EXPECT_NO_THROW(learningModelBinding.Bind(L"tensor1", input1));
+  WINML_EXPECT_NO_THROW(learningModelBinding.Bind(L"tensor2", input2));
+  auto results = learningModelSession.Evaluate(learningModelBinding, L"");
+
+  auto output_sequence = results.Outputs().Lookup(L"output_sequence").as<winrt::Windows::Foundation::Collections::IVectorView<TensorInt64Bit>>();
+  WINML_EXPECT_EQUAL(static_cast<uint32_t>(2), output_sequence.Size());
+  WINML_EXPECT_EQUAL(2, output_sequence.GetAt(0).Shape().GetAt(0));
+  WINML_EXPECT_EQUAL(3, output_sequence.GetAt(0).Shape().GetAt(1));
+  WINML_EXPECT_EQUAL(2, output_sequence.GetAt(1).Shape().GetAt(0));
+  WINML_EXPECT_EQUAL(3, output_sequence.GetAt(1).Shape().GetAt(1));
+
+  auto bound_output_sequence = winrt::single_threaded_vector<TensorInt64Bit> ();
+  WINML_EXPECT_NO_THROW(learningModelBinding.Bind(L"output_sequence", bound_output_sequence));
+  WINML_EXPECT_NO_THROW(learningModelSession.Evaluate(learningModelBinding, L""));
+  WINML_EXPECT_EQUAL(static_cast<uint32_t>(2), bound_output_sequence.Size());
+  WINML_EXPECT_EQUAL(2, bound_output_sequence.GetAt(0).Shape().GetAt(0));
+  WINML_EXPECT_EQUAL(3, bound_output_sequence.GetAt(0).Shape().GetAt(1));
+  WINML_EXPECT_EQUAL(2, bound_output_sequence.GetAt(1).Shape().GetAt(0));
+  WINML_EXPECT_EQUAL(3, bound_output_sequence.GetAt(1).Shape().GetAt(1));
+}
+
 const LearningModelBindingAPITestApi& getapi() {
   static constexpr LearningModelBindingAPITestApi api =
   {
@@ -668,7 +736,9 @@ const LearningModelBindingAPITestApi& getapi() {
     VerifyInvalidBindExceptions,
     BindInvalidInputName,
     VerifyOutputAfterEvaluateAsyncCalledTwice,
-    VerifyOutputAfterImageBindCalledTwice
+    VerifyOutputAfterImageBindCalledTwice,
+    SequenceLengthTensorFloat,
+    SequenceConstructTensorString
   };
   return api;
 }

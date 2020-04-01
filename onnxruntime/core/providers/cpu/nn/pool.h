@@ -18,12 +18,10 @@ class Pool : public OpKernel, public PoolBase {
   }
 
   ~Pool() override = default;
-  ;
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
   PoolProcessContext pool_context_;
 };
-
 }  // namespace onnxruntime

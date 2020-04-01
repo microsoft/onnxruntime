@@ -16,6 +16,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/env.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/path_lib.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/scoped_resource.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
@@ -86,11 +88,13 @@ if (onnxruntime_USE_MIMALLOC_STL_ALLOCATOR OR onnxruntime_USE_MIMALLOC_ARENA_ALL
     endif()
 endif()
 
-onnxruntime_add_include_to_target(onnxruntime_common date_interface safeint_interface)
+onnxruntime_add_include_to_target(onnxruntime_common date_interface safeint_interface wil)
 target_include_directories(onnxruntime_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
-        PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
+        ${eigen_INCLUDE_DIRS})
+if(NOT WIN32)
+  target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
+endif()
 
-target_include_directories(onnxruntime_common PUBLIC ${eigen_INCLUDE_DIRS})
 if(NOT onnxruntime_USE_OPENMP)
   target_compile_definitions(onnxruntime_common PUBLIC EIGEN_USE_THREADS)
 endif()

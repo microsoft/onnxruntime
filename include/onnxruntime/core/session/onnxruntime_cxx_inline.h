@@ -84,6 +84,10 @@ inline Env::Env(OrtLoggingLevel default_warning_level, const char* logid, OrtLog
   ThrowOnError(Global<void>::api_.CreateEnvWithCustomLogger(logging_function, logger_param, default_warning_level, logid, &p_));
 }
 
+inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel default_warning_level, const char* logid) {
+  ThrowOnError(Global<void>::api_.CreateEnvWithGlobalThreadPools(default_warning_level, logid, tp_options, &p_));
+}
+
 inline Env& Env::EnableTelemetryEvents() {
   ThrowOnError(Global<void>::api_.EnableTelemetryEvents(p_));
   return *this;
@@ -601,4 +605,8 @@ inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context,
   return out;
 }
 
+inline SessionOptions& SessionOptions::DisablePerSessionThreads() {
+  ThrowOnError(Global<void>::api_.DisablePerSessionThreads(p_));
+  return *this;
+}
 }  // namespace Ort

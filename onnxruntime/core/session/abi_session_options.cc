@@ -141,17 +141,22 @@ ORT_API_STATUS_IMPL(OrtApis::SetSessionGraphOptimizationLevel, _In_ OrtSessionOp
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SetIntraOpNumThreads, _In_ OrtSessionOptions* options, int intra_op_num_threads) {
-  options->value.intra_op_num_threads = intra_op_num_threads;
+  options->value.intra_op_param.thread_pool_size = intra_op_num_threads;
   return nullptr;
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SetInterOpNumThreads, _In_ OrtSessionOptions* options, int inter_op_num_threads) {
-  options->value.inter_op_num_threads = inter_op_num_threads;
+  options->value.inter_op_param.thread_pool_size = inter_op_num_threads;
   return nullptr;
 }
 
 ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverride, _Inout_ OrtSessionOptions* options,
                     _In_ const char* symbolic_dim, _In_ int64_t dim_override) {
   options->value.free_dimension_overrides.push_back(onnxruntime::FreeDimensionOverride{symbolic_dim, dim_override});
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DisablePerSessionThreads, _In_ OrtSessionOptions* options) {
+  options->value.use_per_session_threads = false;
   return nullptr;
 }

@@ -87,7 +87,7 @@ class Partitioner {
       const onnxruntime::GraphViewer& graph,
       const NodeIndex& node_idx);
 
-  virtual void HandleSubgraph(const onnxruntime::GraphViewer& graph) {}
+  virtual void HandleSubgraph(const onnxruntime::GraphViewer&) {}
 
  protected:
   virtual void CreateNewPartition(const Node& node, const std::vector<NodeIndex>& immedidate_rejected_partitions);

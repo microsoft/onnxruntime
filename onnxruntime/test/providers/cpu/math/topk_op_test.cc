@@ -475,8 +475,22 @@ TEST(TopKOperator, SortedSelection) {
   RunTest(11, 5, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 0);  // smallest values
 }
 
-TEST(TopKOperator, MediumArrayTopKSorted) 
-{
+// test dimension in range (GridDim::maxThreadsPerBlock, GridDim::maxThreadsPerBlock * 2], ie. [257, 512]
+TEST(TopKOperator, SmallArrayTopKSorted) {
+  std::vector<float> input_vals(400, 0.0f);
+  std::iota(input_vals.begin(), input_vals.end(), 0.0f);
+  std::vector<int64_t> input_dimensions = {400};
+  std::vector<float> expected_vals(400, 0.0f);
+  std::iota(expected_vals.begin(), expected_vals.end(), 0.0f);
+  std::reverse(expected_vals.begin(), expected_vals.end());
+  std::vector<int64_t> expected_indices(400, 0);
+  std::iota(expected_indices.begin(), expected_indices.end(), 0);
+  std::reverse(expected_indices.begin(), expected_indices.end());
+  std::vector<int64_t> expected_dimensions = {400};
+  RunTest(11, 400, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, -1, 1, 1);
+}
+
+TEST(TopKOperator, MediumArrayTopKSorted) {
   std::vector<float> input_vals(1000, 0.0f);
   std::iota(input_vals.begin(), input_vals.end(), 0.0f);
   std::vector<int64_t> input_dimensions = {1000};
@@ -490,8 +504,7 @@ TEST(TopKOperator, MediumArrayTopKSorted)
   RunTest(11, 100, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, 0, 1, 1);
 }
 
-TEST(TopKOperator, BigArrayTopKSorted) 
-{
+TEST(TopKOperator, BigArrayTopKSorted) {
   std::vector<float> input_vals(10000, 0.0f);
   std::iota(input_vals.begin(), input_vals.end(), 0.0f);
   std::vector<int64_t> input_dimensions = {10000};
@@ -505,8 +518,7 @@ TEST(TopKOperator, BigArrayTopKSorted)
   RunTest(11, 1000, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, 0, 1, 1);
 }
 
-TEST(TopKOperator, BigArrayBigTopKSorted) 
-{
+TEST(TopKOperator, BigArrayBigTopKSorted) {
   std::vector<float> input_vals(10000, 0.0f);
   std::iota(input_vals.begin(), input_vals.end(), 0.0f);
   std::vector<int64_t> input_dimensions = {10000};

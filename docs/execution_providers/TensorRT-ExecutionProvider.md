@@ -7,13 +7,21 @@ With the TensorRT execution provider, the ONNX Runtime delivers better inferenci
 ## Build
 For build instructions, please see the [BUILD page](../../BUILD.md#tensorrt). 
 
-The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 6.0.1.5.
+The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 7.0.0.11.
 
 ## Using the TensorRT execution provider
 ### C/C++
 The TensorRT execution provider needs to be registered with ONNX Runtime to enable in the inference session. 
 ```
-InferenceSession session_object{so};
+string log_id = "Foo";
+auto logging_manager = std::make_unique<LoggingManager>
+(std::unique_ptr<ISink>{new CLogSink{}},
+                                  static_cast<Severity>(lm_info.default_warning_level),
+                                  false,
+                                  LoggingManager::InstanceType::Default,
+                                  &log_id)
+Environment::Create(std::move(logging_manager), env)
+InferenceSession session_object{so,env};
 session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::TensorrtExecutionProvider>());
 status = session_object.Load(model_file_name);
 ```

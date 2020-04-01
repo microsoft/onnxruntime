@@ -38,12 +38,12 @@ template <typename T, typename Tin>
 __global__ void _ScatterElementsKernel(
     const int rank,
     const T* input_data,
-    const int64_t* input_dims,
-    const int64_t* input_strides,
+    const TArray<int64_t> input_dims,
+    const TArray<int64_t> input_strides,
     const Tin* indices_data,
     const int64_t indices_size,
-    const int64_t* indices_dims,
-    const fast_divmod* indices_strides,
+    const TArray<int64_t> indices_dims,
+    const TArray<fast_divmod> indices_strides,
     const T* updates,
     const int axis,
     T* output_data) {
@@ -166,12 +166,12 @@ Status ScatterElementsImpl(
     const int rank,
     const T* input_data,
     const int64_t input_size,
-    CudaKernel::CudaAsyncBuffer<int64_t>& buffer_input_dims,
-    CudaKernel::CudaAsyncBuffer<int64_t>& buffer_input_strides,
+    TArray<int64_t>& buffer_input_dims,
+    TArray<int64_t>& buffer_input_strides,
     const Tin* indices_data,
     const int64_t indices_size,
-    CudaKernel::CudaAsyncBuffer<int64_t>& buffer_indices_dims,
-    CudaKernel::CudaAsyncBuffer<fast_divmod>& fdm_indices_strides,
+    TArray<int64_t>& buffer_indices_dims,
+    TArray<fast_divmod>& fdm_indices_strides,
     const T* updates,
     const int axis,
     T* output_data) {
@@ -183,20 +183,16 @@ Status ScatterElementsImpl(
     std::vector<int64_t> eff_input_dims;
     std::vector<int64_t> eff_indices_dims;
     int new_axis = CompactInputIndicesDims(
-        rank, axis, buffer_input_dims.CpuPtr(), buffer_indices_dims.CpuPtr(), eff_input_dims, eff_indices_dims);
+        rank, axis, buffer_input_dims.data_, buffer_indices_dims.data_, eff_input_dims, eff_indices_dims);
     if (eff_input_dims.size() == 2) {
       return ScatterElementsImpl2D(
           input_data, eff_input_dims, indices_data, indices_size, eff_indices_dims, updates, new_axis, output_data);
     }
 
-    ORT_RETURN_IF_ERROR(buffer_input_dims.CopyToGpu());
-    ORT_RETURN_IF_ERROR(buffer_input_strides.CopyToGpu());
-    ORT_RETURN_IF_ERROR(buffer_indices_dims.CopyToGpu());
-    ORT_RETURN_IF_ERROR(fdm_indices_strides.CopyToGpu());
     int blocksPerGrid = gsl::narrow_cast<int>(CeilDiv(indices_size, GridDim::maxThreadsPerBlock));
     _ScatterElementsKernel<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-        rank, input_data, buffer_input_dims.GpuPtr(), buffer_input_strides.GpuPtr(),
-        indices_data, indices_size, buffer_indices_dims.GpuPtr(), fdm_indices_strides.GpuPtr(),
+        rank, input_data, buffer_input_dims, buffer_input_strides,
+        indices_data, indices_size, buffer_indices_dims, fdm_indices_strides,
         updates, axis, output_data);
   }
   return Status::OK();
@@ -207,12 +203,12 @@ Status ScatterElementsImpl(
       const int rank,                                             \
       const T* input_data,                                        \
       const int64_t input_size,                                   \
-      CudaKernel::CudaAsyncBuffer<int64_t>& buffer_input_dims,    \
-      CudaKernel::CudaAsyncBuffer<int64_t>& buffer_input_strides, \
+      TArray<int64_t>& buffer_input_dims,    \
+      TArray<int64_t>& buffer_input_strides, \
       const TIndex* indices_data,                                 \
       const int64_t indices_size,                                 \
-      CudaKernel::CudaAsyncBuffer<int64_t>& buffer_indices_dims,  \
-      CudaKernel::CudaAsyncBuffer<fast_divmod>& indices_strides,  \
+      TArray<int64_t>& buffer_indices_dims,  \
+      TArray<fast_divmod>& indices_strides,  \
       const T* updates,                                           \
       const int axis,                                             \
       T* output_data)

@@ -22,7 +22,7 @@
 #define BACKEND_PROC "CPU"
 #endif
 
-#if USE_OPENMP
+#if _OPENMP
 #define BACKEND_OPENMP "-OPENMP"
 #else
 #define BACKEND_OPENMP ""
@@ -234,27 +234,28 @@ void AddTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   GetPyObjFromTensor(rtensor, obj);
   pyobjs.push_back(obj);
 }
-
 class SessionObjectInitializer {
  public:
   typedef const SessionOptions& Arg1;
-  typedef logging::LoggingManager* Arg2;
+  // typedef logging::LoggingManager* Arg2;
+  static const std::string default_logger_id;
   operator Arg1() {
     return GetDefaultCPUSessionOptions();
   }
 
-  operator Arg2() {
-    static std::string default_logger_id{"Default"};
-    static LoggingManager default_logging_manager{std::unique_ptr<ISink>{new CErrSink{}},
-                                                  Severity::kWARNING, false, LoggingManager::InstanceType::Default,
-                                                  &default_logger_id};
-    return &default_logging_manager;
-  }
+  // operator Arg2() {
+  //   static LoggingManager default_logging_manager{std::unique_ptr<ISink>{new CErrSink{}},
+  //                                                 Severity::kWARNING, false, LoggingManager::InstanceType::Default,
+  //                                                 &default_logger_id};
+  //   return &default_logging_manager;
+  // }
 
   static SessionObjectInitializer Get() {
     return SessionObjectInitializer();
   }
 };
+
+const std::string SessionObjectInitializer::default_logger_id = "Default";
 
 inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
   auto p = f.CreateProvider();
@@ -350,17 +351,17 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
   OrtPybindThrowIfError(sess->Initialize());
 }
 
-void addGlobalMethods(py::module& m) {
+void addGlobalMethods(py::module& m, const Environment& env) {
   m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
   m.def(
       "get_device", []() -> std::string { return BACKEND_DEVICE; },
       "Return the device used to compute the prediction (CPU, MKL, ...)");
   m.def(
-      "set_default_logger_severity", [](int severity) {
+      "set_default_logger_severity", [&env](int severity) {
         ORT_ENFORCE(severity >= 0 && severity <= 4,
                     "Invalid logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
-        logging::LoggingManager* default_logging_manager = SessionObjectInitializer::Get();
+        logging::LoggingManager* default_logging_manager = env.GetLoggingManager();
         default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(severity));
       },
       "Sets the default logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
@@ -546,7 +547,7 @@ void addOpSchemaSubmodule(py::module& m) {
 
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
-void addObjectMethods(py::module& m) {
+void addObjectMethods(py::module& m, Environment& env) {
   py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
       .value("ORT_DISABLE_ALL", GraphOptimizationLevel::ORT_DISABLE_ALL)
       .value("ORT_ENABLE_BASIC", GraphOptimizationLevel::ORT_ENABLE_BASIC)
@@ -578,10 +579,18 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
       .def_readwrite("log_verbosity_level", &SessionOptions::session_log_verbosity_level,
                      R"pbdoc(VLOG level if DEBUG build and session_log_verbosity_level is 0.
 Applies to session load, initialization, etc. Default is 0.)pbdoc")
-      .def_readwrite("intra_op_num_threads", &SessionOptions::intra_op_num_threads,
-                     R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
-      .def_readwrite("inter_op_num_threads", &SessionOptions::inter_op_num_threads,
-                     R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
+      .def_property( 
+          "intra_op_num_threads", [](const SessionOptions* options) -> int {
+              return options->intra_op_param.thread_pool_size;
+          }, [](SessionOptions* options, int value) -> void {
+              options->intra_op_param.thread_pool_size = value;
+          },R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
+      .def_property( 
+          "inter_op_num_threads", [](const SessionOptions* options) -> int {
+              return options->inter_op_param.thread_pool_size;
+          }, [](SessionOptions* options, int value) -> void {
+              options->inter_op_param.thread_pool_size = value;
+          },R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")     
       .def_readwrite("execution_mode", &SessionOptions::execution_mode,
                      R"pbdoc(Sets the execution mode. Default is sequential.)pbdoc")
       .def_property(
@@ -715,15 +724,15 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
       // without any conversion. So this init method can be used for model file path (string)
       // and model content (bytes)
-      .def(py::init([](const SessionOptions& so, const std::string& arg, bool is_arg_file_name) {
+      .def(py::init([&env](const SessionOptions& so, const std::string& arg, bool is_arg_file_name) {
         // Given arg is the file path. Invoke the corresponding ctor().
         if (is_arg_file_name) {
-          return onnxruntime::make_unique<InferenceSession>(so, arg, SessionObjectInitializer::Get());
+          return onnxruntime::make_unique<InferenceSession>(so, env, arg);
         }
 
         // Given arg is the model content as bytes. Invoke the corresponding ctor().
         std::istringstream buffer(arg);
-        return onnxruntime::make_unique<InferenceSession>(so, buffer, SessionObjectInitializer::Get());
+        return onnxruntime::make_unique<InferenceSession>(so, env, buffer);
       }))
       .def(
           "load_model", [](InferenceSession* sess, std::vector<std::string>& provider_types) {
@@ -867,6 +876,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
 #endif
 
+  static std::unique_ptr<Environment> env;
   auto initialize = [&]() {
     // Initialization of the module
     ([]() -> void {
@@ -874,8 +884,11 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       import_array1();
     })();
 
-    static std::unique_ptr<Environment> env;
-    OrtPybindThrowIfError(Environment::Create(env));
+    OrtPybindThrowIfError(Environment::Create(onnxruntime::make_unique<LoggingManager>(
+                                                  std::unique_ptr<ISink>{new CLogSink{}},
+                                                  Severity::kWARNING, false, LoggingManager::InstanceType::Default,
+                                                  &SessionObjectInitializer::default_logger_id),
+                                              env));
 
     static bool initialized = false;
     if (initialized) {
@@ -885,8 +898,8 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   };
   initialize();
 
-  addGlobalMethods(m);
-  addObjectMethods(m);
+  addGlobalMethods(m, *env);
+  addObjectMethods(m, *env);
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
   addOpSchemaSubmodule(m);
