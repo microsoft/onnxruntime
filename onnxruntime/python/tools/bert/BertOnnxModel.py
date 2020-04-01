@@ -162,8 +162,7 @@ class BertOnnxModel(OnnxModel):
         for normalize_node in skip_layer_norm_nodes:
             # SkipLayerNormalization has two inputs, and one of them is the
             # root input for attention.
-            qkv_nodes = self.match_parent_path(normalize_node,
-                                               ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
+            qkv_nodes = self.match_parent_path(normalize_node, ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
                                                [None, 0, 0, 0, 0])
             if qkv_nodes is None:
                 continue

@@ -233,7 +233,8 @@ class OnnxModel:
                                                exclude=[],
                                                return_indice=return_indice)
             if matched_parent is None:
-                logger.debug(f"Failed to match index={i} parent_input_index={parent_input_index[i]} op_type={op_type}", stack_info=True)
+                logger.debug(f"Failed to match index={i} parent_input_index={parent_input_index[i]} op_type={op_type}",
+                             stack_info=True)
                 return None
 
             matched_parents.append(matched_parent)

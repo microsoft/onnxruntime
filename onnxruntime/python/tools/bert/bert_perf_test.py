@@ -44,7 +44,7 @@ def create_session(model_path, use_gpu, intra_op_num_threads, graph_optimization
     else:
         execution_providers = ['CPUExecutionProvider'
                               ] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
-        
+
         sess_options = onnxruntime.SessionOptions()
         sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
 
@@ -133,7 +133,8 @@ def setup_openmp_environ(omp_num_threads, omp_wait_policy):
 
 
 def run_one_test(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times,
-                 contiguous, intra_op_num_threads, omp_num_threads, omp_wait_policy, no_warmup, opt_level, extra_latency):
+                 contiguous, intra_op_num_threads, omp_num_threads, omp_wait_policy, no_warmup, opt_level,
+                 extra_latency):
     # Environment variable shall be set before import onnxruntime.
     setup_openmp_environ(omp_num_threads, omp_wait_policy)
 
@@ -173,7 +174,8 @@ def run_one_test(perf_results, model_path, all_inputs, batch_size, sequence_leng
 
 
 def launch_test(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times,
-                contiguous, intra_op_num_threads, omp_num_threads, omp_wait_policy, no_warmup, opt_level, extra_latency):
+                contiguous, intra_op_num_threads, omp_num_threads, omp_wait_policy, no_warmup, opt_level,
+                extra_latency):
     process = multiprocessing.Process(target=run_one_test,
                                       args=(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu,
                                             test_cases, test_times, contiguous, intra_op_num_threads, omp_num_threads,
@@ -233,8 +235,8 @@ def run_perf_tests(perf_results, model_path, batch_size, sequence_length, use_gp
 
             for omp_wait_policy in ['ACTIVE', 'PASSIVE']:
                 launch_test(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases,
-                            test_times, contiguous, intra_op_num_threads, omp_num_threads, omp_wait_policy, no_warmup, opt_level, 
-                            extra_latency)
+                            test_times, contiguous, intra_op_num_threads, omp_num_threads, omp_wait_policy, no_warmup,
+                            opt_level, extra_latency)
 
 
 def run_performance(perf_results, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, seed,
@@ -363,7 +365,8 @@ def main():
 
     for batch_size in batch_size_set:
         run_performance(perf_results, args.model, batch_size, args.sequence_length, args.use_gpu, args.samples,
-                        args.test_times, args.seed, args.verbose, args.inclusive, args.all, args.no_warmup, args.opt_level)
+                        args.test_times, args.seed, args.verbose, args.inclusive, args.all, args.no_warmup,
+                        args.opt_level)
 
     # Sort the results so that the first one has smallest latency.
     sorted_results = sorted(perf_results.items(), reverse=False, key=lambda x: x[1])

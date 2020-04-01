@@ -46,6 +46,7 @@ MODEL_CLASSES = {
     "gpt2": (Gpt2OnnxModel, "pytorch", True)
 }
 
+
 def optimize_by_onnxruntime(onnx_model_path, use_gpu, optimized_model_path=None, opt_level=99):
     """
     Use onnxruntime package to optimize model. It could support models exported by PyTorch.
@@ -181,11 +182,13 @@ def optimize_model(input,
 
     return bert_model
 
+
 def setup_logger(verbose):
     if verbose:
         coloredlogs.install(level='DEBUG', fmt='[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s')
     else:
         coloredlogs.install(fmt='%(funcName)20s: %(message)s')
+
 
 def main():
     args = parse_arguments()
