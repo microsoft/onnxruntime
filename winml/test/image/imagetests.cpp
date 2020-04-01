@@ -317,20 +317,16 @@ protected:
 class MnistImageTest : public ImageTests, public testing::WithParamInterface<std::pair<std::wstring, unsigned int>> {};
 TEST_P(MnistImageTest, Evaluates) {
     GPUTEST;
+
+    PrepareModelSessionBinding(L"mnist.onnx", LearningModelDeviceKind::Cpu, std::nullopt);
+
     std::wstring filename;
     unsigned int label;
     std::tie(filename, label) = GetParam();
-
-    LoadModel(L"mnist.onnx");
     auto image_feature_value = FileHelpers::LoadImageFeatureValue(std::wstring(filename));
+    m_model_binding.Bind(L"Input3", image_feature_value);
 
-    LearningModelDevice device(LearningModelDeviceKind::Cpu);
-    m_session = LearningModelSession(m_model, device);
-    LearningModelBinding binding(m_session);
-    binding.Bind(L"Input3", image_feature_value);
-
-    auto result = m_session.EvaluateAsync(binding, L"0").get();
-
+    auto result = m_session.EvaluateAsync(m_model_binding, L"0").get();
     auto vector = result.Outputs().Lookup(L"Plus214_Output_0").as<TensorFloat>().GetAsVectorView();
 
     unsigned int max_label = 0;
