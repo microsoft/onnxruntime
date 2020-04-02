@@ -403,11 +403,6 @@ endif()
 set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
   if (onnxruntime_ENABLE_TRAINING)
-    if(${CMAKE_BUILD_TYPE} MATCHES "Debug")
-      file(GLOB grad_test_src "${ORTTRAINING_SOURCE_DIR}/test/gradient/*.cc")
-      list(REMOVE_ITEM onnxruntime_test_training_src ${grad_test_src})
-    endif()
-
     list(APPEND all_tests ${onnxruntime_test_training_src})
   endif()
 
