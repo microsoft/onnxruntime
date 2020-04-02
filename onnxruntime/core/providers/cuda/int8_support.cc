@@ -34,6 +34,10 @@ void cublasErrCheck_(cublasStatus_t stat, const char *file, int line) {
   }
 }
 
+//#define PROFILE
+
+#ifdef PROFILE
+
 #define profile_declare(str) \
   printf("function: %s\n", str); \
   cudaEvent_t startcublas; \
@@ -54,6 +58,17 @@ void cublasErrCheck_(cublasStatus_t stat, const char *file, int line) {
 #define profile_total() \
 printf("total time (ms): %f\n", cublasTimeTot);
 
+#else
+#define profile_declare(str)
+
+#define profile_start()
+
+#define profile_end(str)
+
+#define profile_total()
+
+#endif
+
 // Use cublasLtMatmul to perform the tensor op Igemm with the memory
 // order transforms on all buffers.
 //
@@ -69,11 +84,11 @@ void LtIgemmTensor(cublasLtHandle_t ltHandle,
                           int k,
                           int32_t alpha,
                           int32_t beta,
-                          const int8_t* A,
+                          const int8_t* /*A*/,
                           int lda,
-                          const int8_t* B,
+                          const int8_t* /*B*/,
                           int ldb,
-                          int32_t* C,
+                          int32_t* /*C*/,
                           int ldc,
                           const CudaKernel* cuda_kernel) {
    profile_declare("LtIgemmTensor");
@@ -88,8 +103,8 @@ void LtIgemmTensor(cublasLtHandle_t ltHandle,
   cublasLtMatrixLayout_t AtransformDesc = NULL;
   cublasLtMatrixLayout_t BtransformDesc = NULL;
   cublasLtMatrixLayout_t CtransformDesc = NULL;
-  float transformAlpha = 1.0f;
-  float transformBeta = 0.0f;
+  //float transformAlpha = 1.0f;
+  //float transformBeta = 0.0f;
   cublasLtOrder_t order_COL32 = CUBLASLT_ORDER_COL32;
   cublasLtOrder_t order_COL4_4R2_8C = CUBLASLT_ORDER_COL4_4R2_8C;
 
@@ -132,30 +147,30 @@ void LtIgemmTensor(cublasLtHandle_t ltHandle,
   profile_end("prepare");
   profile_start();
   // Transforms and computation
-  CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
-                                            transform_desc,
-                                            &transformAlpha,
-                                            A,
-                                            a_desc,
-                                            &transformBeta,
-                                            NULL,
-                                            NULL,
-                                            a_transform.get(),
-                                            AtransformDesc,
-                                            0));
-    profile_end("A transform");
-  profile_start();
-  CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
-                                            transform_desc,
-                                            &transformAlpha,
-                                            B,
-                                            b_desc,
-                                            &transformBeta,
-                                            NULL,
-                                            NULL,
-                                            b_transform.get(),
-                                            BtransformDesc,
-                                            0));
+  //CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
+  //                                          transform_desc,
+  //                                          &transformAlpha,
+  //                                          A,
+  //                                          a_desc,
+  //                                          &transformBeta,
+  //                                          NULL,
+  //                                          NULL,
+  //                                          a_transform.get(),
+  //                                          AtransformDesc,
+  //                                          0));
+  //  profile_end("A transform");
+  //profile_start();
+  //CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
+  //                                          transform_desc,
+  //                                          &transformAlpha,
+  //                                          B,
+  //                                          b_desc,
+  //                                          &transformBeta,
+  //                                          NULL,
+  //                                          NULL,
+  //                                          b_transform.get(),
+  //                                          BtransformDesc,
+  //                                          0));
   profile_end("B transform");
   profile_start();
   // No need to transform C matrix as beta is assumed to be 0
@@ -178,17 +193,17 @@ void LtIgemmTensor(cublasLtHandle_t ltHandle,
   profile_end("matmul");
   profile_start();
   //// Transform the outputs to COL order
-  CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
-                                            transform_desc,
-                                            &transformAlpha,
-                                            c_transform.get(),
-                                            CtransformDesc,
-                                            &transformBeta,
-                                            NULL,
-                                            NULL,
-                                            C,
-                                            c_desc,
-                                            0));
+  //CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
+  //                                          transform_desc,
+  //                                          &transformAlpha,
+  //                                          c_transform.get(),
+  //                                          CtransformDesc,
+  //                                          &transformBeta,
+  //                                          NULL,
+  //                                          NULL,
+  //                                          C,
+  //                                          c_desc,
+  //                                          0));
   profile_end("CTransform");
   profile_start();
   // Descriptors are no longer needed as all GPU work was already
@@ -209,15 +224,15 @@ void LtIgemmTensor(cublasLtHandle_t ltHandle,
 void LtIgemmTensorPrepackB(cublasLtHandle_t ltHandle,
                            cublasLtMatrixLayout_t AtransformDesc,
                            const IAllocatorUniquePtr<int8_t>& a_transform,
-                           cublasLtMatrixTransformDesc_t transform_desc,
+                           cublasLtMatrixTransformDesc_t /*transform_desc*/,
                           int m,
                           int n,
                           int k,
                           int32_t alpha,
                           int32_t beta,
-                          const int8_t* B,
+                          const int8_t* /*B*/,
                           int ldb,
-                          int32_t* C,
+                          int32_t* /*C*/,
                           int ldc,
                           const CudaKernel* cuda_kernel) {
    profile_declare("LtIgemmTensorPrepackB");
@@ -230,8 +245,8 @@ void LtIgemmTensorPrepackB(cublasLtHandle_t ltHandle,
   // The tensor op igemm kernels require specialized memory order of data
   cublasLtMatrixLayout_t BtransformDesc = NULL;
   cublasLtMatrixLayout_t CtransformDesc = NULL;
-  float transformAlpha = 1.0f;
-  float transformBeta = 0.0f;
+  //float transformAlpha = 1.0f;
+  //float transformBeta = 0.0f;
   cublasLtOrder_t order_COL32 = CUBLASLT_ORDER_COL32;
   cublasLtOrder_t order_COL4_4R2_8C = CUBLASLT_ORDER_COL4_4R2_8C;
 
@@ -264,17 +279,17 @@ void LtIgemmTensorPrepackB(cublasLtHandle_t ltHandle,
       profile_end("prepare");
   profile_start();
   // Transforms and computation
-  CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
-                                            transform_desc,
-                                            &transformAlpha,
-                                            B,
-                                            b_desc,
-                                            &transformBeta,
-                                            NULL,
-                                            NULL,
-                                            b_transform.get(),
-                                            BtransformDesc,
-                                            0));
+  //CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
+  //                                          transform_desc,
+  //                                          &transformAlpha,
+  //                                          B,
+  //                                          b_desc,
+  //                                          &transformBeta,
+  //                                          NULL,
+  //                                          NULL,
+  //                                          b_transform.get(),
+  //                                          BtransformDesc,
+  //                                          0));
       profile_end("BTransform");
   profile_start();
   // No need to transform C matrix as beta is assumed to be 0
@@ -297,17 +312,17 @@ void LtIgemmTensorPrepackB(cublasLtHandle_t ltHandle,
       profile_end("Matmul");
   profile_start();
   //// Transform the outputs to COL order
-  CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
-                                            transform_desc,
-                                            &transformAlpha,
-                                            c_transform.get(),
-                                            CtransformDesc,
-                                            &transformBeta,
-                                            NULL,
-                                            NULL,
-                                            C,
-                                            c_desc,
-                                            0));
+  //CUBLAS_CALL_THROW(cublasLtMatrixTransform(ltHandle,
+  //                                          transform_desc,
+  //                                          &transformAlpha,
+  //                                          c_transform.get(),
+  //                                          CtransformDesc,
+  //                                          &transformBeta,
+  //                                          NULL,
+  //                                          NULL,
+  //                                          C,
+  //                                          c_desc,
+  //                                          0));
       profile_end("CTransform");
   profile_start();
   // Descriptors are no longer needed as all GPU work was already
