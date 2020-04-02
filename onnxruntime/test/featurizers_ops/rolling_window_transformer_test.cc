@@ -15,8 +15,10 @@ namespace {
 using InputType = std::tuple<std::vector<std::string> const &, int32_t const &>;
 using EstimatorT = NS::Featurizers::GrainedAnalyticalRollingWindowEstimator<int32_t>;
 
-std::vector<uint8_t> GetStream(EstimatorT& estimator, const std::vector<InputType>& trainingBatches) {
-  NS::TestHelpers::Train<EstimatorT, InputType>(estimator, trainingBatches);
+std::vector<uint8_t> GetStream(EstimatorT& estimator, const std::vector<InputType>&) {
+  //NS::TestHelpers::Train<EstimatorT, InputType>(estimator, trainingBatches);
+  estimator.begin_training();
+  estimator.complete_training();
   auto pTransformer = estimator.create_transformer();
   NS::Archive ar;
   pTransformer->save(ar);
