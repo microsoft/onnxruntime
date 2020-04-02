@@ -12,10 +12,13 @@ Build the ONNX Runtime Training engine to use with NVIDIA GPUs for accelerating 
 
 This default NVIDIA GPU build requires CUDA runtime libraries installed on the system:
 
-    * The GPU-accelerated CUDA libraries [CUDA 10.1](https://developer.nvidia.com/cuda-downloads?target_os=Linux&target_arch=x86_64&target_distro=Ubuntu&target_version=1604&target_type=debnetwork)
-    * The GPU-accelerated library of primitives for deep neural networks [cuDNN 7.6.2](https://docs.nvidia.com/deeplearning/sdk/cudnn-install/index.html#install-linux)
-    * The NVIDIA Collective Communications Library (NCCL) multi-GPU and multi-node communication primitives library [NCCL2](https://docs.nvidia.com/deeplearning/sdk/nccl-install-guide/index.html)
-    * OpenMPI 4.0.0.0
+* The GPU-accelerated CUDA libraries [CUDA 10.1](https://developer.nvidia.com/cuda-downloads?target_os=Linux&target_arch=x86_64&target_distro=Ubuntu&target_version=1604&target_type=debnetwork)
+
+* The GPU-accelerated library of primitives for deep neural networks [cuDNN 7.6.2](https://docs.nvidia.com/deeplearning/sdk/cudnn-install/index.html#install-linux)
+
+* The NVIDIA Collective Communications Library (NCCL) multi-GPU and multi-node communication primitives library [NCCL2](https://docs.nvidia.com/deeplearning/sdk/nccl-install-guide/index.html)
+
+* OpenMPI 4.0.0.0
 
 ```
 wget https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz
@@ -78,4 +81,4 @@ for t in range(1000):
     
 ```
 
-> a sample for end-to-end training coming soon
+A sample for end-to-end training with ONNX Runtime trainer is *coming soon*.
