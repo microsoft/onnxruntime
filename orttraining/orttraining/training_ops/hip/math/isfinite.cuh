@@ -14,11 +14,7 @@ __device__ __forceinline__ bool _IsFiniteScalar(const T value) {
 
 template<>
 __device__ __forceinline__ bool _IsFiniteScalar(const half value) {
-#if __HIP_ARCH__ >= 530 || !defined(__HIP_ARCH__)
   return !__hisinf(value) && !__hisnan(value);
-#else
-  return isfinite(float(value));
-#endif
 }
 
 }  // namespace hip

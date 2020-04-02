@@ -5,6 +5,7 @@
 
 #include "core/providers/hip/hip_common.h"
 #include "core/providers/hip/cu_inc/common.cuh"
+#include "core/providers/hip/atomic/common.cuh"
 
 namespace onnxruntime {
 namespace hip {
@@ -54,7 +55,7 @@ __global__ void _GatherNDGradKernel(
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, num_slices * slice_size);
   uint64_t slice_offset = slice_offsets[i / slice_size];
   size_t j = i % slice_size;
-  atomicAdd(output_data + slice_offset + j, update_data[i]);
+  atomic_add(output_data + slice_offset + j, update_data[i]);
 };
 
 template <typename TIndex>
@@ -122,14 +123,10 @@ SPECIALIZED_COMPUTE_SLICE_OFFSETS_IMPL(int64_t);
 
 SPECIALIZED_IMPL(float);
 SPECIALIZED_GRAD_IMPL(float);
-// #if !defined(__HIP_ARCH__) || __HIP_ARCH__ >= 700
-// SPECIALIZED_IMPL(half);
-// SPECIALIZED_GRAD_IMPL(half);
-// #endif
-#if !defined(__HIP_ARCH__) || __HIP_ARCH__ >= 600
+SPECIALIZED_IMPL(half);
+SPECIALIZED_GRAD_IMPL(half);
 SPECIALIZED_IMPL(double);
 SPECIALIZED_GRAD_IMPL(double);
-#endif
 
 }  // namespace hip
 }  // namespace onnxruntime
