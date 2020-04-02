@@ -346,7 +346,9 @@ void OrtEventHandler(EVENT_RECORD* pEvent, void* pContext) {
     }
 
     printf("OrtInferenceSessionActivity\n");
-  } else if (wcscmp(name, L"NodeNameMapping") == 0) {
+  } else if (wcscmp(name, L"NodeNameMapping") == 0 || wcscmp(name, L"ProcessInfo") == 0
+      || wcscmp(name, L"NodeNameMapping") == 0 || wcscmp(name, L"NodeNameMapping") == 0
+      || wcscmp(name, L"SessionCreation") == 0 || wcscmp(name, L"SessionCreationStart") == 0 || wcscmp(name, L"EvaluationStop") == 0  || wcscmp(name, L"EvaluationStart") == 0 || wcscmp(name, L"RuntimePerf") == 0) {
     // ignore
   } else {
     wprintf(L"unknown event:%s\n", name);
