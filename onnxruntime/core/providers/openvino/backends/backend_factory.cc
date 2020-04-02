@@ -15,13 +15,14 @@ std::shared_ptr<IBackend>
 BackendFactory::MakeBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                             const std::vector<int>& input_indexes,
                             const std::unordered_map<std::string, int>& output_names,
-                            std::string type, InferenceEngine::Precision precision) {
+                            std::string type, InferenceEngine::Precision precision,
+                            InferenceEngine::Core& ie_core) {
     if(type == "CPU" || type == "GPU" || type == "MYRIAD") {
-        return std::make_shared<BasicBackend>(model_proto, input_indexes,
-                                              output_names, type, precision);
+        return std::make_shared<BasicBackend>(model_proto, input_indexes, output_names,
+                                              type, precision, ie_core);
     } else if (type == "HDDL") {
-        return std::make_shared<VADMBackend>(model_proto, input_indexes,
-                                             output_names, type, precision);
+        return std::make_shared<VADMBackend>(model_proto, input_indexes, output_names,
+                                             type, precision, ie_core);
     }
     else {
         ORT_THROW("[OpenVINO-EP] Backend factory error: Unknown backend type: " + type);

@@ -20,6 +20,7 @@ class BackendManager {
  public:
   BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger,
                  std::string dev_id, std::string prec_str);
+  static InferenceEngine::Core ie_core_;
   void Compute(Ort::CustomOpApi api, OrtKernelContext* context);
   void ShutdownBackendManager();
 

@@ -14,6 +14,8 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+InferenceEngine::Core BackendManager::ie_core_;
+
 BackendManager::BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger,
                                std::string dev_id, std::string prec_str)
   : device_id_{dev_id}, precision_str_{prec_str} {
@@ -65,7 +67,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
     has_dynamic_input_shape_ = false;
     concrete_backend_ = BackendFactory::MakeBackend(model_proto_, input_indexes_,
                                                     output_names_, device_id_,
-                                                    precision_);
+                                                    precision_, ie_core_);
   }
 }
 
@@ -191,7 +193,7 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
       auto modelproto_with_concrete_shapes = ReWriteInputShapeInfo(model_proto_, tensor_shapes);
       dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
                                                     input_indexes_,output_names_,
-                                                    device_id_, precision_);
+                                                    device_id_, precision_, ie_core_);
       backend_map_.insert({key, dynamic_backend});
     } else {
       dynamic_backend = search->second;

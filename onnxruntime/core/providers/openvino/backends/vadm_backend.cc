@@ -24,7 +24,8 @@ using namespace backend_utils;
 VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                          const std::vector<int>& input_indexes,
                          const std::unordered_map<std::string, int>& output_names,
-                         std::string device_id, InferenceEngine::Precision precision)
+                         std::string device_id, InferenceEngine::Precision precision,
+                         InferenceEngine::Core& ie)
     : input_indexes_{input_indexes} , output_names_{output_names} {
   ORT_UNUSED_PARAMETER(device_id);
 
@@ -42,7 +43,6 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   // sets number of maximum parallel inferences
   num_inf_reqs_ = 8;
 
-  InferenceEngine::Core ie;
   ie_cnn_network_ = CreateCNNNetwork(model_proto, precision);
 
   SetIODefs(model_proto, ie_cnn_network_);

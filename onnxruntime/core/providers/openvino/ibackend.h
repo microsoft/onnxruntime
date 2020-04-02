@@ -23,7 +23,8 @@ class BackendFactory {
   MakeBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
               const std::vector<int>& input_indexes,
               const std::unordered_map<std::string, int>& output_names,
-              std::string type, InferenceEngine::Precision precision);
+              std::string type, InferenceEngine::Precision precision,
+              InferenceEngine::Core& ie_core);
 };
 
 } // namespace openvino_ep
