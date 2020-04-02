@@ -1163,7 +1163,7 @@ TEST(GradientCheckerTest, SoftmaxCrossEntropyLossGrad) {
   TestSoftmaxCrossEntropyLossGrad({5}, "mean");
   TestSoftmaxCrossEntropyLossGrad({5}, "sum");
   TestSoftmaxCrossEntropyLossGrad({2, 2, 2}, "mean");
-  //TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "mean");
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "mean");
 }
 
 TEST(GradientCheckerTest, GeluGrad) {

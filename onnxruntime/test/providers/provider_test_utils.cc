@@ -691,7 +691,7 @@ void OpTester::Run(
     FillFeedsAndOutputNames(feeds, output_names);
     // Run the model
     static const std::string all_provider_types[] = {
-        kCpuExecutionProvider,
+        //kCpuExecutionProvider,
         kCudaExecutionProvider,
         kDnnlExecutionProvider,
         kNGraphExecutionProvider,
