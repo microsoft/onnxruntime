@@ -872,7 +872,8 @@ if (onnxruntime_USE_HIP)
   list(APPEND HIP_HCC_FLAGS -fno-gpu-rdc)
 
   # Generate GPU code for GFX9 Generation
-  list(APPEND HIP_HCC_FLAGS --amdgpu-target=gfx900 --amdgpu-target=gfx906 --amdgpu-target=gfx908)
+  #list(APPEND HIP_HCC_FLAGS --amdgpu-target=gfx900 --amdgpu-target=gfx906 --amdgpu-target=gfx908)
+  list(APPEND HIP_HCC_FLAGS --amdgpu-target=gfx906)
 
   hip_add_library(onnxruntime_providers_hip ${onnxruntime_providers_hip_src})
 
