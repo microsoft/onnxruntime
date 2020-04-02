@@ -20,7 +20,7 @@ def parse_arguments():
 
 def write_config(model_dir):
     with open(os.path.join(model_dir, "config.txt"), "w") as f:
-        f.write("per_sample_tolerance:1e-6\n")
+        f.write("per_sample_tolerance:1e-3\n")
         f.write("relative_per_sample_tolerance:1e-6\n")
 
 

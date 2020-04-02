@@ -98,7 +98,9 @@ common::Status CDist<T>::Compute(OpKernelContext* context) const {
 
   if (mode_ == Mode::EUCLIDEAN) {
     auto map_out = EigenVectorArrayMap<T>(output, output_shape.Size());
-    map_out = map_out.sqrt();
+    // because we use GEMM in CalculateSqeuclidean there's a slight chance a number extremely close to zero
+    // could be negative, so we need to run abs() to avoid NaN's in the results.
+    map_out = map_out.abs().sqrt();
   }
 
   return Status::OK();
