@@ -85,6 +85,13 @@ class UpsampleBase {
       ORT_THROW("exclude_outside can be set to 1 only when mode is CUBIC. Current mode is set to " + mode);
     }
 
+    // see if we can potentially use the nearest2x optimization. scales are checked at runtime to be {1,1,2,2}
+    use_nearest2x_optimization_ =
+        (opset < 11) ? true
+                     : (mode_ == UpsampleMode::NN &&
+                        coordinate_transform_mode_ == ResizeCoordinateTransformationMode::ASYMMETRIC &&
+                        nearest_mode_ == ResizeNearestMode::FLOOR);
+
     if (opset > 10) {
       roi_input_idx_ = 1;
       scales_input_idx_ = 2;
@@ -102,9 +109,6 @@ class UpsampleBase {
         scales_cached_ = true;
       }
     }
-
-    // must be after *_input_idx_ and scales_cached_ are set
-    InitCanUseNearest2xOptimization(info);
 
     // roi is only needed when coordinate transformation mode is tf_crop_and_resize
     // for all other modes no need to read roi input
@@ -316,9 +320,6 @@ class UpsampleBase {
       output_dims[i] = static_cast<int64_t>(scales[i] * input_dims[i]);
     }
   }
-
-  void InitCanUseNearest2xOptimization(const OpKernelInfo& info);
-  bool CanUseNearest2xOptimization(const std::vector<float>& scales) const;
 };  // UpsampleBase
 
 template <typename T>

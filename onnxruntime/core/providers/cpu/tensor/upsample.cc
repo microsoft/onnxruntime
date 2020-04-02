@@ -583,119 +583,6 @@ void ResizeBiCubic(
   }
 }
 
-void UpsampleBase::InitCanUseNearest2xOptimization(const OpKernelInfo& info) {
-  const auto& node = info.node();
-  auto opset = node.Op()->SinceVersion();
-
-  if (opset < 11) {
-    use_nearest2x_optimization_ = true;
-    return;
-  }
-
-  // for opset 11 and on we need to check a number of different things before enabling nearest2x optimization
-  use_nearest2x_optimization_ = false;
-  can_use_nearest2x_optimization_with_scales_check_ = false;
-
-  // Requires nearest interpolation mode (the default value), asymmetric coordinate transformation mode,
-  // and the floor rounding mode.
-  if ((mode_ != UpsampleMode::NN) ||
-      (coordinate_transform_mode_ != ResizeCoordinateTransformationMode::ASYMMETRIC) ||
-      (nearest_mode_ != ResizeNearestMode::FLOOR)) {
-    return;
-  }
-
-  // If possible, check if the 'scales' equate to {1,1,2,2} now. May need to do it at runtime.
-  // Requires either 'scales' to be provided and constant (scales_cached_ would be true in this case);
-  // or 'sizes' to be provided and constant, and the input shape to be known and concrete (no symbolic dims) so that
-  // we can calculate 'scales' from that information.
-
-  // 4th input of 'sizes' is optional. Use 'scales' (3rd input) otherwise.
-  bool has_sizes = node.InputDefs().size() == 4;
-
-  if (has_sizes) {
-    do {
-      // input: needs to have rank of 4, all dims must be concrete (no symbolic dims)
-      // sizes: must have shape {4}, and be constant
-      const auto* x_shape = node.InputDefs()[0]->Shape();
-      const auto* sizes_shape = node.InputDefs()[sizes_input_idx_]->Shape();
-
-      // check conditions that rule out optimization completely first
-      if ((x_shape != nullptr && x_shape->dim_size() != 4) ||
-          (sizes_shape != nullptr && sizes_shape->dim_size() != 1)) {
-        return;  // optimization not possible.
-      }
-
-      if (sizes_shape != nullptr && utils::HasDimValue(sizes_shape->dim()[0]) &&
-          sizes_shape->dim()[0].dim_value() != 4) {
-        return;  // optimization not possible
-      }
-
-      if (!x_shape || !sizes_shape) {
-        break;  // need to check at runtime
-      }
-
-      if (!utils::HasDimValue(sizes_shape->dim()[0])) {
-        break;  // symbolic dim. need to check at runtime
-      }
-
-      const Tensor* sizes;
-      if (!info.TryGetConstantInput(sizes_input_idx_, &sizes)) {
-        break;  // need to check at runtime
-      }
-
-      TensorShape input_shape = utils::GetTensorShapeFromTensorShapeProto(*x_shape);
-      if (input_shape.Size() < 0) {
-        break;  // symbolic dim in input. need to check at runtime.
-      }
-
-      // we have a concrete input shape and constant sizes so can calculate the scales
-      // NOTE: This requires InferenceSession::CheckShapes to validate that the shape of input when running the model
-      // matches the shape in the graph.
-      auto sizes_entries = sizes->DataAsSpan<int64_t>();
-      std::vector<int64_t> sizes_data(sizes_entries.cbegin(), sizes_entries.cend());
-      scales_.resize(4);
-      ParseScalesDataFromOutputSize(sizes_data, input_shape.GetDims(), scales_);
-      scales_cached_ = true;
-    } while (false);
-  }
-
-  // check at runtime
-  can_use_nearest2x_optimization_with_scales_check_ = true;
-
-  if (scales_cached_) {
-    use_nearest2x_optimization_ = CanUseNearest2xOptimization(scales_);
-    // use_nearest2x_optimization_ is set to final value so we don't want to allow runtime checks if that is false
-    can_use_nearest2x_optimization_with_scales_check_ = false;
-  }
-}
-
-bool UpsampleBase::CanUseNearest2xOptimization(const std::vector<float>& scales) const {
-  if (use_nearest2x_optimization_) {
-    return true;
-  }
-
-  if (!can_use_nearest2x_optimization_with_scales_check_) {
-    return false;
-  }
-
-  // check scales
-  // Cast the scales to integers and verify that the scales are positive and
-  // round trip back to floating point.
-  for (size_t n = 0; n < 4; n++) {
-    int64_t scale_value = static_cast<int64_t>(scales[n]);
-    if (scale_value <= 0 || static_cast<float>(scale_value) != scales[n]) {
-      return false;
-    }
-
-    // Only support spatial scaling at this time (batch and channel are unscaled).
-    if (n < 2 && scale_value != 1) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 template <typename T>
 Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 const std::vector<float>& roi,
@@ -729,10 +616,9 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
   switch (mode_) {
     case UpsampleMode::NN:
-
       return UpsampleNearest<T>(X->template Data<T>(), Y->template MutableData<T>(), X->Shape(), Y->Shape(),
                                 scales, roi, is_resize_, use_extrapolation_, extrapolation_value_,
-                                CanUseNearest2xOptimization(scales), get_original_coordinate_, get_nearest_pixel_);
+                                use_nearest2x_optimization_, get_original_coordinate_, get_nearest_pixel_);
     case UpsampleMode::LINEAR: {
       //The correct behavior of 'linear' mode for an N-D input is not clear right now,
       //so only support 'bilinear' with 2-D or 4-D input tensor with outermost 2 scales as 1 in the 4-D case
