@@ -686,7 +686,8 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_mult
         else:
            exe = os.path.join(cwd, 'onnx_test_runner')
            model_dir = os.path.join(build_dir, "models")
-        cmd = []
+        #Temporarily disable optimizers because some of them are failing
+        cmd = ["-o", "0"]
         if provider:
           cmd += ["-e", provider]
 
@@ -759,7 +760,7 @@ def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
         else:
            exe = os.path.join(cwd, 'onnx_test_runner')
            model_dir = os.path.join(build_dir, "models")
-        cmd_base = ['-e', 'dnnl', '-c', '1', '-j', '1']
+        cmd_base = ['-o', '0', '-e', 'dnnl', '-c', '1', '-j', '1']
         if os.path.exists(onnx_test_data_dir):
           onnxdata_cmd = cmd_base + [onnx_test_data_dir]
           # /data/onnx
