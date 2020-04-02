@@ -82,9 +82,8 @@ Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
   const int64_t param_itrs = data_shape.SizeFromDimension(0) / num_inputs;
 
   TYPED_GRAD_FUNCTION_CALL(float)
-#if !defined(__HIP_ARCH__) || __HIP_ARCH__ >= 700
   TYPED_GRAD_FUNCTION_CALL(MLFloat16)
-#endif
+
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for Tind not supported yet in GatherGrad.");
 }
 
