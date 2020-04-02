@@ -22,10 +22,10 @@ namespace training {
 
 void run_training_session(
   TrainingSession* sess,
-  const RunOptions run_options,
-  const std::vector<std::string> feed_names,
-  const std::vector<MLValue> feeds,
-  const std::vector<std::string> fetch_names,
+  const RunOptions& run_options,
+  const std::vector<std::string>& feed_names,
+  const std::vector<MLValue>& feeds,
+  const std::vector<std::string>& fetch_names,
   std::vector<MLValue>* fetches) {
   sess->Run(run_options, feed_names, feeds, fetch_names, fetches);
 }
@@ -68,7 +68,7 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
   if (params.partition_optimizer)
     ORT_ENFORCE(params.use_nccl, "Optimizer partitioning is only supported with NCCL distributed training.");
 
-    num_pipeline_stages_ = 2;
+    num_pipeline_stages_ = 3;
     workers_.resize(num_pipeline_stages_);
     worker_states_.resize(num_pipeline_stages_);
 }
@@ -330,18 +330,20 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           worker_states_[worker_id].feed_names = feed_names;
           worker_states_[worker_id].feeds = feeds;
           worker_states_[worker_id].fetch_names = fetch_names;
-          worker_states_[worker_id].fetches.empty();
+          worker_states_[worker_id].fetches = std::vector<MLValue>();
 
-          workers_[worker_id] = std::thread(
-            run_training_session,
-            &session_,
-            worker_states_[worker_id].run_options,
-            worker_states_[worker_id].feed_names,
-            worker_states_[worker_id].feeds,
-            worker_states_[worker_id].fetch_names,
-            &worker_states_[worker_id].fetches);
+          workers_[worker_id] = std::thread([&]() {
+            // session_.Run(RunOptions(), feed_names, feeds, fetch_names, &fetches);
+            session_.Run(
+              worker_states_[worker_id].run_options,
+              worker_states_[worker_id].feed_names,
+              worker_states_[worker_id].feeds,
+              worker_states_[worker_id].fetch_names,
+              &worker_states_[worker_id].fetches);
+          });
           workers_[worker_id].join();
           fetches = worker_states_[worker_id].fetches;
+
           /*
           ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
                                            feed_names,
@@ -373,32 +375,33 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         } else {
           RunOptions run_options;
           run_options.only_execute_path_to_fetches = true;
-          const size_t worker_id = batch % num_pipeline_stages_;
 
-          worker_states_[worker_id].run_options = RunOptions();
+          const size_t worker_id = batch % num_pipeline_stages_;
+          worker_states_[worker_id].run_options = run_options;
           worker_states_[worker_id].feed_names = feed_names;
           worker_states_[worker_id].feeds = feeds;
           worker_states_[worker_id].fetch_names = fetch_grad_accumulator_output;
-          worker_states_[worker_id].fetches.empty();
+          worker_states_[worker_id].fetches = std::vector<MLValue>();
 
-          workers_[worker_id] = std::thread(
-            run_training_session,
-            &session_,
-            worker_states_[worker_id].run_options,
-            worker_states_[worker_id].feed_names,
-            worker_states_[worker_id].feeds,
-            worker_states_[worker_id].fetch_names,
-            &worker_states_[worker_id].fetches);
+          workers_[worker_id] = std::thread([&]() {
+            // session_.Run(run_options, feed_names, feeds, fetch_grad_accumulator_output, &fetches);
+            session_.Run(
+              worker_states_[worker_id].run_options,
+              worker_states_[worker_id].feed_names,
+              worker_states_[worker_id].feeds,
+              worker_states_[worker_id].fetch_names,
+              &worker_states_[worker_id].fetches);
+          });
           workers_[worker_id].join();
-          fetches = worker_states_[worker_id].fetches;
 
+          fetches = worker_states_[worker_id].fetches;
           /*
           ORT_RETURN_IF_ERROR(session_.Run(run_options,
                                            feed_names,
                                            feeds,
                                            fetch_grad_accumulator_output,
                                            &fetches));
-                                           */
+          */
           gradient_accumulation_step_count++;
         }
         step_++;

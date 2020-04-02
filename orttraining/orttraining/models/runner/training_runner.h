@@ -20,10 +20,10 @@ namespace training {
 
 void run_training_session(
   TrainingSession* sess,
-  const RunOptions run_options,
-  const std::vector<std::string> feed_names,
-  const std::vector<MLValue> feeds,
-  const std::vector<std::string> fetch_names,
+  const RunOptions& run_options,
+  const std::vector<std::string>& feed_names,
+  const std::vector<MLValue>& feeds,
+  const std::vector<std::string>& fetch_names,
   std::vector<MLValue>* fetches);
 
 struct WorkerState {
