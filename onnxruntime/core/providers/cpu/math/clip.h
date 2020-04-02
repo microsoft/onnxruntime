@@ -9,12 +9,28 @@
 
 namespace onnxruntime {
 
-template <typename T>
-class Clip_6 final : public OpKernel {
+namespace clip_internal {
+
+template<typename T>
+class Clip_6Base {
  public:
-  Clip_6(const OpKernelInfo& info) : OpKernel(info) {
-    ORT_ENFORCE(info.GetAttr<T>("max", &max_).IsOK());
-    ORT_ENFORCE(info.GetAttr<T>("min", &min_).IsOK());
+  explicit Clip_6Base(const OpKernelInfo& info) {
+    auto min_val = std::numeric_limits<T>::lowest();
+    auto max_val = std::numeric_limits<T>::max();
+    info.GetAttrOrDefault("min", &min_, min_val);
+    info.GetAttrOrDefault("max", &max_, max_val);
+    ORT_ENFORCE(min_ <= max_);
+  }
+ protected:
+  T max_;
+  T min_;
+};
+} // namespace clip_internal
+
+template <typename T>
+class Clip_6 final : public clip_internal::Clip_6Base<T>, public OpKernel {
+ public:
+  explicit Clip_6(const OpKernelInfo& info) : clip_internal::Clip_6Base<T>(info), OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
@@ -26,15 +42,13 @@ class Clip_6 final : public OpKernel {
             .cwiseMin(max_);
     return Status::OK();
   }
-
- private:
-  T max_;
-  T min_;
 };
 
+// Since version 11. Min and Max are inputs
+// version 12 adds type support
 class Clip final : public OpKernel {
  public:
-  Clip(const OpKernelInfo& info) : OpKernel(info) {
+  explicit Clip(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* ctx) const override;
