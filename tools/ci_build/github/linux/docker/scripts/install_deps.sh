@@ -110,11 +110,7 @@ if [ $DEVICE_TYPE = "Normal" ]; then
 elif [ $DEVICE_TYPE = "gpu" ]; then
     ${PYTHON_EXE} -m pip install sympy==1.1.1
     if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
-      echo "inside --enable_training"
       ${PYTHON_EXE} -m pip install --upgrade --pre torch torchvision -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
-      # ${PYTHON_EXE} -m pip install torchvision
-      ${PYTHON_EXE} -c "import torch; import torch.nn as nn;  import torch.nn.functional as F; from torchvision import datasets, transforms"
-      echo "import torch, torchvision passed;"
     fi
 fi
 
@@ -139,6 +135,3 @@ elif [ "$DISTRIBUTOR" = "CentOS" ]; then
 else
   dnf remove -y protobuf-devel protobuf-compiler
 fi
-
-#${PYTHON_EXE} -c "import torch; import torch.nn as nn;  import torch.nn.functional as F; from torchvision import datasets, transforms"
-#echo "import torch, torchvision passed 2;"
