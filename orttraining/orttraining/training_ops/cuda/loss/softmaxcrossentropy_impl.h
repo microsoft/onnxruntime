@@ -64,9 +64,6 @@ class LossBase : public ReduceKernel<true> {
     std::string reduction;
     ORT_ENFORCE(info.GetAttr<std::string>("reduction", &reduction).IsOK());
     reduction_ = StringToReductionType(reduction);
-
-    // TODO: implement reduction type of NONE
-    ORT_ENFORCE(reduction_ != ReductionType::NONE, "Loss with reduction 'none' is not implemented.");
   }
 
  protected:
@@ -77,6 +74,8 @@ template <typename T>
 class SoftmaxCrossEntropy final : public LossBase {
  public:
   SoftmaxCrossEntropy(const OpKernelInfo& info) : LossBase(info) {
+    // TODO: implement reduction type of NONE
+    ORT_ENFORCE(reduction_ != ReductionType::NONE, "Loss with reduction 'none' is not implemented.");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -86,6 +85,8 @@ template <typename T>
 class SoftmaxCrossEntropyGrad final : public LossBase {
  public:
   SoftmaxCrossEntropyGrad(const OpKernelInfo& info) : LossBase(info) {
+    // TODO: implement reduction type of NONE
+    ORT_ENFORCE(reduction_ != ReductionType::NONE, "Loss with reduction 'none' is not implemented.");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -95,6 +96,8 @@ template <typename T, typename Tin>
 class SparseSoftmaxCrossEntropy final : public LossBase {
  public:
   SparseSoftmaxCrossEntropy(const OpKernelInfo& info) : LossBase(info) {
+    // TODO: implement reduction type of NONE
+    ORT_ENFORCE(reduction_ != ReductionType::NONE, "Loss with reduction 'none' is not implemented.");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -104,6 +107,8 @@ template <typename T, typename Tin>
 class SparseSoftmaxCrossEntropyGrad final : public LossBase {
  public:
   SparseSoftmaxCrossEntropyGrad(const OpKernelInfo& info) : LossBase(info) {
+    // TODO: implement reduction type of NONE
+    ORT_ENFORCE(reduction_ != ReductionType::NONE, "Loss with reduction 'none' is not implemented.");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
