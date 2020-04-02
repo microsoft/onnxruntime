@@ -3,8 +3,6 @@
 
 #include "core/providers/cpu/tensor/upsample.h"
 #include "core/common/safeint.h"
-#include "core/graph/graph_utils.h"
-#include "core/framework/tensorprotoutils.h"
 #include <sstream>
 
 using namespace onnxruntime::common;

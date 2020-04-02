@@ -131,7 +131,6 @@ class UpsampleBase {
   float cubic_coeff_a_;
   bool exclude_outside_;
   float extrapolation_value_;
-  bool can_use_nearest2x_optimization_with_scales_check_ = false;
   bool use_nearest2x_optimization_ = false;
 
   std::vector<float> scales_;
