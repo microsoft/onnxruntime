@@ -15,10 +15,10 @@ namespace contrib {
                                 KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()), \
                                 CDist<data_type>);
 DEFINE_KERNEL(float);
-//DEFINE_KERNEL(double);
+DEFINE_KERNEL(double);
 
 template <typename T>
-static void cdist_euclidian_onshot(const Tensor& a, const Tensor& b, Tensor& c, concurrency::ThreadPool* threadpool) {
+static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, concurrency::ThreadPool* threadpool) {
   // input shapes have already been validated
   const auto& shape_a = a.Shape().GetDims();  // {m, k}
   const auto& shape_b = b.Shape().GetDims();  // {n, k}
@@ -94,7 +94,7 @@ common::Status CDist<T>::Compute(OpKernelContext* context) const {
   Tensor* C = context->Output(0, output_shape);
   T* output = C->MutableData<T>();
 
-  cdist_euclidian_onshot<T>(*A, *B, *C, tp);
+  CalculateSqeuclidean<T>(*A, *B, *C, tp);
 
   if (mode_ == Mode::EUCLIDEAN) {
     auto map_out = EigenVectorArrayMap<T>(output, output_shape.Size());

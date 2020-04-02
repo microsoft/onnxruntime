@@ -51,5 +51,23 @@ TEST(CDistOpTest, Sqeuclidean) {
   test.Run();
 }
 
+TEST(CDistOpTest, DoubleEuclidean) {
+  OpTester test("CDist", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("metric", "euclidean");
+
+  test.AddInput<double>("A", {2, 3},
+                        {0.17251948, 1.6354825, 0.0373364,
+                         -0.8841497, -1.1431923, -0.621366});
+  test.AddInput<double>("B", {3, 3},
+                        {-1.3486496, -0.81973106, -0.1342539,
+                         1.5996001, -0.28360364, -0.5063398,
+                         0.06890842, 1.4522595, -1.6390957});
+
+  test.AddOutput<double>("y", {2, 3},
+                         {2.8933496, 2.4525568, 1.6895947,
+                          0.7467701, 2.6308053, 2.9462626});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
