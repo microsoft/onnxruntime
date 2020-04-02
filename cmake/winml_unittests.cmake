@@ -83,6 +83,18 @@ function(get_winml_test_concurrency_src
   set(${output_winml_test_concurrency_src} ${winml_test_concurrency_src} PARENT_SCOPE)
 endfunction()
 
+function(get_winml_test_adapter_model_src
+  winml_test_src_path
+  output_winml_test_adapter_model_src
+  output_winml_test_adapter_model_libs
+)
+  file(GLOB winml_test_adapter_model_src CONFIGURE_DEPENDS 
+      "${winml_test_src_path}/adapter/*.h"
+      "${winml_test_src_path}/adapter/*.cpp")
+  set(${output_winml_test_adapter_model_libs} "winml_adapter" PARENT_SCOPE)
+  set(${output_winml_test_adapter_model_src} ${winml_test_adapter_model_src} PARENT_SCOPE)
+endfunction()
+
 file(GLOB winml_test_common_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/common/*.cpp")
 add_library(winml_test_common STATIC ${winml_test_common_src})
 add_dependencies(winml_test_common
@@ -135,6 +147,13 @@ add_winml_test(
   LIBS winml_test_common
 )
 target_include_directories(winml_test_concurrency PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
+
+get_winml_test_adapter_model_src(${WINML_TEST_SRC_DIR} winml_test_adapter_model_src winml_test_adapter_model_lib)
+add_winml_test(
+  TARGET winml_test_adapter_model
+  SOURCES ${winml_test_adapter_model_src}
+  LIBS winml_test_common ${winml_test_adapter_model_lib}
+)
 
 # During build time, copy any modified collaterals.
 # configure_file(source destination COPYONLY), which configures CMake to copy the file whenever source is modified,
