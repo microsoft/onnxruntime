@@ -26,7 +26,7 @@ TEST(MathOpTest, Clip_6) {
 }
 
 TEST(MathOpTest, Clip_Default) {
-  OpTester test("Clip", 11);
+  OpTester test("Clip", -1);
 
   std::vector<int64_t> dims{3, 3};
   test.AddInput<float>("X", dims,
@@ -41,6 +41,24 @@ TEST(MathOpTest, Clip_Default) {
   // nGraph does not support Clip opset 11 yet.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 }
+
+TEST(MathOpTest, Clip_Default_int64) {
+  OpTester test("Clip", -1);
+
+  std::vector<int64_t> dims{3, 3};
+  test.AddInput<int64_t>("X", dims,
+                       {11, 4, 432,
+                        -1, 3, 64,
+                        -5, 9, 82});
+  test.AddOutput<int64_t>("Y", dims,
+                        {11, 4, 432,
+                         -1, 3, 64,
+                         -5, 9, 82});
+
+  // nGraph does not support Clip opset 11 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+}
+
 
 TEST(MathOpTest, Clip) {
   OpTester test("Clip", 11);
