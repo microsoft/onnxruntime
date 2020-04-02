@@ -54,7 +54,7 @@ TEST(FeaturizersTests, ShortGrainDropperTransformer_Has_CV) {
   OpTester test("ShortGrainDropperTransformer", 1, onnxruntime::kMSFeaturizersDomain);
   test.AddInput<uint8_t>("State", {dim}, stream);
   test.AddInput<std::string>("Input", {6, 2}, {"a", "b", "a", "c", "a", "d", "a", "e", "a", "f", "a", "g"});
-  test.AddOutput<bool>("Output", {6}, {false, true, true, true, true, false});
+  test.AddOutput<bool>("Output", {6}, {false, false, true, true, true, true});
 
   test.Run();
 }
@@ -88,7 +88,7 @@ TEST(FeaturizersTests, ShortGrainDropperTransformer_No_CV) {
   OpTester test("ShortGrainDropperTransformer", 1, onnxruntime::kMSFeaturizersDomain);
   test.AddInput<uint8_t>("State", {dim}, stream);
   test.AddInput<std::string>("Input", {6, 2}, {"a", "b", "a", "c", "a", "d", "a", "e", "a", "f", "a", "g"});
-  test.AddOutput<bool>("Output", {6}, {false, false, true, true, true, false});
+  test.AddOutput<bool>("Output", {6}, {false, false, false, true, true, true});
 
   test.Run();
 }
