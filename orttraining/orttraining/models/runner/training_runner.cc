@@ -20,16 +20,6 @@
 namespace onnxruntime {
 namespace training {
 
-void run_training_session(
-  TrainingSession* sess,
-  const RunOptions& run_options,
-  const std::vector<std::string>& feed_names,
-  const std::vector<MLValue>& feeds,
-  const std::vector<std::string>& fetch_names,
-  std::vector<MLValue>* fetches) {
-  sess->Run(run_options, feed_names, feeds, fetch_names, fetches);
-}
-
 static std::vector<FreeDimensionOverride> overrides = {};
 static SessionOptions SESSION_OPTION = {
     ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
@@ -69,6 +59,7 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
     ORT_ENFORCE(params.use_nccl, "Optimizer partitioning is only supported with NCCL distributed training.");
 
     num_pipeline_stages_ = 3;
+    do_pipedream_ = false;
     workers_.resize(num_pipeline_stages_);
     worker_states_.resize(num_pipeline_stages_);
 }
@@ -150,10 +141,10 @@ Status TrainingRunner::Initialize() {
 
   std::cout << "(training_runner.cc) configure for training" << std::endl;
   // [TODO] Pass event names to ConfigureForTraining and set values there.
-  waited_forward_event = "waited_forward_event_id";
-  recorded_forward_event = "recorded_forward_event_id";
-  waited_backward_event = "waited_backward_event";
-  recorded_backward_event = "recorded_backward_event";
+  waited_forward_event_name_ = "waited_forward_event_id";
+  recorded_forward_event_name_ = "recorded_forward_event_id";
+  waited_backward_event_name_ = "waited_backward_event";
+  recorded_backward_event_name_ = "recorded_backward_event";
   ORT_RETURN_IF_ERROR(session_.ConfigureForTraining(config, config_result));
 
   if (config_result.mixed_precision_config_result.has_value() &&
@@ -244,6 +235,13 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   }
   feed_names.push_back(params_.lr_params.feed_name);
 
+  if (do_pipedream_) {
+    feed_names.push_back(waited_forward_event_name_);
+    feed_names.push_back(recorded_forward_event_name_);
+    feed_names.push_back(waited_backward_event_name_);
+    feed_names.push_back(recorded_backward_event_name_);
+  }
+
   OrtValue loss_scale_val;
   OrtValue lr_ort_val;
 
@@ -300,6 +298,8 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       // loop through the data
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
+        const size_t worker_id = step_ % num_pipeline_stages_;
+
         std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch, input_allocator_);
         if (loss_scaler_) {
           float loss_scale = loss_scaler_->GetLossScale();
@@ -313,18 +313,50 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           feeds.push_back(lr_ort_val);
         }
 
+        if (do_pipedream_) {
+          int64_t id = 0;
+          id = get_forward_waited_event_id(step_);
+          TrainingUtil::CreateCpuMLValue(
+            {1},
+            std::vector<int64_t>{id},
+            &worker_states_[worker_id].fw_waited_value,
+            input_allocator_);
+          feeds.push_back(worker_states_[worker_id].fw_waited_value);
+
+          id = get_forward_recorded_event_id(step_);
+          TrainingUtil::CreateCpuMLValue(
+            {1},
+            std::vector<int64_t>{id},
+            &worker_states_[worker_id].fw_recorded_value,
+            input_allocator_);
+          feeds.push_back(worker_states_[worker_id].fw_recorded_value);
+
+          id = get_backward_waited_event_id(step_);
+          TrainingUtil::CreateCpuMLValue(
+            {1},
+            std::vector<int64_t>{id},
+            &worker_states_[worker_id].bw_waited_value,
+            input_allocator_);
+          feeds.push_back(worker_states_[worker_id].bw_waited_value);
+
+          id = get_backward_recorded_event_id(step_);
+          TrainingUtil::CreateCpuMLValue(
+            {1},
+            std::vector<int64_t>{id},
+            &worker_states_[worker_id].bw_recorded_value,
+            input_allocator_);
+          feeds.push_back(worker_states_[worker_id].bw_recorded_value);
+        }
+
         std::vector<MLValue> fetches;
 
         const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
         auto start = std::chrono::high_resolution_clock::now();
 
         if (is_weight_update_step) {
-          for (size_t i = 0; i < workers_.size(); ++i) {
-            if (workers_[i].joinable())
-              workers_[i].join();
-          }
-
-          const size_t worker_id = batch % num_pipeline_stages_;
+          // In update step, only one worker is launched per GPU.
+          // The entire graph is executed once as if there is no pipeline.
+          join_all_workers();
 
           worker_states_[worker_id].run_options = RunOptions();
           worker_states_[worker_id].feed_names = feed_names;
@@ -332,15 +364,18 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           worker_states_[worker_id].fetch_names = fetch_names;
           worker_states_[worker_id].fetches = std::vector<MLValue>();
 
-          workers_[worker_id] = std::thread([&]() {
+          workers_[worker_id] = std::thread([&](const size_t worker_id) {
             // session_.Run(RunOptions(), feed_names, feeds, fetch_names, &fetches);
+            std::cout << "(update) launch worker " << worker_id << std::endl;
             session_.Run(
               worker_states_[worker_id].run_options,
               worker_states_[worker_id].feed_names,
               worker_states_[worker_id].feeds,
               worker_states_[worker_id].fetch_names,
               &worker_states_[worker_id].fetches);
-          });
+            std::cout << "(update) terminate worker " << worker_id << std::endl;
+          }, worker_id);
+
           workers_[worker_id].join();
           fetches = worker_states_[worker_id].fetches;
 
@@ -383,16 +418,21 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           worker_states_[worker_id].fetch_names = fetch_grad_accumulator_output;
           worker_states_[worker_id].fetches = std::vector<MLValue>();
 
-          workers_[worker_id] = std::thread([&]() {
+          // If the selected worker is busy, we need to wait.
+          join_worker(worker_id);
+
+          workers_[worker_id] = std::thread([&](const size_t worker_id) {
             // session_.Run(run_options, feed_names, feeds, fetch_grad_accumulator_output, &fetches);
+            std::cout << "(grad) launch worker " << worker_id << std::endl;
             session_.Run(
               worker_states_[worker_id].run_options,
               worker_states_[worker_id].feed_names,
               worker_states_[worker_id].feeds,
               worker_states_[worker_id].fetch_names,
               &worker_states_[worker_id].fetches);
-          });
-          workers_[worker_id].join();
+            std::cout << "(grad) terminate worker " << worker_id << std::endl;
+          }, worker_id);
+          // workers_[worker_id].join();
 
           fetches = worker_states_[worker_id].fetches;
           /*

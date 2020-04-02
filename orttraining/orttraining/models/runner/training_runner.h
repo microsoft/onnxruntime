@@ -18,20 +18,16 @@
 namespace onnxruntime {
 namespace training {
 
-void run_training_session(
-  TrainingSession* sess,
-  const RunOptions& run_options,
-  const std::vector<std::string>& feed_names,
-  const std::vector<MLValue>& feeds,
-  const std::vector<std::string>& fetch_names,
-  std::vector<MLValue>* fetches);
-
 struct WorkerState {
   RunOptions run_options;
   std::vector<std::string> feed_names;
   std::vector<MLValue> feeds;
   std::vector<std::string> fetch_names;
   std::vector<MLValue> fetches;
+  MLValue fw_waited_value;
+  MLValue fw_recorded_value;
+  MLValue bw_waited_value;
+  MLValue bw_recorded_value;
 };
 
 class TrainingRunner {
@@ -187,6 +183,35 @@ class TrainingRunner {
 
   size_t GetRound() const { return round_; }
 
+  void join_all_workers() {
+    for (size_t i = 0; i < workers_.size(); ++i) {
+      if (workers_[i].joinable())
+        workers_[i].join();
+    }
+  }
+
+  void join_worker(size_t worker_id) {
+    if (workers_[worker_id].joinable()) {
+      workers_[worker_id].join();
+    }
+  }
+
+  int64_t get_forward_waited_event_id(size_t step_id) {
+    return step_id;
+  }
+
+  int64_t get_forward_recorded_event_id(size_t step_id) {
+    return step_id;
+  }
+
+  int64_t get_backward_waited_event_id(size_t step_id) {
+    return step_id;
+  }
+  
+  int64_t get_backward_recorded_event_id(size_t step_id) {
+    return step_id;
+  }
+
  private:
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader);
   Status Evaluate(InferenceSession& session, IDataLoader& data_loader);
@@ -214,11 +239,11 @@ class TrainingRunner {
   size_t num_pipeline_stages_;
   std::vector<std::thread> workers_;
   std::vector<WorkerState> worker_states_;
-  // waited_forward_event, recorded_forward_event, waited_backward_event, recorded_backward_event
-  std::string waited_forward_event;
-  std::string recorded_forward_event;
-  std::string waited_backward_event;
-  std::string recorded_backward_event;
+  std::string waited_forward_event_name_;
+  std::string recorded_forward_event_name_;
+  std::string waited_backward_event_name_;
+  std::string recorded_backward_event_name_;
+  bool do_pipedream_;
 };
 
 }  // namespace training
