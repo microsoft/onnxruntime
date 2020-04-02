@@ -12,7 +12,7 @@ namespace onnxruntime {
 namespace hip {
 
 __host__ __device__ __inline__ int mulhi(const int M, const int n) {
-#ifdef __HIP_ARCH__
+#ifdef __HIP_DEVICE_COMPILE__
   return __mulhi(M, n);
 #else
   return (((unsigned long long)((long long)M * (long long)n)) >> 32);
