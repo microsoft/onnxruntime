@@ -52,9 +52,8 @@ Status BiasGelu<T>::Compute(OpKernelContext* ctx) const {
   T* Y_data = Y->template MutableData<T>();
   int64_t task_count = X->Shape().Size() / bias_len;
 
-  concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(),
-                                               static_cast<int32_t>(task_count),
-                                               [&](int32_t task_idx) {
+  concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
+                                               [&](ptrdiff_t task_idx) {
                                                  const T* p_input = X_data + task_idx * bias_len;
                                                  T* p_output = Y_data + task_idx * bias_len;
                                                  T* p_output_tmp = tmp_data + task_idx * bias_len;
@@ -70,7 +69,7 @@ Status BiasGelu<T>::Compute(OpKernelContext* ctx) const {
                                                  for (int64_t h = 0; h < bias_len; h++) {
                                                    p_output[h] = p_output_tmp[h] * (p_output[h] + 1.0f);
                                                  }
-                                               });
+                                               }, 0);
 
   return Status::OK();
 }
