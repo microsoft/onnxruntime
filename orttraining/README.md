@@ -56,7 +56,7 @@ You can use the ONNX Runtime Training wheel as the *trainer* in your Pytorch pre
 
 ```
 import torch
-__import onnxruntime.training.pytorch as ort__
+import onnxruntime.training.pytorch as ort
 
 # Model definition
 class Net(torch.nn.Module):
@@ -68,12 +68,14 @@ class Net(torch.nn.Module):
 model = Net(D_in, H, H_out)
 criterion = torch.nn.MSELoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=1e-4)
-__trainer = ort.trainer(model, criterion, optimizer, ...)__
+trainer = ort.trainer(model, criterion, optimizer, ...)
 
 # Training Loop
 for t in range(1000):
     # forward + backward + weight update 
-  __loss, y_pred = trainer.step(x, y)__
+    loss, y_pred = trainer.step(x, y)
+    ...
+    
 ```
 
 > a sample for end-to-end training coming soon
