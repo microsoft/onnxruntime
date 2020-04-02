@@ -1,8 +1,7 @@
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Buffers;
-using System.Collections.Generic;
-using System.Text;
+using System.Diagnostics;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -16,7 +15,7 @@ namespace Microsoft.ML.OnnxRuntime
         internal OnnxValueType OnnxValueType { get; private set; }
         internal TensorElementType ElementType { get; private set; }
 
-        internal FixedBufferOnnxValue(MemoryHandle pinnedMemory, IntPtr onnxValue, OnnxValueType onnxValueType, TensorElementType elementType)
+        private FixedBufferOnnxValue(MemoryHandle pinnedMemory, IntPtr onnxValue, OnnxValueType onnxValueType, TensorElementType elementType)
         {
             PinnedMemory = pinnedMemory;
             Value = onnxValue;
@@ -32,7 +31,17 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns></returns>
         public static FixedBufferOnnxValue CreateFromTensor<T>(Tensor<T> value)
         {
+            if (value is Tensor<string>)
+            {
+                throw new ArgumentException("Only numeric tensors can be used to create FixedBufferOnnxValue.", nameof(value));
+            }
+
             NativeOnnxValueHelper.CreateNativeOnnxValue(value, out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle, out OnnxValueType onnxValueType, out TensorElementType elementType);
+
+            Debug.Assert(
+                onnxValueType == OnnxValueType.ONNX_TYPE_TENSOR && elementType != TensorElementType.String,
+                "the value should always be a numeric tensor");
+
             return new FixedBufferOnnxValue(pinnedMemoryHandle, onnxValue, onnxValueType, elementType);
         }
 

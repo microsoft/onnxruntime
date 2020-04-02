@@ -71,11 +71,9 @@ namespace Microsoft.ML.OnnxRuntime
         internal virtual void ToNativeOnnxValue(
             out IntPtr onnxValue,
             out MemoryHandle pinnedMemoryHandle,
-            out OnnxValueType onnxValueType,
-            out TensorElementType elementType,
             out bool disposeOnnxValueAfterUse)
         {
-            NativeOnnxValueHelper.CreateNativeOnnxValue(_value, out onnxValue, out pinnedMemoryHandle, out onnxValueType, out elementType);
+            NativeOnnxValueHelper.CreateNativeOnnxValue(_value, out onnxValue, out pinnedMemoryHandle, out OnnxValueType onnxValueType, out TensorElementType elementType);
             disposeOnnxValueAfterUse = true;
         }
 

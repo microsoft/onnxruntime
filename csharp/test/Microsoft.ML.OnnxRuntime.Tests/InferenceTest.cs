@@ -1000,7 +1000,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
-        private void TestReusingFixedBufferOnnxValueNonStringType()
+        private void TestReusingFixedBufferOnnxValue()
         {
             // model takes 1x5 input of fixed type, echoes back
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_BOOL.pb");
@@ -1025,26 +1025,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
-        private void TestReusingFixedBufferOnnxValueStringType()
-        {
-            // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_STRING.pb");
-            using (var session = new InferenceSession(modelPath))
-            {
-                var tensorIn = new DenseTensor<string>(new string[] { "a", "b", "c", "d", "e" }, new int[] { 1, 5 });
-                var tensorOut = new DenseTensor<string>(new string[] { "", "", "", "", "" }, new int[] { 1, 5 });
-                var ovIn = FixedBufferOnnxValue.CreateFromTensor(tensorIn);
-                var ovOut = FixedBufferOnnxValue.CreateFromTensor(tensorOut);
-
-                Assert.Throws<ArgumentException>("outputValues", () =>
-                {
-                    session.Run(new[] { "input" }, new[] { ovIn }, new[] { "output" }, new[] { ovOut });
-                });
-            }
-        }
-
-        [Fact]
-        private void TestReusingFixedBufferOnnxValueNonStringTypeMultiInferences()
+        private void TestReusingFixedBufferOnnxValueMultiInferences()
         {
             // model takes 1x5 input of fixed type, echoes back
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_INT32.pb");
