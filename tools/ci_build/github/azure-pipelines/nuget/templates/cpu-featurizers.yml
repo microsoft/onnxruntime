@@ -88,7 +88,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolMacOS)
     JobName: 'MacOS_CI_Dev'
-    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --use_featurizers --build_shared_lib --use_openmp --enable_onnx_tests --config RelWithDebInfo'
+    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --use_featurizers --build_shared_lib --use_openmp --config RelWithDebInfo'
     DoNugetPack : 'true'
     NuPackScript: |
      set -e -x
