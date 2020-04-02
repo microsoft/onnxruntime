@@ -20,4 +20,4 @@ jobs:
     sln_platform: 'x64'
     CudaVersion: '10.1'
     OrtPackageId: 'Microsoft.ML.OnnxRuntime.Gpu'
-    BuildConfigurations: ['RelWithDebInfo']
+    BuildConfigurations: ['Debug', 'RelWithDebInfo']
