@@ -214,8 +214,8 @@ static std::vector<std::pair<int, int>> AliasRange(int start, int end) {
 
 ONNX_OPERATOR_KERNEL_EX(
     NcclAllReduce,
-    kOnnxDomain,
-    9,
+    kMSDomain,
+    1,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(AliasRange(0, 1024))
@@ -224,8 +224,8 @@ ONNX_OPERATOR_KERNEL_EX(
 
 ONNX_OPERATOR_KERNEL_EX(
     NcclAllGather,
-    kOnnxDomain,
-    9,
+    kMSDomain,
+    1,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(AliasRange(0, 1024))
@@ -234,8 +234,8 @@ ONNX_OPERATOR_KERNEL_EX(
 
 ONNX_OPERATOR_KERNEL_EX(
     NcclReduceScatter,
-    kOnnxDomain,
-    9,
+    kMSDomain,
+    1,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(AliasRange(0, 1024))

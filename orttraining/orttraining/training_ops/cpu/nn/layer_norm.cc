@@ -7,15 +7,15 @@
 #include "core/providers/common.h"
 
 namespace onnxruntime {
-namespace contrib{
+namespace contrib {
 
 // LayerNormGrad
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       LayerNormalizationGrad,                                     \
-      kOnnxDomain,                                                \
-      9,                                                          \
+      kMSDomain,                                                  \
+      1,                                                          \
       T,                                                          \
       kCpuExecutionProvider,                                      \
       KernelDefBuilder()                                          \

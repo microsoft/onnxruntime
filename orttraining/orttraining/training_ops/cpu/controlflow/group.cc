@@ -14,12 +14,15 @@ Status Group::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_CPU_OPERATOR_KERNEL(Group,
-                         9,
-                         KernelDefBuilder()
-                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                             .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
-                         Group);
+ONNX_OPERATOR_KERNEL_EX(
+    Group,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Group);
 
 }  // namespace contrib
 }  // namespace onnxruntime

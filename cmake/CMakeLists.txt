@@ -796,6 +796,7 @@ if (onnxruntime_USE_DML)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
+  add_compile_definitions(ENABLE_TRAINING)
   if (onnxruntime_USE_HOROVOD)
     if (WIN32)
       message( FATAL_ERROR "Horovod is not supported on Windows." )
