@@ -668,10 +668,6 @@ if(onnxruntime_USE_OPENVINO)
   #   message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for nGraph execution provider.")
   # endif()
 
-  if(WIN32)
-      message(FATAL_ERROR "Building on Windows using OpenVINO execution provider is not supported")
-  endif()
-
   add_definitions(-DUSE_OPENVINO=1)
 
 	if (onnxruntime_USE_OPENVINO_BINARY)
