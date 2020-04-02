@@ -45,7 +45,8 @@ void SparseSoftmaxCrossEntropyGradImpl(
     const T* normalize_factor,
     T* output_data,
     size_t count,
-    size_t label_depth);
+    size_t label_depth,
+    bool none_reduction = false);
 
 template <typename T, typename Tin>
 void ComputeWeightsSoftmaxCrossEntropyImpl(

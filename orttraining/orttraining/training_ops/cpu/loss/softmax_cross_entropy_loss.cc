@@ -110,7 +110,7 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
   const int n_d = gsl::narrow_cast<int>(N_D);
   const int c = gsl::narrow_cast<int>(C);
   const int n_d_c = gsl::narrow_cast<int>(N_D * C);
-  Tensor* loss = context->Output(0, reduction_ == ReductionType::NONE ? TensorShape({label_shape[0]}) : TensorShape({}));
+  Tensor* loss = context->Output(0, reduction_ == ReductionType::NONE ? TensorShape(label.Shape()) : TensorShape({}));
   T1* log_prob_data;
   std::vector<T1> log_prob_data_buffer(0);
 
