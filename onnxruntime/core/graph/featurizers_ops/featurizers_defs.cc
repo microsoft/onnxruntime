@@ -497,14 +497,10 @@ void RegisterForecastingPivotFeaturizerVer1(){
           "T0")
       .Input(
           1,
-          "Tensor1",
-          "todo:",
-          "T")
-      .Input(
-          2,
-          "Tensor2",
-          "todo:",
-          "T")
+          "Inputs",
+          "Variadic number of Input containing tensors of different size",
+          "T",
+          ONNX_NAMESPACE::OpSchema::FormalParameterOption::Variadic)
       .Output(
           0,
           "Output",
@@ -521,13 +517,22 @@ void RegisterForecastingPivotFeaturizerVer1(){
       .TypeAndShapeInferenceFunction(
           [](ONNX_NAMESPACE::InferenceContext& ctx) {
             auto input_elem_type = ctx.getInputType(1)->tensor_type().elem_type();
-            //temp
             if (input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
               propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 0);
             } else if (input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
               propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, 0);
             } else {
               fail_type_inference("input 1 is expected to have an accepted type");
+            }
+            if (hasInputShape(ctx, 1)) {
+              const auto& input_shape = getInputShape(ctx, 1);
+              if (input_shape.dim_size() != 3) {
+                fail_shape_inference("Expecting Inputs to have 3 dimensions");
+              }
+              ONNX_NAMESPACE::TensorShapeProto shape;
+              shape.add_dim();
+              shape.add_dim();
+              ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape);
             }
           });
 }
