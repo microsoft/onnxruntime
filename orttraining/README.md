@@ -4,9 +4,9 @@ ONNX Runtime Trainer is a test feature introduced in the ONNX Runtime engine. Th
 
 The ONNX Runtime trainer can be used with your existing Pytorch training code to accelerate execution on NVIDIA GPU clusters.
 
-## Build
+## Build on Linux
 
-Build the ONNX Runtime Training engine to use with NVIDIA GPUs for accelerating the computations.
+Build the ONNX Runtime Training engine from source to use with NVIDIA GPUs for accelerating the computations.
 
 ### Dependencies
 
@@ -34,16 +34,15 @@ sudo ldconfig
 
 * Checkout this code repo with `git clone https://github.com/microsoft/onnxruntime`
 
-* Environment variables
+* Set the environment variables: __adjust the path for location your build machine__
 
 ```
-export CUDA_HOME=/usr/local/cuda
-export CUDNN_HOME=/usr/local/cuda
-export CUDACXX=/usr/local/cuda/bin/nvcc
-export LD_LIBRARY_PATH=/bert_ort/openmpipython/lib:$LD_LIBRARY_PATH
-export PATH=/bert_ort/openmpi/bin/:$PATH
-export LD_LIBRARY_PATH=/bert_ort/openmpi/lib/:$LD_LIBRARY_PATH
-export MPI_CXX_INCLUDE_PATH=/bert_ort/openmpi/include/
+export CUDA_HOME=<location for CUDA libs> # e.g. /usr/local/cuda
+export CUDNN_HOME=<location for cuDNN libs> # e.g. /usr/local/cuda
+export CUDACXX=<location for NVCC> #e.g. /usr/local/cuda/bin/nvcc
+export PATH=<location for openmpi/bin/>:$PATH
+export LD_LIBRARY_PATH=<location for openmpi/lib/>:$LD_LIBRARY_PATH
+export MPI_CXX_INCLUDE_PATH=<location for openmpi/include/>
 source /data/intel/impi/2018.3.222/intel64/bin/mpivars.sh
 ```
 
@@ -51,7 +50,7 @@ source /data/intel/impi/2018.3.222/intel64/bin/mpivars.sh
 
 Run `./build.sh --enable_training --use_cuda --config=RelWithDebInfo --build_wheel`
 
-This will produce the `.whl` file in `onnxruntime/build/Linux/RelWithDebInfo/dist` for ONNX Runtime Trainer.
+This will produce the `.whl` file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Trainer.
 
 ## Use with Pytorch training
 
