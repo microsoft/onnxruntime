@@ -171,9 +171,7 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
     }
 
     // Return loss.
-    if (reduction_ == ReductionType::NONE) {
-      return Status::OK();
-    } else {
+    if (reduction_ != ReductionType::NONE) {
       // Sum loss over n_d samples
       math::Sum<float, CPUMathUtil>(n_d, loss_sample, loss_data, nullptr);
       // Average sum_loss over sum_weights
@@ -196,9 +194,7 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
     }
 
     // Return loss.
-    if (reduction_ == ReductionType::NONE) {
-      return Status::OK();
-    } else {
+    if (reduction_ != ReductionType::NONE) {
       // Sum loss over n_d samples
       math::Sum<T1, CPUMathUtil>(n_d, loss_sample, loss_data, nullptr);
       if (reduction_ == ReductionType::MEAN) {

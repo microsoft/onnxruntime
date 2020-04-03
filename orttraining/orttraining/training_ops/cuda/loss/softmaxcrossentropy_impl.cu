@@ -242,7 +242,7 @@ __global__ void _WeightedReductionNoneSparseSoftmaxCrossEntropyGrad(
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N * D);
   int row = i / D;
   int d = i % D;
-  output_data[i] = dY[i] * weight[row] * (_Exp(log_prob[i]) - 1.0 * (d == label[row])) / (*normalize_factor);
+  output_data[i] = dY[row] * weight[row] * (_Exp(log_prob[i]) - 1.0 * (d == label[row])) / (*normalize_factor);
 }
 
 template <typename T, typename Tin>
