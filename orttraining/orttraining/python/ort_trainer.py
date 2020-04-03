@@ -311,7 +311,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs):
     torch.onnx._export(model, tuple(sample_inputs), f,
                        input_names=input_names,
                        output_names=output_names,
-                       opset_version=10,
+                       opset_version=11,
                        dynamic_axes=dynamic_axes,
                        training=True,
                        _retain_param_name=True,
