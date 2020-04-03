@@ -35,19 +35,19 @@ static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, co
 
   // ReduceSumSquare for A
   std::vector<T> a_ss;
-  a_ss.reserve(m);
+  a_ss.resize(m);
   const auto* cur_a = a_data;
   for (int64_t i = 0; i < m; ++i) {
-    a_ss.push_back(ConstEigenVectorMap<T>(cur_a, k).squaredNorm());
+    a_ss[i] = ConstEigenVectorMap<T>(cur_a, k).squaredNorm();
     cur_a += k;
   }
 
   // ReduceSumSquare for B
   std::vector<T> b_ss;
-  b_ss.reserve(n);
+  b_ss.resize(n);
   const auto* cur_b = b_data;
   for (int64_t i = 0; i < n; ++i) {
-    b_ss.push_back(ConstEigenVectorMap<T>(cur_b, k).squaredNorm());
+    b_ss[i] = ConstEigenVectorMap<T>(cur_b, k).squaredNorm();
     cur_b += k;
   }
 
@@ -95,12 +95,14 @@ common::Status CDist<T>::Compute(OpKernelContext* context) const {
   T* output = C->MutableData<T>();
 
   CalculateSqeuclidean<T>(*A, *B, *C, tp);
+  auto map_out = EigenVectorArrayMap<T>(output, output_shape.Size());
 
+  // because we use GEMM in CalculateSqeuclidean there's a slight chance a number extremely close to zero
+  // could be negative, so we need to run abs() to avoid NaN's in the results.
   if (mode_ == Mode::EUCLIDEAN) {
-    auto map_out = EigenVectorArrayMap<T>(output, output_shape.Size());
-    // because we use GEMM in CalculateSqeuclidean there's a slight chance a number extremely close to zero
-    // could be negative, so we need to run abs() to avoid NaN's in the results.
-    map_out = map_out.abs().sqrt();
+    map_out = map_out.abs().sqrt();  // do both abs and sqrt in one call so Eigen has a chance to combine
+  } else if (mode_ == Mode::SQEUCLIDEAN) {
+    map_out = map_out.abs();
   }
 
   return Status::OK();
