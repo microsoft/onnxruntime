@@ -14,19 +14,6 @@ namespace NS = Microsoft::Featurizer;
 namespace onnxruntime {
 namespace featurizers {
 
-// double ExtractNumFromNullable(float const & nullableValue) {
-//   return static_cast<double>(nullableValue);
-// }
-
-// double ExtractNumFromNullable(double const & nullableValue) {
-//   return nullableValue;
-// }
-
-// template <typename T>
-// double ExtractNumFromNullable(nonstd::optional<T> const & nullableValue) {
-//   return nullableValue.has_value() ? static_cast<double>(*nullableValue) : NS::Traits<double>::CreateNullValue();
-// }
-
 template <typename T>
 struct LagLeadOperatorTransformerImpl {
   void operator()(OpKernelContext* ctx) const {
@@ -67,6 +54,7 @@ struct LagLeadOperatorTransformerImpl {
     callback_fn = [ctx, &output_grains_data, &output_data, &has_allocate_output_data, output_dim_0](OutputType value) -> void {
       GrainT const output_grains(std::get<GrainT>(value));
       OutputMatrixType const output_matrix(std::get<OutputMatrixType>(value));
+      //Allocate tensor memory after first output is generated
       if (!has_allocate_output_data) {
         TensorShape output_shape({output_dim_0, output_matrix.rows(), output_matrix.cols()});
         Tensor* output_tensor(ctx->Output(1, output_shape));
@@ -84,9 +72,7 @@ struct LagLeadOperatorTransformerImpl {
       //Prepare Input and Output
       grains.clear();
       std::copy(grains_data, grains_data + grains_num, std::back_inserter(grains));
-      GrainT const grains_const_ref(grains);
-      T const target_data_const_ref(static_cast<T>(*target_data));
-      GrainedInputType const input_tuple(grains_const_ref, target_data_const_ref);
+      const GrainedInputType input_tuple(grains, *target_data);
       //Execute
       transformer.execute(input_tuple, callback_fn);
       //Pointer Increment
