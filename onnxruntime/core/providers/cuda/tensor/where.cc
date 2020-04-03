@@ -114,21 +114,21 @@ struct TernaryElementwisePreparation {
       // to decide if dim0 needs broadcast
       a_padded_strides.AllocCpuPtr(out_rank + 1);
       ORT_RETURN_IF_NOT(TensorPitches::Calculate(a_padded_strides.CpuSpan(), a_shape.GetDims()));
-      if (a_shape[0] > 1 && a_rank == out_rank)
+      if (a_rank > 0 && a_shape[0] > 1 && a_rank == out_rank)
         a_padded_strides.CpuPtr()[0] = 0;
     }
 
     if (b_shape != output_shape) {
       b_padded_strides.AllocCpuPtr(out_rank + 1);
       ORT_RETURN_IF_NOT(TensorPitches::Calculate(b_padded_strides.CpuSpan(), b_shape.GetDims()));
-      if (b_shape[0] > 1 && b_rank == out_rank)
+      if (b_rank > 0 && b_shape[0] > 1 && b_rank == out_rank)
         b_padded_strides.CpuPtr()[0] = 0;
     }
 
     if (c_shape != output_shape) {
       c_padded_strides.AllocCpuPtr(out_rank + 1);
       ORT_RETURN_IF_NOT(TensorPitches::Calculate(c_padded_strides.CpuSpan(), c_shape.GetDims()));
-      if (c_shape[0] > 1 && c_rank == out_rank)
+      if (c_rank > 0 && c_shape[0] > 1 && c_rank == out_rank)
         c_padded_strides.CpuPtr()[0] = 0;
     }
 

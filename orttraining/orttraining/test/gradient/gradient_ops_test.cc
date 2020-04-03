@@ -433,6 +433,57 @@ TEST(GradientCheckerTest, ReduceMeanGrad) {
   }
 }
 
+TEST(GradientCheckerTest, ReduceSumGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"ReduceSum"};
+
+  // default
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{1, 1, 1}}, &max_error);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // axes = [0, 1, 2], keepdims = 0
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{0, 1, 2}),
+                                           MakeAttribute("keepdims", int64_t(0))});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // axes = [0, 2], keepdims = 1
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{1, 3, 1}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{0, 2})});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // axes = [0, 1], keepdims = 0
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{2}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{0, 1}),
+                                           MakeAttribute("keepdims", int64_t(0))});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // axes = [1], keepdims = 1
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4, 1, 2}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{1}),
+                                           MakeAttribute("keepdims", int64_t(1))});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // axes = [2], keepdims = 0
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4, 3}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{2}),
+                                           MakeAttribute("keepdims", int64_t(0))});
+    EXPECT_IS_TINY(max_error);
+  }
+}
+
 #ifndef USE_CUDA
 TEST(GradientCheckerTest, CastGrad) {
   // A dummy test that cast float to float
@@ -622,6 +673,16 @@ TEST(GradientCheckerTest, ConcatGrad) {
     TensorShape y_shape({1, 2, 9});
     gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape}, {y_shape}, &max_error,
                                           {MakeAttribute("axis", int64_t(2))});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  //concat_different_shape
+  {
+    TensorShape x1_shape({2, 2});
+    TensorShape x2_shape({2, 4});
+    TensorShape y_shape({2, 6});
+    gradient_checker.ComputeGradientError(op_def, {x1_shape, x2_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("axis", int64_t(1))});
     EXPECT_IS_TINY(max_error);
   }
 }
@@ -1552,11 +1613,11 @@ TEST(Synchronization, WaitAndRecordEventMany) {
   const size_t event_count = 16;
   for (int i = 0; i < 8; ++i) {
     std::thread thread_pool[2 * event_count];
-    for (int j = 0; j < event_count; ++j) {
+    for (int j = 0; j < static_cast<int>(event_count); ++j) {
       thread_pool[j] = std::thread(wait_event, j);
       thread_pool[j + event_count] = std::thread(record_event, j);
     }
-    for (int j = 0; j < event_count; ++j) {
+    for (size_t j = 0; j < event_count; ++j) {
       thread_pool[j].join();
       thread_pool[j + event_count].join();
     }

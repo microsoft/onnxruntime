@@ -1415,6 +1415,17 @@ TEST(MathOpTest, Expand_8_1x3_float16) {
   test.Run();
 }
 
+TEST(MathOpTest, Expand_8_neg1x3_int64) {
+  OpTester test("Expand", 8);
+  test.AddInput<int64_t>("data_0", {3, 1}, {1, 2, 3});
+  test.AddInput<int64_t>("data_1", {2}, {-1, 3});
+  test.AddOutput<int64_t>("result", {3, 3},
+                          {1, 1, 1,
+                           2, 2, 2,
+                           3, 3, 3});
+  test.Run();
+}
+
 TEST(MathOpTest, Erf) {
   OpTester test("Erf", 9);
   std::vector<int64_t> dims{2, 2};
