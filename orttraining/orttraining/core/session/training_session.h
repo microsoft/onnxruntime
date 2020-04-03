@@ -66,10 +66,6 @@ class TrainingSession : public InferenceSession {
     DistributedConfiguration distributed_config{};
 
     struct MixedPrecisionConfiguration {
-      // Whether to add loss scaling.
-      bool add_loss_scaling{};
-      // The initial loss scaling factor.
-      float initial_loss_scale_value{};
       // Whether to use FP16 initializers.
       bool use_fp16_initializers{};
     };
@@ -143,8 +139,8 @@ class TrainingSession : public InferenceSession {
    */
   struct TrainingConfigurationResult {
     struct MixedPrecisionConfigurationResult {
-      // The name of the loss scaling factor input if loss scaling was added.
-      optional<std::string> loss_scale_input_name;
+      // The name of the loss scaling factor input.
+      std::string loss_scale_input_name;
     };
     // The mixed precision configuration output.
     // This is only set if mixed precision is enabled.
@@ -214,19 +210,16 @@ class TrainingSession : public InferenceSession {
   const PathString& GetModelLocation() const { return model_location_; }
 
  private:
-  /** Add a graph input suitable for use as a scaling factor for loss scaling.
-  It will be a scalar float tensor.
-  @param loss_scale_input_name The name of the added graph input.
-  @return Status of the graph input addition.
-  */
-  common::Status BuildLossScalingFactorInput(const float loss_scale, std::string& loss_scale_input_name);
-
-  /** Add a system provided or an op as loss function to the model.
-  After the call, the model have one more input named as label_name and one more output named as loss_func_output_name.
-  @param loss_func_info The loss function info.
-  @param loss_scale_input_name If non-empty, specifies that loss scaling should be applied using the named
-         loss scaling factor input. Otherwise, loss scaling will not be applied.
-  @param actual_loss_name The actual name of the loss function output from which to start the backward graph.
+  /** Configures the loss function.
+  The loss function can either be provided externally or built from the provided loss function information.
+  Exactly one of external_loss_name or loss_function_info should be given.
+  Optionally, a loss scaling factor can be applied to the loss function output.
+  @param external_loss_name The name of the externally provided loss function output. Specifies that an external loss
+         function should be used.
+  @param loss_func_info The loss function information. Specifies that the loss function should be built.
+  @param loss_scale_input_name[in,out] If provided, indicates that loss scaling should be applied and will be set to
+         the name of the loss scale input.
+  @param actual_loss_name[out] The actual name of the loss function output from which to start the backward graph.
   @returns Status indicating success or providing an error message.
   @remarks When using a custom/standard op as loss function, 2 ops must have been registered:
              1. an op for loss function, schema:
@@ -245,9 +238,11 @@ class TrainingSession : public InferenceSession {
                      GRADIENT_OF_LABEL
            And also in gradient_builder.cc, the gradient builder must have been registered.
   */
-  common::Status BuildLossFunction(const LossFunctionInfo& loss_func_info,
-                                   const std::string& loss_scale_input_name,
-                                   std::string& actual_loss_name);
+  common::Status ConfigureLossFunction(
+      const optional<std::string>& external_loss_name,
+      const optional<LossFunctionInfo>& loss_func_info,
+      std::string* loss_scale_input_name,
+      std::string& actual_loss_name);
 
   common::Status AddGistEncoding();
 
@@ -328,9 +323,10 @@ class TrainingSession : public InferenceSession {
   std::unordered_set<std::string> opt_state_initializer_names_;
   std::unordered_set<std::string> fp16_weight_initializer_names_;
 
+  bool is_mixed_precision_enabled_;
+  optional<std::string> external_loss_name_;
   std::unique_ptr<ILossFunction> loss_graph_builder_;
-  LossFunctionInfo loss_func_info_;
-  std::string loss_scale_input_name_;
+  optional<LossFunctionInfo> loss_function_info_;
 
   OptimizerGraphConfig opt_graph_config_;
   std::unordered_map<std::string, OptimizerNodeConfig> opt_configs_;

@@ -57,9 +57,9 @@ def generate_sample_batch(desc, batch_size, device):
     sample = generate_sample(desc_, device)
     return sample
 
-def runBertTrainingTest(gradient_accumulation_steps, use_mixed_precision, allreduce_post_accumulation):
+def runBertTrainingTest(gradient_accumulation_steps, use_mixed_precision, allreduce_post_accumulation, use_simple_model_desc=True):
     model_desc = bert_model_description()
-    simple_model_desc = remove_extra_info(model_desc)
+    simple_model_desc = remove_extra_info(model_desc) if use_simple_model_desc else model_desc
     learning_rate_description = ort_trainer_learning_rate_description()
     device = torch.device("cuda", 0)
 
@@ -106,7 +106,7 @@ def runBertTrainingTest(gradient_accumulation_steps, use_mixed_precision, allred
 
         learning_rate = torch.tensor([lr]).to(device)
         if use_mixed_precision:
-            loss_scale = torch.tensor(loss_scaler.loss_scale_).to(device)
+            loss_scale = torch.tensor([loss_scaler.loss_scale_]).to(device)
             actual_loss = model.train_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels, learning_rate, loss_scale)
             if isinstance(actual_loss, (list, tuple)):
                 assert len(actual_loss) == 2
@@ -173,6 +173,49 @@ class TestOrtTrainer(unittest.TestCase):
         assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
 
+    def testBertTrainingMixedPrecision(self):
+        # skip the test due to the lack of mixed precision capacity of ort CI.
+        return
+
+        torch.manual_seed(1)
+        expected_losses = [11.078125, 11.0, 11.0390625, 11.0, 11.015625, 11.0, 10.9921875, 11.0703125]
+        expected_all_finites = [False, True, True, True, True, True, True, True]
+        expected_eval_loss = [11.046875]
+        actual_losses, actual_all_finites, actual_eval_loss = runBertTrainingTest(
+            gradient_accumulation_steps=1, use_mixed_precision=True, allreduce_post_accumulation=False, use_simple_model_desc=False)
+
+        # to update expected outcomes, enable pdb and run the test with -s and copy paste outputs
+        # print('actual_losses ', actual_losses)
+        # print('actual_all_finite ', actual_all_finites)
+        # print('eval_loss', actual_eval_loss)
+        # import pdb; pdb.set_trace()
+
+        rtol = 1e-01
+        assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
+        assert_array_equal(expected_all_finites, actual_all_finites, "all_finite mismatch")
+        assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
+
+    def testBertTrainingGradientAccumulationMixedPrecision(self):
+        # skip the test due to the lack of mixed precision capacity of ort CI.
+        return
+
+        torch.manual_seed(1)
+        expected_losses = [11.046875, 11.171875, 11.0234375, 11.046875, 10.8984375, 10.9921875, 11.078125, 10.96875]
+        expected_all_finites = [False, True]
+        expected_eval_loss = [11.0546875]
+        actual_losses, actual_all_finites, actual_eval_loss = runBertTrainingTest(
+            gradient_accumulation_steps=4, use_mixed_precision=True, allreduce_post_accumulation=False, use_simple_model_desc=False)
+
+        # to update expected outcomes, enable pdb and run the test with -s and copy paste outputs
+        # print('actual_losses ', actual_losses)
+        # print('actual_all_finite ', actual_all_finites)
+        # print('eval_loss', actual_eval_loss)
+        # import pdb; pdb.set_trace()
+
+        rtol = 1e-01
+        assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
+        assert_array_equal(expected_all_finites, actual_all_finites, "all_finite mismatch")
+        assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
 
 if __name__ == '__main__':
     unittest.main(module=__name__, buffer=True)
