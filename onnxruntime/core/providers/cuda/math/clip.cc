@@ -50,7 +50,7 @@ Status Clip_6<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (count > 0) {
     auto* y_data = Y->template MutableData<T>();
     const auto* x_data = X.template Data<T>();
-    ClipImpl<T>(x_data, y_data, min_, max_, count);
+    ClipImpl<T>(x_data, y_data, this->min_, this->max_, count);
   }
   return Status::OK();
 }

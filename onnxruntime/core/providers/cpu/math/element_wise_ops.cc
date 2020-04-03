@@ -47,23 +47,25 @@ namespace onnxruntime {
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),                                           \
       KERNEL_CLASS<TYPE>);
 
-#define REG_ELEMENTWISE_KERNEL_NONT(OP_TYPE, VERSION, KERNEL_CLASS, TYPE, ...)   \
+// var args are type constraints
+#define REG_ELEMENTWISE_KERNEL_NONT(OP_TYPE, VERSION, KERNEL_CLASS, ...)   \
   ONNX_CPU_OPERATOR_KERNEL(                                                      \
       OP_TYPE,                                                                   \
       VERSION,                                                                   \
       KernelDefBuilder()                                                         \
-          .TypeConstraint("T", BuildKernelDefConstraints<TYPE, __VA_ARGS__>())   \
-          .TypeConstraint("T1", BuildKernelDefConstraints<TYPE, __VA_ARGS__>()), \
+          .TypeConstraint("T", BuildKernelDefConstraints<__VA_ARGS__>())   \
+          .TypeConstraint("T1", BuildKernelDefConstraints<__VA_ARGS__>()), \
       KERNEL_CLASS);
 
-#define REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, TYPE, ...) \
+// var args are type constraints
+#define REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, ...) \
   ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                                     \
       OP_TYPE,                                                                                            \
       VERSION_FROM,                                                                                       \
       VERSION_TO,                                                                                         \
       KernelDefBuilder()                                                                                  \
-          .TypeConstraint("T", BuildKernelDefConstraints<TYPE, __VA_ARGS__>())                            \
-          .TypeConstraint("T1", BuildKernelDefConstraints<TYPE, __VA_ARGS__>()),                          \
+          .TypeConstraint("T", BuildKernelDefConstraints<__VA_ARGS__>())                            \
+          .TypeConstraint("T1", BuildKernelDefConstraints<__VA_ARGS__>()),                          \
       KERNEL_CLASS);
 
 REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, float, Add);

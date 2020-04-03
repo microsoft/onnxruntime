@@ -20,13 +20,13 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Clip);
 
-#define REG_KERNEL_NONTEMPL(OP_TYPE, VERSION, KERNEL_CLASS, TYPE, ...)          \
+#define REG_KERNEL_NONTEMPL(OP_TYPE, VERSION, KERNEL_CLASS, ...)          \
   ONNX_CPU_OPERATOR_KERNEL(                                                     \
       OP_TYPE,                                                                  \
       VERSION,                                                                  \
       KernelDefBuilder()                                                        \
           .MayInplace(0, 0)                                                     \
-          .TypeConstraint("T", BuildKernelDefConstraints<TYPE, __VA_ARGS__>()), \
+          .TypeConstraint("T", BuildKernelDefConstraints<__VA_ARGS__>()), \
       KERNEL_CLASS);
 
 REG_KERNEL_NONTEMPL(Clip, 12, Clip, float, double, int8_t, uint8_t, int64_t, uint64_t);

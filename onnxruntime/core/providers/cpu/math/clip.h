@@ -38,8 +38,8 @@ class Clip_6 final : public clip_internal::Clip_6Base<T>, public OpKernel {
     Tensor* Y = ctx->Output(0, X->Shape());
     EigenVectorMap<T>(Y->template MutableData<T>(), Y->Shape().Size()) =
         ConstEigenVectorMap<T>(X->template Data<T>(), X->Shape().Size())
-            .cwiseMax(min_)
-            .cwiseMin(max_);
+            .cwiseMax(this->min_)
+            .cwiseMin(this->max_);
     return Status::OK();
   }
 };
