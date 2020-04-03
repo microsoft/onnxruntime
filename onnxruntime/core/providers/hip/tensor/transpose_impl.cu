@@ -20,9 +20,9 @@ __global__ void _TransposeKernel(int32_t shape_rank, const TArray<int64_t> input
       break;
     }
     int out_coord, r;
-    output_strides.data_[dim].divmod(output_index, out_coord, r);
+    output_strides[dim].divmod(output_index, out_coord, r);
     output_index = r;
-    input_index += input_strides.data_[dim] * out_coord;
+    input_index += input_strides[dim] * out_coord;
   }
   output_data[id] = input_data[input_index];
 }
