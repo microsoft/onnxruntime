@@ -80,6 +80,10 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--training_e2e_test_data_path",
                         help="Path to training end-to-end test data directory.")
 
+    # Pytorch frontend test options
+    parser.add_argument("--enable_frontend_training_tests", action="store_true",
+                        help="Enable the pytorch frontend training tests.")
+
     # enable ONNX tests
     parser.add_argument("--enable_onnx_tests", action='store_true',
                         help='''When running the Test phase, run onnx_test_running against available test data directories.''')
@@ -598,6 +602,9 @@ def adb_push(source_dir, src, dest, **kwargs):
 def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
 
+def run_frontend_tests(args, cwd=cwd, dll_path=dll_path):
+    run_subprocess([sys.executable, 'onnxruntime_test_transformers.py'], cwd=cwd, dll_path=dll_path)
+
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_tvm = False, enable_tensorrt = False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
@@ -649,7 +656,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
             run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
 
             if args.enable_training and args.use_cuda:
+                # run basic frontend tests
                 run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd, dll_path=dll_path)
+
+                # run additional frontend tests for orttraining-linux-gpu-frontend_test_ci-pipeline
+                if args.enable_frontend_training_tests:
+                    run_frontend_tests(args, cwd=cwd, dll_path=dll_path)
 
             try:
                 import onnx
