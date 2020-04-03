@@ -15,7 +15,10 @@ namespace onnxruntime {
 struct CUDAProviderFactory : IExecutionProviderFactory {
   CUDAProviderFactory(OrtDevice::DeviceId device_id,
                       size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
-                      ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo) : device_id_(device_id), cuda_mem_limit_(cuda_mem_limit), arena_extend_strategy_(arena_extend_strategy) {}
+                      ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo) 
+      : device_id_(device_id), 
+        cuda_mem_limit_(cuda_mem_limit), 
+        arena_extend_strategy_(arena_extend_strategy) {}
   ~CUDAProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
