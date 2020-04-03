@@ -323,6 +323,7 @@ void MultiThreadSingleSession() {
 }
 
 void MultiThreadSingleSessionGpu() {
+    GPUTEST
     MultiThreadSingleSessionOnDevice(LearningModelDeviceKind::DirectX);
 }
 }
