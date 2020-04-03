@@ -50,7 +50,7 @@ struct RollingWindowTransformerImpl {
         output_data = output_tensor->MutableData<double>();
         has_allocate_output_data = true;
       }
-      output_data = std::copy(value.begin(), value.end(), output_data);
+      output_data = std::copy(value.data(), value.data() + value.size(), output_data);
     };
 
     // Transform
@@ -60,13 +60,10 @@ struct RollingWindowTransformerImpl {
       //Prepare Input
       grains.clear();
       std::copy(grains_data, grains_data + grains_num, std::back_inserter(grains));
-      GrainT const grains_const_ref(grains);
-      T const target_data_const_ref(static_cast<T>(*target_data));
-      GrainedInputType const input_tuple(grains_const_ref, target_data_const_ref);
-
+      const GrainedInputType input_tuple(grains, *target_data);
       //Execute
       transformer.execute(input_tuple, callback_fn);
-
+      //Increment Pointer
       target_data++;
       grains_data += grains_num;
     }

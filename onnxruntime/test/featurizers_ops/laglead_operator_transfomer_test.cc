@@ -28,12 +28,13 @@ std::vector<uint8_t> GetStream(EstimatorT& estimator, const std::vector<InputTup
 } // namespace
 
 TEST(FeaturizersTests, Grained_LagLead_2_grain_horizon_2_lead_1_lead_2_long) {
-  //parameter setting
   using InputType = float;
   using GrainType = std::vector<std::string>;
   NS::AnnotationMapsPtr                                            pAllColumnAnnotations(NS::CreateTestAnnotationMapsPtr(1));
   NS::Featurizers::GrainedLagLeadOperatorEstimator<InputType>      estimator(pAllColumnAnnotations, 2, {1, 2});
+
   using GrainedInputType = typename NS::Featurizers::GrainedLagLeadOperatorEstimator<InputType>::InputType;
+
   const GrainType grain1({"one"});
   const InputType value1(static_cast<InputType>(10));
   const InputType value2(static_cast<InputType>(11));
@@ -41,13 +42,15 @@ TEST(FeaturizersTests, Grained_LagLead_2_grain_horizon_2_lead_1_lead_2_long) {
   const GrainedInputType tup1(grain1, value1);
   const GrainedInputType tup2(grain1, value2);
   const GrainedInputType tup3(grain1, value3);
+
   const GrainType grain2({"two"});
   const InputType value4(static_cast<InputType>(20));
   const InputType value5(static_cast<InputType>(21));
   const InputType value6(static_cast<InputType>(22));
-  const GrainedInputType tup4 (grain2, value4);
-  const GrainedInputType tup5 (grain2, value5);
-  const GrainedInputType tup6 (grain2, value6);
+  const GrainedInputType tup4(grain2, value4);
+  const GrainedInputType tup5(grain2, value5);
+  const GrainedInputType tup6(grain2, value6);
+
   auto training_batch = NS::TestHelpers::make_vector<std::tuple<GrainType const &, InputType const &>>(tup1, tup2, tup3, tup4, tup5, tup6);
 
   auto stream = GetStream(estimator, training_batch);
@@ -68,12 +71,13 @@ TEST(FeaturizersTests, Grained_LagLead_2_grain_horizon_2_lead_1_lead_2_long) {
 }
 
 TEST(FeaturizersTests, Grained_LagLead_2_grain_horizon_2_lead_1_lead_2_double) {
-  //parameter setting
   using InputType = double;
   using GrainType = std::vector<std::string>;
   NS::AnnotationMapsPtr                                            pAllColumnAnnotations(NS::CreateTestAnnotationMapsPtr(1));
   NS::Featurizers::GrainedLagLeadOperatorEstimator<InputType>      estimator(pAllColumnAnnotations, 2, {1, 2});
+
   using GrainedInputType = typename NS::Featurizers::GrainedLagLeadOperatorEstimator<InputType>::InputType;
+
   const GrainType grain1({"one"});
   const InputType value1(static_cast<InputType>(10));
   const InputType value2(static_cast<InputType>(11));
@@ -81,13 +85,15 @@ TEST(FeaturizersTests, Grained_LagLead_2_grain_horizon_2_lead_1_lead_2_double) {
   const GrainedInputType tup1(grain1, value1);
   const GrainedInputType tup2(grain1, value2);
   const GrainedInputType tup3(grain1, value3);
+
   const GrainType grain2({"two"});
   const InputType value4(static_cast<InputType>(20));
   const InputType value5(static_cast<InputType>(21));
   const InputType value6(static_cast<InputType>(22));
-  const GrainedInputType tup4 (grain2, value4);
-  const GrainedInputType tup5 (grain2, value5);
-  const GrainedInputType tup6 (grain2, value6);
+  const GrainedInputType tup4(grain2, value4);
+  const GrainedInputType tup5(grain2, value5);
+  const GrainedInputType tup6(grain2, value6);
+
   auto training_batch = NS::TestHelpers::make_vector<std::tuple<GrainType const &, InputType const &>>(tup1, tup2, tup3, tup4, tup5, tup6);
 
   auto stream = GetStream(estimator, training_batch);
