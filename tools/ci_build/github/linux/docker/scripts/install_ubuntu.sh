@@ -111,10 +111,7 @@ fi
 
 if [ "$OS_VERSION" = "16.04" ]; then
     if [ "$PYTHON_VER" != "3.5" ]; then
-        # https://stackoverflow.com/questions/43621584/why-cant-i-install-python3-6-dev-on-ubuntu16-04
-        apt-get install software-properties-common
         add-apt-repository -y ppa:deadsnakes/ppa
-        sudo apt-get update
         apt-get install -y --no-install-recommends \
                 python${PYTHON_VER} \
                 python${PYTHON_VER}-dev
