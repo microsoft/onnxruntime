@@ -156,7 +156,7 @@ template <bool dynamic>
 void Slice<dynamic>::FillInputVectors(OpKernelContext* ctx, std::vector<int64_t>& input_starts,
                                       std::vector<int64_t>& input_ends, std::vector<int64_t>& input_axes,
                                       std::vector<int64_t>& input_steps) const {
-  FillVectorsFromInput(*ctx->Input<Tensor>(1), *ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
+  FillVectorsFromInput(ctx->Input<Tensor>(1), ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
                        ctx->Input<Tensor>(4), input_starts, input_ends, input_axes, input_steps);
 }
 
