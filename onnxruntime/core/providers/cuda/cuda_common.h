@@ -170,7 +170,7 @@ class CudaKernel : public OpKernel {
   inline curandGenerator_t CurandGenerator() const {
     return provider_->PerThreadCurandGenerator();
   }
-  
+
   template <typename T>
   inline const T* GetConstOnes(size_t count) const {
     return provider_->template GetConstOnes<T>(count);

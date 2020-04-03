@@ -59,7 +59,6 @@ namespace cuda {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
-
 // CUDA's reduction descriptor cudnnReduceTensorDescriptor_t is a pointer so
 // it's safer to wrap it with automatically memory deleter as CudnnReduceDescriptor.
 // An implicit caster from CudnnReduceDescriptor to cudnnReduceTensorDescriptor_t

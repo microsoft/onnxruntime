@@ -107,24 +107,24 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
     beta = 1;
   }
 
-  if(DeviceProp::GetDeviceProps().major >= 7 && DeviceProp::GetDeviceProps().minor >= 5 ){
-      for (size_t batch = 0; batch < helper.OutputOffsets().size(); batch++) {
-    LtIgemmTensor(
-        static_cast<int>(helper.M()),
-        static_cast<int>(helper.N()),
-        static_cast<int>(helper.K()),
-        alpha,
-        beta,
-        a_ptr + helper.LeftOffsets()[batch],
-        static_cast<int>(helper.K()),
-        b_ptr + helper.RightOffsets()[batch],
-        static_cast<int>(helper.N()),
-        output_ptr + helper.OutputOffsets()[batch],
-        static_cast<int>(helper.N()),
-        this,
-        Base::CublasLtHandle());
+  if (DeviceProp::GetDeviceProps().major >= 7 && DeviceProp::GetDeviceProps().minor >= 5) {
+    for (size_t batch = 0; batch < helper.OutputOffsets().size(); batch++) {
+      LtIgemmTensor(
+          static_cast<int>(helper.M()),
+          static_cast<int>(helper.N()),
+          static_cast<int>(helper.K()),
+          alpha,
+          beta,
+          a_ptr + helper.LeftOffsets()[batch],
+          static_cast<int>(helper.K()),
+          b_ptr + helper.RightOffsets()[batch],
+          static_cast<int>(helper.N()),
+          output_ptr + helper.OutputOffsets()[batch],
+          static_cast<int>(helper.N()),
+          this,
+          Base::CublasLtHandle());
     }
-    return Status::OK(); 
+    return Status::OK();
   }
 
   // pad A and B to make their leading dimension be multiples of 32

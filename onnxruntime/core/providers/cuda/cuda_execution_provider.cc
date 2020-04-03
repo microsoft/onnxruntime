@@ -70,12 +70,11 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
     LOGS_DEFAULT(ERROR) << "cublasDestroy threw:" << ex.what();
   }
 
- try {
+  try {
     CUBLAS_CALL(cublasLtDestroy(cublasLt_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cublasLtDestroy threw:" << ex.what();
   }
-
 
   try {
     CUDNN_CALL(cudnnDestroy(cudnn_handle_));
@@ -735,7 +734,6 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, int8_t, ReduceMin);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, uint8_t, ReduceMin);
 
-
 static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
@@ -1376,12 +1374,12 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     for (auto registry : kernel_registries) {
       cuda_kernel_def = registry->TryFindKernel(node, Type());
 
-      // atleast one registry has a CUDA kernel for this node 
+      // atleast one registry has a CUDA kernel for this node
       if (cuda_kernel_def)
-          break;
+        break;
     }
 
-    // none of the provided registries has a CUDA kernel for this node  
+    // none of the provided registries has a CUDA kernel for this node
     if (cuda_kernel_def == nullptr) {
       // node is not in cuda exeuction provider if no kernel def found,
       // or if other execution provider already assigned to it
