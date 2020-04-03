@@ -602,7 +602,7 @@ def adb_push(source_dir, src, dest, **kwargs):
 def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
 
-def run_frontend_tests(args, cwd=cwd, dll_path=dll_path):
+def run_frontend_tests(args, cwd, dll_path):
     run_subprocess([sys.executable, 'onnxruntime_test_transformers.py'], cwd=cwd, dll_path=dll_path)
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_tvm = False, enable_tensorrt = False):
