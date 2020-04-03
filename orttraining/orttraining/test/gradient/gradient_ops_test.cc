@@ -1173,10 +1173,10 @@ TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
 TEST(GradientCheckerTest, SoftmaxCrossEntropyLossGrad) {
   TestSoftmaxCrossEntropyLossGrad({5}, "mean");
   TestSoftmaxCrossEntropyLossGrad({5}, "sum");
-  //TestSoftmaxCrossEntropyLossGrad({5}, "none");
+  TestSoftmaxCrossEntropyLossGrad({2}, "none");
   TestSoftmaxCrossEntropyLossGrad({2, 2, 2}, "mean");
-  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "mean");
-  //TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "none");
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "sum");
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "none");
 }
 
 TEST(GradientCheckerTest, GeluGrad) {

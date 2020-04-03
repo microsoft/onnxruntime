@@ -400,7 +400,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
   }
 
   if (reduction_ == ReductionType::NONE) {
-    cudaMemcpyAsync(total_loss_data, tmp_loss_sample.get(), N_D, cudaMemcpyDeviceToDevice);
+    cudaMemcpyAsync(total_loss_data, tmp_loss_sample.get(), sizeof(T) * N_D, cudaMemcpyDeviceToDevice);
     return Status::OK();
   }
 
