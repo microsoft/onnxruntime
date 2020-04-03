@@ -615,7 +615,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
             adb_push(source_dir, 'onnx_test_runner', '/data/local/tmp/', cwd=cwd)
             adb_shell('cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
             if args.use_dnnlibrary:
-                adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')
+                adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi -o 0 /data/local/tmp/test')
             else:
                 adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner /data/local/tmp/test')
             continue
@@ -724,7 +724,7 @@ def tensorrt_run_onnx_tests(args, build_dir, configs, onnx_test_data_dir, provid
            exe = os.path.join(cwd, 'onnx_test_runner')
            model_dir = os.path.join(build_dir, "models")
 
-        cmd_base = []
+        cmd_base = ['-o', '0']
         if provider:
           cmd_base += ["-e", provider]
 
