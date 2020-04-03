@@ -43,10 +43,12 @@ export CUDACXX=<location for NVCC> #e.g. /usr/local/cuda/bin/nvcc
 export PATH=<location for openmpi/bin/>:$PATH
 export LD_LIBRARY_PATH=<location for openmpi/lib/>:$LD_LIBRARY_PATH
 export MPI_CXX_INCLUDE_PATH=<location for openmpi/include/>
-source /data/intel/impi/2018.3.222/intel64/bin/mpivars.sh
+source <location of the mpivars script> # e.g. /data/intel/impi/2018.3.222/intel64/bin/mpivars.sh
 ```
 
 ### Create the ONNX Runtime wheel
+
+Change to the ONNX Runtime repo base folder: `cd onnxruntime`
 
 Run `./build.sh --enable_training --use_cuda --config=RelWithDebInfo --build_wheel`
 
