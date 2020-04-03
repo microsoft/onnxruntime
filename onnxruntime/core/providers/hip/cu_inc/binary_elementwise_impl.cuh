@@ -39,13 +39,13 @@ HIP_LONG id = start;
           break;
         }
         int q, r;
-        fdm_output_strides.data_[dim].divmod(offset, q, r);
+        fdm_output_strides[dim].divmod(offset, q, r);
         if (lhs_need_compute) {
-            lhs_index += static_cast<int>(lhs_padded_strides.data_[dim]) * q;
+            lhs_index += static_cast<int>(lhs_padded_strides[dim]) * q;
         }
 
         if (rhs_need_compute) {
-            rhs_index += static_cast<int>(rhs_padded_strides.data_[dim]) * q;
+            rhs_index += static_cast<int>(rhs_padded_strides[dim]) * q;
         }
         offset = r;
       }
