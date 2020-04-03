@@ -18,11 +18,13 @@ class TrainingSession(InferenceSession):
             self._sess = C.TrainingSession()
 
         if isinstance(path_or_bytes, str):
-            self._sess.load_model(path_or_bytes, parameters)
+            config_result = self._sess.load_model(path_or_bytes, parameters)
         elif isinstance(path_or_bytes, bytes):
-            self._sess.read_bytes(path_or_bytes, parameters)
+            config_result = self._sess.read_bytes(path_or_bytes, parameters)
         else:
             raise TypeError("Unable to load from type '{0}'".format(type(path_or_bytes)))
+
+        self.loss_scale_input_name = config_result.loss_scale_input_name
 
         self._inputs_meta = self._sess.inputs_meta
         self._outputs_meta = self._sess.outputs_meta
