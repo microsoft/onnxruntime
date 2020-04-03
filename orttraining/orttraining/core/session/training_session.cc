@@ -140,6 +140,9 @@ Status TrainingSession::ConfigureForTraining(
   ORT_RETURN_IF_ERROR(ConfigureLossFunction(
       config.loss_name, loss_function_info,
       loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
+  ORT_ENFORCE(
+      !loss_scale_input_name.has_value() || !loss_scale_input_name.value().empty(),
+      "loss_scale_input_name should not be set to an empty string.");
 
   if (is_mixed_precision_enabled_) {
     TrainingConfigurationResult::MixedPrecisionConfigurationResult mp_result{};
