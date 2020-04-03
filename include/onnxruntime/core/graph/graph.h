@@ -765,11 +765,13 @@ class Graph {
 
   /** Explicitly set graph inputs.
   @param inputs NodeArgs that represent complete graph inputs which need to be explicitly ordered.
+  @remarks Note that the input order matters for subgraphs.
   */
   void SetInputs(const std::vector<const NodeArg*>& inputs);
 
   /** Explicitly set graph outputs.
   @param outputs NodeArgs that represent complete graph outputs which need to be explicitly ordered.
+  @remarks Note that the output order matters for subgraphs.
   */
   void SetOutputs(const std::vector<const NodeArg*>& outputs);
 
