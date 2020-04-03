@@ -34,7 +34,7 @@ void LtIgemmTensor( int m,
   // No need for B because B need to be transposed
   cublasLtOrder_t row_order = CUBLASLT_ORDER_ROW;
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutSetAttribute( a_desc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_order, sizeof(row_order)));
-  CUBLAS_CALL_THROW(cublasLtMatrixLayoutSetAttribute( a_desc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_order, sizeof(row_order)));
+  CUBLAS_CALL_THROW(cublasLtMatrixLayoutSetAttribute( c_desc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_order, sizeof(row_order)));
 
   int lda_transform = 32 * m;
   int ldb_transform = 32 * roundoff(n, 8);
