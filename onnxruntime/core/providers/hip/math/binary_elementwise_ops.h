@@ -84,7 +84,7 @@ struct BinaryElementwisePreparation {
       for (auto i = offset; i < out_rank; ++i) {
         // the stride for broadcast dimension is kept as 0
         if (lhs_shape.GetDims()[i - offset] != 1) {
-          lhs_padded_strides.data_[i] = original_lhs_padded_strides[i];
+          lhs_padded_strides[i] = original_lhs_padded_strides[i];
         }
       }
     }
@@ -96,7 +96,7 @@ struct BinaryElementwisePreparation {
       for (auto i = offset; i < out_rank; ++i) {
         // the stride for broadcast dimension is kept as 0
         if (rhs_shape.GetDims()[i - offset] != 1) {
-          rhs_padded_strides.data_[i] = original_rhs_padded_strides[i];
+          rhs_padded_strides[i] = original_rhs_padded_strides[i];
         }
       }
     }
@@ -104,7 +104,7 @@ struct BinaryElementwisePreparation {
     TensorPitches original_output_strides(output_shape.GetDims());
     fdm_output_strides.size_ = gsl::narrow_cast<int32_t>(out_rank);
     for (auto i = 0; i < out_rank; ++i) {
-      fdm_output_strides.data_[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
+      fdm_output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
     }
 
     return Status::OK();
