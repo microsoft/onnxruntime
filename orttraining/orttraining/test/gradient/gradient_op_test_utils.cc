@@ -108,7 +108,7 @@ void GradientOpTester::Run(
     so.session_log_verbosity_level = 1;
 
     static const std::string all_provider_types[] = {
-        kCpuExecutionProvider,
+        //kCpuExecutionProvider,
         kCudaExecutionProvider,
         kDnnlExecutionProvider,
         kNupharExecutionProvider,
