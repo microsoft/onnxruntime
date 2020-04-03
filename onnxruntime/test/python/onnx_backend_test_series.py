@@ -191,6 +191,9 @@ def create_backend_test(testname=None):
             '^test_unfoldtodepth_without_padding_cpu',
             '^test_gradient_of_add_and_mul_cpu',
             '^test_gradient_of_add_cpu',
+            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_ignore_index_expanded_cpu',
+            '^test_batchnorm_example_training_mode_cpu',
+            '^test_batchnorm_epsilon_training_mode_cpu',
             '^test_maxunpool_export_with_output_shape_cpu', #result mismatch
             '^test_resize_downsample_scales_cubic_align_corners_cpu',  # results mismatch with onnx tests
             '^test_resize_downsample_scales_linear_align_corners_cpu'  # results mismatch with onnx tests
