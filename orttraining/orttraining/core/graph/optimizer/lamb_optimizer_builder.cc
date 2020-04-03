@@ -73,7 +73,7 @@ Status LambOptimizerBuilder::Build(
   }
 
   // Learning rate ArgDef.
-  input_argdefs.emplace_back(ArgDef(opt_configs[0].lr_feed_name));
+  input_argdefs.emplace_back(ArgDef(opt_configs[0].lr_feed_name, CreateLearningRateTypeProto(graph_defs)));
 
   // Update count, which should be 1 at the first training iteration.
   // At the end of each Lamb call, the update count may be increased by one.
