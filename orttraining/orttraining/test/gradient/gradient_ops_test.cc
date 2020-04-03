@@ -19,6 +19,7 @@
 namespace onnxruntime {
 namespace test {
 
+#ifdef NDEBUG
 using ONNX_NAMESPACE::MakeAttribute;
 using training::OpDef;
 
@@ -1563,6 +1564,7 @@ TEST(Synchronization, WaitAndRecordEventMany) {
     }
   }
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
