@@ -64,7 +64,7 @@ Status TrainingRunner::Initialize() {
 
   TrainingSession::TrainingConfiguration config{};
   config.model_with_loss_function_path = params_.model_with_loss_func_path;
-  config.model_with_loss_function_path = params_.model_with_training_graph_path;
+  config.model_with_training_graph_path = params_.model_with_training_graph_path;
 
   config.weight_names_to_train = params_.weights_to_train;
   config.weight_names_to_not_train = params_.weights_not_to_train;
