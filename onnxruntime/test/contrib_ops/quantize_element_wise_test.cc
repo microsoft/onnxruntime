@@ -25,7 +25,7 @@ static int64_t CalcStrides(const std::vector<int64_t>& dims, std::vector<int64_t
   }
   int64_t len = strides[0] * dims[0];
   if (clear1) {
-    for (int i = 0, sz = strides.size(); i < sz; ++i) {
+    for (size_t i = 0, sz = strides.size(); i < sz; ++i) {
       if (dims[i] == 1) strides[i] = 0;
     }
   }
@@ -60,7 +60,7 @@ RunQLinearMathTestFromFloat(
     throw std::runtime_error("Input size not match input shape!");
   }
   const float qmax = std::numeric_limits<T>::max();
-  const float qmin = ((std::numeric_limits<T>::min() == -128) ? -127 : std::numeric_limits<T>::min());
+  const float qmin = ((std::numeric_limits<T>::min() == -128) ? -127.0f : static_cast<float>(std::numeric_limits<T>::min()));
 
   OpTester test(op_name, 1, onnxruntime::kMSDomain);
   std::vector<T> a_quantized(a.size());
