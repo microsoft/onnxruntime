@@ -50,6 +50,7 @@ thread_local std::unique_ptr<CUDAExecutionProvider::PerThreadContextMap> CUDAExe
 CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
+  CUBLAS_CALL_THROW(cublasLtCreate(&cublasLt_handle_));
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
   CURAND_CALL_THROW(curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT));
 
@@ -68,6 +69,13 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cublasDestroy threw:" << ex.what();
   }
+
+ try {
+    CUBLAS_CALL(cublasLtDestroy(cublasLt_handle_));
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(ERROR) << "cublasLtDestroy threw:" << ex.what();
+  }
+
 
   try {
     CUDNN_CALL(cudnnDestroy(cudnn_handle_));

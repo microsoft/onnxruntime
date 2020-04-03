@@ -6,6 +6,7 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/igemm.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {
@@ -104,6 +105,26 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
                  b_offset,
                  helper);
     beta = 1;
+  }
+
+  if(DeviceProp::GetDeviceProps().major >= 7 && DeviceProp::GetDeviceProps().minor >= 5 ){
+      for (size_t batch = 0; batch < helper.OutputOffsets().size(); batch++) {
+    LtIgemmTensor(
+        static_cast<int>(helper.M()),
+        static_cast<int>(helper.N()),
+        static_cast<int>(helper.K()),
+        alpha,
+        beta,
+        a_ptr + helper.LeftOffsets()[batch],
+        static_cast<int>(helper.K()),
+        b_ptr + helper.RightOffsets()[batch],
+        static_cast<int>(helper.N()),
+        output_ptr + helper.OutputOffsets()[batch],
+        static_cast<int>(helper.N()),
+        this,
+        Base::CublasLtHandle());
+    }
+    return Status::OK(); 
   }
 
   // pad A and B to make their leading dimension be multiples of 32
