@@ -61,13 +61,27 @@ static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, co
     }
   }
 
+// use MLAS on 64-bit (no 32-bit dgemm), or MKL on 32-bit or 64-bit
+#if defined(_M_AMD64) || defined(__x86_64__) || defined(USE_MKLML_FOR_BLAS)
   // Now use GEMM of A and B^T with -2 as alpha to calculate -2*sum_k(Xik*Yjk)
   // This is added to the data already in c (as beta is 1.f), achieving our end result
   math::Gemm<T>(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans,
                 m, n, k,
-                -2.f, a_data, b_data, 1.f,
+                static_cast<T>(-2.), a_data, b_data, static_cast<T>(1.),
                 c_data,
                 threadpool);
+#else
+  // the performance of this isn't great as the eigen matmul is single threaded by default
+  // if you're on x86 and care about performance try MKL first. if there's a good enough argument for optimising this
+  // we can look into it in the future.
+  ORT_UNUSED_PARAMETER(threadpool);
+
+  // https://eigen.tuxfamily.org/dox/TopicWritingEfficientProductExpression.html
+  auto out_map = EigenMatrixMapRowMajor<T>(c_data, m, n);
+  out_map += static_cast<T>(-2.) *
+             (ConstEigenMatrixMapRowMajor<T>(a_data, m, k) *
+              ConstEigenMatrixMapRowMajor<T>(b_data, n, k).transpose());
+#endif
 }
 
 template <typename T>
