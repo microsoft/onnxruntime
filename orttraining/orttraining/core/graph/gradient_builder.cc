@@ -680,7 +680,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
     } else {
       output.push_back(
           NodeDef("Identity",
-                  {IA("PreReduceGrad1")},
+                  {IA("PreReduceGrad1", OType(0))},
                   {GI(1)}));
     }
   }
