@@ -6,7 +6,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "fast_gelu.h"
 #include "fast_gelu_impl.h"
-#include "contrib_ops/cpu/bert/fast_gelu_helper.h"
+#include "contrib_ops/cpu/bert/bias_gelu_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -34,7 +34,7 @@ FastGelu<T>::FastGelu(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel
 
 template <typename T>
 Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
-  ORT_RETURN_IF_ERROR(fast_gelu::CheckInputs(context));
+  ORT_RETURN_IF_ERROR(bias_gelu_helper::CheckInputs(context));
 
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* bias = context->Input<Tensor>(1);

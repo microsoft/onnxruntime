@@ -17,8 +17,6 @@ class BiasGelu : public OpKernel {
 
  protected:
   void AddBiasGelu(const T* input, const T* bias, T* temp, T* output, int64_t count) const;
-
-  Status CheckInputs(const OpKernelContext* context) const;
 };
 
 }  // namespace contrib

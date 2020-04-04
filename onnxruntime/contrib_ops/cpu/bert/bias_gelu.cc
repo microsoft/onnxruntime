@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "bias_gelu.h"
+#include "bias_gelu_helper.h"
 #include "core/framework/tensorprotoutils.h"
 #include "onnx/defs/tensor_proto_util.h"
 #include "core/common/safeint.h"
@@ -27,38 +28,8 @@ static constexpr float B = 0.7978845608028654f;    // sqrt(2.0 / M_PI)
 static constexpr float C = 0.035677408136300125f;  // 0.044715 * sqrt(2.0 / M_PI)
 
 template <typename T, bool use_approximation>
-Status BiasGelu<T, use_approximation>::CheckInputs(const OpKernelContext* context) const {
-  const Tensor* input = context->Input<Tensor>(0);
-  const Tensor* bias = context->Input<Tensor>(1);
-
-  const auto input_dims = input->Shape().GetDims();
-  if (input_dims.size() < 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 0 is expected to have 1 or more dimensions, got ", input_dims.size());
-  }
-
-  if (nullptr != bias) {
-    const auto bias_dims = bias->Shape().GetDims();
-    if (bias_dims.size() != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 1 is expected to have 1 dimensions, got ", bias_dims.size());
-    }
-    if (bias_dims[0] != input_dims[input_dims.size() - 1]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 1 dimension 0 should have same length as the last dimension of input 0");
-    }
-  } else {  // no bias
-    if (!use_approximation) {
-      ORT_THROW("Bias input is required for BiasGelu");
-    }
-  }
-
-  return Status::OK();
-}
-
-template <typename T, bool use_approximation>
 Status BiasGelu<T, use_approximation>::Compute(OpKernelContext* context) const {
-  ORT_RETURN_IF_ERROR(CheckInputs(context));
+  ORT_RETURN_IF_ERROR(bias_gelu_helper::CheckInputs(context));
 
   const Tensor* input = context->Input<Tensor>(0);
   const T* input_data = input->template Data<T>();
