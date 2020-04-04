@@ -1,12 +1,10 @@
 #pragma once
 
 #include "core/common/common.h"
-#include "core/framework/tensor.h"
 #include "core/framework/allocator.h"
-#include "core/providers/cpu/tensor/transpose.h"
 #include "core/util/math.h"
+#include "core/providers/cpu/tensor/transpose.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
-#include "core/framework/op_kernel.h"
 
 #include <vector>
 

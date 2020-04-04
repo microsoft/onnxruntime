@@ -8,7 +8,7 @@ Tensor Transpose(const Tensor& input, const std::vector<size_t>& permutation, co
   const auto& input_dims = input.Shape().GetDims();
   auto input_rank = input_dims.size();
 
-  ORT_ENFORCE(input_rank == permutation.size(), "Length of permutations must match ");
+  ORT_ENFORCE(input_rank == permutation.size(), "Length of permutation must match the rank of the input to be permutated");
 
   std::vector<int64_t> output_dims;
   output_dims.reserve(input_rank);
