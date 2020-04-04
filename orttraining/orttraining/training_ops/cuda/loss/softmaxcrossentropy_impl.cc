@@ -377,13 +377,14 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
     cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
   }
 
-  SparseSoftmaxCrossEntropyImpl(log_prob_data,
-                                label_data,
-                                weight_data_nd_data,
-                                normalize_factor_data.get(),
-                                tmp_loss_sample.get(),
-                                N_D,
-                                C);
+  SoftmaxCrossEntropyLossImpl(log_prob_data,
+                              label_data,
+                              weight_data_nd_data,
+                              normalize_factor_data.get(),
+                              tmp_loss_sample.get(),
+                              N_D,
+                              C,
+                              ignore_index_);
 
   // Transpose log probability from [N, D1, D2...Dk, C] to [N, C, D1, D2 .. Dk].
   if (logit_shape.NumDimensions() > 2 && log_prob != nullptr) {
@@ -472,15 +473,6 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
   if (reduction_ == ReductionType::NONE) {
     const T normalize_factor = static_cast<T>(1);
     cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
-    SparseSoftmaxCrossEntropyGradImpl(dY_data,
-                                      log_prob_data,
-                                      label_data,
-                                      weight_data_nd_data,
-                                      normalize_factor_data.get(),
-                                      d_logit_data,
-                                      N_D,
-                                      C,
-                                      true);
   } else {
     if (reduction_ == ReductionType::MEAN) {
       // Compute buffer size in byte for reduction APIs.
@@ -498,16 +490,18 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
       const T normalize_factor = static_cast<T>(1);
       cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
     }
-
-    SparseSoftmaxCrossEntropyGradImpl(dY_data,
-                                      log_prob_data,
-                                      label_data,
-                                      weight_data_nd_data,
-                                      normalize_factor_data.get(),
-                                      d_logit_data,
-                                      N_D,
-                                      C);
   }
+
+  SoftmaxCrossEntropyLossGradImpl(dY_data,
+                                  log_prob_data,
+                                  label_data,
+                                  weight_data_nd_data,
+                                  normalize_factor_data.get(),
+                                  d_logit_data,
+                                  N_D,
+                                  C,
+                                  ignore_index_,
+                                  ReductionType::NONE == reduction_);
 
   // Transpose logit from [N, D1, D2...Dk, C] to [N, C, D1, D2 .. Dk]
   if (probability_shape.NumDimensions() > 2) {

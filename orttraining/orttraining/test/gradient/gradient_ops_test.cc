@@ -1095,7 +1095,7 @@ void TestSparseSoftmaxCrossEntropyGrad(const TensorShape& index_shape, const std
   }
 }
 
-void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape, const std::string& reduction) {
+void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape, const std::string& reduction, int64_t ignore_index = 0) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"SoftmaxCrossEntropyLoss", kOnnxDomain, 12};
@@ -1104,7 +1104,7 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape, const std::
   std::function<float(float)> transformer_index = [D](float x) { return std::fmod(std::fabs(x) * 5.0f, D * 1.0f); };
   std::function<float(float)> transformer_weight = [](float x) { return std::fmod(std::fabs(x), 2.0f); };
 
-  // without weight
+  // without weight and ignore_index
   {
     std::vector<int64_t> logit_shape(index_shape.GetDims());
     auto it = logit_shape.begin() + 1;
@@ -1123,7 +1123,7 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape, const std::
     EXPECT_IS_TINY(max_error);
   }
 
-  // with weight
+  // with weight and no ignore_index
   {
     std::vector<int64_t> logit_shape(index_shape.GetDims());
     auto it = logit_shape.begin() + 1;
@@ -1143,7 +1143,7 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape, const std::
     EXPECT_IS_TINY(max_error);
   }
 
-  // with ignore index
+  // without weight and ignore index
   {
     std::vector<int64_t> logit_shape(index_shape.GetDims());
     auto it = logit_shape.begin() + 1;
@@ -1158,7 +1158,27 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape, const std::
 
     gradient_checker.ComputeGradientError(op_def, {x_info, index_info},
                                           {loss_info, {logit_shape, false}}, &max_error,
-                                          {MakeAttribute("reduction", reduction), MakeAttribute("ignore_index", (int64_t)(D - 1))});
+                                          {MakeAttribute("reduction", reduction), MakeAttribute("ignore_index", ignore_index)});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // with weight and ignore_index
+  {
+    std::vector<int64_t> logit_shape(index_shape.GetDims());
+    auto it = logit_shape.begin() + 1;
+    logit_shape.insert(it, D);
+    TensorInfo loss_info = {};
+    if (reduction == "none") {
+      loss_info = {TensorInfo(index_shape.GetDims())};
+    }
+
+    TensorInfo x_info(logit_shape);
+    TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo weight_info({logit_shape[1]}, false, &transformer_weight);
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info},
+                                          {loss_info, {logit_shape, false}}, &max_error,
+                                          {MakeAttribute("reduction", reduction), MakeAttribute("ignore_index", ignore_index)});
     EXPECT_IS_TINY(max_error);
   }
 }
@@ -1177,6 +1197,12 @@ TEST(GradientCheckerTest, SoftmaxCrossEntropyLossGrad) {
   TestSoftmaxCrossEntropyLossGrad({2, 2, 2}, "mean");
   TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "sum");
   TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "none");
+  TestSoftmaxCrossEntropyLossGrad({5}, "mean", -1);
+  TestSoftmaxCrossEntropyLossGrad({5}, "sum", -1);
+  TestSoftmaxCrossEntropyLossGrad({2}, "none", -1);
+  TestSoftmaxCrossEntropyLossGrad({2, 2, 2}, "mean", -1);
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "sum", -1);
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "none", -1);
 }
 
 TEST(GradientCheckerTest, GeluGrad) {

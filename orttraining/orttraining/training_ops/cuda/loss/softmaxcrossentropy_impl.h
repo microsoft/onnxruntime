@@ -37,7 +37,18 @@ void SparseSoftmaxCrossEntropyImpl(
     size_t label_depth);
 
 template <typename T, typename Tin>
-void SparseSoftmaxCrossEntropyGradImpl(
+void SoftmaxCrossEntropyLossImpl(
+    const T* log_prob,
+    const Tin* label,
+    const T* weight,
+    const T* normalize_factor,
+    T* output_data,
+    size_t count,
+    size_t label_depth,
+    int64_t ignore_index);
+
+template <typename T, typename Tin>
+void SoftmaxCrossEntropyLossGradImpl(
     const T* dY,
     const T* log_prob,
     const Tin* label,
@@ -46,7 +57,19 @@ void SparseSoftmaxCrossEntropyGradImpl(
     T* output_data,
     size_t count,
     size_t label_depth,
-    bool none_reduction = false);
+    int64_t ignore_index,
+    bool reduction_none);
+
+template <typename T, typename Tin>
+void SparseSoftmaxCrossEntropyGradImpl(
+    const T* dY,
+    const T* log_prob,
+    const Tin* label,
+    const T* weight,
+    const T* normalize_factor,
+    T* output_data,
+    size_t count,
+    size_t label_depth);
 
 template <typename T, typename Tin>
 void ComputeWeightsSoftmaxCrossEntropyImpl(
