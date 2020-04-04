@@ -23,6 +23,7 @@ struct MIGraphXFuncState {
   AllocatorHandle allocate_handle = nullptr;
   migraphx::program prog{};
   std::string onnx_string;
+  migraphx::onnx_options options;
   migraphx::target t{};
   std::unordered_map<std::string, std::size_t> input_name_indexes;
   OrtMutex* mgx_mu_ptr = nullptr;
