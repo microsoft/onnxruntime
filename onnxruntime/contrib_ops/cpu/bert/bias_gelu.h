@@ -5,19 +5,20 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/framework/tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
 
-template <typename T>
-class FastGelu final : public OpKernel {
+template <typename T, bool use_approximation>
+class BiasGelu : public OpKernel {
  public:
-  explicit FastGelu(const OpKernelInfo& info) : OpKernel(info){}
+  BiasGelu(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* context) const override;
 
- private:
-  Status ComputeGelu(OpKernelContext* context, const T* input_data, T* output_data, int64_t elem_count) const;
+ protected:
+  void AddBiasGelu(const T* input, const T* bias, T* temp, T* output, int64_t count) const;
+
+  Status CheckInputs(const OpKernelContext* context) const;
 };
 
 }  // namespace contrib
