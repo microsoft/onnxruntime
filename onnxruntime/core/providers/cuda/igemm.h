@@ -12,6 +12,7 @@ inline int roundoff(int v, int d) {
   return (v + d - 1) / d * d;
 }
 
+#if CUDA_VERSION >= 10010
 void LtIgemmTensor(int m,
                    int n,
                    int k,
@@ -25,5 +26,6 @@ void LtIgemmTensor(int m,
                    int ldc,
                    const CudaKernel* cuda_kernel,
                    cublasLtHandle_t lt_handle);
+#endif
 }
 }

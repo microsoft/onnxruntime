@@ -9,6 +9,7 @@
 namespace onnxruntime {
 namespace cuda {
 
+#if CUDA_VERSION >= 10010
 void LtIgemmTensor(int m,
                    int n,
                    int k,
@@ -159,5 +160,6 @@ void LtIgemmTensor(int m,
   CUBLAS_CALL_THROW(cublasLtMatmulDescDestroy(matmul_desc));
   CUBLAS_CALL_THROW(cublasLtMatrixTransformDescDestroy(transform_desc));
 }
+#endif
 }
 }

@@ -10,10 +10,24 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
-#include <cublasLt.h>
 #include <cusparse.h>
 #include <curand.h>
 #include <cudnn.h>
+
+// support of cublasLt starts 10.1
+#if CUDA_VERSION >= 10010
+#include <cublasLt.h>
+#else
+typedef void* cublasLtHandle_t;
+
+inline cublasStatus_t cublasLtCreate(cublasLtHandle_t* /*handle*/){
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+inline cublasStatus_t cublasLtDestroy(cublasLtHandle_t /*handle*/){
+    return CUBLAS_STATUS_SUCCESS;
+}
+#endif
 
 #ifdef USE_NCCL
 #include <nccl.h>

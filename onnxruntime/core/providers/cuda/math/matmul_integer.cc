@@ -107,6 +107,7 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
     beta = 1;
   }
 
+#if CUDA_VERSION >= 10010
   if (DeviceProp::GetDeviceProps().major >= 7 && DeviceProp::GetDeviceProps().minor >= 5) {
     for (size_t batch = 0; batch < helper.OutputOffsets().size(); batch++) {
       LtIgemmTensor(
@@ -126,6 +127,7 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
     }
     return Status::OK();
   }
+#endif
 
   // pad A and B to make their leading dimension be multiples of 32
   // because cublasGemmEx requires:
