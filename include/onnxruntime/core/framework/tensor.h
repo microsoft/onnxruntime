@@ -195,6 +195,14 @@ class Tensor final {
   */
   size_t SizeInBytes() const;
 
+  /**
+  Make a deep copy of the tensor and return it.
+  The cloned tensor will own its data buffer and will use the allocator/deleter
+  to release the buffer when the tensor is released.
+  Needs allocator/deleter passed in.  
+  */
+  Tensor Clone(AllocatorPtr allocator) const;
+
   // More API methods.
  private:
   void Init(MLDataType p_type,

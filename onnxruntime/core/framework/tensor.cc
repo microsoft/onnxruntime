@@ -47,6 +47,21 @@ size_t Tensor::SizeInBytes() const {
   return ret;
 }
 
+Tensor Tensor::Clone(AllocatorPtr allocator) const {
+  Tensor cloned(dtype_, shape_, allocator, byte_offset_);
+  void* cloned_data_buffer = cloned.MutableDataRaw();
+
+  if (!IsDataTypeString()) {
+    std::memcpy(cloned_data_buffer, p_data_, SizeInBytes());
+  } else {
+    auto* ptr = static_cast<std::string*>(p_data_);
+    int64_t len = shape_.Size();
+    std::copy(ptr, ptr + len, static_cast<std::string*>(cloned_data_buffer));
+  }
+
+  return cloned;
+}
+
 void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data, AllocatorPtr deleter, ptrdiff_t offset) {
   int64_t shape_size = shape.Size();
   if (shape_size < 0) ORT_THROW("shape.Size() must >=0");

@@ -111,9 +111,6 @@ class ReduceProd final : public ReduceKernel<true> {
   Status Compute(OpKernelContext* context) const override;
 };
 
-Tensor foo(const Tensor& input, const std::vector<int64_t>& axes,
-           OpKernelContext* context, const AllocatorPtr& allocator);
-
 template <typename T>
 class ReduceSum final : public ReduceKernel<true> {
  public:
@@ -121,6 +118,9 @@ class ReduceSum final : public ReduceKernel<true> {
   }
 
   Status Compute(OpKernelContext* context) const override;
+
+  // For external calls requiring ReduceSum implementation - will return the reduced output
+  static Tensor Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes, const AllocatorPtr& allocator);
 };
 
 template <typename T>
