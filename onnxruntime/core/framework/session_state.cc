@@ -191,8 +191,7 @@ static int64_t CalculateMemoryPatternsKey(const std::vector<std::reference_wrapp
 #ifdef ENABLE_TRAINING
 namespace {
 Status ResolveDimParams(const GraphViewer& graph, const std::map<std::string, TensorShape>& feeds, std::unordered_map<std::string, int64_t>& out) {
-  for (size_t i = 0; i < graph.GetInputs().size(); ++i) {
-    auto* input = graph.GetInputs()[i];
+  for (const auto* input : graph.GetInputs()) {
     auto* shape = input->Shape();
     auto it = feeds.find(input->Name());
     if (it == feeds.end())
@@ -201,7 +200,7 @@ Status ResolveDimParams(const GraphViewer& graph, const std::map<std::string, Te
       return Status(ONNXRUNTIME, FAIL, "Graph input " + input->Name() +
                                            "'s shape is not present or its shape doesn't match feed's shape."
                                            "Unable to resolve the value for dynamic shape");
-    for (int k = 0; k < shape->dim_size(); ++k) {
+    for (int k = 0, end = shape->dim_size(); k < end; ++k) {
       if (shape->dim()[k].has_dim_param()) {
         out.insert({shape->dim()[k].dim_param(), it->second.GetDims()[k]});
       }
@@ -215,7 +214,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
                                                const std::vector<int>& feed_mlvalue_idxs,
                                                MemoryPatternGroup* output) const {
   std::map<std::string, TensorShape> feeds;
-  for (size_t i = 0; i < feed_mlvalue_idxs.size(); ++i) {
+  for (size_t i = 0, end = feed_mlvalue_idxs.size(); i < end; ++i) {
     std::string name;
     ORT_RETURN_IF_ERROR(this->ort_value_name_idx_map_.GetName(feed_mlvalue_idxs[i], name));
     feeds.insert({name, input_shape[i]});
@@ -231,7 +230,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
     auto* node = graph_viewer_->GetNode(node_plan.node_index);
     int output_start = node_index + static_cast<int>(node->InputDefs().size()) + static_cast<int>(node->ImplicitInputDefs().size());
     //allocate output
-    for (int i = 0; i < static_cast<int>(node->OutputDefs().size()); ++i) {
+    for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
       const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
       if (ml_value_idx == NodeIndexInfo::kInvalidEntry)
         continue;
@@ -254,6 +253,8 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
               return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute");
             }
             len *= it->second;
+          } else if (dim.has_dim_value()) {
+            len *= dim.dim_value();
           } else {
             // tensor shape is unknown
             len = 0;
