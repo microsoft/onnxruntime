@@ -20,12 +20,12 @@
 #else
 typedef void* cublasLtHandle_t;
 
-inline cublasStatus_t cublasLtCreate(cublasLtHandle_t* /*handle*/){
-    return CUBLAS_STATUS_SUCCESS;
+inline cublasStatus_t cublasLtCreate(cublasLtHandle_t* /*handle*/) {
+  return CUBLAS_STATUS_SUCCESS;
 }
 
-inline cublasStatus_t cublasLtDestroy(cublasLtHandle_t /*handle*/){
-    return CUBLAS_STATUS_SUCCESS;
+inline cublasStatus_t cublasLtDestroy(cublasLtHandle_t /*handle*/) {
+  return CUBLAS_STATUS_SUCCESS;
 }
 #endif
 
