@@ -53,16 +53,12 @@ Windows::AI::MachineLearning::LearningModelDevice LearningModelDevice::CreateFro
 WINML_CATCH_ALL
 
 std::shared_ptr<::Windows::AI::MachineLearning::ConverterResourceStore> LearningModelDevice::TensorizerStore() {
-  if (m_tensorizerStore == nullptr) {
-    m_tensorizerStore = ::Windows::AI::MachineLearning::ConverterResourceStore::Create(5);
-  }
+  std::call_once(m_tensorizerStoreInitialized, [this](){ m_tensorizerStore = ::Windows::AI::MachineLearning::ConverterResourceStore::Create(5); });
   return m_tensorizerStore;
 }
 
 std::shared_ptr<::Windows::AI::MachineLearning::ConverterResourceStore> LearningModelDevice::DetensorizerStore() {
-  if (m_detensorizerStore == nullptr) {
-    m_detensorizerStore = ::Windows::AI::MachineLearning::ConverterResourceStore::Create(5);
-  }
+  std::call_once(m_detensorizerStoreInitialized, [this](){ m_detensorizerStore = ::Windows::AI::MachineLearning::ConverterResourceStore::Create(5); });
   return m_detensorizerStore;
 }
 
