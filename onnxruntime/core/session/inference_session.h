@@ -373,6 +373,8 @@ class InferenceSession {
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   std::basic_string<ORTCHAR_T> model_location_;
 
+  SessionOptions session_options_;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
 
@@ -427,8 +429,6 @@ class InferenceSession {
 
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
-
-  SessionOptions session_options_;
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_;
 
