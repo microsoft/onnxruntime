@@ -1095,12 +1095,11 @@ void TestSparseSoftmaxCrossEntropyGrad(const TensorShape& index_shape, const std
   }
 }
 
-void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape, const std::string& reduction, int64_t ignore_index = 0) {
+void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape, const std::string& reduction,
+                                     int64_t ignore_index = 0, int64_t D = 2) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"SoftmaxCrossEntropyLoss", kOnnxDomain, 12};
-
-  const int64_t D = 2;
   std::function<float(float)> transformer_index = [D](float x) { return std::fmod(std::fabs(x) * 5.0f, D * 1.0f); };
   std::function<float(float)> transformer_weight = [](float x) { return std::fmod(std::fabs(x), 2.0f); };
 

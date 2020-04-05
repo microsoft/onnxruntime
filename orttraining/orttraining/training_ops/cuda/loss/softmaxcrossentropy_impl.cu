@@ -240,7 +240,8 @@ void SoftmaxCrossEntropyLossImpl(
       size_t label_depth);
 
 SPECIALIZED_IMPL_SparseSoftMaxEntropyImpl(float, int32_t)
-    SPECIALIZED_IMPL_SparseSoftMaxEntropyImpl(float, int64_t)
+SPECIALIZED_IMPL_SparseSoftMaxEntropyImpl(float, int64_t)
+
 #define SPECIALIZED_IMPL_SoftMaxEntropyLossImpl(T, Tin) \
   template void SoftmaxCrossEntropyLossImpl(            \
       const T* log_prob,                                \
@@ -252,18 +253,18 @@ SPECIALIZED_IMPL_SparseSoftMaxEntropyImpl(float, int32_t)
       size_t label_depth,                               \
       int64_t ignore_index);
 
-        SPECIALIZED_IMPL_SoftMaxEntropyLossImpl(float, int32_t)
-            SPECIALIZED_IMPL_SoftMaxEntropyLossImpl(float, int64_t)
+SPECIALIZED_IMPL_SoftMaxEntropyLossImpl(float, int32_t)
+SPECIALIZED_IMPL_SoftMaxEntropyLossImpl(float, int64_t)
 
-                template <typename T, typename Tin>
-                __global__ void _SparseSoftmaxCrossEntropyGrad(
-                    const T* dY,
-                    const T* log_prob,
-                    const Tin* label,
-                    const T* normalize_factor,
-                    T* output_data,
-                    CUDA_LONG N,
-                    CUDA_LONG D) {
+template <typename T, typename Tin>
+__global__ void _SparseSoftmaxCrossEntropyGrad(
+    const T* dY,
+    const T* log_prob,
+    const Tin* label,
+    const T* normalize_factor,
+    T* output_data,
+    CUDA_LONG N,
+    CUDA_LONG D) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N * D);
   int row = i / D;
   int d = i % D;
