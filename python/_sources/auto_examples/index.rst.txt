@@ -50,26 +50,6 @@ Gallery of examples
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="*ONNX Runtime* can profile the execution of the model. This example shows how to interpret the ...">
-
-.. only:: html
-
-    .. figure:: /auto_examples/images/thumb/sphx_glr_plot_profiling_thumb.png
-
-        :ref:`sphx_glr_auto_examples_plot_profiling.py`
-
-.. raw:: html
-
-    </div>
-
-
-.. toctree::
-   :hidden:
-
-   /auto_examples/plot_profiling
-
-.. raw:: html
-
     <div class="sphx-glr-thumbcontainer" tooltip="*ONNX Runtime* extends the  `onnx backend API &lt;https://github.com/onnx/onnx/blob/master/docs/Im...">
 
 .. only:: html
@@ -107,6 +87,26 @@ Gallery of examples
    :hidden:
 
    /auto_examples/plot_metadata
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="*ONNX Runtime* can profile the execution of the model. This example shows how to interpret the ...">
+
+.. only:: html
+
+    .. figure:: /auto_examples/images/thumb/sphx_glr_plot_profiling_thumb.png
+
+        :ref:`sphx_glr_auto_examples_plot_profiling.py`
+
+.. raw:: html
+
+    </div>
+
+
+.. toctree::
+   :hidden:
+
+   /auto_examples/plot_profiling
 
 .. raw:: html
 
@@ -201,13 +201,13 @@ Gallery of examples
 
   .. container:: sphx-glr-download
 
-    :download:`Download all examples in Python source code: auto_examples_python.zip </C:/Code/Github/onnxrt2/docs/python/auto_examples/auto_examples_python.zip>`
+    :download:`Download all examples in Python source code: auto_examples_python.zip </C:/xadupre/microsoft_xadupre/onnxruntime/docs/python/auto_examples/auto_examples_python.zip>`
 
 
 
   .. container:: sphx-glr-download
 
-    :download:`Download all examples in Jupyter notebooks: auto_examples_jupyter.zip </C:/Code/Github/onnxrt2/docs/python/auto_examples/auto_examples_jupyter.zip>`
+    :download:`Download all examples in Jupyter notebooks: auto_examples_jupyter.zip </C:/xadupre/microsoft_xadupre/onnxruntime/docs/python/auto_examples/auto_examples_jupyter.zip>`
 
 
 .. only:: html

@@ -20,10 +20,23 @@ This example shows how to interpret the results.
 
 .. code-block:: python
 
-
+    import onnx
     import onnxruntime as rt
     import numpy
     from onnxruntime.datasets import get_example
+
+
+    def change_ir_version(filename, ir_version=6):
+        "onnxruntime==1.2.0 does not support opset <= 7 and ir_version > 6"
+        with open(filename, "rb") as f:
+            model = onnx.load(f)
+        model.ir_version = 6
+        if model.opset_import[0].version <= 7:
+            model.opset_import[0].version = 11
+        return model
+
+
+
 
 
 
@@ -39,7 +52,9 @@ Let's load a very simple model and compute some prediction.
 
 
     example1 = get_example("mul_1.onnx")
-    sess = rt.InferenceSession(example1)
+    onnx_model = change_ir_version(example1)
+    onnx_model_str = onnx_model.SerializeToString()
+    sess = rt.InferenceSession(onnx_model_str)
     input_name = sess.get_inputs()[0].name
 
     x = numpy.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=numpy.float32)
@@ -71,7 +86,7 @@ before running the predictions.
 
     options = rt.SessionOptions()
     options.enable_profiling = True
-    sess_profile = rt.InferenceSession(example1, options)
+    sess_profile = rt.InferenceSession(onnx_model_str, options)
     input_name = sess.get_inputs()[0].name
 
     x = numpy.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=numpy.float32)
@@ -90,7 +105,7 @@ before running the predictions.
 
  .. code-block:: none
 
-    onnxruntime_profile__2019-12-19_16-47-06.json
+    onnxruntime_profile__2020-03-31_18-11-48.json
 
 
 The results are stored un a file in JSON format.
@@ -120,23 +135,23 @@ Let's see what it contains.
 
     [{'args': {},
       'cat': 'Session',
-      'dur': 100,
+      'dur': 65,
       'name': 'model_loading_from_saved_proto',
       'ph': 'X',
-      'pid': 27824,
-      'tid': 13820,
-      'ts': 10},
+      'pid': 19296,
+      'tid': 12580,
+      'ts': 8},
      {'args': {},
       'cat': 'Session',
-      'dur': 200,
+      'dur': 123,
       'name': 'session_initialization',
       'ph': 'X',
-      'pid': 27824,
-      'tid': 13820,
-      'ts': 123}]
+      'pid': 19296,
+      'tid': 12580,
+      'ts': 83}]
 
 
-**Total running time of the script:** ( 0 minutes  0.027 seconds)
+**Total running time of the script:** ( 0 minutes  0.052 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_profiling.py:

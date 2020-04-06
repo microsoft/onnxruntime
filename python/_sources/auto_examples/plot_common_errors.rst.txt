@@ -127,7 +127,7 @@ and *onnxruntime* will then return all the outputs.
  .. code-block:: none
 
     All outputs
-    [array([0, 0, 0], dtype=int64), [{0: 0.950599730014801, 1: 0.027834169566631317, 2: 0.02156602405011654}, {0: 0.9974970817565918, 1: 5.6299926654901356e-05, 2: 0.0024466661270707846}, {0: 0.9997311234474182, 1: 1.1918064757310276e-07, 2: 0.00026869276189245284}]]
+    [array([0, 0, 0], dtype=int64), [{0: 0.9505997896194458, 1: 0.027834143489599228, 2: 0.021566055715084076}, {0: 0.9974970817565918, 1: 5.6270167988259345e-05, 2: 0.0024466365575790405}, {0: 0.9997311234474182, 1: 1.787709464906584e-07, 2: 0.0002686927327886224}]]
 
 
 The same goes if the input name is misspelled.
@@ -263,7 +263,7 @@ is higher than expects but produces a warning.
     ERROR with Shape=(2, 1, 2) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid rank for input: float_input Got: 3 Expected: 2 Please fix either the inputs or the model.
 
 
-**Total running time of the script:** ( 0 minutes  0.049 seconds)
+**Total running time of the script:** ( 0 minutes  0.006 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_common_errors.py:

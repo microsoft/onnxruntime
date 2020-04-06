@@ -4,7 +4,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Train, convert and predict with ONNX Runtime &#8212; ONNX Runtime 1.1.0 documentation</title>
+    <title>Train, convert and predict with ONNX Runtime &#8212; ONNX Runtime 1.2.0 documentation</title>
     <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
     <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
     <link rel="stylesheet" type="text/css" href="../_static/gallery.css" />
@@ -76,9 +76,9 @@ and we show the confusion matrix.</p>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[11  0  0]
- [ 0 12  4]
- [ 0  0 11]]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[ 9  0  0]
+ [ 0 15  1]
+ [ 0  1 12]]
 </pre></div>
 </div>
 </div>
@@ -122,9 +122,9 @@ output name=&#39;output_label&#39; and shape=[1]
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[11  0  0]
- [ 0 12  0]
- [ 0  0 15]]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[ 9  0  0]
+ [ 0 16  0]
+ [ 0  0 13]]
 </pre></div>
 </div>
 <p>The prediction are perfectly identical.</p>
@@ -140,9 +140,9 @@ scikit-learn.</p>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[1.04597336e-03 3.26972202e-01 6.71981824e-01]
- [8.07529571e-01 1.92267362e-01 2.03067523e-04]
- [3.75046145e-02 6.77776609e-01 2.84718777e-01]]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[0.00198628 0.71308408 0.28492964]
+ [0.00481246 0.83770353 0.15748401]
+ [0.00483108 0.75930899 0.23585993]]
 </pre></div>
 </div>
 <p>And then with ONNX Runtime.
@@ -155,9 +155,9 @@ The probabilies appear to be</p>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[{0: 0.0010459469631314278, 1: 0.32697227597236633, 2: 0.6719817519187927},
- {0: 0.807529628276825, 1: 0.19226738810539246, 2: 0.00020308367675170302},
- {0: 0.037504520267248154, 1: 0.6777766942977905, 2: 0.2847188115119934}]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[{0: 0.0019862803164869547, 1: 0.7130840420722961, 2: 0.28492966294288635},
+ {0: 0.0048124659806489944, 1: 0.8377037048339844, 2: 0.15748386085033417},
+ {0: 0.004831086378544569, 1: 0.7593092322349548, 2: 0.23585963249206543}]
 </pre></div>
 </div>
 <p>Let’s benchmark.</p>
@@ -180,9 +180,9 @@ The probabilies appear to be</p>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for clr.predict
-Average 2.35e-05 min=1.95e-05 max=4.43e-05
+Average 4.8e-05 min=4.63e-05 max=5.71e-05
 Execution time for ONNX Runtime
-Average 2.9e-05 min=2.69e-05 max=4.27e-05
+Average 3.19e-05 min=3.08e-05 max=3.81e-05
 </pre></div>
 </div>
 <p>Let’s benchmark a scenario similar to what a webservice
@@ -208,9 +208,9 @@ as opposed to a batch of prediction.</p>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for clr.predict
-Average 0.00202 min=0.00181 max=0.00239
+Average 0.00445 min=0.00423 max=0.00495
 Execution time for sess_predict
-Average 0.00155 min=0.00128 max=0.00247
+Average 0.00151 min=0.00145 max=0.00164
 </pre></div>
 </div>
 <p>Let’s do the same for the probabilities.</p>
@@ -226,9 +226,9 @@ Average 0.00155 min=0.00128 max=0.00247
 </div>
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for predict_proba
-Average 0.00396 min=0.0034 max=0.00516
+Average 0.00643 min=0.00632 max=0.00666
 Execution time for sess_predict_proba
-Average 0.00171 min=0.0014 max=0.00269
+Average 0.00158 min=0.00152 max=0.00177
 </pre></div>
 </div>
 <p>This second comparison is better as
@@ -264,9 +264,9 @@ in every case.</p>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for predict_proba
-Average 0.0578 min=0.0551 max=0.0601
+Average 0.516 min=0.483 max=0.572
 Execution time for sess_predict_proba
-Average 0.00177 min=0.00145 max=0.0029
+Average 0.00176 min=0.00171 max=0.00188
 </pre></div>
 </div>
 <p>Let’s see with different number of trees.</p>
@@ -301,38 +301,38 @@ Average 0.00177 min=0.00145 max=0.0029
 <img alt="../_images/sphx_glr_plot_train_convert_predict_001.png" class="sphx-glr-single-img" src="../_images/sphx_glr_plot_train_convert_predict_001.png" />
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>5
-Average 0.0353 min=0.0324 max=0.0386
-Average 0.00156 min=0.00135 max=0.00173
+Average 0.042 min=0.0412 max=0.0432
+Average 0.00137 min=0.00136 max=0.00138
 10
-Average 0.0541 min=0.0519 max=0.0567
-Average 0.00157 min=0.00145 max=0.00167
+Average 0.065 min=0.0641 max=0.0662
+Average 0.00151 min=0.00139 max=0.00159
 15
-Average 0.079 min=0.0768 max=0.0806
-Average 0.00187 min=0.00155 max=0.00216
+Average 0.0886 min=0.0873 max=0.0911
+Average 0.00145 min=0.00143 max=0.00148
 20
-Average 0.103 min=0.0994 max=0.109
-Average 0.0017 min=0.00168 max=0.00176
+Average 0.113 min=0.112 max=0.115
+Average 0.0015 min=0.00149 max=0.00152
 25
-Average 0.121 min=0.117 max=0.125
-Average 0.00195 min=0.00159 max=0.00231
+Average 0.14 min=0.135 max=0.15
+Average 0.00161 min=0.0016 max=0.00164
 30
-Average 0.149 min=0.145 max=0.153
-Average 0.00239 min=0.0016 max=0.00324
+Average 0.159 min=0.154 max=0.167
+Average 0.00149 min=0.00146 max=0.00158
 35
-Average 0.17 min=0.163 max=0.178
-Average 0.00199 min=0.00162 max=0.00269
+Average 0.183 min=0.177 max=0.195
+Average 0.00153 min=0.0015 max=0.00159
 40
-Average 0.191 min=0.189 max=0.192
-Average 0.00183 min=0.00171 max=0.00197
+Average 0.221 min=0.203 max=0.242
+Average 0.0019 min=0.00153 max=0.0024
 45
-Average 0.214 min=0.212 max=0.216
-Average 0.00252 min=0.00187 max=0.00345
+Average 0.23 min=0.22 max=0.248
+Average 0.00177 min=0.00171 max=0.0018
 50
-Average 0.236 min=0.226 max=0.243
-Average 0.00237 min=0.00182 max=0.00326
+Average 0.245 min=0.244 max=0.248
+Average 0.0016 min=0.00157 max=0.00165
 </pre></div>
 </div>
-<p><strong>Total running time of the script:</strong> ( 0 minutes  49.102 seconds)</p>
+<p><strong>Total running time of the script:</strong> ( 2 minutes  25.165 seconds)</p>
 <div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-train-convert-predict-py">
 <div class="sphx-glr-download docutils container">
 <p><a class="reference download internal" download="" href="../_downloads/d83345a79a181a29892287297803aeec/plot_train_convert_predict.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_train_convert_predict.py</span></code></a></p>
@@ -365,10 +365,10 @@ Average 0.00237 min=0.00182 max=0.00326
 
 
 <h3>Navigation</h3>
-<ul class="current">
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="../tutorial.html">Tutorial</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api_summary.html">API Summary</a></li>
-<li class="toctree-l1 current"><a class="reference internal" href="index.html">Gallery of examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="index.html">Gallery of examples</a></li>
 </ul>
 
 <div class="relations">
@@ -391,6 +391,14 @@ Average 0.00237 min=0.00182 max=0.00326
     </div>
 </div>
 <script type="text/javascript">$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
         </div>
       </div>
       <div class="clearer"></div>
@@ -399,8 +407,8 @@ Average 0.00237 min=0.00182 max=0.00326
       &copy;2018-2019, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.3.0</a>
-      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.11</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.2.1</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
       <a href="../_sources/auto_examples/plot_train_convert_predict.rst.txt"

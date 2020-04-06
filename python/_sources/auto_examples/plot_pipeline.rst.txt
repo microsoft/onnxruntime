@@ -190,7 +190,7 @@ Which we display...
 
 
 
-**Total running time of the script:** ( 0 minutes  0.493 seconds)
+**Total running time of the script:** ( 0 minutes  0.399 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_pipeline.py:
