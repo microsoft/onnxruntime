@@ -7,6 +7,7 @@
 #include "core/graph/op.h"
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets-ml.h"
+#include "onnx/defs/operator_sets-training.h"
 #ifndef DISABLE_CONTRIB_OPS
 #include "core/graph/contrib_ops/contrib_defs.h"
 #endif
@@ -83,6 +84,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 #endif
       RegisterOnnxOperatorSetSchema();
       RegisterOnnxMLOperatorSetSchema();
+      RegisterOnnxTrainingOperatorSetSchema();
     });
 
     // Register MemCpy schema;

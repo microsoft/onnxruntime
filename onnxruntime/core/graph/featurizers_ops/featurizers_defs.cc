@@ -29,7 +29,7 @@ namespace featurizers {
 
 using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::OpSchema;
-using ONNX_NAMESPACE::OPTIONAL;
+using ONNX_NAMESPACE::OPTIONAL_VALUE;
 
 // Forward declarations
 static void RegisterCatImputerFeaturizerVer1();
