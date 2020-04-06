@@ -40,6 +40,7 @@ static void RegisterFromStringFeaturizerVer1();
 static void RegisterHashOneHotVectorizerFeaturizerVer1();
 static void RegisterImputationMarkerFeaturizerVer1();
 static void RegisterLabelEncoderFeaturizerVer1();
+static void RegisterLagLeadOperatorFeaturizerVer1();
 static void RegisterMaxAbsScalerFeaturizerVer1();
 static void RegisterMeanImputerFeaturizerVer1();
 static void RegisterMedianImputerFeaturizerVer1();
@@ -52,6 +53,7 @@ static void RegisterOneHotEncoderFeaturizerVer1();
 static void RegisterNormalizeFeaturizerVer1();
 static void RegisterPCAFeaturizerVer1();
 static void RegisterRobustScalerFeaturizerVer1();
+static void RegisterRollingWindowFeaturizerVer1();
 static void RegisterShortGrainDropperFeaturizerVer1();
 static void RegisterStandardScaleWrapperFeaturizerVer1();
 static void RegisterStringFeaturizerVer1();
@@ -71,6 +73,7 @@ void RegisterMSFeaturizersSchemas() {
   RegisterHashOneHotVectorizerFeaturizerVer1();
   RegisterImputationMarkerFeaturizerVer1();
   RegisterLabelEncoderFeaturizerVer1();
+  RegisterLagLeadOperatorFeaturizerVer1();
   RegisterMaxAbsScalerFeaturizerVer1();
   RegisterMeanImputerFeaturizerVer1();
   RegisterMedianImputerFeaturizerVer1();
@@ -82,6 +85,7 @@ void RegisterMSFeaturizersSchemas() {
   RegisterOneHotEncoderFeaturizerVer1();
   RegisterPCAFeaturizerVer1();
   RegisterRobustScalerFeaturizerVer1();
+  RegisterRollingWindowFeaturizerVer1();
   RegisterNormalizeFeaturizerVer1();
   RegisterShortGrainDropperFeaturizerVer1();
   RegisterStandardScaleWrapperFeaturizerVer1();
@@ -801,6 +805,132 @@ void RegisterLabelEncoderFeaturizerVer1() {
           });
 }
 
+void RegisterLagLeadOperatorFeaturizerVer1() {
+  //static const char* doc = R"DOC(
+      // Copying values from prior or future per grain. Works for general time series data sets.
+
+      // The Horizon represents the maximum value in a range [1, N], where each element in that range is a delta applied to each offset. The resulting matrix will be in the form:
+
+      // [
+      // [value[offset[0] - N], value[offset[0] - (N - 1)], ..., value[offset[0] - 1]],
+      // [value[offset[1] - N], value[offset[1] - (N - 1)], ..., value[offset[1] - 1]],
+      // ...
+      // [value[offset[K - 1] - N], value[offset[K - 1] - (N - 1)], ..., value[offset[K - 1] - 1]]
+      // ]
+
+      // The resulting matrix size is K rows x N cols, where K is the number of offsets and N is the horizon.
+
+      // Horizon and offsets should be passed in during construction. Offsets are passed in as a vector of ints so multiple lag orders can be applied within one featurizer call.
+      // Output type is a tuple of vector of string, which representing grains, and a matrix. The matrix is of optional<T> where rows are grouped by different offsets and columns are grouped by horizon.
+
+      // C++-style pseudo signature:
+      //   template <typename T> tuple<vector<string>,matrix<T?>> execute(std::vector<std::string> const &, T const &> const &value);
+
+      // Examples:
+      //     Since this featurizer is copying values per grain, we just use one type of grain in the following examples.
+
+      //     A simple example would be horizon = 1 and we have offsets as [-3, 1] (which means lag 3 and lead 1)
+      //     +-------+-------+---------------------+
+      //     | grain | target| target_lag_3_lead_1 |
+      //     +=======+=======+=====================+
+      //     |Walmart| 8     | [[NAN], [  9]]      |
+      //     +-------+-------+---------------------+
+      //     |Walmart| 9     | [[NAN], [ 10]]      |
+      //     +-------+-------+---------------------+
+      //     |Walmart| 10    | [[NAN], [ 11]]      |
+      //     +-------+-------+---------------------+
+      //     |Walmart| 11    | [[  8], [NAN]]      |
+      //     +-------+-------+---------------------+
+      //     Values from the row above current row are copied.
+
+      //     A more complex example would be, assuming we have horizon = 2 and we have offsets as [-2, 2, 1, -1] (which means lag 2, lead 2, lead 1 and lag 1)
+      //     +-------+-------+-------------------------------------------------+
+      //     | grain | target|        target_lag_2_lead_2_lead_1_lag_1         |
+      //     +=======+=======+=================================================+
+      //     |Walmart| 8     | [[NAN, NAN], [  9,  10], [NAN, NAN], [ 8,   9]] |
+      //     +-------+-------+-------------------------------------------------+
+      //     |Walmart| 9     | [[NAN, NAN], [ 10,  11], [NAN,   8], [ 9,  10]] |
+      //     +-------+-------+-------------------------------------------------+
+      //     |Walmart| 10    | [[NAN,   8], [ 11, NAN], [  8,   9], [10,  11]] |
+      //     +-------+-------+-------------------------------------------------+
+      //     |Walmart| 11    | [[  8,   9], [NAN, NAN], [  9,  10], [11, NAN]] |
+      //     +-------+-------+-------------------------------------------------+
+      //     Basically, if we have an offset of k for the row with row index t,
+      //     target_lag_k[t] = target[t - horizon + k + 1]
+  //)DOC";
+
+  MS_FEATURIZERS_OPERATOR_SCHEMA(LagLeadOperatorTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "T0")
+      .Input(
+          1,
+          "Grains",
+          "Grains tensor of shape [R][K].",
+          "GrainT")
+      .Input(
+          2,
+          "Target",
+          "Target tensor of shape [R]",
+          "T")
+      .Output(
+          0,
+          "OutputGrains",
+          "Grains tensor of shape [R][K]",
+          "GrainT")
+      .Output(
+          1,
+          "Output",
+          "Output tensor of shape [R][P][Q]",
+          "T")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
+      .TypeConstraint(
+          "GrainT",
+          {"tensor(string)"},
+          "No information is available")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)", "tensor(double)"},
+          "No information is available")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromInputToOutput(ctx, 1, 0);
+            auto input_elem_type = ctx.getInputType(2)->tensor_type().elem_type();
+            if (input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+              propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1);
+            } else if (input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
+              propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, 1);
+            } else {
+              fail_type_inference("input 2 is expected to have an accepted type");
+            }
+            if (hasInputShape(ctx, 1)) {
+              const auto& grains_shape = getInputShape(ctx, 1);
+              if (grains_shape.dim_size() != 2) {
+                fail_shape_inference("Expecting Grains to have 2 dimensions");
+              }
+              propagateShapeFromInputToOutput(ctx, 1, 0);
+              ONNX_NAMESPACE::TensorShapeProto shape;
+              *shape.add_dim() = grains_shape.dim(0);
+              shape.add_dim();
+              shape.add_dim();
+              ONNX_NAMESPACE::updateOutputShape(ctx, 1, shape);
+            }
+            if (hasInputShape(ctx, 2)) {
+              const auto& target_shape = getInputShape(ctx, 2);
+              if (target_shape.dim_size() != 1) {
+                fail_shape_inference("Expecting Target to have 1 dimensions");
+              }
+            }
+          });
+}
+
 void RegisterMaxAbsScalerFeaturizerVer1() {
   //static const char* doc = R"DOC(
   //      Scales input based on the maximum absolute value of all data encountered during training.
@@ -1436,6 +1566,106 @@ void RegisterRobustScalerFeaturizerVer1() {
 
             if (hasInputShape(ctx, 1)) {
               propagateShapeFromInputToOutput(ctx, 1, 0);
+            }
+          });
+}
+
+void RegisterRollingWindowFeaturizerVer1() {
+  //static const char* doc = R"DOC(
+  // Calculates data based on a rolling window. Currently supports mean. Works for any data set that is already sorted.
+
+  // Input type for this featurizer is a tuple of the grain columns and target value column. It is assumed that the data is sorted in the correct order.
+
+  // C++-style pseudo signature:
+  // template <typename T> matrix<double> execute(std::tuple<std::vector<std::string> const &, T const &> value);
+
+  // Examples:
+  //     A simple example would be horizon = 1, maxWindowSize = 2, and we want to take the mean.
+
+  //     +-----------+-------+-------------------+
+  //     | grain     | target| target_mean       |
+  //     +===========+=======+===================+
+  //     | A         | 10    | [[NAN]]           |
+  //     +-----------+-------+-------------------+
+  //     | A         | 4     | [[10]]            |
+  //     +-----------+-------+-------------------+
+  //     | A         | 6     | [[7]]             |
+  //     +-----------+-------+-------------------+
+  //     | A         | 11    | [[5]]             |
+  //     +-----------+-------+-------------------+
+
+  //     A more complex example would be, assuming we have horizon = 2, maxWindowSize = 2, min window size = 2, and we want the mean
+  //     +-----------+-------+-------------------+
+  //     | grain     | target| target_max        |
+  //     +===========+=======+===================+
+  //     | A         | 10    | [[NAN, NAN]]      |
+  //     +-----------+-------+-------------------+
+  //     | A         | 4     | [[NAN, NAN]]      |
+  //     +-----------+-------+-------------------+
+  //     | A         | 6     | [[NAN, 7]]        |
+  //     +-----------+-------+-------------------+
+  //     | A         | 11    | [[7, 5]]          |
+  //     +-----------+-------+-------------------+
+  //)DOC";
+
+  MS_FEATURIZERS_OPERATOR_SCHEMA(RollingWindowTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "T0")
+      .Input(
+          1,
+          "Grains",
+          "Grains tensor of shape [R][K].",
+          "GrainT")
+      .Input(
+          2,
+          "Target",
+          "Target tensor of shape [R]",
+          "T")
+      .Output(
+          0,
+          "Output",
+          "Output tensor of shape [R][M]",
+          "OutputT")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
+      .TypeConstraint(
+          "GrainT",
+          {"tensor(string)"},
+          "No information is available")
+      .TypeConstraint(
+          "T",
+          {"tensor(int8)", "tensor(uint8)", "tensor(int16)",  "tensor(uint16)", "tensor(int32)", "tensor(uint32)", "tensor(int64)", "tensor(uint64)", "tensor(float)", "tensor(double)"},
+          "No information is available")
+      .TypeConstraint(
+          "OutputT",
+          {"tensor(double)"},
+          "No information is available")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, 0);
+            if (hasInputShape(ctx, 1)) {
+              const auto& grains_shape = getInputShape(ctx, 1);
+              if (grains_shape.dim_size() != 2) {
+                fail_shape_inference("Expecting Grains to have 2 dimensions");
+              }
+
+              ONNX_NAMESPACE::TensorShapeProto shape;
+              *shape.add_dim() = grains_shape.dim(0);
+              shape.add_dim();
+              ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape);
+            }
+            if (hasInputShape(ctx, 2)) {
+              const auto& target_shape = getInputShape(ctx, 2);
+              if (target_shape.dim_size() != 1) {
+                fail_shape_inference("Expecting Target to have 1 dimensions");
+              }
             }
           });
 }
