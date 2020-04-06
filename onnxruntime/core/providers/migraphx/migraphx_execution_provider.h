@@ -27,6 +27,7 @@ struct MIGraphXFuncState {
   migraphx::target t{};
   std::unordered_map<std::string, std::size_t> input_name_indexes;
   OrtMutex* mgx_mu_ptr = nullptr;
+  bool no_input_shape = false;
 };
 
 // Logical device representation.
