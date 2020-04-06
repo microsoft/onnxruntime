@@ -38,7 +38,9 @@ std::unique_ptr<IExecutionProvider> CreateCPUExecutionProvider() {
 
 class ExecutionFrameTest : public ::testing::Test {
  protected:
-  concurrency::ThreadPool tp_{"test", 1};
+  concurrency::ThreadPool tp_;
+  ExecutionFrameTest() : tp_(&onnxruntime::Env::Default(), ThreadOptions(), ORT_TSTR("ExecutionFrameTest"), 2, true) {
+  }
 };
 
 TEST_F(ExecutionFrameTest, TensorAllocationTest) {
@@ -277,7 +279,7 @@ TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {
   SessionOptions so;
   so.session_logid = "BadModelInvalidDimParamUsage";
 
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   Status st;
   ASSERT_TRUE((st = session_object.Load("testdata/invalid_dim_param_value_repetition.onnx")).IsOK()) << st;
   ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;

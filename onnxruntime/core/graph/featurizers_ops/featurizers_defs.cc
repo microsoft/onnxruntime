@@ -29,7 +29,7 @@ namespace featurizers {
 
 using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::OpSchema;
-using ONNX_NAMESPACE::OPTIONAL;
+using ONNX_NAMESPACE::OPTIONAL_VALUE;
 
 // Forward declarations
 static void RegisterCatImputerFeaturizerVer1();
@@ -51,6 +51,7 @@ static void RegisterOneHotEncoderFeaturizerVer1();
 static void RegisterNormalizeFeaturizerVer1();
 static void RegisterPCAFeaturizerVer1();
 static void RegisterRobustScalerFeaturizerVer1();
+static void RegisterShortGrainDropperFeaturizerVer1();
 static void RegisterStandardScaleWrapperFeaturizerVer1();
 static void RegisterStringFeaturizerVer1();
 static void RegisterTfidfVectorizerFeaturizerVer1();
@@ -80,6 +81,7 @@ void RegisterMSFeaturizersSchemas() {
   RegisterPCAFeaturizerVer1();
   RegisterRobustScalerFeaturizerVer1();
   RegisterNormalizeFeaturizerVer1();
+  RegisterShortGrainDropperFeaturizerVer1();
   RegisterStandardScaleWrapperFeaturizerVer1();
   RegisterStringFeaturizerVer1();
   RegisterTfidfVectorizerFeaturizerVer1();
@@ -144,33 +146,32 @@ void RegisterCatImputerFeaturizerVer1() {
 }
 
 void RegisterCountVectorizerFeaturizerVer1() {
-  static const char* doc = R"DOC(
-      Returns the count of the number of occurrances of each distinct item according to a
-      vocabulary established during training.
+  // static const char* doc = R"DOC(
+  //     Returns the count of the number of occurrances of each distinct item according to a
+  //     vocabulary established during training.
 
-      C++-style pseudo signature:
-        CountVector execute(std::string const &value);
+  //     C++-style pseudo signature:
+  //       CountVector execute(std::string const &value);
 
-      Examples:
-        Assuming the training data is...
-        ["orange apple orange grape", "grape carrot carrot apple", "peach banana orange banana"]
+  //     Examples:
+  //       Assuming the training data is...
+  //       ["orange apple orange grape", "grape carrot carrot apple", "peach banana orange banana"]
 
-        The input data is...
-        "banana grape grape apple apple apple orange"
+  //       The input data is...
+  //       "banana grape grape apple apple apple orange"
 
-        The result will be computed by...
-          categorize and compute each word's number of apperance in input data, we have "apple -> 3", "banana -> 1", "grape -> 2", "orange -> 1"
-          construct a dictionary and assign id for each unique word using training data, we have "apple -> 0", "banana -> 1", "grape -> 3", "orange -> 4"
-          generate TFStruct by combining <word's id, word's number of apperance>
+  //       The result will be computed by...
+  //         categorize and compute each word's number of apperance in input data, we have "apple -> 3", "banana -> 1", "grape -> 2", "orange -> 1"
+  //         construct a dictionary and assign id for each unique word using training data, we have "apple -> 0", "banana -> 1", "grape -> 3", "orange -> 4"
+  //         generate TFStruct by combining <word's id, word's number of apperance>
 
-        The result is...
-        [3, 1, 0, 2, 1]
-  )DOC";
+  //       The result is...
+  //       [3, 1, 0, 2, 1]
+  // )DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(CountVectorizerTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -1373,6 +1374,61 @@ void RegisterNormalizeFeaturizerVer1() {
           });
 }
 
+void RegisterShortGrainDropperFeaturizerVer1() {
+  // static const char* doc = R"DOC(
+  //     Drop rows of TimeSeriesDataFrame with short grains
+
+  //     C++-style pseudo signature:
+  //       bool execute(std::vector<std::string> const &value);
+
+  //     Examples:
+  //       todo:
+  // )DOC";
+  MS_FEATURIZERS_OPERATOR_SCHEMA(ShortGrainDropperTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "T0")
+      .Input(
+          1,
+          "Input",
+          "String tensor of shape [R][K].",
+          "T1")
+      .Output(
+          0,
+          "Output",
+          "Bool tensor of shape [R]",
+          "T2")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
+      .TypeConstraint(
+          "T1",
+          {"tensor(string)"},
+          "No information is available")
+      .TypeConstraint(
+          "T2",
+          {"tensor(bool)"},
+          "No information is available")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_BOOL, 0);
+            if (hasInputShape(ctx, 1)) {
+              const auto& input_shape = getInputShape(ctx, 1);
+              if (input_shape.dim_size() != 2) {
+                fail_shape_inference("Expecting Input1 to have 2 dimensions");
+              }
+              ONNX_NAMESPACE::TensorShapeProto shape;
+              *shape.add_dim() = input_shape.dim(0);
+              ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape);
+            }
+          });
+}
+
 void RegisterStandardScaleWrapperFeaturizerVer1() {
   //static const char* doc = R"DOC(
   //      Standardize features by removing the mean and scaling to unit variance based on input flag with_mean and with_std
@@ -1477,41 +1533,40 @@ void RegisterStringFeaturizerVer1() {
 }
 
 void RegisterTfidfVectorizerFeaturizerVer1() {
-  static const char* doc = R"DOC(
-      Convert a collection of raw documents to a matrix of TF-IDF features
+  // static const char* doc = R"DOC(
+  //     Convert a collection of raw documents to a matrix of TF-IDF features
 
-      C++-style pseudo signature:
-        TfidfVector execute(std::string const &value);
+  //     C++-style pseudo signature:
+  //       TfidfVector execute(std::string const &value);
 
-      Examples:
-        Assuming the training data is...
-        ["this is the first document", "this document is the second document", "and this is the third one", "is this the first document"]
+  //     Examples:
+  //       Assuming the training data is...
+  //       ["this is the first document", "this document is the second document", "and this is the third one", "is this the first document"]
 
-        Assuming the input data is...
-        "this is the first document"
-        The default result will be...
-        [0. , 0.469791f, 0.580286f, 0.384085f, 0. , 0. , 0.384085f, 0. , 0.384085f]
+  //       Assuming the input data is...
+  //       "this is the first document"
+  //       The default result will be...
+  //       [0. , 0.469791f, 0.580286f, 0.384085f, 0. , 0. , 0.384085f, 0. , 0.384085f]
 
-        Assuming the input data is...
-        "this document is the second document"
-        The default result will be...
-        [0. , 0.687624f, 0. , 0.281089f, 0. , 0.538648f, 0.281089f, 0. , 0.281089f]
+  //       Assuming the input data is...
+  //       "this document is the second document"
+  //       The default result will be...
+  //       [0. , 0.687624f, 0. , 0.281089f, 0. , 0.538648f, 0.281089f, 0. , 0.281089f]
 
-        Assuming the input data is...
-        "and this is the third one"
-        The default result will be...
-        [0.511849f, 0. , 0. , 0.267104f, 0.511849f, 0. , 0.267104f, 0.511849f, 0.267104f]
+  //       Assuming the input data is...
+  //       "and this is the third one"
+  //       The default result will be...
+  //       [0.511849f, 0. , 0. , 0.267104f, 0.511849f, 0. , 0.267104f, 0.511849f, 0.267104f]
 
-        Assuming the input data is...
-        "is this the first document"
-        The default result will be...
-        [0. , 0.469791f, ,0.580286f, 0.384085f, 0. , 0. , 0.384085f, 0. , 0.384085f]
-  )DOC";
+  //       Assuming the input data is...
+  //       "is this the first document"
+  //       The default result will be...
+  //       [0. , 0.469791f, ,0.580286f, 0.384085f, 0. , 0. , 0.384085f, 0. , 0.384085f]
+  // )DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(TfidfVectorizerTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",

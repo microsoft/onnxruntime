@@ -263,7 +263,7 @@ TEST(GraphTransformationTests, SubgraphWithConstantInputs) {
   SessionOptions so;
   so.graph_optimization_level = TransformerLevel::Level2;
   so.session_logid = "GraphTransformationTests.LoadModelToTransform";
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
   std::shared_ptr<Model> p_model;
@@ -635,7 +635,7 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
 
   SessionOptions so;
   so.session_logid = "GraphTransformationTests.LoadModelToTransform";
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
   std::shared_ptr<Model> p_model;
@@ -759,7 +759,11 @@ TEST(GraphTransformationTests, ReluClip6Fusion) {
 
 // test handling of Clip 11
 TEST(GraphTransformationTests, ReluClip11Fusion) {
-  Model model("ReluClip6Fusion", false, DefaultLoggingManager().DefaultLogger());  //, true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 11}}, {});
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 11;
+  Model model("ReluClip6Fusion", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());  //, true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 11}}, {});
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;

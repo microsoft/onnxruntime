@@ -159,6 +159,8 @@ ORT_RUNTIME_CLASS(CustomOpDomain);
 ORT_RUNTIME_CLASS(MapTypeInfo);
 ORT_RUNTIME_CLASS(SequenceTypeInfo);
 ORT_RUNTIME_CLASS(ModelMetadata);
+ORT_RUNTIME_CLASS(ThreadPoolParams);
+ORT_RUNTIME_CLASS(ThreadingOptions);
 
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.
@@ -670,6 +672,7 @@ struct OrtApi {
 	 * This api augments OrtTypeInfo to return an OrtMapTypeInfo when the type is a map.
 	 * The OrtMapTypeInfo has additional information about the map's key type and value type.
 	 * This is used by WinML to support model reflection APIs.
+	 * This is used by WinML to support model reflection APIs.
 	 *
 	 * Don't free the 'out' value
     */
@@ -747,6 +750,28 @@ struct OrtApi {
   OrtStatus*(ORT_API_CALL* ModelMetadataGetVersion)(_In_ const OrtModelMetadata* model_metadata, _Out_ int64_t* value)NO_EXCEPTION;
 
   ORT_CLASS_RELEASE(ModelMetadata);
+
+  /*
+  * Creates an environment with global threadpools that will be shared across sessions.
+  * Use this in conjunction with DisablePerSessionThreads API or else the session will use
+  * its own thread pools.
+  */
+  OrtStatus*(ORT_API_CALL* CreateEnvWithGlobalThreadPools)(OrtLoggingLevel default_logging_level, _In_ const char* logid,
+                                                           _In_ const OrtThreadingOptions* t_options, _Outptr_ OrtEnv** out)
+      NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+
+  /* TODO: Should there be a version of CreateEnvWithGlobalThreadPools with custom logging function? */
+
+  /*
+  * Calling this API will make the session use the global threadpools shared across sessions.
+  * This API should be used in conjunction with CreateEnvWithGlobalThreadPools API.
+  */
+  OrtStatus*(ORT_API_CALL* DisablePerSessionThreads)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* CreateThreadingOptions)(_Outptr_ OrtThreadingOptions** out)
+      NO_EXCEPTION;
+
+  ORT_CLASS_RELEASE(ThreadingOptions);
 };
 
 /*

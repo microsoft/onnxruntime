@@ -580,7 +580,7 @@ TEST(Loop, SubgraphInputShadowsOuterScopeValue) {
   SessionOptions so;
   so.session_logid = "SubgraphInputShadowsOuterScopeValue";
 
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   Status st;
   ASSERT_TRUE((st = session_object.Load("testdata/subgraph_input_shadows_outer_scope_value.onnx")).IsOK()) << st;
   ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
