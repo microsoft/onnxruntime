@@ -58,10 +58,18 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
   if (params.partition_optimizer)
     ORT_ENFORCE(params.use_nccl, "Optimizer partitioning is only supported with NCCL distributed training.");
 
-    num_pipeline_stages_ = 3;
-    do_pipedream_ = false;
-    workers_.resize(num_pipeline_stages_);
-    worker_states_.resize(num_pipeline_stages_);
+  num_pipeline_stages_ = 3;
+  do_pipedream_ = false;
+  workers_.resize(num_pipeline_stages_);
+  worker_states_.resize(num_pipeline_stages_);
+
+  pipeline_stage_id_ = 1;
+  num_pipeline_batches_ = params_.gradient_accumulation_steps - 1;
+  num_gradient_accumulation_steps_ = params_.gradient_accumulation_steps;
+  plan_ = std::vector<PipelineBatchInfo>(num_pipeline_batches_);
+  planner_ = PipelineBatchPlanner();
+  planner_.GenerateOneFWOneBWTimeline(num_pipeline_stages_, num_pipeline_batches_);
+  planner_.CreatePlan(100 * pipeline_stage_id_, pipeline_stage_id_, plan_);
 }
 
 Status TrainingRunner::Initialize() {
@@ -421,9 +429,17 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           // If the selected worker is busy, we need to wait.
           join_worker(worker_id);
 
+          auto fw_wait = get_forward_waited_event_id(step_);
+          auto fw_record = get_forward_recorded_event_id(step_);
+          auto bw_wait = get_backward_waited_event_id(step_);
+          auto bw_record = get_backward_recorded_event_id(step_);
+
+          std::cout << "(" << step_ << ") " << fw_wait << "," << fw_record << "," << bw_wait << "," << bw_record << std::endl;
+
           workers_[worker_id] = std::thread([&](const size_t worker_id) {
             // session_.Run(run_options, feed_names, feeds, fetch_grad_accumulator_output, &fetches);
             std::cout << "(grad) launch worker " << worker_id << std::endl;
+
             session_.Run(
               worker_states_[worker_id].run_options,
               worker_states_[worker_id].feed_names,
@@ -431,6 +447,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
               worker_states_[worker_id].fetch_names,
               &worker_states_[worker_id].fetches);
             std::cout << "(grad) terminate worker " << worker_id << std::endl;
+
           }, worker_id);
           // workers_[worker_id].join();
 

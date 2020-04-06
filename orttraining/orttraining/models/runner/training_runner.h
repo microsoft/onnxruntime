@@ -15,6 +15,8 @@
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/models/runner/data_loader.h"
 
+#include "orttraining/training_ops/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
+
 namespace onnxruntime {
 namespace training {
 
@@ -28,6 +30,155 @@ struct WorkerState {
   MLValue fw_recorded_value;
   MLValue bw_waited_value;
   MLValue bw_recorded_value;
+};
+
+struct PipelineBatchInfo {
+  // Event pairs for each pipeline slot to WaitEvent when start, and RecordEvent when end
+  std::vector<std::pair<int64_t, int64_t>> events;
+  // indices of retired batches, so their data could be reused
+  // a batch can only be retired after finished backward in stage 0
+  // this can be used to join worker threads or reuse buffers
+  // for example, in a node with N GPUs and B batches to run in pipeline (with one stage for each GPU)
+  // there will be (N * B) threads created, and by being able to retire,
+  // only at most (N * (2 * N - 1)) concurrent threads are needed
+  // for small number of B, there's no retired threads so total count would be the same.
+  // for big number of B, this would be helpful
+  std::vector<int64_t> retired_batches;
+};
+
+class PipelineTimeline {
+ public:
+  struct Slot {
+    enum class Type {
+      Unused,
+      Forward,
+      Backward
+    };
+    Type type;
+    size_t batch_id;
+
+    Slot() : type(Type::Unused) {}
+  };
+
+  PipelineTimeline() = default;
+
+  void Initialize(size_t num_stages, size_t num_slots) {
+    slots_.resize(num_stages);
+    for (size_t s = 0; s < num_stages; ++s) {
+      slots_[s].resize(num_slots);
+    }
+  }
+
+  bool IsOccupied(size_t s, size_t t) const {
+    return slots_[s][t].type != Slot::Type::Unused;
+  }
+
+  const Slot& Get(size_t s, size_t t) const {
+    return slots_[s][t];
+  }
+
+  size_t GetNumSlots() const {
+    return slots_[0].size();
+  }
+
+  void Occupy(size_t s, size_t t, size_t batch_id, Slot::Type st) {
+    Slot& slot = slots_[s][t];
+    ORT_ENFORCE(slot.type == Slot::Type::Unused);
+    slot.type = st;
+    slot.batch_id = batch_id;
+  }
+
+ private:
+  std::vector<std::vector<Slot>> slots_;
+};
+
+// pipeline planner for batches
+class PipelineBatchPlanner {
+ private:
+  int64_t max_id_;
+  PipelineTimeline timeline_;
+
+ public:
+  PipelineBatchPlanner()
+      : max_id_(::onnxruntime::contrib::OrtEventPool::GetPoolSize() - 1) {
+  }
+
+  // Generate timeline for one-forward-one-backward scheduling,
+  // which schedules execution in batch order to minimize latency for onging batches
+  // each stage requires 2 pair of wait/record events for FW/BW
+  void GenerateOneFWOneBWTimeline(size_t num_stages, size_t num_batches) {
+    // The first batch has 2 * (num_stages - 1) gaps between FW and BW
+    // then 2 slots for FW/BW in each batch
+    size_t num_slots = 2 * (num_stages - 1) + num_batches * 2;
+    timeline_.Initialize(num_stages, num_slots);
+
+    // fw time slot to start the search for empty ones in each stage
+    std::vector<size_t> t_fw(num_stages, 0);
+    // bw time slot to start the search for empty ones in each stage
+    std::vector<size_t> t_bw(num_stages, 0);
+
+    // generate timeline in batch order to minimize latency for ongoing batches
+    for (size_t batch_id = 0; batch_id < num_batches; ++batch_id) {
+      // plan for FW
+      for (size_t s = 0; s < num_stages; ++s) {
+        while (timeline_.IsOccupied(s, t_fw[s])) {
+          ++t_fw[s];
+        }
+        // after find a slot, update t[s+1..] if needed
+        for (size_t ss = s + 1; ss < num_stages; ++ss) {
+          t_fw[ss] = std::max(t_fw[ss], t_fw[s] + (ss - s));
+        }
+        // occupy slot in timeline
+        timeline_.Occupy(s, t_fw[s]++, batch_id, PipelineTimeline::Slot::Type::Forward);
+      }
+      // plan for BW
+      for (int s = gsl::narrow<int>(num_stages - 1); s >= 0; --s) {
+        t_bw[s] = std::max(t_fw[s], t_bw[s]);
+        while (timeline_.IsOccupied(s, t_bw[s])) {
+          t_bw[s]++;
+        }
+        // after find a slot, update t_bw[s-1..]
+        for (int ss = s - 1; ss >= 0; --ss) {
+          t_bw[ss] = std::max(t_bw[ss], t_bw[s] + (s - ss));
+        }
+        // occupy slot in timeline
+        timeline_.Occupy(s, t_bw[s], batch_id, PipelineTimeline::Slot::Type::Backward);
+      }
+    }
+  }
+
+  // create pipeline plans according to generated timeline
+  // with start_event_id = s, the output of each stage is [-1, s], [s, s+1], [s+1, s+2]... for each occupied slot
+  // and will be assigned to each batch's PipelineBatchInfo
+  // returns the first unused event_id after creating
+  int64_t CreatePlan(int64_t start_event_id, const size_t stage, std::vector<PipelineBatchInfo>& plan) {
+    // fill in plan
+    int64_t prev_event_id = -1;
+    int64_t event_id = start_event_id;
+    std::vector<int64_t> retired_batches;
+    for (size_t t = 0; t < timeline_.GetNumSlots(); ++t) {
+      if (!timeline_.IsOccupied(stage, t))
+        continue;
+
+      const auto& slot = timeline_.Get(stage, t);
+      ORT_ENFORCE(event_id < max_id_);
+      if (stage == 0) {
+        if (slot.type == PipelineTimeline::Slot::Type::Forward) {
+          // set retired batches when starting a new batch (s == 0 && !bw)
+          plan[slot.batch_id].retired_batches = retired_batches;
+          retired_batches.clear();
+        } else if (slot.type == PipelineTimeline::Slot::Type::Backward) {
+          // add to retired batches after backward of stage 0
+          retired_batches.push_back(gsl::narrow<int64_t>(slot.batch_id));
+        }
+      }
+      // add a pair of wait/record event ids to given batch_id
+      plan[slot.batch_id].events.emplace_back(prev_event_id, event_id);
+      prev_event_id = event_id;
+      ++event_id;
+    }
+    return event_id;
+  }
 };
 
 class TrainingRunner {
@@ -197,19 +348,65 @@ class TrainingRunner {
   }
 
   int64_t get_forward_waited_event_id(size_t step_id) {
-    return step_id;
+    const size_t pipeline_batch_id = step_id % num_gradient_accumulation_steps_;
+    if (pipeline_batch_id < num_pipeline_batches_) {
+      // A gradient accumulation step.
+      if (pipeline_stage_id_ < num_pipeline_stages_) {
+        // Non-last stage event. 
+        return plan_[pipeline_batch_id].events[/* forward */ 0].first;
+      } else {
+        // Last stage event. 
+        return plan_[pipeline_batch_id].events[/* forward */ 0].first;
+      }
+    } else {
+      // A update step.
+      return -1;
+    }
   }
 
   int64_t get_forward_recorded_event_id(size_t step_id) {
-    return step_id;
+    const size_t pipeline_batch_id = step_id % num_gradient_accumulation_steps_;
+    if (pipeline_batch_id < num_pipeline_batches_) {
+      // A gradient accumulation step.
+      if (pipeline_stage_id_ < num_pipeline_stages_) {
+        // Non-last stage event. 
+        return plan_[pipeline_batch_id].events[/* forward */ 0].second;
+      } else {
+        // Last stage event. 
+        return -1;
+      }
+    } else {
+      // A update step.
+      return -1;
+    }
   }
 
   int64_t get_backward_waited_event_id(size_t step_id) {
-    return step_id;
+    const size_t pipeline_batch_id = step_id % num_gradient_accumulation_steps_;
+    if (pipeline_batch_id < num_pipeline_batches_ - 1) {
+      // Non-last stage event. 
+      return plan_[pipeline_batch_id].events[/* backward */ 1].first;
+    } else if(pipeline_batch_id == num_pipeline_batches_ - 1) {
+      // Last stage event.
+      return plan_[pipeline_batch_id].events[/* backward */ 1].second;
+    } else {
+      // No event to wait.
+      return -1;
+    }
   }
   
   int64_t get_backward_recorded_event_id(size_t step_id) {
-    return step_id;
+    const size_t pipeline_batch_id = step_id % num_gradient_accumulation_steps_;
+    if (pipeline_batch_id < num_pipeline_batches_ - 1) {
+      // Non-last stage event. 
+      return plan_[pipeline_batch_id].events[/* backard */ 1].second;
+    } else if(pipeline_batch_id == num_pipeline_batches_ - 1) {
+      // Last stage event.
+      return -1;
+    } else {
+      // No event to wait.
+      return -1;
+    }
   }
 
  private:
@@ -236,7 +433,6 @@ class TrainingRunner {
 
   std::unique_ptr<CheckpointRegistry> checkpoint_registry_;
 
-  size_t num_pipeline_stages_;
   std::vector<std::thread> workers_;
   std::vector<WorkerState> worker_states_;
   std::string waited_forward_event_name_;
@@ -244,7 +440,15 @@ class TrainingRunner {
   std::string waited_backward_event_name_;
   std::string recorded_backward_event_name_;
   bool do_pipedream_;
+
+  size_t num_pipeline_stages_;
+  size_t pipeline_stage_id_;
+  size_t num_pipeline_batches_;
+  size_t num_gradient_accumulation_steps_;
+  std::vector<PipelineBatchInfo> plan_;
+  PipelineBatchPlanner planner_;;
 };
+
 
 }  // namespace training
 }  // namespace onnxruntime
