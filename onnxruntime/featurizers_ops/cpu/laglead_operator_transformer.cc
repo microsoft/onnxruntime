@@ -62,6 +62,7 @@ struct LagLeadOperatorTransformerImpl {
         has_allocate_output_data = true;
       }
       output_grains_data = std::copy(output_grains.begin(), output_grains.end(), output_grains_data);
+      //TODO: FeaturizersLibrary doesn't support Map<Matrix> as return type for this featurizer at this time. Will optimize for it in the future
       output_data = std::copy(output_matrix.data(), output_matrix.data() + output_matrix.size(), output_data);
     };
 

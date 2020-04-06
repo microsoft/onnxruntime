@@ -50,6 +50,7 @@ struct RollingWindowTransformerImpl {
         output_data = output_tensor->MutableData<double>();
         has_allocate_output_data = true;
       }
+      //TODO: FeaturizersLibrary doesn't support Map<Matrix> as return type for this featurizer at this time. Will optimize for it in the future
       output_data = std::copy(value.data(), value.data() + value.size(), output_data);
     };
 
