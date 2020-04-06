@@ -283,7 +283,7 @@ class Node {
     return !attr_to_subgraph_map_.empty();
   }
 
-  /** Get the const subgraphs from a node. 
+  /** Get the const subgraphs from a node.
   @remarks Creates a new vector so calling ContainsSubgraphs first is preferred. */
   std::vector<gsl::not_null<const Graph*>> GetSubgraphs() const;
 
@@ -301,7 +301,7 @@ class Node {
   /** Sets the execution ProviderType that this Node will be executed by. */
   void SetExecutionProviderType(ProviderType execution_provider_type);
 
-  /** Gets the NodeProto representation of this Node. 
+  /** Gets the NodeProto representation of this Node.
   @param update_subgraphs Update the GraphProto values for any subgraphs in the returned NodeProto.
                           If graph optimization has been run this is most likely required
                           to ensure the complete Graph is valid.
@@ -539,7 +539,7 @@ class Graph {
   }
 
   /** Gets the Graph inputs that are initializers
-  These are overridable initializers. This is a difference between 
+  These are overridable initializers. This is a difference between
   graph_inputs_including_initializers_ and graph_inputs_excluding_initializers_
   @remarks Contains no nullptr values. */
   const std::vector<const NodeArg*>& GetOverridableInitializers() const {

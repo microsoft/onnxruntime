@@ -79,10 +79,8 @@ struct ForecastingPivotTransformerImpl {
     Tensor* output_tensor(ctx->Output(0, output_shape));
     T* output_data = output_tensor->MutableData<T>();
 
-    for (OutputType const & row : output) {
-      std::copy(row.begin(), row.end(), output_data);
-      output_data += row.size();
-    }
+    for (OutputType const & row : output)
+      output_data = std::copy(row.begin(), row.end(), output_data);
   }
 };
 
