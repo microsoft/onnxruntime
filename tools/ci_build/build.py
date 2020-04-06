@@ -285,7 +285,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     cmake_args = [cmake_path, cmake_dir,
                  "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
                  "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
-                 "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android else "ON"),
+                 "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android else "OFF"),
                  "-DPYTHON_EXECUTABLE=" + sys.executable,
                  "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
                  "-Donnxruntime_USE_NSYNC=" + ("OFF" if is_windows() or not args.use_nsync else "ON"),
