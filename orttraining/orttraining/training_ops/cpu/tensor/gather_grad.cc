@@ -7,9 +7,11 @@
 namespace onnxruntime {
 namespace contrib {
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     GatherGrad,
-    9,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())

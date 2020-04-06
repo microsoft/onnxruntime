@@ -36,7 +36,7 @@ struct MixedPrecisionScaleInputOutput {
 
 TEST(CudaKernelTest, MixedPrecisionScaleF2F) {
   MixedPrecisionScaleInputOutput data;
-  OpTester test("MixedPrecisionScale", 9, onnxruntime::kOnnxDomain);
+  OpTester test("MixedPrecisionScale", 1, onnxruntime::kMSDomain);
   test.AddAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
   test.AddInput<float>("scale", {1}, data.scale);
   test.AddInput<float>("input1", {3}, data.input1);
@@ -46,7 +46,7 @@ TEST(CudaKernelTest, MixedPrecisionScaleF2F) {
 
 TEST(CudaKernelTest, MixedPrecisionScaleF2F_MultiInputs) {
   MixedPrecisionScaleInputOutput data;
-  OpTester test("MixedPrecisionScale", 9, onnxruntime::kOnnxDomain);
+  OpTester test("MixedPrecisionScale", 1, onnxruntime::kMSDomain);
   test.AddAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
   test.AddInput<float>("scale", {1}, data.scale);
   test.AddInput<float>("input1", {3}, data.input1);
@@ -58,7 +58,7 @@ TEST(CudaKernelTest, MixedPrecisionScaleF2F_MultiInputs) {
 
 TEST(CudaKernelTest, MixedPrecisionScaleF2H) {
   MixedPrecisionScaleInputOutput data;
-  OpTester test("MixedPrecisionScale", 9, onnxruntime::kOnnxDomain);
+  OpTester test("MixedPrecisionScale", 1, onnxruntime::kMSDomain);
   test.AddAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16));
   test.AddInput<float>("scale", {1}, data.scale);
   test.AddInput<float>("input1", {3}, data.input1);
@@ -68,7 +68,7 @@ TEST(CudaKernelTest, MixedPrecisionScaleF2H) {
 
 TEST(CudaKernelTest, MixedPrecisionScaleF2H_MultiInput_FuseOutput) {
   MixedPrecisionScaleInputOutput data;
-  OpTester test("MixedPrecisionScale", 9, onnxruntime::kOnnxDomain);
+  OpTester test("MixedPrecisionScale", 1, onnxruntime::kMSDomain);
   test.AddAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16));
   test.AddAttribute("fuse_outputs", int64_t(1));
   test.AddInput<float>("scale", {1}, data.scale);
@@ -84,7 +84,7 @@ TEST(CudaKernelTest, MixedPrecisionScaleF2H_MultiInput_FuseOutput) {
 
 TEST(CudaKernelTest, MixedPrecisionScaleH2F) {
   MixedPrecisionScaleInputOutput data;
-  OpTester test("MixedPrecisionScale", 9, onnxruntime::kOnnxDomain);
+  OpTester test("MixedPrecisionScale", 1, onnxruntime::kMSDomain);
   test.AddAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
   test.AddInput<float>("scale", {1}, data.scale);
   test.AddInput<MLFloat16>("input1", {3}, data.input1_half);
@@ -94,7 +94,7 @@ TEST(CudaKernelTest, MixedPrecisionScaleH2F) {
 
 TEST(CudaKernelTest, MixedPrecisionScaleH2F_MultiInputs) {
   MixedPrecisionScaleInputOutput data;
-  OpTester test("MixedPrecisionScale", 9, onnxruntime::kOnnxDomain);
+  OpTester test("MixedPrecisionScale", 1, onnxruntime::kMSDomain);
   test.AddAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
   test.AddInput<float>("scale", {1}, data.scale);
   test.AddInput<MLFloat16>("input1", {3}, data.input1_half);
@@ -106,7 +106,7 @@ TEST(CudaKernelTest, MixedPrecisionScaleH2F_MultiInputs) {
 
 TEST(CudaKernelTest, MixedPrecisionScaleH2F_MultiInput_FuseOutput) {
   MixedPrecisionScaleInputOutput data;
-  OpTester test("MixedPrecisionScale", 9, onnxruntime::kOnnxDomain);
+  OpTester test("MixedPrecisionScale", 1, onnxruntime::kMSDomain);
   test.AddAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
   test.AddAttribute("fuse_outputs", int64_t(1));
   test.AddInput<float>("scale", {1}, data.scale);
@@ -122,7 +122,7 @@ TEST(CudaKernelTest, MixedPrecisionScaleH2F_MultiInput_FuseOutput) {
 
 TEST(CudaKernelTest, MixedPrecisionScaleH2H) {
   MixedPrecisionScaleInputOutput data;
-  OpTester test("MixedPrecisionScale", 9, onnxruntime::kOnnxDomain);
+  OpTester test("MixedPrecisionScale", 1, onnxruntime::kMSDomain);
   test.AddAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16));
   test.AddInput<float>("scale", {1}, data.scale);
   test.AddInput<MLFloat16>("input1", {3}, data.input1_half);
