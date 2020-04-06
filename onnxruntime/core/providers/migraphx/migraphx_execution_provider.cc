@@ -423,34 +423,35 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return allowed_modes.count(mode) == 0;
     }
   } else if (optype == "Reshape") {
-    // MIGraphX only support opset6 with 1 input
-    const auto& shape_arg = node->InputDefs()[1];
-    return initializers.find(shape_arg->Name()) == initializers.end();
+    const auto& args = node->InputDefs();
+    if (args.size() == 2)
+    {
+      const auto& shape_arg = node->InputDefs()[1];
+      if (initializers.find(shape_arg->Name()) == initializers.end()) {
+        return true;
+      }
+    }
   } else if (optype == "Slice") {
     // MIGraphX does not properly handle the situation where any 
     // value of the "starts" attribute is higher than a corresponding 
     // value in the "ends"
     const auto& args = node->InputDefs();
-    if (args.size() == 5)
-    {
+    if (args.size() == 5) {
       return true;
     }
 
     const auto& attributes = node->GetAttributes();
-    if (args.size() >= 4)
-    {
+    if (args.size() >= 4) {
       if (initializers.find(args[3]->Name()) == initializers.end())
         return true;
     }
 
-    if (args.size() >= 3)
-    {
+    if (args.size() >= 3) {
       if (initializers.find(args[2]->Name()) == initializers.end())
         return true;
     }
 
-    if (args.size() >= 2)
-    {
+    if (args.size() >= 2) {
       if (initializers.find(args[1]->Name()) == initializers.end())
         return true;
     }
@@ -677,6 +678,158 @@ static void GetInputsOutputsOfSubgraph(const GraphViewer& graph_viewer,
   }
 }
 
+void print_node_output_shapes(onnxruntime::Graph& graph)
+{
+  int node_num = graph.NumberOfNodes();
+  for (int i = 0; i < node_num; ++i)
+  {
+    const auto&& node = graph.GetNode(i);
+
+    auto op_type = node->OpType();
+    std::cout << "Optype = " << op_type << std::endl;
+    auto outputs = node->OutputDefs();
+    for (auto&& node_arg : outputs)
+    {
+      if (node_arg == nullptr) continue;
+      auto&& type_as_proto = node_arg->TypeAsProto();
+      auto& dims = type_as_proto->tensor_type().shape().dim();
+      std::cout << "\toutput_name = " << node_arg->Name() << ", dim_size = " << dims.size();
+      for (auto&& d : dims)
+      {
+        if (d.has_dim_value())
+        {
+          std::cout << ", " << d.dim_value();
+        }
+        else if (d.has_dim_param())
+        {
+          std::cout << ", " << d.dim_param();
+        }
+        else
+        {
+          std::cout << ", " << "nothing";
+        }
+      }
+      std::cout << std::endl;
+    }
+  }
+}
+
+void print_node_output_shapes(const onnxruntime::GraphViewer& graph_viewer)
+{
+  for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder())
+  {
+    const auto& node = graph_viewer.GetNode(node_idx);
+
+    auto op_type = node->OpType();
+    std::cout << "node_index = " << node_idx << ", Optype = " << op_type << std::endl;
+    auto outputs = node->OutputDefs();
+    for (auto&& node_arg : outputs)
+    {
+      if (node_arg == nullptr) continue;
+      auto&& type_as_proto = node_arg->TypeAsProto();
+      auto& dims = type_as_proto->tensor_type().shape().dim();
+      std::cout << "\toutput_name = " << node_arg->Name();
+      
+      if (dims.empty())
+      {
+        std::cout << " {================================================}";
+      }
+      else 
+      {
+        std::cout << ", dim_size = " << dims.size() << ", {";
+        for (auto&& d : dims)
+        {
+          if (d.has_dim_value())
+          {
+            std::cout << d.dim_value();
+          }
+          else if (d.has_dim_param())
+          {
+            std::cout << d.dim_param();
+          }
+          else
+          {
+            std::cout << "===========";
+          }
+          std::cout << ", ";
+        }
+        std::cout << "}";
+      }
+      std::cout << std::endl;
+    }
+  }
+}
+
+void set_node_arg_shape(onnxruntime::NodeArg *node_arg, std::unordered_map<std::string, std::size_t>& map_dim_param_values)
+{
+  if (node_arg == nullptr)
+  {
+    return;
+  }
+std::cout << "Loc1" << std::endl;
+  const auto node_shape = node_arg->Shape();
+  if (node_shape == nullptr)
+  {
+    return;
+  }
+
+  ONNX_NAMESPACE::TensorShapeProto s(*node_shape);
+  const auto& dims = s.dim();
+  for (int i = 0; i < dims.size(); ++i)
+  {
+std::cout << "Loc2" << std::endl;
+    if (!dims[i].has_dim_value())
+    {
+std::cout << "Loc3" << std::endl;
+      auto mutable_dim = s.mutable_dim(i);
+      if (dims[i].has_dim_param())
+      {
+std::cout << "Loc4" << std::endl;
+        auto d_name = dims[i].dim_param();
+        if (map_dim_param_values.count(d_name) == 0)
+        {
+std::cout << "Loc5" << std::endl;
+          map_dim_param_values[d_name] = 2;
+        }
+std::cout << "Loc6" << std::endl;
+        mutable_dim->set_dim_value(map_dim_param_values.at(d_name));
+std::cout << "Loc7" << std::endl;
+      }
+    }
+  }
+std::cout << "Loc8" << std::endl;
+  node_arg->SetShape(s);
+}
+
+/*
+void set_dim_param_tmp_value(onnx::TypeProto *type_proto, std::unordered_map<std::string, std::size_t>& map_dim_param_values)
+{
+  if (type_proto == nullptr)
+  {
+    return;
+  }
+
+  auto tensor_shape = type_proto->tensor_type().mutable_shape();
+  auto& dims = tensor_shape->dim();
+  for (int i = 0; i < dims.size(); ++i)
+  {
+    if (!dims[i].has_dim_value())
+    {
+      auto mutable_dim = tensor_shape->mutable_dim(i);
+      if (dims[i].has_dim_param())
+      {
+        auto d_name = dims[i].dim_param();
+        if (map_dim_param_values.count(d_name) == 0)
+        {
+          map_dim_param_values[d_name] = 2;
+        }
+        mutable_dim->set_dim_value(map_dim_param_values.at(d_name));
+      }
+    }
+  }
+}
+*/
+
 std::vector<std::unique_ptr<ComputeCapability>>
 MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                        const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
@@ -688,7 +841,7 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
 
   for (const auto& tensor : graph_viewer.GetAllInitializedTensors()) {
     if (tensor.second->has_data_location() && tensor.second->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-      LOGS_DEFAULT(WARNING) << "MIGraphX: Initializers with external data location are not currently supported";
+      LOGS_DEFAULT(WARNING) << "MIGraphX: Initializers with external data lepcation are not currently supported";
       return result;
     }
   }
@@ -698,14 +851,18 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
           IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap(), 
           std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
 
+  std::unordered_map<std::string, std::size_t> map_dim_param_values;
+
   onnxruntime::Graph& graph_build = model.MainGraph();
   for (const auto& node : graph_viewer.Nodes()) {
     std::vector<onnxruntime::NodeArg*> inputs, outputs;
     for (auto input : node.InputDefs()) {
+      // set_node_arg_shape((onnxruntime::NodeArg*)input, map_dim_param_values);
       auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
       inputs.push_back(&n_input);
     }
     for (auto output : node.OutputDefs()) {
+      // set_node_arg_shape((onnxruntime::NodeArg*)output, map_dim_param_values);
       auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
       outputs.push_back(&n_output);
     }
@@ -724,6 +881,9 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
   auto status = graph_build.Resolve();
+
+  // print output shape of the graph
+  print_node_output_shapes(graph_viewer);
 
   // std::string onnx_string_buffer;
   // model_proto.SerializeToString(&onnx_string_buffer);
@@ -765,7 +925,6 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   std::unordered_set<std::string> mgx_required_initializers;
 
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, mgx_required_initializers);
-
   if (!unsupported_nodes.empty())
   {
     std::cout << "=======================================" << std::endl;
@@ -775,6 +934,12 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
       std::cout << "idx = " << idx << ", op_type = " << node->OpType() << std::endl;
     }
     std::cout << "=======================================" << std::endl;
+  }
+
+  // Too many unsupported operators, fallback to run on CPU
+  if (unsupported_nodes.size() > 8)
+  {
+    return result;
   }
 
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
@@ -910,13 +1075,13 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     model_proto.SerializeToString(&onnx_string_buffer);
     auto output_names = get_output_names(onnx_string_buffer);
 
-    // dump onnx file
-    std::string name("ort_compile_");
-    name.append(fused_node->Name());
-    name.append(".onnx");
-    std::ofstream ofs(name, std::ios::binary);
-    ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
-    ofs.close();
+    // // dump onnx file
+    // std::string name("ort_compile_");
+    // name.append(fused_node->Name());
+    // name.append(".onnx");
+    // std::ofstream ofs(name, std::ios::binary);
+    // ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
+    // ofs.close();
 
     // by parsing the model_proto, create a program corresponding to
     // the input fused_node
@@ -938,13 +1103,13 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     {
       auto out_len = prog_output_shapes[i].lengths();
       options.add_parameter_shape(output_names[i], out_len);
-      std::cout << "name = " << output_names[i];
-      for (auto v : out_len)
-      {
-        std::cout << "\t" << v;
-      }
-      std::cout << std::endl;
-      write_shape_info(output_names[i], out_len);
+      // std::cout << "name = " << output_names[i];
+      // for (auto v : out_len)
+      // {
+      //   std::cout << "\t" << v;
+      // }
+      // std::cout << std::endl;
+      // write_shape_info(output_names[i], out_len);
     }
 
     map_onnx_string_[fused_node->Name()] = onnx_string_buffer;
@@ -992,9 +1157,9 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
           auto mgx_lens = mgx_s.lengths();
           if (mgx_lens != ort_lens)
           {
-            std::cout << "name = " << name << std::endl;
-            print_lens("mgx_lens", mgx_lens);
-            print_lens("ort_lens", ort_lens);
+            // std::cout << "name = " << name << std::endl;
+            // print_lens("mgx_lens", mgx_lens);
+            // print_lens("ort_lens", ort_lens);
             input_shape_match = false;
             cmp_options.add_parameter_shape(name, ort_lens);
           }
@@ -1005,13 +1170,9 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       // re-compile the program
       if (!input_shape_match)
       {
-std::cout << "Loc1" << std::endl;
         prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
-std::cout << "Loc2" << std::endl;
         prog.compile(t);
-std::cout << "Loc3" << std::endl;
         mgx_state->prog = prog;
-std::cout << "Loc4" << std::endl;
         param_shapes = prog.get_parameter_shapes();
         prog_output_shapes = prog.get_output_shapes();
       }
