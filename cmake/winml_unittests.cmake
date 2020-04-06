@@ -61,7 +61,7 @@ function(get_winml_test_scenario_src
   output_winml_test_scenario_libs
 )
   if (onnxruntime_USE_DML)
-    file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS 
+    file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS
         "${winml_test_src_path}/scenario/cppwinrt/*.h"
         "${winml_test_src_path}/scenario/cppwinrt/*.cpp")
     set(${output_winml_test_scenario_libs} "onnxruntime_providers_dml" PARENT_SCOPE)
@@ -77,7 +77,7 @@ function(get_winml_test_api_src
   winml_test_src_path
   output_winml_test_api_src
 )
-  file(GLOB winml_test_api_src CONFIGURE_DEPENDS 
+  file(GLOB winml_test_api_src CONFIGURE_DEPENDS
       "${winml_test_src_path}/api/*.h"
       "${winml_test_src_path}/api/*.cpp")
   set(${output_winml_test_api_src} ${winml_test_api_src} PARENT_SCOPE)
@@ -99,7 +99,7 @@ function(get_winml_test_adapter_src
   output_winml_test_adapter_libs
 )
   set(${output_winml_test_adapter_libs} "onnxruntime" PARENT_SCOPE)
-  file(GLOB winml_test_adapter_src CONFIGURE_DEPENDS 
+  file(GLOB winml_test_adapter_src CONFIGURE_DEPENDS
       "${winml_test_src_path}/adapter/*.h"
       "${winml_test_src_path}/adapter/*.cpp")
   set(${output_winml_test_adapter_src} ${winml_test_adapter_src} PARENT_SCOPE)
@@ -118,7 +118,7 @@ function(get_winml_test_image_src
   set(${output_winml_test_image_src} ${winml_test_image_src} PARENT_SCOPE)
 endfunction()
 
-file(GLOB winml_test_common_src CONFIGURE_DEPENDS 
+file(GLOB winml_test_common_src CONFIGURE_DEPENDS
     "${WINML_TEST_SRC_DIR}/common/*.h"
     "${WINML_TEST_SRC_DIR}/common/*.cpp")
 add_library(winml_test_common STATIC ${winml_test_common_src})
@@ -184,12 +184,13 @@ add_winml_test(
   LIBS winml_test_common
 )
 target_include_directories(winml_test_concurrency PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
+target_include_directories(winml_test_concurrency PRIVATE ${ONNXRUNTIME_ROOT}/winml/lib/Api.Ort)
 
 get_winml_test_adapter_src(${WINML_TEST_SRC_DIR} winml_test_adapter_src winml_test_adapter_libs)
 add_winml_test(
   TARGET winml_test_adapter
   SOURCES ${winml_test_adapter_src}
-  LIBS winml_test_common ${winml_test_adapter_libs}
+  LIBS winml_test_common winml_adapter ${winml_test_adapter_libs}
 )
 target_include_directories(winml_test_adapter PRIVATE ${REPO_ROOT}/winml/adapter)
 
