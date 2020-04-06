@@ -5,6 +5,7 @@ import onnx
 import numpy as np
 import os
 import argparse
+from datetime import date
 from onnx import numpy_helper
 from onnx import helper
 from onnx import utils
@@ -182,6 +183,9 @@ def test_cdist(output_dir):
 
 args = parse_arguments()
 os.makedirs(args.output_dir, exist_ok=True)
+# make test values deterministic but variable
+today = date.today()
+np.random.seed(today.year + today.month + today.day)
 test_abs(args.output_dir)
 test_size(args.output_dir)
 test_reducesum(args.output_dir)
