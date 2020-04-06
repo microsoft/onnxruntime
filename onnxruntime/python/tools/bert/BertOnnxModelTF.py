@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class BertOnnxModelTF(BertOnnxModel):
 
     def __init(self, model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only):
-        super().__init__(model, num_heads, hidden_size, sequence_length)
+        super().__init__(model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only)
 
     """
      Fuse Gelu with Erf into one node:

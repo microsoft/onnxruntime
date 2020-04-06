@@ -201,7 +201,7 @@ def main():
     if args.enable_optimization:
         from bert_model_optimization import optimize_model
         m = optimize_model(export_model_path,
-                           model_type='bert',
+                           model_type='gpt2',
                            gpu_only=False,
                            num_heads=12,
                            hidden_size=768,
@@ -235,6 +235,7 @@ def main():
         for layer in range(model.config.n_layer):
             logger.info('PyTorch and OnnxRuntime layer {} state (present_{}) are close:'.format(layer, layer),
                         numpy.allclose(ort_outputs[1 + layer], outputs[1][layer].cpu(), rtol=1e-05, atol=1e-04))
+
 
 if __name__ == '__main__':
     main()
