@@ -39,7 +39,7 @@ struct RollingWindowTransformerImpl {
     // Prepare the output
     const auto output_dim_0 = grains_tensor->Shape()[0];
 
-    double* output_data(0);
+    double* output_data = nullptr;
     bool has_allocate_output_data = false;
     std::function<void(OutputType)> callback_fn;
     callback_fn = [ctx, &output_data, &has_allocate_output_data, output_dim_0](OutputType value) -> void {
@@ -50,6 +50,7 @@ struct RollingWindowTransformerImpl {
         output_data = output_tensor->MutableData<double>();
         has_allocate_output_data = true;
       }
+      //TODO: FeaturizersLibrary doesn't support Map<Matrix> as return type for this featurizer at this time. Will optimize for it in the future
       output_data = std::copy(value.data(), value.data() + value.size(), output_data);
     };
 

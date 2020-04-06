@@ -780,15 +780,12 @@ void RegisterLagLeadOperatorFeaturizerVer1() {
               propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1);
             } else if (input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
               propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, 1);
-            } else {
-              fail_type_inference("input 2 is expected to have an accepted type");
             }
             if (hasInputShape(ctx, 1)) {
               const auto& grains_shape = getInputShape(ctx, 1);
               if (grains_shape.dim_size() != 2) {
                 fail_shape_inference("Expecting Grains to have 2 dimensions");
               }
-              propagateShapeFromInputToOutput(ctx, 1, 0);
               ONNX_NAMESPACE::TensorShapeProto shape;
               *shape.add_dim() = grains_shape.dim(0);
               shape.add_dim();
