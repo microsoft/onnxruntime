@@ -52,8 +52,8 @@ struct LagLeadOperatorTransformerImpl {
     bool has_allocate_output_data = false;
     std::function<void(OutputType)> callback_fn;
     callback_fn = [ctx, &output_grains_data, &output_data, &has_allocate_output_data, output_dim_0](OutputType value) -> void {
-      GrainT const output_grains(std::get<GrainT>(value));
-      OutputMatrixType const output_matrix(std::get<OutputMatrixType>(value));
+      GrainT const & output_grains(std::get<GrainT>(value));
+      OutputMatrixType const & output_matrix(std::get<OutputMatrixType>(value));
       //Allocate tensor memory after first output is generated
       if (!has_allocate_output_data) {
         TensorShape output_shape({output_dim_0, output_matrix.rows(), output_matrix.cols()});
