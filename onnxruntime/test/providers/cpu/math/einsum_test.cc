@@ -175,6 +175,7 @@ TEST(Einsum, ExplicitEinsumAsDiagonalOpWithTranspose) {
   test.AddOutput<float>("o", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.Run();
 }
+
 TEST(Einsum, ExplicitEinsumAsBatchedDiagonalOp) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "...ii->...i");
@@ -183,6 +184,13 @@ TEST(Einsum, ExplicitEinsumAsBatchedDiagonalOp) {
   test.Run();
 }
 
+TEST(Einsum, ExplicitEinsumAsBatchedDiagonalOp_1) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "...iij->...j");
+  test.AddInput<float>("x", {2, 2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
+  test.AddOutput<float>("o", {2, 2}, {4.f, 6.f, 4.f, 6.f});
+  test.Run();
+}
 // Theme: Scalar inputs and outputs
 
 TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithOneScalar) {

@@ -41,7 +41,7 @@ static Tensor PairwiseOperandProcess(Tensor& left, Tensor& right,
                                      const std::vector<int64_t>& reduce_dims,
                                      concurrency::ThreadPool* tp,
                                      const AllocatorPtr& allocator,
-                                     const EinsumComputePreprocessor<T>& einsum_preprocessor,
+                                     const EinsumComputePreprocessor& einsum_compute_preprocessor,
                                      bool is_final_pair, Tensor& final_output) {
   // Make copies as we may mutate the tensor objects downstream
   std::vector<int64_t> left_dims = left.Shape().GetDims();
@@ -196,8 +196,8 @@ static Tensor PairwiseOperandProcess(Tensor& left, Tensor& right,
     output = Transpose(output, output_permutation, allocator);
   } else {  // This is the final pair - Transpose directly to the output ordering required
     FinalizeOutput<T>(output, current_subscript_order,
-                      einsum_preprocessor.GetMappedSubscriptIndicesToOutputindices(), final_output,
-                      einsum_preprocessor.GetOutputDims(), allocator);
+                      einsum_compute_preprocessor.GetMappedSubscriptIndicesToOutputindices(), final_output,
+                      einsum_compute_preprocessor.GetOutputDims(), allocator);
   }
 
   return output;
@@ -205,25 +205,10 @@ static Tensor PairwiseOperandProcess(Tensor& left, Tensor& right,
 
 }  // namespace EinsumOp
 
-template <typename T>
-EinsumComputePreprocessor<T>::EinsumComputePreprocessor(const std::string& einsum_equation,
-                                                        const std::vector<const Tensor*>& inputs,
-                                                        const AllocatorPtr& allocator)
-    : inputs_(inputs), einsum_equation_(einsum_equation), allocator_(allocator) {
-  // Remove space characters
-  einsum_equation_.erase(std::remove(einsum_equation_.begin(), einsum_equation_.end(), ' '),
-                         einsum_equation_.end());
-
-  auto mid_index = einsum_equation_.find("->");
-  if (mid_index != std::string::npos) {
-    // Separate right and left hand sides of the equation
-    left_equation_ = einsum_equation_.substr(0, mid_index);
-    right_equation_ = einsum_equation_.substr(mid_index + 2);
-    is_explicit_ = true;
-  } else {
-    left_equation_ = einsum_equation_;
-  };
-
+EinsumComputePreprocessor::EinsumComputePreprocessor(const EinsumEquationPreprocessor& einsum_equation_preprocessor,
+                                                     const std::vector<const Tensor*>& inputs,
+                                                     const AllocatorPtr& allocator)
+    : einsum_equation_preprocessor_(einsum_equation_preprocessor), inputs_(inputs), allocator_(allocator) {
   letter_to_index_.fill(-1);
 
   letter_to_count_.fill(0);
@@ -239,49 +224,43 @@ EinsumComputePreprocessor<T>::EinsumComputePreprocessor(const std::string& einsu
   PreprocessInputs();
 }
 
-template <typename T>
-const std::vector<int64_t>& EinsumComputePreprocessor<T>::GetOutputDims() const {
+const std::vector<int64_t>& EinsumComputePreprocessor::GetOutputDims() const {
   return output_dims_;
 }
 
-template <typename T>
-std::vector<Tensor>& EinsumComputePreprocessor<T>::GetPreprocessedTensors() {
+std::vector<Tensor>& EinsumComputePreprocessor::GetPreprocessedTensors() {
   return preprocessed_inputs_;
 }
 
-template <typename T>
-const std::vector<int64_t>& EinsumComputePreprocessor<T>::GetMappedSubscriptIndicesToLastInputIndex() const {
-  return index_to_last_input_;
+const std::vector<int64_t>& EinsumComputePreprocessor::GetMappedSubscriptIndicesToLastInputIndex() const {
+  return subscript_indices_to_last_input_;
 }
 
-template <typename T>
-const std::vector<int64_t>& EinsumComputePreprocessor<T>::GetMappedSubscriptIndicesToOutputindices() const {
-  return index_to_output_indices_;
+const std::vector<int64_t>& EinsumComputePreprocessor::GetMappedSubscriptIndicesToOutputindices() const {
+  return subscript_indices_to_output_indices_;
 }
 
-template <typename T>
-const int64_t EinsumComputePreprocessor<T>::GetNumSubscriptLabels() const {
+const int64_t EinsumComputePreprocessor::GetNumSubscriptLabels() const {
   return num_subscript_labels_;
 }
 
-template <typename T>
-void EinsumComputePreprocessor<T>::CollectMetadata() {
-  std::stringstream str(left_equation_);
-  std::string subscript;
+void EinsumComputePreprocessor::CollectMetadata() {
+  const auto& left_equation_split = einsum_equation_preprocessor_.left_equation_split_;
+  ORT_ENFORCE(left_equation_split.size() == inputs_.size(), "Number of subscripts in the input equation does not match number of input tensors");
 
   // Holds mapping between input indices to its corresponding subscript labels
   int64_t input_index = 0;
 
-  input_dim_indices_to_subscript_indices_.reserve(inputs_.size());
+  input_subscript_indices_.reserve(inputs_.size());
 
-  while (std::getline(str, subscript, ',')) {
+  for (const auto& subscript : left_equation_split) {
     const auto& shape = inputs_[input_index]->Shape();
     const auto& dims = shape.GetDims();
     size_t rank = dims.size();
     size_t dim_counter = 0;
 
-    std::vector<int64_t> current_input_dim_indices_to_subscript_indices_;
-    current_input_dim_indices_to_subscript_indices_.reserve(rank);
+    std::vector<int64_t> current_subscript_indices;
+    current_subscript_indices.reserve(rank);
 
     // Temp variables to deal with "ellipsis" in the input
     bool is_in_middle_of_ellipsis = false;
@@ -322,7 +301,7 @@ void EinsumComputePreprocessor<T>::CollectMetadata() {
             // We reserve '26' for broadcasted dims as we only allow 'a' - 'z' (0 - 25) for non-broadcasted dims
             // We will assign an appropriate indices during broadcasting related post-processing
             for (size_t i = 0; i < num_of_ellipsis_dims_; ++i) {
-              current_input_dim_indices_to_subscript_indices_.push_back(26);
+              current_subscript_indices.push_back(26);
             }
           }
         }
@@ -339,18 +318,18 @@ void EinsumComputePreprocessor<T>::CollectMetadata() {
         // Hence add it to both local and global subscript arrays
         if (letter_to_count_[letter_index] == 0) {
           letter_to_index_[letter_index] = num_subscript_labels_++;
-          index_to_dim_value_.push_back(dim_value);
-          index_to_last_input_.push_back(input_index);
+          subscript_indices_to_dim_value_.push_back(dim_value);
+          subscript_indices_to_last_input_.push_back(input_index);
         } else {  // This subscript label has been seen in atleast one other operand's subscript
           // It must be equal unless one of them is a 1 (Numpy allows this)
           auto mapped_index = letter_to_index_[letter_index];
 
-          index_to_last_input_[mapped_index] = input_index;
+          subscript_indices_to_last_input_[mapped_index] = input_index;
 
-          if (index_to_dim_value_[mapped_index] != dim_value) {
+          if (subscript_indices_to_dim_value_[mapped_index] != dim_value) {
             // Set the value to the new dim value if the value is 1 in the map
-            if (index_to_dim_value_[mapped_index] == 1) {
-              index_to_dim_value_[mapped_index] = dim_value;
+            if (subscript_indices_to_dim_value_[mapped_index] == 1) {
+              subscript_indices_to_dim_value_[mapped_index] = dim_value;
             } else {
               ORT_ENFORCE(dim_value == 1,
                           "Einsum operands could not be broadcast together. "
@@ -361,7 +340,7 @@ void EinsumComputePreprocessor<T>::CollectMetadata() {
 
         ++letter_to_count_[letter_index];
 
-        current_input_dim_indices_to_subscript_indices_.push_back(letter_to_index_[letter_index]);
+        current_subscript_indices.push_back(letter_to_index_[letter_index]);
 
         ORT_ENFORCE(++dim_counter <= rank,
                     "Einsum subscripts string contains too many subscript labels when compared to the rank of the input ",
@@ -375,13 +354,12 @@ void EinsumComputePreprocessor<T>::CollectMetadata() {
                   "Einsum subscripts does not contain enough subscript labels and there is no ellipsis for input ", input_index);
     }
 
-    input_dim_indices_to_subscript_indices_.push_back(std::move(current_input_dim_indices_to_subscript_indices_));
+    input_subscript_indices_.push_back(std::move(current_subscript_indices));
     ++input_index;
   }
 }
 
-template <typename T>
-void EinsumComputePreprocessor<T>::PostProcessBroadcastedDims() {
+void EinsumComputePreprocessor::PostProcessBroadcastedDims() {
   // Pay the cost of this function only if we saw an ellipsis in any of the inputs
   if (num_of_ellipsis_dims_ > 0) {
     // extend the number of subscript labels to include each ellipsis dim as
@@ -395,19 +373,19 @@ void EinsumComputePreprocessor<T>::PostProcessBroadcastedDims() {
     }
 
     std::vector<int64_t> temp_index_to_last_input(num_subscript_labels_, -1);
-    for (size_t i = 0; i < index_to_last_input_.size(); ++i) {
-      temp_index_to_last_input[i + num_of_ellipsis_dims_] = index_to_last_input_[i];
+    for (size_t i = 0; i < subscript_indices_to_last_input_.size(); ++i) {
+      temp_index_to_last_input[i + num_of_ellipsis_dims_] = subscript_indices_to_last_input_[i];
     }
-    index_to_last_input_ = std::move(temp_index_to_last_input);
+    subscript_indices_to_last_input_ = std::move(temp_index_to_last_input);
 
     std::vector<int64_t> temp_index_to_dim_value(num_subscript_labels_, -1);
-    for (size_t i = 0; i < index_to_dim_value_.size(); ++i) {
-      temp_index_to_dim_value[i + num_of_ellipsis_dims_] = index_to_dim_value_[i];
+    for (size_t i = 0; i < subscript_indices_to_dim_value_.size(); ++i) {
+      temp_index_to_dim_value[i + num_of_ellipsis_dims_] = subscript_indices_to_dim_value_[i];
     }
-    index_to_dim_value_ = std::move(temp_index_to_dim_value);
+    subscript_indices_to_dim_value_ = std::move(temp_index_to_dim_value);
 
-    for (size_t i = 0; i < input_dim_indices_to_subscript_indices_.size(); ++i) {
-      auto& current_input_dim_indices_to_subscript_indices = input_dim_indices_to_subscript_indices_[i];
+    for (size_t i = 0; i < input_subscript_indices_.size(); ++i) {
+      auto& current_input_dim_indices_to_subscript_indices = input_subscript_indices_[i];
       std::vector<int64_t> temp_current_input_dim_indices_to_subscript_indices;
       temp_current_input_dim_indices_to_subscript_indices.reserve(current_input_dim_indices_to_subscript_indices.size());
 
@@ -422,17 +400,17 @@ void EinsumComputePreprocessor<T>::PostProcessBroadcastedDims() {
           // Shouldn't hit this error - just a sanity check
           ORT_ENFORCE(num_broadcasted_indices < num_of_ellipsis_dims_);
           temp_current_input_dim_indices_to_subscript_indices.push_back(static_cast<int64_t>(num_broadcasted_indices));
-          index_to_last_input_[num_broadcasted_indices] = i;
+          subscript_indices_to_last_input_[num_broadcasted_indices] = i;
 
           // This is the first time we are seeing this broadcasted dim
-          if (index_to_dim_value_[num_broadcasted_indices] == -1) {
-            index_to_dim_value_[num_broadcasted_indices] = dims[dim_iter];
+          if (subscript_indices_to_dim_value_[num_broadcasted_indices] == -1) {
+            subscript_indices_to_dim_value_[num_broadcasted_indices] = dims[dim_iter];
           } else {  // We have seen this broadcasted dim before
             // Check if the previous value is equal to the current value
-            if (index_to_dim_value_[num_broadcasted_indices] != dims[dim_iter]) {
+            if (subscript_indices_to_dim_value_[num_broadcasted_indices] != dims[dim_iter]) {
               // If they are not equal, one of them needs to be 1
-              if (index_to_dim_value_[num_broadcasted_indices] == 1) {
-                index_to_dim_value_[num_broadcasted_indices] = dims[dim_iter];
+              if (subscript_indices_to_dim_value_[num_broadcasted_indices] == 1) {
+                subscript_indices_to_dim_value_[num_broadcasted_indices] = dims[dim_iter];
               } else {
                 ORT_ENFORCE(dims[dim_iter] == 1, "Given inputs are not broadcastable");
               }
@@ -451,31 +429,29 @@ void EinsumComputePreprocessor<T>::PostProcessBroadcastedDims() {
   }
 }
 
-template <typename T>
-void EinsumComputePreprocessor<T>::ParseOrCreateOutputSubscript() {
+void EinsumComputePreprocessor::ParseOrCreateOutputSubscript() {
   // Implicit form - construct the output subscript
   // Explicit form - no op as the output would have been parsed while parsing the input
-  if (!is_explicit_) {
+  if (!einsum_equation_preprocessor_.is_explicit_) {
     return;
   }
 
   //TODO: Implement
 }
 
-template <typename T>
-void EinsumComputePreprocessor<T>::CalculateOutputShape() {
+void EinsumComputePreprocessor::CalculateOutputShape() {
   // Iterate through all subscript labels in the output subscript
   bool is_in_middle_of_ellipsis = false;
   int64_t ellipsis_char_count = 0;
 
-  index_to_output_indices_.resize(num_subscript_labels_, -1);
+  subscript_indices_to_output_indices_.resize(num_subscript_labels_, -1);
 
   std::array<int64_t, EinsumOp::num_of_letters>
       output_letter_to_count;
   output_letter_to_count.fill(0);
 
   int64_t output_dim_counter = 0;
-  for (auto subscript_label : right_equation_) {
+  for (auto subscript_label : einsum_equation_preprocessor_.right_equation_) {
     if (subscript_label == '.') {
       is_in_middle_of_ellipsis = true;
       // Make sure there aren't more than 3 '.'s in the current subscript
@@ -483,10 +459,10 @@ void EinsumComputePreprocessor<T>::CalculateOutputShape() {
       if (ellipsis_char_count == 3) {  // Ellipsis is complete. Process it.
         is_in_middle_of_ellipsis = false;
         for (size_t i = 0; i < num_of_ellipsis_dims_; ++i) {
-          output_dims_.push_back(index_to_dim_value_[i]);
+          output_dims_.push_back(subscript_indices_to_dim_value_[i]);
           // The ellipsis is seen in the output and hence the corresponding dims are to not be reduced
-          index_to_last_input_[i] = -1;
-          index_to_output_indices_[i] = output_dim_counter++;
+          subscript_indices_to_last_input_[i] = -1;
+          subscript_indices_to_output_indices_[i] = output_dim_counter++;
         }
       }
     } else {
@@ -505,46 +481,54 @@ void EinsumComputePreprocessor<T>::CalculateOutputShape() {
       ORT_ENFORCE(mapped_index != -1,
                   "Output subscript contains letters not seen in the inputs");
 
-      output_dims_.push_back(index_to_dim_value_[mapped_index]);
+      output_dims_.push_back(subscript_indices_to_dim_value_[mapped_index]);
 
       // Reset the last input index for this subscript label
       // given that it is seen in the output and hence can't be reduced
-      index_to_last_input_[mapped_index] = -1;
+      subscript_indices_to_last_input_[mapped_index] = -1;
 
-      index_to_output_indices_[mapped_index] = output_dim_counter++;
+      subscript_indices_to_output_indices_[mapped_index] = output_dim_counter++;
     }
   }
 }
 
-template <typename T>
-void EinsumComputePreprocessor<T>::PreprocessInputs() {
+void EinsumComputePreprocessor::PreprocessInputs() {
   preprocessed_inputs_.reserve(inputs_.size());
   // TODO: Write comments
-  int64_t iter = 0;
+  int64_t input_iter = 0;
   for (const auto* input : inputs_) {
     // We need to make a copy of the op's inputs because they will be mutated along the op's compute steps
     Tensor preprocessed = input->Clone(allocator_);
+    const auto& input_dims = input->Shape().GetDims();
+    const auto& current_subscript_indices = input_subscript_indices_[input_iter];
 
-    const auto& input_dims = preprocessed.Shape().GetDims();
+    // If all has gone well, we will have a subscript index (subscript label) for each dim of the input
+    ORT_ENFORCE(input_dims.size() == current_subscript_indices.size(),
+                "Rank of the input must match number of subscript labels corresponding to the input");
 
-    std::vector<int64_t> subscript_label_to_input_index(num_subscript_labels_, -1);
+    std::vector<int64_t> subscript_indices_to_input_index(num_subscript_labels_, -1);
     std::vector<int64_t> homogenized_input_dims(num_subscript_labels_, 1);
 
-    auto current_input_dim_indices_to_subscript_indices_ = input_dim_indices_to_subscript_indices_[iter];
-    for (size_t i = 0; i < current_input_dim_indices_to_subscript_indices_.size(); ++i) {
-      auto temp_index = current_input_dim_indices_to_subscript_indices_[i];
-      if (subscript_label_to_input_index[temp_index] == -1) {  // This is the first time we are seeing this subscript label in this input
-        subscript_label_to_input_index[temp_index] = i;
-        homogenized_input_dims[temp_index] = input_dims[i];
+    // Preprocessed dim rank may not be the same as original input rank if we need to parse diagonals along the way
+    // (which reduces rank in the preprocessed input by 1 for each diagonal we parse)
+    int64_t dim_index_in_preprocessed_input = 0;
+    int64_t dim_index_in_original_input = 0;
+
+    // iterate through all subscript inidices in this input
+    for (const auto& subscript_index : current_subscript_indices) {
+      if (subscript_indices_to_input_index[subscript_index] == -1) {  // This is the first time we are seeing this subscript label in this input
+        subscript_indices_to_input_index[subscript_index] = dim_index_in_preprocessed_input++;
+        homogenized_input_dims[subscript_index] = input_dims[dim_index_in_original_input];
       } else {  // Diagonal needs to be parsed along the repeated axes
-        preprocessed = EinsumOp::Diagonal<T>(preprocessed, subscript_label_to_input_index[temp_index], i, allocator_);
+        preprocessed = EinsumOp::Diagonal(preprocessed, subscript_indices_to_input_index[subscript_index], dim_index_in_preprocessed_input,
+                                          allocator_);
       }
+      ++dim_index_in_original_input;
     }
 
     std::vector<size_t> permutation;
     permutation.reserve(input_dims.size());
-
-    for (auto& d : subscript_label_to_input_index) {
+    for (auto& d : subscript_indices_to_input_index) {
       if (d != -1) {
         permutation.push_back(static_cast<size_t>(d));
       }
@@ -557,53 +541,37 @@ void EinsumComputePreprocessor<T>::PreprocessInputs() {
 
     preprocessed_inputs_.push_back(std::move(preprocessed));
 
-    ++iter;
+    ++input_iter;
   }
 }
 
+// Templated core Einsum logic
 template <typename T>
-Status EinsumTypedProcessor<T>(OpKernelContext* context, const std::string& equation) {
-  int num_inputs = context->InputCount();
-  if (num_inputs == 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Einsum op: There must be atleast one input");
-  }
+Status EinsumTypedComputeProcessor<T>(OpKernelContext* context,
+                                      const AllocatorPtr& allocator,
+                                      EinsumComputePreprocessor& einsum_compute_preprocessor) {
+  const auto& mapped_indices_to_last_input_index = einsum_compute_preprocessor.GetMappedSubscriptIndicesToLastInputIndex();
 
-  std::vector<const Tensor*> inputs;
-  inputs.reserve(num_inputs);
+  auto& preprocessed_inputs = einsum_compute_preprocessor.GetPreprocessedTensors();
 
-  // Hold the inputs
-  for (int i = 0; i < num_inputs; ++i) {
-    inputs.push_back(context->Input<Tensor>(i));
-  }
+  auto num_subscript_labels = einsum_compute_preprocessor.GetNumSubscriptLabels();
 
-  AllocatorPtr allocator;
-  auto status = context->GetTempSpaceAllocator(&allocator);
-  if (!status.IsOK()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "There was a problem acquiring temporary space allocator in Einsum op");
-  }
-
-  auto einsum_preprocessor = EinsumComputePreprocessor<T>(equation, inputs, allocator);
-
-  const auto& mapped_indices_to_last_input_index = einsum_preprocessor.GetMappedSubscriptIndicesToLastInputIndex();
-
-  auto& preprocessed_inputs = einsum_preprocessor.GetPreprocessedTensors();
-
-  auto num_subscript_labels = einsum_preprocessor.GetNumSubscriptLabels();
-
-  const auto& output_dims = einsum_preprocessor.GetOutputDims();
+  const auto& output_dims = einsum_compute_preprocessor.GetOutputDims();
 
   auto* output = context->Output(0, output_dims);
+
+  auto num_inputs = context->InputCount();
 
   // Preprocess the first input so as to reduce any dims that only it has
   Tensor result;
 
   {
     std::vector<int64_t> reduced_dims;
-    std::vector<int64_t> preserved_dims;           // dims which were not reduced
-    std::vector<int64_t> preserved_shape;          // shape pertaining to only the dims that were preserved (not reduced)
-    reduced_dims.reserve(num_subscript_labels);    // num_subscript_labels is the upper bound. No harm in over-reserving.
-    preserved_dims.reserve(num_subscript_labels);  // num_subscript_labels is the upper bound. No harm in over-reserving.
-    preserved_shape.reserve(num_subscript_labels);
+    std::vector<int64_t> preserved_dims;            // dims which were not reduced
+    std::vector<int64_t> preserved_shape;           // shape pertaining to only the dims that were preserved (not reduced)
+    reduced_dims.reserve(num_subscript_labels);     // num_subscript_labels is the upper bound. No harm in over-reserving.
+    preserved_dims.reserve(num_subscript_labels);   // num_subscript_labels is the upper bound. No harm in over-reserving.
+    preserved_shape.reserve(num_subscript_labels);  // num_subscript_labels is the upper bound. No harm in over-reserving.
 
     auto& first_input = preprocessed_inputs[0];
     const auto& dims = first_input.Shape().GetDims();
@@ -627,7 +595,7 @@ Status EinsumTypedProcessor<T>(OpKernelContext* context, const std::string& equa
       EinsumOp::CreateReshapedView(first_input, preserved_shape);
 
       // Finalize the output by applying any transpose required to get it to the required output ordering and move it to the op's output
-      EinsumOp::FinalizeOutput<T>(first_input, preserved_dims, einsum_preprocessor.GetMappedSubscriptIndicesToOutputindices(), *output, output_dims, allocator);
+      EinsumOp::FinalizeOutput<T>(first_input, preserved_dims, einsum_compute_preprocessor.GetMappedSubscriptIndicesToOutputindices(), *output, output_dims, allocator);
 
       return Status::OK();
     } else {  // Assign the first tensor to result to proceed further
@@ -651,13 +619,13 @@ Status EinsumTypedProcessor<T>(OpKernelContext* context, const std::string& equa
       if (input == num_inputs - 1) {
         is_final_pair = true;
       }
-      result = EinsumOp::PairwiseOperandProcess(result, preprocessed_inputs[input], reduced_dims, context->GetOperatorThreadPool(), allocator, einsum_preprocessor, is_final_pair, *output);
+      result = EinsumOp::PairwiseOperandProcess<float>(result, preprocessed_inputs[input], reduced_dims, context->GetOperatorThreadPool(), allocator, einsum_compute_preprocessor, is_final_pair, *output);
     }
   }
   return Status::OK();
 }
 
 // Explicit template instantiation
-template Status EinsumTypedProcessor<float>(OpKernelContext* ctx, const std::string& equation);
+template Status EinsumTypedComputeProcessor<float>(OpKernelContext* context, const AllocatorPtr& allocator, EinsumComputePreprocessor& einsum_compute_preprocessor);
 
 }  // namespace onnxruntime

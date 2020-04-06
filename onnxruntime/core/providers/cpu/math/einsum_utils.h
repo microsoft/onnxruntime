@@ -1,4 +1,12 @@
-//TODO: Add copyright
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// This module hosts 3 abstractions -
+// 1) EinsumEquationPreprocessor - Holds logic to statically pre-process the equation string (i.e.) without input shapes being known
+// These need not be repeated at Compute() time again
+// 2) EinsumComputePreprocessor - Holds logic to process the equation along with known input shapes to parse info required for Einsum Compute()
+// For example, mapping subscript labels to a dimension value, etc.
+// 3) EinsumTypedComputeProcessor - The core logic of the Einsum operator. Called from Einsum Compute().
 
 #pragma once
 
@@ -12,18 +20,68 @@ constexpr size_t num_of_letters = 26;
 
 }  // namespace EinsumOp
 
+struct EinsumEquationPreprocessor {
+  explicit EinsumEquationPreprocessor(const std::string& einsum_equation) {
+    // Make copy of the equation as it will be mutated
+    einsum_preprocessed_equation_ = einsum_equation;
+
+    // Remove space characters in the copy of the Einsum eqution
+    einsum_preprocessed_equation_.erase(std::remove(einsum_preprocessed_equation_.begin(), einsum_preprocessed_equation_.end(), ' '),
+                                        einsum_preprocessed_equation_.end());
+
+    // Check if the Einsum equation has the output subscript labels
+    auto mid_index = einsum_preprocessed_equation_.find("->");
+    if (mid_index != std::string::npos) {
+      // Separate right and left hand sides of the equation
+      left_equation_ = einsum_preprocessed_equation_.substr(0, mid_index);
+      right_equation_ = einsum_preprocessed_equation_.substr(mid_index + 2);
+      is_explicit_ = true;
+    } else {
+      left_equation_ = einsum_preprocessed_equation_;
+    };
+
+    // Process the left_equation_ by splitting on ','
+    std::string delimiter = ",";
+    size_t pos = 0;
+    std::string token;
+    while ((pos = left_equation_.find(delimiter)) != std::string::npos) {
+      token = left_equation_.substr(0, pos);
+      left_equation_.erase(0, pos + delimiter.length());
+      left_equation_split_.push_back(token);
+    }
+    left_equation_split_.push_back(left_equation_);  // This holds the portion of the equation after the last ','
+  }
+
+  // Holds the pre-processed equation string
+  std::string einsum_preprocessed_equation_;
+
+  // In explicit form, holds the left side of the einsum equation
+  // (e.g.) Einsum equation = 'i,j->i', then left_equation_ = 'i,j'
+  // In implicit form, holds the entire einsum equation
+  // (e.g.) Einsum equation = 'i,j', then left_equation_ = 'i,j'
+  std::string left_equation_;
+
+  // Holds the strings obtained after splitting left_equation_ on ','
+  std::vector<std::string> left_equation_split_;
+
+  // Holds constructed or parsed output subscript
+  std::string right_equation_;
+
+  // Flag indicating if the Einsum op is being used in explicit form
+  bool is_explicit_ = false;
+};
+
 // Prologue:
 // In the sample Einsum string: 'ij, jk'
 // Subscripts are 'ij' and 'jk'
 // Subscript labels are 'i', 'j', and 'k'
 
 // This is a pre-processor class that maps subscript labels to a dimension value, etc.
-template <typename T>
 class EinsumComputePreprocessor final {
  public:
-  EinsumComputePreprocessor(const std::string& einsum_equation,
-                            const std::vector<const Tensor*>& inputs,
-                            const AllocatorPtr& allocator);
+  explicit EinsumComputePreprocessor(const EinsumEquationPreprocessor& equation_preprocessor,
+                                     const std::vector<const Tensor*>& inputs,
+                                     const AllocatorPtr& allocator);
 
   // Get the output dims of the op's output
   const std::vector<int64_t>& GetOutputDims() const;
@@ -58,23 +116,10 @@ class EinsumComputePreprocessor final {
   void PreprocessInputs();
 
   // private members
+  // Instance of EinsumEquationPreprocessor
+  const EinsumEquationPreprocessor einsum_equation_preprocessor_;
 
-  // Einsum equation
-  std::string einsum_equation_;
-
-  // In explicit form, holds the left side of the einsum equation
-  // (e.g.) Einsum equation = 'i,j->i', then left_equation_ = 'i,j'
-  // In implicit form, holds the entire einsum equation
-  // (e.g.) Einsum equation = 'i,j', then left_equation_ = 'i,j'
-  std::string left_equation_;
-
-  // Holds constructed or parsed output subscript
-  std::string right_equation_;
-
-  // Flag indicating if the op is being used in explicit form
-  bool is_explicit_ = false;
-
-  // Flag indicating if einsum equation has an ellipsis (requests broadcasting support if so)
+  // Flag indicating if Einsum equation has an ellipsis (requests broadcasting support if so)
   bool has_ellipses_ = false;
 
   // The number of dims that encompasses an "ellipsis"
@@ -104,27 +149,28 @@ class EinsumComputePreprocessor final {
   // TODO: Reserve appropriately for the following vectors
   // Holds the input index of the last input to have the index correpesponding to the subscript label
   // If the value is `-1`, then the subscript label is never seen (or) it appears in the output
-  std::vector<int64_t> index_to_last_input_;
+  std::vector<int64_t> subscript_indices_to_last_input_;
 
   // Hold the dim value of the index correpesponding to the subscript label
   // `-1` means the corresponding label wasn't seen at all
-  std::vector<int64_t> index_to_dim_value_;
+  std::vector<int64_t> subscript_indices_to_dim_value_;
 
   // Holds the final calculated output dimensions
   std::vector<int64_t> output_dims_;
 
-  // TODO: Fill in description
-  std::vector<std::vector<int64_t>> input_dim_indices_to_subscript_indices_;
+  // All subscript indices in the equation for each input
+  std::vector<std::vector<int64_t>> input_subscript_indices_;
 
-  // TODO: Fill in description
-  std::vector<int64_t> index_to_output_indices_;
+  // Index corresponding to each output dim corresponding to each subscript index
+  // A value of -1 means the corresponding subscript index is not founf in the output
+  std::vector<int64_t> subscript_indices_to_output_indices_;
 
   // Allocator to use for ad-hoc tensor buffer allocation
   const AllocatorPtr& allocator_;
 };
 
-// This method does the heavy-lifting compute portion of Einsum
+// This method does the heavy-lifting compute portion of Einsum Compute()
 template <typename T>
-Status EinsumTypedProcessor(OpKernelContext* ctx, const std::string& equation);
+Status EinsumTypedComputeProcessor(OpKernelContext* context, const AllocatorPtr& allocator, EinsumComputePreprocessor& einsum_compute_preprocessor);
 
 }  // namespace onnxruntime
