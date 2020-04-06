@@ -26,8 +26,6 @@ jobs:
       --config RelWithDebInfo
       --skip_onnx_tests
       --build_wheel
-      --enable_training_frontend_tests
+      --enable_training_python_frontend_e2e_tests
       "
     displayName: 'Build and run frontend tests'
-
-  - template: templates/clean-agent-build-directory-step.yml
