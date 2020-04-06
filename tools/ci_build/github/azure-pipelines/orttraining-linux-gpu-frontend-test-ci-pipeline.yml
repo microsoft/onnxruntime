@@ -1,0 +1,33 @@
+# 'trigger: none' to use UI to schedule the pipeline runs.
+# alternatively to schedule the pipeline run according to:
+# https://docs.microsoft.com/en-us/azure/devops/pipelines/process/scheduled-triggers?view=azure-devops&tabs=yaml
+trigger: none
+
+jobs:
+- job: Onnxruntime_Linux_GPU_Training_FrontEnd
+
+  timeoutInMinutes: 120
+  
+  # alternatively we can configure (override) it directly from the build definition and not specify it here
+  pool: 'ORT-Training-Frontend-Linux-GPU'
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+  
+  # insert a data preparation step here
+  
+  - script: >
+      tools/ci_build/github/linux/run_dockerbuild.sh
+      -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)
+      -x "
+      --enable_training
+      --config RelWithDebInfo
+      --skip_onnx_tests
+      --build_wheel
+      --enable_training_frontend_tests
+      "
+    displayName: 'Build and run frontend tests'
+
+  - template: templates/clean-agent-build-directory-step.yml
