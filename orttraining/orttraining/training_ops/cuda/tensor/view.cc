@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/tensor/view.h"
-#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -78,7 +77,6 @@ Status View::ComputeInternal(OpKernelContext* context) const {
         const void* source = static_cast<const char*>(X_data) + y_byte_offsets[i];
         void* target = Y->MutableDataRaw();
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, Y->SizeInBytes(), cudaMemcpyDeviceToDevice));
-        Y->SetByteOffset(0);
       } else {
         Y->SetByteOffset(y_byte_offsets[i]);
       }
