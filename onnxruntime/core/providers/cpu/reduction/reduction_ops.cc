@@ -492,7 +492,7 @@ Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
 
   if (no_transpose) {
     const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
-    auto lambda = [input_data, blocks, block_size, output_data](ptrdiff_t i) {
+    auto lambda = [input_data, blocks, output_data](ptrdiff_t i) {
       output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).mean();
     };
     concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(), block_size, lambda, 0);
@@ -565,7 +565,7 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
 
   if (no_transpose) {
     const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
-    auto lambda = [input_data, blocks, block_size, output_data](ptrdiff_t i) {
+    auto lambda = [input_data, blocks, output_data](ptrdiff_t i) {
       output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).sum();
     };
     concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(), block_size, lambda, 0);
