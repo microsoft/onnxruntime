@@ -51,23 +51,17 @@ static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, co
     cur_b += k;
   }
 
-  // add a_ss and b_ss with broadcast
-  // output shape is {m, n}
-  auto* cur_out = c_data;
-  for (int64_t i = 0; i < m; ++i) {
-    T a_val = a_ss[i];
-    for (int64_t j = 0; j < n; ++j) {
-      *cur_out++ = a_val + b_ss[j];
-    }
-  }
+  // NOTE: We want to avoid subtracting two numbers that are very close to each other as that can lead to
+  // 'catastrophic cancellation'. (sum_k(Xik**2) + sum_k(Yjk**2)) would be close to 2*sum_k(Xik*Yjk) if the values
+  // in Xij and Yjk are very similar, so subtracting can be problematic.
+  // Due to that we calculate -2*sum_k(Xik*Yjk) using GEMM, add sum_k(Xik**2) next, and add sum_k(Yjk**2) last.
 
 // use MLAS on 64-bit (no 32-bit dgemm), or MKL on 32-bit or 64-bit
 #if defined(_M_AMD64) || defined(__x86_64__) || defined(USE_MKLML_FOR_BLAS)
-  // Now use GEMM of A and B^T with -2 as alpha to calculate -2*sum_k(Xik*Yjk)
-  // This is added to the data already in c (as beta is 1.f), achieving our end result
+  // Use GEMM of A and B^T with -2 as alpha to calculate -2*sum_k(Xik*Yjk)
   math::Gemm<T>(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans,
                 m, n, k,
-                static_cast<T>(-2.), a_data, b_data, static_cast<T>(1.),
+                static_cast<T>(-2.), a_data, b_data, static_cast<T>(0.),
                 c_data,
                 threadpool);
 #else
@@ -78,10 +72,21 @@ static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, co
 
   // https://eigen.tuxfamily.org/dox/TopicWritingEfficientProductExpression.html
   auto out_map = EigenMatrixMapRowMajor<T>(c_data, m, n);
-  out_map += static_cast<T>(-2.) *
-             (ConstEigenMatrixMapRowMajor<T>(a_data, m, k) *
-              ConstEigenMatrixMapRowMajor<T>(b_data, n, k).transpose());
+  out_map = static_cast<T>(-2.) *
+            (ConstEigenMatrixMapRowMajor<T>(a_data, m, k) *
+             ConstEigenMatrixMapRowMajor<T>(b_data, n, k).transpose());
 #endif
+
+  // add a_ss and b_ss, with broadcast
+  // output shape is {m, n}
+  auto* cur_out = c_data;
+  for (int64_t i = 0; i < m; ++i) {
+    T a_val = a_ss[i];
+    for (int64_t j = 0; j < n; ++j) {
+      *cur_out = (*cur_out + a_val) + b_ss[j];
+      ++cur_out;
+    }
+  }
 }
 
 template <typename T>
