@@ -78,7 +78,7 @@ using (var outputs1 = session1.Run(inputs1))
 
 ### Multiple inference runs with fixed sized input(s) and output(s)
 
-If the model have fixed sized inputs and outputs of numeric tensors, you can use "FixedBufferOnnxValue" to accelerate the inference speed. By using "FixedBufferOnnxValue", the contianer objects only need to be allocated/disposed one time during multiple InferenceSession.Run() calls. This avoids some overhead which may beneficial for smaller models where the time is noticeable in the overall running time.
+If the model have fixed sized inputs and outputs of numeric tensors, you can use "FixedBufferOnnxValue" to accelerate the inference speed. By using "FixedBufferOnnxValue", the container objects only need to be allocated/disposed one time during multiple InferenceSession.Run() calls. This avoids some overhead which may be beneficial for smaller models where the time is noticeable in the overall running time.
 
 An example can be found at `TestReusingFixedBufferOnnxValueNonStringTypeMultiInferences()`:
 * [../csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L1047](../csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L1047)
