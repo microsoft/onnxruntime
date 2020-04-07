@@ -101,7 +101,8 @@ bool BFCArena::Extend(size_t rounded_bytes) {
 
       extend_bytes = std::min(curr_region_allocation_bytes_, available_bytes);
 
-      // we allocated the same number of bytes as the current region, so we have 2x that now
+      // we allocated the same number of bytes as the current region
+      // the 2x is to double the minimum size of the next amount we'll allocate
       if (!increased_allocation) {
         curr_region_allocation_bytes_ *= 2;
       }

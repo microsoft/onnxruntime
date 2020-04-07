@@ -168,7 +168,7 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransf
     //if it is not cpu tensor, need to copy to host
     if (rtensor.Location().device.Type() != OrtDevice::CPU) {
       if (!data_transfer_manager)
-        throw std::runtime_error("GetPyObjFromTensor: data transfer manager is needed when convert non-CPU tensor to numpy array");
+        throw std::runtime_error("GetPyObjFromTensor: data transfer manager is needed to convert non-CPU tensor to numpy array");
       static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
       std::vector<char> tensor_data_buffer{};
       tensor_data_buffer.resize(rtensor.SizeInBytes());
