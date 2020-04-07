@@ -81,7 +81,7 @@ Use the individual flags to only run the specified stages.
                         help="Path to training end-to-end test data directory.")
 
     # Pytorch frontend test options
-    parser.add_argument("--enable_training_frontend_tests", action="store_true",
+    parser.add_argument("--enable_training_python_frontend_e2e_tests", action="store_true",
                         help="Enable the pytorch frontend training tests.")
 
     # enable ONNX tests
@@ -602,9 +602,9 @@ def adb_push(source_dir, src, dest, **kwargs):
 def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
 
-def run_training_frontend_tests(args, cwd, dll_path):
+def run_training_python_frontend_e2e_tests(args, cwd, dll_path):
     # frontend tests are to be added here:
-    log.info("Running frontend tests.")
+    log.info("Running python frontend e2e tests.")
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_tvm = False, enable_tensorrt = False):
     for config in configs:
@@ -661,8 +661,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd, dll_path=dll_path)
 
                 # run additional frontend tests for orttraining-linux-gpu-frontend_test_ci-pipeline
-                if args.enable_training_frontend_tests:
-                    run_training_frontend_tests(args, cwd=cwd, dll_path=dll_path)
+                if args.enable_training_python_frontend_e2e_tests:
+                    run_training_python_frontend_e2e_tests(args, cwd=cwd, dll_path=dll_path)
 
             try:
                 import onnx
