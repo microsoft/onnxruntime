@@ -1000,6 +1000,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
+        public void TestCreateFixedBufferOnnxValueFromStringTensor()
+        {
+            var tensor = new DenseTensor<string>(new string[] { "a", "b" }, new int[] { 1, 2 });
+
+            Assert.Throws<ArgumentException>("value", () =>
+            {
+                // cannot create from string tensor
+                FixedBufferOnnxValue.CreateFromTensor(tensor);
+            });
+        }
+
+        [Fact]
         private void TestReusingFixedBufferOnnxValue()
         {
             // model takes 1x5 input of fixed type, echoes back

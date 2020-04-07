@@ -44,7 +44,7 @@ Here is a [complete sample code](../csharp/sample/Microsoft.ML.OnnxRuntime.Infer
 
 ## Reuse input/output tensor buffers
 
-In some scenarios, reusing input/output buffers can help to accelerate inference speed.
+In some scenarios, you may want to reuse input/output tensors. This offen happens when you want to chain 2 models (ie. feed one's output as input to another), or want to accelerate inference speed during multiple inference runs.
 
 ### Chaining: Feed model A's output(s) as input(s) to model B
 
@@ -78,6 +78,7 @@ using (var outputs1 = session1.Run(inputs1))
 
 ### Multiple inference runs with fixed sized input(s) and output(s)
 
+If the model have fixed sized inputs and outputs of numeric tensors, you can use "FixedBufferOnnxValue" to accelerate the inference speed. By using "FixedBufferOnnxValue", the contianer objects only need to be allocated/disposed one time during multiple InferenceSession.Run() calls. This avoids some overhead which may beneficial for smaller models where the time is noticeable in the overall running time.
 
 An example can be found at `TestReusingFixedBufferOnnxValueNonStringTypeMultiInferences()`:
 * [../csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L1047](../csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L1047)
