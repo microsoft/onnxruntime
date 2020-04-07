@@ -25,9 +25,11 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                          const std::vector<int>& input_indexes,
                          const std::unordered_map<std::string, int>& output_names,
                          std::string device_id, InferenceEngine::Precision precision,
-                         InferenceEngine::Core& ie)
+                         InferenceEngine::Core& ie, std::string subgraph_name)
     : input_indexes_{input_indexes} , output_names_{output_names} {
   ORT_UNUSED_PARAMETER(device_id);
+
+  subgraph_name_ = subgraph_name;
 
   // Infer Request class represents OpenVINO's logical hardware instance. These logical
   // instances are bound to physical hardware instances at runtime depending
@@ -52,9 +54,9 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   try {
     exe_network = ie.LoadNetwork(*ie_cnn_network_, "HDDL");
   } catch (InferenceEngine::details::InferenceEngineException e) {
-    ORT_THROW(log_tag + " Exception while Loading Network: " + e.what());
+    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_name_ + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network." );
+    ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_name);
   }
   LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
 
@@ -162,6 +164,7 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtV
 void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // Preliminary Thread safety mechanism
   // Currently allows only one Infer execution at a time
+  LOGS_DEFAULT(INFO) << log_tag << "Running graph " << subgraph_name_;
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
   std::lock_guard<std::mutex> lock(compute_lock_);
 

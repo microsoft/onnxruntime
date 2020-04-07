@@ -37,6 +37,7 @@ class BackendManager {
   std::shared_ptr<IBackend> concrete_backend_;
   std::map<std::string, std::shared_ptr<IBackend>> backend_map_;
   std::vector<int> input_indexes_;
+  std::string subgraph_name_;
   std::unordered_map<std::string, int> output_names_;
 };
 
