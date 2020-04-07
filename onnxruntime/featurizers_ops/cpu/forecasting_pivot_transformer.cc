@@ -63,7 +63,7 @@ struct ForecastingPivotTransformerImpl {
         const T* input_data(std::get<0>(dataPtrMap.at(index)));
         const int64_t input_dim_1(std::get<1>(dataPtrMap.at(index)));
         const int64_t input_dim_2(std::get<2>(dataPtrMap.at(index)));
-        input.emplace_back(InputMatrixT(input_data, input_dim_1, input_dim_2));
+        input.emplace(InputMatrixT(input_data, input_dim_1, input_dim_2));
         //Increment data pointer
         input_data += input_dim_1 * input_dim_2;
       }
