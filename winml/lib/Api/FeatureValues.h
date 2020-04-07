@@ -28,8 +28,6 @@
 
 #include "ImageFeatureValue.h"
 
-#define FREE_DIMENSION -1
-
 // CREATE_TENSOR is used by data tensor types to implement common functionality
 #define CREATE_TENSOR(type, element_type, element_view_type)                                       \
   namespace winrt::Windows::AI::MachineLearning::implementation {                                  \
@@ -62,10 +60,10 @@
   };                                                                                               \
   }                                                                                                \
   namespace winrt::Windows::AI::MachineLearning::factory_implementation {                          \
-  struct type : type##T<type, implementation::type, ITensorStaticsNative> {                        \
+  struct type : type##T<type, winmlp::type, ITensorStaticsNative> {                                \
     STDMETHOD(CreateFromD3D12Resource)                                                             \
     (ID3D12Resource * value, __int64* shape, int shapeSize, IUnknown** result) {                   \
-      return implementation::type::CreateFromD3D12Resource(value, shape, shapeSize, result);       \
+      return winmlp::type::CreateFromD3D12Resource(value, shape, shapeSize, result);               \
     }                                                                                              \
   };                                                                                               \
   }
@@ -111,36 +109,49 @@ CREATE_MAP(MapStringToDouble, hstring, double)
 CREATE_MAP(MapStringToString, hstring, hstring)
 
 // CREATE_SEQUENCE is used by sequence types to implement common functionality
-#define CREATE_SEQUENCE(type, element_type)                                                    \
-  namespace winrt::Windows::AI::MachineLearning::implementation {                              \
-  struct type : public WinML::SequenceBase<type, element_type> {                               \
-    type(wfc::IIterable<element_type> const& data) : SequenceBase<type, element_type>(data){}; \
-  };                                                                                           \
+#define CREATE_SEQUENCE(type, element_type, raw_type)                                                    \
+  namespace winrt::Windows::AI::MachineLearning::implementation {                                        \
+  struct type : public WinML::SequenceBase<type, element_type, raw_type> {                               \
+    type(wfc::IIterable<element_type> const& data) : SequenceBase<type, element_type, raw_type>(data){}; \
+  };                                                                                                     \
   }
 
 using AbiMapStringFloat = wfc::IMap<winrt::hstring, float>;
 using AbiMapInt64BitFloat = wfc::IMap<int64_t, float>;
 
-CREATE_SEQUENCE(SequenceMapStringFloat, AbiMapStringFloat)
-CREATE_SEQUENCE(SequenceMapInt64BitFloat, AbiMapInt64BitFloat)
+CREATE_SEQUENCE(SequenceMapStringFloat, AbiMapStringFloat, float)
+CREATE_SEQUENCE(SequenceMapInt64BitFloat, AbiMapInt64BitFloat, float)
+CREATE_SEQUENCE(SequenceTensorBoolean, winml::TensorBoolean, bool)
+CREATE_SEQUENCE(SequenceTensorFloat, winml::TensorFloat, float)
+CREATE_SEQUENCE(SequenceTensorDouble, winml::TensorDouble, double)
+CREATE_SEQUENCE(SequenceTensorInt8Bit, winml::TensorInt8Bit, int8_t)
+CREATE_SEQUENCE(SequenceTensorUInt8Bit, winml::TensorUInt8Bit, uint8_t)
+CREATE_SEQUENCE(SequenceTensorUInt16Bit, winml::TensorUInt16Bit, uint16_t)
+CREATE_SEQUENCE(SequenceTensorInt16Bit, winml::TensorInt16Bit, int16_t)
+CREATE_SEQUENCE(SequenceTensorUInt32Bit, winml::TensorUInt32Bit, uint32_t)
+CREATE_SEQUENCE(SequenceTensorInt32Bit, winml::TensorInt32Bit, int32_t)
+CREATE_SEQUENCE(SequenceTensorUInt64Bit, winml::TensorUInt64Bit, uint64_t)
+CREATE_SEQUENCE(SequenceTensorInt64Bit, winml::TensorInt64Bit, int64_t)
+CREATE_SEQUENCE(SequenceTensorFloat16Bit, winml::TensorFloat16Bit, WinML::Half)
+CREATE_SEQUENCE(SequenceTensorString, winml::TensorString, std::string)
+
 
 namespace Windows::AI::MachineLearning {
 
 template <typename TValueType, typename TDataType>
 inline winrt::Windows::AI::MachineLearning::ILearningModelFeatureValue CreateTensorValueFromInspectable(
     WinML::BindingType bindingType,
-    const winrt::Windows::Foundation::IInspectable& inspectable,
-    const winrt::Windows::AI::MachineLearning::ITensorFeatureDescriptor& descriptor) {
-  namespace collections = winrt::Windows::Foundation::Collections;
-
+    const wf::IInspectable& inspectable,
+    const winml::ITensorFeatureDescriptor& descriptor) {
+  
   if (descriptor.TensorKind() == WinML::TensorKindFrom<TDataType>::Type) {
-    if (auto vector = inspectable.try_as<collections::IVector<TDataType>>()) {
+    if (auto vector = inspectable.try_as<wfc::IVector<TDataType>>()) {
       return TValueType::CreateFromIterable(descriptor.Shape(), vector);
     }
 
-    if (bindingType == Windows::AI::MachineLearning::BindingType::kInput) {
+    if (bindingType == WinML::BindingType::kInput) {
       // Feature inputs should be more permissive, and allow for views to be bound since they are read only
-      if (auto vectorView = inspectable.try_as<collections::IVectorView<TDataType>>()) {
+      if (auto vectorView = inspectable.try_as<wfc::IVectorView<TDataType>>()) {
         return TValueType::CreateFromIterable(descriptor.Shape(), vectorView);
       }
     }
@@ -149,23 +160,20 @@ inline winrt::Windows::AI::MachineLearning::ILearningModelFeatureValue CreateTen
 }
 
 template <>
-inline winrt::Windows::AI::MachineLearning::ILearningModelFeatureValue CreateTensorValueFromInspectable<winrt::Windows::AI::MachineLearning::implementation::TensorInt8Bit, uint8_t>(
+inline winml::ILearningModelFeatureValue CreateTensorValueFromInspectable<winmlp::TensorInt8Bit, uint8_t>(
     WinML::BindingType bindingType,
-    const winrt::Windows::Foundation::IInspectable& inspectable,
-    const winrt::Windows::AI::MachineLearning::ITensorFeatureDescriptor& descriptor) {
-  namespace abi = winrt::Windows::AI::MachineLearning;
-  namespace impl = winrt::Windows::AI::MachineLearning::implementation;
-  namespace collections = winrt::Windows::Foundation::Collections;
+    const wf::IInspectable& inspectable,
+    const winml::ITensorFeatureDescriptor& descriptor) {
 
-  if (descriptor.TensorKind() == abi::TensorKind::Int8) {
-    if (auto vector = inspectable.try_as<collections::IVector<uint8_t>>()) {
-      return impl::TensorInt8Bit::CreateFromIterable(descriptor.Shape(), vector);
+  if (descriptor.TensorKind() == winml::TensorKind::Int8) {
+    if (auto vector = inspectable.try_as<wfc::IVector<uint8_t>>()) {
+      return winmlp::TensorInt8Bit::CreateFromIterable(descriptor.Shape(), vector);
     }
 
     if (bindingType == WinML::BindingType::kInput) {
       // Feature inputs should be more permissive, and allow for views to be bound since they are read only
-      if (auto vectorView = inspectable.try_as<collections::IVectorView<uint8_t>>()) {
-        return impl::TensorInt8Bit::CreateFromIterable(descriptor.Shape(), vectorView);
+      if (auto vectorView = inspectable.try_as<wfc::IVectorView<uint8_t>>()) {
+        return winmlp::TensorInt8Bit::CreateFromIterable(descriptor.Shape(), vectorView);
       }
     }
   }
@@ -173,153 +181,224 @@ inline winrt::Windows::AI::MachineLearning::ILearningModelFeatureValue CreateTen
 }
 
 template <>
-inline winrt::Windows::AI::MachineLearning::ILearningModelFeatureValue CreateTensorValueFromInspectable<winrt::Windows::AI::MachineLearning::implementation::TensorFloat16Bit, float>(
+inline winml::ILearningModelFeatureValue CreateTensorValueFromInspectable<winmlp::TensorFloat16Bit, float>(
     WinML::BindingType bindingType,
     const winrt::Windows::Foundation::IInspectable& inspectable,
-    const winrt::Windows::AI::MachineLearning::ITensorFeatureDescriptor& descriptor) {
-  namespace abi = winrt::Windows::AI::MachineLearning;
-  namespace impl = winrt::Windows::AI::MachineLearning::implementation;
-  namespace collections = winrt::Windows::Foundation::Collections;
+    const winml::ITensorFeatureDescriptor& descriptor) {
 
-  if (descriptor.TensorKind() == abi::TensorKind::Float16) {
-    if (auto vector = inspectable.try_as<collections::IVector<float>>()) {
-      return impl::TensorFloat16Bit::CreateFromIterable(descriptor.Shape(), vector);
+  if (descriptor.TensorKind() == winml::TensorKind::Float16) {
+    if (auto vector = inspectable.try_as<wfc::IVector<float>>()) {
+      return winmlp::TensorFloat16Bit::CreateFromIterable(descriptor.Shape(), vector);
     }
 
     if (bindingType == WinML::BindingType::kInput) {
       // Feature inputs should be more permissive, and allow for views to be bound since they are read only
-      if (auto vectorView = inspectable.try_as<collections::IVectorView<float>>()) {
-        return impl::TensorFloat16Bit::CreateFromIterable(descriptor.Shape(), vectorView);
+      if (auto vectorView = inspectable.try_as<wfc::IVectorView<float>>()) {
+        return winmlp::TensorFloat16Bit::CreateFromIterable(descriptor.Shape(), vectorView);
       }
     }
   }
   return nullptr;
 }
 
-inline winrt::Windows::AI::MachineLearning::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
-    Windows::AI::MachineLearning::BindingType bindingType,
-    const winrt::Windows::Foundation::IInspectable& inspectable,
-    const winrt::Windows::AI::MachineLearning::ILearningModelFeatureDescriptor& descriptor) {
-  using namespace winrt::Windows::AI::MachineLearning;
-  using namespace winrt::Windows::Foundation::Collections;
+inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
+    WinML::BindingType bindingType,
+    const wf::IInspectable& inspectable,
+    const winml::ILearningModelFeatureDescriptor& descriptor) {
 
   // Tensor and ImageFeatureValue types are passed in directly as feature values
-  if (auto featureValue = inspectable.try_as<ILearningModelFeatureValue>()) {
+  if (auto featureValue = inspectable.try_as<winml::ILearningModelFeatureValue>()) {
     return featureValue;
   }
 
-  if (auto videoFrames = inspectable.try_as<IVector<winrt::Windows::Media::VideoFrame>>()) {
-    return (0 == videoFrames.Size()) ? nullptr : winrt::make<implementation::ImageFeatureValue>(videoFrames);
+  if (auto videoFrames = inspectable.try_as<wfc::IVector<wm::VideoFrame>>()) {
+    return (0 == videoFrames.Size()) ? nullptr : winrt::make<winmlp::ImageFeatureValue>(videoFrames);
   }
 
-  if (bindingType == Windows::AI::MachineLearning::BindingType::kInput) {
+  if (bindingType == WinML::BindingType::kInput) {
     // Allows to bind IVectorView<VideoFrame> as input.
-    if (auto videoFrames = inspectable.try_as<IVectorView<winrt::Windows::Media::VideoFrame>>()) {
-      return (0 == videoFrames.Size()) ? nullptr : winrt::make<implementation::ImageFeatureValue>(videoFrames);
+    if (auto videoFrames = inspectable.try_as<wfc::IVectorView<wm::VideoFrame>>()) {
+      return (0 == videoFrames.Size()) ? nullptr : winrt::make<winmlp::ImageFeatureValue>(videoFrames);
     }
   }
 
   // ImageFeatureValues Types can be implicitly inferred from the VideoFrame object
-  if (auto videoFrame = inspectable.try_as<winrt::Windows::Media::VideoFrame>()) {
-    return winrt::make<implementation::ImageFeatureValue>(videoFrame);
+  if (auto videoFrame = inspectable.try_as<wm::VideoFrame>()) {
+    return winrt::make<winmlp::ImageFeatureValue>(videoFrame);
   }
 
   // MapFeatureValues Types are implicitly inferred from the iinspectable object
-  if (auto map = inspectable.try_as<IMap<winrt::hstring, float>>()) {
-    return implementation::MapStringToFloat::Create(map);
+  if (auto map = inspectable.try_as<wfc::IMap<winrt::hstring, float>>()) {
+    return winmlp::MapStringToFloat::Create(map);
   }
-  if (auto map = inspectable.try_as<IMap<winrt::hstring, double>>()) {
-    return implementation::MapStringToDouble::Create(map);
+  if (auto map = inspectable.try_as<wfc::IMap<winrt::hstring, double>>()) {
+    return winmlp::MapStringToDouble::Create(map);
   }
-  if (auto map = inspectable.try_as<IMap<winrt::hstring, int64_t>>()) {
-    return implementation::MapStringToInt64Bit::Create(map);
+  if (auto map = inspectable.try_as<wfc::IMap<winrt::hstring, int64_t>>()) {
+    return winmlp::MapStringToInt64Bit::Create(map);
   }
-  if (auto map = inspectable.try_as<IMap<winrt::hstring, winrt::hstring>>()) {
-    return implementation::MapStringToString::Create(map);
+  if (auto map = inspectable.try_as<wfc::IMap<winrt::hstring, winrt::hstring>>()) {
+    return winmlp::MapStringToString::Create(map);
   }
-  if (auto map = inspectable.try_as<IMap<int64_t, float>>()) {
-    return implementation::MapInt64BitToFloat::Create(map);
+  if (auto map = inspectable.try_as<wfc::IMap<int64_t, float>>()) {
+    return winmlp::MapInt64BitToFloat::Create(map);
   }
-  if (auto map = inspectable.try_as<IMap<int64_t, double>>()) {
-    return implementation::MapInt64BitToDouble::Create(map);
+  if (auto map = inspectable.try_as<wfc::IMap<int64_t, double>>()) {
+    return winmlp::MapInt64BitToDouble::Create(map);
   }
-  if (auto map = inspectable.try_as<IMap<int64_t, int64_t>>()) {
-    return implementation::MapInt64BitToInt64Bit::Create(map);
+  if (auto map = inspectable.try_as<wfc::IMap<int64_t, int64_t>>()) {
+    return winmlp::MapInt64BitToInt64Bit::Create(map);
   }
-  if (auto map = inspectable.try_as<IMap<int64_t, winrt::hstring>>()) {
-    return implementation::MapInt64BitToString::Create(map);
+  if (auto map = inspectable.try_as<wfc::IMap<int64_t, winrt::hstring>>()) {
+    return winmlp::MapInt64BitToString::Create(map);
   }
 
-  if (bindingType == Windows::AI::MachineLearning::BindingType::kInput) {
+  if (bindingType == WinML::BindingType::kInput) {
     // Feature inputs should be more permissive, and allow for views to be bound since they are read only
-    if (auto map = inspectable.try_as<IMapView<winrt::hstring, float>>()) {
-      return implementation::MapStringToFloat::Create(map);
+    if (auto map = inspectable.try_as<wfc::IMapView<winrt::hstring, float>>()) {
+      return winmlp::MapStringToFloat::Create(map);
     }
-    if (auto map = inspectable.try_as<IMapView<winrt::hstring, double>>()) {
-      return implementation::MapStringToDouble::Create(map);
+    if (auto map = inspectable.try_as<wfc::IMapView<winrt::hstring, double>>()) {
+      return winmlp::MapStringToDouble::Create(map);
     }
-    if (auto map = inspectable.try_as<IMapView<winrt::hstring, int64_t>>()) {
-      return implementation::MapStringToInt64Bit::Create(map);
+    if (auto map = inspectable.try_as<wfc::IMapView<winrt::hstring, int64_t>>()) {
+      return winmlp::MapStringToInt64Bit::Create(map);
     }
-    if (auto map = inspectable.try_as<IMapView<winrt::hstring, winrt::hstring>>()) {
-      return implementation::MapStringToString::Create(map);
+    if (auto map = inspectable.try_as<wfc::IMapView<winrt::hstring, winrt::hstring>>()) {
+      return winmlp::MapStringToString::Create(map);
     }
-    if (auto map = inspectable.try_as<IMapView<int64_t, float>>()) {
-      return implementation::MapInt64BitToFloat::Create(map);
+    if (auto map = inspectable.try_as<wfc::IMapView<int64_t, float>>()) {
+      return winmlp::MapInt64BitToFloat::Create(map);
     }
-    if (auto map = inspectable.try_as<IMapView<int64_t, double>>()) {
-      return implementation::MapInt64BitToDouble::Create(map);
+    if (auto map = inspectable.try_as<wfc::IMapView<int64_t, double>>()) {
+      return winmlp::MapInt64BitToDouble::Create(map);
     }
-    if (auto map = inspectable.try_as<IMapView<int64_t, int64_t>>()) {
-      return implementation::MapInt64BitToInt64Bit::Create(map);
+    if (auto map = inspectable.try_as<wfc::IMapView<int64_t, int64_t>>()) {
+      return winmlp::MapInt64BitToInt64Bit::Create(map);
     }
-    if (auto map = inspectable.try_as<IMapView<int64_t, winrt::hstring>>()) {
-      return implementation::MapInt64BitToString::Create(map);
+    if (auto map = inspectable.try_as<wfc::IMapView<int64_t, winrt::hstring>>()) {
+      return winmlp::MapInt64BitToString::Create(map);
     }
   }
-
-  if (descriptor.Kind() == LearningModelFeatureKind::Sequence) {
+    
+  if (descriptor.Kind() == winml::LearningModelFeatureKind::Sequence) {
     // SequenceFeatureValues Types are implicitly inferred from the iinspectable object
-    if (auto sequence = inspectable.try_as<IVector<IMap<winrt::hstring, float>>>()) {
-      return implementation::SequenceMapStringFloat::Create(sequence);
+    if (auto sequence = inspectable.try_as<wfc::IVector<wfc::IMap<winrt::hstring, float>>>()) {
+      return winmlp::SequenceMapStringFloat::Create(sequence);
     }
-    if (auto sequence = inspectable.try_as<IVector<IMap<int64_t, float>>>()) {
-      return implementation::SequenceMapInt64BitFloat::Create(sequence);
+    if (auto sequence = inspectable.try_as<wfc::IVector<wfc::IMap<int64_t, float>>>()) {
+      return winmlp::SequenceMapInt64BitFloat::Create(sequence);
+    }
+    if (auto sequence = inspectable.try_as<wfc::IVector<winml::TensorFloat>>()) {
+      return winmlp::SequenceTensorFloat::Create(sequence);
+    }    
+    if (auto sequence = inspectable.try_as<wfc::IVector<winml::TensorBoolean>>()) {
+      return winmlp::SequenceTensorBoolean::Create(sequence);
+    }
+    if (auto sequence = inspectable.try_as<wfc::IVector<winml::TensorDouble>>()) {
+      return winmlp::SequenceTensorDouble::Create(sequence);
+    }
+    if (auto sequence = inspectable.try_as<wfc::IVector<winml::TensorInt8Bit>>()) {
+      return winmlp::SequenceTensorInt8Bit::Create(sequence);
+    }
+    if (auto sequence = inspectable.try_as<wfc::IVector<winml::TensorUInt8Bit>>()) {
+      return winmlp::SequenceTensorUInt8Bit::Create(sequence);
+    }
+    if (auto sequence = inspectable.try_as<wfc::IVector<winml::TensorUInt16Bit>>()) {
+      return winmlp::SequenceTensorUInt16Bit::Create(sequence);
+    }
+    if (auto sequence = inspectable.try_as<wfc::IVector<winml::TensorInt16Bit>>()) {
+      return winmlp::SequenceTensorInt16Bit::Create(sequence);
+    }
+    if (auto sequence = inspectable.try_as<wfc::IVector<winml::TensorUInt32Bit>>()) {
+      return winmlp::SequenceTensorUInt32Bit::Create(sequence);
+    }
+    if (auto sequence = inspectable.try_as<wfc::IVector<winml::TensorInt32Bit>>()) {
+      return winmlp::SequenceTensorInt32Bit::Create(sequence);
+    }
+    if (auto sequence = inspectable.try_as<wfc::IVector<winml::TensorUInt64Bit>>()) {
+      return winmlp::SequenceTensorUInt64Bit::Create(sequence);
+    }
+    if (auto sequence = inspectable.try_as<wfc::IVector<winml::TensorInt64Bit>>()) {
+      return winmlp::SequenceTensorInt64Bit::Create(sequence);
+    }
+    if (auto sequence = inspectable.try_as<wfc::IVector<winml::TensorFloat16Bit>>()) {
+      return winmlp::SequenceTensorFloat16Bit::Create(sequence);
+    }
+    if (auto sequence = inspectable.try_as<wfc::IVector<winml::TensorString>>()) {
+      return winmlp::SequenceTensorString::Create(sequence);
     }
 
-    if (bindingType == Windows::AI::MachineLearning::BindingType::kInput) {
+    if (bindingType == WinML::BindingType::kInput) {
       // Feature inputs should be more permissive, and allow for views to be bound since they are read only
-      if (auto sequence = inspectable.try_as<IVectorView<IMap<winrt::hstring, float>>>()) {
-        return implementation::SequenceMapStringFloat::Create(sequence);
+      if (auto sequence = inspectable.try_as<wfc::IVectorView<wfc::IMap<winrt::hstring, float>>>()) {
+        return winmlp::SequenceMapStringFloat::Create(sequence);
       }
-      if (auto sequence = inspectable.try_as<IVectorView<IMap<int64_t, float>>>()) {
-        return implementation::SequenceMapInt64BitFloat::Create(sequence);
+      if (auto sequence = inspectable.try_as<wfc::IVectorView<wfc::IMap<int64_t, float>>>()) {
+        return winmlp::SequenceMapInt64BitFloat::Create(sequence);
+      }
+      if (auto sequence = inspectable.try_as<wfc::IVectorView<winml::TensorFloat>>()) {
+        return winmlp::SequenceTensorFloat::Create(sequence);
+      }    
+      if (auto sequence = inspectable.try_as<wfc::IVectorView<winml::TensorBoolean>>()) {
+        return winmlp::SequenceTensorBoolean::Create(sequence);
+      }
+      if (auto sequence = inspectable.try_as<wfc::IVectorView<winml::TensorDouble>>()) {
+        return winmlp::SequenceTensorDouble::Create(sequence);
+      }
+      if (auto sequence = inspectable.try_as<wfc::IVectorView<winml::TensorInt8Bit>>()) {
+        return winmlp::SequenceTensorInt8Bit::Create(sequence);
+      }
+      if (auto sequence = inspectable.try_as<wfc::IVectorView<winml::TensorUInt8Bit>>()) {
+        return winmlp::SequenceTensorUInt8Bit::Create(sequence);
+      }
+      if (auto sequence = inspectable.try_as<wfc::IVectorView<winml::TensorUInt16Bit>>()) {
+        return winmlp::SequenceTensorUInt16Bit::Create(sequence);
+      }
+      if (auto sequence = inspectable.try_as<wfc::IVectorView<winml::TensorInt16Bit>>()) {
+        return winmlp::SequenceTensorInt16Bit::Create(sequence);
+      }
+      if (auto sequence = inspectable.try_as<wfc::IVectorView<winml::TensorUInt32Bit>>()) {
+        return winmlp::SequenceTensorUInt32Bit::Create(sequence);
+      }
+      if (auto sequence = inspectable.try_as<wfc::IVectorView<winml::TensorInt32Bit>>()) {
+        return winmlp::SequenceTensorInt32Bit::Create(sequence);
+      }
+      if (auto sequence = inspectable.try_as<wfc::IVectorView<winml::TensorUInt64Bit>>()) {
+        return winmlp::SequenceTensorUInt64Bit::Create(sequence);
+      }
+      if (auto sequence = inspectable.try_as<wfc::IVectorView<winml::TensorInt64Bit>>()) {
+        return winmlp::SequenceTensorInt64Bit::Create(sequence);
+      }
+      if (auto sequence = inspectable.try_as<wfc::IVectorView<winml::TensorFloat16Bit>>()) {
+        return winmlp::SequenceTensorFloat16Bit::Create(sequence);
+      }
+      if (auto sequence = inspectable.try_as<wfc::IVectorView<winml::TensorString>>()) {
+        return winmlp::SequenceTensorString::Create(sequence);
       }
     }
-  } else if (descriptor.Kind() == LearningModelFeatureKind::Tensor) {
-    using Value = winrt::Windows::AI::MachineLearning::ILearningModelFeatureValue;
-    using Inspectable = winrt::Windows::Foundation::IInspectable;
-    using Descriptor = winrt::Windows::AI::MachineLearning::ITensorFeatureDescriptor;
-    using TensorCreator = std::function<Value()>;
+  }
+  else if (descriptor.Kind() == winml::LearningModelFeatureKind::Tensor) {
+    auto tensorDescriptor = descriptor.as<winml::ITensorFeatureDescriptor>();
 
-    auto tensorDescriptor = descriptor.as<ITensorFeatureDescriptor>();
+    using TensorCreator = std::function<winml::ILearningModelFeatureValue()>;
     std::vector<TensorCreator> creators =
         {
             // Vector and VectorViews of float16 and int8 collide with float and uint8 respectively.
             // They are omitted because of this ambiguity and are not constructible via raw winrt collections.
-            [&]() { return CreateTensorValueFromInspectable<implementation::TensorBoolean, bool>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<implementation::TensorFloat, float>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<implementation::TensorDouble, double>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<implementation::TensorUInt8Bit, uint8_t>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<implementation::TensorInt8Bit, uint8_t>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<implementation::TensorUInt16Bit, uint16_t>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<implementation::TensorInt16Bit, int16_t>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<implementation::TensorUInt32Bit, uint32_t>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<implementation::TensorInt32Bit, int32_t>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<implementation::TensorUInt64Bit, uint64_t>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<implementation::TensorInt64Bit, int64_t>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<implementation::TensorFloat16Bit, float>(bindingType, inspectable, tensorDescriptor); },
-            [&]() { return CreateTensorValueFromInspectable<implementation::TensorString, winrt::hstring>(bindingType, inspectable, tensorDescriptor); }};
+            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorBoolean, bool>(bindingType, inspectable, tensorDescriptor); },
+            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorFloat, float>(bindingType, inspectable, tensorDescriptor); },
+            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorDouble, double>(bindingType, inspectable, tensorDescriptor); },
+            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorUInt8Bit, uint8_t>(bindingType, inspectable, tensorDescriptor); },
+            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorInt8Bit, uint8_t>(bindingType, inspectable, tensorDescriptor); },
+            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorUInt16Bit, uint16_t>(bindingType, inspectable, tensorDescriptor); },
+            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorInt16Bit, int16_t>(bindingType, inspectable, tensorDescriptor); },
+            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorUInt32Bit, uint32_t>(bindingType, inspectable, tensorDescriptor); },
+            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorInt32Bit, int32_t>(bindingType, inspectable, tensorDescriptor); },
+            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorUInt64Bit, uint64_t>(bindingType, inspectable, tensorDescriptor); },
+            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorInt64Bit, int64_t>(bindingType, inspectable, tensorDescriptor); },
+            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorFloat16Bit, float>(bindingType, inspectable, tensorDescriptor); },
+            [&]() { return CreateTensorValueFromInspectable<winmlp::TensorString, winrt::hstring>(bindingType, inspectable, tensorDescriptor); }};
 
     for (const auto& tensorCreator : creators) {
       if (auto createdTensor = tensorCreator()) {
@@ -327,7 +406,7 @@ inline winrt::Windows::AI::MachineLearning::ILearningModelFeatureValue CreateFea
       }
     }
   }
-
+  
   return nullptr;
 }
 

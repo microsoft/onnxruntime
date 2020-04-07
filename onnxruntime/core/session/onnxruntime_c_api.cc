@@ -81,11 +81,11 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel default_warning_level,
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithGlobalThreadPools, OrtLoggingLevel default_warning_level,
-                    _In_ const char* logid, _In_ ThreadingOptions tp_options, _Outptr_ OrtEnv** out) {
+                    _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, default_warning_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status, &tp_options);
+  *out = OrtEnv::GetInstance(lm_info, status, tp_options);
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -1514,7 +1514,8 @@ static constexpr OrtApi ort_api_1_to_3 = {
     // Version 3 - In development, feel free to add/remove/rearrange here
     &OrtApis::CreateEnvWithGlobalThreadPools,
     &OrtApis::DisablePerSessionThreads,
-};
+    &OrtApis::CreateThreadingOptions,
+    &OrtApis::ReleaseThreadingOptions};
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
 // If this assert hits, read the above 'Rules on how to add a new Ort API version'
