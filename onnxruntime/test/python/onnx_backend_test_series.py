@@ -202,8 +202,9 @@ def create_backend_test(testname=None):
             current_failing_tests.append('^test_div_cpu*')
             # temporarily exclude vgg19 test which comsumes too much memory, run out of memory on Upsquared device.
             # single test pass for vgg19, need furture investigation
+            current_failing_tests.append('^test_vgg19_cpu*')
             # exception for maxpool_2d_uint8 "The plugin does not support output U8 precision"
-            current_failing_tests.append('^test_vgg19_cpu*', '^test_maxpool_2d_uint8_cpu*')
+            current_failing_tests.append('^test_maxpool_2d_uint8_cpu*')
 
         if c2.supports_device('OPENVINO_CPU_FP32'):
             current_failing_tests += [
