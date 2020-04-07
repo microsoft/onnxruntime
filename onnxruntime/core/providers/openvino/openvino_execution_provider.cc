@@ -860,11 +860,26 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     //If subgraph only has Identity node, EyeLike or Dropout, OpenVINO EP doesn't support it.
       if(this_cluster.size() == 1){
         const auto& node = graph_viewer.GetNode(this_cluster[0]);
-        if(node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType() == "Dropout")
+        if(node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType() == "Dropout" || node->OpType() == "ReduceMin" || node->OpType() == "Concat")
           continue;
       }
       GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_inputs, const_inputs, cluster_outputs);
-
+      bool omit_subgraph = false;
+      for(auto index : this_cluster){
+        const auto& node = graph_viewer.GetNode(index);
+        if(node->OpType() == "Unsqueeze" || node->OpType() == "Gather" || node->OpType() == "Squeeze"){
+          for(const auto& input : node->InputDefs()){
+            auto input_name = input->Name();
+            auto it = find(cluster_inputs.begin(), cluster_inputs.end(), input_name);
+            if(it != cluster_inputs.end()){
+              omit_subgraph = true;
+              break;
+            }
+          }
+        }
+      }
+      if(omit_subgraph)
+        continue;
 
       /* In scenarios, when there are no inputs or all inputs being initializers,
          ConstantFolding optimization in onnxruntime pre-computes the value.*/
