@@ -55,6 +55,7 @@ private:
   std::unordered_map<std::string, migraphx::program> map_progs_;
   std::unordered_map<std::string, std::string> map_onnx_string_;
   std::unordered_map<std::string, std::unordered_map<std::string, std::size_t>> map_input_index_;
+  std::unordered_map<std::string, bool> map_no_input_shape_;
 
   AllocatorPtr allocator_;
 };
