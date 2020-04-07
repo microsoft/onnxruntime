@@ -324,7 +324,7 @@ TEST(SplitOperatorTest, Axis2UnequalSplit) {
 
 TEST(SplitOperatorTest, ZeroSizeInput) {
   const int64_t axis = -1;
-  std::vector<ShapeAndFloatData> outputs{{{0, 2}, {}}};
+  std::vector<ShapeAndFloatData> outputs{{{0, 1}, {}}, {{0, 1}, {}}};
 
   ShapeAndFloatData input = CreateInput({0, 2});
 
