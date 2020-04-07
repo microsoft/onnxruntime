@@ -46,8 +46,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
   auto x_dimensions = X->Shape().NumDimensions();
   if (x_dimensions != 4 && x_dimensions != 3) {
-    // This condition is not true for two tests in ONNX tests series:
-    // test_convtranspose_1d_cpu, test_convtranspose_3d_cpu.
+    // This condition is not true for test_convtranspose_3d in ONNX tests series.
     // TODO: the error message should tell which operator raises it.
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must be 3- or 4-dimensional.",
                            " X: ", X->Shape().ToString().c_str());
