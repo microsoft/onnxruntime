@@ -72,9 +72,9 @@ static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, co
 
   // https://eigen.tuxfamily.org/dox/TopicWritingEfficientProductExpression.html
   auto out_map = EigenMatrixMapRowMajor<T>(c_data, m, n);
-  out_map = static_cast<T>(-2.) *
-            (ConstEigenMatrixMapRowMajor<T>(a_data, m, k) *
-             ConstEigenMatrixMapRowMajor<T>(b_data, n, k).transpose());
+  out_map.noalias() = static_cast<T>(-2.) *
+                      (ConstEigenMatrixMapRowMajor<T>(a_data, m, k) *
+                       ConstEigenMatrixMapRowMajor<T>(b_data, n, k).transpose());
 #endif
 
   // add a_ss and b_ss, with broadcast
