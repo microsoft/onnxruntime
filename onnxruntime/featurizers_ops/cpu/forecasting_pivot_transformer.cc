@@ -63,10 +63,9 @@ struct ForecastingPivotTransformerImpl {
         const T* input_data(std::get<0>(dataPtrMap.at(index)));
         const int64_t input_dim_1(std::get<1>(dataPtrMap.at(index)));
         const int64_t input_dim_2(std::get<2>(dataPtrMap.at(index)));
-        InputMatrixT input_matrix(input_data, input_dim_1, input_dim_2);
-        input.emplace_back(input_matrix);
+        input.emplace_back(InputMatrixT(input_data, input_dim_1, input_dim_2));
         //Increment data pointer
-        input_data += input_matrix.size();
+        input_data += input_dim_1 * input_dim_2;
       }
       //Execute
       transformer.execute(input, callback_fn);
@@ -74,7 +73,6 @@ struct ForecastingPivotTransformerImpl {
     transformer.flush(callback_fn);
 
     // Prepare the Output
-    ORT_ENFORCE(output.size() > 0, "No Output generated");
     TensorShape output_shape({static_cast<int64_t>(output.size()), static_cast<int64_t>(output[0].size())});
     Tensor* output_tensor(ctx->Output(0, output_shape));
     T* output_data = output_tensor->MutableData<T>();

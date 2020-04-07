@@ -48,11 +48,11 @@ struct LagLeadOperatorTransformerImpl {
     // Prepare the Output
     const int64_t output_dim_0 = grains_tensor->Shape()[0];
 
-    T* output_data;
+    T* output_data = nullptr;
     bool has_allocate_output_data = false;
     std::function<void(OutputType)> callback_fn;
     callback_fn = [ctx, &output_grains_data, &output_data, &has_allocate_output_data, output_dim_0](OutputType value) -> void {
-      const GrainT & output_grains(std::get<GrainT>(value));
+      GrainT & output_grains(std::get<GrainT>(value));
       const OutputMatrixType & output_matrix(std::get<OutputMatrixType>(value));
       //Allocate tensor memory after first output is generated
       if (!has_allocate_output_data) {
@@ -61,8 +61,9 @@ struct LagLeadOperatorTransformerImpl {
         output_data = output_tensor->MutableData<T>();
         has_allocate_output_data = true;
       }
-      for (auto & grain : output_grains)
+      for (auto & grain : output_grains) {
         *output_grains_data++ = std::move(grain);
+      }
       Eigen::Map<OutputMatrixType> output_matrix_mapping(output_data, output_matrix.rows(), output_matrix.cols());
       output_matrix_mapping = output_matrix;
       output_data += output_matrix.size();
