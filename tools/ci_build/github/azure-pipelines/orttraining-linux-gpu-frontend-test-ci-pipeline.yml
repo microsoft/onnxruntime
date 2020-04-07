@@ -17,6 +17,7 @@ jobs:
     submodules: recursive
   
   # insert a data preparation step here
+  - template: linux-set-variables-and-download.yml
   
   - script: >
       tools/ci_build/github/linux/run_dockerbuild.sh
