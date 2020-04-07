@@ -53,10 +53,12 @@ def pytorch_inference(model, input_ids, past=None, total_runs=100):
     return outputs
 
 
-def onnxruntime_inference(ort_session, input_ids, past=None, total_runs=100):
+def onnxruntime_inference(ort_session, input_ids, past=None, total_runs=100, enable_opt=True):
     # Use contiguous array as input might improve performance.
     # You can check the results from performance test tool to see whether you need it.
     ort_inputs = {'input_ids': numpy.ascontiguousarray(input_ids.cpu().numpy())}
+    if enable_opt:
+        ort_inputs['mask_index'] = numpy.ascontiguousarray((numpy.ones(1) * 5).astype(numpy.int32))
 
     if past is not None:
         for i, past_i in enumerate(past):
@@ -197,10 +199,25 @@ def main():
     setup_environment(args.use_openmp)
     import onnxruntime
 
+    from onnx import ModelProto
+    from OnnxModel import OnnxModel
+
+    model = ModelProto()
+    with open(export_model_path, "rb") as f:
+        model.ParseFromString(f.read())
+    bert_model = OnnxModel(model)
+
     onnx_model_path = export_model_path
+    if not enable_past_input:
+        keep_output_names = [bert_model.model.graph.output[0].name] # remove past state outputs which is not needed.
+        logger.info(f"Prune graph to keep the first output and drop past state outputs:{keep_output_names}")
+        bert_model.prune_graph(keep_output_names)
+        onnx_model_path = os.path.join(output_dir, 'gpt2_past{}_out1.onnx'.format(int(enable_past_input)))
+        bert_model.save_model_to_file(onnx_model_path)
+    
     if args.enable_optimization:
         from bert_model_optimization import optimize_model
-        m = optimize_model(export_model_path,
+        m = optimize_model(onnx_model_path,
                            model_type='gpt2',
                            gpu_only=False,
                            num_heads=12,
@@ -227,7 +244,7 @@ def main():
     logger.info(f"Start inferencing onnx model: {onnx_model_path}")
     session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=['CPUExecutionProvider'])
 
-    ort_outputs = onnxruntime_inference(session, input_ids, past, args.total_runs)
+    ort_outputs = onnxruntime_inference(session, input_ids, past, args.total_runs, args.enable_optimization)
     if args.verify_outputs:
         logger.info('PyTorch and OnnxRuntime output 0 (last_state) are close:'.format(0),
                     numpy.allclose(ort_outputs[0], outputs[0].cpu(), rtol=1e-05, atol=1e-04))
