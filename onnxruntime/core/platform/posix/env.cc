@@ -35,6 +35,7 @@ limitations under the License.
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/platform/scoped_resource.h"
+#include "core/platform/EigenNonBlockingThreadPool.h"
 
 namespace onnxruntime {
 
@@ -104,6 +105,74 @@ struct Freer {
 
 using MallocdStringPtr = std::unique_ptr<char, Freer<char> >;
 
+class PosixThread : public EnvThread {
+ private:
+  struct Param {
+    const ORTCHAR_T* name_prefix;
+    int index;
+    unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
+    Eigen::ThreadPoolInterface* param;
+    const ThreadOptions& thread_options;
+  };
+
+ public:
+  PosixThread(const ORTCHAR_T* name_prefix, int index,
+              unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
+              const ThreadOptions& thread_options) {
+    pthread_attr_t attr;
+    int s = pthread_attr_init(&attr);
+    if (s != 0)
+      ORT_THROW("pthread_attr_init failed");
+    if (thread_options.stack_size > 0) {
+      s = pthread_attr_setstacksize(&attr, thread_options.stack_size);
+      if (s != 0)
+        ORT_THROW("pthread_attr_setstacksize failed");
+    }
+    s = pthread_create(&hThread, &attr, ThreadMain,
+                       new Param{name_prefix, index, start_address, param, thread_options});
+    if (s != 0)
+      ORT_THROW("pthread_create failed");
+#if !defined(__APPLE__) && !defined(__ANDROID__)
+    if (!thread_options.affinity.empty()) {
+      cpu_set_t cpuset;
+      CPU_ZERO(&cpuset);
+      CPU_SET(thread_options.affinity[index], &cpuset);
+      s = pthread_setaffinity_np(hThread, sizeof(cpu_set_t), &cpuset);
+      if (s != 0)
+        ORT_THROW("pthread_setaffinity_np failed");
+    }
+ #endif
+  }
+
+  ~PosixThread() override {
+    void* res;
+#ifdef NDEBUG
+    pthread_join(hThread, &res);
+#else
+    int ret = pthread_join(hThread, &res);
+    assert(ret == 0);
+#endif
+  }
+
+  // This function is called when the threadpool is cancelled.
+  // TODO: Find a way to avoid calling TerminateThread
+  void OnCancel() override {
+  }
+
+ private:
+  static void* ThreadMain(void* param) {
+    std::unique_ptr<Param> p((Param*)param);
+    try {
+      // Ignore the returned value for now
+      p->start_address(p->index, p->param);
+    } catch (std::exception&) {
+      p->param->Cancel();
+    }
+    return nullptr;
+  }
+  pthread_t hThread;
+};
+
 class PosixEnv : public Env {
  public:
   static PosixEnv& Instance() {
@@ -111,10 +180,22 @@ class PosixEnv : public Env {
     return default_env;
   }
 
+  EnvThread* CreateThread(const ORTCHAR_T* name_prefix, int index,
+                          unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
+                          Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) override {
+    return new PosixThread(name_prefix, index, start_address, param, thread_options);
+  }
+  Task CreateTask(std::function<void()> f) override {
+    return Task{std::move(f)};
+  }
+  void ExecuteTask(const Task& t) override {
+    t.f();
+  }
+
   int GetNumCpuCores() const override {
     // TODO if you need the number of physical cores you'll need to parse
     // /proc/cpuinfo and grep for "cpu cores".
-    //However, that information is not always available(output of 'grep -i core /proc/cpuinfo' is empty)
+    // However, that information is not always available(output of 'grep -i core /proc/cpuinfo' is empty)
     return std::thread::hardware_concurrency();
   }
 
@@ -162,9 +243,8 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  Status ReadFileIntoBuffer(
-      const PathChar* file_path, FileOffsetType offset, size_t length,
-      gsl::span<char> buffer) const override {
+  Status ReadFileIntoBuffer(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+                            gsl::span<char> buffer) const override {
     ORT_RETURN_IF_NOT(file_path);
     ORT_RETURN_IF_NOT(offset >= 0);
     ORT_RETURN_IF_NOT(length <= buffer.size());
@@ -174,7 +254,8 @@ class PosixEnv : public Env {
       return ReportSystemError("open", file_path);
     }
 
-    if (length == 0) return Status::OK();
+    if (length == 0)
+      return Status::OK();
 
     if (offset > 0) {
       const FileOffsetType seek_result = lseek(file_descriptor.Get(), offset, SEEK_SET);
@@ -189,16 +270,16 @@ class PosixEnv : public Env {
       const size_t bytes_remaining = length - total_bytes_read;
       const size_t bytes_to_read = std::min(bytes_remaining, k_max_bytes_to_read);
 
-      const ssize_t bytes_read = TempFailureRetry(read, file_descriptor.Get(), buffer.data() + total_bytes_read, bytes_to_read);
+      const ssize_t bytes_read =
+          TempFailureRetry(read, file_descriptor.Get(), buffer.data() + total_bytes_read, bytes_to_read);
 
       if (bytes_read == -1) {
         return ReportSystemError("read", file_path);
       }
 
       if (bytes_read == 0) {
-        return ORT_MAKE_STATUS(
-            ONNXRUNTIME, FAIL, "ReadFileIntoBuffer - unexpected end of file. ",
-            "File: ", file_path, ", offset: ", offset, ", length: ", length);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFileIntoBuffer - unexpected end of file. ", "File: ", file_path,
+                               ", offset: ", offset, ", length: ", length);
       }
 
       total_bytes_read += bytes_read;
@@ -207,9 +288,8 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  Status MapFileIntoMemory(
-      const PathChar* file_path, FileOffsetType offset, size_t length,
-      MappedMemoryPtr& mapped_memory) const override {
+  Status MapFileIntoMemory(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+                           MappedMemoryPtr& mapped_memory) const override {
     ORT_RETURN_IF_NOT(file_path);
     ORT_RETURN_IF_NOT(offset >= 0);
 
@@ -227,18 +307,16 @@ class PosixEnv : public Env {
     const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
     const size_t mapped_length = length + offset_to_page;
     const FileOffsetType mapped_offset = offset - offset_to_page;
-    void* const mapped_base = mmap(
-        nullptr, mapped_length,
-        PROT_READ | PROT_WRITE, MAP_PRIVATE,
-        file_descriptor.Get(), mapped_offset);
+    void* const mapped_base =
+        mmap(nullptr, mapped_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, file_descriptor.Get(), mapped_offset);
 
     if (mapped_base == MAP_FAILED) {
       return ReportSystemError("mmap", file_path);
     }
 
-    mapped_memory = MappedMemoryPtr{
-        reinterpret_cast<char*>(mapped_base) + offset_to_page,
-        OrtCallbackInvoker{OrtCallback{UnmapFile, new UnmapFileParam{mapped_base, mapped_length}}}};
+    mapped_memory =
+        MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_page,
+                        OrtCallbackInvoker{OrtCallback{UnmapFile, new UnmapFileParam{mapped_base, mapped_length}}}};
 
     return Status::OK();
   }
@@ -394,12 +472,10 @@ class PosixEnv : public Env {
 
 }  // namespace
 
-#if defined(PLATFORM_POSIX) || defined(__ANDROID__)
 // REGISTER_FILE_SYSTEM("", PosixFileSystem);
 // REGISTER_FILE_SYSTEM("file", LocalPosixFileSystem);
-const Env& Env::Default() {
+Env& Env::Default() {
   return PosixEnv::Instance();
 }
-#endif
 
 }  // namespace onnxruntime

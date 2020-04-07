@@ -68,7 +68,8 @@ class Session:
         execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
         """
         if not set(providers).issubset(C.get_available_providers()):
-            raise ValueError("{} does not contain a subset of available providers {}".format(providers, C.get_available_providers()))
+            raise ValueError("{} does not contain a subset of available providers {}".format(
+                providers, C.get_available_providers()))
         self._reset_session()
         self._load_model(providers)
 
@@ -159,22 +160,22 @@ class InferenceSession(Session):
         Session.__init__(self, self._sess)
 
     def _load_model(self, providers=[]):
-        if isinstance(self._path_or_bytes, str): 
+        if isinstance(self._path_or_bytes, str):
             self._sess = C.InferenceSession(
-                self._sess_options if self._sess_options else C.get_default_session_options(), 
-                self._path_or_bytes, True)
+                self._sess_options if self._sess_options else C.get_default_session_options(), self._path_or_bytes,
+                True)
         elif isinstance(self._path_or_bytes, bytes):
             self._sess = C.InferenceSession(
-                self._sess_options if self._sess_options else C.get_default_session_options(), 
-                self._path_or_bytes, False)
+                self._sess_options if self._sess_options else C.get_default_session_options(), self._path_or_bytes,
+                False)
         # elif isinstance(self._path_or_bytes, tuple):
-            # to remove, hidden trick
+        # to remove, hidden trick
         #   self._sess.load_model_no_init(self._path_or_bytes[0], providers)
         else:
             raise TypeError("Unable to load from type '{0}'".format(type(self._path_or_bytes)))
 
         self._sess.load_model(providers)
-        
+
         self._sess_options = self._sess.session_options
         self._inputs_meta = self._sess.inputs_meta
         self._outputs_meta = self._sess.outputs_meta
@@ -184,9 +185,9 @@ class InferenceSession(Session):
 
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
         if 'TensorrtExecutionProvider' in C.get_available_providers():
-          self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+            self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         else:
-          self._fallback_providers = ['CPUExecutionProvider']
+            self._fallback_providers = ['CPUExecutionProvider']
 
 
 class IOBinding:

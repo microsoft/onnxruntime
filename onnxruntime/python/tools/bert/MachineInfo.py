@@ -20,13 +20,12 @@ from py3nvml.py3nvml import nvmlInit, nvmlSystemGetDriverVersion, nvmlDeviceGetC
 
 class MachineInfo():
     """ Class encapsulating Machine Info logic. """
+
     def __init__(self, silent=False, logger=None):
         self.silent = silent
 
         if logger is None:
-            logging.basicConfig(
-                format="%(asctime)s - %(name)s - %(levelname)s: %(message)s",
-                level=logging.INFO)
+            logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s: %(message)s", level=logging.INFO)
             self.logger = logging.getLogger(__name__)
         else:
             self.logger = logger
@@ -91,8 +90,7 @@ class MachineInfo():
             nvmlShutdown()
         except NVMLError as error:
             if not self.silent:
-                self.logger.error(
-                    "Error fetching GPU information using nvml: %s", error)
+                self.logger.error("Error fetching GPU information using nvml: %s", error)
             return None
 
         result = {"driver_version": driver_version, "devices": gpu_info_list}
@@ -105,11 +103,8 @@ class MachineInfo():
         try:
             import onnxruntime
             return {
-                "version":
-                onnxruntime.__version__,
-                "support_gpu":
-                'CUDAExecutionProvider' in
-                onnxruntime.get_available_providers()
+                "version": onnxruntime.__version__,
+                "support_gpu": 'CUDAExecutionProvider' in onnxruntime.get_available_providers()
             }
         except ImportError as error:
             if not self.silent:
@@ -123,10 +118,7 @@ class MachineInfo():
     def get_pytorch_info(self) -> Dict:
         try:
             import torch
-            return {
-                "version": torch.__version__,
-                "support_gpu": torch.cuda.is_available()
-            }
+            return {"version": torch.__version__, "support_gpu": torch.cuda.is_available()}
         except ImportError as error:
             if not self.silent:
                 self.logger.exception(error)
@@ -157,10 +149,7 @@ class MachineInfo():
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--silent',
-                        required=False,
-                        action='store_true',
-                        help="Do not print error message")
+    parser.add_argument('--silent', required=False, action='store_true', help="Do not print error message")
     parser.set_defaults(silent=False)
 
     args = parser.parse_args()
