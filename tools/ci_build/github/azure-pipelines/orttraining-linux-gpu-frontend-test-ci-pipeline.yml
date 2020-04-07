@@ -16,9 +16,10 @@ jobs:
     clean: true
     submodules: recursive
   
-  # insert a data preparation step here
   - template: linux-set-variables-and-download.yml
-  
+
+  # insert a python frontend test data preparation step here
+
   - script: >
       tools/ci_build/github/linux/run_dockerbuild.sh
       -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)
@@ -30,3 +31,5 @@ jobs:
       --enable_training_python_frontend_e2e_tests
       "
     displayName: 'Build and run frontend tests'
+
+  - template: templates/clean-agent-build-directory-step.yml
