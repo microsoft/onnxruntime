@@ -24,9 +24,9 @@ void LtIgemmTensor(int m,
                    const CudaKernel* cuda_kernel,
                    cublasLtHandle_t lt_handle) {
   // Create descriptors for the original matrices
-  cublasLtMatrixLayout_t a_desc = NULL;
-  cublasLtMatrixLayout_t b_desc = NULL;
-  cublasLtMatrixLayout_t c_desc = NULL;
+  cublasLtMatrixLayout_t a_desc = nullptr;
+  cublasLtMatrixLayout_t b_desc = nullptr;
+  cublasLtMatrixLayout_t c_desc = nullptr;
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&a_desc, CUDA_R_8I, m, k, lda));
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&b_desc, CUDA_R_8I, n, k, ldb));
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&c_desc, CUDA_R_32I, m, n, ldc));
@@ -37,6 +37,21 @@ void LtIgemmTensor(int m,
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutSetAttribute(a_desc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_order, sizeof(row_order)));
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutSetAttribute(c_desc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_order, sizeof(row_order)));
 
+  // The tensor operations IGEMM kernels require specialized memory order of data.
+  // Matrix A and Matrix C need to be in CUBLASLT_ORDER_COL32 order
+  // And Matric B needs to be in CUBLASLT_ORDER_COL4_4R2_8C order
+
+  cublasLtOrder_t order_COL32 = CUBLASLT_ORDER_COL32;
+  cublasLtOrder_t order_COL4_4R2_8C = CUBLASLT_ORDER_COL4_4R2_8C;
+
+  // For CUBLASLT_ORDER_COL32 order, Data is ordered in column-major ordered tiles of 32 columns.
+  // The leading dimension is the stride (in elements) to the beginning of next group of 32-columns.
+
+  // For CUBLASLT_ORDER_COL4_4R2_8C, Data is ordered in column-major ordered tiles of composite tiles
+  // with total 32 columns and 8 rows.
+  // A tile is composed of interleaved inner tiles of 4 columns within 4 even or odd rows in an alternating pattern.
+  // The leading dimension is the stride (in elements) to the beginning of the first 32 column x 8 row tile
+  // for the next 32-wide group of columns.
   int lda_transform = 32 * m;
   int ldb_transform = 32 * roundoff(n, 8);
   int ldc_transform = 32 * m;
@@ -47,16 +62,13 @@ void LtIgemmTensor(int m,
   IAllocatorUniquePtr<int32_t> c_transform = cuda_kernel->GetScratchBuffer<int32_t>(roundoff(k, 32) / 32 * ldc_transform);
 
   // Create descriptors for the transformed matrices
-  cublasLtMatrixLayout_t a_transform_desc = NULL;
-  cublasLtMatrixLayout_t b_transform_desc = NULL;
-  cublasLtMatrixLayout_t c_transform_desc = NULL;
+  cublasLtMatrixLayout_t a_transform_desc = nullptr;
+  cublasLtMatrixLayout_t b_transform_desc = nullptr;
+  cublasLtMatrixLayout_t c_transform_desc = nullptr;
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&a_transform_desc, CUDA_R_8I, m, k, lda_transform));
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&b_transform_desc, CUDA_R_8I, n, k, ldb_transform));
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutCreate(&c_transform_desc, CUDA_R_32I, m, n, ldc_transform));
 
-  // The tensor operations IGEMM kernels require specialized memory order of data.
-  cublasLtOrder_t order_COL32 = CUBLASLT_ORDER_COL32;
-  cublasLtOrder_t order_COL4_4R2_8C = CUBLASLT_ORDER_COL4_4R2_8C;
   CUBLAS_CALL_THROW(cublasLtMatrixLayoutSetAttribute(a_transform_desc,
                                                      CUBLASLT_MATRIX_LAYOUT_ORDER,
                                                      &order_COL32,
@@ -70,7 +82,7 @@ void LtIgemmTensor(int m,
                                                      &order_COL32,
                                                      sizeof(order_COL32)));
 
-  cublasLtMatrixTransformDesc_t transform_desc = NULL;
+  cublasLtMatrixTransformDesc_t transform_desc = nullptr;
   CUBLAS_CALL_THROW(cublasLtMatrixTransformDescCreate(&transform_desc, CUDA_R_32F));
 
   float alpha_transform = 1.0f;
@@ -81,8 +93,8 @@ void LtIgemmTensor(int m,
                                             a,
                                             a_desc,
                                             &beta_transform,
-                                            NULL,
-                                            NULL,
+                                            nullptr,
+                                            nullptr,
                                             a_transform.get(),
                                             a_transform_desc,
                                             0));
@@ -93,8 +105,8 @@ void LtIgemmTensor(int m,
                                             b,
                                             b_desc,
                                             &beta_transform,
-                                            NULL,
-                                            NULL,
+                                            nullptr,
+                                            nullptr,
                                             b_transform.get(),
                                             b_transform_desc,
                                             0));
@@ -106,15 +118,15 @@ void LtIgemmTensor(int m,
                                               c,
                                               c_desc,
                                               &beta_transform,
-                                              NULL,
-                                              NULL,
+                                              nullptr,
+                                              nullptr,
                                               c_transform.get(),
                                               c_transform_desc,
                                               0));
   }
 
   // Tensor op igemm kernels only support NT gemm
-  cublasLtMatmulDesc_t matmul_desc = NULL;
+  cublasLtMatmulDesc_t matmul_desc = nullptr;
   cublasOperation_t op_trans = CUBLAS_OP_T;
   CUBLAS_CALL_THROW(cublasLtMatmulDescCreate(&matmul_desc, CUDA_R_32I));
   CUBLAS_CALL_THROW(cublasLtMatmulDescSetAttribute(matmul_desc,
@@ -134,8 +146,8 @@ void LtIgemmTensor(int m,
                                    c_transform_desc,
                                    c_transform.get(),
                                    c_transform_desc,
-                                   NULL,
-                                   NULL,
+                                   nullptr,
+                                   nullptr,
                                    0,
                                    0));
 
@@ -145,8 +157,8 @@ void LtIgemmTensor(int m,
                                             c_transform.get(),
                                             c_transform_desc,
                                             &beta_transform,
-                                            NULL,
-                                            NULL,
+                                            nullptr,
+                                            nullptr,
                                             c,
                                             c_desc,
                                             0));

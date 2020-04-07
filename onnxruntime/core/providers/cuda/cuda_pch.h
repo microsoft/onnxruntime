@@ -21,11 +21,11 @@
 typedef void* cublasLtHandle_t;
 
 inline cublasStatus_t cublasLtCreate(cublasLtHandle_t* /*handle*/) {
-  return CUBLAS_STATUS_SUCCESS;
+  return CUBLAS_STATUS_NOT_SUPPORTED;
 }
 
 inline cublasStatus_t cublasLtDestroy(cublasLtHandle_t /*handle*/) {
-  return CUBLAS_STATUS_SUCCESS;
+  return CUBLAS_STATUS_NOT_SUPPORTED;
 }
 #endif
 
