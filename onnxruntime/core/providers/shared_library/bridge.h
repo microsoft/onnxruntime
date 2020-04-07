@@ -45,6 +45,7 @@ struct Prov_AttributeProto_Copyable {
   Prov_AttributeProto_Copyable(const Prov_AttributeProto_Copyable& copy) : p_{copy->Clone()} {}
 
   void operator=(std::unique_ptr<Prov_AttributeProto>&& p) { p_ = std::move(p); }
+  void operator=(const Prov_AttributeProto_Copyable& p) { p_ = p->Clone(); }
 
   Prov_AttributeProto& operator*() const { return *p_.get(); }
   Prov_AttributeProto* operator->() const { return p_.get(); }
@@ -102,16 +103,57 @@ struct Prov_IAllocator {
   virtual void Free(void* p) = 0;
   virtual const Prov_OrtMemoryInfo& Info() const = 0;
 
+  static bool CalcMemSizeForArray(size_t nmemb, size_t size, size_t* out) noexcept {
+    return CalcMemSizeForArrayWithAlignment<0>(nmemb, size, out);
+  }
+
+  template <size_t alignment>
+  static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept ORT_MUST_USE_RESULT;
+
   template <typename T>
   static Prov_IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<Prov_IAllocator> allocator, size_t count_or_bytes) {
-    __debugbreak();
-    allocator;
-    count_or_bytes;
-    return nullptr;
+    if (allocator == nullptr) return nullptr;
+    // for now limit to fundamental types. we could support others, but to do so either we or the caller
+    // needs to call the dtor for the objects, for buffers allocated on device we don't have destructor
+    //static_assert(std::is_fundamental<T>::value, "Fundamental type required as no destructors are called.");
+
+    size_t alloc_size = count_or_bytes;
+
+    // if T is not void, 'count_or_bytes' == number of items so allow for that
+    if (!std::is_void<T>::value) {
+      // sizeof(void) isn't valid, but the compiler isn't smart enough to ignore that this line isn't
+      // reachable if T is void. use std::conditional to 'use' void* in the sizeof call
+      if (!CalcMemSizeForArray(count_or_bytes, sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type),
+                               &alloc_size)) return nullptr;
+    }
+    return IAllocatorUniquePtr<T>{
+        static_cast<T*>(allocator->Alloc(alloc_size)),  // allocate
+        [=](T* ptr) { allocator->Free(ptr); }};         // capture IAllocator so it's always valid, and use as deleter
   }
 
   void operator=(const Prov_IAllocator& v) = delete;
 };
+
+template <size_t alignment>
+bool Prov_IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept {
+  static constexpr size_t max_allowed = (static_cast<size_t>(1) << (static_cast<size_t>(std::numeric_limits<size_t>::digits >> 1))) - alignment;
+  static constexpr size_t max_size = std::numeric_limits<size_t>::max() - alignment;
+  static constexpr size_t alignment_mask = alignment - 1;
+  //Indeed, we only need to check if max_size / nmemb < size
+  //max_allowed is for avoiding unnecessary DIV.
+  if (nmemb >= max_allowed && max_size / nmemb < size) {
+    return false;
+  }
+  if (size >= max_allowed &&
+      nmemb > 0 && max_size / nmemb < size) {
+    return false;
+  }
+  if (alignment == 0)
+    *out = size * nmemb;
+  else
+    *out = (size * nmemb + alignment_mask) & ~static_cast<size_t>(alignment_mask);
+  return true;
+}
 
 struct Prov_IDeviceAllocator : Prov_IAllocator {
   virtual bool AllowsArena() const = 0;
@@ -309,7 +351,7 @@ struct Prov_IndexedSubGraph {
   };
 
   /** Nodes covered by this subgraph. The NodeIndex values are from the parent Graph.*/
-  std::vector<onnxruntime::NodeIndex> nodes;
+  virtual std::vector<onnxruntime::NodeIndex>& Nodes() = 0;
 
   virtual void SetMetaDef(std::unique_ptr<MetaDef>& meta_def_) = 0;
 
@@ -382,11 +424,6 @@ struct Provider {
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
 struct ProviderHost {
-  virtual void* IExecutionProvider_constructor(const std::string& type) = 0;
-  virtual void IExecutionProvider_destructor(void* proxy) = 0;
-
-  virtual void IExecutionProvider_InsertAllocator(Prov_AllocatorPtr allocator) = 0;
-
   virtual Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, int device_id = 0) = 0;
 
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
@@ -415,6 +452,9 @@ struct ProviderHost {
   virtual const TensorShape& Tensor_Shape(const void* _this) = 0;
 
   virtual void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file, const char* function, uint32_t line) = 0;
+
+  virtual bool CPU_HasAVX2() = 0;
+  virtual bool CPU_HasAVX512f() = 0;
 };
 
 }  // namespace onnxruntime

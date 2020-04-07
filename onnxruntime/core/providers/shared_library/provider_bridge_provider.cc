@@ -199,58 +199,41 @@ MLDataType DataTypeImpl::GetTensorType<float>() {
 	MLDataType DataTypeImpl::GetTensorType<std::string>() { return nullptr; }
 #endif
 
-TensorShape::TensorShape() {
-  __debugbreak();
+TensorShape::TensorShape(const int64_t* dimension_sizes, size_t dimension_count)
+    : std::vector<int64_t>(dimension_count) {
+  for (size_t i = 0; i < dimension_count; ++i) {
+    (*this)[i] = dimension_sizes[i];
+  }
 }
 
-TensorShape::TensorShape(const std::vector<int64_t>& dims) {
-  __debugbreak();
-  dims;
-}
-
-TensorShape::TensorShape(const std::initializer_list<int64_t>& dims) {
-  __debugbreak();
-  dims;
-}
-
-TensorShape::TensorShape(const int64_t* dimension_sizes, size_t dimension_count) {
-  __debugbreak();
-  dimension_sizes;
-  dimension_count;
-}
-
-const int64_t& TensorShape::operator[](size_t idx) const {
-  __debugbreak();
-  idx;
-  return *(int64_t*)nullptr;
-}
-
-int64_t& TensorShape::operator[](size_t idx) {
-  __debugbreak();
-  idx;
-
-  return *(int64_t*)nullptr;
-}
-
-const std::vector<int64_t>& TensorShape::GetDims() const {
-  __debugbreak();
-  return *(std::vector<int64_t>*)nullptr;
+TensorShape::TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end) {
+  assign(dims.begin() + start, dims.begin() + end);
 }
 
 int64_t TensorShape::Size() const {
-  __debugbreak();
-  return 0;
+  size_t arraySize = size();
+  int64_t size = SizeHelper(0, arraySize);
+  //should we cache the size? as multiple operation may be expensive.
+  return size;
 }
 
-size_t TensorShape::NumDimensions() const noexcept {
-  __debugbreak();
-  return 0;
+int64_t TensorShape::SizeHelper(size_t start, size_t end) const {
+  // Must return 1 for an empty sequence
+  int64_t size = 1;
+  for (size_t i = start; i < end; i++) {
+    if ((*this)[i] < 0) return -1;
+    size *= (*this)[i];
+  }
+  return size;
+}
+
+TensorShape TensorShape::Slice(size_t dimstart, size_t dimend) const {
+  assert(dimstart <= dimend && dimend <= size());  // "Invalid tensor shape slice argument."
+  return TensorShape(*this, dimstart, dimend);
 }
 
 TensorShape TensorShape::Slice(size_t dimstart) const {
-  __debugbreak();
-  dimstart;
-  return *(TensorShape*)nullptr;
+  return Slice(dimstart, size());
 }
 
 std::string TensorShape::ToString() const {
@@ -275,19 +258,18 @@ Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
   return nullptr;
 }
 
+CPUIDInfo g_info;
+
 const CPUIDInfo& CPUIDInfo::GetCPUIDInfo() {
-  __debugbreak();
-  return *(CPUIDInfo*)nullptr;
+  return g_info;
 }
 
 bool CPUIDInfo::HasAVX2() const {
-  __debugbreak();
-  return false;
+  return g_host->CPU_HasAVX2();
 }
 
 bool CPUIDInfo::HasAVX512f() const {
-  __debugbreak();
-  return false;
+  return g_host->CPU_HasAVX512f();
 }
 
 Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo info, int device_id) {

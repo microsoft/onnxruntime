@@ -182,8 +182,7 @@ void DNNLExecutionProvider::CreateOrUpdateDnnlNode(const Prov_Node* node,
 
     for (auto att_it = attributes.begin(); att_it != attributes.end(); ++att_it) {
       std::string key = op_name + "-" + std::to_string(index) + "-" + att_it->first;
-      std::pair<std::string, std::unique_ptr<ONNX_NAMESPACE::Prov_AttributeProto>> att(key, att_it->second->Clone());
-      subgraph_attributes[key] = att_it->second->Clone();
+      subgraph_attributes[key] = att_it->second;
     }
   }
 }
@@ -403,7 +402,7 @@ void DNNLExecutionProvider::CreateMetaDef(const onnxruntime::Prov_GraphViewer& g
   ap->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
   meta_def->attributes["subgraph_id"] = std::move(ap);
   auto sub_graph = onnxruntime::Prov_IndexedSubGraph::Create();
-  sub_graph->nodes = sub_var.subgraph_node_indexes;
+  sub_graph->Nodes() = sub_var.subgraph_node_indexes;
   sub_graph->SetMetaDef(meta_def);
   result.push_back(onnxruntime::make_unique<Prov_ComputeCapability>(std::move(sub_graph)));
   mkl_subgraphs_.insert(std::make_pair(subgraph_id, subgraph_ptr));

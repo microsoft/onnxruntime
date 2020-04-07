@@ -223,11 +223,8 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
       auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
       auto tensor_shape = ort.GetTensorShape(tensor_info);
       ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
-      auto shape = tensor_shape.data();
-      auto dim = tensor_shape.size();
 
-      TensorShape x_shape(shape, dim);
-      dnnl::memory::dims src_dims(x_shape.GetDims().begin(), x_shape.GetDims().end());
+      dnnl::memory::dims src_dims(tensor_shape);
       AddDimsToKey(dims_str, src_dims);
     }
 

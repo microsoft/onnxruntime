@@ -14,36 +14,9 @@
 #define PROVIDER_BRIDGE_IMPL
 #include "core/providers/shared_library/bridge.h"
 #include "core/common/logging/logging.h"
-//#include "core/common/cpuid_info.h"
-
-#if 0
-
-using namespace google::protobuf::internal;
-
-// To get the address of the private methods, we use the templated friend trick below:
-template <typename PtrType, PtrType Value, typename TagType>
-struct private_access_helper {
-  friend PtrType private_cast(TagType) {
-    return Value;
-  }
-};
-
-// Then we instantiate the templates for the types we're interested in getting members for.
-// Then by calling private_cast(the name of one of the structs{}) it will return a pointer to the private member function
-struct private_cast_1 {};
-template struct private_access_helper<void (RepeatedPtrFieldBase::*)(int), &RepeatedPtrFieldBase::Reserve, private_cast_1>;
-auto private_cast_RepeatedPtrFieldBase_Reserve() { return private_cast(private_cast_1{}); }
-struct private_cast_2 {};
-template struct private_access_helper<onnx::TensorProto* (*)(google::protobuf::Arena*), &google::protobuf::Arena::CreateMaybeMessage<onnx::TensorProto>, private_cast_2>;
-auto private_cast_Arena_CreateMaybeMessage_onnx_TensorProto() { return private_cast(private_cast_2{}); }
-
-#endif
+#include "core/common/cpuid_info.h"
 
 namespace onnxruntime {
-
-struct Proxy_IExecutionProvider : IExecutionProvider {
-  Proxy_IExecutionProvider(const std::string& type) : IExecutionProvider{type} {}
-};
 
 struct Prov_OrtDevice_Impl : Prov_OrtDevice {
   OrtDevice v_;
@@ -271,6 +244,8 @@ struct Prov_IndexedSubGraph_Impl : Prov_IndexedSubGraph {
     p_->SetMetaDef(real);
   }
 
+  std::vector<onnxruntime::NodeIndex>& Nodes() override { return p_->nodes; }
+
   std::unique_ptr<IndexedSubGraph> p_{std::make_unique<IndexedSubGraph>()};
 };
 
@@ -388,10 +363,7 @@ struct Prov_IExecutionProvider_Router_Impl : Prov_IExecutionProvider_Router, IEx
   }
 
   Prov_AllocatorPtr Prov_GetAllocator(int id, OrtMemType mem_type) const override {
-    id;
-    mem_type;
-    __debugbreak();
-    return nullptr;
+    return std::make_shared<Prov_IAllocator_Impl>(IExecutionProvider::GetAllocator(id, mem_type));
   }
 
   void Prov_InsertAllocator(Prov_AllocatorPtr allocator) override {
@@ -403,34 +375,9 @@ struct Prov_IExecutionProvider_Router_Impl : Prov_IExecutionProvider_Router, IEx
 
 struct ProviderHostImpl : ProviderHost {
   ProviderHostImpl() {
-#if 0
-    google_protobuf_internal_RepeatedPtrFieldBase_Reserve = private_cast_RepeatedPtrFieldBase_Reserve();
-    google_protobuf_Arena_CreateMaybeMessage_onnx_TensorProto = private_cast_Arena_CreateMaybeMessage_onnx_TensorProto();
-
-    google_protobuf_internal_GetEmptyStringAlreadyInited = &google::protobuf::internal::GetEmptyStringAlreadyInited;
-#endif
-
     DataTypeImpl_GetType_Tensor = &DataTypeImpl::GetType<Tensor>;
     DataTypeImpl_GetType_float = &DataTypeImpl::GetType<float>;
     DataTypeImpl_GetTensorType_float = &DataTypeImpl::GetTensorType<float>;
-
-#if 0
-    onnx_AttributeProto_CopyFrom = &onnx::AttributeProto::CopyFrom;
-    onnx_TensorProto_CopyFrom = &onnx::TensorProto::CopyFrom;
-
-    onnx_AttributeProto_AttributeType_IsValid = &onnx::AttributeProto_AttributeType_IsValid;
-#endif
-
-    //    CreateAllocator = &onnxruntime::CreateAllocator;
-
-#if 0
-
-    CPUIDInfo_GetCPUIDInfo = &CPUIDInfo::GetCPUIDInfo;
-    KernelDefBuilder_Provider = &KernelDefBuilder::Provider;
-    KernelDefBuilder_SetName = &KernelDefBuilder::SetName;
-    KernelDefBuilder_SetDomain = &KernelDefBuilder::SetDomain;
-    KernelDefBuilder_TypeConstraint = &KernelDefBuilder::TypeConstraint;
-#endif
   }
 
   std::unique_ptr<ONNX_NAMESPACE::Prov_AttributeProto> AttributeProto_Create() override {
@@ -451,17 +398,6 @@ struct ProviderHostImpl : ProviderHost {
 
   std::unique_ptr<Prov_IndexedSubGraph> IndexedSubGraph_Create() override {
     return std::make_unique<Prov_IndexedSubGraph_Impl>();
-  }
-
-  void* IExecutionProvider_constructor(const std::string& type) override {
-    return new Proxy_IExecutionProvider(type);
-  }
-
-  void IExecutionProvider_destructor(void* proxy) override {
-    delete reinterpret_cast<Proxy_IExecutionProvider*>(proxy);
-  }
-
-  void IExecutionProvider_InsertAllocator(Prov_AllocatorPtr allocator) override {
   }
 
   Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, int device_id = 0) override {
@@ -499,19 +435,15 @@ struct ProviderHostImpl : ProviderHost {
     return reinterpret_cast<const Tensor*>(this_)->Shape();
   }
 
+  bool CPU_HasAVX2() override {
+    return CPUIDInfo::GetCPUIDInfo().HasAVX2();
+  }
+
+  bool CPU_HasAVX512f() override {
+    return CPUIDInfo::GetCPUIDInfo().HasAVX512f();
+  }
+
 #if 0
-  void onnx_AttributeProto_constructor(void* _this) override {
-    new (_this) onnx::AttributeProto();
-  }
-
-  void onnx_AttributeProto_copy_constructor(void* _this, void* copy) override {
-    new (_this) onnx::AttributeProto(*reinterpret_cast<const onnx::AttributeProto*>(copy));
-  }
-
-  void onnx_AttributeProto_destructor(void* _this) override {
-    reinterpret_cast<onnx::AttributeProto*>(_this)->AttributeProto::~AttributeProto();
-  }
-
   void onnxruntime_Status_constructor_1(void* _this, const void* category, int code, char const* msg) override {
     new (_this) Status(*reinterpret_cast<const StatusCategory*>(category), code, msg);
   }

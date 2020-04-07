@@ -102,11 +102,9 @@ class DataTypeImpl {
   static MLDataType GetTensorType();
 };
 
-class GraphNodes;
-
-class TensorShape {
+class TensorShape : private std::vector<int64_t> {
  public:
-  TensorShape();
+  TensorShape() = default;
 
 #if 0
   TensorShape(const TensorShape& /*other*/) = default;
@@ -115,31 +113,29 @@ class TensorShape {
   TensorShape(TensorShape&& /*other*/) = default;
   TensorShape& operator=(TensorShape&& /*other*/) = default;
 #endif
-  TensorShape(const std::vector<int64_t>& dims);
-  TensorShape(std::vector<int64_t>&& dims);
-
-  TensorShape(const std::initializer_list<int64_t>& dims);
+  TensorShape(const std::vector<int64_t>& dims) : std::vector<int64_t>{dims} {}
+  TensorShape(std::vector<int64_t>&& dims) : std::vector<int64_t>{dims} {}
+  TensorShape(const std::initializer_list<int64_t>& dims) : std::vector<int64_t>{dims} {}
 
   TensorShape(const int64_t* dimension_sizes, size_t dimension_count);
-#if 0
   TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end);
-#endif
 
-  const int64_t& operator[](size_t idx) const;
-  int64_t& operator[](size_t idx);
+  using std::vector<int64_t>::operator[];
 
 #if 0
   bool operator==(const TensorShape& other) const noexcept;
   bool operator!=(const TensorShape& other) const noexcept;
 #endif
-  size_t NumDimensions() const noexcept;
+  size_t NumDimensions() const noexcept {
+    return size();
+  }
 
 #if 0
 
   void CopyDims(int64_t* dims, size_t num_dims) const;
 #endif
 
-  const std::vector<int64_t>& GetDims() const;
+  const std::vector<int64_t>& GetDims() const { return *this; }
 
   int64_t Size() const;
 
@@ -176,13 +172,13 @@ class TensorShape {
   */
   std::string ToString() const;
 
-#if 0
   /**
      Calculate size between start and end.
      Assumes start and end are between 0 and this->NumDimensions(), inclusive, and that
      start < end.
   */
   int64_t SizeHelper(size_t start, size_t end) const;
+#if 0
 
   /**
      empty shape or 1D shape (1) is regarded as scalar tensor
@@ -191,8 +187,6 @@ class TensorShape {
 
   static const TensorShape& ReinterpretBaseType(const std::vector<int64_t>& dimensions);
 #endif
-
-  void* this_;
 };
 
 class Tensor final {
