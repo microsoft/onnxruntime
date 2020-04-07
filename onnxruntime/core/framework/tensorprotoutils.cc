@@ -534,8 +534,9 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std:
   tensor_proto.set_data_type(tensor.GetElementType());
   if (tensor.IsDataTypeString()) {
     auto* mutable_string_data = tensor_proto.mutable_string_data();
-    auto span = tensor.DataAsSpan<std::string>();
-    for (auto f = span.cbegin(), end = span.cend(); f < end; ++f) {
+    auto f = tensor.Data<std::string>();
+    auto end = f + tensor.Shape().Size();
+    for (; f < end; ++f) {
       *mutable_string_data->Add() = *f;
     }
   } else {
