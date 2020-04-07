@@ -130,7 +130,7 @@ TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
   ASSERT_STATUS_OK(BuildBackPropGraph(ORIGINAL_MODEL_PATH, config, backprop_model_file));
 
   std::shared_ptr<Model> pModel;
-  EXPECT_TRUE(Model::Load(backprop_model_file, pModel, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  ASSERT_STATUS_OK(Model::Load(backprop_model_file, pModel, nullptr, DefaultLoggingManager().DefaultLogger()));
 
   Graph& graph = pModel->MainGraph();
   EXPECT_FALSE(graph.GraphResolveNeeded());
@@ -180,7 +180,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
 
   std::cout << "Loading model file = " << ToMBString(backprop_model_file) << "\n";
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(onnxruntime::Model::Load(backprop_model_file, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  ASSERT_STATUS_OK(onnxruntime::Model::Load(backprop_model_file, p_model, nullptr, DefaultLoggingManager().DefaultLogger()));
 
   const Graph& graph = p_model->MainGraph();
   bool found_encoder = false;
@@ -309,9 +309,9 @@ static void RunBertTrainingWithChecks(
   std::cout << "Loaded " << model_metadata->graph_name << '\n';
 
   CUDAExecutionProviderInfo xp_info;
-  ASSERT_TRUE(training_session->RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)).IsOK());
+  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
 
-  ASSERT_TRUE(training_session->Initialize().IsOK());
+  ASSERT_STATUS_OK(training_session->Initialize());
 
   RunOptions run_options;
   run_options.run_log_verbosity_level = so.session_log_verbosity_level;
@@ -1007,7 +1007,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
 
   // create training sessions
   std::unique_ptr<Environment> env;
-  EXPECT_TRUE(Environment::Create(nullptr, env).IsOK());
+  ASSERT_STATUS_OK(Environment::Create(nullptr, env));
 
   struct SubSession {
     std::unique_ptr<TrainingSession> sess;
@@ -1030,8 +1030,8 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
     sub_sess.run_options.run_tag = sub_sess.so.session_logid;
 
     sub_sess.sess = onnxruntime::make_unique<TrainingSession>(sub_sess.so, *env);
-    EXPECT_TRUE(sub_sess.sess->Load(sub_model_files[sub_id]).IsOK());
-    EXPECT_TRUE(sub_sess.sess->Initialize().IsOK());
+    ASSERT_STATUS_OK(sub_sess.sess->Load(sub_model_files[sub_id]));
+    ASSERT_STATUS_OK(sub_sess.sess->Initialize());
   }
 
   // pipeline inputs for each batch
@@ -1149,7 +1149,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
       default:
         ASSERT_TRUE(false);
     }
-    EXPECT_TRUE(subs[sub_id].sess->Run(subs[sub_id].run_options, input_names, input_values, output_names, &output_values).IsOK());
+    EXPECT_STATUS_OK(subs[sub_id].sess->Run(subs[sub_id].run_options, input_names, input_values, output_names, &output_values));
   };
 
   const std::vector<int64_t> start_ids = {100, 200, 300};
@@ -1202,7 +1202,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   for (int batch = 0; batch < num_batches; ++batch) {
     EXPECT_TRUE(expected_plan[batch].retired_batches == plan[batch].retired_batches);
     EXPECT_TRUE(expected_plan[batch].events.size() == plan[batch].events.size());
-    for (int evt_id = 0; evt_id < expected_plan[batch].events.size(); ++evt_id) {
+    for (size_t evt_id = 0; evt_id < expected_plan[batch].events.size(); ++evt_id) {
       EXPECT_TRUE(expected_plan[batch].events[evt_id] == plan[batch].events[evt_id]);
     }
   }

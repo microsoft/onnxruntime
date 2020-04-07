@@ -17,6 +17,7 @@ GraphAugmenter::GraphDefs MeanSquaredError::operator()(const Graph& graph, const
 
   GraphAugmenter::GraphDefs graph_defs;
 
+  graph_defs.AddGraphInputs({label_name});
   graph_defs.AddGraphOutputs({loss_name});
 
   std::vector<NodeDef> new_nodes;
@@ -29,7 +30,7 @@ GraphAugmenter::GraphDefs MeanSquaredError::operator()(const Graph& graph, const
 
     new_nodes.emplace_back(NodeDef("Sub",  // Op
                                    {
-                                       ArgDef(prediction_name),          // Inputs
+                                       ArgDef(prediction_name),  // Inputs
                                        ArgDef(label_name, label_type_proto),
                                    },
                                    {
@@ -49,11 +50,11 @@ GraphAugmenter::GraphDefs MeanSquaredError::operator()(const Graph& graph, const
 
     new_nodes.emplace_back(NodeDef("Pow",  // Op
                                    {
-                                       ArgDef("MeanSquaredError_diff"),        // Inputs
+                                       ArgDef("MeanSquaredError_diff"),  // Inputs
                                        ArgDef("MeanSquaredError_exponent"),
                                    },
                                    {
-                                       ArgDef("MeanSquaredError_diff_square"), // Outputs
+                                       ArgDef("MeanSquaredError_diff_square"),  // Outputs
                                    },
                                    NodeAttributes(),
                                    "MeanSquaredError_pow"  // name
@@ -63,10 +64,10 @@ GraphAugmenter::GraphDefs MeanSquaredError::operator()(const Graph& graph, const
   {
     new_nodes.emplace_back(NodeDef("ReduceMean",  // Op
                                    {
-                                       ArgDef("MeanSquaredError_diff_square"), // Inputs
+                                       ArgDef("MeanSquaredError_diff_square"),  // Inputs
                                    },
                                    {
-                                       ArgDef(loss_name), // Outputs
+                                       ArgDef(loss_name),  // Outputs
                                    },
                                    {ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(0))},
                                    "MeanSquaredError_reduce_mean"  // name
