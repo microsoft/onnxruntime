@@ -386,7 +386,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
      Note that constant input for Add and Mul could be first or second input: like either A=0.5 or B=0.5 is fine.
     """
 
-    def fuse_gelu_with_elf(self, gelu_op_name):
+    def fuse_gelu_with_elf(self):
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
@@ -451,14 +451,13 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
-            gelu_node = onnx.helper.make_node(gelu_op_name, inputs=[root_node.output[0]], outputs=[mul.output[0]])
+            gelu_node = onnx.helper.make_node('Gelu', inputs=[root_node.output[0]], outputs=[mul.output[0]])
             gelu_node.domain = "com.microsoft"
             nodes_to_add.append(gelu_node)
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
         if len(nodes_to_add) > 0:
-            logger.info("Fused {} count:{}".format('FastGelu (approximation)' if gelu_op_name == 'FastGelu' else 'Gelu',
-                                                   len(nodes_to_add)))
+            logger.info(f"Fused Gelu count:{len(nodes_to_add)}")
         else:
-            super().fuse_gelu_with_elf(gelu_op_name)
+            super().fuse_gelu_with_elf()

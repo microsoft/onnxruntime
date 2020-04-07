@@ -503,10 +503,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
   }
-  if (enable_nuphar) {
-    broken_tests.insert({"cgan", "TVM exception during initialization"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_ignore_index_expanded", "TVM exception during initialization"});
-  }
   if (enable_dnnl) {
     broken_tests.insert({"tf_mobilenet_v2_1.0_224", "result mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});

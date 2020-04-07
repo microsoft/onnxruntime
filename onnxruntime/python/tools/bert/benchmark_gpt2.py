@@ -198,7 +198,6 @@ def main():
     # setup environment variables before importing onnxruntime.
     setup_environment(args.use_openmp)
     import onnxruntime
-
     from onnx import ModelProto
     from OnnxModel import OnnxModel
 
@@ -252,7 +251,6 @@ def main():
         for layer in range(model.config.n_layer):
             logger.info('PyTorch and OnnxRuntime layer {} state (present_{}) are close:'.format(layer, layer),
                         numpy.allclose(ort_outputs[1 + layer], outputs[1][layer].cpu(), rtol=1e-05, atol=1e-04))
-
 
 if __name__ == '__main__':
     main()
