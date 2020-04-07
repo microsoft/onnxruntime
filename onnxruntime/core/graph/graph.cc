@@ -732,16 +732,9 @@ Graph::Graph(const Model& owning_model,
       continue;
     }
 
-    // Copy constant nodes _value to name_to_initial_tensor_
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
-    const AttributeProto& constant_attribute = node.attribute(0);
-    // TODO: Add support for parsing 'sparse_value' attribute from a 'Constant' node
-    // Discussion surrounding handling the SparseTensorProto must be had.
-    // An easy way is to implement a method that converts a SparseTensorproto into a TensorProto
-    // to use the same downstream flow, but that is going to impact peak memory usage and probably a smarter way is required.
-    ORT_ENFORCE(constant_attribute.has_t(), "Only 'value' attribute is supported within a 'Constant' node in ORT");
-    *tensor = constant_attribute.t();
-    *(tensor->mutable_name()) = node.output(0);
+    auto status = utils::ConstantNodeProtoToTensorProto(node, *tensor);
+    ORT_ENFORCE(status.IsOK(), status.ToString());
   }
 
   // Remove constant nodes as they're replaced with initializers above.

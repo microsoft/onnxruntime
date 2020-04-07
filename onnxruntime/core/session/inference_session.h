@@ -20,7 +20,6 @@
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/framework/session_options.h"
-
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
@@ -47,7 +46,7 @@ namespace onnxruntime {
 class IExecutionProvider;  // forward decl
 class IOBinding;
 class CustomRegistry;
-class Notification;
+struct Notification;
 
 namespace logging {
 class LoggingManager;
@@ -68,7 +67,7 @@ struct ModelMetadata {
   std::string graph_name;
   std::string domain;
   std::string description;
-  int64_t version;
+  int64_t version = 0;
   std::unordered_map<std::string, std::string> custom_metadata_map;
 };
 
@@ -373,8 +372,6 @@ class InferenceSession {
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   std::basic_string<ORTCHAR_T> model_location_;
 
-  SessionOptions session_options_;
-
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
 
@@ -429,6 +426,8 @@ class InferenceSession {
 
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
+
+  SessionOptions session_options_;
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_;
 

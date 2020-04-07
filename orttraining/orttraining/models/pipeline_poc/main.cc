@@ -96,9 +96,11 @@ int main(int argc, char* argv[]) {
       0,                                 //session_log_verbosity_level
       5,                                 //max_num_graph_transformation_steps
       TransformerLevel::Level1,          //graph_optimization_level
-      0,                                 //intra_op_num_threads
-      0,                                 //inter_op_num_threads
-      overrides                          //free_dimension_overrides
+      {},                                //intra_op_param
+      {},                                //inter_op_param
+      overrides,                         //free_dimension_overrides
+      true,                              //use_per_session_threads
+      true                               //thread_pool_allow_spinning
   };
 
   InferenceSession session_object{so, *env};

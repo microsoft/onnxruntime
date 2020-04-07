@@ -135,8 +135,7 @@ Status TrainingSession::ConfigureForTraining(
           ? config.loss_function_config.value().loss_function_info
           : optional<LossFunctionInfo>{};
   optional<std::string> loss_scale_input_name =
-      is_mixed_precision_enabled_ ?
-          optional<std::string>{""} : optional<std::string>{};
+      is_mixed_precision_enabled_ ? optional<std::string>{""} : optional<std::string>{};
   ORT_RETURN_IF_ERROR(ConfigureLossFunction(
       config.loss_name, loss_function_info,
       loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
@@ -397,7 +396,7 @@ void TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transfo
                                                 const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
-    auto transformers_to_register = transformer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides, custom_list);
+    auto transformers_to_register = transformer_utils::GenerateTransformers(level, GetSessionOptions().free_dimension_overrides, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }
