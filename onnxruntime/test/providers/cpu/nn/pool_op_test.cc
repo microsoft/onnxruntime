@@ -296,7 +296,13 @@ TEST(PoolTest, MaxPool2D_uint8) {
     21, 22, 23, 24, 25});
 
   test.AddOutput<uint8_t>("Output", output_shape, output);
-  test.Run();
+
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
+  //openvino_2019.3.376/deployment_tools/inference_engine/include/details/ie_exception_conversion.hpp:71 The plugin does not support output U8 precision
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+#else
+  test.Run();	  test.Run();
+#endif
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_1d) {
