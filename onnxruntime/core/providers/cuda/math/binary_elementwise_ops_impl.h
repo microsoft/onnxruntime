@@ -34,18 +34,18 @@ namespace cuda {
 // NOTE that cu files are compiled with nvcc and should not refer to any onnxruntime headers
 // so struct BinaryElementwisePreparation cannot be used here
 
-#define BINARY_ELEMENTWISE_IMPL_DECLARATION(name) \
-  template <typename T>                           \
-  void Impl_##name(                               \
-      int32_t output_rank_or_simple_broadcast,    \
-      const TArray<int64_t>* lhs_padded_strides,  \
-      const T* lhs_data,                          \
-      const TArray<int64_t>* rhs_padded_strides,  \
-      const T* rhs_data,                          \
+#define BINARY_ELEMENTWISE_IMPL_DECLARATION(name)    \
+  template <typename T>                              \
+  void Impl_##name(                                  \
+      int32_t output_rank_or_simple_broadcast,       \
+      const TArray<int64_t>* lhs_padded_strides,     \
+      const T* lhs_data,                             \
+      const TArray<int64_t>* rhs_padded_strides,     \
+      const T* rhs_data,                             \
       const TArray<fast_divmod>* fdm_output_strides, \
-      const fast_divmod& fdm_H,                   \
-      const fast_divmod& fdm_C,                   \
-      T* output_data,                             \
+      const fast_divmod& fdm_H,                      \
+      const fast_divmod& fdm_C,                      \
+      T* output_data,                                \
       size_t count)
 
 #define BINARY_OP_NAME_EXPR(name, expr) BINARY_ELEMENTWISE_IMPL_DECLARATION(name);
