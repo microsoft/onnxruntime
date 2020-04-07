@@ -95,18 +95,29 @@ Status Transpose::DoTranspose(const Transpose& kernel,
   TensorPitches original_input_strides(input_dims);
   TensorPitches original_output_strides(output_dims);
 
-  TArray<int64_t> input_strides(rank);
+  // TArray<int64_t> input_strides(rank);
+  // for (auto i = 0; i < rank; i++) {
+  //   input_strides[i] = original_input_strides[permutations[i]];
+  // }
+
+  // TArray<fast_divmod> output_strides(rank);
+  // for (auto i = 0; i < rank; i++) {
+  //   output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
+  // }
+
+  HipAsyncBuffer<int64_t> input_strides(&kernel, rank);
   for (auto i = 0; i < rank; i++) {
-    input_strides[i] = original_input_strides[permutations[i]];
-  }
-  TArray<fast_divmod> output_strides(rank);
-  for (auto i = 0; i < rank; i++) {
-    output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
+    input_strides.CpuPtr()[i] = original_input_strides[permutations[i]];
   }
 
+  HipAsyncBuffer<fast_divmod> output_strides(&kernel, rank);
+  ORT_ENFORCE(CalculateFdmStrides(output_strides.CpuSpan(), output_dims));
+  ORT_RETURN_IF_ERROR(input_strides.CopyToGpu());
+  ORT_RETURN_IF_ERROR(output_strides.CopyToGpu());
+
   size_t element_size = input.DataType()->Size();
-  auto status = TransposeImpl(element_size, rank, input_strides, input.DataRaw(),
-                              output_strides, output.MutableDataRaw(), output.Shape().Size());
+  auto status = TransposeImpl(element_size, rank, input_strides.GpuPtr(), input.DataRaw(),
+                              output_strides.GpuPtr(), output.MutableDataRaw(), output.Shape().Size());
 
   return status;
 }
