@@ -16,7 +16,7 @@ jobs:
     clean: true
     submodules: recursive
   
-  - template: linux-set-variables-and-download.yml
+  - template: templates/linux-set-variables-and-download.yml
 
   # insert a python frontend test data preparation step here
 
