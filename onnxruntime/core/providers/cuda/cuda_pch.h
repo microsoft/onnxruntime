@@ -17,16 +17,6 @@
 // support of cublasLt starts 10.1
 #if CUDA_VERSION >= 10010
 #include <cublasLt.h>
-#else
-typedef void* cublasLtHandle_t;
-
-inline cublasStatus_t cublasLtCreate(cublasLtHandle_t* /*handle*/) {
-  return CUBLAS_STATUS_NOT_SUPPORTED;
-}
-
-inline cublasStatus_t cublasLtDestroy(cublasLtHandle_t /*handle*/) {
-  return CUBLAS_STATUS_NOT_SUPPORTED;
-}
 #endif
 
 #ifdef USE_NCCL
