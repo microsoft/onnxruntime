@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/tensor/view.h"
+#include "orttraining/training_ops/cuda/optimizer/common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -68,14 +69,26 @@ Status View::ComputeInternal(OpKernelContext* context) const {
   }
 
   const void* X_data = X->DataRaw();
+  MLDataType X_type = X->DataType();
   for (int i = 0; i < view_count; ++i) {
     // Outputs are allowed to be unused.
     Tensor* Y = context->Output(i, y_shapes[i]);
     if (Y != nullptr) {
       if (X_data != Y->MutableDataRaw()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "View output is not sharing the underlaying buffer of input");
+        // View output is not sharing the underlaying buffer of input, copy instead
+        size_t ptr_offset = y_byte_offsets[i] / bytes_per_elem;
+        size_t byte_count = y_shapes[i].Size() * bytes_per_elem;
+        if (X_type == DataTypeImpl::GetType<float>()) {
+          ORT_RETURN_IF_ERROR(CopyDataFromBufferOffset<float>(*X, *Y, ptr_offset, byte_count));
+        } else if (X_type == DataTypeImpl::GetType<double>()) {
+          ORT_RETURN_IF_ERROR(CopyDataFromBufferOffset<double>(*X, *Y, ptr_offset, byte_count));
+        } else if (X_type == DataTypeImpl::GetType<MLFloat16>()) {
+          ORT_RETURN_IF_ERROR(CopyDataFromBufferOffset<MLFloat16>(*X, *Y, ptr_offset, byte_count));
+        }
+        Y->SetByteOffset(0);
+      } else {
+        Y->SetByteOffset(y_byte_offsets[i]);
       }
-      Y->SetByteOffset(y_byte_offsets[i]);
     }
   }
 

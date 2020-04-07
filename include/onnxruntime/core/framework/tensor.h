@@ -193,6 +193,7 @@ class Tensor final {
   /**
    * Get the byte offset with respect to the p_data
    * @warning this is a temporary solution for reusing the buffer bigger than needed.
+   * @warning use with caution - make sure you do boundary check before calling this method (see view.cc)
    */
   inline ptrdiff_t ByteOffset() const {
     return byte_offset_;

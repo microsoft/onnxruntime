@@ -18,5 +18,13 @@ Status CopyIfNotSameBuffer(const Tensor& source_tensor, Tensor& target_tensor) {
   return Status::OK();
 }
 
+template <typename T>
+Status CopyDataFromBufferOffset(const Tensor& source_tensor, Tensor& target_tensor, size_t ptr_offset, size_t count) {
+  const T* source = source_tensor.template Data<T>();
+  T* target = target_tensor.template MutableData<T>();
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source + ptr_offset, count, cudaMemcpyDeviceToDevice));
+  return Status::OK();
+}
+
 }  // namespace cuda
 }  // namespace onnxruntime
