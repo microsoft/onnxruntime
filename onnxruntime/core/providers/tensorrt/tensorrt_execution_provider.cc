@@ -209,7 +209,7 @@ SubGraphCollection_t RemoveEmptyShapeNodes(const onnxruntime::GraphViewer& graph
             if (exclude_node) {
               break;
             }
-		  }	  
+          }	  
         }
       }
 
@@ -326,7 +326,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   meta_def->domain = kMSDomain;
 
   for (const auto& input : inputs) {
-	auto name = input.second->Name();
+	const auto name = input.second->Name();
 	if (!name.empty()){
 	  meta_def->inputs.push_back(name);
 	}
