@@ -18,9 +18,9 @@ namespace {
 
 template <typename T>
 std::vector<uint8_t> GetStream() {
-  using MatrixT = NS::RowMajMatrix<NS::Traits<T>::nullable_type>;
+  using MatrixT = NS::RowMajMatrix<typename NS::Traits<T>::nullable_type>;
   using InputType = std::vector<Eigen::Map<MatrixT>>;
-  NS::Featurizers::ForecastingPivotTransformer<std::tuple<InputType::iterator, InputType::iterator>> transformer;
+  NS::Featurizers::ForecastingPivotTransformer<std::tuple<typename InputType::iterator, typename InputType::iterator>> transformer;
   NS::Archive ar;
   transformer.save(ar);
   return ar.commit();
