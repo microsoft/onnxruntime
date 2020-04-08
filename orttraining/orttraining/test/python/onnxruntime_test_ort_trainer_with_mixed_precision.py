@@ -57,9 +57,9 @@ def generate_sample_batch(desc, batch_size, device):
     sample = generate_sample(desc_, device)
     return sample
 
-def runBertTrainingTest(gradient_accumulation_steps, use_mixed_precision, allreduce_post_accumulation):
+def runBertTrainingTest(gradient_accumulation_steps, use_mixed_precision, allreduce_post_accumulation, use_simple_model_desc=True):
     model_desc = bert_model_description()
-    simple_model_desc = remove_extra_info(model_desc)
+    simple_model_desc = remove_extra_info(model_desc) if use_simple_model_desc else model_desc
     learning_rate_description = ort_trainer_learning_rate_description()
     device = torch.device("cuda", 0)
 
