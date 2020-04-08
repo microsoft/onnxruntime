@@ -155,7 +155,7 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData()
             dim = 1;
           }
         }
-
+        // default allocator doesn't have to be freed by user
         auto allocator = static_cast<OrtAllocator*>(Ort::AllocatorWithDefaultOptions());
         Ort::Value newInput_Tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(), input_node_dim.size(), tensor_info.GetElementType());
         PreLoadTestData(0, i, newInput_Tensor.release());
