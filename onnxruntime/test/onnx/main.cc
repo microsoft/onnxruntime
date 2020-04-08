@@ -536,8 +536,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef OPENVINO_CONFIG_GPU_FP32
     broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
     broken_tests.insert({"div", "will be fixed in the next release"});
+    broken_tests.insert({"maxpool_2d_uint8", "The plugin does not support output U8 precision"});
 #ifdef OPENVINO_CONFIG_GPU_FP16
     broken_tests.insert({"div", "will be fixed in the next release"});
+    broken_tests.insert({"maxpool_2d_uint8", "The plugin does not support output U8 precision"});
 #endif
 #endif
   }
