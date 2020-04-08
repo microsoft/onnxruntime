@@ -400,7 +400,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     static const ORTCHAR_T* dnnl_disabled_tests[] = {ORT_TSTR("test_densenet121"), ORT_TSTR("test_resnet18v2"), ORT_TSTR("test_resnet34v2"), ORT_TSTR("test_resnet50v2"), ORT_TSTR("test_resnet101v2"),
                                                      ORT_TSTR("test_resnet101v2"), ORT_TSTR("test_vgg19"), ORT_TSTR("tf_inception_resnet_v2"), ORT_TSTR("tf_inception_v1"), ORT_TSTR("tf_inception_v3"), ORT_TSTR("tf_inception_v4"), ORT_TSTR("tf_mobilenet_v1_1.0_224"),
                                                      ORT_TSTR("tf_mobilenet_v2_1.0_224"), ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"), ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"),
-                                                     ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152")};
+                                                     ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152"), ORT_TSTR("batchnorm_example_training_mode"), ORT_TSTR("batchnorm_epsilon_training_mode")};
 
     std::unordered_set<std::basic_string<ORTCHAR_T> > all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
     if (enable_cuda) {
@@ -479,7 +479,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "Bad onnx test output. Needs test fix."},
       {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
-      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"},
+      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"}
   };
 
   if (enable_ngraph) {
@@ -503,9 +503,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
   }
-  if (enable_nuphar) {
-    broken_tests.insert({"cgan", "TVM exception during initialization"});
-  }
   if (enable_dnnl) {
     broken_tests.insert({"tf_mobilenet_v2_1.0_224", "result mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});
@@ -519,6 +516,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"maxpool_2d_dilations", "maxpool dilations not supported"});
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "test pass on dev box but fails on CI build"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+    broken_tests.insert({"maxpool_2d_uint8", "Does not work on DNNL, NNAPI"});
   }
 
   if (enable_openvino) {
@@ -528,6 +526,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"scan_sum", "disable temporarily"});
     broken_tests.insert({"scan9_sum", "disable temporarily"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+    broken_tests.insert({"bvlc_alexnet", "disable temporarily"});
+    broken_tests.insert({"bvlc_googlenet", "disable temporarily"});
+    broken_tests.insert({"bvlc_reference_caffenet", "disable temporarily"});
+    broken_tests.insert({"bvlc_reference_rcnn_ilsvrc13", "disable temporarily"});
+    broken_tests.insert({"inception_v1", "disable temporarily"});
+    broken_tests.insert({"squeezenet", "disable temporarily"});
+    broken_tests.insert({"vgg19", "disable temporarily"});
 #ifdef OPENVINO_CONFIG_GPU_FP32
     broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
     broken_tests.insert({"div", "will be fixed in the next release"});
@@ -548,6 +553,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"range_float_type_positive_delta_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"range_int32_type_negative_delta_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+    broken_tests.insert({"maxpool_2d_uint8", "result mismatch"});
+    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NC_expanded", "shape mismatch"});
+    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_expanded", "shape mismatch"});
+    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_mean_expanded", "shape mismatch"});
+    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_sum_expanded", "shape mismatch"});
+    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_expanded", "shape mismatch"});
+    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_mean_expanded", "shape mismatch"});
+    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_expanded", "shape mismatch"});
+    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_ignore_index_expanded", "shape mismatch"});
   }
 
   if (enable_tensorrt) {
@@ -573,6 +587,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
     broken_tests.insert({"tf_inception_v1", "flaky test"});  //TODO: Investigate cause for flakiness
+    broken_tests.insert({"faster_rcnn", "Linux: faster_rcnn:output=6383:shape mismatch, expect {77} got {57}"});
+    broken_tests.insert({"split_zero_size_splits", "alloc failed"});
   }
 
   if (enable_dml) {

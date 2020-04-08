@@ -8,13 +8,10 @@
 
 namespace onnxruntime {
 namespace contrib {
+namespace bias_gelu_helper {
 
-template <typename T>
-class BiasGelu : public OpKernel {
- public:
-  explicit BiasGelu(const OpKernelInfo& info) : OpKernel(info) {}
-  Status Compute(OpKernelContext* context) const override;
-};
+Status CheckInputs(const OpKernelContext* context);
 
+}
 }  // namespace contrib
 }  // namespace onnxruntime

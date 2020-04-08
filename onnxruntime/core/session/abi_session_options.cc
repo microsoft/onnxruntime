@@ -141,12 +141,12 @@ ORT_API_STATUS_IMPL(OrtApis::SetSessionGraphOptimizationLevel, _In_ OrtSessionOp
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SetIntraOpNumThreads, _In_ OrtSessionOptions* options, int intra_op_num_threads) {
-  options->value.intra_op_num_threads = intra_op_num_threads;
+  options->value.intra_op_param.thread_pool_size = intra_op_num_threads;
   return nullptr;
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SetInterOpNumThreads, _In_ OrtSessionOptions* options, int inter_op_num_threads) {
-  options->value.inter_op_num_threads = inter_op_num_threads;
+  options->value.inter_op_param.thread_pool_size = inter_op_num_threads;
   return nullptr;
 }
 
