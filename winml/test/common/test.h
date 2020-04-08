@@ -9,6 +9,9 @@ using SetupTest = VoidTest;
 constexpr bool alwaysTrue() {
     return true;
 }
+constexpr bool alwaysFalse() {
+    return false;
+}
 #define WINML_SUPRESS_UNREACHABLE_BELOW(statement)    \
     if (alwaysTrue()) { statement; }
 

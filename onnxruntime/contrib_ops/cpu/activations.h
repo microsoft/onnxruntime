@@ -46,10 +46,10 @@ class Gelu : public OpKernel {
       int task_count = tp->NumThreads();
       int64_t elem_count = X->Shape().Size();
       if (elem_count > task_count) {
-        tp->ParallelFor(task_count, [input,
+        tp->SimpleParallelFor(task_count, [input,
                                      output,
                                      elem_count,
-                                     task_count](int32_t i) {
+                                     task_count](std::ptrdiff_t i) {
           int64_t elem_inx_start = i * elem_count / task_count;
           int64_t elem_inx_end = (i + 1) * elem_count / task_count;
           for (int64_t elem_inx = elem_inx_start; elem_inx < elem_inx_end; elem_inx++) {
@@ -89,12 +89,12 @@ class FastGelu : public OpKernel {
       int64_t elem_count = X->Shape().Size();
       const auto coefficient = kAlpha * kGamma;
       if (elem_count > task_count) {
-        tp->ParallelFor(task_count, [ input,
+        tp->SimpleParallelFor(static_cast<std::ptrdiff_t>(task_count), [ input,
                                       output,
                                       elem_count,
                                       task_count,
                                       kAlpha = this->kAlpha,
-                                      coefficient ](int32_t i) {
+                                      coefficient ](std::ptrdiff_t i) {
           int64_t elem_inx_start = i * elem_count / task_count;
           int64_t elem_inx_end = (i + 1) * elem_count / task_count;
           for (int64_t elem_inx = elem_inx_start; elem_inx < elem_inx_end; elem_inx++) {

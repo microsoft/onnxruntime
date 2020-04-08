@@ -70,9 +70,8 @@ BENCHMARK(BM_ResolveGraph);
   } while (0);
 
 static void BM_CreateThreadPool(benchmark::State& state) {
-  concurrency::ThreadPool::ThreadEnvironment env;
   for (auto _ : state) {
-    onnxruntime::concurrency::ThreadPool tp(48, true, env);
+    onnxruntime::concurrency::ThreadPool tp(&onnxruntime::Env::Default(), ThreadOptions(), ORT_TSTR(""), 48, true);
   }
 }
 BENCHMARK(BM_CreateThreadPool)->UseRealTime()->Unit(benchmark::TimeUnit::kMillisecond);
