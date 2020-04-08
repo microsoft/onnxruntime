@@ -218,7 +218,7 @@ bool PerformanceRunner::Initialize() {
 
   test_case_.reset(CreateOnnxTestCase(narrow_model_name, test_model_info_, 0.0, 0.0));
 
-  if (!performance_test_config_.run_config.enable_model_input_binding)
+  if (performance_test_config_.run_config.generate_model_input_binding)
   {
     return static_cast<OnnxRuntimeTestSession*>(session_.get())->PopulateGeneratedInputTestData();
   }

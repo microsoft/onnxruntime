@@ -31,7 +31,7 @@ namespace perftest {
       "\t\tProvide 'duration' to run the test for a fix duration, and 'times' to repeated for a certain times. \n"
       "\t-M: Disable memory pattern.\n"
       "\t-A: Disable memory arena\n"
-      "\t-I: Disable input binding (only has 1 iteration)\n"
+      "\t-I: Generate input binding (currently only tensor supported)\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
       "\t-e [cpu|cuda|dnnl|tensorrt|ngraph|openvino|nuphar|dml|acl]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
       "'ngraph', 'openvino', 'nuphar', 'dml' or 'acl'. "
@@ -172,7 +172,7 @@ namespace perftest {
         test_config.run_config.optimized_model_path = optarg;
         break;
       case 'I':
-        test_config.run_config.enable_model_input_binding = false;
+        test_config.run_config.generate_model_input_binding = true;
         break;
       case '?':
       case 'h':
