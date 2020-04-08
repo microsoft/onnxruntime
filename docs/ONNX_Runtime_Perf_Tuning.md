@@ -124,6 +124,7 @@ In both cases, you will get a JSON file which contains the detailed performance 
 * Load the generated JSON file
 
 
+
 ## Model graph is not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?
 
 ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may fail some of the graph optimizations, like const folding, operator fusion and etc. Move initializers out of graph inputs if there is no need to override them, by either re-generating the model with latest exporter/converter or with the tool onnxruntime/tools/python/remove_initializer_from_input.py.
