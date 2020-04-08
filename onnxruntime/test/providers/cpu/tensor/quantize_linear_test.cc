@@ -75,10 +75,8 @@ TEST(QuantizeLinearOpTest, QuantizeLinear_int8_NegativeZeroPoint) {
   test.AddInput<float>("x", dims, {0, 2, 3, 5, 6, -2, -5, -6});
   test.AddInput<float>("y_scale", {}, {.039215686f});
   test.AddInput<int8_t>("y_zero_point", {}, {-23});
-  test.AddOutput<int8_t>("y", dims, {-23, 28, 53, 104, 127, -74, -127, -127});
-  // TODO: nGraph returns a range of [-128,127] but the default CPU provider
-  // returns a range of [-127,127]. Resolve this difference in behavior later.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",  {kNGraphExecutionProvider});
+  test.AddOutput<int8_t>("y", dims, {-23, 28, 53, 104, 127, -74, -128, -128});
+  test.Run();
 }
 
 // quantize with scalar zero point and scale
@@ -88,10 +86,8 @@ TEST(QuantizeLinearOpTest, QuantizeLinear_int8_PositiveZeroPoint) {
   test.AddInput<float>("x", dims, {0, 2, 3, 5, 6, -2, -5, -6});
   test.AddInput<float>("y_scale", {}, {.039215686f});
   test.AddInput<int8_t>("y_zero_point", {}, {23});
-  test.AddOutput<int8_t>("y", dims, {23, 74, 99, 127, 127, -28, -104, -127});
-  // TODO: nGraph returns a range of [-128,127] but the default CPU provider
-  // returns a range of [-127,127]. Resolve this difference in behavior later.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",  {kNGraphExecutionProvider});
+  test.AddOutput<int8_t>("y", dims, {23, 74, 99, 127, 127, -28, -104, -128});
+  test.Run();
 }
 
 // quantize with 2D data

@@ -44,6 +44,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().CublasHandle();
   }
 
+#if CUDA_VERSION >= 10010
+  cublasLtHandle_t PerThreadCublasLtHandle() {
+    return GetPerThreadContext().CublasLtHandle();
+  }
+#endif
+
   cudnnHandle_t PerThreadCudnnHandle() {
     return GetPerThreadContext().CudnnHandle();
   }
@@ -95,6 +101,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
       return cublas_handle_;
     }
 
+#if CUDA_VERSION >= 10010
+    cublasLtHandle_t CublasLtHandle() const {
+      return cublasLt_handle_;
+    }
+#endif
+
     cudnnHandle_t CudnnHandle() const {
       return cudnn_handle_;
     }
@@ -135,6 +147,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
    private:
     cublasHandle_t cublas_handle_ = nullptr;
+#if CUDA_VERSION >= 10010
+    cublasLtHandle_t cublasLt_handle_ = nullptr;
+#endif
     cudnnHandle_t cudnn_handle_ = nullptr;
     curandGenerator_t curand_generator_ = nullptr;
 
