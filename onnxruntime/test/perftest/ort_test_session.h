@@ -25,9 +25,15 @@ class OnnxRuntimeTestSession : public TestSession {
     test_inputs_[test_data_id][input_id] = Ort::Value{value};
   }
 
+  bool PopulateGeneratedInputTestData();
+
   ~OnnxRuntimeTestSession() override {
     for (char* p : input_names_) {
       free(p);
+    }
+    for (void* generated_input_buffer : generated_input_buffers_)
+    {
+      free(generated_input_buffer);
     }
   }
   std::chrono::duration<double> Run() override;
@@ -44,6 +50,7 @@ class OnnxRuntimeTestSession : public TestSession {
   // TODO: implement a customized allocator, then we can remove output_names_ to simplify this code
   std::vector<const char*> output_names_raw_ptr;
   std::vector<char*> input_names_;
+  std::vector<void*> generated_input_buffers_;
   const int input_length_;
 };
 

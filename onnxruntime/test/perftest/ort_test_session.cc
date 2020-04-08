@@ -136,5 +136,68 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   }
 }
 
+bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData()
+{
+  size_t num_input_nodes;
+  num_input_nodes = session_.GetInputCount();
+
+  // iterate over all input nodes
+  for (size_t i = 0; i < num_input_nodes; i++) {
+    Ort::TypeInfo typeInfo = session_.GetInputTypeInfo(i);
+    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    if (typeInfo.GetONNXType() == ONNX_TYPE_TENSOR) {
+        auto tensorInfo = typeInfo.GetTensorTypeAndShapeInfo();
+        std::vector<int64_t> input_node_dim = tensorInfo.GetShape();
+        int64_t input_tensor_size = 1;
+        for (auto dim : input_node_dim)
+        {
+          input_tensor_size *= dim;
+        }
+        size_t byteCount = input_tensor_size;
+        switch (tensorInfo.GetElementType())
+        {
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+            byteCount *= sizeof(float);
+            break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+            byteCount *= sizeof(uint8_t);
+            break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+            byteCount *= sizeof(int8_t);
+            break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
+            byteCount *= sizeof(uint16_t);
+            break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
+            byteCount *= sizeof(int16_t);
+            break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+            byteCount *= sizeof(int32_t);
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+            byteCount *= sizeof(int64_t);
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+            byteCount *= sizeof(bool);
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+            byteCount *= sizeof(double);
+            break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
+            byteCount *= sizeof(uint32_t);
+            break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
+            byteCount *= sizeof(uint64_t);
+            break;
+          default:
+            printf("Generation of input for this element type not implemented.");
+            return false;
+        }
+        void* input_tensor_values = malloc(byteCount);
+        generated_input_buffers_.push_back(input_tensor_values);
+        Ort::Value input_tensor = Ort::Value::CreateTensor(memory_info, input_tensor_values, byteCount, input_node_dim.data(), input_node_dim.size(), tensorInfo.GetElementType());
+        PreLoadTestData(0, i, input_tensor.release());
+    }
+  }
+  return true;
+}
+
 }  // namespace perftest
 }  // namespace onnxruntime
