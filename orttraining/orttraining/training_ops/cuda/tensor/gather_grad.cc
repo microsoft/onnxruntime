@@ -11,8 +11,8 @@ namespace cuda {
 
 ONNX_OPERATOR_KERNEL_EX(
     GatherGrad,
-    kOnnxDomain,
-    9,
+    kMSDomain,
+    1,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .InputMemoryType<OrtMemTypeCPUInput>(0)

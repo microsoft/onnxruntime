@@ -786,17 +786,11 @@ class Graph {
   void SetNodeArgType(NodeArg& arg, const onnx::TypeProto& type_proto);
 
   const Node* GetProducerNode(const std::string& node_arg_name) const {
-    auto iter = node_arg_to_producer_node_.find(node_arg_name);
-
-    if (iter != node_arg_to_producer_node_.end()) {
-      auto node_index = iter->second;
-      return GetNode(node_index);
-    }
-    return nullptr;
+    return GetProducerNodeImpl(*this, node_arg_name);
   }
 
   Node* GetMutableProducerNode(const std::string& node_arg_name) {
-    return const_cast<Node*>(GetProducerNode(node_arg_name));
+    return GetProducerNodeImpl(*this, node_arg_name);
   }
 
   void UpdateProducerNode(const std::string& node_arg_name, NodeIndex node_index) {
@@ -810,25 +804,11 @@ class Graph {
   }
 
   std::vector<const Node*> GetConsumerNodes(const std::string& node_arg_name) const {
-    std::vector<const Node*> results;
-    auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
-    if (iter != node_arg_to_consumer_nodes_.end()) {
-      for (auto node_index : iter->second) {
-        results.push_back(GetNode(node_index));
-      }
-    }
-    return results;
+    return GetConsumerNodesImpl(*this, node_arg_name);
   }
 
   std::vector<Node*> GetMutableConsumerNodes(const std::string& node_arg_name) {
-    std::vector<Node*> results;
-    auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
-    if (iter != node_arg_to_consumer_nodes_.end()) {
-      for (auto node_index : iter->second) {
-        results.push_back(GetNode(node_index));
-      }
-    }
-    return results;
+    return GetConsumerNodesImpl(*this, node_arg_name);
   }
 
   void UpdateConsumerNodes(const std::string& node_arg_name, const std::vector<Node*>& nodes) {
@@ -1043,6 +1023,33 @@ class Graph {
   void AddFunction(const ONNX_NAMESPACE::FunctionProto* func_proto);
 
   void ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const;
+
+  template <typename TInstance>
+  static auto GetProducerNodeImpl(
+      TInstance& instance, const std::string& node_arg_name)
+      -> decltype(instance.GetNode(0)) {
+    auto iter = instance.node_arg_to_producer_node_.find(node_arg_name);
+    if (iter != instance.node_arg_to_producer_node_.end()) {
+      auto node_index = iter->second;
+      return instance.GetNode(node_index);
+    }
+    return nullptr;
+  }
+
+  template <typename TInstance>
+  static auto GetConsumerNodesImpl(
+      TInstance& instance, const std::string& node_arg_name)
+      -> std::vector<decltype(instance.GetNode(0))> {
+    std::vector<decltype(instance.GetNode(0))> results;
+    auto iter = instance.node_arg_to_consumer_nodes_.find(node_arg_name);
+    if (iter != instance.node_arg_to_consumer_nodes_.end()) {
+      results.reserve(iter->second.size());
+      for (auto node_index : iter->second) {
+        results.push_back(instance.GetNode(node_index));
+      }
+    }
+    return results;
+  }
 
   const Model& owning_model_;
 

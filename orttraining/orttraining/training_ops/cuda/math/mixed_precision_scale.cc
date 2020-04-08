@@ -8,16 +8,16 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_MIXEDPRECISIONSCALE_KERNEL_TYPED(SrcT)                         \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      MixedPrecisionScale,                                                      \
-      kOnnxDomain,                                                              \
-      9,                                                                        \
-      SrcT,                                                                     \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder()                                                        \
-          .TypeConstraint("SrcT", DataTypeImpl::GetTensorType<SrcT>())          \
-          .TypeConstraint("ScaleT", DataTypeImpl::GetTensorType<float>())       \
+#define REGISTER_MIXEDPRECISIONSCALE_KERNEL_TYPED(SrcT)                     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
+      MixedPrecisionScale,                                                  \
+      kMSDomain,                                                            \
+      1,                                                                    \
+      SrcT,                                                                 \
+      kCudaExecutionProvider,                                               \
+      KernelDefBuilder()                                                    \
+          .TypeConstraint("SrcT", DataTypeImpl::GetTensorType<SrcT>())      \
+          .TypeConstraint("ScaleT", DataTypeImpl::GetTensorType<float>())   \
           .TypeConstraint("DstT", DataTypeImpl::AllIEEEFloatTensorTypes()), \
       MixedPrecisionScale<SrcT>);
 

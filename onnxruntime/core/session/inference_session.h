@@ -20,7 +20,6 @@
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/framework/session_options.h"
-
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
@@ -47,7 +46,7 @@ namespace onnxruntime {
 class IExecutionProvider;  // forward decl
 class IOBinding;
 class CustomRegistry;
-class Notification;
+struct Notification;
 
 namespace logging {
 class LoggingManager;
@@ -68,7 +67,7 @@ struct ModelMetadata {
   std::string graph_name;
   std::string domain;
   std::string description;
-  int64_t version;
+  int64_t version = 0;
   std::unordered_map<std::string, std::string> custom_metadata_map;
 };
 

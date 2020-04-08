@@ -14,7 +14,8 @@ from typing import Any, Tuple
 #from . import expect
 
 DebugOutput = True
-np.set_printoptions(suppress=True) #, precision=16, floatmode='maxprec')
+np.set_printoptions(suppress=True)  #, precision=16, floatmode='maxprec')
+
 
 def print_with_shape(name, a, force_output=False):
     if (force_output or DebugOutput):
@@ -29,6 +30,7 @@ def print_results(Y, Y_h, Y_c):
     print("---------")
     print_with_shape("Y_c", Y_c, True)
     print("*************************")
+
 
 class LSTM_Helper():
 
@@ -47,10 +49,14 @@ class LSTM_Helper():
         batch_size = X.shape[1]
         hidden_size = R.shape[-1]
 
-        B = params['B'] if 'B' in params else np.zeros(num_directions * 8 * hidden_size).reshape(num_directions, 8 * hidden_size)
-        P = params['P'] if 'P' in params else np.zeros(num_directions * 3 * hidden_size).reshape(num_directions, 3 * hidden_size)
-        h_0 = params['initial_h'] if 'initial_h' in params else np.zeros((num_directions, batch_size, hidden_size)).reshape(num_directions, batch_size, hidden_size)
-        c_0 = params['initial_c'] if 'initial_c' in params else np.zeros((num_directions, batch_size, hidden_size)).reshape(num_directions, batch_size, hidden_size)
+        B = params['B'] if 'B' in params else np.zeros(num_directions * 8 *
+                                                       hidden_size).reshape(num_directions, 8 * hidden_size)
+        P = params['P'] if 'P' in params else np.zeros(num_directions * 3 *
+                                                       hidden_size).reshape(num_directions, 3 * hidden_size)
+        h_0 = params['initial_h'] if 'initial_h' in params else np.zeros(
+            (num_directions, batch_size, hidden_size)).reshape(num_directions, batch_size, hidden_size)
+        c_0 = params['initial_c'] if 'initial_c' in params else np.zeros(
+            (num_directions, batch_size, hidden_size)).reshape(num_directions, batch_size, hidden_size)
 
         f = params['f'] if 'f' in params else ActivationFuncs.sigmoid
         g = params['g'] if 'g' in params else ActivationFuncs.tanh
@@ -116,7 +122,9 @@ class LSTM_Helper():
 
         return output, Y_h, Y_c
 
+
 class ActivationFuncs:
+
     @staticmethod
     def sigmoid(x):
         return 1 / (1 + np.exp(-x))
@@ -125,11 +133,22 @@ class ActivationFuncs:
     def tanh(x):
         return np.tanh(x)
 
+
 class OneDirectionLSTM:
 
-    def __init__(self, X, W, R, B, P, initial_h, initial_c,
-                 f = ActivationFuncs.sigmoid, g = ActivationFuncs.tanh, h = ActivationFuncs.tanh,
-                 input_forget = False, clip = 9999.0):
+    def __init__(self,
+                 X,
+                 W,
+                 R,
+                 B,
+                 P,
+                 initial_h,
+                 initial_c,
+                 f=ActivationFuncs.sigmoid,
+                 g=ActivationFuncs.tanh,
+                 h=ActivationFuncs.tanh,
+                 input_forget=False,
+                 clip=9999.0):
 
         self.X = X
         # remove num_directions axis for W, R, B, P, H_0, C_0
@@ -222,20 +241,17 @@ class LSTM:  # Base):
         hidden_size = 3
         number_of_gates = 4
 
-        input = np.array([[[1.], [2.]],
-                          [[10.], [11.]]]).astype(np.float32)
+        input = np.array([[[1.], [2.]], [[10.], [11.]]]).astype(np.float32)
 
-        W = np.array([0.1, 0.2, 0.3, 0.4,
-                      1, 2, 3, 4,
-                      10, 11, 12, 13]).astype(np.float32).reshape(1, number_of_gates * hidden_size, input_size)
+        W = np.array([0.1, 0.2, 0.3, 0.4, 1, 2, 3, 4, 10, 11, 12,
+                      13]).astype(np.float32).reshape(1, number_of_gates * hidden_size, input_size)
 
         weight_scale = 0.1
         R = weight_scale * np.ones((1, number_of_gates * hidden_size, hidden_size)).astype(np.float32)
 
-
         if (direction == 'bidirectional'):
-            W = W=np.tile(W, (2, 1)).reshape(2, number_of_gates * hidden_size, input_size)
-            R = R=np.tile(R, (2, 1)).reshape(2, number_of_gates * hidden_size, hidden_size)
+            W = W = np.tile(W, (2, 1)).reshape(2, number_of_gates * hidden_size, input_size)
+            R = R = np.tile(R, (2, 1)).reshape(2, number_of_gates * hidden_size, hidden_size)
 
         lstm = LSTM_Helper(X=input, W=W, R=R, direction=direction)
 
@@ -255,11 +271,11 @@ class LSTM:  # Base):
         number_of_gates = 4
 
         # sequentialvalues from 1 to 32
-        input = np.array(range(1,seq_length * batch_size + 1, 1)).astype(np.float32).reshape(seq_length, batch_size, input_size)
+        input = np.array(range(1, seq_length * batch_size + 1,
+                               1)).astype(np.float32).reshape(seq_length, batch_size, input_size)
 
-        W = np.array([0.1, 0.2, 0.3, 0.4,
-                      1, 2, 3, 4,
-                      10, 11, 12, 13]).astype(np.float32).reshape(1, number_of_gates * hidden_size, input_size)
+        W = np.array([0.1, 0.2, 0.3, 0.4, 1, 2, 3, 4, 10, 11, 12,
+                      13]).astype(np.float32).reshape(1, number_of_gates * hidden_size, input_size)
 
         weight_scale = 0.1
         R = weight_scale * np.ones((1, number_of_gates * hidden_size, hidden_size)).astype(np.float32)
@@ -281,8 +297,8 @@ class LSTM:  # Base):
 
         input = np.array([1, 2]).astype(np.float32).reshape(seq_length, batch_size, input_size)
 
-        W = np.array([0.1, 0.2, 0.3, 0.4,
-                      1, 2, 3, 4]).astype(np.float32).reshape(1, number_of_gates * hidden_size, input_size)
+        W = np.array([0.1, 0.2, 0.3, 0.4, 1, 2, 3, 4]).astype(np.float32).reshape(1, number_of_gates * hidden_size,
+                                                                                  input_size)
 
         weight_scale = 0.1
         R = weight_scale * np.ones((1, number_of_gates * hidden_size, hidden_size)).astype(np.float32)
@@ -291,7 +307,6 @@ class LSTM:  # Base):
 
         Y, Y_h, Y_c = lstm.run()
         print_results(Y, Y_h, Y_c)
-
 
     @staticmethod
     def export_initial_bias():  # type: () -> None
@@ -358,6 +373,7 @@ class LSTM:  # Base):
         # expect(node, inputs=[input, W, R, B, seq_lens, init_h, init_c, P], outputs=[Y_h.astype(np.float32)],
         #        name='test_lstm_with_peepholes')
 
+
 class ONNXRuntimeTestContext:
 
     hidden_size = 2
@@ -371,48 +387,39 @@ class ONNXRuntimeTestContext:
         input_size = ONNXRuntimeTestContext.input_size
 
         W = np.array([
-            -0.494659, 0.0453352,
-            -0.487793, 0.417264,
-
-            -0.0175329, 0.489074,
-            -0.446013, 0.414029,
-
-            -0.0091708, -0.255364,
-            -0.106952, -0.266717,
-
-            -0.0888852, -0.428709,
-            -0.283349, 0.208792]).reshape(num_directions, 4 * hidden_size, input_size).astype(np.float32)
+            -0.494659, 0.0453352, -0.487793, 0.417264, -0.0175329, 0.489074, -0.446013, 0.414029, -0.0091708, -0.255364,
+            -0.106952, -0.266717, -0.0888852, -0.428709, -0.283349, 0.208792
+        ]).reshape(num_directions, 4 * hidden_size, input_size).astype(np.float32)
 
         R = np.array([
-            0.146626, -0.0620289,
-            -0.0815302, 0.100482,
+            0.146626, -0.0620289, -0.0815302, 0.100482, -0.219535, -0.306635, -0.28515, -0.314112, -0.228172, 0.405972,
+            0.31576, 0.281487, -0.394864, 0.42111, -0.386624, -0.390225
+        ]).reshape(num_directions, 4 * hidden_size, hidden_size).astype(np.float32)
 
-            -0.219535, -0.306635,
-            -0.28515, -0.314112,
-
-            -0.228172, 0.405972,
-            0.31576, 0.281487,
-
-            -0.394864, 0.42111,
-            -0.386624, -0.390225]).reshape(num_directions, 4 * hidden_size, hidden_size).astype(np.float32)
-
-        P = np.array([
-            0.2345, 0.5235,
-            0.4378, 0.3475,
-            0.8927, 0.3456]).reshape(num_directions, 3 * hidden_size).astype(np.float32)
+        P = np.array([0.2345, 0.5235, 0.4378, 0.3475, 0.8927, 0.3456]).reshape(num_directions,
+                                                                               3 * hidden_size).astype(np.float32)
 
         # // [8*hidden]
         B = np.array([
-            0.381619, 0.0323954,
-            -0.14449, 0.420804,
-            -0.258721, 0.45056,
-            -0.250755, 0.0967895,
+            0.381619,
+            0.0323954,
+            -0.14449,
+            0.420804,
+            -0.258721,
+            0.45056,
+            -0.250755,
+            0.0967895,
 
             # peephole bias
-            0.0, 0.0,
-            0.0, 0.0,
-            0.0, 0.0,
-            0.0, 0.0]).reshape(num_directions, 8 * hidden_size).astype(np.float32)
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+        ]).reshape(num_directions, 8 * hidden_size).astype(np.float32)
 
         return W, R, B, P
 
@@ -426,8 +433,8 @@ class ONNXRuntimeTestContext:
 
         W = np.tile(W1, (2, 1)).reshape(2, 4 * hidden_size, input_size)
         R = np.tile(R1, (2, 1)).reshape(2, 4 * hidden_size, hidden_size)
-        B = np.tile(B1, (2,1))
-        P = np.tile(P1, (2,1))
+        B = np.tile(B1, (2, 1))
+        P = np.tile(P1, (2, 1))
 
         return W, R, B, P
 
@@ -442,6 +449,7 @@ class ONNXRuntimeTestContext:
                   .astype(np.float32)
 
         return input
+
 
 class ONNXRuntimeUnitTests:
 
@@ -460,7 +468,7 @@ class ONNXRuntimeUnitTests:
         print(ONNXRuntimeUnitTests.ONNXRuntime_TestLSTMForwardNoBiasUsePeepholes.__name__)
         input = ONNXRuntimeTestContext.DefaultInput()
         W, R, B, P = ONNXRuntimeTestContext.OneDirectionWeights()
-        lstm = LSTM_Helper(X=input, W=W, R=R, P=P) # no bias
+        lstm = LSTM_Helper(X=input, W=W, R=R, P=P)  # no bias
         Y, Y_h, Y_c = lstm.run()
         print_results(Y, Y_h, Y_c)
 
@@ -500,7 +508,7 @@ class ONNXRuntimeUnitTests:
 
         input = ONNXRuntimeTestContext.DefaultInput()
         W, R, B, P = ONNXRuntimeTestContext.OneDirectionWeights()
-        initial_h = np.array([0.34, 0.72]).reshape(1,1,2).astype(np.float32)
+        initial_h = np.array([0.34, 0.72]).reshape(1, 1, 2).astype(np.float32)
         lstm = LSTM_Helper(X=input, W=W, R=R, B=B, initial_h=initial_h)
         Y, Y_h, Y_c = lstm.run()
         print_results(Y, Y_h, Y_c)
@@ -511,8 +519,8 @@ class ONNXRuntimeUnitTests:
 
         input = ONNXRuntimeTestContext.DefaultInput()
         W, R, B, P = ONNXRuntimeTestContext.OneDirectionWeights()
-        initial_h = np.array([0.34, 0.72]).reshape(1,1,2).astype(np.float32)
-        initial_c = np.array([0.63, 0.21]).reshape(1,1,2).astype(np.float32)
+        initial_h = np.array([0.34, 0.72]).reshape(1, 1, 2).astype(np.float32)
+        initial_c = np.array([0.63, 0.21]).reshape(1, 1, 2).astype(np.float32)
         lstm = LSTM_Helper(X=input, W=W, R=R, B=B, initial_h=initial_h, initial_c=initial_c)
         Y, Y_h, Y_c = lstm.run()
         print_results(Y, Y_h, Y_c)
@@ -524,8 +532,13 @@ class ONNXRuntimeUnitTests:
 
         input = ONNXRuntimeTestContext.DefaultInput()
         W, R, B, P = ONNXRuntimeTestContext.OneDirectionWeights()
-        lstm = LSTM_Helper(X=input, W=W, R=R, B=B,
-                           f=ActivationFuncs.tanh, g=ActivationFuncs.sigmoid, h=ActivationFuncs.tanh)
+        lstm = LSTM_Helper(X=input,
+                           W=W,
+                           R=R,
+                           B=B,
+                           f=ActivationFuncs.tanh,
+                           g=ActivationFuncs.sigmoid,
+                           h=ActivationFuncs.tanh)
         Y, Y_h, Y_c = lstm.run()
         print_results(Y, Y_h, Y_c)
 
@@ -539,24 +552,31 @@ class ONNXRuntimeUnitTests:
 
         input = ONNXRuntimeTestContext.DefaultInput()
         W, R, B, P = ONNXRuntimeTestContext.OneDirectionWeights()
-        lstm = LSTM_Helper(X=input, W=W, R=R, B=B,
-                           f=ActivationFuncs.tanh, g=ActivationFuncs.sigmoid, h=ActivationFuncs.tanh)
+        lstm = LSTM_Helper(X=input,
+                           W=W,
+                           R=R,
+                           B=B,
+                           f=ActivationFuncs.tanh,
+                           g=ActivationFuncs.sigmoid,
+                           h=ActivationFuncs.tanh)
         Y, Y_h, Y_c = lstm.run()
         print_results(Y, Y_h, Y_c)
-        print ("===============")
+        print("===============")
 
         batch_size = 3
-        input = np.array([-0.455351, -0.476391,
-                          -0.555351, -0.376391,
-                          -0.655351, -0.276391,
-
-                          -0.185934, -0.869585,
-                          -0.285934, -0.769585,
-                          -0.385934, -0.669585]).reshape(seq_length, batch_size, input_size).astype(np.float32)
+        input = np.array([
+            -0.455351, -0.476391, -0.555351, -0.376391, -0.655351, -0.276391, -0.185934, -0.869585, -0.285934,
+            -0.769585, -0.385934, -0.669585
+        ]).reshape(seq_length, batch_size, input_size).astype(np.float32)
 
         W, R, B, P = ONNXRuntimeTestContext.OneDirectionWeights()
-        lstm = LSTM_Helper(X=input, W=W, R=R, B=B,
-                           f=ActivationFuncs.tanh, g=ActivationFuncs.sigmoid, h=ActivationFuncs.tanh)
+        lstm = LSTM_Helper(X=input,
+                           W=W,
+                           R=R,
+                           B=B,
+                           f=ActivationFuncs.tanh,
+                           g=ActivationFuncs.sigmoid,
+                           h=ActivationFuncs.tanh)
         Y, Y_h, Y_c = lstm.run()
         print_results(Y, Y_h, Y_c)
 
@@ -570,28 +590,36 @@ class ONNXRuntimeUnitTests:
 
         input = ONNXRuntimeTestContext.DefaultInput()
         W, R, B, P = ONNXRuntimeTestContext.BidirectionalWeights()
-        lstm = LSTM_Helper(X=input, W=W, R=R, B=B, direction='bidirectional',
-                           f=ActivationFuncs.tanh, g=ActivationFuncs.sigmoid, h=ActivationFuncs.tanh)
+        lstm = LSTM_Helper(X=input,
+                           W=W,
+                           R=R,
+                           B=B,
+                           direction='bidirectional',
+                           f=ActivationFuncs.tanh,
+                           g=ActivationFuncs.sigmoid,
+                           h=ActivationFuncs.tanh)
         Y, Y_h, Y_c = lstm.run()
         print_results(Y, Y_h, Y_c)
 
-        print ("===============")
+        print("===============")
 
         batch_size = 3
-        input = np.array([-0.455351, -0.776391,
-                          -0.355351, -0.576391,
-                          -0.255351, -0.376391,
-
-                          -0.185934, -0.169585,
-                          -0.285934, -0.469585,
-                          -0.385934, -0.669585]).reshape(seq_length, batch_size, input_size).astype(np.float32)
+        input = np.array([
+            -0.455351, -0.776391, -0.355351, -0.576391, -0.255351, -0.376391, -0.185934, -0.169585, -0.285934,
+            -0.469585, -0.385934, -0.669585
+        ]).reshape(seq_length, batch_size, input_size).astype(np.float32)
 
         W, R, B, P = ONNXRuntimeTestContext.BidirectionalWeights()
-        lstm = LSTM_Helper(X=input, W=W, R=R, B=B, direction='bidirectional',
-                           f=ActivationFuncs.tanh, g=ActivationFuncs.sigmoid, h=ActivationFuncs.tanh)
+        lstm = LSTM_Helper(X=input,
+                           W=W,
+                           R=R,
+                           B=B,
+                           direction='bidirectional',
+                           f=ActivationFuncs.tanh,
+                           g=ActivationFuncs.sigmoid,
+                           h=ActivationFuncs.tanh)
         Y, Y_h, Y_c = lstm.run()
         print_results(Y, Y_h, Y_c)
-
 
 
 DebugOutput = False

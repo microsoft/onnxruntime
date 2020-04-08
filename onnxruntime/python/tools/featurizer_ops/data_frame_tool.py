@@ -18,26 +18,26 @@ pd_int_set = set(['int64'])
 
 types_dict = {
     'tensor(float16)': np.float16,
-    'tensor(float)'  : np.float32,
-    'tensor(double)' : np.float64,
-
-    'tensor(int8)'   : np.int8,
-    'tensor(uint8)'  : np.uint8,
-    'tensor(int16)'  : np.int16,
-    'tensor(uint16)' : np.uint16,
-    'tensor(int32)'  : np.int32,
-    'tensor(uint32)' : np.uint32,
-    'tensor(int64)'  : np.int64,
-    'tensor(uint64)' : np.uint64,
-
-    'tensor(bool)'   : np.bool,
-    'tensor(string)' : np.object
+    'tensor(float)': np.float32,
+    'tensor(double)': np.float64,
+    'tensor(int8)': np.int8,
+    'tensor(uint8)': np.uint8,
+    'tensor(int16)': np.int16,
+    'tensor(uint16)': np.uint16,
+    'tensor(int32)': np.int32,
+    'tensor(uint32)': np.uint32,
+    'tensor(int64)': np.int64,
+    'tensor(uint64)': np.uint64,
+    'tensor(bool)': np.bool,
+    'tensor(string)': np.object
 }
+
 
 class DataFrameTool():
     """
     This is a utility class used to run a model with pandas.DataFrame input
     """
+
     def __init__(self, model_path, sess_options=None):
         """
         :param model_path: path to the model to be loaded
@@ -75,17 +75,16 @@ class DataFrameTool():
         """
         expected_type = types_dict[input_meta.type]
         if input_meta.type == 'tensor(string)':
-           return
+            return
         elif expected_type == col_type:
-           return
+            return
         elif expected_type in ort_float_set and str(col_type) in pd_float_set:
-           return
+            return
         elif expected_type in ort_int_set and str(col_type) in pd_int_set:
-           return
+            return
 
         raise TypeError("Input {} requires type {} unable to cast column type {} ".format(
             input_meta.name, expected_type, col_type))
-
 
     def _process_input_list(self, df, input_metas, require):
         """
@@ -110,10 +109,10 @@ class DataFrameTool():
                 feeds[input_meta.name] = self._reshape_input(input_array, input_meta.shape)
 
             elif require:
-                raise RuntimeError("This model requires input {} of type {} but it is not found in the DataFrame".format(
-                               input_meta.name, types_dict[input_meta.type]))
+                raise RuntimeError(
+                    "This model requires input {} of type {} but it is not found in the DataFrame".format(
+                        input_meta.name, types_dict[input_meta.type]))
         return feeds
-
 
     def _get_input_feeds(self, df, sess):
         """
@@ -161,6 +160,5 @@ class DataFrameTool():
 
         sess.run([output_name], {input_name: x})
         """
-        input_feed = self._get_input_feeds(df, self._sess);
+        input_feed = self._get_input_feeds(df, self._sess)
         return self._sess.run(output_names, input_feed, run_options)
-

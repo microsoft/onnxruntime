@@ -621,15 +621,15 @@ __global__ void cuComputeGradInput(
         for (int k = 0; k < 4; ++k) {
           const U c_h = static_cast<U>(k_input[l + k]);
           const U c_loss = static_cast<U>(k_dout[l + k]);
-          sum_loss1 += U(T(c_loss) * gamma[l + k]);
-          sum_loss2 += U(T(c_loss) * gamma[l + k] * T(c_h - c_mean) * T(c_invvar));
+          sum_loss1 += c_loss * U(gamma[l + k]);
+          sum_loss2 += c_loss * U(gamma[l + k]) * (c_h - c_mean) * c_invvar;
         }
       }
       for (; l < n2; ++l) {
         const U c_h = static_cast<U>(k_input[l]);
         const U c_loss = static_cast<U>(k_dout[l]);
-        sum_loss1 += U(T(c_loss) * gamma[l]);
-        sum_loss2 += U(T(c_loss) * gamma[l] * T(c_h - c_mean) * T(c_invvar));
+        sum_loss1 += c_loss * U(gamma[l]);
+        sum_loss2 += c_loss * U(gamma[l]) * (c_h - c_mean) * c_invvar;
       }
     } else {
       int l = 4 * thrx;
@@ -691,7 +691,7 @@ __global__ void cuComputeGradInput(
       for (int l = thrx; l < n2; l += numx) {
         const U c_h = static_cast<U>(k_input[l]);
         const U c_loss = static_cast<U>(k_dout[l]);
-        U f_grad_input = U(T(fH) * T(c_loss) * T(gamma[l]));
+        U f_grad_input = fH * c_loss * U(gamma[l]);
         f_grad_input -= sum_loss1;
         f_grad_input -= (c_h - c_mean) * c_invvar * sum_loss2;
         f_grad_input *= term1;

@@ -33,9 +33,11 @@ static SessionOptions SESSION_OPTION = {
     0,                                 //session_log_verbosity_level
     5,                                 //max_num_graph_transformation_steps
     TransformerLevel::Level1,          //graph_optimization_level
-    0,                                 //intra_op_num_threads
-    0,                                 //inter_op_num_threads
-    overrides                          //free_dimension_overrides
+    {},                                //intra_op_param
+    {},                                //inter_op_param
+    overrides,                         //free_dimension_overrides
+    true,                              //use_per_session_threads
+    true                               //thread_pool_allow_spinning
 };
 
 TrainingRunner::TrainingRunner(Parameters params, const Environment& env)
@@ -64,7 +66,7 @@ Status TrainingRunner::Initialize() {
 
   TrainingSession::TrainingConfiguration config{};
   config.model_with_loss_function_path = params_.model_with_loss_func_path;
-  config.model_with_loss_function_path = params_.model_with_training_graph_path;
+  config.model_with_training_graph_path = params_.model_with_training_graph_path;
 
   config.weight_names_to_train = params_.weights_to_train;
   config.weight_names_to_not_train = params_.weights_not_to_train;
@@ -83,8 +85,6 @@ Status TrainingRunner::Initialize() {
 
   if (params_.use_mixed_precision) {
     TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
-    mp.add_loss_scaling = true;
-    mp.initial_loss_scale_value = params_.loss_scale;
     mp.use_fp16_initializers = params_.use_fp16_initializer;
 
     config.mixed_precision_config = mp;
@@ -135,10 +135,9 @@ Status TrainingRunner::Initialize() {
 
   ORT_RETURN_IF_ERROR(session_.ConfigureForTraining(config, config_result));
 
-  if (config_result.mixed_precision_config_result.has_value() &&
-      config_result.mixed_precision_config_result.value().loss_scale_input_name.has_value()) {
+  if (config_result.mixed_precision_config_result.has_value()) {
     const std::string& loss_scale_input_name =
-        config_result.mixed_precision_config_result.value().loss_scale_input_name.value();
+        config_result.mixed_precision_config_result.value().loss_scale_input_name;
     if (params_.loss_scale == 0.0f) {
       // use dynamic loss_scale
       loss_scaler_ = onnxruntime::make_unique<LossScaler>(loss_scale_input_name, true, static_cast<float>(1 << 16));
