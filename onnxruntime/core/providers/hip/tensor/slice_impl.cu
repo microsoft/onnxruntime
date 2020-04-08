@@ -10,10 +10,10 @@ namespace hip {
 
 template <typename T >
 __global__ void _SliceKernel(const int32_t dimension_count,
-                             const TArray<int64_t> starts,
-                             const TArray<int64_t> steps,
-                             const TArray<int64_t> input_strides,
-                             const TArray<fast_divmod> output_strides,
+                             const int64_t* starts,
+                             const int64_t* steps,
+                             const int64_t* input_strides,
+                             const fast_divmod* output_strides,
                              const T* input_data,
                              T* output_data,
                              const HIP_LONG N) {
@@ -23,12 +23,12 @@ __global__ void _SliceKernel(const int32_t dimension_count,
   int mod = id;
   int value = id;
   int dim = 0;
-  #pragma unroll
-  for (; dim < starts.GetCapacity(); ++dim) {
-    if (dim >= dimension_count - 1) {
-      break;
-    }
-
+  // #pragma unroll
+  // for (; dim < starts.GetCapacity(); ++dim) {
+  //   if (dim >= dimension_count - 1) {
+  //     break;
+  //   }
+  for (; dim < dimension_count - 1; ++dim) {
     output_strides[dim].divmod(value, div, mod);
     input_index += (starts[dim] + div * steps[dim]) * input_strides[dim];
     value = mod;
@@ -39,10 +39,10 @@ __global__ void _SliceKernel(const int32_t dimension_count,
 
 Status SliceImpl(const size_t element_size,
                 const int32_t dimension_count,
-                const TArray<int64_t>* starts,
-                const TArray<int64_t>* steps,
-                const TArray<int64_t>* input_strides,
-                const TArray<fast_divmod>* output_strides,
+                const int64_t* starts,
+                const int64_t* steps,
+                const int64_t* input_strides,
+                const fast_divmod* output_strides,
                 const void* input_data,
                 void* output_data,
                 const size_t N) {
@@ -51,28 +51,28 @@ Status SliceImpl(const size_t element_size,
   switch (element_size) {
     case sizeof(int8_t):
       hipLaunchKernelGGL(_SliceKernel, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
-          dimension_count, *starts, *steps, *input_strides, *output_strides,
+          dimension_count, starts, steps, input_strides, output_strides,
           reinterpret_cast<const ToHipType<int8_t>::MappedType*>(input_data),
           reinterpret_cast<ToHipType<int8_t>::MappedType*>(output_data),
           (HIP_LONG)N);
       break;
     case sizeof(int16_t):
       hipLaunchKernelGGL(_SliceKernel, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
-          dimension_count, *starts, *steps, *input_strides, *output_strides,
+          dimension_count, starts, steps, input_strides, output_strides,
           reinterpret_cast<const ToHipType<int16_t>::MappedType*>(input_data),
           reinterpret_cast<ToHipType<int16_t>::MappedType*>(output_data),
           (HIP_LONG)N);
       break;
     case sizeof(int32_t):
       hipLaunchKernelGGL(_SliceKernel, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
-          dimension_count, *starts, *steps, *input_strides, *output_strides,
+          dimension_count, starts, steps, input_strides, output_strides,
           reinterpret_cast<const ToHipType<int32_t>::MappedType*>(input_data),
           reinterpret_cast<ToHipType<int32_t>::MappedType*>(output_data),
           (HIP_LONG)N);
       break;
     case sizeof(int64_t):
       hipLaunchKernelGGL(_SliceKernel, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
-          dimension_count, *starts, *steps, *input_strides, *output_strides,
+          dimension_count, starts, steps, input_strides, output_strides,
           reinterpret_cast<const ToHipType<int64_t>::MappedType*>(input_data),
           reinterpret_cast<ToHipType<int64_t>::MappedType*>(output_data),
           (HIP_LONG)N);
