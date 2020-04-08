@@ -51,7 +51,9 @@ bool CUDAFence::CanRelease() {
 void CUDAFence::AfterUsedAsInput(int queue_id) {
   // update read fence
   cudaStream_t stream = data_transfer_->GetStream(queue_id);
+  cudaDeviceSynchronize();
   CUDA_CALL_THROW(cudaEventRecord(read_event_, stream));
+  cudaDeviceSynchronize();
 }
 
 void CUDAFence::AfterUsedAsOutput(int queue_id) {

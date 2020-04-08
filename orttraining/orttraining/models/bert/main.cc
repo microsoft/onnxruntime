@@ -494,38 +494,58 @@ void setup_training_params(BertParameters& params) {
                                    const std::vector<std::string>& fetch_names,
                                    const std::vector<OrtValue>& fetches,
                                    size_t step) {
+    std::cout << "Err0-" << params.mpi_context.world_rank << std::endl;
     const Tensor& total_loss_t = fetches[0].Get<Tensor>();
+    std::cout << "Err1-" << params.mpi_context.world_rank << std::endl;
     const Tensor& mlm_loss_t = fetches[1].Get<Tensor>();
+    std::cout << "Err2-" << params.mpi_context.world_rank << std::endl;
     const Tensor& nsp_loss_t = fetches[2].Get<Tensor>();
 
+    std::cout << "Err3-" << params.mpi_context.world_rank << std::endl;
     const auto curr_total_loss = GetLossValue(total_loss_t);
+    std::cout << "Err4-" << params.mpi_context.world_rank << std::endl;
     const auto curr_mlm_loss = GetLossValue(mlm_loss_t);
+    std::cout << "Err5-" << params.mpi_context.world_rank << std::endl;
     const auto curr_nsp_loss = GetLossValue(nsp_loss_t);
 
     total_loss += curr_total_loss;
     mlm_loss += curr_mlm_loss;
     nsp_loss += curr_nsp_loss;
 
+    std::cout << "Err6-" << params.mpi_context.world_rank << std::endl;
     if (params.EnableTensorboard()) {
+      std::cout << "Err8-" << params.mpi_context.world_rank << std::endl;
       const Tensor& summary_loss_t = fetches[3].Get<Tensor>();
+      std::cout << "Err9-" << params.mpi_context.world_rank << std::endl;
       summary_loss.push_back(*(summary_loss_t.template Data<std::string>()));
+      std::cout << "Err10-" << params.mpi_context.world_rank << std::endl;
     }
 
+    std::cout << "Err11-" << params.mpi_context.world_rank << std::endl;
     if (params.dump_fetches) {
+      std::cout << "Err12-" << params.mpi_context.world_rank << std::endl;
       std::ostringstream filename;
       filename << "./fetch_dumps/rank_" << params.mpi_context.world_rank << "_step_" << step << ".txt";
       ofstream ofs(filename.str());
+      std::cout << "Err13-" << params.mpi_context.world_rank << std::endl;
       for (size_t i = 0; i < fetch_names.size(); ++i) {
+        std::cout << "Err14-" << params.mpi_context.world_rank << std::endl;
         TrainingUtil::PrintTensor(fetch_names[i], fetches[i].Get<Tensor>(), ofs);
       }
       ofs.close();
+      std::cout << "Err15-" << params.mpi_context.world_rank << std::endl;
     }
 
+    std::cout << "Err16-" << params.mpi_context.world_rank << std::endl;
     if (!params.convergence_test_output_file.empty()) {
+      std::cout << "Err17-" << params.mpi_context.world_rank << std::endl;
       const ConvergenceTestDataRecord convergence_test_data{step, curr_total_loss, curr_mlm_loss, curr_nsp_loss};
+      std::cout << "Err18-" << params.mpi_context.world_rank << std::endl;
       std::ofstream output_file{params.convergence_test_output_file, std::ios_base::app};
       output_file << convergence_test_data.GetCsvLine();
+      std::cout << "Err19-" << params.mpi_context.world_rank << std::endl;
     }
+    std::cout << "Err20-" << params.mpi_context.world_rank << std::endl;
   };
 
   std::shared_ptr<EventWriter> tensorboard;

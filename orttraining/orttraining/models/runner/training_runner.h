@@ -15,6 +15,8 @@
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/models/runner/data_loader.h"
 
+#include <string>
+#include <fstream>
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
 
 namespace onnxruntime {

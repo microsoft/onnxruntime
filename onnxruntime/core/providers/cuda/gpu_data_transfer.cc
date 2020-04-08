@@ -7,6 +7,9 @@
 namespace onnxruntime {
 GPUDataTransfer::GPUDataTransfer() {
   // create streams, default is nullptr
+  std::thread::id threadID = std::this_thread::get_id();
+  std::cout << "(gpu_data_transfer.cc ctor) pid: " << (long)getpid() ", tid: " << threadID << std::endl;
+ 
   streams_[kCudaStreamDefault] = nullptr;
   CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyIn], cudaStreamNonBlocking));
   CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyOut], cudaStreamNonBlocking));
@@ -26,6 +29,10 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int e
   size_t bytes = src.SizeInBytes();
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();
+
+  cudaError_t err = cudaGetLastError();
+  auto err_str = cudaGetErrorString(err);
+  std::cout << err_str << std::endl;
 
   auto& src_device = src.Location().device;
   auto& dst_device = dst.Location().device;
