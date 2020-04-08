@@ -301,7 +301,7 @@ TEST(PoolTest, MaxPool2D_uint8) {
   //openvino_2019.3.376/deployment_tools/inference_engine/include/details/ie_exception_conversion.hpp:71 The plugin does not support output U8 precision
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
-  test.Run();	  test.Run();
+  test.Run();
 #endif
 }
 
