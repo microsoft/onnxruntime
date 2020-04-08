@@ -742,6 +742,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
   std::vector<int64_t> axes_values(data_shape.size());
   if (attributes.find("axes") != attributes.end()) {
     axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+    for (size_t i = 0; i < axes_values.size(); i++) {
+      if (axes_values[i] < 0) {
+        axes_values[i] = data_shape.size() + axes_values[i];
+      }
+    }
   } else {
     std::iota(std::begin(axes_values), std::end(axes_values), 0);
   }
@@ -765,10 +770,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
   std::vector<int64_t> repeats(data_shape.size(), 1);
   int64_t scale = 1;
   for (int64_t axis : axes_values) {
-    if (axis < 0) {
-      axis = data_shape.size() + axis;
-    }
-
     if (data_shape[axis].has_dim_value()) {
       auto dim_value = data_shape[axis].dim_value();
       repeats[axis] = dim_value;
@@ -805,6 +806,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceSumGradient) {
   std::vector<int64_t> axes_values(data_shape.size());
   if (attributes.find("axes") != attributes.end()) {
     axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+    for (size_t i = 0; i < axes_values.size(); i++) {
+      if (axes_values[i] < 0) {
+        axes_values[i] = data_shape.size() + axes_values[i];
+      }
+    }
   } else {
     std::iota(std::begin(axes_values), std::end(axes_values), 0);
   }
@@ -827,10 +833,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceSumGradient) {
 
   std::vector<int64_t> repeats(data_shape.size(), 1);
   for (int64_t axis : axes_values) {
-    if (axis < 0) {
-      axis = data_shape.size() + axis;
-    }
-
     if (data_shape[axis].has_dim_value()) {
       auto dim_value = data_shape[axis].dim_value();
       repeats[axis] = dim_value;

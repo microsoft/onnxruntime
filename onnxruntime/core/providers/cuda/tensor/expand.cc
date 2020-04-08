@@ -69,13 +69,7 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
 
   // new shape to be expanded to
   const auto* p_shape = input_shape_tensor.template Data<int64_t>();
-  std::vector<int64_t> output_dims(input_shape_tensor.Shape().Size());
-  for (auto i = 0; i < input_shape_tensor.Shape().Size(); i++) {
-    // According to the ONNX spec: "Dimensions are right alignment;
-    // Two corresponding dimension must have the same value, or one of them is equal to 1",
-    // value -1 from PyTorch has the same meaning of 1 here.
-    output_dims[i] = p_shape[i] == -1 ? 1 : p_shape[i];
-  }
+  std::vector<int64_t> output_dims{p_shape, p_shape + input_shape_tensor.Shape().Size()};
   TensorShape output_shape(output_dims);
 
   ORT_RETURN_IF_ERROR(ComputeOutputShape(Node().Name(), input_data_tensor.Shape(), output_dims, output_shape));

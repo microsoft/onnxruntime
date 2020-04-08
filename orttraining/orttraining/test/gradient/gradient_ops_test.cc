@@ -431,6 +431,22 @@ TEST(GradientCheckerTest, ReduceMeanGrad) {
                                            MakeAttribute("keepdims", int64_t(0))});
     EXPECT_IS_TINY(max_error);
   }
+
+  // axes = [-2], keepdims = 1
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4, 1, 2}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{-2}),
+                                           MakeAttribute("keepdims", int64_t(1))});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // axes = [-2, -1], keepdims = 0
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{-2, -1}),
+                                           MakeAttribute("keepdims", int64_t(0))});
+    EXPECT_IS_TINY(max_error);
+  }
 }
 
 TEST(GradientCheckerTest, ReduceSumGrad) {
@@ -479,6 +495,22 @@ TEST(GradientCheckerTest, ReduceSumGrad) {
   {
     gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4, 3}}, &max_error,
                                           {MakeAttribute("axes", std::vector<int64_t>{2}),
+                                           MakeAttribute("keepdims", int64_t(0))});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // axes = [-2], keepdims = 1
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4, 1, 2}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{-2}),
+                                           MakeAttribute("keepdims", int64_t(1))});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // axes = [-1, -3], keepdims = 0
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{3}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{-1, -3}),
                                            MakeAttribute("keepdims", int64_t(0))});
     EXPECT_IS_TINY(max_error);
   }
@@ -683,6 +715,16 @@ TEST(GradientCheckerTest, ConcatGrad) {
     TensorShape y_shape({2, 6});
     gradient_checker.ComputeGradientError(op_def, {x1_shape, x2_shape}, {y_shape}, &max_error,
                                           {MakeAttribute("axis", int64_t(1))});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  //concat_different_shape_and_negative_axis
+  {
+    TensorShape x1_shape({2, 2});
+    TensorShape x2_shape({2, 4});
+    TensorShape y_shape({2, 6});
+    gradient_checker.ComputeGradientError(op_def, {x1_shape, x2_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("axis", int64_t(-1))});
     EXPECT_IS_TINY(max_error);
   }
 }
