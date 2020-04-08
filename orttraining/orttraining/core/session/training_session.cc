@@ -641,13 +641,9 @@ const DataTransferManager& TrainingSession::GetDataTransferManager() const {
 }
 
 bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) const {
-  std::vector<SessionState::NodeInfo> node_info_list;
-  ORT_THROW_IF_ERROR(session_state_->GetOutputNodeInfo(output_name, node_info_list));
-  // Graph output can only be produced by one node
-  ORT_ENFORCE(node_info_list.size() == 1, "Graph output: " + output_name + " cannot be produced by multiple nodes.");
-  auto& node_info = node_info_list.front();
-  ORT_ENFORCE(node_info.p_node != nullptr, "Node info cannot contain an empty node.");
-  return IsFP32Node(node_info.p_node);
+  auto output_producer_node = model_->MainGraph().GetProducerNode(output_name);
+  ORT_ENFORCE(output_producer_node != nullptr, "Output: " + output_name + " is not produced by any node.");
+  return IsFP32Node(output_producer_node);
 }
 
 Status TrainingSession::SetStateTensors(const NameMLValMap& state_tensors, bool strict) {
