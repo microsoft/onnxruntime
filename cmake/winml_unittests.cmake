@@ -91,7 +91,7 @@ function(get_winml_test_adapter_model_src
   file(GLOB winml_test_adapter_model_src CONFIGURE_DEPENDS 
       "${winml_test_src_path}/adapter/*.h"
       "${winml_test_src_path}/adapter/*.cpp")
-  set(${output_winml_test_adapter_model_libs} "winml_adapter" PARENT_SCOPE)
+  set(${output_winml_test_adapter_model_libs} "onnxruntime" PARENT_SCOPE)
   set(${output_winml_test_adapter_model_src} ${winml_test_adapter_model_src} PARENT_SCOPE)
 endfunction()
 
@@ -148,11 +148,11 @@ add_winml_test(
 )
 target_include_directories(winml_test_concurrency PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
 
-get_winml_test_adapter_model_src(${WINML_TEST_SRC_DIR} winml_test_adapter_model_src winml_test_adapter_model_lib)
+get_winml_test_adapter_model_src(${WINML_TEST_SRC_DIR} winml_test_adapter_model_src winml_test_adapter_model_libs)
 add_winml_test(
   TARGET winml_test_adapter_model
   SOURCES ${winml_test_adapter_model_src}
-  LIBS winml_test_common ${winml_test_adapter_model_lib}
+  LIBS winml_test_common ${winml_test_adapter_model_libs}
 )
 
 # During build time, copy any modified collaterals.
