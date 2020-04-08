@@ -63,13 +63,6 @@ ort.set_default_logger_severity(0)
 ## How do I infer models that have multiple inputs and outputs using the C/C++ API?
 See [this example](./../onnxruntime/test/shared_lib/test_inference.cc#L395)
 
-See: 
-* [Issue 1323](https://github.com/microsoft/onnxruntime/issues/1323)
-* [Issue 2923](https://github.com/microsoft/onnxruntime/issues/2923)
-* [Issue 3299](https://github.com/microsoft/onnxruntime/issues/3299)
-* [Issue 2250](https://github.com/microsoft/onnxruntime/issues/2250)
-* [Issue 3184](https://github.com/microsoft/onnxruntime/issues/3184)
-
 ## How do I force single threaded execution mode in ORT?
 Please do both of the following:
 * Build with openmp disabled or set OMP_NUM_THREADS=1.
@@ -78,7 +71,7 @@ Please do both of the following:
 ***
 
 # Troubleshooting
-Please note: The answers below are basic troubleshooting suggestions based on common previous user-filed issues and questions. This list is by no means exhaustive and there is a lot of case-by-case fluctuation depending on the model and specific usage scenario. Please use this information to guide your troubleshooting, search through previously filed issues for related topics, and/or file a new issue if your problem is still not resolved.
+**Please note:** The answers below are basic troubleshooting suggestions based on common previous user-filed issues and questions. This list is by no means exhaustive and there is a lot of case-by-case fluctuation depending on the model and specific usage scenario. Please use this information to guide your troubleshooting, search through previously filed issues for related topics, and/or file a new issue if your problem is still not resolved.
 
 ## Performance Troubleshooting Checklist
 Here is a list of things to check through when assessing performance issues.
