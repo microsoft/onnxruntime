@@ -24,3 +24,18 @@ set_property(
     onnxruntime_training_bert_convergence_e2e_test
   PROPERTY
     LABELS training_e2e)
+
+# bert batch size test
+add_test(
+  NAME onnxruntime_training_bert_batch_size_test
+  COMMAND
+    ${Python3_EXECUTABLE} ${REPO_ROOT}/orttraining/tools/ci_test/run_batch_size_test.py
+      --binary_dir $<TARGET_FILE_DIR:onnxruntime_training_bert>
+      --model_root ${onnxruntime_TRAINING_E2E_TEST_DATA_ROOT}/models
+  CONFIGURATIONS RelWithDebInfo)
+
+set_property(
+  TEST
+    onnxruntime_training_bert_batch_size_test
+  PROPERTY
+    LABELS training_e2e)
