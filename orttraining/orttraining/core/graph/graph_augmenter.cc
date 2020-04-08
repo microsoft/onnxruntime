@@ -102,7 +102,6 @@ Status GraphAugmenter::OverrideGraphOutputs(Graph& graph, const std::vector<std:
       "override graph outputs", graph, graph_outputs, {}, true, new_outputs));
   graph.SetOutputs(new_outputs);
 
-  graph.SetGraphResolveNeeded();
   return graph.Resolve();
 }
 

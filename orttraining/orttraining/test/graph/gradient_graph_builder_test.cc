@@ -528,10 +528,9 @@ class PipelineSplitter {
     ASSERT_STATUS_OK(Model::Load(backprop_model_file, mp));
 
     const auto& main_gp = mp.graph();
-    ONNX_NAMESPACE::ModelProto sub_mps[3];
+    std::vector<ONNX_NAMESPACE::ModelProto> sub_mps(num_subs, mp);
     for (int i = 0; i < num_subs; ++i) {
       auto& sub = sub_mps[i];
-      sub.CopyFrom(mp);
       sub.clear_graph();
       FillInputWait(sub.mutable_graph(), main_gp, cuts[i].fw.sync_inputs, cuts[i].fw.wait_depends, i, /*bw*/ false);
     }

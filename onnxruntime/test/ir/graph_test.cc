@@ -1311,11 +1311,11 @@ TEST_F(GraphTest, SetInputsAndSetOutputs_NewInputAndOutput) {
   graph.AddNode("add_z", "Add", "add z to sum", {sum, z}, {sum_with_z});
 
   auto inputs = graph.GetInputsIncludingInitializers();
-  inputs.emplace_back(z);
+  inputs.push_back(z);
   graph.SetInputs(inputs);
 
   auto outputs = graph.GetOutputs();
-  outputs.emplace_back(sum_with_z);
+  outputs.push_back(sum_with_z);
   graph.SetOutputs(outputs);
 
   ASSERT_STATUS_OK(graph.Resolve());

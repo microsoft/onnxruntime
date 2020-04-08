@@ -888,6 +888,8 @@ void Graph::InitializeStateFromModelFileGraphProto() {
     const auto* node_arg = GetNodeArg(name);
     value_info_.push_back(node_arg);
   }
+
+  ComputeOverridableInitializers();
 }
 
 Status Graph::VerifyNoDuplicateName() {
@@ -1131,7 +1133,7 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
             // If this Graph was built manually, remove the implicit input from the graph outputs if it is present there
             // and not explicitly listed in the ordered graph outputs (as that implies we should leave it as an output).
             // If the Graph was loaded from a GraphProto, honor the explicit graph outputs and leave as is.
-            if (!is_loaded_from_model_file_) { // TODO do we need to account for graph_outputs_manually_set_ here?
+            if (!is_loaded_from_model_file_) {
               graph_outputs_.erase(std::remove(graph_outputs_.begin(), graph_outputs_.end(), node_arg),
                                    graph_outputs_.end());
             }
@@ -2159,7 +2161,7 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
   *(tensor_added) = tensor;
   name_to_initial_tensor_[tensor.name()] = tensor_added;
 
-  if (!is_loaded_from_model_file_ && GetNodeArg(tensor.name()) == nullptr) {
+  if (GetNodeArg(tensor.name()) == nullptr) {
     // make sure there is a NodeArg for the initializer as SetGraphInputsOutputs may add it to the graph inputs.
     // the shape will be set to the correct value in TypeCheckInputsAndInitializers as we don't yet know whether there
     // will be a matching graph input for this initializer (we prefer shape info from the graph input).
@@ -2567,131 +2569,131 @@ Status Graph::SetGraphInputsOutputs() {
   // may also need to infer inputs and outputs.
   // In either case, calls to SetInputs() or SetOutputs() may affect the actual
   // inputs and outputs.
-  if (!is_loaded_from_model_file_) {
-    // Reset value_info.
-    value_info_.clear();
+  if (is_loaded_from_model_file_) return Status::OK();
 
-    std::unordered_map<std::string, size_t> output_name_to_node_arg_index;
-    std::vector<const NodeArg*> output_node_args_in_order;
+  // Reset value_info.
+  value_info_.clear();
 
-    // if something is coming from outer scope, consider it already added
-    std::unordered_set<std::string> added_input_names{outer_scope_node_arg_names_};
-    graph_inputs_excluding_initializers_.clear();
-    if (!graph_inputs_manually_set_) {
-      graph_inputs_including_initializers_.clear();
-    } else {
-      // If we've set graph_inputs_including_initializers_ by calling SetInputs,
-      // we copy its non-duplicate elements to graph_inputs_excluding_initializers_.
-      // Later, we will erase initializers from graph_inputs_excluding_initializers_
-      // if graph_inputs_manually_set_ is true.
-      // In this way, we can ensure graph_inputs_excluding_initializers_ is the full
-      // set of inputs less initializers, which could be a graph input used only
-      // by a subgraph and thereby only an implicit input to a node, or a graph input
-      // not used anywhere.
-      // We also make sure graph_inputs_excluding_initializers_ list doesn't have any
-      // duplicate names.
-      std::unordered_set<std::string> existing_names;
-      for (auto arg : graph_inputs_including_initializers_) {
-        const std::string& name = arg->Name();
-        if (existing_names.count(name) == 0) {
-          graph_inputs_excluding_initializers_.push_back(arg);
-          existing_names.insert(name);
-        }
+  std::unordered_map<std::string, size_t> output_name_to_node_arg_index;
+  std::vector<const NodeArg*> output_node_args_in_order;
+
+  // if something is coming from outer scope, consider it already added
+  std::unordered_set<std::string> added_input_names{outer_scope_node_arg_names_};
+  graph_inputs_excluding_initializers_.clear();
+  if (!graph_inputs_manually_set_) {
+    graph_inputs_including_initializers_.clear();
+  } else {
+    // If we've set graph_inputs_including_initializers_ by calling SetInputs,
+    // we copy its non-duplicate elements to graph_inputs_excluding_initializers_.
+    // Later, we will erase initializers from graph_inputs_excluding_initializers_
+    // if graph_inputs_manually_set_ is true.
+    // In this way, we can ensure graph_inputs_excluding_initializers_ is the full
+    // set of inputs less initializers, which could be a graph input used only
+    // by a subgraph and thereby only an implicit input to a node, or a graph input
+    // not used anywhere.
+    // We also make sure graph_inputs_excluding_initializers_ list doesn't have any
+    // duplicate names.
+    std::unordered_set<std::string> existing_names;
+    for (auto arg : graph_inputs_including_initializers_) {
+      const std::string& name = arg->Name();
+      if (existing_names.count(name) == 0) {
+        graph_inputs_excluding_initializers_.push_back(arg);
+        existing_names.insert(name);
       }
     }
+  }
 
-    if (!graph_outputs_manually_set_) {
-      graph_outputs_.clear();
-    }
+  if (!graph_outputs_manually_set_) {
+    graph_outputs_.clear();
+  }
 
-    // Collect all nodes' outputs
-    for (const auto& node : Nodes()) {
-      for (const auto* output_def : node.OutputDefs()) {
-        if (output_def->Exists()) {
-          output_node_args_in_order.push_back(output_def);
-          output_name_to_node_arg_index.insert({output_def->Name(), output_node_args_in_order.size() - 1});
-        }
+  // Collect all nodes' outputs
+  for (const auto& node : Nodes()) {
+    for (const auto* output_def : node.OutputDefs()) {
+      if (output_def->Exists()) {
+        output_node_args_in_order.push_back(output_def);
+        output_name_to_node_arg_index.insert({output_def->Name(), output_node_args_in_order.size() - 1});
       }
     }
+  }
 
-    // Init graph output args with copy of all node output args.
-    auto graph_output_args = output_name_to_node_arg_index;
-    for (const auto& node : Nodes()) {
-      // Go thru all node's inputs.
-      for (const auto* input_arg : node.InputDefs()) {
-        if (!input_arg->Exists()) {
-          // It's an optional input and does not exist in this case.
-          continue;
-        }
+  // Init graph output args with copy of all node output args.
+  auto graph_output_args = output_name_to_node_arg_index;
+  for (const auto& node : Nodes()) {
+    // Go thru all node's inputs.
+    for (const auto* input_arg : node.InputDefs()) {
+      if (!input_arg->Exists()) {
+        // It's an optional input and does not exist in this case.
+        continue;
+      }
 
-        auto output_arg_iter = output_name_to_node_arg_index.find(input_arg->Name());
-        if (output_name_to_node_arg_index.end() == output_arg_iter) {
-          // This input arg is not the output of another node so must come from either a graph input or an initializer.
-          const std::string& name = input_arg->Name();
+      auto output_arg_iter = output_name_to_node_arg_index.find(input_arg->Name());
+      if (output_name_to_node_arg_index.end() == output_arg_iter) {
+        // This input arg is not the output of another node so must come from either a graph input or an initializer.
+        const std::string& name = input_arg->Name();
 
-          if (added_input_names.end() == added_input_names.find(name)) {
-            // This graph input has not been added into <graph_inputs_>.
-            bool is_initializer = name_to_initial_tensor_.find(name) != name_to_initial_tensor_.end();
+        if (added_input_names.end() == added_input_names.find(name)) {
+          // This graph input has not been added into <graph_inputs_>.
+          bool is_initializer = name_to_initial_tensor_.find(name) != name_to_initial_tensor_.end();
 
-            if (!graph_inputs_manually_set_) {
-              // if IR version < 4 all initializers must have a matching graph input
-              // (even though the graph input is not allowed to override the initializer).
-              // if IR version >= 4 initializers are not required to have a matching graph input.
-              // any graph inputs that are to override initializers must be specified by calling SetInputs.
-              if (!is_initializer || ir_version_ < 4) {
-                graph_inputs_including_initializers_.push_back(input_arg);
-              }
-              if (!is_initializer) {
-                // If input_arg is not of an initializer, we add it into graph_inputs_excluding_initializers_.
-                graph_inputs_excluding_initializers_.push_back(input_arg);
+          if (!graph_inputs_manually_set_) {
+            // if IR version < 4 all initializers must have a matching graph input
+            // (even though the graph input is not allowed to override the initializer).
+            // if IR version >= 4 initializers are not required to have a matching graph input.
+            // any graph inputs that are to override initializers must be specified by calling SetInputs.
+            if (!is_initializer || ir_version_ < 4) {
+              graph_inputs_including_initializers_.push_back(input_arg);
+            }
+            if (!is_initializer) {
+              // If input_arg is not of an initializer, we add it into graph_inputs_excluding_initializers_.
+              graph_inputs_excluding_initializers_.push_back(input_arg);
+            }
+          } else {
+            // graph_inputs_including_initializers_ has been manually populated by SetInputs.
+            // Validation: the <input_arg> must be in graph inputs or initializers when it's manually set.
+            if (!is_initializer) {
+              const auto& inputs = graph_inputs_including_initializers_;
+              bool in_inputs = std::find(inputs.begin(), inputs.end(), input_arg) != inputs.end();
+              if (!in_inputs) {
+                return Status(ONNXRUNTIME, FAIL,
+                              name + " must be either specified in graph inputs or graph initializers.");
               }
             } else {
-              // graph_inputs_including_initializers_ has been manually populated by SetInputs.
-              // Validation: the <input_arg> must be in graph inputs or initializers when it's manually set.
-              if (!is_initializer) {
-                const auto& inputs = graph_inputs_including_initializers_;
-                bool in_inputs = std::find(inputs.begin(), inputs.end(), input_arg) != inputs.end();
-                if (!in_inputs) {
-                  return Status(ONNXRUNTIME, FAIL,
-                                name + " must be either specified in graph inputs or graph initializers.");
-                }
-              } else {
-                // If arg_input is of an initializer, we remove it from graph_inputs_excluding_initializers_
-                // whose initial content has both initializers and non-initializers.
-                auto input_pos = std::find(graph_inputs_excluding_initializers_.begin(),
-                                           graph_inputs_excluding_initializers_.end(),
-                                           input_arg);
-                if (input_pos != graph_inputs_excluding_initializers_.end()) {
-                  graph_inputs_excluding_initializers_.erase(input_pos);
-                }
+              // If arg_input is of an initializer, we remove it from graph_inputs_excluding_initializers_
+              // whose initial content has both initializers and non-initializers.
+              auto input_pos = std::find(graph_inputs_excluding_initializers_.begin(),
+                                         graph_inputs_excluding_initializers_.end(),
+                                         input_arg);
+              if (input_pos != graph_inputs_excluding_initializers_.end()) {
+                graph_inputs_excluding_initializers_.erase(input_pos);
               }
             }
+          }
 
-            added_input_names.insert(name);
-          }
-        } else if (graph_output_args.erase(output_arg_iter->first) >= 1) {
-          // Remove the output arg name from graph outputs since it's
-          // the input of this node, which we call it intermediate result
-          // and store it in <m_valueinfo>.
-          if (std::find(value_info_.begin(), value_info_.end(), input_arg) == value_info_.end()) {
-            value_info_.push_back(input_arg);
-          }
+          added_input_names.insert(name);
+        }
+      } else if (graph_output_args.erase(output_arg_iter->first) >= 1) {
+        // Remove the output arg name from graph outputs since it's
+        // the input of this node, which we call it intermediate result
+        // and store it in <m_valueinfo>.
+        if (std::find(value_info_.begin(), value_info_.end(), input_arg) == value_info_.end()) {
+          value_info_.push_back(input_arg);
         }
       }
     }
+  }
 
-    if (!graph_outputs_manually_set_) {
-      // Set graph outputs in order.
-      std::vector<size_t> graph_output_args_index;
-      graph_output_args_index.reserve(graph_output_args.size());
-      for (const auto& output_arg : graph_output_args) {
-        graph_output_args_index.push_back(output_arg.second);
-      }
+  if (!graph_outputs_manually_set_) {
+    // Set graph outputs in order.
+    std::vector<size_t> graph_output_args_index;
+    graph_output_args_index.reserve(graph_output_args.size());
+    for (const auto& output_arg : graph_output_args) {
+      graph_output_args_index.push_back(output_arg.second);
+    }
 
-      std::sort(graph_output_args_index.begin(), graph_output_args_index.end());
-      for (auto& output_arg_index : graph_output_args_index) {
-        graph_outputs_.push_back(output_node_args_in_order[output_arg_index]);
-      }
+    std::sort(graph_output_args_index.begin(), graph_output_args_index.end());
+    for (auto& output_arg_index : graph_output_args_index) {
+      graph_outputs_.push_back(output_node_args_in_order[output_arg_index]);
     }
   }
 
@@ -2873,6 +2875,8 @@ void Graph::SetInputs(const std::vector<const NodeArg*>& inputs) {
         graph_inputs_excluding_initializers_.emplace_back(input);
       }
     }
+
+    ComputeOverridableInitializers();
   } else {
     // creating graph from scratch
     // rely on SetGraphInputsOutputs() to fix up graph_inputs_excluding_initializers_
@@ -2889,7 +2893,7 @@ void Graph::SetOutputs(const std::vector<const NodeArg*>& outputs) {
 
   graph_outputs_manually_set_ = true;
   GraphProtoSyncNeeded(true);
-  GraphResolveNeeded(true); // TODO not sure if this is needed
+  GraphResolveNeeded(true);
 }
 
 void Graph::AddFunction(const ONNX_NAMESPACE::FunctionProto* func_proto) {
