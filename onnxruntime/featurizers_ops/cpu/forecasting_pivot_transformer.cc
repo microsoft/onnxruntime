@@ -16,10 +16,10 @@ namespace featurizers {
 template <typename T>
 struct ForecastingPivotTransformerImpl {
   void operator()(OpKernelContext* ctx) const {
-    using MatrixT = NS::RowMajMatrix<NS::Traits<T>::nullable_type>;
+    using MatrixT = NS::RowMajMatrix<typename NS::Traits<T>::nullable_type>;
     using InputType = std::vector<Eigen::Map<MatrixT>>;
     using OutputType = std::vector<T>;
-    using TransformerT = Microsoft::Featurizer::Featurizers::ForecastingPivotTransformer<std::tuple<InputType::iterator, InputType::iterator>>;
+    using TransformerT = Microsoft::Featurizer::Featurizers::ForecastingPivotTransformer<std::tuple<typename InputType::iterator, typename InputType::iterator>>;
 
     //Get the transformer
     const auto* state_tensor(ctx->Input<Tensor>(0));
