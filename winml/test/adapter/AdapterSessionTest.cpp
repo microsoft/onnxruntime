@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #include "testPch.h"
+
+#include "lib/Api.Ort/pch.h"
+
 #include "AdapterSessionTest.h"
-// #include "OnnxruntimeSessionBuilder.h"
 #include "OnnxruntimeEngine.h"
 
 // #include <winrt/Windows.Graphics.Imaging.h>
@@ -13,21 +15,24 @@
 
 using namespace winrt;
 using namespace winrt::Windows::AI::MachineLearning;
-// using namespace winrt::Windows::Foundation::Collections;
-// using namespace winrt::Windows::Graphics::Imaging;
-// using namespace winrt::Windows::Media;
-// using namespace winrt::Windows::Storage;
-// using namespace winrt::Windows::Storage::Streams;
+using namespace winrt::Windows::Foundation::Collections;
+using namespace winrt::Windows::Graphics::Imaging;
+using namespace winrt::Windows::Media;
+using namespace winrt::Windows::Storage;
+using namespace winrt::Windows::Storage::Streams;
 
 namespace {
-OnnxruntimeEngineFactory engine_factory;
-// const auto ort_api = engine_factory->UseOrtApi();
-// const auto winml_adapter_api = engine_factory->UseWinmlAdapterApi();
-// OrtEnv* ort_env;
+WinML::OnnxruntimeEngineFactory engine_factory;
+const OrtApi *ort_api;
+const WinmlAdapterApi *winml_adapter_api;
+OrtEnv* ort_env;
 
 static void AdapterSessionTestSetup() {
   init_apartment();
-  // WINML_EXPECT_HRESULT_SUCCEEDED(engine_factory->GetOrtEnvironment(&ort_env));
+  WINML_EXPECT_HRESULT_SUCCEEDED(engine_factory.RuntimeClassInitialize());
+  WINML_EXPECT_NOT_EQUAL(nullptr, winml_adapter_api = engine_factory.UseWinmlAdapterApi());
+  WINML_EXPECT_NOT_EQUAL(nullptr, ort_api = engine_factory.UseOrtApi());
+  WINML_EXPECT_HRESULT_SUCCEEDED(engine_factory.GetOrtEnvironment(&ort_env));
 }
 
 static void AppendExecutionProvider_CPU() {
@@ -40,23 +45,8 @@ static void AppendExecutionProvider_DML() {
 }
 
 static void CreateWithoutModel() {
-  // RETURN_HR_IF_NULL(E_POINTER, session);
-
-  // auto ort_api = engine_factory->UseOrtApi();
-  // auto winml_adapter_api = engine_factory->UseWinmlAdapterApi();
-
-  // OrtEnv* ort_env;
-  // RETURN_IF_FAILED(engine_factory->GetOrtEnvironment(&ort_env));
-
-  // OrtSession* ort_session_raw;
-  // RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->CreateSessionWithoutModel(ort_env, options, &ort_session_raw),
-  //                         engine_factory->UseOrtApi());
-
-  // auto ort_session = UniqueOrtSession(ort_session_raw, ort_api->ReleaseSession);
-
-  // *session = ort_session.release();
-
-  // return S_OK;
+  OrtSession* ort_session_raw;
+  WINML_EXPECT_NOT_EQUAL(nullptr, winml_adapter_api->CreateSessionWithoutModel(ort_env, {}, &ort_session_raw));
 }
 
 static void GetExecutionProvider() {
@@ -87,7 +77,7 @@ static void EndProfiling() {
 
 }
 
-static void CopyOneInputAcrossDevices() {
+static void CopyInputAcrossDevices() {
 
 }
 }
@@ -96,6 +86,7 @@ const AdapterSessionTestAPi& getapi() {
   static constexpr AdapterSessionTestAPi api =
   {
     AdapterSessionTestSetup,
+    AppendExecutionProvider_CPU,
     AppendExecutionProvider_DML,
     CreateWithoutModel,
     GetExecutionProvider,
@@ -105,7 +96,7 @@ const AdapterSessionTestAPi& getapi() {
     LoadAndPurloinModel,
     StartProfiling,
     EndProfiling,
-    CopyOneInputAcrossDevices
+    CopyInputAcrossDevices
   };
   return api;
 }

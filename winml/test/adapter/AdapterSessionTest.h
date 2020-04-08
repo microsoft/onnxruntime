@@ -15,7 +15,7 @@ struct AdapterSessionTestAPi
   VoidTest LoadAndPurloinModel;
   VoidTest StartProfiling;
   VoidTest EndProfiling;
-  VoidTest CopyOneInputAcrossDevices;
+  VoidTest CopyInputAcrossDevices;
 };
 const AdapterSessionTestAPi& getapi();
 
@@ -30,5 +30,5 @@ WINML_TEST(AdapterSessionTest, RegisterCustomRegistry)
 WINML_TEST(AdapterSessionTest, LoadAndPurloinModel)
 WINML_TEST(AdapterSessionTest, StartProfiling)
 WINML_TEST(AdapterSessionTest, EndProfiling)
-WINML_TEST(AdapterSessionTest, CopyOneInputAcrossDevices)
+WINML_TEST(AdapterSessionTest, CopyInputAcrossDevices)
 WINML_TEST_CLASS_END()
