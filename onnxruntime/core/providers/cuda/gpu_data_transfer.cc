@@ -3,12 +3,15 @@
 
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "cuda_common.h"
+#include <thread>
+#include <unistd.h>
+#include <sys/types.h>
 
 namespace onnxruntime {
 GPUDataTransfer::GPUDataTransfer() {
   // create streams, default is nullptr
   std::thread::id threadID = std::this_thread::get_id();
-  std::cout << "(gpu_data_transfer.cc ctor) pid: " << (long)getpid() ", tid: " << threadID << std::endl;
+  std::cout << "(gpu_data_transfer.cc ctor) pid: " << (long)getpid() << ", tid: " << threadID << std::endl;
  
   streams_[kCudaStreamDefault] = nullptr;
   CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyIn], cudaStreamNonBlocking));
