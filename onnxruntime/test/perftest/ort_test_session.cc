@@ -148,52 +148,17 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData()
     if (type_info.GetONNXType() == ONNX_TYPE_TENSOR) {
         auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
         std::vector<int64_t> input_node_dim = tensor_info.GetShape();
-        int64_t input_tensor_size = 1;
-        for (auto dim : input_node_dim)
-        {
-          input_tensor_size *= dim;
+
+        // free dimensions are treated as 1
+        for (int64_t& dim : input_node_dim) {
+          if (dim == -1) {
+            dim = 1;
+          }
         }
-        size_t byte_count = input_tensor_size;
-        switch (tensor_info.GetElementType())
-        {
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-            byte_count *= sizeof(float);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-            byte_count *= sizeof(uint8_t);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
-            byte_count *= sizeof(int8_t);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
-            byte_count *= sizeof(uint16_t);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
-            byte_count *= sizeof(int16_t);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-            byte_count *= sizeof(int32_t);
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-            byte_count *= sizeof(int64_t);
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-            byte_count *= sizeof(bool);
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
-            byte_count *= sizeof(double);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-            byte_count *= sizeof(uint32_t);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
-            byte_count *= sizeof(uint64_t);
-            break;
-          default:
-            printf("Generation of input for this element type not implemented.");
-            return false;
-        }
-        void* input_tensor_values = malloc(byte_count);
-        generated_input_buffers_.push_back(input_tensor_values);
-        Ort::Value input_tensor = Ort::Value::CreateTensor(memory_info, input_tensor_values, byte_count, input_node_dim.data(), input_node_dim.size(), tensor_info.GetElementType());
-        PreLoadTestData(0, i, input_tensor.release());
+
+        auto allocator = static_cast<OrtAllocator*>(Ort::AllocatorWithDefaultOptions());
+        Ort::Value newInput_Tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(), input_node_dim.size(), tensor_info.GetElementType());
+        PreLoadTestData(0, i, newInput_Tensor.release());
     }
   }
   return true;
