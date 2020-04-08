@@ -13,11 +13,11 @@ namespace hip {
 template <typename T, typename FuncT, bool lhs_need_compute, bool rhs_need_compute, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _BinaryElementWise(
     int32_t output_rank,
-    const TArray<int64_t> lhs_padded_strides,
+    const int64_t* lhs_padded_strides,
     const T* lhs_data,
-    const TArray<int64_t> rhs_padded_strides,
+    const int64_t* rhs_padded_strides,
     const T* rhs_data,
-    const TArray<fast_divmod> fdm_output_strides,
+    const fast_divmod* fdm_output_strides,
     T* output_data,
     const FuncT func,
     HIP_LONG N) {
@@ -33,11 +33,12 @@ HIP_LONG id = start;
       HIP_LONG rhs_index = (rhs_need_compute ? 0 : id);
       // compute indexes with broadcasting rules: https://github.com/onnx/onnx/blob/master/docs/Broadcasting.md
       HIP_LONG offset = id;
-      #pragma unroll
-      for (auto dim = 0; dim < fdm_output_strides.GetCapacity(); dim++) {
-        if (dim >= output_rank) {
-          break;
-        }
+      // #pragma unroll
+      // for (auto dim = 0; dim < fdm_output_strides.GetCapacity(); dim++) {
+      //   if (dim >= output_rank) {
+      //     break;
+      //   }
+      for (auto dim = 0; dim < output_rank; dim++) {
         int q, r;
         fdm_output_strides[dim].divmod(offset, q, r);
         if (lhs_need_compute) {
@@ -200,11 +201,11 @@ void BinaryElementWiseNoBroadcastImpl(
 template <typename T, typename FuncT>
 void BinaryElementWiseImpl(
     int32_t output_rank_or_simple_broadcast,
-    const TArray<int64_t>* lhs_padded_strides,
+    const int64_t* lhs_padded_strides,
     const T* lhs_data,
-    const TArray<int64_t>* rhs_padded_strides,
+    const int64_t* rhs_padded_strides,
     const T* rhs_data,
-    const TArray<fast_divmod>* fdm_output_strides,
+    const fast_divmod* fdm_output_strides,
     const fast_divmod& fdm_H,
     const fast_divmod& fdm_C,
     T* output_data,
@@ -259,27 +260,27 @@ void BinaryElementWiseImpl(
                   func,
                   N);
   } else {
-    if (lhs_padded_strides && rhs_padded_strides && lhs_padded_strides->size_ && rhs_padded_strides->size_)
+    if (lhs_padded_strides && rhs_padded_strides)
       hipLaunchKernelGGL(_BinaryElementWise<T, FuncT, true, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>,
                   dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
                   output_rank_or_simple_broadcast,
-                  *lhs_padded_strides,
+                  lhs_padded_strides,
                   lhs_data,
-                  *rhs_padded_strides,
+                  rhs_padded_strides,
                   rhs_data,
-                  *fdm_output_strides,
+                  fdm_output_strides,
                   output_data,
                   func,
                   N);
-    else if (lhs_padded_strides && lhs_padded_strides->size_)
+    else if (lhs_padded_strides)
       hipLaunchKernelGGL(_BinaryElementWise<T, FuncT, true, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>,
                   dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
                   output_rank_or_simple_broadcast,
-                  *lhs_padded_strides,
+                  lhs_padded_strides,
                   lhs_data,
-                  *rhs_padded_strides,
+                  rhs_padded_strides,
                   rhs_data,
-                  *fdm_output_strides,
+                  fdm_output_strides,
                   output_data,
                   func,
                   N);
@@ -287,11 +288,11 @@ void BinaryElementWiseImpl(
       hipLaunchKernelGGL(_BinaryElementWise<T, FuncT, false, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>,
                   dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
                   output_rank_or_simple_broadcast,
-                  *lhs_padded_strides,
+                  lhs_padded_strides,
                   lhs_data,
-                  *rhs_padded_strides,
+                  rhs_padded_strides,
                   rhs_data,
-                  *fdm_output_strides,
+                  fdm_output_strides,
                   output_data,
                   func,
                   N);

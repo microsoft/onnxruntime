@@ -119,19 +119,20 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
 #define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                         \
   template <>                                                                                                    \
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
-    BinaryElementwisePreparation prepare;                                                                  \
-    Prepare(context, &prepare);                                                          \
+    BinaryElementwisePreparation prepare(this);                                                                  \
+    Prepare(context,  &prepare);                                                          \
+    ORT_RETURN_IF_ERROR(prepare.CopyToGpu());                                                                    \
     Impl_##x<typename ToHipType<T>::MappedType>(                                                                \
         prepare.output_rank_or_simple_broadcast,                                                                 \
-        &prepare.lhs_padded_strides,                                                                     \
+        prepare.lhs_padded_strides.GpuPtr(),                                                                     \
         reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \
-        &prepare.rhs_padded_strides,                                                                     \
+        prepare.rhs_padded_strides.GpuPtr(),                                                                     \
         reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.rhs_tensor->template Data<T>()),     \
-        &prepare.fdm_output_strides,                                                                     \
+        prepare.fdm_output_strides.GpuPtr(),                                                                     \
         prepare.fdm_H,                                                                                           \
         prepare.fdm_C,                                                                                           \
         reinterpret_cast<typename ToHipType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()), \
-        prepare.output_tensor->Shape().Size());                                                                  \
+        prepare.output_tensor->Shape().Size());                                                                 \
     return Status::OK();                                                                                         \
   }
 
@@ -251,7 +252,7 @@ Status VariadicInputBase<T, HipT>::ComputeMethod(OpKernelContext* context, ImplC
       previous_output_shape = output_shape;
     }
     Tensor* output_tensor = context->Output(0, output_shape);
-    BinaryElementwisePreparation prepare;
+    BinaryElementwisePreparation prepare(this);
 
     auto rhs_tensor = context->Input<Tensor>(1);
     if (input_count == 2) {
@@ -259,11 +260,11 @@ Status VariadicInputBase<T, HipT>::ComputeMethod(OpKernelContext* context, ImplC
       ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(lhs_tensor, rhs_tensor, output_tensor, &prepare));
       Impl_Compute(
           prepare.output_rank_or_simple_broadcast,
-          &prepare.lhs_padded_strides,
+          prepare.lhs_padded_strides.GpuPtr(),
           reinterpret_cast<const HipT*>(prepare.lhs_tensor->template Data<T>()),
-          &prepare.rhs_padded_strides,
+          prepare.rhs_padded_strides.GpuPtr(),
           reinterpret_cast<const HipT*>(prepare.rhs_tensor->template Data<T>()),
-          &prepare.fdm_output_strides,
+          prepare.fdm_output_strides.GpuPtr(),
           prepare.fdm_H,
           prepare.fdm_C,
           reinterpret_cast<HipT*>(prepare.output_tensor->template MutableData<T>()),
@@ -275,11 +276,11 @@ Status VariadicInputBase<T, HipT>::ComputeMethod(OpKernelContext* context, ImplC
       ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(output_tensor, lhs_tensor, output_tensor, &prepare));
       Impl_Add(
           prepare.output_rank_or_simple_broadcast,
-          &prepare.lhs_padded_strides,
+          prepare.lhs_padded_strides.GpuPtr(),
           reinterpret_cast<const HipT*>(prepare.lhs_tensor->template Data<T>()),
-          &prepare.rhs_padded_strides,
+          prepare.rhs_padded_strides.GpuPtr(),
           reinterpret_cast<const HipT*>(prepare.rhs_tensor->template Data<T>()),
-          &prepare.fdm_output_strides,
+          prepare.fdm_output_strides.GpuPtr(),
           prepare.fdm_H,
           prepare.fdm_C,
           reinterpret_cast<HipT*>(prepare.output_tensor->template MutableData<T>()),
@@ -289,11 +290,11 @@ Status VariadicInputBase<T, HipT>::ComputeMethod(OpKernelContext* context, ImplC
         ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(output_tensor, context->Input<Tensor>(index), output_tensor, &prepare));
         Impl_Compute(
             prepare.output_rank_or_simple_broadcast,
-            &prepare.lhs_padded_strides,
+            prepare.lhs_padded_strides.GpuPtr(),
             reinterpret_cast<const HipT*>(prepare.lhs_tensor->template Data<T>()),
-            &prepare.rhs_padded_strides,
+            prepare.rhs_padded_strides.GpuPtr(),
             reinterpret_cast<const HipT*>(prepare.rhs_tensor->template Data<T>()),
-            &prepare.fdm_output_strides,
+            prepare.fdm_output_strides.GpuPtr(),
             prepare.fdm_H,
             prepare.fdm_C,
             reinterpret_cast<HipT*>(prepare.output_tensor->template MutableData<T>()),
@@ -329,17 +330,17 @@ Status Min<T>::ComputeInternal(OpKernelContext* context) const {
 //for other elementwise ops
 template <typename T, typename HipT>
 Status CompareFunction<T, HipT>::CompareMethod(OpKernelContext* context, ImplCompare Impl_Compare) const {
-  BinaryElementwisePreparation prepare;
+  BinaryElementwisePreparation prepare(this);
   ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
   size_t output_size = prepare.output_tensor->Shape().Size();
   IAllocatorUniquePtr<T> output_buffer = GetScratchBuffer<T>(output_size);
   Impl_Compare(
       prepare.output_rank_or_simple_broadcast,
-      &prepare.lhs_padded_strides,
+      prepare.lhs_padded_strides.GpuPtr(),
       reinterpret_cast<const HipT*>(prepare.lhs_tensor->template Data<T>()),
-      &prepare.rhs_padded_strides,
+      prepare.rhs_padded_strides.GpuPtr(),
       reinterpret_cast<const HipT*>(prepare.rhs_tensor->template Data<T>()),
-      &prepare.fdm_output_strides,
+      prepare.fdm_output_strides.GpuPtr(),
       prepare.fdm_H,
       prepare.fdm_C,
       reinterpret_cast<HipT*>(output_buffer.get()),
