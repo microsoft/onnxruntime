@@ -605,6 +605,7 @@ def adb_shell(*args, **kwargs):
 def run_training_python_frontend_e2e_tests(args, cwd, dll_path):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
+    run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer_with_mixed_precision.py'], cwd=cwd, dll_path=dll_path)
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_tvm = False, enable_tensorrt = False):
     for config in configs:
