@@ -16,7 +16,7 @@ This default NVIDIA GPU build requires CUDA runtime libraries installed on the s
 
 * The GPU-accelerated library of primitives for deep neural networks [cuDNN 7.6.2](https://docs.nvidia.com/deeplearning/sdk/cudnn-install/index.html#install-linux)
 
-* The NVIDIA Collective Communications Library (NCCL) multi-GPU and multi-node communication primitives library [NCCL2](https://docs.nvidia.com/deeplearning/sdk/nccl-install-guide/index.html)
+* The NVIDIA Collective Communications Library (NCCL) multi-GPU and multi-node communication primitives library [NCCL v2.4.8](https://docs.nvidia.com/deeplearning/sdk/nccl-install-guide/index.html) (*download v2.4.8 from the Legacy downloads page*)
 
 * OpenMPI 4.0.0.0
 
@@ -54,9 +54,9 @@ Run `./build.sh --enable_training --use_cuda --config=RelWithDebInfo --build_whe
 
 This will produce the `.whl` file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Trainer.
 
-## Use with Pytorch training
+## Use with PyTorch training
 
-You can use the ONNX Runtime Training wheel as the *trainer* in your Pytorch pre-training script. Here is a high-level code fragment to include in your pre-training code:
+You can use the ONNX Runtime Training wheel as the *trainer* in your PyTorch pre-training script. Here is a high-level code fragment to include in your pre-training code:
 
 ```
 import torch
