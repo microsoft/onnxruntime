@@ -384,7 +384,9 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                map_optimizer_attributes, world_rank=-1, world_size=1,
                                                gradient_accumulation_steps=1, bind_parameters=False,
                                                use_mixed_precision=False, allreduce_post_accumulation=False,
-                                               partition_optimizer=False, enable_grad_norm_clip=True,
+                                               partition_optimizer=False,
+                                               enable_grad_norm_clip=True,
+                                               seed=None,
                                                frozen_weights=[]):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
@@ -396,6 +398,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.use_mixed_precision = use_mixed_precision
     ort_parameters.allreduce_post_accumulation = allreduce_post_accumulation
     ort_parameters.partition_optimizer = partition_optimizer
+    if seed is not None:
+        ort_parameters.seed = seed
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
 
     output_types = {}
@@ -516,6 +520,7 @@ class ORTTrainer():
                  learning_rate_description, device, gradient_accumulation_steps=1, postprocess_model=None,
                  world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
                  global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False,
+                 seed=None,
                  enable_grad_norm_clip=True, frozen_weights=[]):
         super(ORTTrainer, self).__init__()
         """
@@ -546,6 +551,7 @@ class ORTTrainer():
             use_mixed_precision:
             allreduce_post_accumulation:
             partition_optimizer: Whether to partition the optimizer state. (default=False)
+            seed: allow user code to set backend static random seed.
         """
         self.is_train = True
 
@@ -593,6 +599,7 @@ class ORTTrainer():
         self.enable_grad_norm_clip_ = enable_grad_norm_clip
         self.frozen_weights_ = frozen_weights
         self.loss_scale_input_name = ''
+        self.seed_ = seed
 
         self._init_session()
 
@@ -608,7 +615,9 @@ class ORTTrainer():
                 self.world_rank, self.world_size,
                 self.gradient_accumulation_steps, bind_parameters=False,
                 use_mixed_precision=self.use_mixed_precision, allreduce_post_accumulation=self.allreduce_post_accumulation_,
-                partition_optimizer=self.partition_optimizer_, enable_grad_norm_clip=self.enable_grad_norm_clip_,
+                partition_optimizer=self.partition_optimizer_, 
+                enable_grad_norm_clip=self.enable_grad_norm_clip_,
+                seed=self.seed_,
                 frozen_weights=self.frozen_weights_)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
