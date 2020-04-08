@@ -202,7 +202,6 @@ Status TrainingRunner::Initialize() {
     }
   }
 
-  /*
   num_pipeline_stages_ = params_.mpi_context.world_size;
   do_pipedream_ = false;
   workers_.resize(num_pipeline_stages_);
@@ -215,7 +214,6 @@ Status TrainingRunner::Initialize() {
   planner_ = PipelineBatchPlanner();
   planner_.GenerateOneFWOneBWTimeline(num_pipeline_stages_, num_pipeline_batches_);
   planner_.CreatePlan(100 * pipeline_stage_id_, pipeline_stage_id_, plan_);
-  */
   return Status::OK();
 }
 
@@ -381,27 +379,28 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         auto start = std::chrono::high_resolution_clock::now();
 
         if (is_weight_update_step) {
+          /*
+          bool gdb_break = true;
+          while(gdb_break && params_.mpi_context.world_rank == 1) {
+              // set the sleep time to pause the processes
+              std::this_thread::sleep_for(std::chrono::seconds(1));
+          }
+          */
+
+          /*
           // In update step, only one worker is launched per GPU.
           // The entire graph is executed once as if there is no pipeline.
           log_file << "Step 4 @ " << params_.mpi_context.world_rank << std::endl;
-          /*
           join_all_workers();
 
-          bool gdb_break = false;
+          bool gdb_break = true;
           while(gdb_break) {
               // set the sleep time to pause the processes
-              std::this_thread::sleep_for (std::chrono::seconds(1));
+              std::this_thread::sleep_for(std::chrono::seconds(1));
           }
 
 
           Status update_status;
-
-          update_status = session_.Run(
-            RunOptions(),
-            feed_names,
-            feeds,
-            fetch_names,
-            &fetches);
 
           worker_states_[worker_id].run_options = RunOptions();
           worker_states_[worker_id].feed_names = feed_names;
