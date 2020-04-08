@@ -233,7 +233,8 @@ class OnnxModel:
                                                exclude=[],
                                                return_indice=return_indice)
             if matched_parent is None:
-                logger.debug(f"Failed to match index={i} parent_input_index={parent_input_index[i]} op_type={op_type}")
+                logger.debug(f"Failed to match index={i} parent_input_index={parent_input_index[i]} op_type={op_type}",
+                             stack_info=True)
                 return None
 
             matched_parents.append(matched_parent)
@@ -303,6 +304,18 @@ class OnnxModel:
             return i
 
         return -1
+
+    def is_constant_with_specified_dimension(self, output_name, dimensions, description):
+        value = self.get_constant_value(output_name)
+        if value is None:
+            logger.debug(f"{description} {output_name} is not initializer.")
+            return False
+
+        if len(value.shape) != dimensions:
+            logger.debug(f"{description} {output_name} shall have {dimensions} dimensions. Got shape {value.shape}")
+            return False
+
+        return True
 
     def has_constant_input(self, node, expected_value, delta=0.000001):
         return self.find_constant_input(node, expected_value, delta) >= 0
