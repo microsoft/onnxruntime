@@ -42,6 +42,8 @@ function GetFile {
   if command -v aria2c > /dev/null; then
     aria2c -q -d $(dirname $path) -o $(basename $path) "$uri"
   else
+    echo "retry_wait_time_seconds $retry_wait_time_seconds"
+    echo "retry $download_retries"
     curl "$uri" -sSL --retry $download_retries --retry-delay $retry_wait_time_seconds --create-dirs -o "$path" --fail    
   fi
 
