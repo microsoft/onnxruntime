@@ -87,7 +87,7 @@ Status Slice<dynamic>::ComputeInternal(OpKernelContext* ctx) const {
                                           p_flattened_output_dims));
 
   } else {
-    ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_,
+    ORT_RETURN_IF_ERROR(PrepareForCompute(StartsAttribute(), EndsAttribute(), AxesAttribute(),
                                           input_dimensions, starts, steps, output_dims,
                                           p_flattened_output_dims));
   }

@@ -10,7 +10,9 @@ struct ConcurrencyTestsApi
   VoidTest LoadBindEvalSqueezenetRealDataWithValidationConcurrently;
   VoidTest MultiThreadLoadModel;
   VoidTest MultiThreadMultiSession;
+  VoidTest MultiThreadMultiSessionGpu;
   VoidTest MultiThreadSingleSession;
+  VoidTest MultiThreadSingleSessionGpu;
   VoidTest EvalAsyncDifferentModels;
   VoidTest EvalAsyncDifferentSessions;
   VoidTest EvalAsyncDifferentBindings;
@@ -21,7 +23,9 @@ WINML_TEST_CLASS_BEGIN_WITH_SETUP(ConcurrencyTests, ConcurrencyTestsApiSetup)
 WINML_TEST(ConcurrencyTests, LoadBindEvalSqueezenetRealDataWithValidationConcurrently)
 WINML_TEST(ConcurrencyTests, MultiThreadLoadModel)
 WINML_TEST(ConcurrencyTests, MultiThreadMultiSession)
+WINML_TEST(ConcurrencyTests, MultiThreadMultiSessionGpu)
 WINML_TEST(ConcurrencyTests, MultiThreadSingleSession)
+WINML_TEST(ConcurrencyTests, MultiThreadSingleSessionGpu)
 WINML_TEST(ConcurrencyTests, EvalAsyncDifferentModels)
 WINML_TEST(ConcurrencyTests, EvalAsyncDifferentSessions)
 WINML_TEST(ConcurrencyTests, EvalAsyncDifferentBindings)

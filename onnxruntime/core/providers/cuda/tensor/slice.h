@@ -9,8 +9,8 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <bool dynamic>
-class Slice : public CudaKernel, public SliceBase {
+template <typename Tind, bool dynamic>
+class Slice final : public CudaKernel, public SliceBase {
  public:
   Slice(const OpKernelInfo& info) : CudaKernel(info), SliceBase(info, dynamic) {}
 

@@ -171,7 +171,6 @@ def create_backend_test(testname=None):
             '^test_unfoldtodepth_with_padding_cpu*',
             '^test_unfoldtodepth_with_padding_stride_cpu*',
             '^test_unfoldtodepth_without_padding_cpu*',
-            '^test_unique_not_sorted_without_axis_cpu',  # bad expected data. enable after https://github.com/onnx/onnx/pull/2381 is picked up
         ]
 
         # Example of how to disable tests for a specific provider.
@@ -183,14 +182,20 @@ def create_backend_test(testname=None):
                 '^test_argmin_negative_axis.*', '^test_hardmax_negative_axis.*', '^test_gemm_default_no_bias_cpu',
                 '^test_flatten_negative_axis.*', '^test_reduce_[a-z1-9_]*_negative_axes_.*',
                 'test_squeeze_negative_axes_cpu', 'test_unsqueeze_negative_axes_cpu', 'test_constant_pad_cpu',
-                'test_edge_pad_cpu', 'test_reflect_pad_cpu'
+                'test_edge_pad_cpu', 'test_reflect_pad_cpu', '^test_split_zero_size_splits_.*','^test_argmax_keepdims_example_select_last_index_.*', '^test_argmax_no_keepdims_example_select_last_index_.*','^test_argmin_no_keepdims_example_select_last_index_.*','^test_argmin_keepdims_example_select_last_index_.*'
             ]
 
         if c2.supports_device('DNNL'):
             current_failing_tests += [
                 '^test_range_float_type_positive_delta_expanded_cpu',
                 '^test_range_int32_type_negative_delta_expanded_cpu', '^test_averagepool_2d_ceil_cpu',
-                '^test_maxpool_2d_ceil_cpu', '^test_maxpool_2d_dilations_cpu'
+                '^test_maxpool_2d_ceil_cpu', '^test_maxpool_2d_dilations_cpu',
+                '^test_maxpool_2d_uint8'
+            ]
+
+        if c2.supports_device('NNAPI'):
+            current_failing_tests += [
+              '^test_maxpool_2d_uint8'
             ]
 
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):

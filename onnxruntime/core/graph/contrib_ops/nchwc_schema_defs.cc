@@ -21,7 +21,7 @@ namespace contrib {
 using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::InferenceContext;
 using ONNX_NAMESPACE::OpSchema;
-using ONNX_NAMESPACE::OPTIONAL;
+using ONNX_NAMESPACE::OPTIONAL_VALUE;
 
 void NchwcPoolOpSchemaGenerator(OpSchema& schema) {
   schema.SetDomain(kMSNchwcDomain);
@@ -29,9 +29,9 @@ void NchwcPoolOpSchemaGenerator(OpSchema& schema) {
   schema.SetDoc(R"DOC(For internal use.)DOC");
   schema.Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"));
   schema.Attr("kernel_shape", "", AttributeProto::INTS);
-  schema.Attr("dilations", "", AttributeProto::INTS, OPTIONAL);
-  schema.Attr("strides", "", AttributeProto::INTS, OPTIONAL);
-  schema.Attr("pads", "", AttributeProto::INTS, OPTIONAL);
+  schema.Attr("dilations", "", AttributeProto::INTS, OPTIONAL_VALUE);
+  schema.Attr("strides", "", AttributeProto::INTS, OPTIONAL_VALUE);
+  schema.Attr("pads", "", AttributeProto::INTS, OPTIONAL_VALUE);
   schema.Attr("ceil_mode", "", AttributeProto::INT, static_cast<int64_t>(0));
   schema.Input(0, "X", "", "T");
   schema.Output(0, "Y", "", "T");
@@ -116,13 +116,13 @@ void RegisterNchwcSchemas() {
       .SinceVersion(1)
       .SetDoc(R"DOC(For internal use.)DOC")
       .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
-      .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL)
-      .Attr("dilations", "", AttributeProto::INTS, OPTIONAL)
-      .Attr("strides", "", AttributeProto::INTS, OPTIONAL)
-      .Attr("pads", "", AttributeProto::INTS, OPTIONAL)
+      .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("dilations", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("strides", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("pads", "", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr("group", "", AttributeProto::INT, static_cast<int64_t>(1))
-      .Attr("activation", "", AttributeProto::STRING, OPTIONAL)
-      .Attr("activation_params", "", AttributeProto::FLOATS, OPTIONAL)
+      .Attr("activation", "", AttributeProto::STRING, OPTIONAL_VALUE)
+      .Attr("activation_params", "", AttributeProto::FLOATS, OPTIONAL_VALUE)
       .Input(0, "X", "", "T")
       .Input(1, "W", "", "T")
       .Input(2, "B", "", "T", OpSchema::Optional)
@@ -152,7 +152,7 @@ void RegisterNchwcSchemas() {
       .SetDomain(kMSNchwcDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(For internal use.)DOC")
-      .Attr("scales", "", AttributeProto::INTS, OPTIONAL)
+      .Attr("scales", "", AttributeProto::INTS, OPTIONAL_VALUE)
       .Input(0, "X", "", "T")
       .Output(0, "Y", "", "T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors")
