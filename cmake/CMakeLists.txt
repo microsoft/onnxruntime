@@ -91,6 +91,9 @@ option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output 
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
+option(onnxruntime_USE_ACL_1902 "Build with ACL version 1902 support" OFF)
+option(onnxruntime_USE_ACL_1905 "Build with ACL version 1905 support" OFF)
+option(onnxruntime_USE_ACL_1908 "Build with ACL version 1908 support" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 #The onnxruntime_PREFER_SYSTEM_LIB is mainly designed for package managers like apt/yum/vcpkg.
@@ -472,7 +475,18 @@ endfunction()
 set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto)
 
 # ACL
-if (onnxruntime_USE_ACL)
+if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 OR onnxruntime_USE_ACL_1908)
+  set(onnxruntime_USE_ACL ON)
+  if(onnxruntime_USE_ACL_1902)
+    add_definitions(-DACL_1902=1)
+  else()
+    if(onnxruntime_USE_ACL_1908)
+      add_definitions(-DACL_1908=1)
+    else()
+      add_definitions(-DACL_1905=1)
+    endif()
+  endif()
+
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute acl arm_compute_graph arm_compute_core)
 endif()
 
