@@ -17,159 +17,67 @@ Abstract:
 
 #include "mlasi.h"
 
-template<size_t RowCount, size_t Row, size_t ColumnCount>
-struct MLAS_SGEMM_OUTPUT
-{
-    static
-    void
-    StoreVector(
-        MLAS_FLOAT32X4 Accumulators[RowCount][4],
-        float* C,
-        size_t ldc,
-        MLAS_FLOAT32X4 AlphaBroadcast,
-        bool ZeroMode
-        );
-};
+//
+// Templates to ensure that a loop is unrolled.
+//
 
-template<size_t RowCount, size_t Row>
-struct MLAS_SGEMM_OUTPUT<RowCount, Row, 4>
+template<size_t Count, size_t Index>
+struct MlasLoopUnrollStep
 {
+    template<typename IterationType, typename... IterationArgs>
     MLAS_FORCEINLINE
     static
     void
-    StoreVector(
-        MLAS_FLOAT32X4 Accumulators[RowCount][4],
-        float* C,
-        size_t ldc,
-        MLAS_FLOAT32X4 AlphaBroadcast,
-        bool ZeroMode
+    Step(
+        IterationArgs&&... Arguments
         )
     {
-        if (ZeroMode) {
-            Accumulators[Row][0] = MlasMultiplyFloat32x4(Accumulators[Row][0], AlphaBroadcast);
-        } else {
-            Accumulators[Row][0] = MlasMultiplyAddFloat32x4(Accumulators[Row][0], AlphaBroadcast,
-                MlasLoadFloat32x4(C + Row * ldc));
-        }
-
-        MlasStoreFloat32x4(C + Row * ldc, Accumulators[Row][0]);
-
-        Accumulators[Row][0] = Accumulators[Row][1];
+        IterationType::template Iteration<Count, Index>(Arguments...);
+        MlasLoopUnrollStep<Count, Index + 1>::template Step<IterationType>(Arguments...);
     }
 };
 
-template<size_t RowCount, size_t Row>
-struct MLAS_SGEMM_OUTPUT<RowCount, Row, 8>
+template<size_t Count>
+struct MlasLoopUnrollStep<Count, Count>
 {
+    template<typename IterationType, typename... IterationArgs>
     MLAS_FORCEINLINE
     static
     void
-    StoreVector(
-        MLAS_FLOAT32X4 Accumulators[RowCount][4],
-        float* C,
-        size_t ldc,
-        MLAS_FLOAT32X4 AlphaBroadcast,
-        bool ZeroMode
+    Step(
+        IterationArgs&&...
         )
     {
-        if (ZeroMode) {
-            Accumulators[Row][0] = MlasMultiplyFloat32x4(Accumulators[Row][0], AlphaBroadcast);
-            Accumulators[Row][1] = MlasMultiplyFloat32x4(Accumulators[Row][1], AlphaBroadcast);
-        } else {
-            Accumulators[Row][0] = MlasMultiplyAddFloat32x4(Accumulators[Row][0], AlphaBroadcast,
-                MlasLoadFloat32x4(C + Row * ldc));
-            Accumulators[Row][1] = MlasMultiplyAddFloat32x4(Accumulators[Row][1], AlphaBroadcast,
-                MlasLoadFloat32x4(C + Row * ldc + 4));
-        }
-
-        MlasStoreFloat32x4(C + Row * ldc, Accumulators[Row][0]);
-        MlasStoreFloat32x4(C + Row * ldc + 4, Accumulators[Row][1]);
-
-        Accumulators[Row][0] = Accumulators[Row][2];
+        // Terminate the loop.
     }
 };
 
-template<size_t RowCount, size_t Row>
-struct MLAS_SGEMM_OUTPUT<RowCount, Row, 12>
+template<size_t Count, typename IteratorType>
+struct MlasLoopUnroll
 {
+    template<typename... IterationArgs>
     MLAS_FORCEINLINE
-    static
     void
-    StoreVector(
-        MLAS_FLOAT32X4 Accumulators[RowCount][4],
-        float* C,
-        size_t ldc,
-        MLAS_FLOAT32X4 AlphaBroadcast,
-        bool ZeroMode
+    operator()(
+        IterationArgs&&... Arguments
         )
     {
-        if (ZeroMode) {
-            Accumulators[Row][0] = MlasMultiplyFloat32x4(Accumulators[Row][0], AlphaBroadcast);
-            Accumulators[Row][1] = MlasMultiplyFloat32x4(Accumulators[Row][1], AlphaBroadcast);
-            Accumulators[Row][2] = MlasMultiplyFloat32x4(Accumulators[Row][2], AlphaBroadcast);
-        } else {
-            Accumulators[Row][0] = MlasMultiplyAddFloat32x4(Accumulators[Row][0], AlphaBroadcast,
-                MlasLoadFloat32x4(C + Row * ldc));
-            Accumulators[Row][1] = MlasMultiplyAddFloat32x4(Accumulators[Row][1], AlphaBroadcast,
-                MlasLoadFloat32x4(C + Row * ldc + 4));
-            Accumulators[Row][2] = MlasMultiplyAddFloat32x4(Accumulators[Row][2], AlphaBroadcast,
-                MlasLoadFloat32x4(C + Row * ldc + 8));
-        }
-
-        MlasStoreFloat32x4(C + Row * ldc, Accumulators[Row][0]);
-        MlasStoreFloat32x4(C + Row * ldc + 4, Accumulators[Row][1]);
-        MlasStoreFloat32x4(C + Row * ldc + 8, Accumulators[Row][2]);
-
-        Accumulators[Row][0] = Accumulators[Row][3];
+        MlasLoopUnrollStep<Count, 0>::template Step<IteratorType>(Arguments...);
     }
 };
 
-template<size_t RowCount, size_t Row>
-struct MLAS_SGEMM_OUTPUT<RowCount, Row, 16>
+//
+// Templates used with loop unrolling to perform an action on one row of the
+// output.
+//
+
+struct MlasSgemmZeroAccumulators
 {
+    template<size_t RowCount, size_t Row>
     MLAS_FORCEINLINE
     static
     void
-    StoreVector(
-        MLAS_FLOAT32X4 Accumulators[RowCount][4],
-        float* C,
-        size_t ldc,
-        MLAS_FLOAT32X4 AlphaBroadcast,
-        bool ZeroMode
-        )
-    {
-        if (ZeroMode) {
-            Accumulators[Row][0] = MlasMultiplyFloat32x4(Accumulators[Row][0], AlphaBroadcast);
-            Accumulators[Row][1] = MlasMultiplyFloat32x4(Accumulators[Row][1], AlphaBroadcast);
-            Accumulators[Row][2] = MlasMultiplyFloat32x4(Accumulators[Row][2], AlphaBroadcast);
-            Accumulators[Row][3] = MlasMultiplyFloat32x4(Accumulators[Row][3], AlphaBroadcast);
-        } else {
-            Accumulators[Row][0] = MlasMultiplyAddFloat32x4(Accumulators[Row][0], AlphaBroadcast,
-                MlasLoadFloat32x4(C + Row * ldc));
-            Accumulators[Row][1] = MlasMultiplyAddFloat32x4(Accumulators[Row][1], AlphaBroadcast,
-                MlasLoadFloat32x4(C + Row * ldc + 4));
-            Accumulators[Row][2] = MlasMultiplyAddFloat32x4(Accumulators[Row][2], AlphaBroadcast,
-                MlasLoadFloat32x4(C + Row * ldc + 8));
-            Accumulators[Row][3] = MlasMultiplyAddFloat32x4(Accumulators[Row][3], AlphaBroadcast,
-                MlasLoadFloat32x4(C + Row * ldc + 12));
-        }
-
-        MlasStoreFloat32x4(C + Row * ldc, Accumulators[Row][0]);
-        MlasStoreFloat32x4(C + Row * ldc + 4, Accumulators[Row][1]);
-        MlasStoreFloat32x4(C + Row * ldc + 8, Accumulators[Row][2]);
-        MlasStoreFloat32x4(C + Row * ldc + 12, Accumulators[Row][3]);
-    }
-};
-
-template<size_t RowCount, size_t Row>
-struct MLAS_SGEMM_ROW_LOOP_STEP
-{
-    using MLAS_SGEMM_ROW_LOOP_NEXT = MLAS_SGEMM_ROW_LOOP_STEP<RowCount, Row + 1>;
-
-    MLAS_FORCEINLINE
-    static
-    void
-    ZeroAccumulators(
+    Iteration(
         MLAS_FLOAT32X4 Accumulators[RowCount][4]
         )
     {
@@ -177,56 +85,64 @@ struct MLAS_SGEMM_ROW_LOOP_STEP
         Accumulators[Row][1] = MlasZeroFloat32x4();
         Accumulators[Row][2] = MlasZeroFloat32x4();
         Accumulators[Row][3] = MlasZeroFloat32x4();
-
-        MLAS_SGEMM_ROW_LOOP_NEXT::ZeroAccumulators(Accumulators);
     }
+};
 
+struct MlasSgemmLoadAElements
+{
+    template<size_t RowCount, size_t Row>
     MLAS_FORCEINLINE
     static
     void
-    LoadAElements(
+    Iteration(
         MLAS_FLOAT32X4 AElements[RowCount],
         const float* A,
         size_t lda
         )
     {
         AElements[Row] = MlasLoadFloat32x4(A + Row * lda);
-
-        MLAS_SGEMM_ROW_LOOP_NEXT::LoadAElements(AElements, A, lda);
     }
+};
 
+struct MlasSgemmBroadcastAElements
+{
+    template<size_t RowCount, size_t Row>
     MLAS_FORCEINLINE
     static
     void
-    BroadcastAElements(
+    Iteration(
         MLAS_FLOAT32X4 ABroadcast[RowCount],
         const float* A,
         size_t lda
         )
     {
         ABroadcast[Row] = MlasBroadcastFloat32x4(A + Row * lda);
-
-        MLAS_SGEMM_ROW_LOOP_NEXT::BroadcastAElements(ABroadcast, A, lda);
     }
+};
 
-    template<unsigned Lane>
+template<unsigned Lane>
+struct MlasSgemmSplatAElements
+{
+    template<size_t RowCount, size_t Row>
     MLAS_FORCEINLINE
     static
     void
-    BroadcastAElements(
+    Iteration(
         MLAS_FLOAT32X4 AElements[RowCount],
         MLAS_FLOAT32X4 ABroadcast[RowCount]
         )
     {
         ABroadcast[Row] = vec_splat(AElements[Row], Lane);
-
-        MLAS_SGEMM_ROW_LOOP_NEXT::template BroadcastAElements<Lane>(AElements, ABroadcast);
     }
+};
 
+struct MlasSgemmMultiplyAddRow
+{
+    template<size_t RowCount, size_t Row>
     MLAS_FORCEINLINE
     static
     void
-    MultiplyAdd(
+    Iteration(
         MLAS_FLOAT32X4 Accumulators[RowCount][4],
         MLAS_FLOAT32X4 ABroadcast[RowCount],
         MLAS_FLOAT32X4 BElements[4]
@@ -236,182 +152,7 @@ struct MLAS_SGEMM_ROW_LOOP_STEP
         Accumulators[Row][1] = MlasMultiplyAddFloat32x4(ABroadcast[Row], BElements[1], Accumulators[Row][1]);
         Accumulators[Row][2] = MlasMultiplyAddFloat32x4(ABroadcast[Row], BElements[2], Accumulators[Row][2]);
         Accumulators[Row][3] = MlasMultiplyAddFloat32x4(ABroadcast[Row], BElements[3], Accumulators[Row][3]);
-
-        MLAS_SGEMM_ROW_LOOP_NEXT::MultiplyAdd(Accumulators, ABroadcast, BElements);
     }
-
-    template<unsigned ColumnCount>
-    MLAS_FORCEINLINE
-    static
-    void
-    StoreVector(
-        MLAS_FLOAT32X4 Accumulators[RowCount][4],
-        float* C,
-        size_t ldc,
-        MLAS_FLOAT32X4 AlphaBroadcast,
-        bool ZeroMode
-        )
-    {
-        MLAS_SGEMM_OUTPUT<RowCount, Row, ColumnCount>::StoreVector(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
-        MLAS_SGEMM_ROW_LOOP_NEXT::template StoreVector<ColumnCount>(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
-    }
-
-    MLAS_FORCEINLINE
-    static
-    void
-    MultiplyAlphaTrailing(
-        MLAS_FLOAT32X4 Accumulators[RowCount][4],
-        MLAS_FLOAT32X4 AlphaBroadcast
-        )
-    {
-        Accumulators[Row][0] = MlasMultiplyFloat32x4(Accumulators[Row][0], AlphaBroadcast);
-
-        MLAS_SGEMM_ROW_LOOP_NEXT::MultiplyAlphaTrailing(Accumulators, AlphaBroadcast);
-    }
-
-    template<unsigned Lane>
-    MLAS_FORCEINLINE
-    static
-    void
-    StoreFloat(
-        MLAS_FLOAT32X4 Accumulators[RowCount][4],
-        float* C,
-        size_t ldc,
-        bool ZeroMode
-        )
-    {
-        float Value = MlasExtractLaneFloat32x4<Lane>(Accumulators[Row][0]);
-
-        if (!ZeroMode) {
-            Value += *(C + Row * ldc + Lane);
-        }
-
-        *(C + Row * ldc + Lane) = Value;
-
-        MLAS_SGEMM_ROW_LOOP_NEXT::template StoreFloat<Lane>(Accumulators, C, ldc, ZeroMode);
-    }
-};
-
-template<size_t RowCount>
-struct MLAS_SGEMM_ROW_LOOP_STEP<RowCount, RowCount>
-{
-    MLAS_FORCEINLINE
-    static
-    void
-    ZeroAccumulators(
-        MLAS_FLOAT32X4 Accumulators[RowCount][4]
-        )
-    {
-        MLAS_UNREFERENCED_PARAMETER(Accumulators);
-    }
-
-    MLAS_FORCEINLINE
-    static
-    void
-    LoadAElements(
-        MLAS_FLOAT32X4 AElements[RowCount],
-        const float* A,
-        size_t lda
-        )
-    {
-        MLAS_UNREFERENCED_PARAMETER(AElements);
-        MLAS_UNREFERENCED_PARAMETER(A);
-        MLAS_UNREFERENCED_PARAMETER(lda);
-    }
-
-    MLAS_FORCEINLINE
-    static
-    void
-    BroadcastAElements(
-        MLAS_FLOAT32X4 ABroadcast[RowCount],
-        const float* A,
-        size_t lda
-        )
-    {
-        MLAS_UNREFERENCED_PARAMETER(ABroadcast);
-        MLAS_UNREFERENCED_PARAMETER(A);
-        MLAS_UNREFERENCED_PARAMETER(lda);
-    }
-
-    template<unsigned Lane>
-    MLAS_FORCEINLINE
-    static
-    void
-    BroadcastAElements(
-        MLAS_FLOAT32X4 AElements[RowCount],
-        MLAS_FLOAT32X4 ABroadcast[RowCount]
-        )
-    {
-        MLAS_UNREFERENCED_PARAMETER(AElements);
-        MLAS_UNREFERENCED_PARAMETER(ABroadcast);
-    }
-
-    MLAS_FORCEINLINE
-    static
-    void
-    MultiplyAdd(
-        MLAS_FLOAT32X4 Accumulators[RowCount][4],
-        MLAS_FLOAT32X4 ABroadcast[RowCount],
-        MLAS_FLOAT32X4 BElements[4]
-        )
-    {
-        MLAS_UNREFERENCED_PARAMETER(Accumulators);
-        MLAS_UNREFERENCED_PARAMETER(ABroadcast);
-        MLAS_UNREFERENCED_PARAMETER(BElements);
-    }
-
-    template<unsigned ColumnCount>
-    MLAS_FORCEINLINE
-    static
-    void
-    StoreVector(
-        MLAS_FLOAT32X4 Accumulators[RowCount][4],
-        float* C,
-        size_t ldc,
-        MLAS_FLOAT32X4 AlphaBroadcast,
-        bool ZeroMode
-        )
-    {
-        MLAS_UNREFERENCED_PARAMETER(Accumulators);
-        MLAS_UNREFERENCED_PARAMETER(C);
-        MLAS_UNREFERENCED_PARAMETER(ldc);
-        MLAS_UNREFERENCED_PARAMETER(AlphaBroadcast);
-        MLAS_UNREFERENCED_PARAMETER(ZeroMode);
-    }
-
-    MLAS_FORCEINLINE
-    static
-    void
-    MultiplyAlphaTrailing(
-        MLAS_FLOAT32X4 Accumulators[RowCount][4],
-        MLAS_FLOAT32X4 AlphaBroadcast
-        )
-    {
-        MLAS_UNREFERENCED_PARAMETER(Accumulators);
-        MLAS_UNREFERENCED_PARAMETER(AlphaBroadcast);
-    }
-
-    template<unsigned Lane>
-    MLAS_FORCEINLINE
-    static
-    void
-    StoreFloat(
-        MLAS_FLOAT32X4 Accumulators[RowCount][4],
-        float* C,
-        size_t ldc,
-        bool ZeroMode
-        )
-    {
-        MLAS_UNREFERENCED_PARAMETER(Accumulators);
-        MLAS_UNREFERENCED_PARAMETER(C);
-        MLAS_UNREFERENCED_PARAMETER(ldc);
-        MLAS_UNREFERENCED_PARAMETER(ZeroMode);
-    }
-};
-
-template<size_t RowCount>
-struct MLAS_SGEMM_ROW_LOOP : MLAS_SGEMM_ROW_LOOP_STEP<RowCount, 0>
-{
 };
 
 template<size_t RowCount>
@@ -430,8 +171,130 @@ MlasSgemmComputeBlock(
     BElements[2] = MlasLoadFloat32x4(B + 8);
     BElements[3] = MlasLoadFloat32x4(B + 12);
 
-    MLAS_SGEMM_ROW_LOOP<RowCount>::MultiplyAdd(Accumulators, ABroadcast, BElements);
+    MlasLoopUnroll<RowCount, MlasSgemmMultiplyAddRow>()(Accumulators, ABroadcast, BElements);
 }
+
+struct MlasSgemmMultiplyAlphaRow
+{
+    template<size_t Count, size_t Index>
+    MLAS_FORCEINLINE
+    static
+    void
+    Iteration(
+        MLAS_FLOAT32X4 Accumulators[4],
+        MLAS_FLOAT32X4 AlphaBroadcast
+        )
+    {
+        Accumulators[Index] = MlasMultiplyFloat32x4(Accumulators[Index], AlphaBroadcast);
+    }
+};
+
+struct MlasSgemmMultiplyAlphaAddRow
+{
+    template<size_t Count, size_t Index>
+    MLAS_FORCEINLINE
+    static
+    void
+    Iteration(
+        MLAS_FLOAT32X4 Accumulators[4],
+        MLAS_FLOAT32X4 AlphaBroadcast,
+        const float* C
+        )
+    {
+        Accumulators[Index] = MlasMultiplyAddFloat32x4(Accumulators[Index],
+            AlphaBroadcast, MlasLoadFloat32x4(C + Index * 4));
+    }
+};
+
+struct MlasSgemmStoreRow
+{
+    template<size_t Count, size_t Index>
+    MLAS_FORCEINLINE
+    static
+    void
+    Iteration(
+        MLAS_FLOAT32X4 Accumulators[4],
+        float* C
+        )
+    {
+        MlasStoreFloat32x4(C + Index * 4, Accumulators[Index]);
+    }
+};
+
+template<size_t VectorCount>
+struct MlasSgemmStoreVector
+{
+    template<size_t RowCount, size_t Row>
+    MLAS_FORCEINLINE
+    static
+    void
+    Iteration(
+        MLAS_FLOAT32X4 Accumulators[RowCount][4],
+        float* C,
+        size_t ldc,
+        MLAS_FLOAT32X4 AlphaBroadcast,
+        bool ZeroMode
+        )
+    {
+        float* c = C + Row * ldc;
+
+        if (ZeroMode) {
+            MlasLoopUnroll<VectorCount, MlasSgemmMultiplyAlphaRow>()(Accumulators[Row], AlphaBroadcast);
+        } else {
+            MlasLoopUnroll<VectorCount, MlasSgemmMultiplyAlphaAddRow>()(Accumulators[Row], AlphaBroadcast, c);
+        }
+
+        MlasLoopUnroll<VectorCount, MlasSgemmStoreRow>()(Accumulators[Row], c);
+
+        //
+        // Shift down any unaligned elements to the bottom for further processing.
+        //
+
+        if (VectorCount < 4) {
+            Accumulators[Row][0] = Accumulators[Row][VectorCount];
+        }
+    }
+};
+
+struct MlasSgemmMultiplyAlphaTrailing
+{
+    template<size_t RowCount, size_t Row>
+    MLAS_FORCEINLINE
+    static
+    void
+    Iteration(
+        MLAS_FLOAT32X4 Accumulators[RowCount][4],
+        MLAS_FLOAT32X4 AlphaBroadcast
+        )
+    {
+        Accumulators[Row][0] = MlasMultiplyFloat32x4(Accumulators[Row][0], AlphaBroadcast);
+    }
+};
+
+template<unsigned Lane>
+struct MlasSgemmStoreScalar
+{
+    template<size_t RowCount, size_t Row>
+    MLAS_FORCEINLINE
+    static
+    void
+    Iteration(
+        MLAS_FLOAT32X4 Accumulators[RowCount][4],
+        float* C,
+        size_t ldc,
+        bool ZeroMode
+        )
+    {
+        float* c = C + Row * ldc + Lane;
+        float Value = MlasExtractLaneFloat32x4<Lane>(Accumulators[Row][0]);
+
+        if (!ZeroMode) {
+            Value += *c;
+        }
+
+        *c = Value;
+    }
+};
 
 template<size_t RowCount>
 MLAS_FORCEINLINE
@@ -457,22 +320,30 @@ MlasSgemmProcessCount(
         MLAS_FLOAT32X4 AElements[RowCount];
         MLAS_FLOAT32X4 ABroadcast[RowCount];
 
-        MLAS_SGEMM_ROW_LOOP<RowCount>::ZeroAccumulators(Accumulators);
+        //
+        // Clear the block accumulators.
+        //
+
+        MlasLoopUnroll<RowCount, MlasSgemmZeroAccumulators>()(Accumulators);
+
+        //
+        // Compute the output block.
+        //
 
         while (k >= 4) {
 
-            MLAS_SGEMM_ROW_LOOP<RowCount>::LoadAElements(AElements, a, lda);
+            MlasLoopUnroll<RowCount, MlasSgemmLoadAElements>()(AElements, a, lda);
 
-            MLAS_SGEMM_ROW_LOOP<RowCount>::template BroadcastAElements<0>(AElements, ABroadcast);
+            MlasLoopUnroll<RowCount, MlasSgemmSplatAElements<0>>()(AElements, ABroadcast);
             MlasSgemmComputeBlock<RowCount>(Accumulators, ABroadcast, B);
 
-            MLAS_SGEMM_ROW_LOOP<RowCount>::template BroadcastAElements<1>(AElements, ABroadcast);
+            MlasLoopUnroll<RowCount, MlasSgemmSplatAElements<1>>()(AElements, ABroadcast);
             MlasSgemmComputeBlock<RowCount>(Accumulators, ABroadcast, B + 16);
 
-            MLAS_SGEMM_ROW_LOOP<RowCount>::template BroadcastAElements<2>(AElements, ABroadcast);
+            MlasLoopUnroll<RowCount, MlasSgemmSplatAElements<2>>()(AElements, ABroadcast);
             MlasSgemmComputeBlock<RowCount>(Accumulators, ABroadcast, B + 32);
 
-            MLAS_SGEMM_ROW_LOOP<RowCount>::template BroadcastAElements<3>(AElements, ABroadcast);
+            MlasLoopUnroll<RowCount, MlasSgemmSplatAElements<3>>()(AElements, ABroadcast);
             MlasSgemmComputeBlock<RowCount>(Accumulators, ABroadcast, B + 48);
 
             a += 4;
@@ -482,7 +353,7 @@ MlasSgemmProcessCount(
 
         while (k > 0) {
 
-            MLAS_SGEMM_ROW_LOOP<RowCount>::BroadcastAElements(ABroadcast, a, lda);
+            MlasLoopUnroll<RowCount, MlasSgemmBroadcastAElements>()(ABroadcast, a, lda);
             MlasSgemmComputeBlock<RowCount>(Accumulators, ABroadcast, B);
 
             a += 1;
@@ -496,7 +367,7 @@ MlasSgemmProcessCount(
             // Store the entire output block.
             //
 
-            MLAS_SGEMM_ROW_LOOP<RowCount>::template StoreVector<16>(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
+            MlasLoopUnroll<RowCount, MlasSgemmStoreVector<4>>()(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
 
         } else {
 
@@ -505,11 +376,11 @@ MlasSgemmProcessCount(
             //
 
             if (CountN >= 12) {
-                MLAS_SGEMM_ROW_LOOP<RowCount>::template StoreVector<12>(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasSgemmStoreVector<3>>()(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
             } else if (CountN >= 8) {
-                MLAS_SGEMM_ROW_LOOP<RowCount>::template StoreVector<8>(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasSgemmStoreVector<2>>()(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
             } else if (CountN >= 4) {
-                MLAS_SGEMM_ROW_LOOP<RowCount>::template StoreVector<4>(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasSgemmStoreVector<1>>()(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
             }
 
             //
@@ -521,16 +392,16 @@ MlasSgemmProcessCount(
 
             if (CountN > 0) {
 
-                MLAS_SGEMM_ROW_LOOP<RowCount>::MultiplyAlphaTrailing(Accumulators, AlphaBroadcast);
+                MlasLoopUnroll<RowCount, MlasSgemmMultiplyAlphaTrailing>()(Accumulators, AlphaBroadcast);
 
-                MLAS_SGEMM_ROW_LOOP<RowCount>::template StoreFloat<0>(Accumulators, C, ldc, ZeroMode);
+                MlasLoopUnroll<RowCount, MlasSgemmStoreScalar<0>>()(Accumulators, C, ldc, ZeroMode);
 
                 if (CountN >= 2) {
-                    MLAS_SGEMM_ROW_LOOP<RowCount>::template StoreFloat<1>(Accumulators, C, ldc, ZeroMode);
+                    MlasLoopUnroll<RowCount, MlasSgemmStoreScalar<1>>()(Accumulators, C, ldc, ZeroMode);
                 }
 
                 if (CountN >= 3) {
-                    MLAS_SGEMM_ROW_LOOP<RowCount>::template StoreFloat<2>(Accumulators, C, ldc, ZeroMode);
+                    MlasLoopUnroll<RowCount, MlasSgemmStoreScalar<2>>()(Accumulators, C, ldc, ZeroMode);
                 }
             }
 
@@ -589,7 +460,7 @@ Arguments:
 
     ldc - Supplies the first dimension of matrix C.
 
-    alpha - Supplies the scaler multiplier (see SGEMM definition).
+    alpha - Supplies the scalar multiplier (see SGEMM definition).
 
     ZeroMode - Supplies true if the output matrix must be zero initialized,
         else false if the output matrix is accumulated into.

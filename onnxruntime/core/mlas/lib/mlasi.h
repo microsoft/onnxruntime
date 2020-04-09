@@ -770,7 +770,7 @@ typedef __vector int MLAS_INT32X4;
 typedef __vector unsigned MLAS_UINT32X4;
 #endif
 
-inline
+MLAS_FORCEINLINE
 MLAS_INT32X4
 MlasBroadcastInt32x4(int32_t Value)
 {
@@ -783,7 +783,7 @@ MlasBroadcastInt32x4(int32_t Value)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasBroadcastFloat32x4(float Value)
 {
@@ -796,7 +796,7 @@ MlasBroadcastFloat32x4(float Value)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasBroadcastFloat32x4(const float* Value)
 {
@@ -809,7 +809,7 @@ MlasBroadcastFloat32x4(const float* Value)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasZeroFloat32x4(void)
 {
@@ -822,7 +822,7 @@ MlasZeroFloat32x4(void)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasLoadFloat32x4(const float* Buffer)
 {
@@ -835,7 +835,7 @@ MlasLoadFloat32x4(const float* Buffer)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 void
 MlasStoreFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 {
@@ -848,7 +848,7 @@ MlasStoreFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 void
 MlasStoreAlignedFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 {
@@ -864,7 +864,7 @@ MlasStoreAlignedFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 void
 MlasStoreLowHalfFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 {
@@ -878,7 +878,7 @@ MlasStoreLowHalfFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 }
 
 template<unsigned Lane>
-inline
+MLAS_FORCEINLINE
 void
 MlasStoreLaneFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 {
@@ -894,7 +894,7 @@ MlasStoreLaneFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 }
 
 template<unsigned Lane>
-inline
+MLAS_FORCEINLINE
 float
 MlasExtractLaneFloat32x4(MLAS_FLOAT32X4 Vector)
 {
@@ -910,7 +910,7 @@ MlasExtractLaneFloat32x4(MLAS_FLOAT32X4 Vector)
 #if defined(MLAS_SSE2_INTRINSICS)
 
 template<>
-inline
+MLAS_FORCEINLINE
 void
 MlasStoreLaneFloat32x4<0>(float* Buffer, MLAS_FLOAT32X4 Vector)
 {
@@ -918,7 +918,7 @@ MlasStoreLaneFloat32x4<0>(float* Buffer, MLAS_FLOAT32X4 Vector)
 }
 
 template<>
-inline
+MLAS_FORCEINLINE
 float
 MlasExtractLaneFloat32x4<0>(MLAS_FLOAT32X4 Vector)
 {
@@ -927,7 +927,7 @@ MlasExtractLaneFloat32x4<0>(MLAS_FLOAT32X4 Vector)
 
 #endif
 
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
@@ -940,7 +940,7 @@ MlasAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasSubtractFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
@@ -953,7 +953,7 @@ MlasSubtractFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasMultiplyFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
@@ -966,7 +966,7 @@ MlasMultiplyFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasMultiplyAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2, MLAS_FLOAT32X4 Vector3)
 {
@@ -983,7 +983,7 @@ MlasMultiplyAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2, MLAS_FL
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasDivideFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
@@ -1002,7 +1002,7 @@ MlasDivideFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasGreaterThanFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
@@ -1017,7 +1017,7 @@ MlasGreaterThanFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasMaximumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
@@ -1030,7 +1030,7 @@ MlasMaximumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
@@ -1043,7 +1043,7 @@ MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasAndFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
@@ -1056,7 +1056,7 @@ MlasAndFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasOrFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
@@ -1069,7 +1069,7 @@ MlasOrFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasAndNotFloat32x4(MLAS_FLOAT32X4 VectorNot, MLAS_FLOAT32X4 Vector)
 {
@@ -1082,7 +1082,7 @@ MlasAndNotFloat32x4(MLAS_FLOAT32X4 VectorNot, MLAS_FLOAT32X4 Vector)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasXorFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
@@ -1096,7 +1096,7 @@ MlasXorFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 }
 
 // calc 2^int(N)
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasPowerOf2Float32x4(MLAS_FLOAT32X4 Vector)
 {
@@ -1124,43 +1124,7 @@ typedef __m128d MLAS_FLOAT64X2;
 
 #ifndef MLAS_FLOAT64X2_UNSUPPORTED
 
-inline
-MLAS_FLOAT64X2
-MlasZeroFloat64x2(void)
-{
-#if defined(MLAS_SSE2_INTRINSICS)
-    return _mm_setzero_pd();
-#endif
-}
-
-inline
-MLAS_FLOAT64X2
-MlasLoadFloat64x2(const double* Buffer)
-{
-#if defined(MLAS_SSE2_INTRINSICS)
-    return _mm_loadu_pd(Buffer);
-#endif
-}
-
-inline
-void
-MlasStoreFloat64x2(double* Buffer, MLAS_FLOAT64X2 Vector)
-{
-#if defined(MLAS_SSE2_INTRINSICS)
-    _mm_storeu_pd(Buffer, Vector);
-#endif
-}
-
-inline
-void
-MlasStoreAlignedFloat64x2(double* Buffer, MLAS_FLOAT64X2 Vector)
-{
-#if defined(MLAS_SSE2_INTRINSICS)
-    _mm_store_pd(Buffer, Vector);
-#endif
-}
-
-inline
+MLAS_FORCEINLINE
 MLAS_FLOAT64X2
 MlasBroadcastFloat64x2(double Value)
 {
@@ -1169,7 +1133,43 @@ MlasBroadcastFloat64x2(double Value)
 #endif
 }
 
-inline
+MLAS_FORCEINLINE
+MLAS_FLOAT64X2
+MlasZeroFloat64x2(void)
+{
+#if defined(MLAS_SSE2_INTRINSICS)
+    return _mm_setzero_pd();
+#endif
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT64X2
+MlasLoadFloat64x2(const double* Buffer)
+{
+#if defined(MLAS_SSE2_INTRINSICS)
+    return _mm_loadu_pd(Buffer);
+#endif
+}
+
+MLAS_FORCEINLINE
+void
+MlasStoreFloat64x2(double* Buffer, MLAS_FLOAT64X2 Vector)
+{
+#if defined(MLAS_SSE2_INTRINSICS)
+    _mm_storeu_pd(Buffer, Vector);
+#endif
+}
+
+MLAS_FORCEINLINE
+void
+MlasStoreAlignedFloat64x2(double* Buffer, MLAS_FLOAT64X2 Vector)
+{
+#if defined(MLAS_SSE2_INTRINSICS)
+    _mm_store_pd(Buffer, Vector);
+#endif
+}
+
+MLAS_FORCEINLINE
 MLAS_FLOAT64X2
 MlasMultiplyFloat64x2(MLAS_FLOAT64X2 Vector1, MLAS_FLOAT64X2 Vector2)
 {
@@ -1184,7 +1184,7 @@ MlasMultiplyFloat64x2(MLAS_FLOAT64X2 Vector1, MLAS_FLOAT64X2 Vector2)
 // Reads a platform specific time stamp counter.
 //
 
-inline
+MLAS_FORCEINLINE
 uint64_t
 MlasReadTimeStampCounter(void)
 {
