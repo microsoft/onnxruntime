@@ -390,7 +390,7 @@ See more information on the ACL Execution Provider [here](./docs/execution_provi
 
 #### Build Instructions
 
-1. Build ACL Library
+1. Build ACL Library (if not present)
 ```
 git clone https://github.com/Arm-software/ComputeLibrary.git
 cd ComputeLibrary
