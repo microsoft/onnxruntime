@@ -29,6 +29,18 @@
 namespace onnxruntime {
 namespace training {
 
+void call_training_step(
+  TrainingSession* sess,
+  const RunOptions& run_options,
+  const std::vector<std::string>& feed_names,
+  const std::vector<OrtValue>& feeds,
+  const std::vector<std::string>& output_names,
+  std::vector<OrtValue>* p_fetches
+  ) {
+  auto status = sess->Run(run_options, feed_names, feeds, output_names, p_fetches);
+  ORT_ENFORCE(status == Status::OK());
+}
+
 static std::vector<FreeDimensionOverride> overrides = {};
 static SessionOptions SESSION_OPTION = {
     ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
@@ -300,7 +312,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
   std::ofstream log_file(std::to_string(params_.mpi_context.world_rank));
 
-  // session_.Save("sub_model_" + std::to_string(params_.mpi_context.world_rank) + ".onnx", TrainingSession::SaveOption::NO_RELOAD);
+  session_.Save("perf_sub_model_" + std::to_string(params_.mpi_context.world_rank) + ".onnx", TrainingSession::SaveOption::NO_RELOAD);
 
   log_file << "Step 1 @ " << params_.mpi_context.world_rank << std::endl;
   while (step_ < params_.num_train_steps) {
@@ -324,7 +336,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       // loop through the data
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
-        const size_t worker_id = step_ % num_pipeline_stages_;
+        // const size_t worker_id = step_ % num_pipeline_stages_;
 
         std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch, input_allocator_);
         if (loss_scaler_) {
@@ -524,6 +536,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         } else {
           RunOptions run_options;
           run_options.only_execute_path_to_fetches = true;
+          /*
           log_file << "Step 10 @ " << params_.mpi_context.world_rank << std::endl;
 
           worker_states_[worker_id].run_options = run_options;
@@ -570,13 +583,19 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           fetches = worker_states_[worker_id].fetches;
 
           log_file << "Step 15 @ " << params_.mpi_context.world_rank << std::endl;
+          */
+
           /*
           ORT_RETURN_IF_ERROR(session_.Run(run_options,
                                            feed_names,
                                            feeds,
                                            fetch_grad_accumulator_output,
                                            &fetches));
-          */
+                                           */
+
+          std::thread local_worker = std::thread(&call_training_step, &session_, run_options, feed_names, feeds, fetch_grad_accumulator_output, &fetches);
+          local_worker.join();
+
           gradient_accumulation_step_count++;
         }
         /*

@@ -98,20 +98,11 @@ static Status AddNcclAllReduceForGradients(
   fused_allreduce_output = ArgDef(fused_gradient_argdef.name + "AllReduce_Out", fused_gradient_argdef.type_proto);
 
   // Add NCCL Allreduce node.
-  /*
   graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
                                   {fused_gradient_argdef},
                                   {fused_allreduce_output},
                                   NodeAttributes(),
                                   "NcclAllReduce")});
-  */
-
-  // Add NCCL Allreduce node.
-  graph_defs.AddNodeDefs({NodeDef("Identity",
-                                  {fused_gradient_argdef},
-                                  {fused_allreduce_output},
-                                  NodeAttributes(),
-                                  "FakeNcclAllReduce")});
 
   std::vector<ArgDef> view_inputs(gradient_argdefs.size() + 1);
   view_inputs[0] = fused_allreduce_output;
@@ -200,8 +191,10 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
   ArgDef reduced_fused_gradient_argdef;
 
   if (opt_graph_config_.use_nccl) {
+    if (false)
     ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, fused_gradient_argdef, graph_defs, reduced_fused_gradient_argdef));
   } else {
+    if (false)
     ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
   }
 

@@ -33,9 +33,11 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int e
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();
 
+  /*
   cudaError_t err = cudaGetLastError();
   auto err_str = cudaGetErrorString(err);
   std::cout << err_str << std::endl;
+  */
 
   auto& src_device = src.Location().device;
   auto& dst_device = dst.Location().device;

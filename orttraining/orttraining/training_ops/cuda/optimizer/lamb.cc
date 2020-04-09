@@ -668,6 +668,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
     *step_data_new = *step_data + 1;
   }
 
+  std::cout << "Lamb done" << std::endl;
   return Status::OK();
 }
 
