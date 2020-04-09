@@ -300,11 +300,11 @@ void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
 
         // If we can break the size of the chunk into two reasonably large
         // pieces, do so.  In any case don't waste more than
-        // kMaxInternalFragmentation bytes on padding this alloc.
-        const int64_t kMaxInternalFragmentation = 128 << 20;  // 128mb
+        // kMaxDeadBytesInChunk bytes on padding this alloc.
+        const int64_t kMaxDeadBytesInChunk = 128 << 20;  // 128mb
         if (chunk->size >= rounded_bytes * 2 ||
             static_cast<int64_t>(chunk->size) - rounded_bytes >=
-                kMaxInternalFragmentation) {
+                kMaxDeadBytesInChunk) {
           SplitChunk(h, rounded_bytes);
           chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
         }
