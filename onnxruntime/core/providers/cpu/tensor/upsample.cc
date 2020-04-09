@@ -614,9 +614,9 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
   switch (mode_) {
     case UpsampleMode::NN:
-      return UpsampleNearest<T>(X->template Data<T>(), Y->template MutableData<T>(), X->Shape(), Y->Shape(), scales, roi,
-                                is_resize_, use_extrapolation_, extrapolation_value_, use_nearest2x_optimization_,
-                                get_original_coordinate_, get_nearest_pixel_);
+      return UpsampleNearest<T>(X->template Data<T>(), Y->template MutableData<T>(), X->Shape(), Y->Shape(),
+                                scales, roi, is_resize_, use_extrapolation_, extrapolation_value_,
+                                use_nearest2x_optimization_, get_original_coordinate_, get_nearest_pixel_);
     case UpsampleMode::LINEAR: {
       //The correct behavior of 'linear' mode for an N-D input is not clear right now,
       //so only support 'bilinear' with 2-D or 4-D input tensor with outermost 2 scales as 1 in the 4-D case
@@ -712,15 +712,13 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   std::vector<float> scales_array(X->Shape().GetDims().size());
 
   if (scales != nullptr && scales->Shape().Size() != 0) {
-    ORT_ENFORCE(sizes == nullptr,
-                "Only one of scales or sizes must be provided as input.");
+    ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
     ParseScalesData(scales, scales_array);
 
     // Compute output shape from scales and input dims
     ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
   } else {
-    ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0,
-                "Either scales or sizes MUST be provided as input.");
+    ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0, "Either scales or sizes MUST be provided as input.");
 
     // When sizes input is available directly populate it into the output_dims array.
     memcpy(output_dims.data(), sizes->template Data<int64_t>(), sizes->Shape().Size() * sizeof(int64_t));
