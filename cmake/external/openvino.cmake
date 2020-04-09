@@ -83,12 +83,25 @@ else()
             COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/openvino/ngraph_protobuf.patch
             # COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/ngraph/dnnl_v1.patch
             CMAKE_ARGS
-                -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                -DNGRAPH_USE_SYSTEM_PROTOBUF=FALSE
-                -DNGRAPH_ONNX_IMPORT_ENABLE=TRUE
-                -DNGRAPH_JSON_ENABLE=TRUE
-                -DNGRAPH_INTERPRETER_ENABLE=TRUE
-                -DNGRAPH_UNIT_TEST_ENABLE=FALSE
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+            -DNGRAPH_ONNX_IMPORT_ENABLE=TRUE
+            -DNGRAPH_LIB_VERSIONING_ENABLE=TRUE
+            -DNGRAPH_JSON_ENABLE=FALSE
+            -DNGRAPH_USE_SYSTEM_PROTOBUF=FALSE
+            -DNGRAPH_UNIT_TEST_ENABLE=FALSE
+            -DNGRAPH_TEST_UTIL_ENABLE=FALSE
+            -DNGRAPH_TOOLS_ENABLE=FALSE
+            -DNGRAPH_CPU_ENABLE=FALSE
+            -DNGRAPH_INTERPRETER_ENABLE=FALSE
+            -DNGRAPH_NOP_ENABLE=FALSE
+            -DNGRAPH_GPUH_ENABLE=FALSE
+            -DNGRAPH_GENERIC_CPU_ENABLE=FALSE
+            -DNGRAPH_PLAIDML_ENABLE=FALSE
+            -DNGRAPH_ENABLE_CPU_CONV_AUTO=FALSE
+            -DNGRAPH_PYTHON_BUILD_ENABLE=FALSE
+            -DNGRAPH_FAST_MATH_ENABLE=FALSE
+            -DNGRAPH_DYNAMIC_COMPONENTS_ENABLE=FALSE
+            -DNGRAPH_NATIVE_ARCH_ENABLE=FALSE
                 -DCMAKE_INSTALL_PREFIX=${ngraph_INSTALL_DIR}
                 -Dprebuilt_ONNX_BINARY_DIR=${prebuilt_ONNX_BINARY_DIR}
                 -Dprebuilt_ONNX_SOURCE_DIR=${prebuilt_ONNX_SOURCE_DIR}
