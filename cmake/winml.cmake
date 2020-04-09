@@ -1,12 +1,18 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+if (NOT WINDOWS_STORE)
+  message(FATAL_ERROR "WinML is only supported on WCOS")
+endif()
+
 include(precompiled_header.cmake)
 include(winml_sdk_helpers.cmake)
 include(winml_cppwinrt.cmake)
 
 # get the current nuget sdk kit directory
 get_sdk(sdk_folder sdk_version)
+get_sdk_include_folder(${sdk_folder} ${sdk_version} sdk_include_folder)
+set(dxcore_header "${sdk_include_folder}/um/dxcore.h")
 set(target_folder ONNXRuntime/winml)
 set(winml_adapter_dir ${REPO_ROOT}/winml/adapter)
 set(winml_api_root ${REPO_ROOT}/winml/api)
@@ -180,7 +186,9 @@ add_dependencies(winml_lib_ort winml_api_native)
 add_dependencies(winml_lib_ort winml_api_native_internal)
 
 # Link libraries
-target_link_libraries(winml_lib_ort PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
+if (onnxruntime_USE_DML)
+  target_add_dml(winml_lib_ort)
+endif()
 target_link_libraries(winml_lib_ort PRIVATE wil)
 
 
@@ -200,7 +208,7 @@ list(APPEND winml_adapter_files
     ${winml_adapter_dir}/winml_adapter_model.h
     ${winml_adapter_dir}/winml_adapter_session.cpp
     )
-	
+
 if (onnxruntime_USE_DML)
   list(APPEND winml_adapter_files
     ${winml_adapter_dir}/abi_custom_registry_impl.cpp
@@ -223,12 +231,6 @@ add_dependencies(winml_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_precompiled_header(winml_adapter pch.h)
 
 # Includes
-target_include_directories(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR})                             # windows machine learning generated component headers
-target_include_directories(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
-target_include_directories(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
-target_include_directories(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
-target_include_directories(winml_adapter PRIVATE ${winml_lib_api_dir})                                    # needed for generated headers
-target_include_directories(winml_adapter PRIVATE ${winml_lib_dir})
 target_include_directories(winml_adapter PRIVATE ${winml_adapter_dir})
 target_include_directories(winml_adapter PRIVATE ${winml_lib_common_dir}/inc)
 
@@ -236,12 +238,6 @@ set_target_properties(winml_adapter
   PROPERTIES
   FOLDER
   ${target_folder})
-
-# Add deps
-add_dependencies(winml_adapter winml_sdk_cppwinrt)
-add_dependencies(winml_adapter winml_api)
-add_dependencies(winml_adapter winml_api_native)
-add_dependencies(winml_adapter winml_api_native_internal)
 
 # Link libraries
 target_link_libraries(winml_adapter PRIVATE wil)
@@ -555,18 +551,11 @@ if (onnxruntime_USE_DML)
   set(delayload_dml "/DELAYLOAD:directml.dll")
 endif(onnxruntime_USE_DML)
 
-# The default libraries to link with in Windows are kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib
-# Remove them and use the onecore umbrella library instead
-foreach(default_lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdgl32.lib advapi32.lib)
-  set(removed_libs "${removed_libs} /NODEFAULTLIB:${default_lib}")
-endforeach()
-set(CMAKE_C_STANDARD_LIBRARIES "${removed_libs} onecoreuap.lib")
-set(CMAKE_CXX_STANDARD_LIBRARIES "${removed_libs} onecoreuap.lib")
-set_target_properties(winml_dll
-    PROPERTIES
-    LINK_FLAGS
-    "/DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll ${delayload_dml}")
+target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-threadpool-legacy-l1-1-0.dll /DELAYLOAD:api-ms-win-core-processtopology-obsolete-l1-1-0.dll /DELAYLOAD:api-ms-win-core-kernel32-legacy-l1-1-0.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll ${delayload_dml})
 
+if (EXISTS ${dxcore_header})
+  target_link_options(winml_dll PRIVATE /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll)
+endif()
 
 set_target_properties(winml_dll
   PROPERTIES
@@ -578,15 +567,6 @@ add_dependencies(winml_dll winml_sdk_cppwinrt)
 add_dependencies(winml_dll winml_api_native)
 add_dependencies(winml_dll winml_api_native_internal)
 
-# Any project that links in debug_alloc.obj needs this lib.
-# unresolved external symbol __imp_SymSetOptions
-# ...                        __imp_SymGetLineFromAddr64
-# ...                        __imp_SymInitialize
-# ...                        __imp_SymFromAddr
-if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
-  set(DBGHELP dbghelp.lib)
-endif("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
-
 # Link libraries
 target_link_libraries(winml_dll PRIVATE onnxruntime)
 target_link_libraries(winml_dll PRIVATE re2)
@@ -596,7 +576,15 @@ target_link_libraries(winml_dll PRIVATE winml_lib_image)
 target_link_libraries(winml_dll PRIVATE winml_lib_ort)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
 target_link_libraries(winml_dll PRIVATE delayimp.lib)
-target_link_libraries(winml_dll PRIVATE ${DBGHELP})
+
+# Any project that links in debug_alloc.obj needs this lib.
+# unresolved external symbol __imp_SymSetOptions
+# ...                        __imp_SymGetLineFromAddr64
+# ...                        __imp_SymInitialize
+# ...                        __imp_SymFromAddr
+if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug" OR "${CMAKE_BUILD_TYPE}" STREQUAL "RelWithDebInfo")
+  target_link_libraries(winml_dll PRIVATE dbghelp.lib)
+endif()
 
 # 1 of 3 projects that fail in link with 'failed to do memory mapped file I/O' (Only release)
 # when using x86 hosted architecture. When using the LKG compiler this becomes a problem
@@ -616,7 +604,4 @@ endif()
 # When cuda is enabled in the pipeline, it sets CMAKE_SHARED_LINKER_FLAGS which affects all targets including winml_dll.
 # However, there are no cuda imports in winml_dll, and the linker throws the 4199 warning.
 # This is needed to allow winml_dll build with cuda enabled.
-set_target_properties(winml_dll
-  PROPERTIES
-  LINK_FLAGS
-  "/ignore:4199")
+target_link_options(winml_dll PRIVATE /ignore:4199)

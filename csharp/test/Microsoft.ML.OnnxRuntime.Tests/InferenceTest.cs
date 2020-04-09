@@ -187,13 +187,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
                 }
 
-                // Run the inference
+                ReadOnlySpan<int> expectedOutputDimensions = new int[] { 1, 1000, 1, 1 };
+                string[] expectedOutputNames = new string[] { "softmaxout_1" };
+
+                // Run inference with named inputs and outputs created with in Run()
                 using (var results = session.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
                 {
                     validateRunResults(results);
                 }
 
-                // Run Inference with RunOptions
+                // Run inference with named inputs, outputs created with in Run() and RunOptions
                 using (var runOptions = new RunOptions())
                 {
                     runOptions.LogId = "CsharpTest";
@@ -206,32 +209,108 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         validateRunResults(results);
                     }
                 }
+
+                // Run inference with pinned inputs and outputs created with in Run()
+                using (var pinnedInputs = new DisposableList<FixedBufferOnnxValue>())
+                {
+                    var inputNames = container.Select(i => i.Name).ToArray();
+                    pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromTensor(i.AsTensor<float>())));
+
+                    // output names not specified
+                    using (var results = session.Run(inputNames, pinnedInputs))  // results is an IReadOnlyList<NamedOnnxValue> container
+                    {
+                        validateRunResults(results);
+                    }
+
+                    // output names specified explicitly
+                    using (var results = session.Run(inputNames, pinnedInputs, expectedOutputNames))  // results is an IReadOnlyList<NamedOnnxValue> container
+                    {
+                        validateRunResults(results);
+                    }
+                }
+
+                // Run inference with named inputs and named outputs
+                {
+                    // correct pre-allocated outputs
+                    var expectedOutputValues = new List<NamedOnnxValue>()
+                    {
+                        NamedOnnxValue.CreateFromTensor("softmaxout_1", new DenseTensor<float>(expectedOutputDimensions))
+                    };
+                    session.Run(container, expectedOutputValues);
+                    validateRunResultData(expectedOutputValues[0].AsTensor<float>());
+                }
+
+                // Run inference with pinned inputs and named outputs
+                using (var pinnedInputs = new DisposableList<FixedBufferOnnxValue>())
+                {
+                    var inputNames = container.Select(i => i.Name).ToArray();
+                    pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromTensor(i.AsTensor<float>())));
+
+                    // expected inputs and outputs
+                    var expectedOutputValues = new List<NamedOnnxValue>()
+                    {
+                        NamedOnnxValue.CreateFromTensor("softmaxout_1", new DenseTensor<float>(expectedOutputDimensions))
+                    };
+                    session.Run(inputNames, pinnedInputs, expectedOutputValues);
+                    validateRunResultData(expectedOutputValues[0].AsTensor<float>());
+                }
+
+                // Run inference with named inputs and pinned outputs
+                {
+                    // correct pre-allocated outputs
+                    using (var pinnedOutputs = new DisposableList<FixedBufferOnnxValue>())
+                    {
+                        var outputTensor = new DenseTensor<float>(expectedOutputDimensions);
+                        pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromTensor(outputTensor));
+                        session.Run(container, expectedOutputNames, pinnedOutputs);
+                        validateRunResultData(outputTensor);
+                    }
+                }
+
+                // Run inference with pinned inputs and pinned outputs
+                using (DisposableList<FixedBufferOnnxValue> pinnedInputs = new DisposableList<FixedBufferOnnxValue>(),
+                                                            pinnedOutputs = new DisposableList<FixedBufferOnnxValue>())
+                {
+                    var inputNames = container.Select(i => i.Name).ToArray();
+                    pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromTensor(i.AsTensor<float>())));
+
+                    var outputTensor = new DenseTensor<float>(expectedOutputDimensions);
+                    pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromTensor(outputTensor));
+
+                    session.Run(inputNames, pinnedInputs, expectedOutputNames, pinnedOutputs);
+                    validateRunResultData(outputTensor);
+                }
             }
         }
 
-        private void validateRunResults(IDisposableReadOnlyCollection<DisposableNamedOnnxValue> results)
+        private void validateRunResults(IReadOnlyCollection<NamedOnnxValue> results)
         {
-            float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
             // validate the results
             foreach (var r in results)
             {
                 Assert.Equal(1, results.Count);
                 Assert.Equal("softmaxout_1", r.Name);
 
-                var resultTensor = r.AsTensor<float>();
-                int[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
-                Assert.Equal(expectedDimensions.Length, resultTensor.Rank);
-
-                var resultDimensions = resultTensor.Dimensions;
-                for (int i = 0; i < expectedDimensions.Length; i++)
-                {
-                    Assert.Equal(expectedDimensions[i], resultDimensions[i]);
-                }
-
-                var resultArray = r.AsTensor<float>().ToArray();
-                Assert.Equal(expectedOutput.Length, resultArray.Length);
-                Assert.Equal(expectedOutput, resultArray, new floatComparer());
+                validateRunResultData(r.AsTensor<float>());
             }
+        }
+
+        private void validateRunResultData(Tensor<float> resultTensor)
+        {
+            float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
+
+            int[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
+            Assert.Equal(expectedDimensions.Length, resultTensor.Rank);
+
+            var resultDimensions = resultTensor.Dimensions;
+            for (int i = 0; i < expectedDimensions.Length; i++)
+            {
+                Assert.Equal(expectedDimensions[i], resultDimensions[i]);
+            }
+
+            var resultArray = resultTensor.ToArray();
+            Assert.Equal(expectedOutput.Length, resultArray.Length);
+            Assert.Equal(expectedOutput, resultArray, new floatComparer());
         }
 
 
@@ -284,6 +363,101 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
             Assert.StartsWith("[ErrorCode:InvalidArgument] Invalid Feed Input Name", ex.Message);
             session.Dispose();
+        }
+
+        [Fact]
+        private void ThrowInconsistentPinnedInputs()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var tensor = tuple.Item3;
+
+            using (var inputs = new DisposableList<FixedBufferOnnxValue>())
+            {
+                inputs.Add(FixedBufferOnnxValue.CreateFromTensor(tensor));
+                var ex = Assert.Throws<ArgumentException>(() => session.Run(new string[0], inputs));
+                Assert.StartsWith("Length of inputNames (0) must match that of inputValues (1).", ex.Message);
+            }
+        }
+
+        [Fact]
+        private void ThrowWrongOutputName()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
+            var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 2 });
+            var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("bad_output_name", outputTensor) };
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, outputs));
+            Assert.Contains("Invalid Output Name", ex.Message);
+            session.Dispose();
+        }
+
+        [Fact]
+        private void ThrowWrongOutputType()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
+            var outputTensor = new DenseTensor<int>((ReadOnlySpan<int>)new[] { 1, 1000, 1, 1 });
+            var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("softmaxout_1", outputTensor) };
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, outputs));
+            // TODO: check exception message
+            // InferenceSession::ValidateOutputs() does not check type so far. Currently this will finally trigger an error in Softmax.
+            session.Dispose();
+        }
+
+        [Fact]
+        private void ThrowWrongOutputDimension()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
+            var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 1001, 1, 1 });
+            var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("softmaxout_1", outputTensor) };
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, outputs));
+            // TODO: check exception message
+            // InferenceSession::ValidateOutputs() does not check dims so far. Currently this will finally trigger an error in Softmax.
+            session.Dispose();
+        }
+
+        [Fact]
+        private void ThrowNoOutput()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
+            var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 1000, 1, 1 });
+            var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("softmaxout_1", outputTensor) };
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, new NamedOnnxValue[0]));
+            Assert.Contains("[ErrorCode:InvalidArgument] At least one output should be requested.", ex.Message);
+            session.Dispose();
+        }
+
+        [Fact]
+        private void ThrowInconsistentPinnedOutputs()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
+            var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 1000, 1, 1 });
+
+            using (var outputs = new DisposableList<FixedBufferOnnxValue>())
+            {
+                var ex = Assert.Throws<ArgumentException>(() => session.Run(inputs, new string[] { "softmaxout_1" }, outputs));
+                Assert.StartsWith("Length of outputNames (1) must match that of outputValues (0).", ex.Message);
+            }
         }
 
         [Fact]
@@ -347,6 +521,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 skipModels["test_vgg19"] = "Get preallocated buffer for initializer conv4_4_b_0 failed";
                 skipModels["tf_pnasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_5/comb_iter_1/left/bn_sep_7x7_1/beta:0_203 failed";
                 skipModels["tf_nasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_11/beginning_bn/beta:0_331 failed";
+                skipModels["test_zfnet512"] = "System out of memory";
+                skipModels["test_bvlc_reference_caffenet"] = "System out of memory";
             }
 
             return skipModels;
@@ -577,7 +753,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
+        [SkipNonPackageTests]
         private void TestRegisterCustomOpLibrary()
         {
             using (var option = new SessionOptions())
@@ -730,6 +906,176 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
+        private void TestReusingRunOutputNonStringType()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_BOOL.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<bool>(new bool[] { true, false, true, false, true }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                var res1 = session.Run(container);
+
+                // change the name of the DisposableNamedOnnxValue
+                res1.First().Name = "input";
+
+                // Run inferencing 2 times using the output of the first Run()
+                for (int i = 0; i < 2; ++i)
+                {
+                    using (var res2 = session.Run(res1))
+                    {
+                        var tensorOut = res2.First().AsTensor<bool>();
+                        Assert.True(tensorOut.SequenceEqual(tensorIn));
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        private void TestReusingRunOutputStringType()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_STRING.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<string>(new string[] { "a", "b", "c", "d", "e" }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                var res1 = session.Run(container);
+
+                // change the name of the DisposableNamedOnnxValue
+                res1.First().Name = "input";
+
+                // Run inferencing 2 times using the output of the first Run()
+                for (int i = 0; i < 2; ++i)
+                {
+                    using (var res2 = session.Run(res1))
+                    {
+                        var tensorOut = res2.First().AsTensor<string>();
+                        Assert.True(tensorOut.SequenceEqual(tensorIn));
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        private void TestReusingDisposedRunOutput()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_BOOL.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<bool>(new bool[] { true, false, true, false, true }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                var res1 = session.Run(container);
+
+                // Dispose the result tensor
+                res1.First().Dispose();
+
+                bool succeeded = false;
+
+                // Now try using the disposed output as input to another Run()
+                try
+                {
+                    // Run() should fail with a user friendly error message.
+                    session.Run(res1);
+                }
+
+                catch (ObjectDisposedException e)
+                {
+                    var errorString = "This instance of DisposableNamedOnnxValue has already been disposed";
+
+                    Assert.Contains(errorString, e.Message);
+
+                    succeeded = true;
+                }
+
+                Assert.True(succeeded);
+            }
+        }
+
+        [Fact]
+        public void TestCreateFixedBufferOnnxValueFromStringTensor()
+        {
+            var tensor = new DenseTensor<string>(new string[] { "a", "b" }, new int[] { 1, 2 });
+
+            Assert.Throws<ArgumentException>("value", () =>
+            {
+                // cannot create from string tensor
+                FixedBufferOnnxValue.CreateFromTensor(tensor);
+            });
+        }
+
+        [Fact]
+        private void TestReusingFixedBufferOnnxValue()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_BOOL.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var bufferA = new bool[] { true, false, true, false, true };
+                var bufferB = new bool[bufferA.Length];
+                var bufferC = new bool[bufferA.Length];
+                var tensorA = new DenseTensor<bool>(bufferA, new int[] { 1, 5 });
+                var tensorB = new DenseTensor<bool>(bufferB, new int[] { 1, 5 });
+                var tensorC = new DenseTensor<bool>(bufferC, new int[] { 1, 5 });
+                using (FixedBufferOnnxValue a = FixedBufferOnnxValue.CreateFromTensor(tensorA),
+                                            b = FixedBufferOnnxValue.CreateFromTensor(tensorB),
+                                            c = FixedBufferOnnxValue.CreateFromTensor(tensorC))
+                {
+                    session.Run(new[] { "input" }, new[] { a }, new[] { "output" }, new[] { b });
+                    session.Run(new[] { "input" }, new[] { b }, new[] { "output" }, new[] { c });
+                }
+
+                Assert.True(tensorC.SequenceEqual(tensorA));
+            }
+        }
+
+        [Fact]
+        private void TestReusingFixedBufferOnnxValueMultiInferences()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_INT32.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var bufferInput = new int[5];
+                var bufferOutput = new int[5];
+                var tensorInput = new DenseTensor<int>(bufferInput, new int[] { 1, 5 });
+                var tensorOutput = new DenseTensor<int>(bufferOutput, new int[] { 1, 5 });
+
+                using (FixedBufferOnnxValue valueInput = FixedBufferOnnxValue.CreateFromTensor(tensorInput),
+                                            valueOutput = FixedBufferOnnxValue.CreateFromTensor(tensorOutput))
+                {
+                    var inputNames = new[] { "input" };
+                    var outputNames = new[] { "output" };
+                    var inputValues = new[] { valueInput };
+                    var outputValues = new[] { valueOutput };
+
+                    var rand = new Random();
+
+                    // run the model for multiple times
+                    for (var i = 0; i < 1000; i++)
+                    {
+                        // feed inputs ( 5 random integers )
+                        var inputs = Enumerable.Range(0, 5).Select(x => rand.Next()).ToArray();
+                        inputs.CopyTo(bufferInput, 0);
+
+                        // run inference
+                        session.Run(inputNames, inputValues, outputNames, outputValues);
+
+                        // use outputs
+                        Assert.Equal(inputs, bufferOutput);
+                    }
+                }
+            }
+        }
+
+        [Fact]
         private void TestModelInputINT32()
         {
             // model takes 1x5 input of fixed type, echoes back
@@ -793,6 +1139,22 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var tensorOut = res.First().AsTensor<string>();
                     Assert.True(tensorOut.SequenceEqual(tensorIn));
                 }
+            }
+        }
+
+        [Fact]
+        private void TestModelInputSTRING_ShouldFailWithNullInput()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_STRING.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<string>(new string[5], // null
+                                                       new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                Assert.Throws<ArgumentNullException>(() => { session.Run(container); });
             }
         }
 
@@ -1457,6 +1819,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 if (testOnGpu == null || !testOnGpu.Equals("ON"))
                 {
                     Skip = "GPU testing not enabled";
+                }
+            }
+        }
+
+        private class SkipNonPackageTests : FactAttribute
+        {
+            public SkipNonPackageTests()
+            {
+                var skipNonPackageTests = System.Environment.GetEnvironmentVariable("SKIPNONPACKAGETESTS");
+                if (skipNonPackageTests != null && skipNonPackageTests.Equals("ON"))
+                {
+                    Skip = "Test skipped while testing the package as it is not within the scope";
                 }
             }
         }

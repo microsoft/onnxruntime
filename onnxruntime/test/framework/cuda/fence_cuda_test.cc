@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/graph/onnx_protobuf.h"
 
 #include "core/session/inference_session.h"
 
@@ -36,7 +37,7 @@ typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 
 class FenceCudaTestInferenceSession : public InferenceSession {
  public:
-  FenceCudaTestInferenceSession(const SessionOptions& so) : InferenceSession(so) {}
+  FenceCudaTestInferenceSession(const SessionOptions& so, const Environment& env) : InferenceSession(so, env) {}
   Status LoadModel(onnxruntime::Model& model) {
     auto model_proto = model.ToProto();
     auto st = Load(model_proto);
@@ -116,7 +117,7 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   SessionOptions so;
-  FenceCudaTestInferenceSession session(so);
+  FenceCudaTestInferenceSession session(so, GetEnvironment());
   LoadInferenceSessionFromModel(session, *model);
   CUDAExecutionProviderInfo xp_info;
   session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info));
@@ -170,7 +171,7 @@ TEST(CUDAFenceTests, TileWithInitializer) {
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   SessionOptions so;
-  FenceCudaTestInferenceSession session(so);
+  FenceCudaTestInferenceSession session(so, GetEnvironment());
   LoadInferenceSessionFromModel(session, *model);
   CUDAExecutionProviderInfo xp_info;
   session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info));
@@ -193,8 +194,9 @@ TEST(CUDAFenceTests, TileWithInitializer) {
 TEST(CUDAFenceTests, TileWithComputedInput) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
-  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                                                                                           DefaultLoggingManager().DefaultLogger());
+  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>(
+      "test", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+      std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -234,7 +236,7 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   SessionOptions so;
-  FenceCudaTestInferenceSession session(so);
+  FenceCudaTestInferenceSession session(so, GetEnvironment());
   LoadInferenceSessionFromModel(session, *model);
   CUDAExecutionProviderInfo xp_info;
   session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info));

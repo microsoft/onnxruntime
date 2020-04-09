@@ -94,7 +94,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       ORT_ENFORCE(ort_value.IsTensor());
       const Tensor& out_tensor = ort_value.Get<Tensor>();
       ONNX_NAMESPACE::TensorProto out_tensorproto =
-          utils::TensorToTensorProto(out_tensor, constant_arg_out->Name(), *constant_arg_out->TypeAsProto());
+          utils::TensorToTensorProto(out_tensor, constant_arg_out->Name());
 
       graph.AddInitializedTensor(out_tensorproto);
     }

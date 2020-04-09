@@ -494,7 +494,7 @@ namespace OperatorHelper
         )
     {
         const uint32_t inputDimCount = gsl::narrow_cast<int32_t>(inputDimensions.size());
-        m_axis = HandleNegativeAxis(operatorAttributes.GetOptionalAttribute<int32_t>(AttrName::Axis, 0), inputDimCount);
+        m_axis = static_cast<int>(HandleNegativeAxis(operatorAttributes.GetOptionalAttribute<int32_t>(AttrName::Axis, 0), inputDimCount));
         m_split = operatorAttributes.GetOptionalAttributeVectorInt32(AttrName::Split);
     }
 
@@ -906,9 +906,9 @@ namespace OperatorHelper
         gsl::span<const DimensionType> inputDimensions
         )
     {
-        int32_t inputDimCount = gsl::narrow_cast<int>(inputDimensions.size());
-        m_axis = HandleNegativeAxis(operatorAttributes.GetOptionalAttribute<int>(AttrName::Axis, -1), inputDimCount);
-        ML_CHECK_VALID_ARGUMENT(m_axis < inputDimensions.size());
+        uint32_t inputDimCount = gsl::narrow_cast<uint32_t>(inputDimensions.size());
+        m_axis = static_cast<int>(HandleNegativeAxis(operatorAttributes.GetOptionalAttribute<int>(AttrName::Axis, -1), inputDimCount));
+        ML_CHECK_VALID_ARGUMENT(m_axis < static_cast<int>(inputDimensions.size()));
     }
 
     std::vector<EdgeShapes> ConcatHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1002,7 +1002,7 @@ namespace OperatorHelper
         int32_t inputDimCount = gsl::narrow_cast<int32_t>(inputDimensions.size());
         int32_t axis = operatorAttributes.GetOptionalAttribute<int32_t>(AttrName::Axis, 1);
         // Flatten can accept an axis [-r, r], including one past the last absolute index.
-        m_axis = (axis == inputDimCount) ? axis : HandleNegativeAxis(axis, inputDimCount);
+        m_axis = (axis == inputDimCount) ? axis : static_cast<int>(HandleNegativeAxis(axis, inputDimCount));
     }
 
     std::vector<EdgeShapes> FlattenHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const

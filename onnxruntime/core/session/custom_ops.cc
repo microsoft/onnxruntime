@@ -4,7 +4,7 @@
 #ifdef _WIN32
 #pragma warning(disable : 4267)
 #endif
-
+#include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/customregistry.h"

@@ -92,7 +92,7 @@ HRESULT GetD3D12Device(const winrt::Windows::AI::MachineLearning::LearningModelD
   RETURN_IF_FAILED(GetAdapterEnumerationSupport(&support));
 
   if (support.has_dxgi) {
-    winrt::com_ptr<IDXGIFactory6> spFactory;
+    winrt::com_ptr<IDXGIFactory4> spFactory;
     RETURN_IF_FAILED(CreateDXGIFactory1(IID_PPV_ARGS(spFactory.put())));
 
     winrt::com_ptr<IDXGIAdapter1> spAdapter;
@@ -154,7 +154,7 @@ bool IsFloat16Supported(const winrt::Windows::AI::MachineLearning::LearningModel
 
 bool IsFloat16Supported(ID3D12Device* device) {
 #ifndef USE_DML
-    throw winrt::hresult_error(ERROR_NOT_SUPPORTED, L"IsFloat16Supported is not implemented for WinML only build."); 
+    throw winrt::hresult_error(E_NOTIMPL, L"IsFloat16Supported is not implemented for WinML only build."); 
 #else
   bool isBlocked;
   if (FAILED(IsFloat16Blocked(*device, &isBlocked)) || isBlocked) {

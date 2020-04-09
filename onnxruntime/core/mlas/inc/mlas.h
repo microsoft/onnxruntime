@@ -333,7 +333,15 @@ MlasReorderInput(
 
 void
 MLASCALL
-MlasReorderOutput(
+MlasReorderOutputNchw(
+    const int64_t* OutputShape,
+    const float* S,
+    float* D
+    );
+
+void
+MLASCALL
+MlasReorderOutputNhwc(
     const int64_t* OutputShape,
     const float* S,
     float* D
@@ -368,7 +376,6 @@ MlasNchwcGetBlockSize(
 void
 MLASCALL
 MlasNchwcConv(
-    size_t Dimensions,
     const int64_t* InputShape,
     const int64_t* KernelShape,
     const int64_t* DilationShape,
@@ -389,7 +396,6 @@ void
 MLASCALL
 MlasNchwcPool(
     MLAS_POOLING_KIND PoolingKind,
-    size_t Dimensions,
     const int64_t* InputShape,
     const int64_t* KernelShape,
     const int64_t* DilationShape,
@@ -401,26 +407,38 @@ MlasNchwcPool(
     MLAS_THREADPOOL* ThreadPool
     );
 
+void
+MLASCALL
+MlasNchwcUpsample(
+    const int64_t* InputShape,
+    const int64_t* Scales,
+    const float* Input,
+    float* Output
+    );
+
 //
 // Linear quantization routines.
 //
 
+template<typename OutputType>
 void
 MLASCALL
 MlasQuantizeLinear(
     const float* Input,
-    uint8_t* Output,
+    OutputType* Output,
     size_t N,
     float Scale,
-    uint8_t ZeroPoint
+    OutputType ZeroPoint
     );
 
 void
 MLASCALL
-MlasQuantizeLinear(
-    const float* Input,
-    int8_t* Output,
+MlasRequantizeOutput(
+    const int32_t* Input,
+    uint8_t* Output,
+    const int32_t* Bias,
+    size_t M,
     size_t N,
     float Scale,
-    int8_t ZeroPoint
+    uint8_t ZeroPoint
     );

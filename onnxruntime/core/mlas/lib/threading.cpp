@@ -33,7 +33,7 @@ MlasExecuteThreaded(
         return;
     }
 
-#ifdef MLAS_NO_ONNXRUNTIME_THREADPOOL
+#if defined(MLAS_NO_ONNXRUNTIME_THREADPOOL) || defined(_OPENMP)
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
 #else
     //
@@ -41,7 +41,7 @@ MlasExecuteThreaded(
     //
 
     if (ThreadPool != nullptr) {
-        ThreadPool->ParallelFor(Iterations, [&](int32_t tid) { ThreadedRoutine(Context, tid); });
+        ThreadPool->SimpleParallelFor(Iterations, [&](ptrdiff_t tid) { ThreadedRoutine(Context, static_cast<int>(tid)); });
         return;
     }
 #endif
