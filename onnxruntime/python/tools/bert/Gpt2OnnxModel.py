@@ -22,6 +22,8 @@ class Gpt2OnnxModel(BertOnnxModel):
         """
         Fuse Attention subgraph into one Attention node.
         """
+        logger.debug(f"start attention fusion...")
+
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
@@ -42,13 +44,6 @@ class Gpt2OnnxModel(BertOnnxModel):
             (add_qkv, reshape_qkv, gemm_qkv, reshape_1, reshape_2, transpose_qkv, matmul_qkv) = qkv_nodes
 
             another_input = add_qkv.input[1 - return_indice[0]]
-            if another_input not in output_name_to_node:
-                continue
-
-            layernorm_before_attention = self.find_first_child_by_type(output_name_to_node[another_input], 'LayerNormalization')
-            if layernorm_before_attention is None:
-                logger.debug("fuse_attention: failed to find LayerNormalization before attention")
-                continue
 
             v_nodes = self.match_parent_path(
                 matmul_qkv,
@@ -59,8 +54,13 @@ class Gpt2OnnxModel(BertOnnxModel):
                 continue
             (transpose_v, reshape_v, split_v, reshape_after_gemm, gemm, reshape_before_gemm) = v_nodes
 
-            if layernorm_before_attention != self.get_parent(reshape_before_gemm, 0, output_name_to_node):
-                logger.debug("fuse_attention: failed to get layernorm before gemm")
+            layernorm_before_attention = self.get_parent(reshape_before_gemm, 0, output_name_to_node)
+            if layernorm_before_attention is None or layernorm_before_attention.op_type != 'LayerNormalization':
+                logger.debug(f"failed to get layernorm before gemm. Got {layernorm_before_attention.op_type}")
+                continue
+
+            if not another_input in layernorm_before_attention.input:
+                logger.debug("Add and LayerNormalization shall have one same input")
                 continue
 
             qk_nodes = self.match_parent_path(
@@ -117,18 +117,17 @@ class Gpt2OnnxModel(BertOnnxModel):
         logger.info(f"Fused Attention count:{attention_count}")
 
     def create_attention_node(self, gemm, gemm_qkv, input, output, add_graph_input):
-        if add_graph_input:
-            mask_index_input = onnx.helper.make_tensor_value_info("mask_index", TensorProto.INT32, ["batch_size"])
-            self.add_input(mask_index_input)
-
         attention_node_name = self.create_node_name('Attention')
         attention_node = onnx.helper.make_node(
             'Attention',
-            inputs=[input, gemm.input[1], gemm.input[2], "mask_index"],
+            inputs=[input, gemm.input[1], gemm.input[2]],
             outputs=[attention_node_name + "_output"],
             name=attention_node_name)
         attention_node.domain = "com.microsoft"
-        attention_node.attribute.extend([onnx.helper.make_attribute("num_heads", self.num_heads)])
+        attention_node.attribute.extend([
+            onnx.helper.make_attribute("num_heads", self.num_heads),
+            onnx.helper.make_attribute("unidirectional", 1)
+            ])
 
         matmul_node = onnx.helper.make_node(
             'MatMul',
@@ -150,6 +149,8 @@ class Gpt2OnnxModel(BertOnnxModel):
         """
         Remove extra reshape nodes.
         """
+        logger.debug(f"start postprocessing...")
+
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
@@ -165,14 +166,14 @@ class Gpt2OnnxModel(BertOnnxModel):
                     continue
             (reshape_before_gemm, root_node) = nodes
 
-            matmul_node_name = self.create_node_name('MatMul')
+            matmul_node_name = self.create_node_name('MatMul', 'FullyConnect_MatMul')
             matmul_node = onnx.helper.make_node(
                 'MatMul',
                 inputs=[matmul_node_name + "_input", gemm_node.input[1]],
                 outputs=[matmul_node_name + "_output"],
                 name=matmul_node_name)
 
-            add_node_name = self.create_node_name('Add')
+            add_node_name = self.create_node_name('Add', 'FullyConnect_Add')
             add_node = onnx.helper.make_node(
                 'Add',
                 inputs=[matmul_node_name + "_output", gemm_node.input[2]],
