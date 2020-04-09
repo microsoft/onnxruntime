@@ -314,7 +314,7 @@ def get_linux_distro():
                              for line in f.readlines())
         return dist_info.get('NAME', '').strip('"'), dist_info.get(
             'VERSION', '').strip('"')
-    except:
+    except IOError:
         return '', ''
 
 
@@ -785,7 +785,7 @@ def setup_cuda_vars(args):
                 # First line of version file should have something
                 # like 'CUDA Version 9.2.148'.
                 first_line = f.readline()
-                m = re.match("CUDA Version (\d+).(\d+)", first_line)
+                m = re.match(r"CUDA Version (\d+).(\d+)", first_line)
                 if not m:
                     raise BuildError(
                         "Couldn't read version from first line of "
