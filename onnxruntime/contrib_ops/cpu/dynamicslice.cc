@@ -3,19 +3,19 @@
 
 #include "core/providers/cpu/tensor/slice.h"
 
-using namespace ::onnxruntime::common;
+using namespace onnxruntime::common;
 using namespace std;
 
 namespace onnxruntime {
 namespace contrib {
 
-#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type)                                                                                                                                                    \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                                                                                                                \
-      DynamicSlice,                                                                                                                                                                              \
-      1,                                                                                                                                                                                         \
-      data_type,                                                                                                                                                                                 \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()).TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), \
-      Slice<data_type, true>);
+ONNX_CPU_OPERATOR_KERNEL(
+    DynamicSlice,
+    1,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
+    Slice10);
 
 ADD_TYPED_DYNAMIC_SLICE_OP(uint8_t);
 ADD_TYPED_DYNAMIC_SLICE_OP(uint16_t);

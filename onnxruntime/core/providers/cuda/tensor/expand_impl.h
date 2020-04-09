@@ -20,6 +20,5 @@ Status ExpandImpl(
     const TArray<fast_divmod>& output_strides,
     const TArray<int64_t>& input_strides);
 
-
 }  // namespace cuda
 }  // namespace onnxruntime

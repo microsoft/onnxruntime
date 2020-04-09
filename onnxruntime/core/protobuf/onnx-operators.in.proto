@@ -4,7 +4,6 @@
 syntax = "proto2";
 
 package {PACKAGE_NAME};
-
 // #if ONNX-ML
 import "onnx-ml.proto";
 // #else
@@ -46,7 +45,6 @@ import "onnx.proto";
 //      this operator was initially declared in.
 //
 message OperatorProto {
-
   // The name of the operator within a domain.
   // This field MUST be present in this version of the IR.
   optional string op_type = 1;
