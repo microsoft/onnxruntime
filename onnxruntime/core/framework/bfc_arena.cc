@@ -13,6 +13,10 @@ BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
       info_(device_allocator_->Info().name, OrtAllocatorType::OrtArenaAllocator,
             device_allocator_->Info().device, device_allocator_->Info().id, device_allocator_->Info().mem_type) {
   LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name;
+
+  // TODO - consider to make the initial chunk size and max ‘fragmentation’ (kMaxDeadBytesInChunk) values configurable. 
+  // But first we need to add a mechanism to allow that sort of low level configuration to be done 
+  // without adding separate parameters to SessionOptions for every single one of them.
   curr_region_allocation_bytes_ = RoundedBytes(std::min(total_memory, size_t{1048576}));
 
   // Allocate the requested amount of memory.
