@@ -4,6 +4,7 @@
 #include "cuda_common.h"
 #include "cuda_fence.h"
 #include "gpu_data_transfer.h"
+#include <thread>
 
 namespace onnxruntime {
 
@@ -50,8 +51,20 @@ bool CUDAFence::CanRelease() {
 
 void CUDAFence::AfterUsedAsInput(int queue_id) {
   // update read fence
+  cudaError_t err_before = cudaGetLastError();
+  if (err_before != cudaSuccess) {
+      std::cout << "Before AfterUsedAsInput " << cudaGetErrorString(err_before) << std::endl;
+  }
   cudaStream_t stream = data_transfer_->GetStream(queue_id);
-  CUDA_CALL_THROW(cudaEventRecord(read_event_, stream));
+  cudaError_t err = cudaEventRecord(read_event_, stream);
+  if (err != cudaSuccess) {
+    bool gdb_flag = true;
+    while (gdb_flag) {
+      std::cout << "AfterUsedAsInput fence event error" << std::endl;
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+  }
+  // CUDA_CALL_THROW();
 }
 
 void CUDAFence::AfterUsedAsOutput(int queue_id) {

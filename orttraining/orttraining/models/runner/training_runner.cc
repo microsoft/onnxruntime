@@ -34,6 +34,10 @@ void call_training_step(
   auto status = sess->Run(run_options, feed_names, feeds, output_names, p_fetches);
   if (status != Status::OK()) {
     std::cout << "Wrong @ " << world_rank << std::endl;
+    bool gdb_flag = true;
+    while (gdb_flag) {
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
   }
   ORT_ENFORCE(status == Status::OK());
 }
