@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "test.h"
-#include "onnxruntime_c_api.h"
-#include "../../winml/adapter/winml_adapter_c_api.h"
+#include "core/providers/winml/winml_provider_factory.h"
+#include "winml_adapter_c_api.h"
 
 struct AdapterTestApi
 {
