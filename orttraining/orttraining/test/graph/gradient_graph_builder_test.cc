@@ -522,23 +522,34 @@ class PipelineSplitter {
       PathString backprop_model_file,
       const std::vector<PathString>& sub_model_files,
       const std::vector<CutInfo>& cuts) {
-    const int num_subs = (int)cuts.size();
+    const auto num_subs = cuts.size();
 
-    ONNX_NAMESPACE::ModelProto mp;
-    ASSERT_STATUS_OK(Model::Load(backprop_model_file, mp));
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(
+        backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()));
 
+    const auto& main_graph = model->MainGraph();
+    const auto mp = model->ToProto();
     const auto& main_gp = mp.graph();
+
+    auto lookup_main_graph_node_arg_proto =
+        [&main_graph](const std::string& node_arg_name) -> const ONNX_NAMESPACE::ValueInfoProto* {
+      const auto* node_arg = main_graph.GetNodeArg(node_arg_name);
+      if (!node_arg) return nullptr;
+      return &node_arg->ToProto();
+    };
+
     std::vector<ONNX_NAMESPACE::ModelProto> sub_mps(num_subs, mp);
-    for (int i = 0; i < num_subs; ++i) {
+    for (size_t i = 0; i < num_subs; ++i) {
       auto& sub = sub_mps[i];
       sub.clear_graph();
-      FillInputWait(sub.mutable_graph(), main_gp, cuts[i].fw.sync_inputs, cuts[i].fw.wait_depends, i, /*bw*/ false);
+      FillInputWait(sub.mutable_graph(), main_gp, lookup_main_graph_node_arg_proto, cuts[i].fw.sync_inputs, cuts[i].fw.wait_depends, i, /*bw*/ false);
     }
 
     for (const auto& n : main_gp.node()) {
       // check which sub_model the node should be in
       int sub_id = -1;
-      for (int i = 0; i < num_subs; ++i) {
+      for (size_t i = 0; i < num_subs; ++i) {
         const auto& cut = cuts[i];
         if (std::count(cut.fw.nodes.cbegin(), cut.fw.nodes.cend(), n.output()[0])) {
           sub_id = i;
@@ -557,6 +568,7 @@ class PipelineSplitter {
       if (!cut.bw.nodes.empty() && n.output()[0] == cut.bw.nodes.front()) {
         FillInputWait(sub_gp,
                       main_gp,
+                      lookup_main_graph_node_arg_proto,
                       cut.bw.sync_inputs,
                       cut.bw.wait_depends,
                       sub_id,
@@ -572,18 +584,15 @@ class PipelineSplitter {
           // carry over original graph's input, if not in sync_inputs
           AddItemByName(sub_gp->mutable_input(), main_gp.input(), *i, *i);
         }
-      };
+      }
       for (auto i = n.output().cbegin(); i != n.output().cend(); ++i) {
         if (std::count(cut.fw.sync_outputs.cbegin(), cut.fw.sync_outputs.cend(), *i) ||
             std::count(cut.bw.sync_outputs.cbegin(), cut.bw.sync_outputs.cend(), *i))
           continue;  // sync_ouputs already handled, skip
 
         // add graph output
-        if (!AddItemByName(sub_gp->mutable_output(), main_gp.output(), *i, *i)) {
-          // for non-output, add shape info
-          AddItemByName(sub_gp->mutable_value_info(), main_gp.value_info(), *i, *i);
-        }
-      };
+        AddItemByName(sub_gp->mutable_output(), main_gp.output(), *i, *i);
+      }
 
       // add RecordEvent node at the end of fw and bw
       if ((!cut.fw.nodes.empty() && n.output()[0] == cut.fw.nodes.back()) ||
@@ -594,6 +603,7 @@ class PipelineSplitter {
 
         FillOutputRecord(sub_gp,
                          main_gp,
+                         lookup_main_graph_node_arg_proto,
                          sync_outputs,
                          dependencies,
                          sub_id,
@@ -602,7 +612,7 @@ class PipelineSplitter {
     }
 
     // save sub models
-    for (int sub_id = 0; sub_id < num_subs; ++sub_id) {
+    for (size_t sub_id = 0; sub_id < num_subs; ++sub_id) {
       std::ofstream ofs(sub_model_files[sub_id], std::ofstream::binary);
       sub_mps[sub_id].SerializeToOstream(&ofs);
       ofs.close();
@@ -630,9 +640,34 @@ class PipelineSplitter {
     return false;
   }
 
+  // expected signature of TValueInfoLookupFn:
+  //   const ValueInfoProto* TValueInfoLookupFn(const std::string& name)
+  template <typename TValueInfoLookupFn>
+  bool AddValueInfoByNameFromLookup(
+      google::protobuf::RepeatedPtrField<ONNX_NAMESPACE::ValueInfoProto>& dst, TValueInfoLookupFn lookup,
+      const std::string& name, const std::string& new_name) {
+    for (auto iter = dst.cbegin(); iter != dst.cend(); ++iter) {
+      if (iter->name() == new_name) {
+        return true;
+      }
+    }
+
+    const ONNX_NAMESPACE::ValueInfoProto* value_info = lookup(name);
+    if (value_info) {
+      auto* p = dst.Add();
+      p->CopyFrom(*value_info);
+      *p->mutable_name() = new_name;
+      return true;
+    }
+
+    return false;
+  }
+
+  template <typename TValueInfoLookupFn>
   void FillInputWait(
       ONNX_NAMESPACE::GraphProto* sub_gp,
       const ONNX_NAMESPACE::GraphProto& main_gp,
+      TValueInfoLookupFn main_graph_lookup,
       const std::vector<std::string>& sync_inputs,
       const std::vector<std::string>& dependencies,
       int sub_id,
@@ -679,26 +714,11 @@ class PipelineSplitter {
                         name,
                         input_name)) {
         ASSERT_TRUE(is_first);
-        // add shape info
-        EXPECT_TRUE(AddItemByName(sub_gp->mutable_value_info(),
-                                  main_gp.input(),
-                                  name,
-                                  name));
       } else {
         // some input comes from the middle of the graph
-        AddItemByName(sub_gp->mutable_input(),
-                      main_gp.value_info(),
-                      name,
-                      input_name);
-        // add shape info
-        AddItemByName(sub_gp->mutable_value_info(),
-                      main_gp.value_info(),
-                      name,
-                      recv_name);
-        AddItemByName(sub_gp->mutable_value_info(),
-                      main_gp.value_info(),
-                      name,
-                      name);
+        AddValueInfoByNameFromLookup(*sub_gp->mutable_input(),
+                                     main_graph_lookup,
+                                     name, input_name);
       }
     }
 
@@ -721,9 +741,11 @@ class PipelineSplitter {
     }
   }
 
+  template <typename TValueInfoLookupFn>
   void FillOutputRecord(
       ONNX_NAMESPACE::GraphProto* sub_gp,
-      const ONNX_NAMESPACE::GraphProto& main_gp,
+      const ONNX_NAMESPACE::GraphProto& /*main_gp*/,
+      TValueInfoLookupFn main_graph_lookup,
       const std::vector<std::string>& sync_outputs,
       const std::vector<std::string>& dependencies,
       int sub_id,
@@ -778,20 +800,9 @@ class PipelineSplitter {
 
     // add graph output and shape info
     for (const auto& name : sync_outputs) {
-      AddItemByName(sub_gp->mutable_output(),
-                    main_gp.value_info(),
-                    name,
-                    name + "_sync");
-      if (!is_last) {
-        AddItemByName(sub_gp->mutable_value_info(),
-                      main_gp.value_info(),
-                      name,
-                      name + "_send");
-      }
-      AddItemByName(sub_gp->mutable_value_info(),
-                    main_gp.value_info(),
-                    name,
-                    name);
+      AddValueInfoByNameFromLookup(*sub_gp->mutable_output(),
+                                   main_graph_lookup,
+                                   name, name + "_sync");
     }
   }
 };
@@ -990,10 +1001,10 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
         {},
         {"loss", "predictions", "B3_grad", "W3_grad"}}}};
 
-  const int num_subs = (int)cuts.size();
+  const auto num_subs = cuts.size();
 
   std::vector<PathString> sub_model_files(num_subs);
-  for (int sub_id = 0; sub_id < num_subs; ++sub_id) {
+  for (size_t sub_id = 0; sub_id < num_subs; ++sub_id) {
 #ifdef _WIN32
     auto sub_id_str = std::to_wstring(sub_id);
 #else
@@ -1016,7 +1027,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   };
 
   std::vector<SubSession> subs(num_subs);
-  for (int sub_id = 0; sub_id < num_subs; ++sub_id) {
+  for (size_t sub_id = 0; sub_id < num_subs; ++sub_id) {
     auto& sub_sess = subs[sub_id];
     sub_sess.so.enable_profiling = true;
 #ifdef _WIN32
@@ -1086,7 +1097,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
     };
   };
 
-  auto worker = [&subs](int sub_id, PipelineData& data) {
+  auto worker = [&subs](size_t sub_id, PipelineData& data) {
     std::vector<std::string> input_names;
     std::vector<MLValue> input_values;
     std::vector<std::string> output_names;
@@ -1239,7 +1250,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
     batch_ctx->data.SetEvents({batch_id * 4, batch_id * 4 + 1, batch_id * 4 + 2, batch_id * 4 + 3}, plan[batch_id].events);
 
     // create one worker thread for each batch and each pipeline stage
-    for (int sub_id = 0; sub_id < num_subs; ++sub_id) {
+    for (size_t sub_id = 0; sub_id < num_subs; ++sub_id) {
       auto* pd = &(batch_ctx->data);
       batch_ctx->workers.emplace_back([&worker, pd, sub_id]() {
         worker(sub_id, *pd);
@@ -1256,7 +1267,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   }
 
   // finish profiler
-  for (int sub_id = 0; sub_id < num_subs; ++sub_id) {
+  for (size_t sub_id = 0; sub_id < num_subs; ++sub_id) {
     subs[sub_id].sess->EndProfiling();
   }
 }
