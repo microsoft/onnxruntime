@@ -139,7 +139,7 @@ struct TimeSeriesImputerTransformerImpl {
       output_rows.emplace_back(std::move(value));
     };
 
-    Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
+    Microsoft::Featurizer::Archive archive(state_data, state.Shape().Size());
     ft::Components::TimeSeriesImputerEstimator::Transformer transformer(archive);
 
     const int64_t* times_data = times.template Data<int64_t>();
