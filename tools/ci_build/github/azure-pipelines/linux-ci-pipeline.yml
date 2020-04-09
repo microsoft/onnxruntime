@@ -1,12 +1,12 @@
 jobs:
+    steps:
+    - script: |
+        pip install flake8
+        displayName: 'install flake8'
 
-- script: |
-      pip install flake8
-    displayName: 'install flake8'
-
-- script: |
-      flake8 tools/ci_build/build.py
-    displayName: 'flake8'
+    - script: |
+        flake8 tools/ci_build/build.py
+        displayName: 'flake8'
 
 - template: templates/linux-ci.yml
   parameters:
