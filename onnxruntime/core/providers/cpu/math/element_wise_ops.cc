@@ -900,13 +900,7 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
 
   // Turn the shape tensor data into an actual shape
   const auto* p_shape = tensor_shape.template Data<int64_t>();
-  std::vector<int64_t> shape(tensor_shape.Shape().Size());
-  for (auto i = 0; i < tensor_shape.Shape().Size(); i++) {
-    // According to the ONNX spec: "Dimensions are right alignment;
-    // Two corresponding dimension must have the same value, or one of them is equal to 1",
-    // value -1 from PyTorch has the same meaning of 1 here.
-    shape[i] = p_shape[i] == -1 ? 1 : p_shape[i];
-  }
+  std::vector<int64_t> shape{p_shape, p_shape + tensor_shape.Shape().Size()};
 
   TBroadcasterExpand<T> bc(*context->Input<Tensor>(0), shape);
   TBroadcastOutput<T> output(bc.GetSpanSize(), *context->Output(0, bc.GetOutputShape()));
