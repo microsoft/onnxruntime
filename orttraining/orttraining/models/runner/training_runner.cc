@@ -35,9 +35,13 @@ void call_training_step(
   const std::vector<std::string>& feed_names,
   const std::vector<OrtValue>& feeds,
   const std::vector<std::string>& output_names,
-  std::vector<OrtValue>* p_fetches
+  std::vector<OrtValue>* p_fetches,
+  const int world_rank
   ) {
   auto status = sess->Run(run_options, feed_names, feeds, output_names, p_fetches);
+  if (status != Status::OK()) {
+    std::cout << "Wrong @ " << world_rank << std::endl;
+  }
   ORT_ENFORCE(status == Status::OK());
 }
 
@@ -593,7 +597,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                            &fetches));
                                            */
 
-          std::thread local_worker = std::thread(&call_training_step, &session_, run_options, feed_names, feeds, fetch_grad_accumulator_output, &fetches);
+          std::thread local_worker = std::thread(&call_training_step, &session_, run_options, feed_names, feeds, fetch_grad_accumulator_output, &fetches, params_.mpi_context.local_rank);
           local_worker.join();
 
           gradient_accumulation_step_count++;

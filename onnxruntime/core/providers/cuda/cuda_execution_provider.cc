@@ -210,6 +210,7 @@ void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
 }
 
 Status CUDAExecutionProvider::OnRunStart() {
+  CUDA_RETURN_IF_ERROR(cudaSetDevice(GetDeviceId()));
   auto cpu_alloc = GetAllocator(0, OrtMemTypeCPU);
   // check if cudaEvents has passed for deferred release
   // note that we need to take a mutex in case of multi-threaded Run()
