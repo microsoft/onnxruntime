@@ -36,6 +36,10 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionB
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(CheckInputs(context));
+  if (is_unidirectional_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "unidirectional not implemented");
+  }
+
   // Input and output shapes:
   //   Input 0 - input       : (batch_size, sequence_length, hidden_size)
   //   Input 1 - weights     : (hidden_size, 3 * hidden_size)
