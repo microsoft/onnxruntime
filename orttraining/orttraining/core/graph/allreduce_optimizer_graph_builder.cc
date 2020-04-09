@@ -98,11 +98,20 @@ static Status AddNcclAllReduceForGradients(
   fused_allreduce_output = ArgDef(fused_gradient_argdef.name + "AllReduce_Out", fused_gradient_argdef.type_proto);
 
   // Add NCCL Allreduce node.
+  /*
   graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
                                   {fused_gradient_argdef},
                                   {fused_allreduce_output},
                                   NodeAttributes(),
                                   "NcclAllReduce")});
+  */
+
+  // Add NCCL Allreduce node.
+  graph_defs.AddNodeDefs({NodeDef("Identity",
+                                  {fused_gradient_argdef},
+                                  {fused_allreduce_output},
+                                  NodeAttributes(),
+                                  "FakeNcclAllReduce")});
 
   std::vector<ArgDef> view_inputs(gradient_argdefs.size() + 1);
   view_inputs[0] = fused_allreduce_output;

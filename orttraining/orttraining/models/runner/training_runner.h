@@ -337,7 +337,6 @@ class TrainingRunner {
 
   size_t GetRound() const { return round_; }
 
-  /*
   void join_all_workers() {
     for (size_t i = 0; i < workers_.size(); ++i) {
       if (workers_[i].joinable())
@@ -412,7 +411,6 @@ class TrainingRunner {
       return -1;
     }
   }
-  */
 
  private:
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader);
@@ -438,7 +436,6 @@ class TrainingRunner {
 
   std::unique_ptr<CheckpointRegistry> checkpoint_registry_;
 
-  /*
   std::vector<std::thread> workers_;
   std::vector<WorkerState> worker_states_;
   std::string waited_forward_event_name_;
@@ -453,7 +450,6 @@ class TrainingRunner {
   size_t num_gradient_accumulation_steps_;
   std::vector<PipelineBatchInfo> plan_;
   PipelineBatchPlanner planner_;;
-  */
 };
 
 

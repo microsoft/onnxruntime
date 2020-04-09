@@ -206,7 +206,6 @@ Status TrainingRunner::Initialize() {
     }
   }
 
-  /*
   num_pipeline_stages_ = params_.mpi_context.world_size;
   do_pipedream_ = false;
   workers_.resize(num_pipeline_stages_);
@@ -219,7 +218,6 @@ Status TrainingRunner::Initialize() {
   planner_ = PipelineBatchPlanner();
   planner_.GenerateOneFWOneBWTimeline(num_pipeline_stages_, num_pipeline_batches_);
   planner_.CreatePlan(100 * pipeline_stage_id_, pipeline_stage_id_, plan_);
-  */
   return Status::OK();
 }
 
@@ -326,7 +324,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       // loop through the data
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
-        // const size_t worker_id = step_ % num_pipeline_stages_;
+        const size_t worker_id = step_ % num_pipeline_stages_;
 
         std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch, input_allocator_);
         if (loss_scaler_) {
@@ -384,10 +382,18 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
         auto start = std::chrono::high_resolution_clock::now();
 
+        /*
+        bool gdb_break = true;
+        while(gdb_break) {
+            // set the sleep time to pause the processes
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+        */
+
         if (is_weight_update_step) {
           /*
           bool gdb_break = true;
-          while(gdb_break && params_.mpi_context.world_rank == 2) {
+          while(gdb_break) {
               // set the sleep time to pause the processes
               std::this_thread::sleep_for(std::chrono::seconds(1));
           }
@@ -404,7 +410,6 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
               // set the sleep time to pause the processes
               std::this_thread::sleep_for(std::chrono::seconds(1));
           }
-
 
           Status update_status;
 
@@ -459,8 +464,8 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           fetches = worker_states_[worker_id].fetches;
 
           log_file << "Step 7 @ " << params_.mpi_context.world_rank << std::endl;
-
           */
+
           ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
                                            feed_names,
                                            feeds,
@@ -519,10 +524,8 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         } else {
           RunOptions run_options;
           run_options.only_execute_path_to_fetches = true;
-          /*
           log_file << "Step 10 @ " << params_.mpi_context.world_rank << std::endl;
 
-          const size_t worker_id = batch % num_pipeline_stages_;
           worker_states_[worker_id].run_options = run_options;
           worker_states_[worker_id].feed_names = feed_names;
           worker_states_[worker_id].feeds = feeds;
@@ -567,12 +570,13 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           fetches = worker_states_[worker_id].fetches;
 
           log_file << "Step 15 @ " << params_.mpi_context.world_rank << std::endl;
-          */
+          /*
           ORT_RETURN_IF_ERROR(session_.Run(run_options,
                                            feed_names,
                                            feeds,
                                            fetch_grad_accumulator_output,
                                            &fetches));
+          */
           gradient_accumulation_step_count++;
         }
         /*
