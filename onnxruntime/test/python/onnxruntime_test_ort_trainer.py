@@ -38,7 +38,6 @@ def bert_model_description():
                                           num_classes=vocab_size)
     next_sentence_labels_desc = IODescription('next_sentence_labels', ['batch', ], torch.int64, num_classes=2)
     loss_desc = IODescription('loss', [], torch.float32)
-    # probability_desc = IODescription('probability', ['batch', 10], torch.float32)
 
     return ModelDescription([input_ids_desc, segment_ids_desc, input_mask_desc, masked_lm_labels_desc,
                              next_sentence_labels_desc], [loss_desc])
@@ -57,9 +56,9 @@ def generate_sample_batch(desc, batch_size, device):
     sample = generate_sample(desc_, device)
     return sample
 
-def runBertTrainingTest(gradient_accumulation_steps, use_mixed_precision, allreduce_post_accumulation):
+def runBertTrainingTest(gradient_accumulation_steps, use_mixed_precision, allreduce_post_accumulation, use_simple_model_desc=True):
     model_desc = bert_model_description()
-    simple_model_desc = remove_extra_info(model_desc)
+    simple_model_desc = remove_extra_info(model_desc) if use_simple_model_desc else model_desc
     learning_rate_description = ort_trainer_learning_rate_description()
     device = torch.device("cuda", 0)
 
@@ -72,7 +71,8 @@ def runBertTrainingTest(gradient_accumulation_steps, use_mixed_precision, allred
                        gradient_accumulation_steps=gradient_accumulation_steps,
                        world_rank=0, world_size=1,
                        use_mixed_precision=use_mixed_precision,
-                       allreduce_post_accumulation=allreduce_post_accumulation)
+                       allreduce_post_accumulation=allreduce_post_accumulation,
+                       seed=1)
 
     loss_scaler = LossScaler(model.loss_scale_input_name, True)
 
@@ -106,7 +106,7 @@ def runBertTrainingTest(gradient_accumulation_steps, use_mixed_precision, allred
 
         learning_rate = torch.tensor([lr]).to(device)
         if use_mixed_precision:
-            loss_scale = torch.tensor(loss_scaler.loss_scale_).to(device)
+            loss_scale = torch.tensor([loss_scaler.loss_scale_]).to(device)
             actual_loss = model.train_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels, learning_rate, loss_scale)
             if isinstance(actual_loss, (list, tuple)):
                 assert len(actual_loss) == 2
@@ -134,9 +134,9 @@ class TestOrtTrainer(unittest.TestCase):
     def testBertTrainingBasic(self):
         torch.manual_seed(1)
         expected_losses = [
-            11.050175666809082, 11.16925048828125, 11.017821311950684, 11.052311897277832,
-            10.89547061920166, 10.996326446533203, 11.079578399658203, 10.966521263122559]
-        expected_eval_loss = [11.05634880065918]
+            11.032349586486816, 11.165414810180664, 11.018413543701172, 11.050261497497559,
+            10.855697631835938, 10.947554588317871, 11.083847999572754, 10.97836685180664]
+        expected_eval_loss = [10.972074508666992]
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=1, use_mixed_precision=False, allreduce_post_accumulation=False)
 
@@ -153,13 +153,13 @@ class TestOrtTrainer(unittest.TestCase):
         torch.manual_seed(1)
         # this commented expected results are for runing test individually (pytest with -k). 
         # expected_losses = [
-        #     11.050175666809082, 11.16925048828125, 11.017815589904785, 11.0523099899292, 
-        #     10.895469665527344, 10.996331214904785, 11.079588890075684, 10.966512680053711]
-        # expected_eval_loss = [11.05636978149414]
+        #     11.071269035339355, 10.996841430664062, 11.06226921081543, 10.981647491455078,
+        #     11.032355308532715, 11.04256534576416, 10.976116180419922, 11.065701484680176]
+        # expected_eval_loss = [10.991236686706543]
         expected_losses = [
-            11.041119575500488, 11.142148971557617, 11.022183418273926, 11.047553062438965,
-            10.866510391235352, 10.95550537109375, 11.083690643310547, 11.002318382263184]
-        expected_eval_loss = [10.977485656738281]
+            11.026690483093262, 11.117761611938477, 11.010371208190918, 11.068782806396484,
+            10.894888877868652, 10.923206329345703, 11.06037425994873, 11.008777618408203]
+        expected_eval_loss = [11.011880874633789]
         
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=4, use_mixed_precision=False, allreduce_post_accumulation=False)
@@ -173,6 +173,49 @@ class TestOrtTrainer(unittest.TestCase):
         assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
 
+    def testBertTrainingMixedPrecision(self):
+        # skip the test due to the lack of mixed precision capacity of ort CI.
+        return
+
+        torch.manual_seed(1)
+        expected_losses = [11.078125, 11.0, 11.0390625, 11.0, 11.015625, 11.0, 10.9921875, 11.0703125]
+        expected_all_finites = [False, True, True, True, True, True, True, True]
+        expected_eval_loss = [11.046875]
+        actual_losses, actual_all_finites, actual_eval_loss = runBertTrainingTest(
+            gradient_accumulation_steps=1, use_mixed_precision=True, allreduce_post_accumulation=False, use_simple_model_desc=False)
+
+        # to update expected outcomes, enable pdb and run the test with -s and copy paste outputs
+        # print('actual_losses ', actual_losses)
+        # print('actual_all_finite ', actual_all_finites)
+        # print('eval_loss', actual_eval_loss)
+        # import pdb; pdb.set_trace()
+
+        rtol = 1e-01
+        assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
+        assert_array_equal(expected_all_finites, actual_all_finites, "all_finite mismatch")
+        assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
+
+    def testBertTrainingGradientAccumulationMixedPrecision(self):
+        # skip the test due to the lack of mixed precision capacity of ort CI.
+        return
+
+        torch.manual_seed(1)
+        expected_losses = [11.046875, 11.171875, 11.0234375, 11.046875, 10.8984375, 10.9921875, 11.078125, 10.96875]
+        expected_all_finites = [False, True]
+        expected_eval_loss = [11.0546875]
+        actual_losses, actual_all_finites, actual_eval_loss = runBertTrainingTest(
+            gradient_accumulation_steps=4, use_mixed_precision=True, allreduce_post_accumulation=False, use_simple_model_desc=False)
+
+        # to update expected outcomes, enable pdb and run the test with -s and copy paste outputs
+        # print('actual_losses ', actual_losses)
+        # print('actual_all_finite ', actual_all_finites)
+        # print('eval_loss', actual_eval_loss)
+        # import pdb; pdb.set_trace()
+
+        rtol = 1e-01
+        assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
+        assert_array_equal(expected_all_finites, actual_all_finites, "all_finite mismatch")
+        assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
 
 if __name__ == '__main__':
     unittest.main(module=__name__, buffer=True)

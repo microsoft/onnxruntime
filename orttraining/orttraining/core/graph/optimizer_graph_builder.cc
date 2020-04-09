@@ -303,25 +303,6 @@ Status OptimizerGraphBuilder::AddFiniteGradientCheck(
   return Status::OK();
 }
 
-static Status AddLearningRateGraphInputs(Graph& graph, const std::vector<OptimizerNodeConfig>& opt_configs) {
-  auto graph_inputs = graph.GetInputsIncludingInitializers();
-  std::vector<const NodeArg*> inputs_args_sets(graph_inputs.begin(), graph_inputs.end());
-  std::unordered_set<std::string> added_feed_names;
-  for (auto& cfg : opt_configs) {
-    if (added_feed_names.find(cfg.lr_feed_name) == added_feed_names.end()) {
-      TypeProto tensor_float;
-      tensor_float.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-      tensor_float.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
-      const auto& out_def = graph.GetOrCreateNodeArg(cfg.lr_feed_name, &tensor_float);
-      inputs_args_sets.push_back(&out_def);
-      added_feed_names.emplace(cfg.lr_feed_name);
-    }
-  }
-
-  graph.SetInputs(inputs_args_sets);
-  return Status::OK();
-}
-
 OptimizerGraphBuilder::OptimizerGraphBuilder(
     const OptimizerBuilderRegistry& opt_builder_registry,
     const OptimizerGraphConfig& opt_graph_config,
@@ -395,9 +376,6 @@ Status OptimizerGraphBuilder::Build(
     ORT_RETURN_IF_ERROR(AddZeroGradientNodes(
         nodearg_name_generator, weight_argdefs, gradient_accumulation_buffers, graph_defs));
   }
-
-  // add learning rate inputs
-  ORT_RETURN_IF_ERROR(AddLearningRateGraphInputs(graph, opt_configs_));
 
   return GraphAugmenter::AugmentGraph(graph, graph_defs);
 }

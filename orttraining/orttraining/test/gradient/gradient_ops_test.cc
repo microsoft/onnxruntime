@@ -5,6 +5,7 @@
 #include <bitset>
 #include <cmath>
 #include <random>
+#include <thread>
 
 #include "gtest/gtest.h"
 #include "core/framework/random_seed.h"
@@ -18,6 +19,7 @@
 namespace onnxruntime {
 namespace test {
 
+#ifdef NDEBUG
 using ONNX_NAMESPACE::MakeAttribute;
 using training::OpDef;
 
@@ -1665,6 +1667,7 @@ TEST(Synchronization, WaitAndRecordEventMany) {
     }
   }
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

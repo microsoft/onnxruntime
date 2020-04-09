@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Runtime.InteropServices;
@@ -60,11 +61,46 @@ namespace Microsoft.ML.OnnxRuntime
 
     public class DisposableNamedOnnxValue : NamedOnnxValue, IDisposable
     {
-        protected IDisposable _nativeMemoryManager;
-        protected DisposableNamedOnnxValue(string name, Object value, IDisposable nativeMemoryManager)
+        private NativeMemoryHandler _nativeMemoryManager;
+        private DisposableNamedOnnxValue(string name, Object value, NativeMemoryHandler nativeMemoryManager)
             : base(name, value)
         {
             _nativeMemoryManager = nativeMemoryManager;
+        }
+
+        /// <summary>
+        /// Overrides the base class method. Since the instance already has access to the 
+        /// underlying OrtValue handle (if this instance hasn't been disposed), it just assigns
+        /// that to the output onnxValue. With respect to pinnedMemoryHandle, it has no operation
+        /// to do, as this class doesn't maintain a managed buffer. It doesn't have to maintain it
+        /// as it already is associated with the object of interest (native OrtValue)
+        /// </summary>
+        /// <param name="onnxValue"></param>
+        /// <param name="pinnedMemoryHandle"></param>
+        /// <param name="disposeOnnxValueAfterUse"></param>
+        internal override void ToNativeOnnxValue(out IntPtr onnxValue, 
+                                                 out MemoryHandle pinnedMemoryHandle)
+        {
+            // Make sure that this instance hasn't been disposed yet
+            if (disposedValue)
+            {
+                throw new ObjectDisposedException(nameof(DisposableNamedOnnxValue),
+                                                  "This instance of DisposableNamedOnnxValue has already been disposed");
+            }
+
+            // If not already disposed, _nativeMemoryManager can only be null
+            // for Maps and SequenceTensors
+            if (_nativeMemoryManager == null)
+            {
+                throw new NotSupportedException("Use of Maps and SequenceTensors is not yet supported");
+            }
+
+            // Assign the onnxValue by querying this instance's NativeOnnxTensorMemory instance
+            onnxValue = _nativeMemoryManager.Handle;
+
+            // PinnedMemoryHandle holds the default value as DisposableNamedOnnxValue
+            // doesn't hold any managed buffer (that needs to be pinned)
+            pinnedMemoryHandle = default;
         }
 
         internal static DisposableNamedOnnxValue CreateTensorFromOnnxValue(string name, IntPtr nativeOnnxValue)

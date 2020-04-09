@@ -28,7 +28,7 @@
 #define BACKEND_PROC "CPU"
 #endif
 
-#if USE_OPENMP
+#if _OPENMP
 #define BACKEND_OPENMP "-OPENMP"
 #else
 #define BACKEND_OPENMP ""
@@ -168,7 +168,7 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransf
     //if it is not cpu tensor, need to copy to host
     if (rtensor.Location().device.Type() != OrtDevice::CPU) {
       if (!data_transfer_manager)
-        throw std::runtime_error("GetPyObjFromTensor: data transfer manager is needed when convert non-CPU tensor to numpy array");
+        throw std::runtime_error("GetPyObjFromTensor: data transfer manager is needed to convert non-CPU tensor to numpy array");
       static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
       std::vector<char> tensor_data_buffer{};
       tensor_data_buffer.resize(rtensor.SizeInBytes());
@@ -639,10 +639,18 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
       .def_readwrite("log_verbosity_level", &SessionOptions::session_log_verbosity_level,
                      R"pbdoc(VLOG level if DEBUG build and session_log_verbosity_level is 0.
 Applies to session load, initialization, etc. Default is 0.)pbdoc")
-      .def_readwrite("intra_op_num_threads", &SessionOptions::intra_op_num_threads,
-                     R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
-      .def_readwrite("inter_op_num_threads", &SessionOptions::inter_op_num_threads,
-                     R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
+      .def_property( 
+          "intra_op_num_threads", [](const SessionOptions* options) -> int {
+              return options->intra_op_param.thread_pool_size;
+          }, [](SessionOptions* options, int value) -> void {
+              options->intra_op_param.thread_pool_size = value;
+          },R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
+      .def_property( 
+          "inter_op_num_threads", [](const SessionOptions* options) -> int {
+              return options->inter_op_param.thread_pool_size;
+          }, [](SessionOptions* options, int value) -> void {
+              options->inter_op_param.thread_pool_size = value;
+          },R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")     
       .def_readwrite("execution_mode", &SessionOptions::execution_mode,
                      R"pbdoc(Sets the execution mode. Default is sequential.)pbdoc")
       .def_property(
