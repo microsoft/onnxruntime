@@ -473,7 +473,10 @@ set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto)
 
 # ACL
 if (onnxruntime_USE_ACL)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute acl arm_compute_graph arm_compute_core)
+  if(onnxruntime_USE_ACL_1902)
+    add_definitions(-DACL_1902=1)
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_graph arm_compute_core)
 endif()
 
 # MKLML
