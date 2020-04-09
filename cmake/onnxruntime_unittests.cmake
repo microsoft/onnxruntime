@@ -185,6 +185,8 @@ if (onnxruntime_ENABLE_TRAINING)
       )
     list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cuda_src})
   endif()
+endif()
+
 if (onnxruntime_USE_DNNL)
   file(GLOB_RECURSE onnxruntime_test_providers_dnnl_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/dnnl/*"
