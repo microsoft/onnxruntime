@@ -60,18 +60,9 @@ public class OrtSession implements AutoCloseable {
    */
   OrtSession(OrtEnvironment env, String modelPath, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
-    nativeHandle =
-        createSession(OnnxRuntime.ortApiHandle, env.nativeHandle, modelPath, options.nativeHandle);
-    this.allocator = allocator;
-    numInputs = getNumInputs(OnnxRuntime.ortApiHandle, nativeHandle);
-    inputNames =
-        new LinkedHashSet<>(
-            Arrays.asList(getInputNames(OnnxRuntime.ortApiHandle, nativeHandle, allocator.handle)));
-    numOutputs = getNumOutputs(OnnxRuntime.ortApiHandle, nativeHandle);
-    outputNames =
-        new LinkedHashSet<>(
-            Arrays.asList(
-                getOutputNames(OnnxRuntime.ortApiHandle, nativeHandle, allocator.handle)));
+    this(
+        createSession(OnnxRuntime.ortApiHandle, env.nativeHandle, modelPath, options.nativeHandle),
+        allocator);
   }
 
   /**
@@ -81,12 +72,24 @@ public class OrtSession implements AutoCloseable {
    * @param modelArray The model protobuf as a byte array.
    * @param allocator The allocator to use.
    * @param options Session configuration options.
-   * @throws OrtException If the mode was corrupted or some other error occurred in native code.
+   * @throws OrtException If the model was corrupted or some other error occurred in native code.
    */
   OrtSession(OrtEnvironment env, byte[] modelArray, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
-    nativeHandle =
-        createSession(OnnxRuntime.ortApiHandle, env.nativeHandle, modelArray, options.nativeHandle);
+    this(
+        createSession(OnnxRuntime.ortApiHandle, env.nativeHandle, modelArray, options.nativeHandle),
+        allocator);
+  }
+
+  /**
+   * Private constructor to build the Java object wrapped around a native session.
+   *
+   * @param nativeHandle The pointer to the native session.
+   * @param allocator The allocator to use.
+   * @throws OrtException If the model's inputs, outputs or metadata could not be read.
+   */
+  private OrtSession(long nativeHandle, OrtAllocator allocator) throws OrtException {
+    this.nativeHandle = nativeHandle;
     this.allocator = allocator;
     numInputs = getNumInputs(OnnxRuntime.ortApiHandle, nativeHandle);
     inputNames =
@@ -289,17 +292,17 @@ public class OrtSession implements AutoCloseable {
   private static Map<String, NodeInfo> wrapInMap(NodeInfo[] infos) {
     Map<String, NodeInfo> output = new LinkedHashMap<>();
 
-    for (int i = 0; i < infos.length; i++) {
-      output.put(infos[i].getName(), infos[i]);
+    for (NodeInfo info : infos) {
+      output.put(info.getName(), info);
     }
 
     return output;
   }
 
-  private native long createSession(
+  private static native long createSession(
       long apiHandle, long envHandle, String modelPath, long optsHandle) throws OrtException;
 
-  private native long createSession(
+  private static native long createSession(
       long apiHandle, long envHandle, byte[] modelArray, long optsHandle) throws OrtException;
 
   private native long getNumInputs(long apiHandle, long nativeHandle) throws OrtException;
