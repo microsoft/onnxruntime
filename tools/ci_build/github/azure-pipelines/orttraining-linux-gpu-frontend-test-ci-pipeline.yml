@@ -8,9 +8,6 @@ jobs:
 
   timeoutInMinutes: 120
   
-  # alternatively we can configure (override) it directly from the build definition and not specify it here
-  pool: 'ORT-Training-Frontend-Linux-GPU'
-
   steps:
   - checkout: self
     clean: true
