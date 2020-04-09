@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <memory>
 #include <sstream>
+#include <thread>
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
@@ -19,6 +20,23 @@
 
 namespace onnxruntime {
 namespace training {
+
+void call_training_step(
+  TrainingSession* sess,
+  const std::vector<std::string>& feed_names,
+  const std::vector<OrtValue>& feeds,
+  const std::vector<std::string>& output_names,
+  std::vector<OrtValue>* p_fetches,
+  const int world_rank
+  ) {
+  RunOptions run_options;
+  run_options.only_execute_path_to_fetches = true;
+  auto status = sess->Run(run_options, feed_names, feeds, output_names, p_fetches);
+  if (status != Status::OK()) {
+    std::cout << "Wrong @ " << world_rank << std::endl;
+  }
+  ORT_ENFORCE(status == Status::OK());
+}
 
 static std::vector<FreeDimensionOverride> overrides = {};
 static SessionOptions SESSION_OPTION = {
@@ -319,6 +337,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
           weight_update_step_count_++;
         } else {
+          /*
           RunOptions run_options;
           run_options.only_execute_path_to_fetches = true;
           ORT_RETURN_IF_ERROR(session_.Run(run_options,
@@ -326,6 +345,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                            feeds,
                                            fetch_grad_accumulator_output,
                                            &fetches));
+          */
+          std::thread local_worker = std::thread(&call_training_step, &session_, feed_names, feeds, fetch_grad_accumulator_output, &fetches, params_.mpi_context.world_rank);
+          local_worker.join();
           gradient_accumulation_step_count++;
         }
         step_++;
