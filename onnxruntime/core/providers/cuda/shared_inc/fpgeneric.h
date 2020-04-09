@@ -79,7 +79,7 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
                                                      const double* beta,
                                                      double* C, int ldc,
                                                      long long int strideC,
-                                                     int batch_count){
+                                                     int batch_count) {
   return cublasDgemmStridedBatched(handle, transa, transb, m, n, k, alpha, A, lda, strideA, B, ldb, strideB, beta, C, ldc, strideC, batch_count);
 }
 

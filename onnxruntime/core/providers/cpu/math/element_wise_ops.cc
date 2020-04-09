@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/data_types_internal.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/util/math.h"
@@ -45,6 +46,27 @@ namespace onnxruntime {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())                                             \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),                                           \
       KERNEL_CLASS<TYPE>);
+
+// var args are type constraints
+#define REG_ELEMENTWISE_KERNEL_NONT(OP_TYPE, VERSION, KERNEL_CLASS, ...)   \
+  ONNX_CPU_OPERATOR_KERNEL(                                                      \
+      OP_TYPE,                                                                   \
+      VERSION,                                                                   \
+      KernelDefBuilder()                                                         \
+          .TypeConstraint("T", BuildKernelDefConstraints<__VA_ARGS__>())   \
+          .TypeConstraint("T1", BuildKernelDefConstraints<__VA_ARGS__>()), \
+      KERNEL_CLASS);
+
+// var args are type constraints
+#define REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, ...) \
+  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                                     \
+      OP_TYPE,                                                                                            \
+      VERSION_FROM,                                                                                       \
+      VERSION_TO,                                                                                         \
+      KernelDefBuilder()                                                                                  \
+          .TypeConstraint("T", BuildKernelDefConstraints<__VA_ARGS__>())                            \
+          .TypeConstraint("T1", BuildKernelDefConstraints<__VA_ARGS__>()),                          \
+      KERNEL_CLASS);
 
 REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, float, Add);
 REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, double, Add);
@@ -103,12 +125,13 @@ REG_ELEMENTWISE_TYPED_KERNEL(Log, 6, float, Log);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sum, 6, 7, float, Sum_6);
 REG_ELEMENTWISE_TYPED_KERNEL(Sum, 8, float, Sum_8);
 
-REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Min, 6, 7, float, Min_6);
-REG_ELEMENTWISE_TYPED_KERNEL(Min, 8, float, Min_8);
-
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Max, 6, 7, float, Max_6);
-REG_ELEMENTWISE_TYPED_KERNEL(Max, 8, float, Max_8);
-REG_ELEMENTWISE_TYPED_KERNEL(Max, 8, double, Max_8);
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Max, 8, 11, Max_8, float, double);
+REG_ELEMENTWISE_KERNEL_NONT(Max, 12, Max_8, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
+
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Min, 6, 7, float, Min_6);
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 8, 11, Min_8, float);
+REG_ELEMENTWISE_KERNEL_NONT(Min, 12, Min_8, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
 
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 9, float, Less);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 9, double, Less);
@@ -343,13 +366,21 @@ Status Min_6<float>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-template <>
-Status Min_8<float>::Compute(OpKernelContext* context) const {
-  return BroadcastVariadic<float, float>(
-      Node(), *context,
-      [](EigenVectorMap<float> output, float input0, ConstEigenVectorMap<float> input1) { output = input1.array().min(input0); },
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float input1) { output = input0.array().min(input1); },
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, ConstEigenVectorMap<float> input1) { output = input0.array().min(input1.array()); });
+template <typename T>
+struct Min_8::ComputeImpl {
+  Status operator()(const Min_8* inst, OpKernelContext* context) const {
+    return BroadcastVariadic<T, T>(
+        inst->Node(), *context,
+        [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input1.array().min(input0); },
+        [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array().min(input1); },
+        [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array().min(input1.array()); });
+  }
+};
+
+Status Min_8::Compute(OpKernelContext* context) const {
+  utils::MLTypeCallDispatcherRet<Status, ComputeImpl, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t>
+      t_disp(context->Input<Tensor>(0)->GetElementType());
+  return t_disp.Invoke(this, context);
 }
 
 template <>
@@ -371,12 +402,20 @@ Status Max_6<float>::Compute(OpKernelContext* ctx) const {
 }
 
 template <typename T>
-Status Max_8<T>::Compute(OpKernelContext* context) const {
-  return BroadcastVariadic<T, T>(
-      Node(), *context,
-      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input1.array().max(input0); },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array().max(input1); },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array().max(input1.array()); });
+struct Max_8::ComputeImpl {
+  Status operator()(const Max_8* inst, OpKernelContext* context) const {
+    return BroadcastVariadic<T, T>(
+        inst->Node(), *context,
+        [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input1.array().max(input0); },
+        [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array().max(input1); },
+        [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array().max(input1.array()); });
+  }
+};
+
+Status Max_8::Compute(OpKernelContext* context) const {
+  utils::MLTypeCallDispatcherRet<Status, ComputeImpl, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t>
+      t_disp(context->Input<Tensor>(0)->GetElementType());
+  return t_disp.Invoke(this, context);
 }
 
 Status Not::Compute(OpKernelContext* context) const {

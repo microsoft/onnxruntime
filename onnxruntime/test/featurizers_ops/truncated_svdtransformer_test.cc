@@ -78,5 +78,6 @@ TEST(FeaturizersTests, TruncatedSVDTransformer_float) {
   TruncatedSVDTransformerTestRowMajStandard<float>();
 }
 
+
 }  // namespace test
 }  // namespace onnxruntime

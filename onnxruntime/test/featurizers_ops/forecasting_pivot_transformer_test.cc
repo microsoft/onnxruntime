@@ -14,6 +14,7 @@ namespace NS = Microsoft::Featurizer;
 
 namespace onnxruntime {
 namespace test {
+
 namespace {
 
 template <typename T>
