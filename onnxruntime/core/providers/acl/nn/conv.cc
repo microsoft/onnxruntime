@@ -110,20 +110,20 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   arm_compute::ActivationLayerInfo::ActivationFunction acl_activ_func;
   bool acl_activ_enabled = false;
 
-  if (conv_attrs_.activation == "Relu") {
+  if (activation_type == "Relu") {
     acl_activ_func = arm_compute::ActivationLayerInfo::ActivationFunction::RELU;
     acl_activ_enabled = true;
-  } else if (conv_attrs_.activation == "LeakyRelu") {
+  } else if (activation_type == "LeakyRelu") {
     acl_activ_func = arm_compute::ActivationLayerInfo::ActivationFunction::LEAKY_RELU;
     acl_activ_enabled = true;
-  } else if (conv_attrs_.activation == "Tanh") {
+  } else if (activation_type == "Tanh") {
     acl_activ_func = arm_compute::ActivationLayerInfo::ActivationFunction::TANH;
     acl_activ_enabled = true;
-  } else if (conv_attrs_.activation == "Sigmoid") {
+  } else if (activation_type == "Sigmoid") {
     acl_activ_func = arm_compute::ActivationLayerInfo::ActivationFunction::LOGISTIC;
     acl_activ_enabled = true;
-  } else if (!conv_attrs_.activation.empty()) {
-    ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", conv_attrs_.activation);
+  } else if (!activation_type.empty()) {
+    ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", activation_type);
   }
 
   if (it == Conv::convLayers.end()) {
