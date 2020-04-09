@@ -18,9 +18,9 @@ DEVICE_TYPE=${DEVICE_TYPE:=Normal}
 function GetFile {
   local uri=$1
   local path=$2
-  local force=${3:-false}
-  local download_retries=${4:-5}
-  local retry_wait_time_seconds=${5:-30}
+  local force="${3:-false}"
+  local download_retries="${4:-5}"
+  local retry_wait_time_seconds="${5:-30}"
 
   if [[ -f $path ]]; then
     if [[ $force = false ]]; then
