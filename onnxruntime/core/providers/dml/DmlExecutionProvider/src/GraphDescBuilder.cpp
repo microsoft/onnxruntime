@@ -88,9 +88,9 @@ namespace Dml::GraphDescBuilder
         StackAllocator<1024> allocator; // Used for converting abstract operator descs into DML_OPERATOR_DESC
 
         std::vector<NodeInfo> graphNodes;
-        std::vector<DML_PREVIEW_INPUT_GRAPH_EDGE> graphInputEdges;
-        std::vector<DML_PREVIEW_INTERMEDIATE_GRAPH_EDGE> graphIntermediateEdges;
-        std::vector<DML_PREVIEW_OUTPUT_GRAPH_EDGE> graphOutputEdges;
+        std::vector<DML_INPUT_GRAPH_EDGE_DESC> graphInputEdges;
+        std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> graphIntermediateEdges;
+        std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> graphOutputEdges;
 
         // Get the topological sorting of Lotus nodes
         // paulm: breaking change from LOTUS that removed GetNodesInTopologicalOrder from Graph
@@ -198,7 +198,7 @@ namespace Dml::GraphDescBuilder
 
                         const uint32_t fusedNodeInputIndex = iter->second;
 
-                        DML_PREVIEW_INPUT_GRAPH_EDGE edge = {};
+                        DML_INPUT_GRAPH_EDGE_DESC edge = {};
                         edge.GraphInputIndex = fusedNodeInputIndex;
                         edge.ToNodeIndex = nodeIndex;
                         edge.ToNodeInputIndex = inputIndex;
@@ -216,7 +216,7 @@ namespace Dml::GraphDescBuilder
                     {
                         const auto& inputNodeAndIndex = nameToNodeAndIndexMap.at(arg->Name());
 
-                        DML_PREVIEW_INTERMEDIATE_GRAPH_EDGE edge = {};
+                        DML_INTERMEDIATE_GRAPH_EDGE_DESC edge = {};
                         edge.FromNodeIndex = inputNodeAndIndex.nodeIndex;
                         edge.FromNodeOutputIndex = inputNodeAndIndex.targetIndex;
                         edge.ToNodeIndex = nodeIndex;
@@ -259,7 +259,7 @@ namespace Dml::GraphDescBuilder
 
             const auto& outputNodeAndIndex = nameToNodeAndIndexMap.at(graphOutput->Name());
 
-            DML_PREVIEW_OUTPUT_GRAPH_EDGE edge = {};
+            DML_OUTPUT_GRAPH_EDGE_DESC edge = {};
             edge.FromNodeIndex = outputNodeAndIndex.nodeIndex;
             edge.FromNodeOutputIndex = outputNodeAndIndex.targetIndex;
             edge.GraphOutputIndex = gsl::narrow_cast<uint32_t>(outputIndex);

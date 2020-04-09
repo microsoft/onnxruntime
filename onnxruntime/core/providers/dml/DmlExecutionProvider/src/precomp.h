@@ -31,7 +31,6 @@
 #include "External/D3DX12/d3dx12.h"
 
 #include <DirectML.h>
-#include <DirectMLPreview.h>
 
 // DirectML helper libraries
 #include "External/DirectMLHelpers/ApiTraits.h"
