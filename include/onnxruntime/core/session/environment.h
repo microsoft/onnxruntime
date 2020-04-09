@@ -10,7 +10,7 @@
 #include "core/platform/threadpool.h"
 #include "core/common/logging/logging.h"
 
-struct ThreadingOptions;
+struct OrtThreadingOptions;
 namespace onnxruntime {
 /** TODO: remove this class
    Provides the runtime environment for onnxruntime.
@@ -31,7 +31,7 @@ class Environment {
   */
   static Status Create(std::unique_ptr<logging::LoggingManager> logging_manager,
                        std::unique_ptr<Environment>& environment,
-                       const ThreadingOptions* tp_options = nullptr,
+                       const OrtThreadingOptions* tp_options = nullptr,
                        bool create_global_thread_pools = false);
 
   logging::LoggingManager* GetLoggingManager() const {
@@ -59,7 +59,7 @@ class Environment {
 
   Environment() = default;
   Status Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
-                    const ThreadingOptions* tp_options = nullptr,
+                    const OrtThreadingOptions* tp_options = nullptr,
                     bool create_global_thread_pools = false);
 
   std::unique_ptr<logging::LoggingManager> logging_manager_;

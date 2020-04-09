@@ -54,6 +54,7 @@ def main():
         "--use_nccl",
         "--convergence_test_output_file", convergence_test_output_path,
         "--seed", "42",
+        "--enable_grad_norm_clip=false",
     ]).check_returncode()
 
     # verify output

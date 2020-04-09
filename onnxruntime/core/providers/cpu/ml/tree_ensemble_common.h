@@ -266,7 +266,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
           agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[j], x_data));
       } else {
         std::vector<ScoreValue<OTYPE>> scores_t(n_trees_, {0, 0});
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp parallel for
 #endif
         for (int64_t j = 0; j < n_trees_; ++j) {
@@ -290,7 +290,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
                               label_data == NULL ? NULL : (label_data + i));
         }
       } else {
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp parallel for
 #endif
         for (int64_t i = 0; i < N; ++i) {
@@ -311,19 +311,19 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
           agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data));
         agg.FinalizeScores(scores, z_data, -1, label_data);
       } else {
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp parallel
 #endif
         {
           std::vector<ScoreValue<OTYPE>> private_scores(n_targets_or_classes_, {0, 0});
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp for
 #endif
           for (int64_t j = 0; j < n_trees_; ++j) {
             agg.ProcessTreeNodePrediction(private_scores, *ProcessTreeNodeLeave(roots_[j], x_data));
           }
 
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp critical
 #endif
           agg.MergePrediction(scores, private_scores);
@@ -346,14 +346,14 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(const Tensor* X, Tensor* Z, T
           ORT_ENFORCE((int64_t)scores.size() == n_targets_or_classes_);
         }
       } else {
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp parallel
 #endif
         {
           std::vector<ScoreValue<OTYPE>> scores(n_targets_or_classes_);
           size_t j;
 
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp for
 #endif
           for (int64_t i = 0; i < N; ++i) {

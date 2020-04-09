@@ -13,8 +13,8 @@ namespace cuda {
 #define REGISTER_GRADIENT_KERNEL_TYPED(T)                                       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       BatchNormalizationGrad,                                                   \
-      kOnnxDomain,                                                              \
-      9,                                                                        \
+      kMSDomain,                                                                \
+      1,                                                                        \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \

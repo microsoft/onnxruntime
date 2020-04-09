@@ -5,6 +5,7 @@
 #include <bitset>
 #include <cmath>
 #include <random>
+#include <thread>
 
 #include "gtest/gtest.h"
 #include "core/framework/random_seed.h"
@@ -18,6 +19,7 @@
 namespace onnxruntime {
 namespace test {
 
+#ifdef NDEBUG
 using ONNX_NAMESPACE::MakeAttribute;
 using training::OpDef;
 
@@ -1383,7 +1385,7 @@ TEST(GradientCheckerTest, LayerNormGrad) {
 #endif
 
 TEST(GradientUtilsTest, InPlaceAccumulatorFloat32) {
-  OpTester test("InPlaceAccumulator", 9, onnxruntime::kOnnxDomain);
+  OpTester test("InPlaceAccumulator", 1, onnxruntime::kMSDomain);
 
   test.AddInput<float>("old_sum", {3}, {1, 2, 3});
   test.AddInput<float>("value", {3}, {4, 5, 6});
@@ -1395,7 +1397,7 @@ TEST(GradientUtilsTest, InPlaceAccumulatorFloat32) {
 
 #ifdef USE_CUDA
 TEST(GradientUtilsTest, InPlaceAccumulatorFloat16) {
-  OpTester test("InPlaceAccumulator", 9, onnxruntime::kOnnxDomain);
+  OpTester test("InPlaceAccumulator", 1, onnxruntime::kMSDomain);
 
   std::vector<float> old_sum = {1.0f, 2.0f, 3.0f};
   std::vector<float> value = {4.0f, 5.0f, 6.0f};
@@ -1414,7 +1416,7 @@ TEST(GradientUtilsTest, InPlaceAccumulatorFloat16) {
 #endif
 
 TEST(GradientUtilsTest, ZeroGradientFloat32) {
-  OpTester test("ZeroGradient", 9, onnxruntime::kOnnxDomain);
+  OpTester test("ZeroGradient", 1, onnxruntime::kMSDomain);
 
   test.AddInput<float>("old_gradient", {3}, {1, 2, 3});
   test.AddInput<float>("reset_signal", {3}, {1, 10, 100});
@@ -1426,7 +1428,7 @@ TEST(GradientUtilsTest, ZeroGradientFloat32) {
 
 #ifdef USE_CUDA
 TEST(GradientUtilsTest, ZeroGradientFloat16) {
-  OpTester test("ZeroGradient", 9, onnxruntime::kOnnxDomain);
+  OpTester test("ZeroGradient", 1, onnxruntime::kMSDomain);
 
   std::vector<float> old_gradient = {1.0f, 2.0f, 3.0f};
   std::vector<float> zero_gradient = {0.0f, 0.0f, 0.0f};
@@ -1562,6 +1564,7 @@ TEST(Synchronization, WaitAndRecordEventMany) {
     }
   }
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

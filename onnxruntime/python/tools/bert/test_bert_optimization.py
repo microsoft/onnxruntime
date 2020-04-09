@@ -20,12 +20,18 @@ from bert_model_optimization import optimize_model, optimize_by_onnxruntime
 from OnnxModel import OnnxModel
 
 BERT_TEST_MODELS = {
-    "bert_pytorch_0": 'test_data\\bert_squad_pytorch1.4_opset11\\BertForQuestionAnswering_0.onnx',
-    "bert_pytorch_1": 'test_data\\bert_squad_pytorch1.4_opset11\\BertForQuestionAnswering_1.onnx',
-    "bert_squad_pytorch1.4_opset10_fp32": 'test_data\\bert_squad_pytorch1.4_opset10_fp32\\BertForQuestionAnswering.onnx',
-    "bert_keras_0": 'test_data\\bert_mrpc_tensorflow2.1_opset10\\TFBertForSequenceClassification_1.onnx',
-    "bert_keras_squad": 'test_data\\bert_squad_tensorflow2.1_keras2onnx_opset11\\TFBertForQuestionAnswering.onnx'
+    "bert_pytorch_0":
+        'test_data\\bert_squad_pytorch1.4_opset11\\BertForQuestionAnswering_0.onnx',
+    "bert_pytorch_1":
+        'test_data\\bert_squad_pytorch1.4_opset11\\BertForQuestionAnswering_1.onnx',
+    "bert_squad_pytorch1.4_opset10_fp32":
+        'test_data\\bert_squad_pytorch1.4_opset10_fp32\\BertForQuestionAnswering.onnx',
+    "bert_keras_0":
+        'test_data\\bert_mrpc_tensorflow2.1_opset10\\TFBertForSequenceClassification_1.onnx',
+    "bert_keras_squad":
+        'test_data\\bert_squad_tensorflow2.1_keras2onnx_opset11\\TFBertForQuestionAnswering.onnx'
 }
+
 
 class TestBertOptimization(unittest.TestCase):
 
@@ -51,7 +57,7 @@ class TestBertOptimization(unittest.TestCase):
             'Gelu': 0,
             'FastGelu': 0,
             'BiasGelu': 12
-            }
+        }
         self.verify_node_count(bert_model, expected_node_count)
 
     def test_pytorch_model_0_gpu_onnxruntime(self):
@@ -72,9 +78,9 @@ class TestBertOptimization(unittest.TestCase):
             'Attention': 12,
             'SkipLayerNormalization': 24,
             'Gelu': 0,
-            'FastGelu': 12, 
+            'FastGelu': 12,
             'BiasGelu': 0
-            }
+        }
         self.verify_node_count(bert_model, expected_node_count)
 
     def test_pytorch_model_1_cpu_onnxruntime(self):
@@ -94,7 +100,7 @@ class TestBertOptimization(unittest.TestCase):
             'Gelu': 0,
             'FastGelu': 0,
             'BiasGelu': 12
-            }
+        }
         self.verify_node_count(bert_model, expected_node_count)
 
     def test_pytorch_model_1_gpu_onnxruntime(self):
@@ -116,16 +122,21 @@ class TestBertOptimization(unittest.TestCase):
             'LayerNormalization': 24,
             'SkipLayerNormalization': 0,
             'Gelu': 0,
-            'FastGelu': 12, 
+            'FastGelu': 12,
             'BiasGelu': 0
-            }
+        }
         self.verify_node_count(bert_model, expected_node_count)
 
     def test_pytorch_model_0_cpu(self):
         input = BERT_TEST_MODELS['bert_pytorch_0']
-        bert_model = optimize_model(input, 'bert', gpu_only=False,
-                                    num_heads=2, hidden_size=8, sequence_length=10,
-                                    input_int32=False, float16=False)
+        bert_model = optimize_model(input,
+                                    'bert',
+                                    gpu_only=False,
+                                    num_heads=2,
+                                    hidden_size=8,
+                                    sequence_length=10,
+                                    input_int32=False,
+                                    float16=False)
 
         expected_node_count = {
             'EmbedLayerNormalization': 1,
@@ -134,7 +145,7 @@ class TestBertOptimization(unittest.TestCase):
             'Gelu': 0,
             'FastGelu': 0,
             'BiasGelu': 12
-            }
+        }
         self.verify_node_count(bert_model, expected_node_count)
 
     def test_pytorch_model_0_gpu(self):
@@ -143,9 +154,14 @@ class TestBertOptimization(unittest.TestCase):
             return
 
         input = BERT_TEST_MODELS['bert_pytorch_0']
-        bert_model = optimize_model(input, 'bert', gpu_only=True,
-                                    num_heads=2, hidden_size=8, sequence_length=10,
-                                    input_int32=False, float16=False)
+        bert_model = optimize_model(input,
+                                    'bert',
+                                    gpu_only=True,
+                                    num_heads=2,
+                                    hidden_size=8,
+                                    sequence_length=10,
+                                    input_int32=False,
+                                    float16=False)
 
         expected_node_count = {
             'EmbedLayerNormalization': 1,
@@ -154,22 +170,32 @@ class TestBertOptimization(unittest.TestCase):
             'FastGelu': 12,
             'Gelu': 0,
             'BiasGelu': 0
-            }
+        }
         self.verify_node_count(bert_model, expected_node_count)
 
     def test_pytorch_model_2_cpu(self):
         input = BERT_TEST_MODELS['bert_squad_pytorch1.4_opset10_fp32']
-        bert_model = optimize_model(input, 'bert', gpu_only=False,
-                                    num_heads=2, hidden_size=8, sequence_length=10,
-                                    input_int32=False, float16=False)
+        bert_model = optimize_model(input,
+                                    'bert',
+                                    gpu_only=False,
+                                    num_heads=2,
+                                    hidden_size=8,
+                                    sequence_length=10,
+                                    input_int32=False,
+                                    float16=False)
         self.assertTrue(bert_model.is_fully_optimized())
 
     def test_keras_model_1_cpu(self):
         input = BERT_TEST_MODELS['bert_keras_0']
 
-        bert_model = optimize_model(input, 'bert_keras', gpu_only=False,
-                                    num_heads=2, hidden_size=8, sequence_length=7,
-                                    input_int32=False, float16=False)
+        bert_model = optimize_model(input,
+                                    'bert_keras',
+                                    gpu_only=False,
+                                    num_heads=2,
+                                    hidden_size=8,
+                                    sequence_length=7,
+                                    input_int32=False,
+                                    float16=False)
 
         expected_node_count = {
             'EmbedLayerNormalization': 1,
@@ -179,17 +205,23 @@ class TestBertOptimization(unittest.TestCase):
             'BiasGelu': 0,
             'Gelu': 12,
             'FastGelu': 0
-            }
+        }
         self.verify_node_count(bert_model, expected_node_count)
 
     def test_keras_squad_model_cpu(self):
         input = BERT_TEST_MODELS['bert_keras_squad']
 
-        bert_model = optimize_model(input, 'bert_keras', gpu_only=False,
-                                    num_heads=2, hidden_size=8, sequence_length=7,
-                                    input_int32=False, float16=False)
+        bert_model = optimize_model(input,
+                                    'bert_keras',
+                                    gpu_only=False,
+                                    num_heads=2,
+                                    hidden_size=8,
+                                    sequence_length=7,
+                                    input_int32=False,
+                                    float16=False)
 
         self.assertTrue(bert_model.is_fully_optimized())
+
 
 if __name__ == '__main__':
     unittest.main()

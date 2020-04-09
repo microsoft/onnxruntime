@@ -25,6 +25,7 @@ limitations under the License.
 #include "core/common/logging/severity.h"
 #include "core/platform/ort_mutex.h"
 #include "core/framework/arena.h"
+#include "core/common/safeint.h"
 #include "onnxruntime_config.h"
 
 #if defined(PLATFORM_WINDOWS)
@@ -428,7 +429,7 @@ class BFCArena : public IArenaAllocator {
   char bins_space_[sizeof(Bin) * kNumBins];
 
   // The size of the current region allocation.
-  size_t curr_region_allocation_bytes_;
+  SafeInt<size_t> curr_region_allocation_bytes_;
 
   std::unique_ptr<IDeviceAllocator> device_allocator_;
 

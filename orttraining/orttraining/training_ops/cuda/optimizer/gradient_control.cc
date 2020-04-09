@@ -10,18 +10,18 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(T, T_GRAD)                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
-      InPlaceAccumulator,                                                     \
-      kOnnxDomain,                                                            \
-      9,                                                                      \
-      T##_##T_GRAD,                                                           \
-      kCudaExecutionProvider,                                                 \
-      KernelDefBuilder()                                                      \
-          .Alias(0, 0) /* Accumulate tensors in-place */                      \
-          .InputMemoryType<OrtMemTypeCPUInput>(2) /* Keep do_update in CPU */ \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())              \
-          .TypeConstraint("T_GRAD", DataTypeImpl::GetTensorType<T_GRAD>()),   \
+#define REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(T, T_GRAD)                       \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                    \
+      InPlaceAccumulator,                                                           \
+      kMSDomain,                                                                    \
+      1,                                                                            \
+      T##_##T_GRAD,                                                                 \
+      kCudaExecutionProvider,                                                       \
+      KernelDefBuilder()                                                            \
+          .Alias(0, 0)                            /* Accumulate tensors in-place */ \
+          .InputMemoryType<OrtMemTypeCPUInput>(2) /* Keep do_update in CPU */       \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                    \
+          .TypeConstraint("T_GRAD", DataTypeImpl::GetTensorType<T_GRAD>()),         \
       InPlaceAccumulator<T, T_GRAD>);
 
 REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(float, float)
@@ -35,9 +35,9 @@ Status ZeroGradient<T>::ComputeInternal(OpKernelContext* ctx) const {
   Tensor& zero_gradient = *ctx->Output(0, old_gradient.Shape());
 
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
-    zero_gradient.template MutableData<T>(),
-    0,
-    zero_gradient.Shape().Size() * sizeof(T)));
+      zero_gradient.template MutableData<T>(),
+      0,
+      zero_gradient.Shape().Size() * sizeof(T)));
 
   return Status::OK();
 }
@@ -45,8 +45,8 @@ Status ZeroGradient<T>::ComputeInternal(OpKernelContext* ctx) const {
 #define REGISTER_ZERO_GRADIENT_TYPED(T)                           \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       ZeroGradient,                                               \
-      kOnnxDomain,                                                \
-      9,                                                          \
+      kMSDomain,                                                  \
+      1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
@@ -66,7 +66,7 @@ Status InPlaceAccumulator<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) cons
   const Tensor& right_addee_buffer = *ctx->Input<Tensor>(1);
   const Tensor* do_update_tensor = ctx->Input<Tensor>(2);
   Tensor& accumulation_output = *ctx->Output(0, left_addee_buffer.Shape());
-  
+
   if (do_update_tensor) {
     const bool do_update = *(do_update_tensor->template Data<bool>());
     if (!do_update) {
