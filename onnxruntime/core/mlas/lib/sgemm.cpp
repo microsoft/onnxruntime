@@ -434,6 +434,15 @@ Return Value:
         t1 = _mm_movehl_ps(z2, z0);
         t2 = _mm_movelh_ps(z1, z3);
         t3 = _mm_movehl_ps(z3, z1);
+#elif defined(MLAS_VSX_INTRINSICS)
+        __vector float z0 = vec_mergeh(t0, t2);
+        __vector float z1 = vec_mergel(t0, t2);
+        __vector float z2 = vec_mergeh(t1, t3);
+        __vector float z3 = vec_mergel(t1, t3);
+        t0 = vec_mergeh(z0, z2);
+        t1 = vec_mergel(z0, z2);
+        t2 = vec_mergeh(z1, z3);
+        t3 = vec_mergel(z1, z3);
 #else
 #error Unsupported architecture.
 #endif
@@ -627,10 +636,10 @@ Return Value:
 
             if ((CountY & 2) != 0) {
 
-#if defined(MLAS_NEON_INTRINSICS)
                 MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
                 MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&b[ldb]);
 
+#if defined(MLAS_NEON_INTRINSICS) || defined(MLAS_VSX_INTRINSICS)
                 MlasStoreLaneFloat32x4<0>(&d[0], t0);
                 MlasStoreLaneFloat32x4<0>(&d[1], t1);
                 MlasStoreLaneFloat32x4<1>(&d[16], t0);
@@ -640,9 +649,6 @@ Return Value:
                 MlasStoreLaneFloat32x4<3>(&d[48], t0);
                 MlasStoreLaneFloat32x4<3>(&d[49], t1);
 #elif defined(MLAS_SSE2_INTRINSICS)
-                MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
-                MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&b[ldb]);
-
                 __m128 v0 = _mm_unpacklo_ps(t0, t1);
                 __m128 v1 = _mm_unpackhi_ps(t0, t1);
                 _mm_storel_pi((__m64*)&d[0], v0);
@@ -762,6 +768,37 @@ Return Value:
     }
 }
 
+size_t
+MlasSgemmCallKernel(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t lda,
+    size_t ldc,
+    float alpha,
+    bool ZeroMode
+    )
+{
+    size_t RowsHandled;
+
+#if defined(MLAS_TARGET_AMD64_IX86)
+    RowsHandled = MlasPlatform.GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
+#elif defined(MLAS_TARGET_POWER)
+    RowsHandled = MlasSgemmKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
+#else
+    if (ZeroMode) {
+        RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+    } else {
+        RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+    }
+#endif
+
+    return RowsHandled;
+}
+
 void
 MlasSgemmOperation(
     CBLAS_TRANSPOSE TransA,
@@ -877,7 +914,6 @@ Return Value:
 
     }
 
-
     //
     // Compute the strides to step through slices of the input matrices.
     //
@@ -970,15 +1006,7 @@ Return Value:
 
                 do {
 
-#if defined(MLAS_TARGET_AMD64_IX86)
-                    RowsHandled = MlasPlatform.GemmFloatKernel(a, PanelB, c, CountK, RowsRemaining, CountN, lda, ldc, alpha, ZeroMode);
-#else
-                    if (ZeroMode) {
-                        RowsHandled = MlasSgemmKernelZero(a, PanelB, c, CountK, RowsRemaining, CountN, lda, ldc, alpha);
-                    } else {
-                        RowsHandled = MlasSgemmKernelAdd(a, PanelB, c, CountK, RowsRemaining, CountN, lda, ldc, alpha);
-                    }
-#endif
+                    RowsHandled = MlasSgemmCallKernel(a, PanelB, c, CountK, RowsRemaining, CountN, lda, ldc, alpha, ZeroMode);
 
                     c += ldc * RowsHandled;
                     a += lda * RowsHandled;
@@ -1017,15 +1045,7 @@ Return Value:
 
                     do {
 
-#if defined(MLAS_TARGET_AMD64_IX86)
-                        RowsHandled = MlasPlatform.GemmFloatKernel(pa, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode);
-#else
-                        if (ZeroMode) {
-                            RowsHandled = MlasSgemmKernelZero(pa, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha);
-                        } else {
-                            RowsHandled = MlasSgemmKernelAdd(pa, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha);
-                        }
-#endif
+                        RowsHandled = MlasSgemmCallKernel(pa, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode);
 
                         c += ldc * RowsHandled;
                         pa += CountK * RowsHandled;
