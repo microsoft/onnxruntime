@@ -154,6 +154,7 @@ add_winml_test(
   SOURCES ${winml_test_adapter_model_src}
   LIBS winml_test_common ${winml_test_adapter_model_libs}
 )
+target_include_directories(winml_test_adapter_model PRIVATE ${REPO_ROOT}/winml/adapter)
 
 # During build time, copy any modified collaterals.
 # configure_file(source destination COPYONLY), which configures CMake to copy the file whenever source is modified,
