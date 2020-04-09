@@ -548,6 +548,26 @@ public class OrtSession implements AutoCloseable {
       addNuphar(OnnxRuntime.ortApiHandle, nativeHandle, allowUnalignedBuffers ? 1 : 0, settings);
     }
 
+    /**
+     * Adds DirectML as an execution backend.
+     *
+     * @param deviceNum The id of the DirectML device.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addDirectML(int deviceNum) throws OrtException {
+      addDirectML(OnnxRuntime.ortApiHandle, nativeHandle, deviceNum);
+    }
+
+    /**
+     * Adds the ARM Compute Library as an execution backend.
+     *
+     * @param useArena If true use the arena memory allocator.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addACL(boolean useArena) throws OrtException {
+      addACL(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
+    }
+
     private native void setExecutionMode(long apiHandle, long nativeHandle, int mode)
         throws OrtException;
 
@@ -601,6 +621,11 @@ public class OrtSession implements AutoCloseable {
     private native void addNuphar(
         long apiHandle, long nativeHandle, int allowUnalignedBuffers, String settings)
         throws OrtException;
+
+    private native void addDirectML(long apiHandle, long nativeHandle, int deviceNum)
+        throws OrtException;
+
+    private native void addACL(long apiHandle, long nativeHandle, int useArena) throws OrtException;
   }
 
   /**
