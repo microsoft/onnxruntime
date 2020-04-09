@@ -190,8 +190,10 @@ LearningModelSession::EvaluateFeaturesAsync(
 uint64_t LearningModelSession::Run(winrt::com_ptr<winmlp::LearningModelBinding> binding_impl) {
   CheckClosed();
 
+  // if this is being called on the GPU, grab the DML lock
+  // the DML EP is not thread safe.
   auto device = device_.as<LearningModelDevice>();
-  CWinMLAutoLock lock(!device->IsCpuDevice() ? &evaluate_lock_ : nullptr);
+  CWinMLAutoLock lock(!device->IsCpuDevice() ? GetDMLEPLock() : nullptr);
 
   binding_impl->BindUnboundOutputs();
 
@@ -259,7 +261,9 @@ LearningModelSession::GetResults(
     device->GetD3DDeviceCache()->WaitForFenceValue(evaluation_complete_fence);
   }
 
-  CWinMLAutoLock lock(is_gpu_evaluation ? &evaluate_lock_ : nullptr);
+  // if this is being called on the GPU, grab the DML lock
+  // the DML EP is not thread safe.
+  CWinMLAutoLock lock(is_gpu_evaluation ? GetDMLEPLock() : nullptr);
 
   if (is_gpu_evaluation) {
     // For DML we aren't using the Sync function because we want to make fencing the

@@ -71,8 +71,8 @@ static Status MergeShapeInfo(const std::string& output_name,
       // target.shape() was empty. 'assert' just in case that ever changes.
       assert(utils::HasShape(source) && utils::HasShape(target));
       LOGS(logger, WARNING) << "Error merging shape info for output. '" << output_name
-                               << "' source:" << source.shape() << " target:" << target.shape()
-                               << ". Falling back to lenient merge.";
+                            << "' source:" << source.shape() << " target:" << target.shape()
+                            << ". Falling back to lenient merge.";
 
       ONNX_NAMESPACE::UnionShapeInfo(source.shape(), target);
     } else {
@@ -695,19 +695,23 @@ void Node::ReplaceDefs(const std::map<const onnxruntime::NodeArg*, onnxruntime::
 //}
 using google::protobuf::RepeatedPtrField;
 
-Graph::Graph(GraphProto* graph_proto,
+Graph::Graph(const Model& owning_model,
+             GraphProto* graph_proto,
              const std::unordered_map<std::string, int>& domain_to_version,
              Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
              const logging::Logger& logger,
              const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
-    : Graph(graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger, model_functions) {}
+    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger,
+            model_functions) {}
 
-Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
+Graph::Graph(const Model& owning_model,
+             GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
              const logging::Logger& logger,
              const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
-    : graph_proto_(graph_proto),
+    : owning_model_(owning_model),
+      graph_proto_(graph_proto),
       schema_registry_(schema_registry),
       graph_resolve_needed_(true),
       domain_to_version_(domain_to_version),
@@ -727,16 +731,9 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
       continue;
     }
 
-    // Copy constant nodes _value to name_to_initial_tensor_
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
-    const AttributeProto& constant_attribute = node.attribute(0);
-    // TODO: Add support for parsing 'sparse_value' attribute from a 'Constant' node
-    // Discussion surrounding handling the SparseTensorProto must be had.
-    // An easy way is to implement a method that converts a SparseTensorproto into a TensorProto
-    // to use the same downstream flow, but that is going to impact peak memory usage and probably a smarter way is required.
-    ORT_ENFORCE(constant_attribute.has_t(), "Only 'value' attribute is supported within a 'Constant' node in ORT");
-    *tensor = constant_attribute.t();
-    *(tensor->mutable_name()) = node.output(0);
+    auto status = utils::ConstantNodeProtoToTensorProto(node, *tensor);
+    ORT_ENFORCE(status.IsOK(), status.ToString());
   }
 
   // Remove constant nodes as they're replaced with initializers above.
@@ -806,10 +803,11 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
 }
 
 Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::GraphProto& subgraph_proto)
-    : Graph(&subgraph_proto,
+    : Graph(parent_graph.owning_model_,
+            &subgraph_proto,
             parent_graph.DomainToVersionMap(), parent_graph.IrVersion(), parent_graph.schema_registry_,
             &parent_graph,
-            &parent_node, parent_graph.logger_) {
+            &parent_node, parent_graph.logger_, std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>()) {
 }
 
 Status Graph::VerifyNoDuplicateName() {
@@ -1710,13 +1708,14 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
       const TensorProto* tensor_proto = initializer_pair.second;
       TypeProto tensor_type;
       tensor_type.mutable_tensor_type()->set_elem_type(tensor_proto->data_type());
-      auto inferred_type = DataTypeUtils::ToType(tensor_type);
-      auto existing_type = node_arg->Type();
-      if (nullptr == existing_type)
-        node_arg->SetType(inferred_type);
-      else if (inferred_type != existing_type) {
-        return Status(ONNXRUNTIME, FAIL,
-                      "Type Error: Value of initializer " + name + " does not match its type.");
+      auto initializer_type = DataTypeUtils::ToType(tensor_type);
+      auto nodearg_type = node_arg->Type();
+      if (nullptr == nodearg_type)
+        node_arg->SetType(initializer_type);
+      else if (initializer_type != nodearg_type) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Type Error: Data in initializer '", name, "' has element type ", *initializer_type,
+                               " but usage of initializer in graph expects ", *nodearg_type);
       }
 
       // Set shape accordingly.
@@ -1811,7 +1810,7 @@ Status Graph::VerifyNodeAndOpMatch() {
       if (node.op_ && node.op_->HasFunction()) {
         auto onnx_function_proto = node.op_->GetFunction();
         auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), *onnx_function_proto,
-            logger_);
+                                                                            logger_);
         function_container_.emplace_back(std::move(func_ptr));
         node.SetFunctionBody(*function_container_.back());
       }
@@ -2032,6 +2031,10 @@ const std::string& Graph::Description() const noexcept {
 
 void Graph::SetDescription(const std::string& description) {
   graph_proto_->set_doc_string(description);
+}
+
+const Path& Graph::ModelPath() const {
+  return owning_model_.ModelPath();
 }
 
 void Graph::AddInitializedTensor(const TensorProto& tensor) {
@@ -2408,12 +2411,12 @@ void Graph::CleanUnusedInitializers() {
       // on the first call to Graph::Resolve we are removing unnecessary initializers that should be removed
       // from the model.
       // on later calls we are removing initializers that optimizations have made redundant.
-        if (num_resolves_ == 0) {
-          LOGS(logger_, WARNING) << "Removing initializer '"
-                                  << name << "'. It is not used by any node and should be removed from the model.";
-        } else {
-          LOGS(logger_, INFO) << "Removing initializer '" << name << "'. It is no longer used by any node.";
-        }
+      if (num_resolves_ == 0) {
+        LOGS(logger_, WARNING) << "Removing initializer '"
+                               << name << "'. It is not used by any node and should be removed from the model.";
+      } else {
+        LOGS(logger_, INFO) << "Removing initializer '" << name << "'. It is no longer used by any node.";
+      }
 
       erase_list.push_back(name);
     }
@@ -2619,7 +2622,7 @@ Status Graph::SetGraphInputsOutputs() {
                                 name + " must be either specified in graph inputs or graph initializers.");
                 }
               } else {
-                // If arg_input is of an initializer, we remove it from graph_inputs_excluding_initializers_ 
+                // If arg_input is of an initializer, we remove it from graph_inputs_excluding_initializers_
                 // whose initial content has both initializers and non-initializers.
                 auto input_pos = std::find(graph_inputs_excluding_initializers_.begin(),
                                            graph_inputs_excluding_initializers_.end(),

@@ -38,7 +38,9 @@ std::unique_ptr<IExecutionProvider> CreateCPUExecutionProvider() {
 
 class ExecutionFrameTest : public ::testing::Test {
  protected:
-  concurrency::ThreadPool tp_{"test", 1};
+  concurrency::ThreadPool tp_;
+  ExecutionFrameTest() : tp_(&onnxruntime::Env::Default(), ThreadOptions(), ORT_TSTR("ExecutionFrameTest"), 2, true) {
+  }
 };
 
 TEST_F(ExecutionFrameTest, TensorAllocationTest) {
@@ -113,7 +115,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
 }
 
 TEST_F(ExecutionFrameTest, FeedInDataTest) {
-  onnxruntime::Model model("test", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+  onnxruntime::Model model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
                            std::unordered_map<std::string, int>{{"", 10}}, {},
                            DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
@@ -168,7 +170,8 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   auto xp_type = cpu_xp->Type();
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
-  onnxruntime::Model model("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Model model("test", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                           domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -276,7 +279,7 @@ TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {
   SessionOptions so;
   so.session_logid = "BadModelInvalidDimParamUsage";
 
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   Status st;
   ASSERT_TRUE((st = session_object.Load("testdata/invalid_dim_param_value_repetition.onnx")).IsOK()) << st;
   ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;

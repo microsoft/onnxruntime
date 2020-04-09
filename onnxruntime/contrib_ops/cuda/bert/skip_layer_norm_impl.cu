@@ -30,7 +30,7 @@ namespace cuda {
 template <typename T, unsigned TPB>
 __global__ void SkipLayerNormKernelSmall(
     const int ld, const T* input, const T* skip, const T* beta, const T* gamma, const T* bias, T* output) {
-  const T reverse_ld = T(1) / T(ld);
+  const T reverse_ld = T(1.f / ld);
   const int offset = blockIdx.x * ld;
 
   KeyValuePairSum pair_sum;
@@ -51,7 +51,7 @@ __global__ void SkipLayerNormKernelSmall(
 template <typename T, unsigned TPB>
 __global__ void SkipLayerNormKernel(
     const int ld, const T* input, const T* skip, const T* beta, const T* gamma, const T* bias, T* output) {
-  const T reverse_ld = T(1) / T(ld);
+  const T reverse_ld = T(1.f / ld);
   const int offset = blockIdx.x * ld;
 
   KeyValuePairSum pair_sum;

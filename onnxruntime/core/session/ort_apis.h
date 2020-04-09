@@ -18,6 +18,7 @@ ORT_API(void, ReleaseSessionOptions, OrtSessionOptions*);
 ORT_API(void, ReleaseCustomOpDomain, OrtCustomOpDomain*);
 ORT_API(void, ReleaseMapTypeInfo, OrtMapTypeInfo*);
 ORT_API(void, ReleaseSequenceTypeInfo, OrtSequenceTypeInfo*);
+ORT_API(void, ReleaseModelMetadata, OrtModelMetadata*);
 
 ORT_API_STATUS_IMPL(CreateStatus, OrtErrorCode code, _In_ const char* msg);
 OrtErrorCode ORT_API_CALL GetErrorCode(_In_ const OrtStatus* status) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
@@ -73,6 +74,25 @@ ORT_API_STATUS_IMPL(SessionGetInputName, _In_ const OrtSession* sess, size_t ind
 ORT_API_STATUS_IMPL(SessionGetOutputName, _In_ const OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 ORT_API_STATUS_IMPL(SessionGetOverridableInitializerName, _In_ const OrtSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+ORT_API_STATUS_IMPL(SessionEndProfiling, _In_ OrtSession* sess, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** out);
+ORT_API_STATUS_IMPL(SessionGetModelMetadata, _In_ const OrtSession* sess,
+                    _Outptr_ OrtModelMetadata** out);
+
+ORT_API_STATUS_IMPL(ModelMetadataGetProducerName, _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+ORT_API_STATUS_IMPL(ModelMetadataGetGraphName, _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+ORT_API_STATUS_IMPL(ModelMetadataGetDomain, _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+ORT_API_STATUS_IMPL(ModelMetadataGetDescription, _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+ORT_API_STATUS_IMPL(ModelMetadataLookupCustomMetadataMap, _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator,
+                    _In_ const char* key, _Outptr_ char** value);
+
+ORT_API_STATUS_IMPL(ModelMetadataGetVersion, _In_ const OrtModelMetadata* model_metadata,
+                    _Out_ int64_t* value);
 
 ORT_API_STATUS_IMPL(CreateRunOptions, _Outptr_ OrtRunOptions** out);
 
@@ -158,4 +178,11 @@ ORT_API_STATUS_IMPL(GetMapValueType, _In_ const OrtMapTypeInfo* map_type_info, _
 // OrtSequenceTypeInfo Accessors
 ORT_API_STATUS_IMPL(GetSequenceElementType, _In_ const OrtSequenceTypeInfo* sequence_type_info, _Outptr_ OrtTypeInfo** type_info);
 
+ORT_API_STATUS_IMPL(CreateEnvWithGlobalThreadPools, OrtLoggingLevel default_logging_level, _In_ const char* logid,
+                    _In_ const struct OrtThreadingOptions* t_options, _Outptr_ OrtEnv** out)
+ORT_ALL_ARGS_NONNULL;
+
+ORT_API_STATUS_IMPL(DisablePerSessionThreads, _In_ OrtSessionOptions* options);
+ORT_API_STATUS_IMPL(CreateThreadingOptions, _Outptr_ OrtThreadingOptions** out);
+ORT_API(void, ReleaseThreadingOptions, _Frees_ptr_opt_ OrtThreadingOptions*);
 }  // namespace OrtApis

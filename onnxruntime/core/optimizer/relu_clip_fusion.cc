@@ -56,7 +56,7 @@ Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
 
       data_type = initializer->data_type();
       // construct an initializer to gracefully handle typed or raw data in the TensorProto
-      Initializer i(*initializer);
+      Initializer i(*initializer, graph.ModelPath());
       switch (data_type) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
           if (*i.data<float>() < 0.f) {
@@ -122,7 +122,7 @@ bool FuseReluClip::SatisfyCondition(const Graph& graph, const Node& node, const 
   // as Clip will apply the minimum. If the Clip 'min' value is < 0 we need
   // to update it to 0 to apply what the Relu would have done. We do that in Apply.
   const auto& next_node = *node.OutputNodesBegin();
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6, 11}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6, 11, 12}) ||
       next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
     return false;
   }

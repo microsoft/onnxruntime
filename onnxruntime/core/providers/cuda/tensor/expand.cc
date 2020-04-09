@@ -22,8 +22,7 @@ static void CalcEffectiveDims(vector<int64_t>& x_dims, vector<int64_t>& y_dims) 
     if (xdim == ydim || xdim == 1) {
       x_reverse.push_back(xdim);
       y_reverse.push_back(ydim);
-    }
-    else { // xdim < ydim && xdim > 1, split
+    } else {  // xdim < ydim && xdim > 1, split
       ydim /= xdim;
       x_reverse.push_back(xdim);
       y_reverse.push_back(xdim);
@@ -44,18 +43,15 @@ static void CalcEffectiveDims(vector<int64_t>& x_dims, vector<int64_t>& y_dims) 
       }
       if (x_dims.back() == 1) {
         y_dims.back() *= y_reverse[i];
-      }
-      else {
+      } else {
         x_dims.push_back(1);
         y_dims.push_back(y_reverse[i]);
       }
-    }
-    else { // x_reverse[i] == y_reverse[i]
+    } else {  // x_reverse[i] == y_reverse[i]
       if (x_dims.back() == y_dims.back()) {
         x_dims.back() *= x_reverse[i];
         y_dims.back() *= y_reverse[i];
-      }
-      else {
+      } else {
         x_dims.push_back(x_reverse[i]);
         y_dims.push_back(y_reverse[i]);
       }
@@ -84,13 +80,17 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
   CalcEffectiveDims(input_dims, output_dims);
   int rank = gsl::narrow_cast<int>(output_dims.size());
 
-  CudaAsyncBuffer<fast_divmod> fdm_output_strides(this, rank);
-  ORT_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
+  TensorPitches original_input_strides(input_dims);
+  TensorPitches original_output_strides(output_dims);
 
-  CudaAsyncBuffer<int64_t> input_view_strides(this, rank);
-  TensorPitches::Calculate(input_view_strides.CpuSpan(), input_dims);
-  for (int i = 0; i < rank; ++i) {
-    if (input_dims[i] == 1) input_view_strides.CpuSpan()[i] = 0;
+  TArray<int64_t> input_strides(rank);
+  for (auto i = 0; i < rank; i++) {
+    input_strides[i] = input_dims[i] == 1 ? 0 : original_input_strides[i];
+  }
+
+  TArray<fast_divmod> output_strides(rank);
+  for (auto i = 0; i < rank; i++) {
+    output_strides[i] = fast_divmod(static_cast<int>(original_output_strides[i]));
   }
 
   return ExpandImpl(
@@ -99,10 +99,9 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
       gsl::narrow_cast<int>(input_data_tensor.Shape().Size()),
       input_data_tensor.DataRaw(),
       output_tensor.MutableDataRaw(),
-      fdm_output_strides,
-      input_view_strides);
+      output_strides,
+      input_strides);
 }
-
 
 ONNX_OPERATOR_KERNEL_EX(
     Expand,

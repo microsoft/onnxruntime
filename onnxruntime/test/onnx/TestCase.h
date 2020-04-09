@@ -7,8 +7,8 @@
 #include <unordered_map>
 #include <core/common/common.h>
 #include <core/common/status.h>
+#include <core/platform/path_lib.h>
 #include <core/session/onnxruntime_cxx_api.h>
-#include <core/framework/path_lib.h>
 #include "heap_buffer.h"
 
 namespace ONNX_NAMESPACE {

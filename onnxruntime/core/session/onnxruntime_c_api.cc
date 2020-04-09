@@ -49,9 +49,6 @@ using namespace onnxruntime;
     if (_status) return _status;      \
   } while (0)
 
-
-
-
 #define TENSOR_READ_API_BEGIN                          \
   API_IMPL_BEGIN                                       \
   auto v = reinterpret_cast<const ::OrtValue*>(value); \
@@ -79,6 +76,16 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel default_warning_level,
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, default_warning_level, logid};
   Status status;
   *out = OrtEnv::GetInstance(lm_info, status);
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithGlobalThreadPools, OrtLoggingLevel default_warning_level,
+                    _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out) {
+  API_IMPL_BEGIN
+  OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, default_warning_level, logid};
+  Status status;
+  *out = OrtEnv::GetInstance(lm_info, status, tp_options);
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -417,7 +424,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
   try {
     sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
-        model_path, env->GetLoggingManager());
+        env->GetEnvironment(), model_path);
   } catch (const std::exception& e) {
     return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }
@@ -432,7 +439,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
   try {
     sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
-        model_data, static_cast<int>(model_data_length), env->GetLoggingManager());
+        env->GetEnvironment(), model_data, static_cast<int>(model_data_length));
   } catch (const std::exception& e) {
     return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }
@@ -662,6 +669,99 @@ static OrtStatus* GetNodeDefNameImpl(_In_ const OrtSession* sess, size_t index,
     return OrtApis::CreateStatus(ORT_FAIL, "index out of range");
   *output = StrDup(defs[index]->Name(), allocator);
   return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionEndProfiling, _In_ OrtSession* sess, _Inout_ OrtAllocator* allocator,
+                    _Out_ char** out) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
+  auto profile_file_name = session->EndProfiling();
+  *out = StrDup(profile_file_name, allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionGetModelMetadata, _In_ const OrtSession* sess,
+                    _Outptr_ OrtModelMetadata** out) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
+  auto p = session->GetModelMetadata();
+  if (!p.first.IsOK())
+    return ToOrtStatus(p.first);
+  *out = reinterpret_cast<OrtModelMetadata*>(new ModelMetadata(*p.second));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetProducerName,
+                    _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value) {
+  API_IMPL_BEGIN
+  auto producer_name = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->producer_name;
+  *value = StrDup(producer_name, allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetGraphName,
+                    _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value) {
+  API_IMPL_BEGIN
+  auto graph_name = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->graph_name;
+  *value = StrDup(graph_name, allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetDomain,
+                    _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value) {
+  API_IMPL_BEGIN
+  auto domain = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->domain;
+  *value = StrDup(domain, allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetDescription,
+                    _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value) {
+  API_IMPL_BEGIN
+  auto description = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->description;
+  *value = StrDup(description, allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ModelMetadataLookupCustomMetadataMap,
+                    _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator,
+                    _In_ const char* key, _Outptr_ char** value) {
+  API_IMPL_BEGIN
+  auto custom_metadata_map =
+      reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->custom_metadata_map;
+
+  std::string temp(key);
+
+  auto iter = custom_metadata_map.find(temp);
+
+  if (iter == custom_metadata_map.end()) {
+    *value = nullptr;
+  } else {
+    *value = StrDup(iter->second, allocator);
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetVersion,
+                    _In_ const OrtModelMetadata* model_metadata,
+                    _Out_ int64_t* value) {
+  API_IMPL_BEGIN
+  *value = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->version;
+  return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionGetInputName, _In_ const OrtSession* sess, size_t index,
@@ -1018,7 +1118,7 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
     }
 
     OrtStatus* st{};
-    utils::MLTypeCallDispatcherRet<OrtStatus*, CallCreateValueImpl, bool, float, double,
+    utils::MLTypeCallDispatcherRet<OrtStatus*, CallCreateValueImpl, bool, float, double, std::string,
                                    MLFloat16, BFloat16, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
         t_disp(one_tensor.GetElementType());
 
@@ -1272,7 +1372,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
 	In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_2 = {
+static constexpr OrtApi ort_api_1_to_3 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -1392,7 +1492,6 @@ static constexpr OrtApi ort_api_1_to_2 = {
     &OrtApis::ReleaseCustomOpDomain,
     // End of Version 1 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 2 - In development, feel free to add/remove/rearrange here
     &OrtApis::GetDenotationFromTypeInfo,
     &OrtApis::CastTypeInfoToMapTypeInfo,
     &OrtApis::CastTypeInfoToSequenceTypeInfo,
@@ -1400,16 +1499,31 @@ static constexpr OrtApi ort_api_1_to_2 = {
     &OrtApis::GetMapValueType,
     &OrtApis::GetSequenceElementType,
     &OrtApis::ReleaseMapTypeInfo,
-    &OrtApis::ReleaseSequenceTypeInfo
-};
+    &OrtApis::ReleaseSequenceTypeInfo,
+    &OrtApis::SessionEndProfiling,
+    &OrtApis::SessionGetModelMetadata,
+    &OrtApis::ModelMetadataGetProducerName,
+    &OrtApis::ModelMetadataGetGraphName,
+    &OrtApis::ModelMetadataGetDomain,
+    &OrtApis::ModelMetadataGetDescription,
+    &OrtApis::ModelMetadataLookupCustomMetadataMap,
+    &OrtApis::ModelMetadataGetVersion,
+    &OrtApis::ReleaseModelMetadata,
+    // End of Version 2 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Version 3 - In development, feel free to add/remove/rearrange here
+    &OrtApis::CreateEnvWithGlobalThreadPools,
+    &OrtApis::DisablePerSessionThreads,
+    &OrtApis::CreateThreadingOptions,
+    &OrtApis::ReleaseThreadingOptions};
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
 // If this assert hits, read the above 'Rules on how to add a new Ort API version'
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
-  if (version >= 1 && version <= 2)
-    return &ort_api_1_to_2;
+  if (version >= 1 && version <= 3)
+    return &ort_api_1_to_3;
 
   return nullptr;  // Unsupported version
 }
@@ -1429,3 +1543,4 @@ ORT_API(void, OrtApis::ReleaseEnv, _Frees_ptr_opt_ OrtEnv* value) {
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
+DEFINE_RELEASE_ORT_OBJECT_FUNCTION(ModelMetadata, ::onnxruntime::ModelMetadata)

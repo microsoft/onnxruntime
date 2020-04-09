@@ -24,4 +24,3 @@ class ScatterElements final : public CudaKernel {
 
 }  // namespace cuda
 }  // namespace onnxruntime
-

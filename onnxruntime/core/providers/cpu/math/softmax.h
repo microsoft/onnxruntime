@@ -39,7 +39,7 @@ class Softmax final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-#ifndef USE_OPENMP
+#ifndef _OPENMP
     concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
 #endif
     const auto* tensor_pointer = ctx->Input<Tensor>(0);
@@ -61,17 +61,17 @@ class Softmax final : public OpKernel {
     int N = static_cast<int>(input_shape.SizeToDimension(axis));
     int D = static_cast<int>(input_shape.SizeFromDimension(axis));
 
-    Eigen::TensorMap<Eigen::Tensor<const float, 2, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned> X_tensor(
-        X.Data<float>(), N, D);
-    Eigen::TensorMap<Eigen::Tensor<float, 2, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned> Y_tensor(
-        Y->MutableData<float>(), N, D);
-#ifndef USE_OPENMP
+    Eigen::TensorMap<Eigen::Tensor<const T, 2, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned> X_tensor(
+        X.Data<T>(), N, D);
+    Eigen::TensorMap<Eigen::Tensor<T, 2, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned> Y_tensor(
+        Y->MutableData<T>(), N, D);
+#ifndef _OPENMP
     if (tp == nullptr)
 #endif
       ComputeSoftMax<use_log>(Eigen::DefaultDevice(), X_tensor, Y_tensor, N, D);
-#ifndef USE_OPENMP
+#ifndef _OPENMP
     else
-      ComputeSoftMax<use_log>(Eigen::ThreadPoolDevice(&tp->GetHandler(), tp->NumThreads()), X_tensor, Y_tensor, N, D);
+      ComputeSoftMax<use_log>(tp->Device(), X_tensor, Y_tensor, N, D);
 #endif
     return Status::OK();
   }

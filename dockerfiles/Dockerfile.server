@@ -20,20 +20,19 @@ RUN apt-get update && \
 
 ENV PATH="/opt/cmake/bin:${PATH}"
 RUN git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime
-RUN /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} && \
-    /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_deps.sh -p ${PYTHON_VERSION} && \
-    /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_server_deps.sh
+RUN /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} \
+    && /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_server_deps.sh
 
 ENV PATH="/usr/local/go/bin:${PATH}"
 
 WORKDIR /
-RUN mkdir -p /onnxruntime/build && \
-    python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --build_server --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)
+RUN mkdir -p /onnxruntime/build && cd /onnxruntime/build && cmake -DCMAKE_BUILD_TYPE=Release /onnxruntime/server \
+    && make -j$(getconf _NPROCESSORS_ONLN)
 
 FROM minimal AS final
+COPY --from=build /onnxruntime/build/onnxruntime_server /onnxruntime/server/
+COPY --from=build /usr/lib/libonnxruntime.so.1.2.0 /usr/local/lib/libcares.so.2.3.0 /usr/lib/
+RUN ln -s /usr/lib/libonnxruntime.so.1.2.0 /usr/lib/libonnxruntime.so && ln -s /usr/local/lib/libcares.so.2.3.0 /usr/local/lib/libcares.so.2 && ln -s /usr/local/lib/libcares.so.2 /usr/local/lib/libcares.so && ldconfig /usr/local/lib && apt-get update \
+    && apt-get install -y libgomp1 libre2-1v5 libssl1.0.0
 WORKDIR /onnxruntime/server/
-COPY --from=build /onnxruntime/build/Release/onnxruntime_server /onnxruntime/server/
-COPY --from=build /onnxruntime/build/Release/libonnxruntime.so.* /lib/
-RUN apt-get update \
-    && apt-get install -y libgomp1
 ENTRYPOINT ["/onnxruntime/server/onnxruntime_server"]

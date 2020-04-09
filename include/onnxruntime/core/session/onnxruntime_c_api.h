@@ -158,6 +158,9 @@ ORT_RUNTIME_CLASS(SessionOptions);
 ORT_RUNTIME_CLASS(CustomOpDomain);
 ORT_RUNTIME_CLASS(MapTypeInfo);
 ORT_RUNTIME_CLASS(SequenceTypeInfo);
+ORT_RUNTIME_CLASS(ModelMetadata);
+ORT_RUNTIME_CLASS(ThreadPoolParams);
+ORT_RUNTIME_CLASS(ThreadingOptions);
 
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.
@@ -381,7 +384,7 @@ struct OrtApi {
   OrtStatus*(ORT_API_CALL* SessionGetOverridableInitializerTypeInfo)(_In_ const OrtSession* sess, size_t index, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
 
   /**
-   * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible in freeing it.
+   * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
    */
   OrtStatus*(ORT_API_CALL* SessionGetInputName)(_In_ const OrtSession* sess, size_t index,
                                                 _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
@@ -669,6 +672,7 @@ struct OrtApi {
 	 * This api augments OrtTypeInfo to return an OrtMapTypeInfo when the type is a map.
 	 * The OrtMapTypeInfo has additional information about the map's key type and value type.
 	 * This is used by WinML to support model reflection APIs.
+	 * This is used by WinML to support model reflection APIs.
 	 *
 	 * Don't free the 'out' value
     */
@@ -710,6 +714,64 @@ struct OrtApi {
 
   ORT_CLASS_RELEASE(MapTypeInfo);
   ORT_CLASS_RELEASE(SequenceTypeInfo);
+
+  /**
+   * \param out is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
+   * Profiling is turned ON automatically if enabled for the particular session by invoking EnableProfiling() 
+   * on the SessionOptions instance used to create the session.  
+   */
+  OrtStatus*(ORT_API_CALL* SessionEndProfiling)(_In_ OrtSession* sess, _Inout_ OrtAllocator* allocator,
+                                                _Outptr_ char** out)NO_EXCEPTION;
+
+  /**
+   * \param out is a pointer to the newly created object. The pointer should be freed by calling ReleaseModelMetadata after use.
+   */
+  OrtStatus*(ORT_API_CALL* SessionGetModelMetadata)(_In_ const OrtSession* sess,
+                                                    _Outptr_ OrtModelMetadata** out)NO_EXCEPTION;
+
+  /**
+   * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
+   */
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetProducerName)(_In_ const OrtModelMetadata* model_metadata,
+                                                         _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetGraphName)(_In_ const OrtModelMetadata* model_metadata,
+                                                      _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetDomain)(_In_ const OrtModelMetadata* model_metadata,
+                                                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetDescription)(_In_ const OrtModelMetadata* model_metadata,
+                                                        _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
+  /**
+   * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
+   * 'value' will be a nullptr if the given key is not found in the custom metadata map.
+   */
+  OrtStatus*(ORT_API_CALL* ModelMetadataLookupCustomMetadataMap)(_In_ const OrtModelMetadata* model_metadata, _Inout_ OrtAllocator* allocator,
+                                                                 _In_ const char* key, _Outptr_ char** value)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetVersion)(_In_ const OrtModelMetadata* model_metadata, _Out_ int64_t* value)NO_EXCEPTION;
+
+  ORT_CLASS_RELEASE(ModelMetadata);
+
+  /*
+  * Creates an environment with global threadpools that will be shared across sessions.
+  * Use this in conjunction with DisablePerSessionThreads API or else the session will use
+  * its own thread pools.
+  */
+  OrtStatus*(ORT_API_CALL* CreateEnvWithGlobalThreadPools)(OrtLoggingLevel default_logging_level, _In_ const char* logid,
+                                                           _In_ const OrtThreadingOptions* t_options, _Outptr_ OrtEnv** out)
+      NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+
+  /* TODO: Should there be a version of CreateEnvWithGlobalThreadPools with custom logging function? */
+
+  /*
+  * Calling this API will make the session use the global threadpools shared across sessions.
+  * This API should be used in conjunction with CreateEnvWithGlobalThreadPools API.
+  */
+  OrtStatus*(ORT_API_CALL* DisablePerSessionThreads)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* CreateThreadingOptions)(_Outptr_ OrtThreadingOptions** out)
+      NO_EXCEPTION;
+
+  ORT_CLASS_RELEASE(ThreadingOptions);
 };
 
 /*

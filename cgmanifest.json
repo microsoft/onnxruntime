@@ -40,7 +40,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "8f50e4463c2c7ba9b3f580c61ca21abc91197b7c",
+               "commitHash": "436617053d0f39a1019a371c3a9aa599b3cb2cea",
                "repositoryUrl": "https://github.com/google/nsync.git"
             }
          }
@@ -49,7 +49,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "1facb4c1bb9cc2107d4dbaf9fd647fefdbbeb0ab",
+               "commitHash": "8bee53756ba8b8a3aca47c5719e35fca150ab79e",
                "repositoryUrl": "https://github.com/onnx/onnx.git"
             }
          }
@@ -139,7 +139,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "efd9867ff0e8df23016ac6c9828d0d7bf8bec1b1",
+               "commitHash": "54a0a9c9dd83aad42e79238ec8f0932b2a5e7881",
                "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
             }
          }
@@ -247,7 +247,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "fe1790ca0df67173702f70d5646b82f48f412b99",
+               "commitHash": "498de9f761bef56a032815ee44b6e6dbe0892cc4",
                "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
             }
          }
@@ -450,8 +450,17 @@
       {
          "component": {
             "git": {
-               "commitHash": "afebe4c9d49ed74918bf8879aaa7aa93ccc7e47c",
+               "commitHash": "9dfa77ad5c59abd07b77a4c463315ef8112daefc",
                "repositoryUrl": "https://github.com/microsoft/FeaturizersLibrary.git"
+            },
+            "type": "git"
+         }
+      },
+      {
+         "component": {
+            "git": {
+               "commitHash": "39de59d5bca3a226a241b29571abe1493d15d07a",
+               "repositoryUrl": "https://github.com/dcleblanc/SafeInt.git"
             },
             "type": "git"
          }

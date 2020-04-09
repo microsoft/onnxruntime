@@ -13,6 +13,16 @@
 #include <cusparse.h>
 #include <curand.h>
 #include <cudnn.h>
+
+// support of cublasLt starts 10.1
+#if CUDA_VERSION >= 10010
+#include <cublasLt.h>
+#endif
+
+#ifdef USE_NCCL
+#include <nccl.h>
+#endif
+
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif

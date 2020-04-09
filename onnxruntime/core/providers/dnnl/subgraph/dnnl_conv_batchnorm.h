@@ -9,7 +9,7 @@
 #include "core/providers/dnnl/dnnl_execution_provider.h"
 #include "core/providers/dnnl/subgraph/dnnl_kernel.h"
 #include "core/util/math.h"
-
+#include <cmath>
 namespace onnxruntime {
 namespace ort_dnnl {
 

@@ -15,8 +15,7 @@ wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.5.11-Linux-x86_64.
 rm ~/miniconda.sh
 /opt/miniconda/bin/conda clean -ya
 
-/opt/miniconda/bin/conda install -y numpy
-/opt/miniconda/bin/conda clean -aqy
+pip install numpy
 rm -rf /opt/miniconda/pkgs
 
 # Dependencies: cmake

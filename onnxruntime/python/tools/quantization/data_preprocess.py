@@ -10,15 +10,16 @@ import os
 import sys
 import numpy as np
 
+
 def set_preprocess(preprocess_func_name):
     '''
     Set up the data preprocess function name and function dict. 
         parameter preprocess_func_name: name of the preprocess function 
         return: function pointer 
     '''
-    funcdict = {'preprocess_method1': preprocess_method1, 
-                'preprocess_method2': preprocess_method2}
+    funcdict = {'preprocess_method1': preprocess_method1, 'preprocess_method2': preprocess_method2}
     return funcdict[preprocess_func_name]
+
 
 def preprocess_method1(image_filepath, height, width):
     '''
@@ -30,11 +31,12 @@ def preprocess_method1(image_filepath, height, width):
         return: matrix characterizing image
     '''
     pillow_img = Image.open(image_filepath).resize((width, height))
-    input_data = np.float32(pillow_img)/127.5 - 1.0 # normalization
-    input_data -= np.mean(input_data) # normalization
+    input_data = np.float32(pillow_img) / 127.5 - 1.0  # normalization
+    input_data -= np.mean(input_data)  # normalization
     nhwc_data = np.expand_dims(input_data, axis=0)
-    nchw_data = nhwc_data.transpose(0, 3, 1, 2) # ONNX Runtime standard
+    nchw_data = nhwc_data.transpose(0, 3, 1, 2)  # ONNX Runtime standard
     return nchw_data
+
 
 def preprocess_method2(image_filepath, height, width):
     '''
@@ -46,9 +48,10 @@ def preprocess_method2(image_filepath, height, width):
         return: matrix characterizing image
     '''
     pillow_img = Image.open(image_filepath).resize((width, height))
-    input_data = np.float32(pillow_img) - np.array([123.68, 116.78, 103.94], dtype=np.float32)
+    input_data = np.float32(pillow_img) - \
+        np.array([123.68, 116.78, 103.94], dtype=np.float32)
     nhwc_data = np.expand_dims(input_data, axis=0)
-    nchw_data = nhwc_data.transpose(0, 3, 1, 2) # ONNX Runtime standard
+    nchw_data = nhwc_data.transpose(0, 3, 1, 2)  # ONNX Runtime standard
     return nchw_data
 
 
@@ -68,7 +71,7 @@ def load_batch(images_folder, height, width, preprocess_func_name, size_limit=0)
     else:
         batch_filenames = image_names
     unconcatenated_batch_data = []
-    
+
     preprocess_func = set_preprocess(preprocess_func_name)
     for image_name in batch_filenames:
         image_filepath = images_folder + '/' + image_name

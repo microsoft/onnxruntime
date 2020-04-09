@@ -36,7 +36,7 @@ TEST(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type
   std::vector<int64_t> keys{3, 1, 2, 0};
   std::vector<int64_t> dims = {4};
   std::vector<float> values{3.0f, 1.0f, 2.f, 0.f};
-  for (int i = 0; i < N; ++i) {
+  for (size_t i = 0; i < N; ++i) {
     // create key tensor
     Ort::Value keys_tensor = Ort::Value::CreateTensor(info, keys.data(), keys.size() * sizeof(int64_t),
                                                       dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
@@ -65,8 +65,8 @@ TEST(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type
   ASSERT_EQ(failed, true);
 
   // Fetch
-  for (int idx = 0; idx < N; ++idx) {
-    Ort::Value map_out = seq_ort.GetValue(idx, default_allocator.get());
+  for (size_t idx = 0; idx < N; ++idx) {
+    Ort::Value map_out = seq_ort.GetValue(static_cast<int>(idx), default_allocator.get());
 
     // fetch the map
     // first fetch the keys
@@ -97,7 +97,7 @@ TEST(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output typ
   std::vector<std::string> keys{keys_arr, keys_arr + NUM_KV_PAIRS};
   std::vector<int64_t> dims = {NUM_KV_PAIRS};
   std::vector<float> values{3.0f, 1.0f, 2.f, 0.f};
-  for (int i = 0; i < N; ++i) {
+  for (size_t i = 0; i < N; ++i) {
     // create key tensor
     Ort::Value keys_tensor = Ort::Value::CreateTensor(info, keys.data(), keys.size() * sizeof(std::string),
                                                       dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
@@ -118,8 +118,8 @@ TEST(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output typ
   ASSERT_EQ(num_values, N);
 
   // Fetch
-  for (int idx = 0; idx < N; ++idx) {
-    Ort::Value map_out = seq_ort.GetValue(idx, default_allocator.get());
+  for (size_t idx = 0; idx < N; ++idx) {
+    Ort::Value map_out = seq_ort.GetValue(static_cast<int>(idx), default_allocator.get());
 
     // fetch the map
     // first fetch the keys
@@ -175,4 +175,43 @@ TEST(CApiTest, CreateGetSeqTensors) {
     ASSERT_EQ(std::set<int64_t>(ret, ret + vals.size()),
               std::set<int64_t>(std::begin(vals), std::end(vals)));
   }
+}
+
+TEST(CApiTest, CreateGetSeqStringTensors) {
+  // Creation
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  std::vector<Ort::Value> in;
+  const char* string_input_data[] = {"abs", "def"};
+  const int N = 2;
+  for (int i = 0; i < N; ++i) {
+    // create tensor
+    std::vector<int64_t> shape{2};
+    auto value = Ort::Value::CreateTensor(Ort::AllocatorWithDefaultOptions(), shape.data(), shape.size(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+
+    Ort::GetApi().FillStringTensor(value, string_input_data, 2);
+    in.push_back(std::move(value));
+  }
+
+  Ort::Value seq_ort = Ort::Value::CreateSequence(in);
+
+  // Fetch
+  std::set<std::string> string_set;
+  for (int idx = 0; idx < N; ++idx) {
+    Ort::Value out = seq_ort.GetValue(idx, default_allocator.get());
+    size_t data_len = out.GetStringTensorDataLength();
+    std::string result(data_len, '\0');
+    std::vector<size_t> offsets(N);
+    out.GetStringTensorContent((void*)result.data(), data_len, offsets.data(), offsets.size());
+
+    const char* s = result.data();
+    for (size_t i = 0; i < offsets.size(); ++i) {
+      size_t start = offsets[i];
+      size_t count = (i + 1) < offsets.size() ? offsets[i + 1] - start : data_len - start;
+      std::string stemp(s + start, count);
+      string_set.insert(stemp);
+    }
+  }
+  ASSERT_EQ(string_set, std::set<std::string>(std::begin(string_input_data), std::end(string_input_data)));
 }

@@ -133,8 +133,8 @@ class OpKernelContext {
   }
 
   /**
-   * return an allocator on device 0, with memtype of OrtMemTypeDefault
-   *
+   Return an allocator on device 0, with memtype of OrtMemTypeDefault.
+   @remarks Use SafeInt when calculating the size of memory to allocate using AllocatorPtr->Alloc.
    */
   Status GetTempSpaceAllocator(AllocatorPtr* output) const;
 
@@ -358,5 +358,13 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
             .Build(),                                                                                                        \
         static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); }));        \
   }
+
+// Use within macro definitions to create a custom vector of constraints.
+// Example: #define REG_KERNEL(OP, VERSION, KERNEL_CLASS, Type, ...)
+//  .TypeConstraint("T", BuildKernelDefConstraints<Type, __VA_ARGS_>())
+template <typename T, typename... Types>
+inline std::vector<MLDataType> BuildKernelDefConstraints() {
+  return {DataTypeImpl::GetTensorType<T>(), DataTypeImpl::GetTensorType<Types>()...};
+}
 
 }  // namespace onnxruntime
