@@ -137,7 +137,8 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
                        || (kernel_start_version < node_since_version && kernel_end_version != INT_MAX && kernel_end_version >= node_since_version);
   if (!valid_version) {
     std::ostringstream ostr;
-    ostr << "Op: " << node.OpType()
+    ostr << "Op with name (" << node.Name() << ")"
+         << " and type (" << node.OpType() << ")"
          << " Version mismatch."
          << " node_version: " << node_since_version
          << " kernel start version: " << kernel_start_version
@@ -168,17 +169,31 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
     // missing optional parameter, which can be skipped.
     // TODO: We should check that names specified in kernel_type_constraints are
     // valid names (of types or parameters) at the time that kernels are registered.
-    if ((nullptr != actual_type) &&
-        !std::any_of(allowed_types.begin(), allowed_types.end(),
-                     [actual_type, &node, &error_str](const DataTypeImpl* expected_type) {
-                       bool rc = expected_type->IsCompatible(*actual_type);  // for easier debugging
-                       if (!rc) {
-                         // TODO print type information as well
-                         error_str = "Op: " + node.OpType() + " Incompatible types.";
-                       }
-                       return rc;
-                     })) {
-      return false;
+    if (nullptr != actual_type) {
+      bool is_type_compatible = std::any_of(allowed_types.begin(), allowed_types.end(),
+                                            [actual_type, &node, &error_str](const DataTypeImpl* expected_type) {
+                                              bool rc = expected_type->IsCompatible(*actual_type);  // for easier debugging
+                                              return rc;
+                                            });
+      if (!is_type_compatible) {
+        std::ostringstream ostr;
+        ostr << "Found kernel for Op with name (" << node.Name() << ")"
+             << " and type (" << node.OpType() << ")"
+             << " in the supported version range"
+             << " (node_version: " << node_since_version
+             << " kernel start version: " << kernel_start_version
+             << " kernel_end_version: " << kernel_end_version << ")."
+             << " However the types are incompatible."
+             << " This op has been implemented only for the following types (";
+        for (const auto& allowed_type : allowed_types) {
+          ostr << DataTypeImpl::ToString(allowed_type) << ",";
+        }
+        ostr << "),";
+        const char* actual_type_str = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*actual_type));
+        ostr << " but the node in the model has the following type (" << actual_type_str << ")";
+        error_str = ostr.str();
+        return false;
+      }
     }
   }
   return true;
@@ -240,7 +255,7 @@ Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node,
 static std::string ToString(const std::vector<std::string>& error_strs) {
   std::ostringstream ostr;
   std::for_each(std::begin(error_strs), std::end(error_strs),
-                [&ostr](const std::string& str) { ostr << str << " "; });
+                [&ostr](const std::string& str) { ostr << str << "\n"; });
   return ostr.str();
 }
 
@@ -256,6 +271,9 @@ const KernelCreateInfo* KernelRegistry::TryFindKernel(const onnxruntime::Node& n
 
   auto range = kernel_creator_fn_map_.equal_range(GetMapKey(node.OpType(), node.Domain(), expected_provider));
   std::vector<std::string> verify_kernel_def_error_strs;
+  LOGS_DEFAULT(VERBOSE) << "Trying to find a kernel for op with name (" << node.Name() << ")"
+                        << " and type (" << node.OpType() << ")"
+                        << " and execution provider (" << expected_provider << ")";
   for (auto i = range.first; i != range.second; ++i) {
     if (!i->second.status.IsOK()) {
       LOGS_DEFAULT(ERROR) << "Failed to create kernel for op: " << node.OpType()
@@ -270,7 +288,9 @@ const KernelCreateInfo* KernelRegistry::TryFindKernel(const onnxruntime::Node& n
   }
 
   if (!verify_kernel_def_error_strs.empty()) {
-    LOGS_DEFAULT(INFO) << node.OpType() << " kernel is not supported in " << expected_provider
+    LOGS_DEFAULT(INFO) << "Op with name (" << node.Name() << ")"
+                       << " and type (" << node.OpType() << ")"
+                       << " kernel is not supported in " << expected_provider << "."
                        << " Encountered following errors: (" << ToString(verify_kernel_def_error_strs) << ")";
   }
   return nullptr;
