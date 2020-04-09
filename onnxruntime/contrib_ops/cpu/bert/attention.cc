@@ -28,6 +28,7 @@ AttentionBase::AttentionBase(const OpKernelInfo& info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
+  is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 1) == 1;
 }
 
 Status AttentionBase::CheckInputs(const OpKernelContext* context) const {
@@ -77,7 +78,12 @@ Status AttentionBase::CheckInputs(const OpKernelContext* context) const {
   }
 
   const Tensor* mask_index = context->Input<Tensor>(3);
-  if (mask_index != nullptr) {  // mask_index is optional
+  if (mask_index != nullptr) {
+    // unidirectional (like GPT2) does not need mask input. Here we do not allowed the input for unidirectional.
+    if (is_unidirectional_) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 3 (mask_index) is not allowed for unidirectional");
+    }
+
     const auto mask_dims = mask_index->Shape().GetDims();
     if (mask_dims.size() != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 3 is expected to have 1 dimension, got ",
@@ -186,21 +192,44 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   BufferUniquePtr scratch_buffer(scratch_data, BufferDeleter(allocator));
 
   {
-    void* scratch_broadcast_data = nullptr;
+    size_t mask_data_bytes = 0;
     if (mask_index != nullptr) {
-      scratch_broadcast_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * element_size);
-      BufferUniquePtr scratch_broadcast_buffer(scratch_broadcast_data, BufferDeleter(allocator));
-      memset(scratch_broadcast_data, 0, batch_size * sequence_length * element_size);
-      T* p_scratch_broadcast_current_data = reinterpret_cast<T*>(scratch_broadcast_data);
+      mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * sequence_length * element_size;
+    } else if (is_unidirectional_) {
+      mask_data_bytes = SafeInt<size_t>(sequence_length) * sequence_length * element_size;
+    }
+
+    void* mask_data = nullptr;
+    if (mask_data_bytes > 0) {
+      mask_data = allocator->Alloc(mask_data_bytes);
+      memset(mask_data, 0, mask_data_bytes);
+    }
+    BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
+
+    if (mask_index != nullptr) {
+      T* p_mask = reinterpret_cast<T*>(mask_data);
       for (int b_i = 0; b_i < batch_size; b_i++) {
         // TODO: mask_index can be used in softmax to save some calculation.
-        int mask = mask_index->template Data<int32_t>()[b_i];
-        for (int m_i = mask; m_i < sequence_length; m_i++) {
-          p_scratch_broadcast_current_data[m_i] = static_cast<T>(-10000.0);
+        // Convert mask_index to mask (-10000 means out of range, which will be 0 after softmax): B => BxS
+        int valid_length = mask_index->template Data<int32_t>()[b_i];
+        for (int m_i = valid_length; m_i < sequence_length; m_i++) {
+          p_mask[m_i] = static_cast<T>(-10000.0);
         }
-        p_scratch_broadcast_current_data += sequence_length;
+
+        // Broadcast mask from BxS to BxSxS
+        for (int s_i = 1; s_i < sequence_length; s_i++) {
+          memcpy(p_mask + s_i * sequence_length, p_mask, sequence_length * sizeof(T));
+        }
+        p_mask += sequence_length * sequence_length;
       }
-    } else {
+    } else if (is_unidirectional_) {  // unidirectional mask
+      T* p_mask = reinterpret_cast<T*>(mask_data);
+      for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
+        for (int m_i = s_i + 1; m_i < sequence_length; m_i++) {
+          p_mask[s_i * sequence_length + m_i] = static_cast<T>(-10000.0);
+        }
+      }
+    } else {  // no any mask
       memset(scratch_data, 0, scratch_data_bytes);
     }
 
@@ -214,14 +243,11 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const std::ptrdiff_t batch_index = i / num_heads_;
 
-        // broadcast masks (B) -> (B.N.)S.S
-        if (mask_index != nullptr) {
-          const T* broadcast_data_src = reinterpret_cast<T*>(scratch_broadcast_data) + batch_index * sequence_length;
+        // broadcast mask data: SxS -> BxNxSxS
+        if (mask_data != nullptr) {
+          const T* broadcast_data_src = is_unidirectional_ ? reinterpret_cast<T*>(mask_data) : reinterpret_cast<T*>(mask_data) + batch_index * sequence_length * sequence_length;
           T* broadcast_data_dest = reinterpret_cast<T*>(scratch_data) + sequence_length * sequence_length * i;
-          for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
-            memcpy(broadcast_data_dest, broadcast_data_src, sequence_length * sizeof(T));
-            broadcast_data_dest += sequence_length;
-          }
+          memcpy(broadcast_data_dest, broadcast_data_src, sequence_length * sequence_length * sizeof(T));
         }
 
         // gemm
@@ -279,7 +305,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         }
       }
     });
-  }
+  }  // end scope for mask_data_buffer
 
   // STEP.4: out_tmp(B, N, S, H) = P(B, N, S, S) x V(B, N, S, H)
   auto out_tmp_data =
