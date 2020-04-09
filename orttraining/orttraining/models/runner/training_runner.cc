@@ -146,10 +146,12 @@ Status TrainingRunner::Initialize() {
 
   std::cout << "(training_runner.cc) configure for training" << std::endl;
   // [TODO] Pass event names to ConfigureForTraining and set values there.
+  /*
   waited_forward_event_name_ = "waited_forward_event_id";
   recorded_forward_event_name_ = "recorded_forward_event_id";
   waited_backward_event_name_ = "waited_backward_event";
   recorded_backward_event_name_ = "recorded_backward_event";
+  */
   ORT_RETURN_IF_ERROR(session_.ConfigureForTraining(config, config_result));
 
   if (config_result.mixed_precision_config_result.has_value()) {
@@ -204,6 +206,7 @@ Status TrainingRunner::Initialize() {
     }
   }
 
+  /*
   num_pipeline_stages_ = params_.mpi_context.world_size;
   do_pipedream_ = false;
   workers_.resize(num_pipeline_stages_);
@@ -216,6 +219,7 @@ Status TrainingRunner::Initialize() {
   planner_ = PipelineBatchPlanner();
   planner_.GenerateOneFWOneBWTimeline(num_pipeline_stages_, num_pipeline_batches_);
   planner_.CreatePlan(100 * pipeline_stage_id_, pipeline_stage_id_, plan_);
+  */
   return Status::OK();
 }
 
@@ -298,7 +302,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
   std::ofstream log_file(std::to_string(params_.mpi_context.world_rank));
 
-  session_.Save("sub_model_" + std::to_string(params_.mpi_context.world_rank) + ".onnx", TrainingSession::SaveOption::NO_RELOAD);
+  // session_.Save("sub_model_" + std::to_string(params_.mpi_context.world_rank) + ".onnx", TrainingSession::SaveOption::NO_RELOAD);
 
   log_file << "Step 1 @ " << params_.mpi_context.world_rank << std::endl;
   while (step_ < params_.num_train_steps) {
@@ -383,7 +387,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         if (is_weight_update_step) {
           /*
           bool gdb_break = true;
-          while(gdb_break && params_.mpi_context.world_rank == 1) {
+          while(gdb_break && params_.mpi_context.world_rank == 2) {
               // set the sleep time to pause the processes
               std::this_thread::sleep_for(std::chrono::seconds(1));
           }
@@ -478,24 +482,38 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           if (!params_.is_perf_test && weight_update_step_count_ % params_.display_loss_steps == 0) {
           log_file << "Step 8-0 @ " << params_.mpi_context.world_rank << std::endl;
             if (params_.error_function) {
+              /*
               log_file << "Step 8-1 @ " << params_.mpi_context.world_rank << std::endl;
               log_file << "feed_names size " << feed_names.size() << std::endl;
               log_file << "feeds size " << feeds.size() << std::endl;
               log_file << "fetch_names " << fetch_names.size() << std::endl;
               log_file << "fetches size" << fetches.size() << std::endl;
+              */
               params_.error_function(feed_names, feeds, fetch_names, fetches, weight_update_step_count_);
+              /*
               log_file << "Step 8-2 @ " << params_.mpi_context.world_rank << std::endl;
+              */
             }
+            /*
             log_file << "Step 8-3 @ " << params_.mpi_context.world_rank << std::endl;
+            */
             if (params_.post_evaluation_callback) {
+              /*
               log_file << "Step 8-4 @ " << params_.mpi_context.world_rank << std::endl;
+              */
               params_.post_evaluation_callback(params_.batch_size, weight_update_step_count_, "train");
+              /*
               log_file << "Step 8-5 @ " << params_.mpi_context.world_rank << std::endl;
+              */
             }
+            /*
             log_file << "Step 8-6 @ " << params_.mpi_context.world_rank << std::endl;
+            */
           }
 
+          /*
           log_file << "Step 9 @ " << params_.mpi_context.world_rank << std::endl;
+          */
 
           weight_update_step_count_++;
         } else {
@@ -557,7 +575,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                            &fetches));
           gradient_accumulation_step_count++;
         }
+        /*
         log_file << "Step 16 @ " << params_.mpi_context.world_rank << std::endl;
+        */
         step_++;
 
         auto end = std::chrono::high_resolution_clock::now();

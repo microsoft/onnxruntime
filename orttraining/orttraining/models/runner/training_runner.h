@@ -337,6 +337,7 @@ class TrainingRunner {
 
   size_t GetRound() const { return round_; }
 
+  /*
   void join_all_workers() {
     for (size_t i = 0; i < workers_.size(); ++i) {
       if (workers_[i].joinable())
@@ -356,10 +357,10 @@ class TrainingRunner {
       // A gradient accumulation step.
       if (pipeline_stage_id_ < num_pipeline_stages_) {
         // Non-last stage event. 
-        return plan_[pipeline_batch_id].events[/* forward */ 0].first;
+        return plan_[pipeline_batch_id].events[0].first;
       } else {
         // Last stage event. 
-        return plan_[pipeline_batch_id].events[/* forward */ 0].first;
+        return plan_[pipeline_batch_id].events[0].first;
       }
     } else {
       // A update step.
@@ -373,7 +374,7 @@ class TrainingRunner {
       // A gradient accumulation step.
       if (pipeline_stage_id_ < num_pipeline_stages_) {
         // Non-last stage event. 
-        return plan_[pipeline_batch_id].events[/* forward */ 0].second;
+        return plan_[pipeline_batch_id].events[0].second;
       } else {
         // Last stage event. 
         return -1;
@@ -388,10 +389,10 @@ class TrainingRunner {
     const size_t pipeline_batch_id = step_id % num_gradient_accumulation_steps_;
     if (pipeline_batch_id < num_pipeline_batches_ - 1) {
       // Non-last stage event. 
-      return plan_[pipeline_batch_id].events[/* backward */ 1].first;
+      return plan_[pipeline_batch_id].events[1].first;
     } else if(pipeline_batch_id == num_pipeline_batches_ - 1) {
       // Last stage event.
-      return plan_[pipeline_batch_id].events[/* backward */ 1].second;
+      return plan_[pipeline_batch_id].events[1].second;
     } else {
       // No event to wait.
       return -1;
@@ -402,7 +403,7 @@ class TrainingRunner {
     const size_t pipeline_batch_id = step_id % num_gradient_accumulation_steps_;
     if (pipeline_batch_id < num_pipeline_batches_ - 1) {
       // Non-last stage event. 
-      return plan_[pipeline_batch_id].events[/* backard */ 1].second;
+      return plan_[pipeline_batch_id].events[1].second;
     } else if(pipeline_batch_id == num_pipeline_batches_ - 1) {
       // Last stage event.
       return -1;
@@ -411,6 +412,7 @@ class TrainingRunner {
       return -1;
     }
   }
+  */
 
  private:
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader);
@@ -436,6 +438,7 @@ class TrainingRunner {
 
   std::unique_ptr<CheckpointRegistry> checkpoint_registry_;
 
+  /*
   std::vector<std::thread> workers_;
   std::vector<WorkerState> worker_states_;
   std::string waited_forward_event_name_;
@@ -450,6 +453,7 @@ class TrainingRunner {
   size_t num_gradient_accumulation_steps_;
   std::vector<PipelineBatchInfo> plan_;
   PipelineBatchPlanner planner_;;
+  */
 };
 
 

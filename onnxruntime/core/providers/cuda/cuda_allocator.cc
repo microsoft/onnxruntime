@@ -7,6 +7,7 @@
 #include "core/framework/session_state.h"
 #include "cuda_fence.h"
 #include "gpu_data_transfer.h"
+#include <thread>
 
 namespace onnxruntime {
 
@@ -23,6 +24,16 @@ void CUDAAllocator::CheckDevice(bool throw_when_fail) const {
   int current_device;
   auto cuda_err = cudaGetDevice(&current_device);
   if (cuda_err == cudaSuccess) {
+    if (current_device != info_.id) {
+      int cd_ = current_device;
+      int iid_ = info_.id;
+      std::cout << cd_ << "," << iid_ << std::endl;
+      bool gdb_break = true;
+      while(gdb_break) {
+          // set the sleep time to pause the processes
+          std::this_thread::sleep_for(std::chrono::seconds(1));
+      }
+    }
     ORT_ENFORCE(current_device == info_.id);
   } else if (throw_when_fail) {
     CUDA_CALL_THROW(cuda_err);

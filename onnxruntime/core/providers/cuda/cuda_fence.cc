@@ -11,12 +11,12 @@ CUDAFence::CUDAFence(const GPUDataTransfer* data_transfer) : data_transfer_(data
   // NOTE: cudaEventBlockingSync may leads to longer wait time because of thread yield/switching in kernel
   // if lower CPU usage is more important than latency, we should use this flag to avoid spin-loop in WaitOnCPU
   int event_flags = /*cudaEventBlockingSync |*/ cudaEventDisableTiming;
-  int cuda_device;
-  CUDA_CALL_THROW(cudaGetDevice(&cuda_device));
   CUDA_CALL_THROW(cudaEventCreate(&read_event_, event_flags));
   CUDA_CALL_THROW(cudaEventCreate(&write_event_, event_flags));
-  std::cout << "(create) GPU: " << cuda_device << ", read event: " << &read_event_ << std::endl;;
-  std::cout << "(create) GPU: " << cuda_device << ", write event: " << &read_event_ << std::endl;;
+  // int cuda_device;
+  // CUDA_CALL_THROW(cudaGetDevice(&cuda_device));
+  // std::cout << "(create) GPU: " << cuda_device << ", read event: " << &read_event_ << std::endl;;
+  // std::cout << "(create) GPU: " << cuda_device << ", write event: " << &read_event_ << std::endl;;
 }
 
 CUDAFence::~CUDAFence() {
@@ -55,14 +55,14 @@ bool CUDAFence::CanRelease() {
 void CUDAFence::AfterUsedAsInput(int queue_id) {
   // update read fence
   cudaStream_t stream = data_transfer_->GetStream(queue_id);
-  cudaDeviceSynchronize();
+  // cudaDeviceSynchronize();
 
-  int cuda_device;
-  CUDA_CALL_THROW(cudaGetDevice(&cuda_device));
-  std::cout << "(record) GPU: " << cuda_device << ", stream" << queue_id << ", read event: " << &read_event_ << std::endl;;
+  // int cuda_device;
+  // CUDA_CALL_THROW(cudaGetDevice(&cuda_device));
+  // std::cout << "(record) GPU: " << cuda_device << ", stream" << queue_id << ", read event: " << &read_event_ << std::endl;;
 
   CUDA_CALL_THROW(cudaEventRecord(read_event_, stream));
-  cudaDeviceSynchronize();
+  // cudaDeviceSynchronize();
 }
 
 void CUDAFence::AfterUsedAsOutput(int queue_id) {

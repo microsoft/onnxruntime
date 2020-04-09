@@ -439,6 +439,7 @@ void setup_training_params(BertParameters& params) {
 #endif
 
 #ifdef USE_CUDA
+  std::cout << "params.mpi_context.local_rank: " <<  params.mpi_context.local_rank << std::endl;
   OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(params.mpi_context.local_rank);
   size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
   if (params.cuda_mem_limit_in_gb > 0)
