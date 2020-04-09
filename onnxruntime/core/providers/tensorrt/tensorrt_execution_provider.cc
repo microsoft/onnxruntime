@@ -186,7 +186,7 @@ SubGraphCollection_t RemoveEmptyShapeNodes(const onnxruntime::GraphViewer& graph
   // Here only NonZero, NonMaxSuppression and TopK related empty shape nodes are removed, particularly for RCNN models.
   // TODO: Remove the code if TensorRT fixed the issue in the future release, or find a better generic way here to work around
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-  const std::vector<std::string> exclude_dim_name{"NonZero", "NonMaxSuppression", "TopK"};  
+  const std::vector<std::string> exclude_dim_names{"NonZero", "NonMaxSuppression", "TopK"};
   SubGraphCollection_t parser_nodes_vector = {{{}, false}};
   std::vector<size_t> nodes_vector(node_index.size());
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
@@ -200,7 +200,7 @@ SubGraphCollection_t RemoveEmptyShapeNodes(const onnxruntime::GraphViewer& graph
         for (const auto& dim : input_shape->dim()) {
           std::string dim_name = dim.dim_param();
           if (!dim_name.empty()) {
-            for (const auto& exclude : exclude_dim_name) {
+            for (const auto& exclude : exclude_dim_names) {
               if (dim_name.find(exclude) != std::string::npos) {
                 exclude_node = true;
                 break;
@@ -209,7 +209,7 @@ SubGraphCollection_t RemoveEmptyShapeNodes(const onnxruntime::GraphViewer& graph
             if (exclude_node) {
               break;
             }
-          }	  
+          }
         }
       }
 
@@ -264,7 +264,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
       }
     }
 
-    // For output searching, there is two special cases,
+    // For output searching, there are two special cases,
     // One is, if node's OutputEdges are more than its outputs, meaning certain output is used more than once,
     // if the output is connected to nodes that don't belong to the subgraph, the output need to be added
     // to the output list
@@ -326,14 +326,15 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   meta_def->domain = kMSDomain;
 
   for (const auto& input : inputs) {
-	const auto name = input.second->Name();
-	if (!name.empty()){
-	  meta_def->inputs.push_back(name);
-	}
+    if (input.second->Exists()) {
+      meta_def->inputs.push_back(input.second->Name());
+    }
   }
 
   for (const auto& output : outputs) {
-    meta_def->outputs.push_back(output.second->Name());
+    if (output.second->Exists()) {
+      meta_def->outputs.push_back(output.second->Name());
+    }
   }
 
   meta_def->since_version = 1;
@@ -397,7 +398,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         for (const auto& tensor : init_tensors) {
           graph_build.AddInitializedTensor(*(tensor.second));
         }
-		
+
         ORT_ENFORCE(graph_build.Resolve().IsOK());
 
         // Add parent graph output to the subgraph
