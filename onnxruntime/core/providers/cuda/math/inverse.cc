@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -16,7 +17,6 @@ class Inverse final : public CudaKernel {
  private:
   using Base = CudaKernel;
   using CublasHandle = cublasHandle_t;
-  CublasHandle cublas_handle_;
 
   template <typename T>
   struct ComputeImpl;
@@ -64,57 +64,59 @@ struct Inverse::ComputeImpl {
     using CudaT = typename ToCudaType<T>::MappedType;
     const size_t input_count = static_cast<size_t>(input.Shape().Size());
     auto info_cpu = onnxruntime::make_unique<int[]>(num_batches);
-    auto dim = static_cast<int>(rows);
+    const auto dim = static_cast<int>(rows);
+    const auto n_batches = static_cast<int>(num_batches);
 
     // Make a copy of the input which will serve as a workspace as well.
     if (std::is_same<T, float>::value || std::is_same<T, MLFloat16>::value) {
       IAllocatorUniquePtr<float> input_workspace = inst->GetScratchBuffer<float>(input_count);
-      if (std::is_same<T, float>::value) {
+      if (std::is_same<T, MLFloat16>::value) {
+        // Convert from MLFloat16(half) to float
+        Impl_Cast<CudaT, float>(reinterpret_cast<const CudaT*>(input.Data<MLFloat16>()), input_workspace.get(), input_count);
+      } else {
         CUDA_RETURN_IF_ERROR(cudaMemcpy(input_workspace.get(), input.Data<float>(), sizeof(float) * input_count,
                                         cudaMemcpyDeviceToDevice));
-      } else {
-        Impl_Cast<CudaT, float>(input.Data<MLFloat16>(), input_workspace.get(), input_count);
       }
-      IAllocatorUniquePtr<float*> matrix_ptrs = inst->GetScratchBuffer<float>(num_batches);
+      IAllocatorUniquePtr<float*> matrix_ptrs = inst->GetScratchBuffer<float*>(n_batches);
       ORT_RETURN_IF_ERROR(ComputeMatrixOffsets<float>(input_workspace.get(), num_batches, rows, matrix_ptrs));
       // Do LU factorization
-      CUBLAS_RETURN_IF_ERROR(cublasSgetrfBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), info.get(), num_batches));
+      CUBLAS_RETURN_IF_ERROR(cublasSgetrfBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), info.get(), n_batches));
       ORT_RETURN_IF_ERROR(CheckForSingularity(info, info_cpu, num_batches));
 
       // Need to compute ptrs for output buffers
       // Output for MLFloat
-      IAllocatorUniquePtr<float*> output_ptrs = inst->GetScratchBuffer<float>(num_batches);
+      IAllocatorUniquePtr<float*> output_ptrs = inst->GetScratchBuffer<float*>(n_batches);
       if (std::is_same<T, MLFloat16>::value) {
         IAllocatorUniquePtr<float> ml_float_output = inst->GetScratchBuffer<float>(input_count);
         ORT_RETURN_IF_ERROR(ComputeMatrixOffsets<float>(ml_float_output.get(), num_batches, rows, output_ptrs));
         // Do the inverse
-        CUBLAS_RETURN_IF_ERROR(cublasSgetriBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), output_ptrs.get(), dim, info.get(), num_batches));
+        CUBLAS_RETURN_IF_ERROR(cublasSgetriBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), output_ptrs.get(), dim, info.get(), n_batches));
         ORT_RETURN_IF_ERROR(CheckForSingularity(info, info_cpu, num_batches));
         // Copy the result to output with casting
-        Impl_Cast<float, CudaT>(ml_float_output.get(), output.MutableData<MLFloat16>(), input_count);
+        Impl_Cast<float, CudaT>(ml_float_output.get(), reinterpret_cast<CudaT*>(output.MutableData<MLFloat16>()), input_count);
         // We are done here
       } else {
         ORT_RETURN_IF_ERROR(ComputeMatrixOffsets<float>(output.MutableData<float>(), num_batches, rows, output_ptrs));
         // Do the inverse
-        CUBLAS_RETURN_IF_ERROR(cublasSgetriBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), output_ptrs.get(), dim, info.get(), num_batches));
+        CUBLAS_RETURN_IF_ERROR(cublasSgetriBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), output_ptrs.get(), dim, info.get(), n_batches));
         ORT_RETURN_IF_ERROR(CheckForSingularity(info, info_cpu, num_batches));
         // We are done here
       }
     } else if (std::is_same<T, double>::value) {
-      IAllocatorUniquePtr<double> input_workspace = inst->GetScratchBuffer<double>(input_count);
+      IAllocatorUniquePtr<double> input_workspace = inst->GetScratchBuffer<double>(static_cast<int>(input_count));
       CUDA_RETURN_IF_ERROR(cudaMemcpy(input_workspace.get(), input.Data<double>(), sizeof(double) * input_count,
                                       cudaMemcpyDeviceToDevice));
 
-      IAllocatorUniquePtr<double*> matrix_ptrs = inst->GetScratchBuffer<double>(num_batches);
+      IAllocatorUniquePtr<double*> matrix_ptrs = inst->GetScratchBuffer<double*>(n_batches);
       ORT_RETURN_IF_ERROR(ComputeMatrixOffsets<double>(input_workspace.get(), num_batches, rows, matrix_ptrs));
       // Do LU factorization
-      CUBLAS_RETURN_IF_ERROR(cublasDgetrfBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), info.get(), num_batches));
+      CUBLAS_RETURN_IF_ERROR(cublasDgetrfBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), info.get(), n_batches));
       ORT_RETURN_IF_ERROR(CheckForSingularity(info, info_cpu, num_batches));
 
       // Need to compute ptrs for output buffers
-      IAllocatorUniquePtr<double*> output_ptrs = inst->GetScratchBuffer<float>(num_batches);
+      IAllocatorUniquePtr<double*> output_ptrs = inst->GetScratchBuffer<double*>(n_batches);
       ORT_RETURN_IF_ERROR(ComputeMatrixOffsets<double>(output.MutableData<double>(), num_batches, rows, output_ptrs));
-      CUBLAS_RETURN_IF_ERROR(cublasDgetriBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), output_ptrs.get(), dim, info.get(), num_batches));
+      CUBLAS_RETURN_IF_ERROR(cublasDgetriBatched(cublas_h, dim, matrix_ptrs.get(), dim, pivots.get(), output_ptrs.get(), dim, info.get(), n_batches));
       ORT_RETURN_IF_ERROR(CheckForSingularity(info, info_cpu, num_batches));
       // We are done here
     } else {
@@ -134,7 +136,7 @@ Status Inverse::ComputeInternal(OpKernelContext* ctx) const {
   size_t num_batches = 1;
   const size_t rows = static_cast<size_t>(input_shape.GetDims()[num_dim - 2]);
   const size_t cols = static_cast<size_t>(input_shape.GetDims()[num_dim - 1]);
-  ORT_THROW(rows == cols, "Expecting square matrices");
+  ORT_ENFORCE(rows == cols, "Expecting square matrices");
   if (num_dim > 2) {
     num_batches = static_cast<size_t>(input_shape.SizeToDimension(num_dim - 2));
   }
