@@ -747,7 +747,7 @@ class ORTTrainer():
             lr_this_step = self.get_lr_this_step_(self.global_step_)
             learning_rate = torch.tensor([lr_this_step])
         if self.loss_scaler_ is not None and self.use_mixed_precision:
-            loss_scale = torch.tensor(self.loss_scaler_.loss_scale_)
+            loss_scale = torch.tensor([self.loss_scaler_.loss_scale_])
 
         if self.onnx_model_ is None:
             sample_input, _ = self.prepare_input_and_fetches(self.model_desc_.inputs_,
