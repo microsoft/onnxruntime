@@ -7,7 +7,7 @@
 #include <string.h>
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
-#define ORT_API_VERSION 2
+#define ORT_API_VERSION 3
 
 #ifdef __cplusplus
 extern "C" {
@@ -772,6 +772,15 @@ struct OrtApi {
       NO_EXCEPTION;
 
   ORT_CLASS_RELEASE(ThreadingOptions);
+
+  /**
+   * \param num_keys contains the number of keys in the custom metadata map
+   * \param keys is an array of null terminated strings (array count = num_keys) allocated using 'allocator'. 
+   * The caller is responsible for freeing each string  and the pointer to the array containing them.
+   * 'keys' will be a nullptr if custom metadata map is empty.
+   */
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetCustomMetadataMapKeys)(_In_ const OrtModelMetadata* model_metadata, _Inout_ OrtAllocator* allocator,
+                                                                  _Outptr_ char*** keys, _Out_ int64_t* num_keys)NO_EXCEPTION;
 };
 
 /*
