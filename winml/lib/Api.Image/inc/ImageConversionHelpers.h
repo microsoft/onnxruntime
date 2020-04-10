@@ -6,7 +6,8 @@
 #include <D3d11_4.h>
 #include "ImageConversionTypes.h"
 
-namespace Windows::AI::MachineLearning::Internal::ImageConversionHelpers {
+namespace _winml::Imaging {
+
   // This API that takes a video frame and converts it to a video frame of desired format (DXGI_FORMAT_B8G8R8X8_UNORM/BitmapPixelFormat::Bgra8) and size (after any scale/crop operations).
   // This should also cover any DX adapter hop (if needed in a multi GPU scenario) and CPU->GPU / GPU->CPU conversion
   void ConvertVideoFrameToVideoFrame(
@@ -51,4 +52,4 @@ namespace Windows::AI::MachineLearning::Internal::ImageConversionHelpers {
       DXGI_FORMAT_R8G8B8A8_UNORM,
       DXGI_FORMAT_B8G8R8A8_UNORM,
       DXGI_FORMAT_B8G8R8X8_UNORM};
-}  // namespace Windows::AI::MachineLearning::Internal::ImageConversionHelpers
+}  // namespace _winml

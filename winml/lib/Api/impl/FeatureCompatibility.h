@@ -8,11 +8,12 @@
 #include "IMapFeatureValue.h"
 #include "ISequenceFeatureValue.h"
 #include "TensorFeatureDescriptor.h"
+#include "NamespaceAliases.h"
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 namespace error_strings {
-using namespace winrt::Windows::AI::MachineLearning;
+using namespace winml;
 
 // This must be kept in sync with the TensorKind enum in Windows.AI.MachineLearning.idl
 const char* SzTensorKind[] =
@@ -170,12 +171,12 @@ static std::string ToString(ILearningModelFeatureValue value) {
 // This matrix is indexed by Kind, and is a group of function pointers which accept
 // a feature value and descriptr, and return whether they are compatible.
 namespace compatibility_details {
-using namespace winrt::Windows::AI::MachineLearning;
+using namespace winml;
 
 using K = LearningModelFeatureKind;
 
 static void not_compatible_hr(HRESULT hr, ILearningModelFeatureValue value, ILearningModelFeatureDescriptor descriptor) {
-  auto name = WinML::Strings::UTF8FromHString(descriptor.Name());
+  auto name = _winml::Strings::UTF8FromHString(descriptor.Name());
 
   WINML_THROW_IF_FAILED_MSG(
       hr,
@@ -265,7 +266,7 @@ void verify<K::Map, K::Map>(
   enforce check = std::bind(enforce_not_false, std::placeholders::_1, std::placeholders::_2, fail);
   enforce_succeeded check_succeeded = std::bind(enforce_not_failed, std::placeholders::_1, fail);
 
-  auto spMapFeatureValue = value.as<WinML::IMapFeatureValue>();
+  auto spMapFeatureValue = value.as<_winml::IMapFeatureValue>();
   auto mapDescriptor = descriptor.as<IMapFeatureDescriptor>();
 
   TensorKind valueKeyKind;
@@ -285,7 +286,7 @@ void verify<K::Sequence, K::Sequence>(
   thrower fail = std::bind(not_compatible_hr, std::placeholders::_1, value, descriptor);
   enforce_succeeded check_succeeded = std::bind(enforce_not_failed, std::placeholders::_1, fail);
 
-  auto spSequenceFeatureValue = value.as<WinML::ISequenceFeatureValue>();
+  auto spSequenceFeatureValue = value.as<_winml::ISequenceFeatureValue>();
   auto sequenceDescriptor = descriptor.as<ISequenceFeatureDescriptor>();
 
   ILearningModelFeatureDescriptor valueElementDescriptor;
@@ -378,8 +379,8 @@ static void (*FeatureKindCompatibilityMatrix[4][4])(ILearningModelFeatureValue, 
 }  // namespace compatibility_details
 
 inline void VerifyFeatureValueCompatibleWithDescriptor(
-    winrt::Windows::AI::MachineLearning::ILearningModelFeatureValue value,
-    winrt::Windows::AI::MachineLearning::ILearningModelFeatureDescriptor descriptor) {
+    winml::ILearningModelFeatureValue value,
+    winml::ILearningModelFeatureDescriptor descriptor) {
   using namespace compatibility_details;
 
   auto pfnAreKindsCompatible =
@@ -389,4 +390,4 @@ inline void VerifyFeatureValueCompatibleWithDescriptor(
   pfnAreKindsCompatible(value, descriptor);
 }
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

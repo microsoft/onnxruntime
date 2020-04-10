@@ -11,9 +11,9 @@
 #include <onnxruntime_c_api.h>
 #include "LearningModel.h"
 
-using namespace WinML;
+using namespace _winml;
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 LearningModelBinding::~LearningModelBinding()
 {
   Clear();
@@ -63,13 +63,13 @@ void LearningModelBinding::CacheProvider(
   m_providers[name] = providerInfo;
 }
 
-std::tuple<std::string, winrt::com_ptr<WinML::IValue>, BindingType> LearningModelBinding::CreateBinding(
+std::tuple<std::string, winrt::com_ptr<_winml::IValue>, BindingType> LearningModelBinding::CreateBinding(
     const std::string& name,
     const wf::IInspectable& inspectable,
     wfc::IPropertySet const& properties) {
   // Given a known type, validate against the model
   auto model = m_session.Model();
-  auto bindingPort = FindValidBinding(model, WinML::Strings::WStringFromString(name));
+  auto bindingPort = FindValidBinding(model, _winml::Strings::WStringFromString(name));
 
   WINML_THROW_HR_IF_FALSE_MSG(
       WINML_ERR_INVALID_BINDING,
@@ -82,7 +82,7 @@ std::tuple<std::string, winrt::com_ptr<WinML::IValue>, BindingType> LearningMode
   auto bindingType = bindingPort->second;
 
   // Create a feature value from the iinspectable input
-  auto featureValue = WinML::CreateFeatureValueFromInspectable(bindingType, inspectable, descriptor);
+  auto featureValue = _winml::CreateFeatureValueFromInspectable(bindingType, inspectable, descriptor);
   WINML_THROW_HR_IF_NULL_MSG(
       WINML_ERR_INVALID_BINDING,
       featureValue,
@@ -90,7 +90,7 @@ std::tuple<std::string, winrt::com_ptr<WinML::IValue>, BindingType> LearningMode
       name.c_str());
 
   // Validate that the feature value is compatible with the descriptor
-  WinML::VerifyFeatureValueCompatibleWithDescriptor(featureValue, descriptor);
+  _winml::VerifyFeatureValueCompatibleWithDescriptor(featureValue, descriptor);
 
   // Create the Binding Context to pass to the feature value
   BindingContext context{
@@ -105,7 +105,7 @@ std::tuple<std::string, winrt::com_ptr<WinML::IValue>, BindingType> LearningMode
   winrt::com_ptr<IValue> value;
 
   // Get the native interface for the given bind value
-  auto spLotusValueProvider = featureValue.as<WinML::ILotusValueProviderPrivate>();
+  auto spLotusValueProvider = featureValue.as<_winml::ILotusValueProviderPrivate>();
 
   auto spSession = m_session.as<LearningModelSession>();
 
@@ -167,8 +167,8 @@ void LearningModelBinding::Bind(
 
   BindingType binding_type;
   std::string binding_name;
-  winrt::com_ptr<WinML::IValue> binding_value = nullptr;
-  auto featureName = WinML::Strings::UTF8FromHString(name);
+  winrt::com_ptr<_winml::IValue> binding_value = nullptr;
+  auto featureName = _winml::Strings::UTF8FromHString(name);
   std::tie(binding_name, binding_value, binding_type) = CreateBinding(featureName, value, properties);
   switch (binding_type) {
     case BindingType::kInput:
@@ -203,7 +203,7 @@ wfc::IIterator<LearningModelBinding::KeyValuePair> LearningModelBinding::First()
   std::unordered_map<hstring, wf::IInspectable> bindingsMap;
 
   for (auto mergedBindings : m_providers) {
-    auto name = WinML::Strings::HStringFromUTF8(mergedBindings.first);
+    auto name = _winml::Strings::HStringFromUTF8(mergedBindings.first);
     bindingsMap[name] = mergedBindings.second.CallerSpecifiedFeatureValue;
   }
 
@@ -211,7 +211,7 @@ wfc::IIterator<LearningModelBinding::KeyValuePair> LearningModelBinding::First()
 }
 
 wf::IInspectable LearningModelBinding::Lookup(hstring const& key) {
-  auto utf8_name = WinML::Strings::UTF8FromHString(key);
+  auto utf8_name = _winml::Strings::UTF8FromHString(key);
 
   auto foundIt = m_providers.find(utf8_name);
   WINML_THROW_HR_IF_FALSE_MSG(
@@ -229,7 +229,7 @@ uint32_t LearningModelBinding::Size() {
 }
 
 bool LearningModelBinding::HasKey(hstring const& key) {
-  auto utf8_name = WinML::Strings::UTF8FromHString(key);
+  auto utf8_name = _winml::Strings::UTF8FromHString(key);
   return m_providers.find(utf8_name) != m_providers.end();
 }
 
@@ -372,7 +372,7 @@ ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
     return winmlp::SequenceTensorFloat16Bit::Create();
   }
 
-  auto utf8_name = WinML::Strings::UTF8FromHString(descriptor.Name());
+  auto utf8_name = _winml::Strings::UTF8FromHString(descriptor.Name());
   WINML_THROW_HR_IF_TRUE_MSG(
       E_UNEXPECTED,
       true,
@@ -384,11 +384,11 @@ ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
 
 wf::IInspectable LearningModelBinding::CreateUnboundOutput(
     const std::string& name,
-    winrt::com_ptr<WinML::IValue> value) {
+    winrt::com_ptr<_winml::IValue> value) {
   // Find valid binding port
   auto bindingPort = FindValidBinding(
       m_session.Model(),
-      WinML::Strings::WStringFromString(name));
+      _winml::Strings::WStringFromString(name));
 
   WINML_THROW_HR_IF_FALSE_MSG(
       E_UNEXPECTED,
@@ -418,7 +418,7 @@ wf::IInspectable LearningModelBinding::CreateUnboundOutput(
   auto featureValue = CreateUnboundOuputFeatureValue(value, descriptor);
 
   // Update feature value
-  auto spLotusValueProvider = featureValue.as<WinML::ILotusValueProviderPrivate>();
+  auto spLotusValueProvider = featureValue.as<_winml::ILotusValueProviderPrivate>();
   WINML_THROW_IF_FAILED_MSG(
       spLotusValueProvider->UpdateSourceResourceData(context, value.get()),
       "Failed to update bound object for model variable output %s",
@@ -489,14 +489,14 @@ STDMETHODIMP LearningModelBinding::Bind(
     _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding);
     BindingType binding_type;
     std::string binding_name;
-    winrt::com_ptr<WinML::IValue> binding_value;
+    winrt::com_ptr<_winml::IValue> binding_value;
 
     wf::IInspectable to;
     RETURN_IF_FAILED(value->QueryInterface(
         winrt::guid_of<wf::IInspectable>(),
         reinterpret_cast<void**>(winrt::put_abi(to))));
 
-    auto featureName = WinML::Strings::UTF8FromUnicode(name, cchName);
+    auto featureName = _winml::Strings::UTF8FromUnicode(name, cchName);
     std::tie(binding_name, binding_value, binding_type) = CreateBinding(featureName, to, nullptr);
     switch (binding_type) {
       case BindingType::kInput:
@@ -522,13 +522,13 @@ static std::pair<bool, size_t> Contains(const std::vector<std::string>& names, c
 }
 
 // This method releases control of memory of ml_value from caller of BindInput
-HRESULT LearningModelBinding::BindInput(const std::string& name, winrt::com_ptr<WinML::IValue> value) {
+HRESULT LearningModelBinding::BindInput(const std::string& name, winrt::com_ptr<_winml::IValue> value) {
   bool exists;
   size_t index;
   std::tie(exists, index) = Contains(input_names_, name);
 
   auto engine = m_session.as<LearningModelSession>()->GetEngine();
-  winrt::com_ptr<WinML::IValue> device_value;
+  winrt::com_ptr<_winml::IValue> device_value;
   WINML_THROW_IF_FAILED(engine->CreateOneInputAcrossDevices(name.c_str(), value.get(), device_value.put()));  // an input will always be copied on device mismatch
 
   if (exists) {
@@ -541,7 +541,7 @@ HRESULT LearningModelBinding::BindInput(const std::string& name, winrt::com_ptr<
   return S_OK;
 }
 
-HRESULT LearningModelBinding::BindOutput(const std::string& name, winrt::com_ptr<WinML::IValue> value) {
+HRESULT LearningModelBinding::BindOutput(const std::string& name, winrt::com_ptr<_winml::IValue> value) {
   bool exists;
   size_t index;
   std::tie(exists, index) = Contains(output_names_, name);
@@ -564,11 +564,11 @@ const std::vector<std::string>& LearningModelBinding::GetInputNames() const {
   return input_names_;
 }
 
-std::vector<winrt::com_ptr<WinML::IValue>>& LearningModelBinding::GetOutputs() {
+std::vector<winrt::com_ptr<_winml::IValue>>& LearningModelBinding::GetOutputs() {
   return outputs_;
 }
 
-const std::vector<winrt::com_ptr<WinML::IValue>>& LearningModelBinding::GetInputs() const {
+const std::vector<winrt::com_ptr<_winml::IValue>>& LearningModelBinding::GetInputs() const {
   return inputs_;
 }
 
@@ -596,7 +596,7 @@ void LearningModelBinding::BindUnboundOutputs() {
         const wchar_t* p_name;
         uint32_t size;
         WINML_THROW_IF_FAILED(descriptor_native->GetName(&p_name, &size));
-        return WinML::Strings::UTF8FromUnicode(p_name, size);
+        return _winml::Strings::UTF8FromUnicode(p_name, size);
       });
 
   // Find the set difference to determine if there are any unbound output features
@@ -618,4 +618,4 @@ void LearningModelBinding::BindUnboundOutputs() {
   }
 }
 
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP

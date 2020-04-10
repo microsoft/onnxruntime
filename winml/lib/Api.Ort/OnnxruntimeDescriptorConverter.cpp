@@ -18,7 +18,7 @@
 
 #include "OnnxruntimeErrors.h"
 
-using namespace winrt::Windows::AI::MachineLearning;
+using namespace winml;
 
 // BitmapPixelFormat constants
 static const char* c_bitmap_pixel_format_key = "Image.BitmapPixelFormat";
@@ -44,7 +44,7 @@ static const char* c_supported_nominal_ranges[] =
     {
         "NominalRange_0_255"};
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 // Forward declare CreateFeatureDescriptor
 static winml::ILearningModelFeatureDescriptor
@@ -338,7 +338,7 @@ GetTensorType(
   THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetTensorElementType(tensor_info, &tensor_element_data_type),
                       engine_factory->UseOrtApi());
 
-  auto tensor_kind = WinML::TensorKindFromONNXTensorElementDataType(tensor_element_data_type);
+  auto tensor_kind = _winml::TensorKindFromONNXTensorElementDataType(tensor_element_data_type);
   auto is_float_tensor = tensor_kind == TensorKind::Float;
   if (!is_float_tensor) {
     log_stream << "Unsupported image with " << TensorKindToString(tensor_kind)
@@ -418,7 +418,7 @@ CreateTensorFeatureDescriptor(
   THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetTensorElementType(tensor_info, &tensor_element_data_type),
                       engine_factory->UseOrtApi());
 
-  auto kind = WinML::TensorKindFromONNXTensorElementDataType(tensor_element_data_type);
+  auto kind = _winml::TensorKindFromONNXTensorElementDataType(tensor_element_data_type);
 
   auto descriptor = winrt::make<winmlp::TensorFeatureDescriptor>(
       feature_descriptor->name_,
@@ -453,7 +453,7 @@ CreateImageFeatureDescriptor(
   ONNXTensorElementDataType tensor_element_data_type;
   THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetTensorElementType(tensor_info, &tensor_element_data_type),
                       engine_factory->UseOrtApi());
-  auto kind = WinML::TensorKindFromONNXTensorElementDataType(tensor_element_data_type);
+  auto kind = _winml::TensorKindFromONNXTensorElementDataType(tensor_element_data_type);
 
   // pixel format and alpha
   auto pixel_format_value = FetchMetadataValueOrNull(metadata, c_bitmap_pixel_format_key);
@@ -506,7 +506,7 @@ CreateMapFeatureDescriptor(
   THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetMapKeyType(map_info, &map_key_data_type),
                       engine_factory->UseOrtApi());
 
-  auto key_kind = WinML::TensorKindFromONNXTensorElementDataType(map_key_data_type);
+  auto key_kind = _winml::TensorKindFromONNXTensorElementDataType(map_key_data_type);
 
   OrtTypeInfo* map_value_type_info;
   THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetMapValueType(map_info, &map_value_type_info),
@@ -624,10 +624,10 @@ OnnxruntimeDescriptorConverter::ConvertToLearningModelDescriptors(const std::vec
   auto features = winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>();
 
   for (const auto& descriptor : descriptors) {
-    auto learning_model_descriptor = WinML::CreateFeatureDescriptor(engine_factory_.Get(), &descriptor, metadata_);
+    auto learning_model_descriptor = _winml::CreateFeatureDescriptor(engine_factory_.Get(), &descriptor, metadata_);
     features.Append(learning_model_descriptor);
   }
 
   return features;
 }
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

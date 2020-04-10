@@ -17,6 +17,11 @@
           "type": "BOOL"
         },
         {
+          "name": "onnxruntime_BUILD_WINML_IN_MICROSOFT_NS",
+          "value": "True",
+          "type": "BOOL"
+        },
+        {
           "name": "onnxruntime_USE_DML",
           "value": "True",
           "type": "BOOL"
@@ -42,6 +47,11 @@
       "variables": [
         {
           "name": "onnxruntime_USE_WINML",
+          "value": "True",
+          "type": "BOOL"
+        },
+        {
+          "name": "onnxruntime_BUILD_WINML_IN_MICROSOFT_NS",
           "value": "True",
           "type": "BOOL"
         },

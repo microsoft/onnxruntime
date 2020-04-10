@@ -20,21 +20,21 @@
 #include "D3DDeviceCache.h"
 #include "TensorFeatureDescriptor.h"
 
-using namespace WinML;
-using namespace winrt::Windows::Graphics::Imaging;
-using namespace winrt::Windows::Graphics::DirectX::Direct3D11;
-using namespace winrt::Windows::Graphics::DirectX;
-using namespace Windows::AI::MachineLearning::Internal;
-using namespace winrt::Windows::Foundation::Collections;
+using namespace wgi;
+using namespace wgdx;
+using namespace wgdx::Direct3D11;
+using namespace winml;
+using namespace _winml;
+using namespace wfc;
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 
 struct ImageFeatureValue::ImageResourceMetadata {
   std::vector<Windows::Graphics::Imaging::BitmapBounds> Bounds;
-  ::Windows::AI::MachineLearning::Internal::ImageTensorDescription TensorDescriptor;
+  _winml::ImageTensorDescription TensorDescriptor;
 };
 
-Windows::AI::MachineLearning::ImageFeatureValue ImageFeatureValue::Create(
+winml::ImageFeatureValue ImageFeatureValue::Create(
     uint32_t batchSize,
     BitmapPixelFormat format,
     uint32_t width,
@@ -48,7 +48,7 @@ Windows::AI::MachineLearning::ImageFeatureValue ImageFeatureValue::Create(
   return make<ImageFeatureValue>(winrt::single_threaded_vector(std::move(videoFrames)));
 }
 
-Windows::AI::MachineLearning::ImageFeatureValue ImageFeatureValue::CreateFromVideoFrame(Windows::Media::VideoFrame const& image) try {
+winml::ImageFeatureValue ImageFeatureValue::CreateFromVideoFrame(wm::VideoFrame const& image) try {
   return make<ImageFeatureValue>(image);
 }
 WINML_CATCH_ALL
@@ -252,7 +252,7 @@ static void GPUTensorize(
     ImageTensorDescription tensorDescriptor,
     com_ptr<LearningModelSession> spSession,
     ID3D12Resource* d3dResource,
-    WinML::BindingContext& context) {
+    _winml::BindingContext& context) {
   auto spDevice = spSession->Device().as<LearningModelDevice>();
 
   ConverterResourceDescription descriptor = {};
@@ -266,7 +266,7 @@ static void GPUTensorize(
     auto pooledConverter = PoolObjectWrapper::Create(spDevice->TensorizerStore()->Fetch(descriptor));
     {
       // Apply tensorization
-      auto session = spSession.as<winrt::Windows::AI::MachineLearning::LearningModelSession>();
+      auto session = spSession.as<winml::LearningModelSession>();
       pooledConverter->Get()->Tensorizer->VideoFrameToDX12Tensor(
           batchIdx,
           session,
@@ -288,7 +288,7 @@ static void GPUTensorize(
   }
 }
 
-std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetInputMetadata(const WinML::BindingContext& context) {
+std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetInputMetadata(const _winml::BindingContext& context) {
   uint32_t descriptorWidth;
   uint32_t descriptorHeight;
 
@@ -387,7 +387,7 @@ std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetIn
   return ImageResourceMetadata{bounds, imageTensorDescriptor};
 }
 
-HRESULT ImageFeatureValue::GetValue(WinML::BindingContext& context, IValue** out) try {
+HRESULT ImageFeatureValue::GetValue(_winml::BindingContext& context, IValue** out) try {
   FAIL_FAST_IF(!(std::all_of(m_widths.begin(), m_widths.end(), [](int i) { return i != 0; })));
   FAIL_FAST_IF(!(std::all_of(m_heights.begin(), m_heights.end(), [](int i) { return i != 0; })));
 
@@ -410,7 +410,7 @@ HRESULT ImageFeatureValue::GetValue(WinML::BindingContext& context, IValue** out
       value.put()));
 
   // Get the tensor raw data
-  WinML::Resource void_resource;
+  _winml::Resource void_resource;
   RETURN_IF_FAILED(value->GetResource(void_resource));
 
   if (context.type == BindingType::kInput) {
@@ -444,7 +444,7 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, IVa
   auto spDevice = spSession->Device().as<LearningModelDevice>();
 
   // Get the output tensor raw data
-  WinML::Resource void_resource;
+  _winml::Resource void_resource;
   RETURN_IF_FAILED(value->GetResource(void_resource));
 
   // Get the run context
@@ -505,9 +505,9 @@ HRESULT ImageFeatureValue::AbiRepresentation(winrt::Windows::Foundation::IInspec
   if (IsBatch()) {
     m_videoFrames.as(abiRepresentation);
   } else {
-    winrt::Windows::AI::MachineLearning::ImageFeatureValue to = nullptr;
+    winml::ImageFeatureValue to = nullptr;
     RETURN_IF_FAILED(this->QueryInterface(
-        winrt::guid_of<winrt::Windows::AI::MachineLearning::ImageFeatureValue>(),
+        winrt::guid_of<winml::ImageFeatureValue>(),
         reinterpret_cast<void**>(winrt::put_abi(to))));
 
     to.as(abiRepresentation);
@@ -515,7 +515,7 @@ HRESULT ImageFeatureValue::AbiRepresentation(winrt::Windows::Foundation::IInspec
   return S_OK;
 }
 
-Windows::AI::MachineLearning::LearningModelFeatureKind ImageFeatureValue::Kind() try {
+winml::LearningModelFeatureKind ImageFeatureValue::Kind() try {
   return LearningModelFeatureKind::Image;
 }
 WINML_CATCH_ALL
@@ -529,4 +529,4 @@ IIterable<Windows::Media::VideoFrame> ImageFeatureValue::VideoFrames() try {
   return m_videoFrames.try_as<IIterable<Windows::Media::VideoFrame>>();
 }
 WINML_CATCH_ALL
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP

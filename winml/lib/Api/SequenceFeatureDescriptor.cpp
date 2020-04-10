@@ -5,15 +5,15 @@
 
 #include "SequenceFeatureDescriptor.h"
 
-using namespace Windows::AI::MachineLearning;
+using namespace _winml;
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 SequenceFeatureDescriptor::SequenceFeatureDescriptor(
     const char* name,
     const char* description,
     bool is_required,
-    winml::ILearningModelFeatureDescriptor descriptor) : name_(WinML::Strings::HStringFromUTF8(name)),
-                                                         description_(WinML::Strings::HStringFromUTF8(description)),
+    winml::ILearningModelFeatureDescriptor descriptor) : name_(_winml::Strings::HStringFromUTF8(name)),
+                                                         description_(_winml::Strings::HStringFromUTF8(description)),
                                                          is_required_(is_required),
                                                          element_descriptor_(descriptor) {}
 
@@ -64,4 +64,4 @@ SequenceFeatureDescriptor::GetDescription(
   *cchDescription = static_cast<uint32_t>(description_.size());
   return S_OK;
 }
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP
