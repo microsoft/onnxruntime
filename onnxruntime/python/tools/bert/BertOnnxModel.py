@@ -14,6 +14,14 @@ from OnnxModel import OnnxModel
 
 logger = logging.getLogger(__name__)
 
+class BertOptimizationOptions:
+    def __init__(self, model_type):
+        self.enable_attention = True
+        self.enable_skip_layer_norm = True
+        self.enable_embed_layer_norm = True
+
+        if model_type == 'gpt2':
+            self.enable_skip_layer_norm = False
 
 class BertOnnxModel(OnnxModel):
 
@@ -125,18 +133,11 @@ class BertOnnxModel(OnnxModel):
                                          vals=qkv_weight.flatten().tolist())
         self.add_initializer(weight)
 
-        weight_input = onnx.helper.make_tensor_value_info(weight.name, TensorProto.FLOAT,
-                                                          [self.hidden_size, 3 * self.hidden_size])
-        self.add_input(weight_input)
-
         bias = onnx.helper.make_tensor(name=attention_node_name + '_qkv_bias',
                                        data_type=TensorProto.FLOAT,
                                        dims=[3 * self.hidden_size],
                                        vals=qkv_bias.flatten().tolist())
         self.add_initializer(bias)
-
-        bias_input = onnx.helper.make_tensor_value_info(bias.name, TensorProto.FLOAT, [3 * self.hidden_size])
-        self.add_input(bias_input)
 
         attention_node = onnx.helper.make_node(
             'Attention',
@@ -350,6 +351,7 @@ class BertOnnxModel(OnnxModel):
     """
 
     def fuse_gelu_with_tanh(self):
+        logger.debug(f"start FastGelu fusion...")
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
@@ -435,12 +437,13 @@ class BertOnnxModel(OnnxModel):
             nodes_to_add.append(gelu_node)
 
         if len(nodes_to_add) > 0:
-            logger.info("Fused FastGelu count: {len(nodes_to_add)}")
+            logger.info(f"Fused FastGelu count: {len(nodes_to_add)}")
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
 
     def fuse_add_bias_gelu(self):
+        logger.debug(f"start Gelu fusion...")
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
         nodes_to_remove = []
@@ -490,6 +493,7 @@ class BertOnnxModel(OnnxModel):
         self.add_nodes(nodes_to_add)
 
     def fuse_add_bias_skip_layer_norm(self):
+        logger.debug(f"start Bias and SkipLayerNormalization fusion...")
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
         nodes_to_remove = []
@@ -552,6 +556,7 @@ class BertOnnxModel(OnnxModel):
         self.add_nodes(nodes_to_add)
 
     def fuse_reshape(self):
+        logger.debug(f"start Reshape fusion...")
         nodes = self.nodes()
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
@@ -706,6 +711,7 @@ class BertOnnxModel(OnnxModel):
     """
 
     def fuse_embed_layer(self):
+        logger.debug(f"start EmbedLayerNormalization fusion...")
         nodes = self.nodes()
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
@@ -856,14 +862,13 @@ class BertOnnxModel(OnnxModel):
         graph = self.graph()
 
         batch_size = self.get_batch_size_from_graph_input()
-        input_batch_size = batch_size if isinstance(batch_size, int) else 1
         new_graph_inputs = []
 
         bert_inputs = self.get_bert_inputs()
         for input in graph.input:
             if input.name in bert_inputs:
-                int32_input = onnx.helper.make_tensor_value_info(input.name, TensorProto.INT32,
-                                                                 [input_batch_size, self.sequence_length])
+                input_shape = [batch_size if isinstance(batch_size, int) else 1, self.sequence_length]
+                int32_input = onnx.helper.make_tensor_value_info(input.name, TensorProto.INT32, input_shape)
                 new_graph_inputs.append(int32_input)
             else:
                 new_graph_inputs.append(input)
@@ -924,6 +929,8 @@ class BertOnnxModel(OnnxModel):
               |                      |
               +----------------------+
         """
+        logger.debug(f"start LayerNormalization fusion...")
+
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
@@ -1013,6 +1020,8 @@ class BertOnnxModel(OnnxModel):
         """
          Fuse Add + LayerNormalization into one node: SkipLayerNormalization
         """
+        logger.debug(f"start SkipLayerNormaliation fusion...")
+
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
@@ -1045,7 +1054,7 @@ class BertOnnxModel(OnnxModel):
     def postprocess(self):
         return
 
-    def optimize(self):
+    def optimize(self, options:BertOptimizationOptions=None):
         self.fuse_layer_norm()
 
         self.fuse_gelu()
@@ -1054,11 +1063,14 @@ class BertOnnxModel(OnnxModel):
 
         self.fuse_reshape()
 
-        self.fuse_skip_layer_norm()
+        if (options is None) or options.enable_skip_layer_norm:
+            self.fuse_skip_layer_norm()
 
-        self.fuse_attention()
+        if (options is None) or options.enable_attention:
+            self.fuse_attention()
 
-        self.fuse_embed_layer()
+        if (options is None) or options.enable_embed_layer_norm:
+            self.fuse_embed_layer()
 
         # Fuse Gelu and Add Bias before it.
         self.fuse_add_bias_gelu()
@@ -1090,6 +1102,7 @@ class BertOnnxModel(OnnxModel):
         for op in ops:
             nodes = self.get_nodes_by_op_type(op)
             op_count[op] = len(nodes)
+        logger.info(f"Optimized operators:{op_count}")
         return op_count
 
     def is_fully_optimized(self):
