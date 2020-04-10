@@ -340,7 +340,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       // loop through the data
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
-        // const size_t worker_id = step_ % num_pipeline_stages_;
+        const size_t worker_id = step_ % num_pipeline_stages_;
 
         std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch, input_allocator_);
         if (loss_scaler_) {
@@ -482,6 +482,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           log_file << "Step 7 @ " << params_.mpi_context.world_rank << std::endl;
           */
 
+          join_all_workers();
           ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
                                            feed_names,
                                            feeds,
@@ -572,7 +573,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
               worker_states_[worker_id].feed_names,
               worker_states_[worker_id].feeds,
               worker_states_[worker_id].fetch_names,
-              &worker_states_[worker_id].fetches);
+              &(worker_states_[worker_id].fetches));
 
             log_file << "(grad@" << params_.mpi_context.world_rank << ")" << " terminate worker " << worker_id << std::endl;
             cudaError_t err = cudaGetLastError();
@@ -584,10 +585,41 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           // workers_[worker_id].join();
           log_file << "Step 14 @ " << params_.mpi_context.world_rank << std::endl;
 
-          fetches = worker_states_[worker_id].fetches;
+          // fetches = worker_states_[worker_id].fetches;
 
-          log_file << "Step 15 @ " << params_.mpi_context.world_rank << std::endl;
           */
+          log_file << "Step 15 @ " << params_.mpi_context.world_rank << std::endl;
+
+          auto fw_wait = get_forward_waited_event_id(step_);
+          auto fw_record = get_forward_recorded_event_id(step_);
+          auto bw_wait = get_backward_waited_event_id(step_);
+          auto bw_record = get_backward_recorded_event_id(step_);
+          log_file << "(" << step_ << "@" << params_.mpi_context.world_rank << ") " << fw_wait << "," << fw_record << "," << bw_wait << "," << bw_record << std::endl;
+          worker_states_[worker_id].run_options = run_options;
+          worker_states_[worker_id].feed_names = feed_names;
+          worker_states_[worker_id].feeds = feeds;
+          worker_states_[worker_id].fetch_names = fetch_grad_accumulator_output;
+          worker_states_[worker_id].fetches = std::vector<MLValue>();
+          join_worker(worker_id);
+          /*
+          workers_[worker_id] = std::thread(&call_training_step,
+            &session_,
+            worker_states_[worker_id].run_options,
+            worker_states_[worker_id].feed_names,
+            worker_states_[worker_id].feeds,
+            worker_states_[worker_id].fetch_names,
+            &(worker_states_[worker_id].fetches), params_.mpi_context.local_rank);
+          */
+
+          workers_[worker_id] = std::thread([&](const size_t worker_id) {
+            // session_.Run(run_options, feed_names, feeds, fetch_grad_accumulator_output, &fetches);
+            session_.Run(
+              worker_states_[worker_id].run_options,
+              worker_states_[worker_id].feed_names,
+              worker_states_[worker_id].feeds,
+              worker_states_[worker_id].fetch_names,
+              &(worker_states_[worker_id].fetches));
+          }, worker_id);
 
           /*
           ORT_RETURN_IF_ERROR(session_.Run(run_options,
@@ -595,10 +627,10 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                            feeds,
                                            fetch_grad_accumulator_output,
                                            &fetches));
-                                           */
 
           std::thread local_worker = std::thread(&call_training_step, &session_, run_options, feed_names, feeds, fetch_grad_accumulator_output, &fetches, params_.mpi_context.local_rank);
           local_worker.join();
+          */
 
           gradient_accumulation_step_count++;
         }
@@ -656,6 +688,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           ORT_RETURN_IF_ERROR(SaveCheckpoint(new_checkpoint_path));
         }
       }  // end of one file/shard
+      join_all_workers();
 
       if (step_ < params_.num_train_steps) {
         training_data_loader.MoveToNextDataSet();
