@@ -543,24 +543,30 @@ class PipelineSplitter {
     for (size_t i = 0; i < num_subs; ++i) {
       auto& sub = sub_mps[i];
       sub.clear_graph();
-      FillInputWait(sub.mutable_graph(), main_gp, lookup_main_graph_node_arg_proto, cuts[i].fw.sync_inputs, cuts[i].fw.wait_depends, i, /*bw*/ false);
+      FillInputWait(sub.mutable_graph(),
+                    main_gp,
+                    lookup_main_graph_node_arg_proto,
+                    cuts[i].fw.sync_inputs,
+                    cuts[i].fw.wait_depends,
+                    i,
+                    /*bw*/ false);
     }
 
     for (const auto& n : main_gp.node()) {
       // check which sub_model the node should be in
-      int sub_id = -1;
-      for (size_t i = 0; i < num_subs; ++i) {
-        const auto& cut = cuts[i];
-        if (std::count(cut.fw.nodes.cbegin(), cut.fw.nodes.cend(), n.output()[0])) {
-          sub_id = i;
-          break;
+      const size_t sub_id = [&] {
+        for (size_t i = 0; i < num_subs; ++i) {
+          const auto& cut = cuts[i];
+          if (std::count(cut.fw.nodes.cbegin(), cut.fw.nodes.cend(), n.output()[0])) {
+            return i;
+          }
+          if (std::count(cut.bw.nodes.cbegin(), cut.bw.nodes.cend(), n.output()[0])) {
+            return i;
+          }
         }
-        if (std::count(cut.bw.nodes.cbegin(), cut.bw.nodes.cend(), n.output()[0])) {
-          sub_id = i;
-          break;
-        }
-      }
-      EXPECT_TRUE(sub_id != -1);
+        ORT_THROW("Failed to find sub-model containing node: ", n.name());
+      }();
+
       auto* sub_gp = sub_mps[sub_id].mutable_graph();
       const auto& cut = cuts[sub_id];
 
@@ -591,7 +597,13 @@ class PipelineSplitter {
           continue;  // sync_ouputs already handled, skip
 
         // add graph output
-        AddItemByName(sub_gp->mutable_output(), main_gp.output(), *i, *i);
+        if (!AddItemByName(sub_gp->mutable_output(), main_gp.output(), *i, *i)) {
+          // for non-output, add shape info
+          AddValueInfoByNameFromLookup(*sub_gp->mutable_value_info(),
+                                       lookup_main_graph_node_arg_proto,
+                                       *i,
+                                       *i);
+        }
       }
 
       // add RecordEvent node at the end of fw and bw
@@ -670,7 +682,7 @@ class PipelineSplitter {
       TValueInfoLookupFn main_graph_lookup,
       const std::vector<std::string>& sync_inputs,
       const std::vector<std::string>& dependencies,
-      int sub_id,
+      size_t sub_id,
       bool bw) {
     // input/output with Wait/RecordEvent
     // Note data is gated by Wait/RecordEvent, so name with postfix "_sync"
@@ -714,11 +726,26 @@ class PipelineSplitter {
                         name,
                         input_name)) {
         ASSERT_TRUE(is_first);
+        // add shape info
+        EXPECT_TRUE(AddValueInfoByNameFromLookup(*sub_gp->mutable_value_info(),
+                                                 main_graph_lookup,
+                                                 name,
+                                                 name));
       } else {
         // some input comes from the middle of the graph
         AddValueInfoByNameFromLookup(*sub_gp->mutable_input(),
                                      main_graph_lookup,
-                                     name, input_name);
+                                     name,
+                                     input_name);
+        // add shape info
+        AddValueInfoByNameFromLookup(*sub_gp->mutable_value_info(),
+                                     main_graph_lookup,
+                                     name,
+                                     recv_name);
+        AddValueInfoByNameFromLookup(*sub_gp->mutable_value_info(),
+                                     main_graph_lookup,
+                                     name,
+                                     name);
       }
     }
 
@@ -748,7 +775,7 @@ class PipelineSplitter {
       TValueInfoLookupFn main_graph_lookup,
       const std::vector<std::string>& sync_outputs,
       const std::vector<std::string>& dependencies,
-      int sub_id,
+      size_t sub_id,
       bool bw) {
     ONNX_NAMESPACE::NodeProto* record_pipeline_np = nullptr;
     ONNX_NAMESPACE::NodeProto* record_data_np = nullptr;
@@ -802,7 +829,18 @@ class PipelineSplitter {
     for (const auto& name : sync_outputs) {
       AddValueInfoByNameFromLookup(*sub_gp->mutable_output(),
                                    main_graph_lookup,
-                                   name, name + "_sync");
+                                   name,
+                                   name + "_sync");
+      if (!is_last) {
+        AddValueInfoByNameFromLookup(*sub_gp->mutable_value_info(),
+                                     main_graph_lookup,
+                                     name,
+                                     name + "_send");
+      }
+      AddValueInfoByNameFromLookup(*sub_gp->mutable_value_info(),
+                                   main_graph_lookup,
+                                   name,
+                                   name);
     }
   }
 };
