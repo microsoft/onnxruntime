@@ -190,7 +190,7 @@ get_winml_test_adapter_src(${WINML_TEST_SRC_DIR} winml_test_adapter_src winml_te
 add_winml_test(
   TARGET winml_test_adapter
   SOURCES ${winml_test_adapter_src}
-  LIBS winml_test_common winml_adapter winml_lib_ort ${winml_test_adapter_libs}
+  LIBS onnxruntime_common onnxruntime_session winml_adapter winml_lib_ort winml_test_common ${winml_test_adapter_libs}
 )
 target_include_directories(winml_test_adapter PRIVATE ${REPO_ROOT}/winml/adapter)
 target_include_directories(winml_test_adapter PRIVATE ${REPO_ROOT}/winml/lib/Api.Ort)
