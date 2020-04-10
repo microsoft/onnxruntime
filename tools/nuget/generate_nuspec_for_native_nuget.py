@@ -151,7 +151,7 @@ def generate_files(list, args):
       if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime'):
           files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'microsoft.ai.machinelearning.native.h') + '" target="build\\native\\include\\Microsoft.AI.MachineLearning.Native.h" />')
       if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime'):
-          files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'dualapipartitionattribute.h') + '" target="build\\native\\include\\dualapipartitionattribute.h" />')
+          files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'winml\\api\\dualapipartitionattribute.h') + '" target="build\\native\\include\\dualapipartitionattribute.h" />')
 
     # Process dnll.dll    
     if os.path.exists(os.path.join(args.native_build_path, 'dnnl.dll')):
