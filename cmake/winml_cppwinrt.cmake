@@ -80,6 +80,7 @@ function(target_cppwinrt
     sdk_version          # sdk version
     folder_name          # folder this target will be placed
     midl_options         # defines for the midl compiler
+    set_ns_prefix        # set ns_prefix option
 )
     if (MSVC)
         # get sdk include paths for midl
@@ -113,6 +114,12 @@ function(target_cppwinrt
         convert_forward_slashes_to_back(${target_outputs}/comp_generated generated_dir_back_slash)
         convert_forward_slashes_to_back(${generated_dir_back_slash}/module.g.cpp module_g_cpp_back_slash)
         convert_forward_slashes_to_back(${generated_dir_back_slash}/module.g.excl.cpp module_g_ecxl_cpp_back_slash)
+  
+        if (set_ns_prefix)
+          set(ns_prefix "/ns_prefix")
+        else()
+          set(ns_prefix "")
+        endif()
 
         # using add_custom_command trick to prevent rerunning script unless ${file} is changed
         add_custom_command(
@@ -127,7 +134,7 @@ function(target_cppwinrt
                 /I ${winrt_sdk_directory}
                 /I ${idl_source_directory}
                 /winmd ${winmd_filename}
-                /ns_prefix
+                ${ns_prefix}
                 /h ${header_filename}
                 /tlb ${tlb_filename}
                 ${midl_options}

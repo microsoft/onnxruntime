@@ -31,6 +31,7 @@ if (onnxruntime_BUILD_WINML_IN_MICROSOFT_NS)
   set(winml_midl_defines "/DROOT_NS=Microsoft")
   set(winml_root_ns "Microsoft")
   set(BINARY_NAME "Microsoft.AI.MachineLearning.dll")
+  set(winml_api_use_ns_prefix true)
 else()
   set(output_name "Windows.AI.MachineLearning")
   set(idl_native_output_name "Windows.AI.MachineLearning.Native")
@@ -38,6 +39,7 @@ else()
   set(winml_midl_defines "/DROOT_NS=Windows")
   set(winml_root_ns "Windows")
   set(BINARY_NAME "Windows.AI.MachineLearning.dll")
+  set(winml_api_use_ns_prefix false)
 endif()
 
 get_filename_component(exclusions "${winml_api_root}/exclusions.txt" ABSOLUTE)
@@ -67,13 +69,14 @@ add_generate_cppwinrt_sdk_headers_target(
 
 # generate winml headers from idl
 target_cppwinrt(winml_api
-  ${winrt_idl}              # winml winrt idl to compile
-  ${output_name}            # outputs name
-  ${winml_lib_api_dir}      # location for cppwinrt generated component sources
-  ${sdk_folder}             # location of sdk folder
-  ${sdk_version}            # sdk version
-  ${target_folder}          # the folder this target will be placed under
-  ${winml_midl_defines}     # the midl compiler defines
+  ${winrt_idl}               # winml winrt idl to compile
+  ${output_name}             # outputs name
+  ${winml_lib_api_dir}       # location for cppwinrt generated component sources
+  ${sdk_folder}              # location of sdk folder
+  ${sdk_version}             # sdk version
+  ${target_folder}           # the folder this target will be placed under
+  ${winml_midl_defines}      # the midl compiler defines
+  ${winml_api_use_ns_prefix} # set ns_prefix
 )
 
 target_midl(winml_api_native
