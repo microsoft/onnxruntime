@@ -134,29 +134,24 @@ def generate_files(list, args):
     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
     
-    # Process Microsoft.AI.MachineLearning lib, dll, and pdb
-    if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime') and os.path.exists(os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.lib')):
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.lib') + '" target="runtimes\\win-' + args.target_architecture + '\\native\\Microsoft.AI.MachineLearning.lib" />')
-
-    if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime') and os.path.exists(os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.dll')):
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native\\Microsoft.AI.MachineLearning.dll" />')
-        
-    if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime') and os.path.exists(os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.pdb')):        
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.pdb') + '" target="runtimes\\win-' + args.target_architecture + '\\native\\Microsoft.AI.MachineLearning.pdb" />')
-
-    # Process microsoft.ai.machinelearning.winmd
-    if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime') and os.path.exists(os.path.join(args.ort_build_path, args.build_config, 'microsoft.ai.machinelearning.winmd')):
-        files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'microsoft.ai.machinelearning.winmd') + '" target="build\\native\\metadata\\Microsoft.AI.MachineLearning.winmd" />')
-
-    # Process microsoft.ai.machinelearning headers
-    if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime') and os.path.exists(os.path.join(args.ort_build_path, args.build_config, 'microsoft.ai.machinelearning.h')):
-        files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'microsoft.ai.machinelearning.h') + '" target="build\\native\\include\\Microsoft.AI.MachineLearning.h" />')
-
-    if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime') and os.path.exists(os.path.join(args.ort_build_path, args.build_config, 'microsoft.ai.machinelearning.native.h')):
-        files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'microsoft.ai.machinelearning.native.h') + '" target="build\\native\\include\\Microsoft.AI.MachineLearning.Native.h" />')
-
-    if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime') and os.path.exists(os.path.join(args.ort_build_path, args.build_config, 'dualapipartitionattribute.h')):
-        files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'dualapipartitionattribute.h') + '" target="build\\native\\include\\dualapipartitionattribute.h" />')
+    if (is_windows()):
+      # Process Microsoft.AI.MachineLearning lib, dll, and pdb
+      if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime')):
+          files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.lib') + '" target="runtimes\\win-' + args.target_architecture + '\\native\\Microsoft.AI.MachineLearning.lib" />')
+      if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime')):
+          files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native\\Microsoft.AI.MachineLearning.dll" />')
+      if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime')):        
+          files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.pdb') + '" target="runtimes\\win-' + args.target_architecture + '\\native\\Microsoft.AI.MachineLearning.pdb" />')
+      # Process microsoft.ai.machinelearning.winmd
+      if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime')):
+          files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'microsoft.ai.machinelearning.winmd') + '" target="build\\native\\metadata\\Microsoft.AI.MachineLearning.winmd" />')
+      # Process microsoft.ai.machinelearning headers
+      if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime')):
+          files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'microsoft.ai.machinelearning.h') + '" target="build\\native\\include\\Microsoft.AI.MachineLearning.h" />')
+      if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime')):
+          files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'microsoft.ai.machinelearning.native.h') + '" target="build\\native\\include\\Microsoft.AI.MachineLearning.Native.h" />')
+      if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime')):
+          files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'dualapipartitionattribute.h') + '" target="build\\native\\include\\dualapipartitionattribute.h" />')
 
     # Process dnll.dll    
     if os.path.exists(os.path.join(args.native_build_path, 'dnnl.dll')):
