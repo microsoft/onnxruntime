@@ -1,19 +1,43 @@
 # ONNX Runtime Performance Tuning
 
-## Why do we need to tune performance?
-ONNX Runtime is designed to be open and extensible with its concept of "Execution Provider" to represents different execution kernels. See the [design overview](./HighLevelDesign.md). 
+ONNX Runtime provides high performance and flexibility of hardware options with the concept of "Execution Providers" to represents different execution kernels. See: [design overview](./HighLevelDesign.md), [supported execution providers](../README.md#supported-accelerators).
 
-ONNX Runtime supports a variety of execution providers across CPU and GPU: [see the list here](../README.md#high-performance).
-For different models and different hardware, there is no silver bullet which can always perform the best. Even for a single execution provider, often there are several knobs that can be tuned (e.g. thread number, wait policy etc.).
+Along with this flexibility comes decisions for tuning and usage options. For different models and different hardware, there is no silver bullet which can always perform the best. Even for a single execution provider, often there are several knobs that can be tuned (e.g. thread number, wait policy, etc).
 
 This document covers basic tools and knobs that can be leveraged to find the best performance for your model and hardware.
 
-## Is there a tool to help with performance tuning?
-Yes, the onnxruntime_perf_test.exe tool (available from the build drop) can be used to test various knobs. Please find the usage instructions using `onnxruntime_perf_test.exe -h`.
+**Topics**
+* [Performance Tuning Tools](#Performance-Tuning-Tools)
+* [Using different Execution Providers](#Using-different-Execution-Providers)
+* [Which Execution Provider will provide the best performance?](#Which-Execution-Provider-will-provide-the-best-performance)
+* [Tuning performance for specific Execution Providers](#Tuning-performance-for-specific-Execution-Providers)
+* [Troubleshooting model performance issues](#Troubleshooting-model-performance-issues)
+***
 
-Additionally, the [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) provides an easy-to-use pipeline for converting models to ONNX and optimizing performance with ONNX Runtime. The tool can help identify the optimal runtime configuration to get the best performance on the target hardware for the model.
+## Performance Tuning Tools
+The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is designed as an easy-to-use pipeline for converting models to ONNX and optimizing performance with ONNX Runtime. The tool can help identify the optimal runtime configuration to get the best performance on the target hardware for the model.
 
-## Using different execution providers
+### Profiling and Performance Report
+
+The onnxruntime_perf_test.exe tool (available from the build drop) can be used to test various knobs. Please find the usage instructions using `onnxruntime_perf_test.exe -h`.
+
+You can enable ONNX Runtime latency profiling in code:
+
+```python
+import onnxruntime as rt
+
+sess_options = rt.SessionOptions()
+sess_options.enable_profiling = True
+```
+If you are using the onnxruntime_perf_test.exe tool, you can add `-p [profile_file]` to enable performance profiling.
+
+In both cases, you will get a JSON file which contains the detailed performance data (threading, latency of each operator, etc). This file is a standard performance tracing file, and to view it in a user friendly way, you can open it by using chrome://tracing:
+* Open chrome browser
+* Type chrome://tracing in the address bar
+* Load the generated JSON file
+
+## Using different Execution Providers
+To learn more about different Execution Providers, see [docs/exeuction_providers](./execution_providers).
 
 ### Python API
 Official Python packages on Pypi only support the default CPU (MLAS) and default GPU (CUDA) execution providers. For other execution providers, you need to build from source. Please refer to the [build instructions](../BUILD.md). The recommended instructions build the wheel with debug info in parallel.
@@ -65,7 +89,21 @@ so.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
 session = rt.InferenceSession(model, sess_options=so)
 session.set_providers(['CUDAExecutionProvider'])
 ```
-## How to tune performance for a specific execution provider?
+## Which Execution Provider will provide the best performance? 
+Performance is dependent on the specific model you're trying to run, the session and run options you've selected, and of course, your specific hardware target. Below you'll find some more information that may be helpful to select the right Execution Provider.
+
+### CUDA (Default GPU) vs CPU?
+The CPU version of ONNX Runtime provides a complete implementation of all operators in the ONNX spec. This ensures that your ONNX-compliant model can execute successfully (*minor caveat: not 100% of types are supported to minimize the binary size, but can usually be easily added as needed*). On the other hand, not all CUDA kernels are implemented, as these have been prioritized on an as-needed basis. As a result, this means that if your model contains operators that do not have a CUDA implementation, it will fall back to CPU. Switching between CPU and GPU can cause significant performance impact.
+
+If you require a specific operator that is not currently supported, please consider [contributing](./../CONTRIBUTING.md) and/or [file an issue](https://github.com/microsoft/onnxruntime/issues) clearly describing your use case and share your model if possible. 
+
+### TensorRT vs CUDA?
+TensorRT and CUDA are separate execution providers for ONNX Runtime. On the same hardware, TensorRT will generally provide better performance; however, this depends on the specific model and whether the operators in the model can be supported by TensorRT. In cases where TensorRT cannot handle the subgraph(s), it will fall back to CUDA. Note that the TensorRT EP may depend on a different version of CUDA than the CUDA EP. 
+
+### TensorRT/CUDA vs DirectML? 
+DirectML is the hardware-accelerated DirectX 12 library for machine learning on Windows and supports all DirectX 12 capable devices (Nvidia, Intel, AMD). This means that if you are targeting Windows GPUs, using the DirectML Execution Provider is likely your best bet. This can be used with both the ONNX Runtime as well as [WinML APIs](./WinRT_API.md).
+
+## Tuning performance for specific Execution Providers
 
 ### Default CPU Execution Provider (MLAS)
 The default execution provider uses different knobs to control the thread number.
@@ -91,7 +129,7 @@ number of threads used to parallelize the execution of the graph (across nodes).
 * sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL. Default is already ORT_ENABLE_ALL(99). Please see [onnxruntime_c_api.h](../include/onnxruntime/core/session/onnxruntime_c_api.h#L241)  (enum GraphOptimizationLevel) for the full list of all optimization levels. For details regarding available optimizations and usage please refer to the [Graph Optimizations Doc](../docs/ONNX_Runtime_Graph_Optimizations.md).
 
 ### MKL_DNN/nGraph/MKL_ML Execution Provider
-MKL_DNN, MKL_ML and nGraph all depends on openmp for parallization. For those execution providers, we need to use the openmp enviroment variable to tune the performance.
+MKL_DNN, MKL_ML and nGraph all depends on openmp for parallization. For those execution providers, we need to use the openmp environment variable to tune the performance.
 
 The most widely used enviroment variables are:
 
@@ -104,21 +142,23 @@ The most widely used enviroment variables are:
   * ACTIVE will not yield CPU, instead it will have a while loop to check whether the next task is ready
   * Use PASSIVE if your CPU usage already high, and use ACTIVE when you want to trade CPU with latency
 
+## Troubleshooting model performance issues
+The answers below are basic troubleshooting suggestions based on common previous user-filed issues and questions. This list is by no means exhaustive and there is a lot of case-by-case fluctuation depending on the model and specific usage scenario. Please use this information to guide your troubleshooting, search through previously filed issues for related topics, and/or file a new issue if your problem is still not resolved.
 
+### Performance Troubleshooting Checklist
+Here is a list of things to check through when assessing performance issues.
+* Are you using OpenMP? OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.
+* Have you enabled all [graph optimizations](./ONNX_Runtime_Graph_Optimizations.md)? The official published packages do enable all by default, but when building from source, check that these are enabled in your build.
+* Have you searched through prior filed [Github issues](https://github.com/microsoft/onnxruntime/issues) to see if your problem has been discussed previously? Please do this before filing new issues.
+* If using CUDA or TensorRT, do you have the right versions of the dependent libraries installed? 
 
-## Profiling and Performance Report
+### Why is my model running slower on GPU than CPU?
+Depending on which execution provider you're using, it may not have full support for all the operators in your model. Fallback to CPU ops can cause hits in performance speed. Moreover even if an op is implemented by the CUDA execution provider, it may not necessarily assign/place the op to the CUDA EP due to performance reasons. To see the placement decided by ORT, turn on verbose logging and look at the console output.
 
-You can enable ONNX Runtime latency profiling in code:
+### My converted Tensorflow model is slow - why?
+NCHW and NHWC are two different memory layout for 4-D tensors.
 
-```python
-import onnxruntime as rt
+Most TensorFlow operations used by a CNN support both NHWC and NCHW data format. The Tensorflow team suggests that on GPU NCHW is faster but on CPU NHWC is sometimes faster in Tensorflow. However, ONNX only supports NCHW. As a result, if the original model is in NHWC format, when the model is converted extra transposes may be added. The [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx) and [keras-onnx](https://github.com/onnx/keras-onnx) converters do remove many of these transposes, but if this doesn't help sufficiently, consider retraining the model using NCHW.
 
-sess_options = rt.SessionOptions()
-sess_options.enable_profiling = True
-```
-If you are using the onnxruntime_perf_test.exe tool, you can add `-p [profile_file]` to enable performance profiling.
-
-In both cases, you will get a JSON file which contains the detailed performance data (threading, latency of each operator, etc). This file is a standard performance tracing file, and to view it in a user friendly way, you can open it by using chrome://tracing:
-* Open chrome browser
-* Type chrome://tracing in the address bar
-* Load the generated JSON file
+### I'm using the Python APIs on GPU and my model is slower than PyTorch.
+This is likely not an execution latency issue with ONNX Runtime. When using the GPU provider, inputs and outputs need to be copied from CPU to GPU and vice-versa. The current version of the ORT Python API makes this copy during execution, while PyTorch allows these to be set up on the GPU prior to execution. Work is in progress to add support of IOBinding in the Python API that allows copying of inputs to the GPU prior to calling Run.
