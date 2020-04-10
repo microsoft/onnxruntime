@@ -13,6 +13,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
+#include "core/common/safeint.h"
 #include "core/graph/graph.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
@@ -759,14 +760,19 @@ ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetCustomMetadataMapKeys,
                     _In_ const OrtModelMetadata* model_metadata,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char*** keys, _Out_ int64_t* num_keys) {
   API_IMPL_BEGIN
-  auto custom_metadata_map =
+  const auto& custom_metadata_map =
       reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->custom_metadata_map;
 
   auto count = custom_metadata_map.size();
   if (count == 0) {
     *keys = nullptr;
   } else {
-    *keys = reinterpret_cast<char**>(allocator->Alloc(allocator, count * sizeof(char*)));
+    // To Guard against overflow in the next step where we compute bytes to allocate
+    SafeInt<size_t> alloc_count(count);
+
+    // alloc_count * sizeof(...) will throw if there was an overflow which will be caught in API_IMPL_END
+    // and be returned to the user as a status
+    *keys = reinterpret_cast<char**>(allocator->Alloc(allocator, alloc_count * sizeof(char*)));
 
     auto map_iter = custom_metadata_map.cbegin();
     int64_t i = 0;
