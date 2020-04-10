@@ -11,9 +11,15 @@ import psutil
 import argparse
 import logging
 import torch
-from transformers import GPT2Model, GPT2Tokenizer
+from transformers import GPT2Model, GPT2LMHeadModel, GPT2Tokenizer
 
 logger = logging.getLogger('')
+
+# Map alias to a tuple of Model Class and pretrained model name
+MODEL_CLASSES = {
+    "gpt2": (GPT2Model, GPT2Tokenizer, "gpt2"),
+    "distilgpt2": (GPT2LMHeadModel, GPT2Tokenizer, "distilgpt2")
+}
 
 
 def dump_environment():
@@ -46,19 +52,17 @@ def pytorch_inference(model, input_ids, past=None, total_runs=100):
             start = time.time()
             outputs = model(
                 input_ids=input_ids,
-                past=past)  #attention_mask=inputs['attention_mask'], token_type_ids=inputs['token_type_ids'],
+                past=past)
             latency.append(time.time() - start)
 
     logger.info("PyTorch Inference time = {} ms".format(format(sum(latency) * 1000 / len(latency), '.2f')))
     return outputs
 
 
-def onnxruntime_inference(ort_session, input_ids, past=None, total_runs=100, enable_opt=True):
+def onnxruntime_inference(ort_session, input_ids, past=None, total_runs=100):
     # Use contiguous array as input might improve performance.
     # You can check the results from performance test tool to see whether you need it.
     ort_inputs = {'input_ids': numpy.ascontiguousarray(input_ids.cpu().numpy())}
-    if enable_opt:
-        ort_inputs['mask_index'] = numpy.ascontiguousarray((numpy.ones(1) * 5).astype(numpy.int32))
 
     if past is not None:
         for i, past_i in enumerate(past):
@@ -89,6 +93,8 @@ def inference(model, ort_session, input_ids, past=None, total_runs=100, verify_o
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
+
+    parser.add_argument('--model_type', required=True, type=str, choices=list(MODEL_CLASSES.keys()), help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
 
     parser.add_argument('--cache_dir', required=True, type=str, help="cache directory")
 
@@ -149,7 +155,8 @@ def main():
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    model_class, tokenizer_class, model_name_or_path = (GPT2Model, GPT2Tokenizer, 'gpt2')
+    (model_class, tokenizer_class, model_name_or_path) = MODEL_CLASSES[args.model_type]
+
     tokenizer = tokenizer_class.from_pretrained(model_name_or_path, cache_dir=cache_dir)
     model = model_class.from_pretrained(model_name_or_path, cache_dir=cache_dir)
     model.eval().cpu()
@@ -213,7 +220,7 @@ def main():
         bert_model.prune_graph(keep_output_names)
         onnx_model_path = os.path.join(output_dir, 'gpt2_past{}_out1.onnx'.format(int(enable_past_input)))
         bert_model.save_model_to_file(onnx_model_path)
-    
+
     if args.enable_optimization:
         from bert_model_optimization import optimize_model
         m = optimize_model(onnx_model_path,
@@ -243,7 +250,7 @@ def main():
     logger.info(f"Start inferencing onnx model: {onnx_model_path}")
     session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=['CPUExecutionProvider'])
 
-    ort_outputs = onnxruntime_inference(session, input_ids, past, args.total_runs, args.enable_optimization)
+    ort_outputs = onnxruntime_inference(session, input_ids, past, args.total_runs)
     if args.verify_outputs:
         logger.info('PyTorch and OnnxRuntime output 0 (last_state) are close:'.format(0),
                     numpy.allclose(ort_outputs[0], outputs[0].cpu(), rtol=1e-05, atol=1e-04))
