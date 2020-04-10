@@ -128,7 +128,7 @@ def runBertTrainingTest(gradient_accumulation_steps,
                 actual_loss, actual_all_finite = actual_loss
                 if not use_internel_loss_scale:
                     loss_scaler.update_loss_scale(actual_all_finite.item())
-                actual_all_finites = [*actual_all_finites, actual_all_finite.cpu().numpy().item(0)]
+                    actual_all_finites = [*actual_all_finites, actual_all_finite.cpu().numpy().item(0)]
 
             actual_losses = [*actual_losses, actual_loss.cpu().numpy().item(0)]
         else:
@@ -141,7 +141,8 @@ def runBertTrainingTest(gradient_accumulation_steps,
             eval_loss = model.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels, fetches=['loss'])
             eval_loss = eval_loss.cpu().numpy().item(0)
 
-    if use_mixed_precision:
+    # If using internal loss scale, all_finites are handled internally too.
+    if use_mixed_precision and not use_internel_loss_scale:
         return actual_losses, actual_all_finites, eval_loss
     else:
         return actual_losses, eval_loss
