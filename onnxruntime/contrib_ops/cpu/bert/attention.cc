@@ -186,19 +186,28 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   BufferUniquePtr scratch_buffer(scratch_data, BufferDeleter(allocator));
 
   {
-    void* scratch_broadcast_data = nullptr;
+    size_t mask_data_bytes = 0;
     if (mask_index != nullptr) {
-      scratch_broadcast_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * element_size);
-      BufferUniquePtr scratch_broadcast_buffer(scratch_broadcast_data, BufferDeleter(allocator));
-      memset(scratch_broadcast_data, 0, batch_size * sequence_length * element_size);
-      T* p_scratch_broadcast_current_data = reinterpret_cast<T*>(scratch_broadcast_data);
+      mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * element_size;
+    }
+
+    void* mask_data = nullptr;
+    if (mask_data_bytes > 0) {
+      mask_data = allocator->Alloc(mask_data_bytes);
+      memset(mask_data, 0, mask_data_bytes);
+    }
+    BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
+
+    if (mask_index != nullptr) {
+      T* p_mask = reinterpret_cast<T*>(mask_data);
       for (int b_i = 0; b_i < batch_size; b_i++) {
         // TODO: mask_index can be used in softmax to save some calculation.
-        int mask = mask_index->template Data<int32_t>()[b_i];
-        for (int m_i = mask; m_i < sequence_length; m_i++) {
-          p_scratch_broadcast_current_data[m_i] = static_cast<T>(-10000.0);
+        // Convert mask_index to mask (-10000 means out of range, which will be 0 after softmax): B => BxS
+        int valid_length = mask_index->template Data<int32_t>()[b_i];
+        for (int m_i = valid_length; m_i < sequence_length; m_i++) {
+          p_mask[m_i] = static_cast<T>(-10000.0);
         }
-        p_scratch_broadcast_current_data += sequence_length;
+        p_mask += sequence_length;
       }
     } else {
       memset(scratch_data, 0, scratch_data_bytes);
@@ -216,7 +225,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
         // broadcast masks (B) -> (B.N.)S.S
         if (mask_index != nullptr) {
-          const T* broadcast_data_src = reinterpret_cast<T*>(scratch_broadcast_data) + batch_index * sequence_length;
+          const T* broadcast_data_src = reinterpret_cast<T*>(mask_data) + batch_index * sequence_length;
           T* broadcast_data_dest = reinterpret_cast<T*>(scratch_data) + sequence_length * sequence_length * i;
           for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
             memcpy(broadcast_data_dest, broadcast_data_src, sequence_length * sizeof(T));
