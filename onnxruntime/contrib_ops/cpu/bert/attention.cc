@@ -81,7 +81,7 @@ Status AttentionBase::CheckInputs(const OpKernelContext* context) const {
   if (mask_index != nullptr) {
     // unidirectional (like GPT2) does not need mask input. Here we do not allowed the input for unidirectional.
     if (is_unidirectional_) {
-       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 3 (mask_index) is not allowed for unidirectional");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 3 (mask_index) is not allowed for unidirectional");
     }
 
     const auto mask_dims = mask_index->Shape().GetDims();
@@ -192,47 +192,44 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   BufferUniquePtr scratch_buffer(scratch_data, BufferDeleter(allocator));
 
   {
-    void* mask_data = nullptr;
+    size_t mask_data_bytes = 0;
     if (mask_index != nullptr) {
-      size_t mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * sequence_length * element_size;
-      mask_data = allocator->Alloc(mask_data_bytes);
-      BufferUniquePtr scratch_broadcast_buffer(mask_data, BufferDeleter(allocator));
-      memset(mask_data, 0, mask_data_bytes);
+      mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * sequence_length * element_size;
+    } else if (is_unidirectional_) {
+      mask_data_bytes = SafeInt<size_t>(sequence_length) * sequence_length * element_size;
+    }
 
-      T* p_current_mask = reinterpret_cast<T*>(mask_data);
+    void* mask_data = nullptr;
+    if (mask_data_bytes > 0) {
+      mask_data = allocator->Alloc(mask_data_bytes);
+      memset(mask_data, 0, mask_data_bytes);
+    }
+    BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
+
+    if (mask_index != nullptr) {
+      T* p_mask = reinterpret_cast<T*>(mask_data);
       for (int b_i = 0; b_i < batch_size; b_i++) {
         // TODO: mask_index can be used in softmax to save some calculation.
+        // Convert mask_index to mask (-10000 means out of range, which will be 0 after softmax): B => BxS
         int valid_length = mask_index->template Data<int32_t>()[b_i];
         for (int m_i = valid_length; m_i < sequence_length; m_i++) {
-          p_current_mask[m_i] = static_cast<T>(-10000.0);
+          p_mask[m_i] = static_cast<T>(-10000.0);
         }
 
-        // Broadcast mask from S to SxS
+        // Broadcast mask from BxS to BxSxS
         for (int s_i = 1; s_i < sequence_length; s_i++) {
-          memcpy(p_current_mask + s_i * sequence_length, p_current_mask, sequence_length * sizeof(T));
+          memcpy(p_mask + s_i * sequence_length, p_mask, sequence_length * sizeof(T));
         }
-        p_current_mask += sequence_length * sequence_length;
+        p_mask += sequence_length * sequence_length;
       }
-    }
-    else if (is_unidirectional_) {
-      size_t mask_data_bytes = SafeInt<size_t>(sequence_length) * sequence_length * element_size;
-      mask_data = allocator->Alloc(mask_data_bytes);
-      BufferUniquePtr scratch_broadcast_buffer(mask_data, BufferDeleter(allocator));
-      memset(mask_data, 0, mask_data_bytes);
-
-      T* p_current_mask = reinterpret_cast<T*>(mask_data);
-      for (int b_i = 0; b_i < batch_size; b_i++) {
-        for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
-          for (int m_i = s_i + 1; m_i < sequence_length; m_i++) {
-            p_current_mask[s_i * sequence_length + m_i] = static_cast<T>(-10000.0);
-          }
+    } else if (is_unidirectional_) {  // unidirectional mask
+      T* p_mask = reinterpret_cast<T*>(mask_data);
+      for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
+        for (int m_i = s_i + 1; m_i < sequence_length; m_i++) {
+          p_mask[s_i * sequence_length + m_i] = static_cast<T>(-10000.0);
         }
-        p_current_mask += sequence_length * sequence_length;
       }
-    }
-
-    if (nullptr == mask_data)
-    {
+    } else {  // no any mask
       memset(scratch_data, 0, scratch_data_bytes);
     }
 
@@ -308,7 +305,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         }
       }
     });
-  }
+  }  // end scope for mask_data_buffer
 
   // STEP.4: out_tmp(B, N, S, H) = P(B, N, S, S) x V(B, N, S, H)
   auto out_tmp_data =
