@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
-
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/platform/threadpool.h"
@@ -17,8 +15,8 @@ class Inverse final : public OpKernel {
   explicit Inverse(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* ctx) const override;
 
-private:
-  template<typename T>
+ private:
+  template <typename T>
   struct ComputeImpl;
 };
 
@@ -29,13 +27,13 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("T", BuildKernelDefConstraints<float, double, MLFloat16>()),
     Inverse);
 
-template<typename T>
+template <typename T>
 using MatrixT = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
 template <typename T>
 struct Inverse::ComputeImpl {
   void operator()(const Tensor* input, Tensor* output,
-    int64_t batch_num, int64_t rows, int64_t cols) const {
+                  int64_t batch_num, int64_t rows, int64_t cols) const {
     auto batch_offset = batch_num * rows * cols;
     const auto* input_data = input->Data<T>() + batch_offset;
     auto* output_data = output->MutableData<T>() + batch_offset;
@@ -61,9 +59,7 @@ struct Inverse::ComputeImpl<MLFloat16> {
   }
 };
 
-
 Status Inverse::Compute(OpKernelContext* ctx) const {
-
   const auto& input = ctx->Input<Tensor>(0);
   const auto elem_type = input->GetElementType();
   const auto& input_shape = input->Shape();
@@ -77,7 +73,7 @@ Status Inverse::Compute(OpKernelContext* ctx) const {
     num_batches = input_shape.SizeToDimension(num_dim - 2);
   }
 
- std::function<void(ptrdiff_t)> fn = [elem_type, input, output, rows, cols](ptrdiff_t batch_num) {
+  std::function<void(ptrdiff_t)> fn = [elem_type, input, output, rows, cols](ptrdiff_t batch_num) {
     utils::MLTypeCallDispatcher<ComputeImpl, float, double, MLFloat16> t_disp(elem_type);
     t_disp.Invoke(input, output, batch_num, rows, cols);
   };
