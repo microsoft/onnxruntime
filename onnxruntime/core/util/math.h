@@ -223,6 +223,14 @@ struct Im2colNd {
       T padding_value = 0);
 };
 
+inline size_t SafeCastToSizeT( int64_t i )
+{
+  if(i < 0 || static_cast<uint64_t>(i) > std::numeric_limits<size_t>::max())
+    ORT_THROW("Not safe to cast i to size_t", i);
+  else
+    return static_cast<size_t>(i);
+}
+
 template <typename T>
 struct Im2colNd<T, StorageOrder::NCHW> {
   void operator()(const T* data_img, const int64_t* im_shape, const int64_t* col_shape, int64_t /*img_size*/,
@@ -234,16 +242,18 @@ struct Im2colNd<T, StorageOrder::NCHW> {
       kernel_size *= kernel_shape[i];
     }
     int64_t channels_col = col_shape[0];
-    std::vector<int64_t> d_offset(N, 0);
-    std::vector<int64_t> d_iter(N, 0);
+    size_t n = SafeCastToSizeT(N);
+    std::vector<int64_t> d_offset(n, 0);
+    std::vector<int64_t> d_iter(n, 0);
     for (int64_t c_col = 0; c_col < channels_col; ++c_col) {
       // Loop over spatial axes in reverse order to compute a per-axis offset.
       int64_t offset = c_col;
       for (int64_t d_i = N - 1; d_i >= 0; --d_i) {
+        size_t d_i_size_t = SafeCastToSizeT(d_i);
         if (d_i < N - 1) {
-          offset /= kernel_shape[d_i + 1];
+          offset /= kernel_shape[d_i_size_t + 1];
         }
-        d_offset[d_i] = offset % kernel_shape[d_i];
+        d_offset[d_i_size_t] = offset % kernel_shape[d_i_size_t];
       }
       for (bool incremented = true; incremented;) {
         // Loop over spatial axes in forward order to compute the indices in the
@@ -251,7 +261,7 @@ struct Im2colNd<T, StorageOrder::NCHW> {
         int64_t index_col = c_col;
         int64_t index_im = c_col / kernel_size;
         bool is_padding = false;
-        for (int64_t d_i = 0; d_i < N; ++d_i) {
+        for (size_t d_i = 0; d_i < n; ++d_i) {
           int64_t d = d_iter[d_i];
           int64_t d_im = d * stride[d_i] - pad[d_i] + d_offset[d_i] * dilation[d_i];
           is_padding |= d_im < 0 || d_im >= im_shape[d_i + 1];
@@ -273,12 +283,13 @@ struct Im2colNd<T, StorageOrder::NCHW> {
         // like counting.
         incremented = false;
         for (int64_t d_i = N - 1; d_i >= 0; --d_i) {
-          int64_t d_max = col_shape[d_i + 1];
-          ORT_ENFORCE(d_iter[d_i] < d_max);
-          if (d_iter[d_i] == d_max - 1) {
-            d_iter[d_i] = 0;
+          size_t d_i_size_t = SafeCastToSizeT(d_i);
+          int64_t d_max = col_shape[d_i_size_t + 1];
+          ORT_ENFORCE(d_iter[d_i_size_t] < d_max);
+          if (d_iter[d_i_size_t] == d_max - 1) {
+            d_iter[d_i_size_t] = 0;
           } else {  // d_iter[d_i] < d_max - 1
-            ++d_iter[d_i];
+            ++d_iter[d_i_size_t];
             incremented = true;
             break;
           }
