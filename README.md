@@ -28,7 +28,6 @@ ONNX Runtime stays up to date with the ONNX standard and supports all operators 
   * [Builds and Packages](#Builds-and-Packages)
 * **[Usage](#usage)**
   * [Samples and Tutorials](./samples)
-  * [Frequently Asked Questions and Troubleshooting](./docs/FAQ.md)
   * [Getting ONNX Models](#getting-onnx-models)
   * [Deploying ONNX Runtime](#deploying-onnx-runtime)
   * [Data/Telemetry](#Data/Telemetry)
@@ -50,6 +49,8 @@ Using various graph optimizations and accelerators, ONNX Runtime can provide low
 
 ### Supported Accelerators
 The list of currently supported accelerators (termed [Execution Providers](./docs/execution_providers)) is below. Please see [BUILD.md](./BUILD.md) for build instructions. If you are interested in contributing a new execution provider, please see [this page](docs/AddingExecutionProvider.md).
+
+Please refer to [Roadmap](./docs/Roadmap.md#accelerators-and-execution-providers) for a list of upcoming accelerators. 
 
 #### CPU
 * Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*
@@ -95,9 +96,16 @@ The list of currently supported accelerators (termed [Execution Providers](./doc
 
 ## Builds and Packages
 
-Official builds are published for the default CPU Provider (Eigen + MLAS), as well as GPU with CUDA. Python packages can be found on PyPi, and C#/C/C++ packages on Nuget. Please view the table on [aka.ms/onnxruntime](https://aka.ms/onnxruntime) for instructions for different build combinations. 
+Official builds are available for:
+* Default CPU Provider (Eigen + MLAS)
+* GPU Provider - NVIDIA CUDA
+  * *note: If your deployment target is Windows, the [DirectML execution provider](./execution_providers/DirectML-ExecutionProvider.md) is recommended for optimal performance and compatibility with a broad set of GPUs. This will be an official package soon. In the meantime, see the build instructions at [BUILD.md](./../BUILD.md#directml).* 
 
-For additional build flavors and/or dockerfiles, please see [BUILD.md](BUILD.md). For production scenarios, it's strongly recommended to build only from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
+Python packages can be found on PyPi, and C#/C/C++ packages on Nuget. Please view the table on [aka.ms/onnxruntime](https://aka.ms/onnxruntime) for instructions for different build combinations. 
+
+For additional build flavors and/or dockerfiles, please carefully read through [BUILD.md](BUILD.md). If you encounter problems, please provide as much information as possible when filing an Issue. 
+
+For production scenarios, it's strongly recommended to build only from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
 
 #### PyPi (Python):
 *If using `pip` to download the Python binaries, run `pip install --upgrade pip` prior to downloading.*
