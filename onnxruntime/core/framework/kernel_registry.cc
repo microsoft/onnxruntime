@@ -171,7 +171,7 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
     // valid names (of types or parameters) at the time that kernels are registered.
     if (nullptr != actual_type) {
       bool is_type_compatible = std::any_of(allowed_types.begin(), allowed_types.end(),
-                                            [actual_type, &node, &error_str](const DataTypeImpl* expected_type) {
+                                            [actual_type](const DataTypeImpl* expected_type) {
                                               bool rc = expected_type->IsCompatible(*actual_type);  // for easier debugging
                                               return rc;
                                             });
