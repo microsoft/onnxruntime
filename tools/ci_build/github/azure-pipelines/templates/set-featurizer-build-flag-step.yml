@@ -1,0 +1,17 @@
+parameters:
+  is_featurizers_build: false
+
+steps:
+- task: PythonScript@0
+  displayName: "Set FeaturizerBuildFlag variable"
+  inputs:
+    scriptSource: inline
+    script: |-
+      import os
+
+      if "${{ parameters.is_featurizers_build }}".lower() == "true":
+        flags = "--use_featurizers --wheel_version=%sfeaturizer" % os.getenv("BUILD_BUILDNUMBER")
+      else:
+        flags = " "
+
+      print("##vso[task.setvariable variable=FeaturizerBuildFlag]%s" % flags)
