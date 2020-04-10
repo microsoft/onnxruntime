@@ -1,0 +1,45 @@
+{
+  "name": "onnxruntime",
+  "description": "Node.js binding of ONNXRuntime",
+  "version": "0.0.1",
+  "main": "./lib/index.js",
+  "types": "./types/index.d.ts",
+  "scripts": {
+    "prepare": "tsc",
+    "build": "tsc && node ./scripts/build",
+    "buildd": "tsc && node ./scripts/build --debug",
+    "rebuild": "tsc && node ./scripts/build --rebuild",
+    "rebuildd": "tsc && node ./scripts/build --debug --rebuild",
+    "test": "mocha ./test/test-main",
+    "prepublishOnly": "npm test",
+    "format": "clang-format --glob=\"{{lib,test,scripts}/**/*.ts,src/**/*.{cc,h}}\" --style=file -i"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fs-eire/onnxruntime-node.git"
+  },
+  "keywords": [
+    "ONNX Runtime"
+  ],
+  "author": "fs-eire",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/fs-extra": "^8.1.0",
+    "@types/mocha": "^7.0.2",
+    "@types/rimraf": "^3.0.0",
+    "clang-format": "^1.4.0",
+    "cmake-js": "^6.1.0",
+    "fs-extra": "^9.0.0",
+    "globby": "^11.0.0",
+    "mocha": "^7.1.1",
+    "node-addon-api": "^2.0.0",
+    "node-pre-gyp-github": "^1.4.3",
+    "onnx-proto": "^4.0.4",
+    "rimraf": "^3.0.2",
+    "typedoc": "^0.17.3",
+    "typescript": "^3.8.3"
+  },
+  "dependencies": {
+    "node-pre-gyp": "^0.14.0"
+  }
+}

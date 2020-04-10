@@ -1,0 +1,16 @@
+/.vscode/
+/bin/
+/build/
+/deps/
+/onnxruntime/
+/scripts/
+/src/
+/test/
+
+/lib/**/*.ts
+/lib/**/*.js.map
+
+/.clang-format
+/.gitmodules
+/CMakeLists.txt
+/tsconfig.json
