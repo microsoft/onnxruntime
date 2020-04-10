@@ -68,10 +68,10 @@ struct TernaryElementwisePreparation {
   const Tensor* a_tensor = nullptr;
   const Tensor* b_tensor = nullptr;
   const Tensor* c_tensor = nullptr;
-  size_t output_rank_or_simple_broadcast = 0;  // for no_broadcast cases, output_rank uses SimpleBroadcast enums
-  TArray<int64_t> a_padded_strides;            // for a shape == output shape, this is nullptr
-  TArray<int64_t> b_padded_strides;            // for b shape == output shape, this is nullptr
-  TArray<int64_t> c_padded_strides;            // for c shape == output shape, this is nullptr
+  size_t output_rank_or_simple_broadcast = 0;             // for no_broadcast cases, output_rank uses SimpleBroadcast enums
+  TArray<int64_t> a_padded_strides;  // for a shape == output shape, this is nullptr
+  TArray<int64_t> b_padded_strides;  // for b shape == output shape, this is nullptr
+  TArray<int64_t> c_padded_strides;  // for c shape == output shape, this is nullptr
   TArray<fast_divmod> fdm_output_strides;
 
   TernaryElementwisePreparation(const Tensor* a, const Tensor* b, const Tensor* c)
