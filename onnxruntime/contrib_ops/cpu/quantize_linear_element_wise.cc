@@ -3,6 +3,7 @@
 
 #include "quantize_linear_element_wise.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -39,21 +40,30 @@ Status QLinearBroadcastTwo(OpKernelContext& context, Input0Scalar input0scalar, 
 
 template <typename T>
 Status QLinearAdd<T>::Compute(OpKernelContext* context) const {
+  const int32_t qmax = std::numeric_limits<T>::max();
+  const int32_t qmin = ((-128 == (int)std::numeric_limits<T>::min()) ? -127 : (int)std::numeric_limits<T>::min());
   return QLinearBroadcastTwo<T>(
       *context,
       [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1, float A_scale, float B_scale, float C_scale, int A_zero_point, int B_zero_point, int C_zero_point) {
         float a_value = A_scale * (static_cast<int>(input0) - A_zero_point);
-        output = (((((input1.array().template cast<int>() - B_zero_point).template cast<float>() * B_scale) + a_value) / C_scale).round() - static_cast<float>(C_zero_point)).template cast<T>();
+        output = (((((input1.array().template cast<float>() - static_cast<float>(B_zero_point)) * B_scale) + a_value) / C_scale).round().template cast<int>() + C_zero_point)
+                  .max(qmin).min(qmax).template cast<T>();
       },
       [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1, float A_scale, float B_scale, float C_scale, int A_zero_point, int B_zero_point, int C_zero_point) {
         float b_value = B_scale * (static_cast<int>(input1) - B_zero_point);
-        output = (((((input0.array().template cast<int>() - A_zero_point).template cast<float>() * A_scale) + b_value) / C_scale).round() - static_cast<float>(C_zero_point)).template cast<T>();
+        output = (((((input0.array().template cast<float>() - static_cast<float>(A_zero_point)) * A_scale) + b_value) / C_scale).round().template cast<int>() + C_zero_point)
+                  .max(qmin).min(qmax).template cast<T>();
       },
       [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1, float A_scale, float B_scale, float C_scale, int A_zero_point, int B_zero_point, int C_zero_point) {
-        output = (((((input0.array().template cast<int>() - A_zero_point).template cast<float>() * A_scale) +
-                    ((input1.array().template cast<int>() - B_zero_point).template cast<float>() * B_scale)) / C_scale).round() - static_cast<float>(C_zero_point)).template cast<T>();
+        // output = (((((input0.array().template cast<float>() - static_cast<float>(A_zero_point)) * A_scale) +
+        //             ((input1.array().template cast<float>() - static_cast<float>(B_zero_point)) * B_scale)) / C_scale).round().template cast<int>() + C_zero_point)
+        //           .max(qmin).min(qmax).template cast<T>();
+        MlasQuantizeLinearAdd(input0.data(), A_scale, (T)A_zero_point,
+                              input1.data(), B_scale, (T)B_zero_point,
+                              C_scale, (T)C_zero_point, output.data(), output.outerStride());
       });
 }
+
 
 template <typename T>
 Status QLinearMul<T>::Compute(OpKernelContext* context) const {
@@ -61,17 +71,18 @@ Status QLinearMul<T>::Compute(OpKernelContext* context) const {
       *context,
       [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1, float A_scale, float B_scale, float C_scale, int A_zero_point, int B_zero_point, int C_zero_point) {
         float a_value_scaled_b_c = A_scale * (static_cast<int>(input0) - A_zero_point) * B_scale / C_scale;
-        output = (((input1.array().template cast<int>() - B_zero_point).template cast<float>() * a_value_scaled_b_c).round() - static_cast<float>(C_zero_point)).template cast<T>();
+        output = (((input1.array().template cast<int>() - B_zero_point).template cast<float>() * a_value_scaled_b_c).round() + static_cast<float>(C_zero_point)).template cast<T>();
       },
       [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1, float A_scale, float B_scale, float C_scale, int A_zero_point, int B_zero_point, int C_zero_point) {
         float b_value_scaled_a_c = B_scale * (static_cast<int>(input1) - B_zero_point) * A_scale / C_scale;
-        output = (((input0.array().template cast<int>() - A_zero_point).template cast<float>() * b_value_scaled_a_c).round() - static_cast<float>(C_zero_point)).template cast<T>();
+        output = (((input0.array().template cast<int>() - A_zero_point).template cast<float>() * b_value_scaled_a_c).round() + static_cast<float>(C_zero_point)).template cast<T>();
       },
       [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1, float A_scale, float B_scale, float C_scale, int A_zero_point, int B_zero_point, int C_zero_point) {
         output = (((((input0.array().template cast<int>() - A_zero_point).template cast<float>() * A_scale) *
-                    ((input1.array().template cast<int>() - B_zero_point).template cast<float>() * B_scale)) / C_scale).round() - static_cast<float>(C_zero_point)).template cast<T>();
+                    ((input1.array().template cast<int>() - B_zero_point).template cast<float>() * B_scale)) / C_scale).round() + static_cast<float>(C_zero_point)).template cast<T>();
       });
 }
+
 
 #define REG_QLINEAR_ELEMENTWISE_TYPED_KERNEL(op_name, version, data_type, KERNEL_CLASS) \
   ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(                                                    \

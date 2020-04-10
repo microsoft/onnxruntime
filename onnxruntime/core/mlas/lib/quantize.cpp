@@ -210,11 +210,162 @@ Return Value:
     }
 }
 
+MLAS_FORCEINLINE
+MLAS_FLOAT32X4
+MlasDequantizeLinearVector(
+    MLAS_INT32X4 IntVector,
+    MLAS_FLOAT32X4 ScaleVector,
+    MLAS_INT32X4 ZeroPointVector
+    )
+{
+    return MlasMultiplyFloat32x4(_mm_cvtepi32_ps(_mm_sub_epi32(IntVector, ZeroPointVector)), ScaleVector);
+}
+
+template<typename DataType>
+MLAS_INT32X4
+MlasQuantizeLinearUnpackBytes(
+    MLAS_INT32X4 IntegerVector
+    );
+
+template<>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasQuantizeLinearUnpackBytes<uint8_t>(
+    MLAS_INT32X4 IntegerVector
+    )
+{
+    IntegerVector = _mm_unpacklo_epi8(IntegerVector, IntegerVector);
+    IntegerVector = _mm_unpacklo_epi16(IntegerVector, IntegerVector);
+    IntegerVector = _mm_srli_epi32(IntegerVector, 24);
+    return IntegerVector;
+}
+
+template<>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasQuantizeLinearUnpackBytes<int8_t>(
+    MLAS_INT32X4 IntegerVector
+    )
+{
+    IntegerVector = _mm_unpacklo_epi8(IntegerVector, IntegerVector);
+    IntegerVector = _mm_unpacklo_epi16(IntegerVector, IntegerVector);
+    IntegerVector = _mm_srai_epi32(IntegerVector, 24);
+    return IntegerVector;
+}
+
+template<typename DataType, int32_t MinimumValue, int32_t MaximumValue>
+MLAS_FORCEINLINE
+void
+MlasQuantizeLinearAddKernel(
+    const DataType* InputA,
+    float ScaleA,
+    DataType ZeroPointA,
+    const DataType* InputB,
+    float ScaleB,
+    DataType ZeroPointB,
+    float ScaleC,
+    DataType ZeroPointC,
+    DataType* OutputC,
+    size_t N
+    )
+{
+    const auto ScaleVectorA = MlasBroadcastFloat32x4(ScaleA);
+    const auto ScaleVectorB = MlasBroadcastFloat32x4(ScaleB);
+    const auto ScaleVectorC = MlasBroadcastFloat32x4(ScaleC);
+    const auto ZeroPointVectorA = MlasBroadcastInt32x4((int32_t)ZeroPointA);
+    const auto ZeroPointVectorB = MlasBroadcastInt32x4((int32_t)ZeroPointB);
+    const auto ZeroPointVectorC = MlasBroadcastInt32x4((int32_t)ZeroPointC);
+    const auto MinimumValueVectorC = MlasBroadcastFloat32x4(float(MinimumValue - ZeroPointC));
+    const auto MaximumValueVectorC = MlasBroadcastFloat32x4(float(MaximumValue - ZeroPointC));
+
+    while (N >= 4) {
+        auto IntegerVectorA = MlasQuantizeLinearUnpackBytes<DataType>(MlasBroadcastInt32x4(*((const int32_t*)InputA)));
+        auto IntegerVectorB = MlasQuantizeLinearUnpackBytes<DataType>(MlasBroadcastInt32x4(*((const int32_t*)InputB)));
+        auto FloatVectorC = MlasAddFloat32x4(
+                MlasDequantizeLinearVector(IntegerVectorA, ScaleVectorA, ZeroPointVectorA),
+                MlasDequantizeLinearVector(IntegerVectorB, ScaleVectorB, ZeroPointVectorB));
+        auto IntegerVectorC = MlasQuantizeLinearVector(FloatVectorC, ScaleVectorC,
+                MinimumValueVectorC, MaximumValueVectorC, ZeroPointVectorC);
+        IntegerVectorC = MlasQuantizeLinearPackBytes<DataType>(IntegerVectorC);
+
+        *((int32_t*)OutputC) = _mm_cvtsi128_si32(IntegerVectorC);
+
+        InputA += 4;
+        InputB += 4;
+        OutputC += 4;
+        N -= 4;
+    }
+
+    if (N > 0) {
+        auto IntegerVectorA = MlasQuantizeLinearUnpackBytes<DataType>((MLAS_INT32X4)_mm_load_ss((const float*)InputA));
+        auto IntegerVectorB = MlasQuantizeLinearUnpackBytes<DataType>((MLAS_INT32X4)_mm_load_ss((const float*)InputB));
+        auto FloatVectorC = MlasAddFloat32x4(
+                MlasDequantizeLinearVector(IntegerVectorA, ScaleVectorA, ZeroPointVectorA),
+                MlasDequantizeLinearVector(IntegerVectorB, ScaleVectorB, ZeroPointVectorB));
+        auto IntegerVectorC = MlasQuantizeLinearVector(FloatVectorC, ScaleVectorC,
+                MinimumValueVectorC, MaximumValueVectorC, ZeroPointVectorC);
+        IntegerVectorC = MlasQuantizeLinearPackBytes<DataType>(IntegerVectorC);
+        uint32_t PackedValueC = (uint32_t)_mm_cvtsi128_si32(IntegerVectorC);
+        for (size_t n = 0; n < N; ++n) {
+            *((uint8_t*)OutputC + n) = (uint8_t)PackedValueC;
+            PackedValueC >>= 8;
+        }
+    }
+}
+
 #else
 
 //
 // QuantizeLinear implementation using the C++ runtime.
 //
+template<typename OutputType, int32_t MinimumValue, int32_t MaximumValue>
+MLAS_FORCEINLINE
+void
+MlasQuantizeLinearKernel(
+    const float* Input,
+    OutputType* Output,
+    size_t N,
+    float Scale,
+    int32_t ZeroPoint
+    )
+{
+    for (size_t n = 0; n < N; n++) {
+
+        float FloatValue = std::nearbyintf(Input[n] / Scale) + float(ZeroPoint);
+        FloatValue = std::max(FloatValue, float(MinimumValue));
+        FloatValue = std::min(FloatValue, float(MaximumValue));
+        Output[n] = (OutputType)(int32_t)FloatValue;
+    }
+}
+
+
+template<typename DataType, int32_t MinimumValue, int32_t MaximumValue>
+MLAS_FORCEINLINE
+void
+MlasQuantizeLinearAddKernel(
+    const DataType* InputA,
+    float ScaleA,
+    DataType ZeroPointA,
+    const DataType* InputB,
+    float ScaleB,
+    DataType ZeroPointB,
+    float ScaleC,
+    DataType ZeroPointC,
+    DataType* OutputC,
+    size_t N
+    )
+{
+    for (size_t n = 0; n < N; n++) {
+        float ValueA = (float(InputA[n]) - float(ZeroPointA)) * ScaleA;
+        float ValueB = (float(InputB[n]) - float(ZeroPointB)) * ScaleB;
+        int32_t IntValueC = (int32_t)std::nearbyintf((ValueA + ValueB) / ScaleC) + int32_t(ZeroPointC);
+        IntValueC = std::max(IntValueC, MinimumValue);
+        IntValueC = std::min(IntValueC, MaximumValue);
+        Output[n] = (DataType)IntValueC;
+    }
+}
+
+#endif
 
 template<typename OutputType>
 void
@@ -286,6 +437,45 @@ MlasQuantizeLinear<uint8_t>(
     float Scale,
     uint8_t ZeroPoint
     );
+
+void
+MLASCALL
+MlasQuantizeLinearAdd(
+    const uint8_t* InputA,
+    float ScaleA,
+    uint8_t ZeroPointA,
+    const uint8_t* InputB,
+    float ScaleB,
+    uint8_t ZeroPointB,
+    float ScaleC,
+    uint8_t ZeroPointC,
+    uint8_t* OutputC,
+    size_t N
+    )
+{
+    MlasQuantizeLinearAddKernel<uint8_t, 0, 255>(
+        InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
+}
+
+void
+MLASCALL
+MlasQuantizeLinearAdd(
+    const int8_t* InputA,
+    float ScaleA,
+    int8_t ZeroPointA,
+    const int8_t* InputB,
+    float ScaleB,
+    int8_t ZeroPointB,
+    float ScaleC,
+    int8_t ZeroPointC,
+    int8_t* OutputC,
+    size_t N
+    )
+{
+    MlasQuantizeLinearAddKernel<int8_t, -127, 127>(
+        InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
+}
+
 
 #if defined(MLAS_SSE2_INTRINSICS)
 

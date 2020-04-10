@@ -442,3 +442,33 @@ MlasRequantizeOutput(
     float Scale,
     uint8_t ZeroPoint
     );
+
+void
+MLASCALL
+MlasQuantizeLinearAdd(
+    const uint8_t* InputA,
+    float ScaleA,
+    uint8_t ZeroPointA,
+    const uint8_t* InputB,
+    float ScaleB,
+    uint8_t ZeroPointB,
+    float ScaleC,
+    uint8_t ZeroPointC,
+    uint8_t* OutputC,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasQuantizeLinearAdd(
+    const int8_t* InputA,
+    float ScaleA,
+    int8_t ZeroPointA,
+    const int8_t* InputB,
+    float ScaleB,
+    int8_t ZeroPointB,
+    float ScaleC,
+    int8_t ZeroPointC,
+    int8_t* OutputC,
+    size_t N
+    );
