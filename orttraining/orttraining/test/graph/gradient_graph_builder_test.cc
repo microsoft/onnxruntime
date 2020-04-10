@@ -554,7 +554,7 @@ class PipelineSplitter {
 
     for (const auto& n : main_gp.node()) {
       // check which sub_model the node should be in
-      const size_t sub_id = [&] {
+      const size_t sub_id = [&]() {
         for (size_t i = 0; i < num_subs; ++i) {
           const auto& cut = cuts[i];
           if (std::count(cut.fw.nodes.cbegin(), cut.fw.nodes.cend(), n.output()[0])) {
