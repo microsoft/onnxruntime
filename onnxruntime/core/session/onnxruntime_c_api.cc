@@ -755,6 +755,32 @@ ORT_API_STATUS_IMPL(OrtApis::ModelMetadataLookupCustomMetadataMap,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetCustomMetadataMapKeys,
+                    _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char*** keys, _Out_ int64_t* num_keys) {
+  API_IMPL_BEGIN
+  auto custom_metadata_map =
+      reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->custom_metadata_map;
+
+  auto count = custom_metadata_map.size();
+  if (count == 0) {
+    *keys = nullptr;
+  } else {
+    *keys = reinterpret_cast<char**>(allocator->Alloc(allocator, count * sizeof(char*)));
+
+    auto map_iter = custom_metadata_map.cbegin();
+    int64_t i = 0;
+    while (map_iter != custom_metadata_map.cend()) {
+      *keys[i++] = StrDup(map_iter->first, allocator);
+      ++map_iter;
+    }
+  }
+
+  *num_keys = static_cast<int64_t>(count);
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetVersion,
                     _In_ const OrtModelMetadata* model_metadata,
                     _Out_ int64_t* value) {
@@ -1515,7 +1541,8 @@ static constexpr OrtApi ort_api_1_to_3 = {
     &OrtApis::CreateEnvWithGlobalThreadPools,
     &OrtApis::DisablePerSessionThreads,
     &OrtApis::CreateThreadingOptions,
-    &OrtApis::ReleaseThreadingOptions};
+    &OrtApis::ReleaseThreadingOptions,
+    &OrtApis::ModelMetadataGetCustomMetadataMapKeys};
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
 // If this assert hits, read the above 'Rules on how to add a new Ort API version'
