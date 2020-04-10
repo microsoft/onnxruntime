@@ -767,7 +767,7 @@ ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetCustomMetadataMapKeys,
   if (count == 0) {
     *keys = nullptr;
   } else {
-    // To Guard against overflow in the next step where we compute bytes to allocate
+    // To guard against overflow in the next step where we compute bytes to allocate
     SafeInt<size_t> alloc_count(count);
 
     // alloc_count * sizeof(...) will throw if there was an overflow which will be caught in API_IMPL_END
