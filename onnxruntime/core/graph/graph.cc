@@ -2530,7 +2530,9 @@ Status Graph::SetGraphInputsOutputs() {
     for (auto& graph_value_info : graph_proto_->value_info()) {
       auto& name = graph_value_info.name();
       const auto* node_arg = GetNodeArg(name);
-      value_info_.push_back(node_arg);
+      if (node_arg != nullptr) {
+        value_info_.push_back(node_arg);
+      }
     }
 
   } else {
