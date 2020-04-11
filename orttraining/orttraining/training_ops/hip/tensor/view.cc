@@ -29,8 +29,8 @@ std::vector<int> GenerateInputMemoryType() {
 
 ONNX_OPERATOR_KERNEL_EX(
     View,
-    kOnnxDomain,
-    9,
+    kMSDomain,
+    1,
     kHipExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
