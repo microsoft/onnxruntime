@@ -33,15 +33,21 @@
 #endif
 #endif
 
-#include "core/session/onnxruntime_cxx_api.h"
+#include <iostream>
+
 #include "gtest/gtest.h"
+
+#include "core/session/onnxruntime_cxx_api.h"
 #include "test/test_environment.h"
+#include "test/util/include/test_random_seed.h"
 
 std::unique_ptr<Ort::Env> ort_env;
 
 int main(int argc, char** argv) {
   int status = 0;
   try {
+    ::testing::AddGlobalTestEnvironment(
+        new onnxruntime::test::TestRandomSeedSetterEnvironment());
     ::testing::InitGoogleTest(&argc, argv);
     ort_env.reset(new Ort::Env(ORT_LOGGING_LEVEL_WARNING, "Default"));
     status = RUN_ALL_TESTS();
