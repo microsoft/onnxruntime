@@ -196,6 +196,9 @@ def optimize_model(input,
             f"Model producer not matched: Expect {producer},  Got {model.producer_name} {model.producer_version}. Please specify correct --model_type parameter."
         )
 
+    if optimization_options is None:
+        optimization_options = BertOptimizationOptions(model_type)
+
     bert_model = optimizer_class(model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only)
     bert_model.optimize(optimization_options)
 

@@ -139,6 +139,22 @@ def setup_logger(verbose=True):
 
     logger.setLevel(logging_level)
 
+def remove_past_outputs(export_model_path):
+    from onnx import ModelProto
+    from OnnxModel import OnnxModel
+
+    model = ModelProto()
+    with open(export_model_path, "rb") as f:
+        model.ParseFromString(f.read())
+    bert_model = OnnxModel(model)
+
+    # remove past state outputs and only keep the first output.
+    keep_output_names = [bert_model.model.graph.output[0].name]
+    logger.info(f"Prune graph to keep the first output and drop past state outputs:{keep_output_names}")
+    bert_model.prune_graph(keep_output_names)
+    onnx_model_path = os.path.join(output_dir, 'gpt2_past{}_out1.onnx'.format(int(enable_past_input)))
+    bert_model.save_model_to_file(onnx_model_path)
+    return onnx_model_path
 
 def main():
     args = parse_arguments()
@@ -205,21 +221,8 @@ def main():
     # setup environment variables before importing onnxruntime.
     setup_environment(args.use_openmp)
     import onnxruntime
-    from onnx import ModelProto
-    from OnnxModel import OnnxModel
 
-    model = ModelProto()
-    with open(export_model_path, "rb") as f:
-        model.ParseFromString(f.read())
-    bert_model = OnnxModel(model)
-
-    onnx_model_path = export_model_path
-    if not enable_past_input:
-        keep_output_names = [bert_model.model.graph.output[0].name] # remove past state outputs which is not needed.
-        logger.info(f"Prune graph to keep the first output and drop past state outputs:{keep_output_names}")
-        bert_model.prune_graph(keep_output_names)
-        onnx_model_path = os.path.join(output_dir, 'gpt2_past{}_out1.onnx'.format(int(enable_past_input)))
-        bert_model.save_model_to_file(onnx_model_path)
+    onnx_model_path = export_model_path if enable_past_input else remove_past_outputs(export_model_path)
 
     if args.enable_optimization:
         from bert_model_optimization import optimize_model
