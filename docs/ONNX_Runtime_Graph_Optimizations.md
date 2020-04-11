@@ -9,7 +9,7 @@ Below we provide details on the optimization levels, the online/offline mode, an
 ## Graph Optimization Levels
 
 Graph optimizations are divided in three levels:
-* Basic
+* Basic   
 * Extended
 * Layout Optimizations
 

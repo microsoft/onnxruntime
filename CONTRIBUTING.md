@@ -1,4 +1,4 @@
-# Contributing
+﻿# Contributing
 
 We're always looking for your help to fix bugs and improve the product. Create a pull request and we'll be happy to take a look.
 Start by reading the [Engineering Design](docs/HighLevelDesign.md). You can find the doxygen generated documentation [here](https://microsoft.github.io/onnxruntime/).
@@ -14,7 +14,7 @@ Please search the [issue tracker](https://github.com/microsoft/onnxruntime/issue
 1. **Create Issue**  
 To propose a new feature or API please start by filing a new issue in the [issue tracker](https://github.com/microsoft/onnxruntime/issues).  
 Include as much detail as you have. It's fine if it's not a complete design: just a summary and rationale is a good starting point.
-
+   
 2. **Discussion**  
 We'll keep the issue open for community discussion until it has been resolved or is deemed no longer relevant.
 Note that if an issue isn't a high priority or has many open questions then it might stay open for a long time.
