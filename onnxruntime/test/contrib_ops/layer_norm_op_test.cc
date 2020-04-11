@@ -244,7 +244,7 @@ void LayerNormOpTester::ComputeWithHIP(std::vector<MLValue>& hip_fetches) {
   run_options.run_log_verbosity_level = 1;
 
   auto hip_execution_provider = DefaultHipExecutionProvider();
-  InferenceSession hip_session_object{so};
+  InferenceSession hip_session_object{so, GetEnvironment()};
   EXPECT_TRUE(hip_session_object.RegisterExecutionProvider(std::move(hip_execution_provider)).IsOK());
 
   std::string s;

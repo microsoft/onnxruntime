@@ -734,7 +734,9 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
     // Remove it if it's not needed.
     if (node.ContainsSubgraph()) {
       const auto ep = node.GetExecutionProviderType();
-      if (ep != kCpuExecutionProvider && ep != kCudaExecutionProvider) {
+      if (ep != kCpuExecutionProvider &&
+          ep != kCudaExecutionProvider &&
+          ep != kHipExecutionProvider) {
         session_state.RemoveSubgraphSessionState(node.Index());
         continue;
       }

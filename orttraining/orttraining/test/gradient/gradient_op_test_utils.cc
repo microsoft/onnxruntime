@@ -128,6 +128,8 @@ void GradientOpTester::Run(
         execution_provider = DefaultNupharExecutionProvider();
       else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
         execution_provider = DefaultTensorrtExecutionProvider();
+      else if (provider_type == onnxruntime::kHipExecutionProvider)
+        execution_provider = DefaultHipExecutionProvider();
       // skip if execution provider is disabled
       if (execution_provider == nullptr)
         continue;

@@ -1,5 +1,21 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+#include "hip/hip_runtime.h"
+/**
+* Copyright (c) 2016-present, Facebook, Inc.
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
+
+/* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/hip/cu_inc/common.cuh"
 #include "orttraining/training_ops/hip/nn/dropout_impl.h"
@@ -22,7 +38,8 @@ __global__ void DropoutKernel(
     const T* X_data,
     T* Y_data,
     bool* mask_data) {
-  const T scale = T(1.0f / (1.0f - ratio));
+  const float p = 1.0f - ratio;
+  const T scale = T(1.0f / p);
 
   HIP_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
   HIP_LONG step_size = gridDim.x * blockDim.x * UNROLL;
@@ -43,7 +60,7 @@ __global__ void DropoutKernel(
     for (HIP_LONG i = 0; i < UNROLL; i++) {
       HIP_LONG li = id + gridDim.x * blockDim.x * i;
       if (li < N) {
-        mask_data[li] = (&rand.x)[i] > ratio;
+        mask_data[li] = (&rand.x)[i] < p;
         Y_data[li] = X_data[li] * T(mask_data[li]) * scale;
       }
     }
@@ -75,13 +92,13 @@ void DropoutKernelImpl(
     const uint64_t counter_offset = static_cast<uint64_t>(((N - 1) / (block_size * grid_size * UNROLL) + 1) * UNROLL);
     auto seeds = generator.GetPhiloxSeeds(counter_offset);
 
-    hipLaunchKernelGGL(DropoutKernel<T>, dim3(grid_size), dim3(block_size), 0, 0, N, ratio, seeds, X_data, Y_data, mask_data);
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(DropoutKernel<T>), dim3(grid_size), dim3(block_size), 0, 0, N, ratio, seeds, X_data, Y_data, mask_data);
   }
 }
 
 #define SPECIALIZED_DROPOUT_IMPL(T) \
   template void DropoutKernelImpl(  \
-      const hipDeviceProp_t& prop,  \
+      const hipDeviceProp_t& prop,   \
       const int64_t N,              \
       const float ratio,            \
       DropoutGenerator& generator,  \
@@ -118,7 +135,7 @@ void DropoutGradientKernelImpl(
   } else {
     const float scale = 1.f / (1.f - ratio);
     const int blocksPerGrid = (N + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock;
-    hipLaunchKernelGGL(DropoutGradientKernel<T>, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, N, dY_data, mask_data, T(scale), dX_data);
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(DropoutGradientKernel<T>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, N, dY_data, mask_data, T(scale), dX_data);
   }
 }
 

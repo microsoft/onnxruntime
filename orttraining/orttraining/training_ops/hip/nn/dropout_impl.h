@@ -12,6 +12,8 @@ class DropoutGenerator {
  public:
   DropoutGenerator() : seed_(0), offset_(0) {}
 
+  DropoutGenerator(uint64_t seed) : seed_(seed), offset_(0) {}
+
   void SetSeed(uint64_t seed) {
     seed_ = seed;
   }

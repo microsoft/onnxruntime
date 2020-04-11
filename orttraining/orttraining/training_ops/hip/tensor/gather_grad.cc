@@ -11,8 +11,8 @@ namespace hip {
 
 ONNX_OPERATOR_KERNEL_EX(
     GatherGrad,
-    kOnnxDomain,
-    9,
+    kMSDomain,
+    1,
     kHipExecutionProvider,
     KernelDefBuilder()
         .InputMemoryType<OrtMemTypeCPUInput>(0)

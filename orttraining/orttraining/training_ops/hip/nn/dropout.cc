@@ -1,45 +1,60 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/common.h"
-
+#include "core/framework/random_seed.h"
 #include "orttraining/training_ops/hip/nn/dropout.h"
+
+#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace hip {
 
-#define REGISTER_KERNEL_TYPED(T)                                      \
+#define REGISTER_KERNEL_TYPED(OpName, Domain, VER, T1, T2, MemIndex)  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
-      TrainableDropout,                                               \
-      kOnnxDomain,                                                    \
-      9,                                                              \
-      T,                                                              \
+      OpName,                                                         \
+      Domain,                                                         \
+      VER,                                                            \
+      T1##_##T2,                                                      \
       kHipExecutionProvider,                                         \
       KernelDefBuilder()                                              \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())     \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T2>())    \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())  \
-          .InputMemoryType<OrtMemTypeCPUInput>(1),                    \
-      TrainableDropout<T>);
+          .InputMemoryType<OrtMemTypeCPUInput>(MemIndex),             \
+      OpName<T1, T2>);
 
-REGISTER_KERNEL_TYPED(MLFloat16)
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(double)
+// REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, MLFloat16, 1)
+// REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, float, 1)
+// REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, double, 1)
+// REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, MLFloat16, 1)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, float, 1)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, double, 1)
+// REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, MLFloat16, 1)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, float, 1)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, double, 1)
 
-template <typename T>
-Status TrainableDropout<T>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToHipType<T>::MappedType HipT;
+
+static DropoutGenerator& GetGenerator() {
+  // This generator is shared by all Dropouts.
+  static DropoutGenerator generator(static_cast<uint64_t>(utils::GetStaticRandomSeed()));
+  return generator;
+}
+
+template <typename T1, typename T2>
+Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
+  typedef typename ToHipType<T1>::MappedType HipT;
+  typedef typename ToHipType<T2>::MappedType HipT2;
 
   //Get X_data
   const Tensor* X = context->Input<Tensor>(0);
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "X Input is not available.");
   const TensorShape& shape = X->Shape();
-  auto X_data = reinterpret_cast<const HipT*>(X->template Data<T>());
+  auto X_data = reinterpret_cast<const HipT*>(X->template Data<T1>());
   const int64_t N = shape.Size();
 
   //Get Y_data
   auto Y = context->Output(0, shape);
-  auto Y_data = reinterpret_cast<HipT*>(Y->template MutableData<T>());
+  auto Y_data = reinterpret_cast<HipT*>(Y->template MutableData<T1>());
 
   //Get mask_data
   auto mask = context->Output(1, shape);
@@ -52,55 +67,59 @@ Status TrainableDropout<T>::ComputeInternal(OpKernelContext* context) const {
   }();
 
   //Get the ratio_data
-  float ratio_data = default_ratio_;
+  float ratio_data;
   auto ratio = context->Input<Tensor>(1);
+
+  static_assert(std::is_same<T2, MLFloat16>::value || std::is_same<T2, float>::value || std::is_same<T2, double>::value,
+                "T2 must be float16 or float or double");
+
   if (ratio) {
-    ratio_data = *(ratio->template Data<float>());
+    ratio_data = static_cast<float>(*reinterpret_cast<const HipT2*>(ratio->template Data<T2>()));
+  } else {
+    ratio_data = default_ratio_;
   }
   ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
 
-  DropoutKernelImpl(GetDeviceProp(), N, ratio_data, generator_, X_data, Y_data, mask_data);
+  DropoutKernelImpl(GetDeviceProp(), N, ratio_data, generator_ != nullptr ? *generator_.get() : GetGenerator(), X_data, Y_data, mask_data);
 
   return Status::OK();
 }
 
-#define REGISTER_GRADIENT_KERNEL_TYPED(T)                             \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
-      TrainableDropoutGrad,                                           \
-      kMSDomain,                                                    \
-      1,                                                              \
-      T,                                                              \
-      kHipExecutionProvider,                                         \
-      KernelDefBuilder()                                              \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())  \
-          .InputMemoryType<OrtMemTypeCPUInput>(2),                    \
-      TrainableDropoutGrad<T>);
+// REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, MLFloat16, 2)
+// REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, float, 2)
+// REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, double, 2)
+// REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, MLFloat16, 2)
+REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, float, 2)
+REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, double, 2)
+// REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, double, MLFloat16, 2)
+REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, double, float, 2)
+REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, double, double, 2)
 
-REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16)
-REGISTER_GRADIENT_KERNEL_TYPED(float)
-REGISTER_GRADIENT_KERNEL_TYPED(double)
-
-template <typename T>
-Status TrainableDropoutGrad<T>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToHipType<T>::MappedType HipT;
+template <typename T1, typename T2>
+Status DropoutGrad<T1, T2>::ComputeInternal(OpKernelContext* context) const {
+  typedef typename ToHipType<T1>::MappedType HipT;
 
   auto dY = context->Input<Tensor>(0);
   const TensorShape& shape = dY->Shape();
-  auto dY_data = reinterpret_cast<const HipT*>(dY->template Data<T>());
+  auto dY_data = reinterpret_cast<const HipT*>(dY->template Data<T1>());
   const int64_t N = shape.Size();
 
   auto mask = context->Input<Tensor>(1);
   ORT_ENFORCE(mask->Shape().Size() == N);
 
   auto dX = context->Output(0, shape);
-  auto dX_data = reinterpret_cast<HipT*>(dX->template MutableData<T>());
+  auto dX_data = reinterpret_cast<HipT*>(dX->template MutableData<T1>());
 
-  float ratio_data = default_ratio_;
+  float ratio_data;
   auto ratio = context->Input<Tensor>(2);
+
+  static_assert(std::is_same<T2, MLFloat16>::value || std::is_same<T2, float>::value || std::is_same<T2, double>::value,
+                "T2 must be float16 or float or double");
+
   if (ratio) {
-    ratio_data = *(ratio->template Data<float>());
+    ratio_data = static_cast<float>(*reinterpret_cast<const T2*>(ratio->template Data<T2>()));
+  } else {
+    ratio_data = default_ratio_;
   }
   ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
 

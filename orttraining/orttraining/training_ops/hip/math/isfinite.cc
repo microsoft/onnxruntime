@@ -11,8 +11,8 @@ namespace hip {
 #define REGISTER_ISFINITE_KERNEL_TYPED(T)                             \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
       IsFinite,                                                       \
-      kOnnxDomain,                                                    \
-      9,                                                              \
+      kMSDomain,                                                    \
+      1,                                                              \
       T,                                                              \
       kHipExecutionProvider,                                         \
       KernelDefBuilder()                                              \
@@ -39,8 +39,8 @@ REGISTER_ISFINITE_KERNEL_TYPED(double)
 #define REGISTER_ISALLFINITE_KERNEL_TYPED(T)                         \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
       IsAllFinite,                                                   \
-      kOnnxDomain,                                                   \
-      9,                                                             \
+      kMSDomain,                                                   \
+      1,                                                             \
       T,                                                             \
       kHipExecutionProvider,                                        \
       KernelDefBuilder()                                             \
