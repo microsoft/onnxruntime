@@ -224,14 +224,6 @@ struct Im2colNd {
       T padding_value = 0);
 };
 
-inline size_t SafeCastToSizeT( int64_t i )
-{
-  if(i < 0 || static_cast<uint64_t>(i) > std::numeric_limits<size_t>::max())
-    ORT_THROW("Not safe to cast i to size_t", i);
-  else
-    return static_cast<size_t>(i);
-}
-
 template <typename T>
 struct Im2colNd<T, StorageOrder::NCHW> {
   void operator()(const T* data_img, const int64_t* im_shape, const int64_t* col_shape, int64_t /*img_size*/,

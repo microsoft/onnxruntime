@@ -81,7 +81,7 @@ void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE
                              float* C, ThreadPool* threadpool) {
   int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
-  MlasGemm(TransA, TransB, SafeCastToSizeT(M), SafeCastToSizeT(N), SafeCastToSizeT(K), alpha, A, lda, B, ldb, beta, C, SafeCastToSizeT(N), threadpool);
+  MlasGemm(TransA, TransB, SafeInt<size_t>(M), SafeInt<size_t>(N), SafeInt<size_t>(K), alpha, A, lda, B, ldb, beta, C, SafeInt<size_t>(N), threadpool);
 }
 
 #if defined(_M_AMD64) || defined(__x86_64__)
@@ -274,7 +274,7 @@ SPECIALIZED_ROWWISEMAX(float)
 #define SPECIALIZED_SET(T)                                                       \
   template <>                                                                    \
   void Set<T, CPUMathUtil>(const int64_t N, const T alpha, T* Y, CPUMathUtil*) { \
-    size_t n = SafeCastToSizeT(N);                                                               \
+    SafeInt<size_t> n(N);                                                               \
     if (alpha == (T)0) {                                                         \
       memset(Y, 0, n * sizeof(T));                                               \
     } else {                                                                     \
@@ -372,7 +372,7 @@ void Im2col<float, StorageOrder::NHWC>::operator()(const float* data_im, int64_t
         for (int64_t iw = w_pad; iw < w_pad + dkernel_w; iw += dilation_w) {
           if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
             memcpy(data_col, data_im + (ih * width + iw) * channels,
-                   sizeof(float) * SafeCastToSizeT(channels));
+                   sizeof(float) * SafeInt<size_t>(channels));
           } else {
             std::fill_n(data_col, channels, padding_value);
           }
