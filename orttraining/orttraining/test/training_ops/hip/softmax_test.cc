@@ -41,7 +41,7 @@ static void TestSoftmaxGrad(const std::vector<int64_t>& dY_dims,
                             const std::vector<int64_t>& dX_dims,
                             double per_sample_tolerance = 1e-4,
                             double relative_per_sample_tolerance = 1e-4) {
-  CompareOpTester test("SoftmaxGrad");
+  CompareOpTester test("SoftmaxGrad", 1, kMSDomain);
 
   // create rand inputs
   RandomValueGenerator random{};

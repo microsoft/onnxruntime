@@ -16,15 +16,15 @@ class ZeroGradient final : public HipKernel {
 };
 
 template <typename T, typename T_GRAD>
-class AccumulateGradient final : public HipKernel {
+class InPlaceAccumulator final : public HipKernel {
  public:
-  AccumulateGradient(const OpKernelInfo& info) : HipKernel(info) {}
+  InPlaceAccumulator(const OpKernelInfo& info) : HipKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
 // Implementation can be found in hip file, optimizers_impl.cu
 template <typename T, typename T_GRAD>
-void AccumulateGradientImpl(
+void InPlaceAccumulatorImpl(
     const T* gradient_buffer,
     const T_GRAD* gradient,
     T* accumulated_gradient,
