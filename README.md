@@ -14,8 +14,8 @@ ONNX Runtime was designed with a focus on performance and scalability in order t
 
 ONNX Runtime stays up to date with the ONNX standard and supports all operators from the ONNX v1.2+ spec and is backwards compatible with older versions. Please refer to [this page](docs/Versioning.md) for ONNX opset compatibility details.
 
-   
-
+       
+    
 ***
 # Table of Contents   
 * **[Functional Overview]  (#functional-overview)**
