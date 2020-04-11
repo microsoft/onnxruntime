@@ -12,7 +12,7 @@ set(gemmlowp_src ${PROJECT_SOURCE_DIR}/external/gemmlowp)
 
 add_library(onnxruntime_util ${onnxruntime_util_srcs})
 target_include_directories(onnxruntime_util PRIVATE ${ONNXRUNTIME_ROOT} ${MKLML_INCLUDE_DIR} ${gemmlowp_src} PUBLIC ${eigen_INCLUDE_DIRS})
-onnxruntime_add_include_to_target(onnxruntime_util onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+onnxruntime_add_include_to_target(onnxruntime_util onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf safeint_interface)
 if(UNIX)
     target_compile_options(onnxruntime_util PUBLIC "-Wno-error=comment")
 endif()

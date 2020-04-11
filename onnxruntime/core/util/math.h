@@ -32,6 +32,7 @@ extern "C" {
 #endif
 
 #include "core/common/common.h"
+#include "core/common/safeint.h"
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
@@ -242,14 +243,14 @@ struct Im2colNd<T, StorageOrder::NCHW> {
       kernel_size *= kernel_shape[i];
     }
     int64_t channels_col = col_shape[0];
-    size_t n = SafeCastToSizeT(N);
+    SafeInt<size_t> n(N);
     std::vector<int64_t> d_offset(n, 0);
     std::vector<int64_t> d_iter(n, 0);
     for (int64_t c_col = 0; c_col < channels_col; ++c_col) {
       // Loop over spatial axes in reverse order to compute a per-axis offset.
       int64_t offset = c_col;
       for (int64_t d_i = N - 1; d_i >= 0; --d_i) {
-        size_t d_i_size_t = SafeCastToSizeT(d_i);
+        SafeInt<size_t> d_i_size_t(d_i);
         if (d_i < N - 1) {
           offset /= kernel_shape[d_i_size_t + 1];
         }
@@ -283,7 +284,7 @@ struct Im2colNd<T, StorageOrder::NCHW> {
         // like counting.
         incremented = false;
         for (int64_t d_i = N - 1; d_i >= 0; --d_i) {
-          size_t d_i_size_t = SafeCastToSizeT(d_i);
+          SafeInt<size_t> d_i_size_t(d_i);
           int64_t d_max = col_shape[d_i_size_t + 1];
           ORT_ENFORCE(d_iter[d_i_size_t] < d_max);
           if (d_iter[d_i_size_t] == d_max - 1) {
