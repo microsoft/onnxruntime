@@ -11,8 +11,8 @@ namespace hip {
 #define REGISTER_MIXEDPRECISIONSCALE_KERNEL_TYPED(SrcT)                         \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       MixedPrecisionScale,                                                      \
-      kOnnxDomain,                                                              \
-      9,                                                                        \
+      kMSDomain,                                                              \
+      1,                                                                        \
       SrcT,                                                                     \
       kHipExecutionProvider,                                                   \
       KernelDefBuilder()                                                        \

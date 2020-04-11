@@ -17,7 +17,13 @@ class LambOptimizer final : public HipKernel {
     beta_ = info.GetAttrsOrDefault("beta", std::vector<float>(1024, 0.999f));
     lambda_ = info.GetAttrsOrDefault("lambda", std::vector<float>(1024, 0.0f));
     epsilon_ = info.GetAttrsOrDefault("epsilon", std::vector<float>(1024, 1e-6f));
-    threshold_ = info.GetAttrsOrDefault("threshold", std::vector<float>(1024, 1.0f));
+    ORT_ENFORCE(info.GetAttr<float>("ratio_min", &ratio_min_).IsOK(), "Missing/Invalid 'ratio_min' attribute value");
+    ORT_ENFORCE(info.GetAttr<float>("ratio_max", &ratio_max_).IsOK(), "Missing/Invalid 'ratio_max' attribute value");
+
+    int64_t tmp_flag = static_cast<int64_t>(0);
+    ORT_ENFORCE(info.GetAttr<int64_t>("do_bias_correction", &tmp_flag).IsOK(), "Missing/Invalid do_bias_correction");
+    ORT_ENFORCE(tmp_flag == 0 || tmp_flag == 1, "do_bias_correction must be either 0 or 1.");
+    do_bias_correction_ = tmp_flag != 0 ? true : false;
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -27,7 +33,9 @@ class LambOptimizer final : public HipKernel {
   std::vector<float> beta_;
   std::vector<float> lambda_;
   std::vector<float> epsilon_;
-  std::vector<float> threshold_;
+  float ratio_min_;
+  float ratio_max_;
+  bool do_bias_correction_;
 };
 
 // Implementation can be found in hip file, optimizers_impl.cu
@@ -46,6 +54,8 @@ void LambComputeDirection(
     T3 beta,
     T1 lambda,
     T3 epsilon,
+    T3 alpha_correction,
+    T3 beta_correction,
     T2* update_direction,
     T3* moment_1_out,
     T3* moment_2_out,
@@ -58,10 +68,11 @@ void LambComputeDirection(
 template <typename T1, typename T2, typename T3>
 void LambUpdate(
     const T1* eta,
+    const float ratio_min,
+    const float ratio_max,
     const T2* r_norm,
     const T2* w_norm,
     const T2* weights,
-    const T2 threshold,
     const T3* update_direction,
     T2* weights_out,
     T3* gradients_out,
@@ -95,7 +106,9 @@ struct LambMultiTensorComputeDirectionFunctor {
       const T1 lambda,
       const T3 alpha,
       const T3 beta,
-      const T3 epsilon);
+      const T3 epsilon,
+      const T3 alpha_correction,
+      const T3 beta_correction);
 };
 
 // Lamb's reduction maps [w, d] to [w_norm, d_norm] where
@@ -140,7 +153,8 @@ struct LambMultiTensorUpdateFunctor {
   void operator()(
       ChunkGroup<7> chunk_group,
       const T1* eta,
-      const T2 threshold);
+      const float ratio_min,
+      const float ratio_max);
 };
 
 }  // namespace hip

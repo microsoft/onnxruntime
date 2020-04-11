@@ -12,8 +12,8 @@ namespace hip {
 #define REGISTER_GRADIENT_KERNEL_TYPED(T)                                       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       SoftmaxGrad,                                                              \
-      kOnnxDomain,                                                              \
-      9,                                                                        \
+      kMSDomain,                                                              \
+      1,                                                                        \
       T,                                                                        \
       kHipExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \

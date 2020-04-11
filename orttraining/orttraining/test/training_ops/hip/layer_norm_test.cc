@@ -100,7 +100,7 @@ static void TestLayerNormGrad(
   const auto N = std::accumulate(n_dims.begin(), n_dims.end(), static_cast<int64_t>(1), std::multiplies<>{});
   const auto M = std::accumulate(m_dims.begin(), m_dims.end(), static_cast<int64_t>(1), std::multiplies<>{});
 
-  CompareOpTester test{"LayerNormalizationGrad"};
+  CompareOpTester test{"LayerNormalizationGrad", 1, kMSDomain};
 
   test.AddAttribute("axis", axis);
 

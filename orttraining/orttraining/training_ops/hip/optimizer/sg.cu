@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -39,7 +40,7 @@ void SGDOptimizerImpl(
     size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   HIP_LONG N = static_cast<HIP_LONG>(count);
-  hipLaunchKernelGGL(_SGDOptimizer<T>, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(_SGDOptimizer<T>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
       eta,
       weights,
       gradients,

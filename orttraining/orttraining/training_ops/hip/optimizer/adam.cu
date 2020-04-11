@@ -3,12 +3,13 @@
 
 #include "core/providers/hip/hip_common.h"
 #include "core/providers/hip/cu_inc/common.cuh"
+#include "orttraining/training_ops/hip/optimizer/common.cuh"
 #include "adam.h"
+#include "common.h"
 
 namespace onnxruntime {
 namespace hip {
-
-template <typename T1, typename T3, typename T4, typename T_GRAD>
+template <typename T1, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
 __global__ void _AdamOptimizer(
     const T1* eta,
     const T3* weights,
@@ -16,10 +17,13 @@ __global__ void _AdamOptimizer(
     const T4* moment_1,
     const T4* moment_2,
     const T3* loss_scale,
+    const T_GRAD_NORM* grad_norm,
     const T4 alpha,
     const T4 beta,
     const T4 lambda,
     const T4 epsilon,
+    const T4 alpha_correction,
+    const T4 beta_correction,
     T4* moment_1_out,
     T4* moment_2_out,
     T3* weights_out,
@@ -27,23 +31,24 @@ __global__ void _AdamOptimizer(
     half* fp16_weights_out,
     HIP_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  T4 g_scale = loss_scale ? T4(*loss_scale) : T4(1.f);
+  const T4 actual_scale = _ComputeGradScale<T3, T_GRAD_NORM, T4>(loss_scale, grad_norm);
 
   // Gradient scaling/clipping.
-  const T4 g = T4(grads[id]) / g_scale;
-
+  const T4 g = T4(grads[id]) / actual_scale;
   // A shared constant.
   const T4 one = T4(1.0f);
 
   // Compute exponentially-averaged historical gradient.
   const T4 m1o = alpha * moment_1[id] + (one - alpha) * g;
+  const T4 m1o_corrected = m1o / alpha_correction;
 
   // Compute exponentially-averaged historical squared gradient.
   const T4 m2o = beta * moment_2[id] + (one - beta) * g * g;
+  const T4 m2o_corrected = m2o / beta_correction;
 
   // Compute weight update.
-  const T4 denom = _Sqrt(m2o) + epsilon;
-  const T4 update = (m1o / denom) + (lambda * T4(weights[id]));
+  const T4 denom = _Sqrt(m2o_corrected) + epsilon;
+  const T4 update = (m1o_corrected / denom) + (lambda * T4(weights[id]));
   const T4 delta = -T4(*eta) * update;
 
   // Compute the new gradient.
@@ -64,19 +69,21 @@ __global__ void _AdamOptimizer(
   moment_2_out[id] = m2o;
 }
 
-template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD>
+template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
 void AdamOptimizerImpl(
     const T1* eta,
-    const T2 /*update_count*/,
+    const T2 update_count,
     const T3* weights,
     const T_GRAD* grads,
     const T4* moment_1,
     const T4* moment_2,
     const T3* loss_scale,
-    T4 alpha,
-    T4 beta,
-    T4 lambda,
-    T4 epsilon,
+    const T_GRAD_NORM* grad_norm,
+    const T4 alpha,
+    const T4 beta,
+    const T4 lambda,
+    const T4 epsilon,
+    const bool do_bias_correction,
     T4* moment_1_out,
     T4* moment_2_out,
     T3* weights_out,
@@ -85,18 +92,25 @@ void AdamOptimizerImpl(
     size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   HIP_LONG N = static_cast<HIP_LONG>(count);
-
-  hipLaunchKernelGGL(_AdamOptimizer<T1, T3, T4, T_GRAD>, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+  // If bias correction coefficients are set to 1s, it's equivalent to disabling bias correction. 
+  const T4 alpha_correction = do_bias_correction ? 
+    onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count) : T4(1.f);
+  const T4 beta_correction = do_bias_correction ?
+    onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count) : T4(1.f);
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(_AdamOptimizer<T1, T3, T4, T_GRAD, T_GRAD_NORM>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
       eta,
       weights,
       grads,
       moment_1,
       moment_2,
       loss_scale,
+      grad_norm,
       alpha,
       beta,
       lambda,
       epsilon,
+      alpha_correction,
+      beta_correction,
       moment_1_out,
       moment_2_out,
       weights_out,
@@ -105,7 +119,7 @@ void AdamOptimizerImpl(
       N);
 }
 
-#define SPECIALIZED_AdamOptimizerImpl(T1, T2, T3, T4, T_GRAD)              \
+#define SPECIALIZED_AdamOptimizerImpl(T1, T2, T3, T4, T_GRAD, T_GRAD_NORM) \
   template void AdamOptimizerImpl(                                         \
       const T1* eta,                                                       \
       const T2 update_count,                                               \
@@ -114,10 +128,12 @@ void AdamOptimizerImpl(
       const T4* moment_1,                                                  \
       const T4* moment_2,                                                  \
       const T3* loss_scale,                                                \
-      T4 alpha,                                                            \
-      T4 beta,                                                             \
-      T4 lambda,                                                           \
-      T4 epsilon,                                                          \
+      const T_GRAD_NORM* grad_norm,                                        \
+      const T4 alpha,                                                      \
+      const T4 beta,                                                       \
+      const T4 lambda,                                                     \
+      const T4 epsilon,                                                    \
+      const bool do_bias_correction,                                       \
       T4* moment_1_out,                                                    \
       T4* moment_2_out,                                                    \
       T3* weights_out,                                                     \
@@ -125,12 +141,15 @@ void AdamOptimizerImpl(
       half* fp16_weights_out,                                              \
       size_t count);
 
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, float)
-SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, float)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, float)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half)
-SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, float, float)
+SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, float, float)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, float, float)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half, half)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half, float)
+SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, half)
+SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, float)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, half)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, float)
 
 }  // namespace hip
 }  // namespace onnxruntime

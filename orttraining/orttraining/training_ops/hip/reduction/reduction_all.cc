@@ -9,8 +9,8 @@ namespace hip {
 #define REGISTER_REDUCE_ALL_KERNEL_TYPED(Name, TIn, TOut)                                                                                       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                                \
       Name,                                                                                                                                     \
-      kOnnxDomain,                                                                                                                              \
-      9,                                                                                                                                        \
+      kMSDomain,                                                                                                                              \
+      1,                                                                                                                                        \
       TIn##_##TOut,                                                                                                                             \
       kHipExecutionProvider,                                                                                                                   \
       KernelDefBuilder().TypeConstraint("TIn", DataTypeImpl::GetTensorType<TIn>()).TypeConstraint("TOut", DataTypeImpl::GetTensorType<TOut>()), \

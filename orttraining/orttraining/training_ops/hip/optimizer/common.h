@@ -3,6 +3,7 @@
 
 #pragma once
 #include "core/providers/hip/hip_common.h"
+#include "orttraining/training_ops/cpu/optimizer/common.h"
 
 namespace onnxruntime {
 namespace hip {

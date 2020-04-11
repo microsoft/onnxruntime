@@ -11,12 +11,12 @@ namespace onnxruntime {
 namespace hip {
 
 // TODO: Once Schema is checked in to onnx lets fix this to match that
-#define REGISTER_ADAM_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD)                            \
+#define REGISTER_ADAM_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD, T_GRAD_NORM)               \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                      \
       AdamOptimizer,                                                                  \
       kOnnxDomain,                                                                    \
       9,                                                                              \
-      T1##_##T2##_##T3##_##T4##_##T_GRAD,                                             \
+      T1##_##T2##_##T3##_##T4##_##T_GRAD##_##T_GRAD_NORM,                             \
       kHipExecutionProvider,                                                         \
       KernelDefBuilder()                                                              \
           .Alias(1, 0)                             /* Update step count in-place */   \
@@ -26,29 +26,34 @@ namespace hip {
           .Alias(5, 2)                             /* Update moment-2 in-place */     \
           .Alias(6, 5)                             /* Update FP16 weights in-place */ \
           .InputMemoryType<OrtMemTypeCPUInput>(1)  /* Keep step count in CPU */       \
-          .InputMemoryType<OrtMemTypeCPUInput>(8)  /* Keep do_update in CPU */        \
+          .InputMemoryType<OrtMemTypeCPUInput>(9)  /* Keep do_update in CPU */        \
           .OutputMemoryType<OrtMemTypeCPUOutput>(0) /* Keep step count in CPU */      \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                    \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                    \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                    \
           .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())                    \
           .TypeConstraint("T_GRAD", DataTypeImpl::GetTensorType<T_GRAD>())            \
-          .TypeConstraint("T_FP16", DataTypeImpl::GetTensorType<MLFloat16>()),        \
-      AdamOptimizer<T1, T2, T3, T4, T_GRAD>);
+          .TypeConstraint("T_FP16", DataTypeImpl::GetTensorType<MLFloat16>())         \
+          .TypeConstraint("T_GRAD_NORM", DataTypeImpl::GetTensorType<T_GRAD_NORM>()), \
+      AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>);
 
-REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, float)
-REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, float)
-REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, float)
-REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, MLFloat16)
-REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, MLFloat16)
-REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, MLFloat16)
+REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, float, float)
+REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, float, float)
+REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, float, float)
+REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, MLFloat16, MLFloat16)
+REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, MLFloat16, float)
+REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, MLFloat16, MLFloat16)
+REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, MLFloat16, float)
+REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, MLFloat16, MLFloat16)
+REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, MLFloat16, float)
 
-template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD>
-Status AdamOptimizer<T1, T2, T3, T4, T_GRAD>::ComputeInternal(OpKernelContext* ctx) const {
+template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
+Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToHipType<T1>::MappedType HipT1;
   typedef typename ToHipType<T3>::MappedType HipT3;
   typedef typename ToHipType<T4>::MappedType HipT4;
   typedef typename ToHipType<T_GRAD>::MappedType HipT_GRAD;
+  typedef typename ToHipType<T_GRAD_NORM>::MappedType HipT_GRAD_NORM;
 
   const Tensor& ETA = *ctx->Input<Tensor>(0);
   const Tensor& S = *ctx->Input<Tensor>(1);
@@ -58,7 +63,8 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD>::ComputeInternal(OpKernelContext* c
   const Tensor& M2 = *ctx->Input<Tensor>(5);
   const Tensor* W_FP16 = ctx->Input<Tensor>(6);
   const Tensor* loss_scale_tensor = ctx->Input<Tensor>(7);
-  const Tensor* do_update_tensor = ctx->Input<Tensor>(8);
+  const Tensor* gradient_norm_tensor = ctx->Input<Tensor>(8);
+  const Tensor* do_update_tensor = ctx->Input<Tensor>(9);
 
   Tensor& NS = *ctx->Output(0, S.Shape());
   Tensor& NM1 = *ctx->Output(1, M1.Shape());
@@ -87,6 +93,11 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD>::ComputeInternal(OpKernelContext* c
 
   const T2* S_in = S.template Data<T2>();
   T2* S_out = NS.template MutableData<T2>();
+  
+  const HipT_GRAD_NORM* G_norm = nullptr;
+  if (gradient_norm_tensor != nullptr) {
+    G_norm = reinterpret_cast<const HipT_GRAD_NORM*>(gradient_norm_tensor->template Data<T_GRAD_NORM>());
+  }
 
   if (do_update_tensor != nullptr) {
     const bool do_update = *(do_update_tensor->template Data<bool>());
@@ -119,10 +130,12 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD>::ComputeInternal(OpKernelContext* c
       reinterpret_cast<const HipT4*>(M1.template Data<T4>()),
       reinterpret_cast<const HipT4*>(M2.template Data<T4>()),
       loss_scale,
+      G_norm,
       ToHipType<T4>::FromFloat(alpha_),
       ToHipType<T4>::FromFloat(beta_),
       ToHipType<T4>::FromFloat(lambda_),
       ToHipType<T4>::FromFloat(epsilon_),
+      do_bias_correction_,
       reinterpret_cast<HipT4*>(NM1.template MutableData<T4>()),
       reinterpret_cast<HipT4*>(NM2.template MutableData<T4>()),
       NW != nullptr ? reinterpret_cast<HipT3*>(NW->template MutableData<T3>()) : nullptr,

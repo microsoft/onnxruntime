@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -5,23 +6,10 @@
 #include "core/providers/hip/hip_common.h"
 #include "core/providers/hip/atomic/common.cuh"
 #include "orttraining/training_ops/hip/math/isfinite.cuh"
-#include "lamb.h"
-
+#include "orttraining/training_ops/hip/optimizer/common.cuh"
+#include "orttraining/training_ops/hip/optimizer/lamb.h"
 namespace onnxruntime {
 namespace hip {
-
-template<typename TLossScale, typename TGradNorm, typename TFinalScale>
-__device__ __forceinline__ TFinalScale _ComputeGradScale(
-  const TLossScale* loss_scale,
-  const TGradNorm* g_norm) {
-  TFinalScale scale = loss_scale != nullptr ? TFinalScale(*loss_scale) : TFinalScale(1.f);
-  if (g_norm != nullptr && TFinalScale(*g_norm) > scale) {
-    const TFinalScale actual_g_norm = TFinalScale(*g_norm) / scale;
-    scale *= actual_g_norm;
-  }
-  return scale;
-}
-
 template <typename T1, typename T2, typename T3>
 __device__ __forceinline__ void _LambComputeDirectionRule(
     const T1& g_scale,
@@ -33,12 +21,15 @@ __device__ __forceinline__ void _LambComputeDirectionRule(
     const T3& beta,
     const T1& lambda,
     const T3& epsilon,
+    const T3& alpha_correction,
+    const T3& beta_correction,
     T2& d,
     T3& m1_new,
     T3& m2_new) {
   // Actual gradient. The scale is a product of loss' scale and
   // global gradient norm (if the norm > 1).
   const T3 g_scaled = T3(T1(g) / g_scale);
+
   // A constant in Lamb's equation.
   const T3 one = T3(1.0f);
 
@@ -48,8 +39,19 @@ __device__ __forceinline__ void _LambComputeDirectionRule(
   // Update exponentially-averaged historical squared gradient
   const T3 m2_new_tmp = beta * m2 + (one - beta) * g_scaled * g_scaled;
 
+  // Compute unbiased 1st-order momentom.
+  // The value alpha_correction is usually (1-alpha^t),
+  // where t is the number of executed training iterations.
+  const T3 m1_new_tmp_corrected = m1_new_tmp / alpha_correction;
+
+  // Compute unbiased 2nd-order momentom.
+  // The value beta_correction is usually (1-beta^t),
+  // where t is the number of executed training iterations.
+  const T3 m2_new_tmp_corrected = m2_new_tmp / beta_correction;
+
   // Save regularized update direction to output.
-  const T2 d_tmp = lambda * w + T1(m1_new_tmp / (_Sqrt(m2_new_tmp) + epsilon));
+  const T2 d_tmp = lambda * w + 
+    T1(m1_new_tmp_corrected / (_Sqrt(m2_new_tmp_corrected) + epsilon));
 
   // Things are updated only if the direction is finite.
   if (_IsFiniteScalar(d_tmp)) {
@@ -75,6 +77,8 @@ __global__ void _LambComputeDirectionImpl(
     T3 beta,
     T1 lambda,
     T3 epsilon,
+    T3 alpha_correction,
+    T3 beta_correction,
     T2* update_direction,
     T3* moment_1_out,
     T3* moment_2_out,
@@ -93,6 +97,8 @@ __global__ void _LambComputeDirectionImpl(
       beta,
       lambda,
       epsilon,
+      alpha_correction,
+      beta_correction,
       update_direction[id],
       moment_1_out[id],
       moment_2_out[id]);
@@ -110,6 +116,8 @@ void LambComputeDirection(
     T3 beta,
     T1 lambda,
     T3 epsilon,
+    T3 alpha_correction,
+    T3 beta_correction,
     T2* update_direction,
     T3* moment_1_out,
     T3* moment_2_out,
@@ -117,7 +125,7 @@ void LambComputeDirection(
   int blocksPerGrid =
       (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   HIP_LONG N = static_cast<HIP_LONG>(count);
-  hipLaunchKernelGGL(_LambComputeDirectionImpl<T1, T2, T3, T_GRAD_NORM>, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(_LambComputeDirectionImpl<T1, T2, T3, T_GRAD_NORM>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
       weights,
       grads,
       moment_1,
@@ -128,6 +136,8 @@ void LambComputeDirection(
       beta,
       lambda,
       epsilon,
+      alpha_correction,
+      beta_correction,
       update_direction,
       moment_1_out,
       moment_2_out,
@@ -146,6 +156,8 @@ void LambComputeDirection(
       T3 beta,                                            \
       T1 lambda,                                          \
       T3 epsilon,                                         \
+      T3 alpha_correction,                                \
+      T3 beta_correction,                                 \
       T2* weights_out,                                    \
       T3* moment_1_out,                                   \
       T3* moment_2_out,                                   \
@@ -153,34 +165,29 @@ void LambComputeDirection(
 
 SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, float, float, float)
 SPECIALIZED_LAMB_COMPUTE_DIRECTION(double, double, double, double)
-//SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, half)
-//SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, float)
-//SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, half)
-//SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, float)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, half)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, float)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, half)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, float)
 
 template <typename T1, typename T2, typename T3>
 __device__ __forceinline__ void _LambUpdateRule(
-    const T1& eta,
-    const T2& r_norm,
-    const T2& w_norm,
-    const T2& w,
-    const T2& threshold,
-    const T3& d,
+    const T1 eta,
+    const float ratio_min,
+    const float ratio_max,
+    const T2 r_norm,
+    const T2 w_norm,
+    const T2 w,
+    const T3 d,
     T2* w_new,
     T3* g_new,
     half* w_fp16_new) {
-  // The reason to have _Min(...):
-  //   The confidence level should not exceed 1 for numerical stability.
-  //   The threshold will be used even if r_norm and w_norm are 0 because
-  //   NaN > threshold ? NaN : threshold returns threshold.
-  // The reason to have *w_norm != 0?:
-  //   If a tensor is zero-initialized, its w_norm will be 0 and therefore its
-  //   ratio is always 0 without the _Max(...). If a tensor's ratio is always
-  //   0, that tensor will never be updated.
-  const T2 ratio = w_norm != T2(0.0f) ? _Min(_Sqrt(w_norm / r_norm), threshold) : T2(1.0f);
+  // Confidence coefficeint of this update. 
+  const T2 ratio = (w_norm != T2(0.0f) && r_norm != T2(0.0f)) ?
+    T2(eta) * _Max(T2(ratio_min), _Min(T2(ratio_max), _Sqrt(w_norm / r_norm))) : T2(eta);
 
   // Compute delta using the saved update direction.
-  const T2 delta = -ratio * T2((eta)*T1(d));
+  const T2 delta = -ratio * T2(d);
   const T2 w_new_tmp = w + delta;
 
   if (_IsFiniteScalar(w_new_tmp)) {
@@ -190,7 +197,7 @@ __device__ __forceinline__ void _LambUpdateRule(
     if (w_new) {
       *w_new = w_new_tmp;
       if (w_fp16_new) {
-        //*w_fp16_new = half(w_new_tmp);
+        *w_fp16_new = half(w_new_tmp);
       }
     }
   } else {
@@ -200,7 +207,7 @@ __device__ __forceinline__ void _LambUpdateRule(
     if (w_new) {
       *w_new = w;
       if (w_fp16_new) {
-        //*w_fp16_new = half(w);
+        *w_fp16_new = half(w);
       }
     }
   }
@@ -209,10 +216,11 @@ __device__ __forceinline__ void _LambUpdateRule(
 template <typename T1, typename T2, typename T3>
 __global__ void _LambUpdateImpl(
     const T1* eta,
+    const float ratio_min,
+    const float ratio_max,
     const T2* r_norm,
     const T2* w_norm,
     const T2* weights,
-    const T2 threshold,
     const T3* update_direction,
     T2* weights_out,
     T3* gradients_out,
@@ -222,10 +230,11 @@ __global__ void _LambUpdateImpl(
 
   _LambUpdateRule(
       *eta,
+      ratio_min,
+      ratio_max,
       *r_norm,
       *w_norm,
       weights[id],
-      threshold,
       update_direction[id],
       weights_out != nullptr ? weights_out + id : nullptr,
       gradients_out != nullptr ? gradients_out + id : nullptr,
@@ -235,10 +244,11 @@ __global__ void _LambUpdateImpl(
 template <typename T1, typename T2, typename T3>
 void LambUpdate(
     const T1* eta,
+    const float ratio_min,
+    const float ratio_max,
     const T2* r_norm,
     const T2* w_norm,
     const T2* weights,
-    const T2 threshold,
     const T3* update_direction,
     T2* weights_out,
     T3* gradients_out,
@@ -247,12 +257,13 @@ void LambUpdate(
   int blocksPerGrid =
       (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   HIP_LONG N = static_cast<HIP_LONG>(count);
-  hipLaunchKernelGGL(_LambUpdateImpl<T1, T2, T3>, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(_LambUpdateImpl<T1, T2, T3>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
       eta,
+      ratio_min,
+      ratio_max,
       r_norm,
       w_norm,
       weights,
-      threshold,
       update_direction,
       weights_out,
       gradients_out,
@@ -263,10 +274,11 @@ void LambUpdate(
 #define INSTANTIATE_LAMB_UPDATE(T1, T2, T3) \
   template void LambUpdate(                     \
       const T1* eta,                            \
+      const float ratio_min,                    \
+      const float ratio_max,                    \
       const T2* r_norm,                         \
       const T2* w_norm,                         \
       const T2* weights,                        \
-      const T2 threshold,                       \
       const T3* update_direction,               \
       T2* weights_out,                          \
       T3* gradients_out,                        \
@@ -275,8 +287,8 @@ void LambUpdate(
 
 INSTANTIATE_LAMB_UPDATE(float, float, float)
 INSTANTIATE_LAMB_UPDATE(double, double, double)
-//INSTANTIATE_LAMB_UPDATE(half, float, half)
-//INSTANTIATE_LAMB_UPDATE(float, float, half)
+INSTANTIATE_LAMB_UPDATE(half, float, half)
+INSTANTIATE_LAMB_UPDATE(float, float, half)
 
 template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
 __global__ void LambMultiTensorComputeDirectionImpl(
@@ -286,7 +298,9 @@ __global__ void LambMultiTensorComputeDirectionImpl(
     const T1 lambda,
     const T3 alpha,
     const T3 beta,
-    const T3 epsilon) {
+    const T3 epsilon,
+    const T3 alpha_correction,
+    const T3 beta_correction) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
   const int tensor_size = chunk_group.tensor_sizes[group_index];
   const int chunk_size = chunk_group.chunk_size;
@@ -311,6 +325,8 @@ __global__ void LambMultiTensorComputeDirectionImpl(
         beta,
         lambda,
         epsilon,
+        alpha_correction,
+        beta_correction,
         g[i],
         m1_new[i],
         m2_new[i]);
@@ -325,18 +341,22 @@ void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()
     const T1 lambda,
     const T3 alpha,
     const T3 beta,
-    const T3 epsilon) {
+    const T3 epsilon,
+    const T3 alpha_correction,
+    const T3 beta_correction) {
   const int thread_count = ChunkGroup<6>::thread_count_per_block;
   const int block_count = chunk_group.chunk_count;
 
-  hipLaunchKernelGGL(LambMultiTensorComputeDirectionImpl<T1, T2, T3>, dim3(block_count), dim3(thread_count), 0, 0, 
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(LambMultiTensorComputeDirectionImpl<T1, T2, T3>), dim3(block_count), dim3(thread_count), 0, 0, 
       chunk_group,
       loss_scale,
       g_norm,
       lambda,
       alpha,
       beta,
-      epsilon);
+      epsilon,
+      alpha_correction,
+      beta_correction);
 }
 
 #define INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(T1, T2, T3, T_GRAD_NORM)   \
@@ -347,20 +367,23 @@ void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()
       const T1 lambda,                                                          \
       const T3 alpha,                                                           \
       const T3 beta,                                                            \
-      const T3 epsilon);
+      const T3 epsilon,                                                         \
+      const T3 alpha_correction,                                                \
+      const T3 beta_correction);
 
 INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, float, float, float)
 INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(double, double, double, double)
-//INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, half)
-//INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, float)
-//INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, half)
-//INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, float)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, half)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, float)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, half)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, float)
 
 template <typename T1, typename T2, typename T3>
 __global__ void LambMultiTensorUpdateImpl(
     ChunkGroup<7> chunk_group,
     const T1* eta,
-    const T2 threshold) {
+    const float ratio_min,
+    const float ratio_max) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
   const int tensor_size = chunk_group.tensor_sizes[group_index];
   const int chunk_size = chunk_group.chunk_size;
@@ -377,10 +400,11 @@ __global__ void LambMultiTensorUpdateImpl(
   for (int i = threadIdx.x; i < chunk_size && i + chunk_start < tensor_size; i += blockDim.x) {
     _LambUpdateRule(
         *eta,
+        ratio_min,
+        ratio_max,
         *r_norm,
         *w_norm,
         w[i],
-        threshold,
         d[i],
         w_new != nullptr ? w_new + i : nullptr,
         g_new != nullptr ? g_new + i : nullptr,
@@ -392,26 +416,29 @@ template <typename T1, typename T2, typename T3>
 void LambMultiTensorUpdateFunctor<T1, T2, T3>::operator()(
     ChunkGroup<7> chunk_group,
     const T1* eta,
-    const T2 threshold) {
+    const float ratio_min,
+    const float ratio_max) {
   const int thread_count = ChunkGroup<7>::thread_count_per_block;
   const int block_count = chunk_group.chunk_count;
 
-  hipLaunchKernelGGL(LambMultiTensorUpdateImpl<T1, T2, T3>, dim3(block_count), dim3(thread_count), 0, 0, 
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(LambMultiTensorUpdateImpl<T1, T2, T3>), dim3(block_count), dim3(thread_count), 0, 0, 
       chunk_group,
       eta,
-      threshold);
+      ratio_min,
+      ratio_max);
 }
 
 #define INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(T1, T2, T3)      \
   template void LambMultiTensorUpdateFunctor<T1, T2, T3>::operator()( \
       ChunkGroup<7> chunk_group,                                      \
       const T1* eta,                                                  \
-      const T2 threshold);
+      const float ratio_min,                                          \
+      const float ratio_max);
 
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(double, double, double)
-//INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(half, float, half)
-//INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, half)
+INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(half, float, half)
+INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, half)
 
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
 __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group) {
@@ -445,8 +472,8 @@ __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group) {
   constexpr int warp_size = 32;
 #pragma unroll
   for (int stride = warp_size / 2; stride > 0; stride /= 2) {
-    w_sum += __shfl_down(0xFFFFFFFF, w_sum, stride);
-    d_sum += __shfl_down(0xFFFFFFFF, d_sum, stride);
+    w_sum += __shfl_down(w_sum, stride);
+    d_sum += __shfl_down(d_sum, stride);
   }
 
   const int warp_count_in_block = blockDim.x / warp_size;
@@ -494,7 +521,7 @@ void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()
   ORT_ENFORCE(thread_count % warp_size == 0);
   ORT_ENFORCE((thread_count & (thread_count - 1)) == 0);
 
-  hipLaunchKernelGGL(LambMultiTensorReductionImpl<TIn1, TIn2, TOut1, TOut2, TBuf>, dim3(chunk_group.chunk_count), dim3(thread_count), shared_memory_size, 0, chunk_group);
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(LambMultiTensorReductionImpl<TIn1, TIn2, TOut1, TOut2, TBuf>), dim3(chunk_group.chunk_count), dim3(thread_count), shared_memory_size, 0, chunk_group);
 }
 
 #define INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(TIn1, TIn2, TOut1, TOut2, TBuf) \
@@ -502,9 +529,9 @@ void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()
 
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, float, float, float, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(double, double, double, double, double)
-//INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, half, float)
-//INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, float, float)
-//INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(half, half, half, half, float)
+INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, half, float)
+INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, float, float)
+INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(half, half, half, half, float)
 
 }  // namespace hip
 }  // namespace onnxruntime

@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "slice.h"
+#include "core/providers/hip/tensor/slice.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "slice_impl.h"
+#include "core/providers/hip/tensor/slice_impl.h"
 
 namespace onnxruntime {
 namespace hip {
@@ -17,7 +17,7 @@ namespace hip {
       KernelDefBuilder()                                                \
           .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
-      Slice<TIND, false>);
+      Slice<false>);
 
 REGISTER_VERSIONED_TYPED_SLICE(int32_t)
 REGISTER_VERSIONED_TYPED_SLICE(int64_t)
@@ -37,7 +37,7 @@ REGISTER_VERSIONED_TYPED_SLICE(float)
           .InputMemoryType<OrtMemTypeCPUInput>(4)                       \
           .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
-      Slice<TIND, true>);
+      Slice<true>);
 
 REGISTER_V10_TYPED_SLICE(int32_t)
 REGISTER_V10_TYPED_SLICE(int64_t)
@@ -57,16 +57,18 @@ REGISTER_V10_TYPED_SLICE(float)
           .InputMemoryType<OrtMemTypeCPUInput>(4)                       \
           .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
-      Slice<TIND, true>);
+      Slice<true>);
 
 REGISTER_V11_TYPED_SLICE(int32_t)
 REGISTER_V11_TYPED_SLICE(int64_t)
 REGISTER_V11_TYPED_SLICE(float)
 
-template <typename Tind, bool dynamic>
-Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
-  auto input_tensor = ctx->Input<Tensor>(0);
+template <bool dynamic>
+Status Slice<dynamic>::ComputeInternal(OpKernelContext* ctx) const {
+  const Tensor* input_tensor = GetSlicedOrUnslicedTensor(ctx);
+
   ORT_ENFORCE(nullptr != input_tensor);
+
   auto& input_dimensions = input_tensor->Shape().GetDims();
 
   // Initialize the starts & ends to the actual tensor shape
@@ -79,8 +81,7 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
 
   if (dynamic) {
     std::vector<int64_t> input_starts, input_ends, input_axes, input_steps;
-    FillVectorsFromInput(ctx->Input<Tensor>(1), ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
-                         ctx->InputCount() == 5 ? ctx->Input<Tensor>(4) : nullptr, input_starts, input_ends, input_axes, input_steps);
+    FillInputVectors(ctx, input_starts, input_ends, input_axes, input_steps);
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
                                           input_steps, input_dimensions, starts, steps, output_dims,
                                           p_flattened_output_dims));
@@ -91,24 +92,13 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
                                           p_flattened_output_dims));
   }
 
-  TensorShape output_shape(output_dims);
-  auto output_tensor = ctx->Output(0, output_shape);
-  int64_t output_size = output_shape.Size();
-  if (output_size == 0) {
-    return Status::OK();
-  }
-
   // if we are able to flatten the output dims we updated 'starts' and 'steps' to match the smaller number of dims.
   // update dimension_count to match.
   if (p_flattened_output_dims != nullptr) {
     dimension_count = flattened_output_dims.size();
   }
 
-  // TArray<int64_t> starts_buffer(gsl::narrow_cast<int32_t>(starts.size()));
-  // for (size_t i = 0; i < starts.size(); ++i) {
-  //   starts_buffer[i] = starts[i];
-  // }
-
+  //TArray<int64_t> starts_buffer(starts);
   HipAsyncBuffer<int64_t> starts_buffer(this, starts.size());
   gsl::span<int64_t> starts_buffer_span = starts_buffer.CpuSpan();
   for (auto i = 0; i < starts.size(); ++i) {
@@ -116,11 +106,7 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   }
   starts_buffer.CopyToGpu();
 
-  // TArray<int64_t> steps_buffer(gsl::narrow_cast<int32_t>(steps.size()));
-  // for (size_t i = 0; i < steps.size(); ++i) {
-  //   steps_buffer[i] = steps[i];
-  // }
-
+  //TArray<int64_t> steps_buffer(steps);
   HipAsyncBuffer<int64_t> steps_buffer(this, steps.size());
   gsl::span<int64_t> steps_buffer_span = steps_buffer.CpuSpan();
   for (auto i = 0; i < steps.size(); ++i) {
@@ -132,7 +118,6 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   // const gsl::span<int64_t> input_strides_span = gsl::make_span(input_strides.data_, input_strides.size_);
   HipAsyncBuffer<int64_t> input_strides(this, dimension_count);
   const gsl::span<int64_t> input_strides_span = input_strides.CpuSpan();
-
   if (p_flattened_output_dims != nullptr) {
     // we were able to flatten the innermost dimensions as they're being copied in full to the output.
     // do the same flattening to the innermost input dimensions in order to calculate pitches that match
@@ -155,24 +140,57 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   //TArray<fast_divmod> output_strides(gsl::narrow_cast<int32_t>(original_output_strides.size()));
   HipAsyncBuffer<fast_divmod> output_strides(this, dimension_count);
   gsl::span<fast_divmod> output_strides_span = output_strides.CpuSpan();
-  for (size_t i = 0; i < original_output_strides.size(); ++i) {
+  for (int32_t i = 0; i < static_cast<int32_t>(original_output_strides.size()); ++i) {
     output_strides_span[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
   }
   output_strides.CopyToGpu();
 
   size_t element_size = input_tensor->DataType()->Size();
 
-  ORT_RETURN_IF_ERROR(SliceImpl(element_size,
-                                gsl::narrow_cast<int32_t>(dimension_count),
-                                starts_buffer.GpuPtr(),
-                                steps_buffer.GpuPtr(),
-                                input_strides.GpuPtr(),
-                                output_strides.GpuPtr(),
-                                input_tensor->DataRaw(),
-                                output_tensor->MutableDataRaw(),
-                                output_size));
+  ORT_RETURN_IF_ERROR(CallSliceImp(element_size,
+                                   gsl::narrow_cast<int32_t>(dimension_count),
+                                   starts_buffer.GpuPtr(),
+                                   steps_buffer.GpuPtr(),
+                                   input_strides.GpuPtr(),
+                                   output_strides.GpuPtr(),
+                                   ctx,
+                                   TensorShape(output_dims)));
 
   return Status::OK();
+}
+
+template <bool dynamic>
+const Tensor* Slice<dynamic>::GetSlicedOrUnslicedTensor(OpKernelContext* ctx) const {
+  return ctx->Input<Tensor>(0);
+}
+
+template <bool dynamic>
+void Slice<dynamic>::FillInputVectors(OpKernelContext* ctx, std::vector<int64_t>& input_starts,
+                                      std::vector<int64_t>& input_ends, std::vector<int64_t>& input_axes,
+                                      std::vector<int64_t>& input_steps) const {
+  FillVectorsFromInput(*ctx->Input<Tensor>(1), *ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
+                       ctx->Input<Tensor>(4), input_starts, input_ends, input_axes, input_steps);
+}
+
+template <bool dynamic>
+Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count, const int64_t* starts_buffer,
+                                    const int64_t* steps_buffer, const int64_t* input_strides,
+                                    const fast_divmod* output_strides, OpKernelContext* ctx,
+                                    TensorShape output_shape) const {
+  auto* output_tensor = ctx->Output(0, output_shape);
+  if (output_shape.Size() == 0) {
+    return Status::OK();
+  }
+
+  return SliceImpl(element_size,
+                   gsl::narrow_cast<int32_t>(dimension_count),
+                   starts_buffer,
+                   steps_buffer,
+                   input_strides,
+                   output_strides,
+                   ctx->Input<Tensor>(0)->DataRaw(),
+                   output_tensor->MutableDataRaw(),
+                   output_shape.Size());
 }
 
 }  // namespace hip

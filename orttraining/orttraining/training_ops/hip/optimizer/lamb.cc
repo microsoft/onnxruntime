@@ -5,17 +5,17 @@
 #include "core/providers/hip/hip_allocator.h"
 #include "core/providers/hip/reduction/reduction_functions.h"
 #include "core/providers/hip/math/binary_elementwise_ops.h"
-#include "common.h"
-#include "lamb.h"
+#include "orttraining/training_ops/hip/optimizer/common.h"
+#include "orttraining/training_ops/hip/optimizer/lamb.h"
 
 namespace onnxruntime {
 namespace hip {
 
 std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
   // Starting index of extra inputs.
-  constexpr int input_index_bias = 4;
+  constexpr int input_index_bias = 5;
   // Starting index of extra outputs.
-  constexpr int output_index_bias = 0;
+  constexpr int output_index_bias = 1;
   // Count of extra I/O groups. One group corresponds to a weight update.
   constexpr int group_count = 1024;
   // length of [w, g, m1, m2, w_fp16].
@@ -39,6 +39,9 @@ std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
     alias_pairs.emplace_back(std::make_pair(input + 4, output + 4));
   }
 
+  // update_count are updated in place.
+  alias_pairs.emplace_back(std::make_pair(4, 0));
+
   return alias_pairs;
 }
 
@@ -48,11 +51,13 @@ std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
       LambOptimizer,                                                                  \
       kOnnxDomain,                                                                    \
       9,                                                                              \
-      T1##_##T2##_##T3##_##T4##_##T_GRAD_NORM,                                          \
+      T1##_##T2##_##T3##_##T4##_##T_GRAD_NORM,                                        \
       kHipExecutionProvider,                                                         \
       KernelDefBuilder()                                                              \
           .Alias(GenerateLambExtraAliasMapping())                                     \
           .InputMemoryType<OrtMemTypeCPUInput>(0)  /* Keep do_update in CPU */        \
+          .InputMemoryType<OrtMemTypeCPUInput>(4)  /* Keep iteration_count in CPU */  \
+          .OutputMemoryType<OrtMemTypeCPUOutput>(0)  /* Keep iteration_count in CPU */ \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                    \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                    \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                    \
@@ -61,14 +66,14 @@ std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
           .TypeConstraint("T_GRAD_NORM", DataTypeImpl::GetTensorType<T_GRAD_NORM>()), \
       LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>);
 
-// REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, MLFloat16)
-// REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, float)
+REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, MLFloat16)
+REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, float)
 REGISTER_LAMB_KERNEL_TYPED(float, float, float, float, float)
 REGISTER_LAMB_KERNEL_TYPED(double, double, double, double, double)
-// REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, MLFloat16)
-// REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, float)
-// REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, MLFloat16)
-// REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, float)
+REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, MLFloat16)
+REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, float)
+REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, MLFloat16)
+REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, float)
 
 void check_inputs_and_outputs(
     const Tensor* w,
@@ -103,9 +108,20 @@ template <typename TWeight, typename TGradient, typename TMomentum>
 Status copy_inputs_to_outputs(
     OpKernelContext* ctx,
     const int non_grouped_input_count,
+    const int non_grouped_output_count,
     const int group_count,
     const int input_group_size,
     const int output_group_size) {
+
+  const Tensor* step_tensor = ctx->Input<Tensor>(4);
+  if (step_tensor) {
+    const int64_t* step_data = step_tensor->template Data<int64_t>();
+    Tensor* step_tensor_new = ctx->Output(0, step_tensor->Shape());
+    ORT_ENFORCE(step_tensor_new != nullptr, "Step tensor (input) and updated step tensor (output) must be specified together.");
+    int64_t* step_data_new = step_tensor_new->template MutableData<int64_t>();
+    *step_data_new = *step_data;
+  }
+
   for (int group_index = 0; group_index < group_count; ++group_index) {
     const int input_start_index = non_grouped_input_count + group_index * input_group_size;
     const Tensor& w = *ctx->Input<Tensor>(input_start_index);
@@ -113,7 +129,7 @@ Status copy_inputs_to_outputs(
     const Tensor& m1 = *ctx->Input<Tensor>(input_start_index + 2);
     const Tensor& m2 = *ctx->Input<Tensor>(input_start_index + 3);
     const Tensor* w_fp16 = ctx->Input<Tensor>(input_start_index + 4);
-    const int output_start_index = group_index * output_group_size;
+    const int output_start_index = non_grouped_output_count + group_index * output_group_size;
     Tensor* w_new = ctx->Output(output_start_index, w.Shape());
     Tensor* g_new = ctx->Output(output_start_index + 1, g.Shape());
     Tensor& m1_new = *ctx->Output(output_start_index + 2, m1.Shape());
@@ -147,6 +163,7 @@ Status copy_inputs_to_outputs(
 
 template <typename HipT2, typename HipT3, typename HipT4, typename HipT_GRAD_NORM>
 Status launch_lamb_compute_direction(
+    const int64_t update_count,
     const int group_count,
     const HipT2* p_loss_scale,
     const HipT_GRAD_NORM* p_g_norm,
@@ -161,7 +178,8 @@ Status launch_lamb_compute_direction(
     const std::vector<float>& alphas,
     const std::vector<float>& betas,
     const std::vector<float>& lambdas,
-    const std::vector<float>& epsilons) {
+    const std::vector<float>& epsilons,
+    const int64_t do_bias_correction) {
   ORT_ENFORCE(group_count == static_cast<int>(tensor_sizes.size()));
 
   ORT_ENFORCE(group_count == static_cast<int>(p_ws.size()));
@@ -185,6 +203,12 @@ Status launch_lamb_compute_direction(
   std::map<std::tuple<float, float, float, float>, std::vector<int>> tensor_sizes_in_buckets;
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
+      // For the first iteration (indexed by 0), the update count should be 2.
+      const float alpha_correction = do_bias_correction ?
+        onnxruntime::contrib::compute_bias_correction_coefficient(alphas[i], update_count) : 1.f;
+      const float beta_correction = do_bias_correction ?
+        onnxruntime::contrib::compute_bias_correction_coefficient(betas[i], update_count) : 1.f;
+
       LambComputeDirection(
           p_ws[i],
           p_gs[i],
@@ -196,6 +220,8 @@ Status launch_lamb_compute_direction(
           HipT4(betas[i]),
           HipT2(lambdas[i]),
           HipT4(epsilons[i]),
+          HipT4(alpha_correction),
+          HipT4(beta_correction),
           p_ds[i],
           p_m1_news[i],
           p_m2_news[i],
@@ -220,6 +246,12 @@ Status launch_lamb_compute_direction(
     float alpha = 0.f, beta = 0.f, lambda = 0.f, epsilon = 0.f;
     std::tie(alpha, beta, lambda, epsilon) = key;
 
+    // For the first iteration (indexed by 0), the update count should be 1.
+    const float alpha_correction =
+      do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count) : 1.f;
+    const float beta_correction =
+      do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count) : 1.f;
+
     typedef LambMultiTensorComputeDirectionFunctor<HipT2, HipT3, HipT4, HipT_GRAD_NORM> LambStage1;
     LambStage1 lamb_stage1;
 
@@ -228,7 +260,7 @@ Status launch_lamb_compute_direction(
         tensor_sizes_in_buckets[key],
         buckets[key],
         lamb_stage1,
-        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon);
+        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon, alpha_correction, beta_correction);
   }
 
   return Status::OK();
@@ -290,6 +322,7 @@ Status launch_lamb_reduction(
     ORT_ENFORCE(buckets.size() > 0);
   }
 
+  // Only launch multi-tensor function if we have at least one tensor in the buckets.
   if (tensor_sizes_in_buckets.size() > 0 && buckets.size() > 0) {
     typedef LambMultiTensorReductionFunctor<HipTIn1, HipTIn2, HipTNorm, HipTNorm, HipTNorm> TReducer;
     TReducer reducer;
@@ -307,12 +340,13 @@ template <typename HipT1, typename HipT2, typename HipT3>
 Status launch_lamb_update(
     const int group_count,
     const HipT1* eta,
+    const float ratio_min,
+    const float ratio_max,
     std::vector<int>& tensor_sizes,
     std::vector<HipT2*>& p_w_norms,
     std::vector<HipT2*>& p_d_norms,
     std::vector<const HipT2*>& p_ws,
     std::vector<HipT3*>& p_ds,
-    const std::vector<float>& thresholds,
     /* output */ std::vector<HipT2*>& p_w_news,
     /* output */ std::vector<HipT3*>& p_g_news,
     /* output */ std::vector<half*>& p_w_fp16_news) {
@@ -330,17 +364,18 @@ Status launch_lamb_update(
 
   // Bucketize tensor groups by the associated optimizer configuration.
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
-  std::map<float, std::vector<std::vector<void*>>> buckets;
-  std::map<float, std::vector<int>> tensor_sizes_in_bucket;
+  std::vector<std::vector<void*>> buckets;
+  std::vector<int> tensor_sizes_in_bucket;
   const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
       LambUpdate(
           eta,
+          ratio_min,
+          ratio_max,
           p_d_norms[i],
           p_w_norms[i],
           p_ws[i],
-          HipT2(thresholds[i]),
           p_ds[i],
           p_w_news[i],
           p_g_news[i],
@@ -355,26 +390,35 @@ Status launch_lamb_update(
       ptrs[4] = p_w_news[i];                   // new weight tensor
       ptrs[5] = p_g_news[i];                   // new gradient tensor
       ptrs[6] = p_w_fp16_news[i];              // new half-precision weight tensor
-      auto key = thresholds[i];
-      buckets[key].push_back(ptrs);
-      tensor_sizes_in_bucket[key].push_back(tensor_sizes[i]);
+      buckets.push_back(ptrs);
+      tensor_sizes_in_bucket.push_back(tensor_sizes[i]);
     }
   }
 
-  for (auto& pair : buckets) {
-    // Key of tensor groups.
-    const float key = pair.first;
+  if (buckets.size() > 0) {
+    ORT_ENFORCE(tensor_sizes_in_bucket.size() > 0);
+  }
 
-    typedef LambMultiTensorUpdateFunctor<HipT1, HipT2, HipT3> LambStage2;
+  if (tensor_sizes_in_bucket.size() > 0) {
+    ORT_ENFORCE(buckets.size() > 0);
+  }
+
+  // Only launch multi-tensor function if we have at least one tensor in the buckets.
+  if (tensor_sizes_in_bucket.size() > 0 && buckets.size() > 0) {
+    typedef LambMultiTensorUpdateFunctor<
+      HipT1, HipT2, HipT3> LambStage2;
     LambStage2 lamb_stage2;
 
-    launch_multi_tensor_functor<tensor_count_per_group, LambStage2, const HipT1*, const HipT2>(
+    launch_multi_tensor_functor<
+      tensor_count_per_group, LambStage2,
+      const HipT1*, const float, const float>(
         2048 * 32,
-        tensor_sizes_in_bucket[key],
-        buckets[key],
+        tensor_sizes_in_bucket,
+        buckets,
         lamb_stage2,
         eta,
-        key);
+        ratio_min,
+        ratio_max);
   }
 
   return Status::OK();
@@ -390,13 +434,14 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
   typedef typename ToHipType<T4>::MappedType HipT4;
   typedef typename ToHipType<T_GRAD_NORM>::MappedType HipT_GRAD_NORM;
 
-  constexpr int non_grouped_input_count = 4;
+  constexpr int non_grouped_input_count = 5;
   constexpr int input_group_size = 5;
   constexpr int output_group_size = 5;
+  constexpr int non_grouped_output_count = 1;
   constexpr int minimal_input_count = non_grouped_input_count + 1 * input_group_size - 1;
-  constexpr int minimal_output_count = 1 * output_group_size - 1;
+  constexpr int minimal_output_count = non_grouped_output_count + 1 * output_group_size - 1;
   const int grouped_input_tensor_count = ctx->InputCount() - non_grouped_input_count;
-  const int grouped_output_tensor_count = ctx->OutputCount();
+  const int grouped_output_tensor_count = ctx->OutputCount() - non_grouped_output_count;
 
   // At least one variable group for updating one weight tensor.
   ORT_ENFORCE(
@@ -409,7 +454,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
       "Expect at least ", minimal_output_count, " outputs but got ",
       ctx->OutputCount());
 
-  // In addition to the first 3 inputs, all inputs are repeated sequence of [w, g, m1, m2, w_fp16].
+  // In addition to the first non_grouped_input_count inputs, all inputs are repeated sequence of [w, g, m1, m2, w_fp16].
   ORT_ENFORCE(
       grouped_input_tensor_count % input_group_size == 0,
       "Input count must be ", non_grouped_input_count, " + ", input_group_size,
@@ -417,7 +462,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
   // Outputs are repeated sequence of [w_new, g_new, m1_new, m2_new, w_fp16_new].
   ORT_ENFORCE(
       grouped_output_tensor_count % output_group_size == 0,
-      "Output count must be ", output_group_size,
+      "Output count must be ", non_grouped_output_count, " + ", output_group_size,
       " x (number of weights to optimize).");
   // Number of repeated [w, g, m1, m2, w_fp16]'s should match number of repeated [w_new, g_new, m1_new, m2_new, w_fp16_new].
   ORT_ENFORCE(
@@ -432,7 +477,6 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
   ORT_ENFORCE(beta_.size() >= static_cast<size_t>(group_count));
   ORT_ENFORCE(lambda_.size() >= static_cast<size_t>(group_count));
   ORT_ENFORCE(epsilon_.size() >= static_cast<size_t>(group_count));
-  ORT_ENFORCE(threshold_.size() >= static_cast<size_t>(group_count));
 
   // If gradient norm is not finite, we copy inputs to outputs directly.
   if (ctx->Input<Tensor>(0)) {
@@ -442,6 +486,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
       return copy_inputs_to_outputs<T2, T3, T4>(
           ctx,
           non_grouped_input_count,
+          non_grouped_output_count,
           group_count,
           input_group_size,
           output_group_size);
@@ -462,6 +507,12 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
 
   const Tensor& eta = *ctx->Input<Tensor>(3);
   const HipT1* eta_data = reinterpret_cast<const HipT1*>(eta.template Data<T1>());
+
+  const Tensor* step_tensor = ctx->Input<Tensor>(4);
+  const int64_t* step_data = nullptr;
+  if (step_tensor) {
+    step_data = step_tensor->template Data<int64_t>();
+  }
 
   // Allocate buffer for reduction computation of update directions.
   // The i-th update direction's norm is stored at the i-th element.
@@ -528,7 +579,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
     const Tensor* w_fp16 = ctx->Input<Tensor>(input_start_index + 4);
 
     // Prepare used outputs tensors for this group.
-    const int output_start_index = group_index * output_group_size;
+    const int output_start_index = non_grouped_output_count + group_index * output_group_size;
     Tensor* w_new = ctx->Output(output_start_index, w->Shape());
     Tensor* g_new = ctx->Output(output_start_index + 1, g->Shape());
     Tensor* m1_new = ctx->Output(output_start_index + 2, m1->Shape());
@@ -574,7 +625,9 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
     p_w_fp16_news[group_index] = w_fp16_new != nullptr ? reinterpret_cast<half*>(w_fp16_new->template MutableData<MLFloat16>()) : nullptr;
   }
 
+
   launch_lamb_compute_direction(
+      step_data ? *step_data : 0,
       group_count,
       loss_scale_data,
       g_norm_data,
@@ -582,7 +635,8 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
       p_ws, p_gs, p_m1s, p_m2s,
       p_ds,
       p_m1_news, p_m2_news,
-      alpha_, beta_, lambda_, epsilon_);
+      alpha_, beta_, lambda_, epsilon_,
+      do_bias_correction_);
 
   launch_lamb_reduction(
       group_count,
@@ -596,15 +650,23 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
   launch_lamb_update(
       group_count,
       eta_data,
+      ratio_min_,
+      ratio_max_,
       tensor_sizes,
       p_w_norms,
       p_d_norms,
       p_ws,
       p_ds,
-      threshold_,
       p_w_news,
       p_g_news,
       p_w_fp16_news);
+
+  if (step_tensor) {
+    Tensor* step_tensor_new = ctx->Output(0, step_tensor->Shape());
+    ORT_ENFORCE(step_tensor_new != nullptr, "Step tensor (input) and updated step tensor (output) must be specified together.");
+    int64_t* step_data_new = step_tensor_new->template MutableData<int64_t>();
+    *step_data_new = *step_data + 1;
+  }
 
   return Status::OK();
 }
