@@ -1,12 +1,15 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Public wrappers around internal ort interfaces (currently)
+// In the future the internal implementations could derive from these to remove the need for the wrapper implementations
+
 #include "core/framework/func_api.h"
 
 namespace ONNX_NAMESPACE {
 enum AttributeProto_AttributeType;
 enum OperatorStatus;
 
-class ValueInfoProto;
-class TypeProto;
-class OpSchema;
 // String pointer as unique TypeProto identifier.
 using DataType = const std::string*;
 
@@ -63,12 +66,7 @@ struct Prov_TensorShapeProto {
 
 namespace onnxruntime {
 
-using NodeIndex = size_t;
-class Graph;
-class NodeArg;
-class GraphNodes;
-class TensorShape;
-
+struct ProviderHost;
 struct Prov_IExecutionProvider;
 
 struct Prov_IExecutionProviderFactory {
@@ -76,8 +74,7 @@ struct Prov_IExecutionProviderFactory {
   virtual std::unique_ptr<Prov_IExecutionProvider> CreateProvider() = 0;
 };
 
-struct ProviderHost;
-struct KernelCreateInfo;
+//struct KernelCreateInfo;
 
 class DataTypeImpl;
 using MLDataType = const DataTypeImpl*;
@@ -276,7 +273,7 @@ struct Prov_Node {
 
 };  // namespace onnxruntime
 
-#ifndef PROVIDER_BRIDGE_IMPL
+#ifndef PROVIDER_BRIDGE_ORT
 // if we are export the fused function to dll, the function will still in the same binary as lotus
 // use std function to give execution provider some chance to capture some state.
 using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
@@ -448,8 +445,6 @@ struct ProviderHost {
 
   virtual void* HeapAllocate(size_t size) = 0;
   virtual void HeapFree(void*) = 0;
-
-  virtual const TensorShape& Tensor_Shape(const void* _this) = 0;
 
   virtual void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file, const char* function, uint32_t line) = 0;
 

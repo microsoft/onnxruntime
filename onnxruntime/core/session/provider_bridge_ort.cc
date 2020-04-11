@@ -11,8 +11,8 @@
 #include "core/platform/env.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/compute_capability.h"
-#define PROVIDER_BRIDGE_IMPL
-#include "core/providers/shared_library/bridge.h"
+#define PROVIDER_BRIDGE_ORT
+#include "core/providers/shared_library/provider_interfaces.h"
 #include "core/common/logging/logging.h"
 #include "core/common/cpuid_info.h"
 
@@ -431,10 +431,6 @@ struct ProviderHostImpl : ProviderHost {
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
   void HeapFree(void* p) override { delete p; }
 
-  const TensorShape& Tensor_Shape(const void* this_) override {
-    return reinterpret_cast<const Tensor*>(this_)->Shape();
-  }
-
   bool CPU_HasAVX2() override {
     return CPUIDInfo::GetCPUIDInfo().HasAVX2();
   }
@@ -443,147 +439,9 @@ struct ProviderHostImpl : ProviderHost {
     return CPUIDInfo::GetCPUIDInfo().HasAVX512f();
   }
 
-#if 0
-  void onnxruntime_Status_constructor_1(void* _this, const void* category, int code, char const* msg) override {
-    new (_this) Status(*reinterpret_cast<const StatusCategory*>(category), code, msg);
-  }
-
-  void onnxruntime_Status_constructor_2(void* _this, const void* category, int code, const void* std_string_msg) override {
-    new (_this) Status(*reinterpret_cast<const StatusCategory*>(category), code, *reinterpret_cast<const std::string*>(std_string_msg));
-  }
-
-  void onnxruntime_OpKernelInfo_copy_constructor(void* _this, void* p1) override {
-    new (_this) OpKernelInfo(*reinterpret_cast<const OpKernelInfo*>(p1));
-  }
-
-  void onnxruntime_OpKernelInfo_constructor(void* _this, void* p1, void* p2, void* p3, void* p4, void* p5, void* p6, void* p7) override {
-    new (_this) OpKernelInfo(*reinterpret_cast<const onnxruntime::Node*>(p1),
-                             *reinterpret_cast<const KernelDef*>(p2),
-                             *reinterpret_cast<const IExecutionProvider*>(p3),
-                             *reinterpret_cast<const std::unordered_map<int, OrtValue>*>(p4),
-                             *reinterpret_cast<const OrtValueNameIdxMap*>(p5),
-                             *reinterpret_cast<const FuncManager*>(p6),
-                             *reinterpret_cast<const DataTransferManager*>(p7));
-  }
-#endif
-
   void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file, const char* function, uint32_t line) override {
     return ::onnxruntime::LogRuntimeError(session_id, status, file, function, line);
   }
-
-#if 0
-  void* CPUAllocator_Alloc(CPUAllocator* _this, uint64_t p1) override {
-    return _this->CPUAllocator::Alloc(p1);
-  }
-
-  void CPUAllocator_Free(CPUAllocator* _this, void* p1) override {
-    return _this->CPUAllocator::Free(p1);
-  }
-
-  const OrtMemoryInfo& CPUAllocator_Info(const CPUAllocator* _this) override {
-    return _this->CPUAllocator::Info();
-  }
-
-  int GraphViewer_MaxNodeIndex(const GraphViewer* _this) override {
-    return _this->MaxNodeIndex();
-  }
-
-  const std::string& GraphViewer_Name(const GraphViewer* _this) override {
-    return _this->Name();
-  }
-
-  const Node* GraphViewer_GetNode(const GraphViewer* _this, NodeIndex p1) override {
-    return _this->GetNode(p1);
-  }
-
-  const InitializedTensorSet& GraphViewer_GetAllInitializedTensors(const GraphViewer* _this) override {
-    return _this->GetAllInitializedTensors();
-  }
-
-  std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider_GetCapability(const IExecutionProvider* _this, const GraphViewer& p1, const std::vector<const KernelRegistry*>& p2) override {
-    return _this->IExecutionProvider::GetCapability(p1, p2);
-  }
-
-  std::shared_ptr<IAllocator> IExecutionProvider_GetAllocator(const IExecutionProvider* _this, int p1, OrtMemType p2) override {
-    return _this->IExecutionProvider::GetAllocator(p1, p2);
-  }
-
-  void IExecutionProvider_InsertAllocator(IExecutionProvider* _this, std::shared_ptr<IAllocator> p1) override {
-    _this->IExecutionProvider::InsertAllocator(std::move(p1));
-  }
-
-  Status IExecutionProvider_OnRunEnd(IExecutionProvider* _this) override {
-    return _this->IExecutionProvider::OnRunEnd();
-  }
-
-  Status IExecutionProvider_OnRunStart(IExecutionProvider* _this) override {
-    return _this->IExecutionProvider::OnRunStart();
-  }
-
-  Status KernelRegistry_Register(KernelRegistry* _this, KernelCreateInfo&& p1) override {
-    return _this->KernelRegistry::Register(std::move(p1));
-  }
-
-  NodeIndex Node_Index(const Node* _this) override {
-    return _this->Node::Index();
-  }
-
-  const NodeAttributes& Node_GetAttributes(const Node* _this) override {
-    return _this->Node::GetAttributes();
-  }
-
-  const ONNX_NAMESPACE::OpSchema* Node_Op(const Node* _this) override {
-    return _this->Node::Op();
-  }
-
-  const std::string& Node_OpType(const Node* _this) override {
-    return _this->Node::OpType();
-  }
-
-  void onnxruntime_Node_NodeConstIterator_constructor(void* _this, void* p1) override {
-    new (_this) Node::NodeConstIterator(*reinterpret_cast<Node::EdgeConstIterator*>(p1));
-  }
-
-  bool Node_NodeConstIterator_operator_not_equal(const void* _this, const void* p1) {
-    return reinterpret_cast<const Node::NodeConstIterator*>(_this)->operator!=(*reinterpret_cast<const Node::NodeConstIterator*>(p1));
-  }
-
-  void Node_NodeConstIterator_operator_plusplus(void* _this) {
-    reinterpret_cast<Node::NodeConstIterator*>(_this)->operator++();
-  }
-
-  const Node& Node_NodeConstIterator_operator_star(const void* _this) {
-    return reinterpret_cast<const Node::NodeConstIterator*>(_this)->operator*();
-  }
-
-  const std::string& NodeArg_Name(const NodeArg* _this) override {
-    return _this->NodeArg::Name();
-  }
-
-  const ONNX_NAMESPACE::TensorShapeProto* NodeArg_Shape(const NodeArg* _this) override {
-    return _this->NodeArg::Shape();
-  }
-
-  ONNX_NAMESPACE::DataType NodeArg_Type(const NodeArg* _this) override {
-    return _this->NodeArg::Type();
-  }
-
-  void onnxruntime_TensorShape_constructor(void* _this, int64_t const* p1, uint64_t p2) override {
-    new (_this) TensorShape(p1, p2);
-  }
-
-  void* TensorShape_TensorShape(const std::initializer_list<int64_t>& dims) override {
-    return new TensorShape(dims);
-  }
-
-  int64_t TensorShape_Size(const void* _this) override {
-    return reinterpret_cast<TensorShape*>(_this)->Size();
-  }
-
-  void* TensorShape_Slice(const TensorShape* _this, uint64_t p1) override {
-    return reinterpret_cast<TensorShape*>(_this)->Slice(p1);
-  }
-#endif
 
 }  // namespace onnxruntime
 provider_host_;

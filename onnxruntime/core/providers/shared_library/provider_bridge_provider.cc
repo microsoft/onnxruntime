@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// This is the provider DLL side of the bridge to let providers be built as a DLL
-// It implements all of the unresolved externals and routes them across to the real functions in onnxruntime
+// This is the provider DLL side of the provider API to let providers be built as a DLL
 
-#include "core/providers/dnnl/fake_proto.h"
+#include "provider_author.h"
 #include <assert.h>
 
 onnxruntime::ProviderHost* g_host;

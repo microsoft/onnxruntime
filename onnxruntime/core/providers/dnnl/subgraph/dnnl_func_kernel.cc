@@ -5,7 +5,6 @@
 #endif
 
 #include "dnnl_func_kernel.h"
-//#include "core/common/exceptions.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/dnnl/dnnl_common.h"
 #include "core/providers/dnnl/subgraph/dnnl_conv.h"
@@ -15,7 +14,6 @@
 #include "core/providers/dnnl/subgraph/dnnl_pool.h"
 #include "core/providers/dnnl/subgraph/dnnl_sum.h"
 #include "core/providers/dnnl/subgraph/dnnl_lrn.h"
-#include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {

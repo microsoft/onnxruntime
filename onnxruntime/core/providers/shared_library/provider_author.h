@@ -1,9 +1,9 @@
-// Copyright(C) 2019 Intel Corporation
-// Licensed under the MIT License
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Provider authors include this file
 
 #pragma once
-#define NO_PROTOBUF
-#define ONNX_NAMESPACE onnx
 
 #include <vector>
 #include <string>
@@ -12,24 +12,9 @@
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
 #include "core/session/onnxruntime_c_api.h"
-#include "gsl/gsl-lite.hpp"
-//#include "core/framework/op_node_proto_helper.h"
-//#include "core/graph/graph.h"
-//#include "core/providers/providers.h"
-#include "../shared_library/bridge.h"
+#include "provider_interfaces.h"
 
-#if 0
-namespace google {
-namespace protobuf {
-template <typename T>
-struct RepeatedPtrField {};
-}  // namespace protobuf
-}  // namespace google
-#endif
-
-namespace onnx {
-using DataType = const std::string*;
-using OperatorSetVersion = int;
+namespace ONNX_NAMESPACE {
 
 enum AttributeProto_AttributeType {
   AttributeProto_AttributeType_UNDEFINED = 0,
@@ -47,51 +32,18 @@ enum AttributeProto_AttributeType {
   AttributeProto_AttributeType_SPARSE_TENSORS = 12
 };
 
-enum Version {
-  _START_VERSION = 0,
-  IR_VERSION_2017_10_10 = 1,
-  IR_VERSION_2017_10_30 = 2,
-  IR_VERSION_2017_11_3 = 3,
-  IR_VERSION_2019_1_22 = 4,
-  IR_VERSION_2019_3_18 = 5,
-  IR_VERSION = 6
-};
-
 enum OperatorStatus {
   EXPERIMENTAL = 0,
   STABLE = 1
 };
 
-class ValueInfoProto {};
-
-class TypeProto;
-class OpSchema {
- public:
-  OperatorSetVersion SinceVersion() const;
-};
-
-class GraphProto {
-};
-
-class SparseTensorProto {
-};
-
-class NodeProto {};
-
-class FunctionProto {};
-}  // namespace onnx
+}  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
 
 constexpr const char* kOnnxDomain = "";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 
-class Graph;
-
-/**
- * \brief Base class for MLDataType
- *
- */
 class DataTypeImpl {
  public:
   virtual ~DataTypeImpl() = default;
@@ -106,13 +58,12 @@ class TensorShape : private std::vector<int64_t> {
  public:
   TensorShape() = default;
 
-#if 0
   TensorShape(const TensorShape& /*other*/) = default;
   TensorShape& operator=(const TensorShape& /*other*/) = default;
 
   TensorShape(TensorShape&& /*other*/) = default;
   TensorShape& operator=(TensorShape&& /*other*/) = default;
-#endif
+
   TensorShape(const std::vector<int64_t>& dims) : std::vector<int64_t>{dims} {}
   TensorShape(std::vector<int64_t>&& dims) : std::vector<int64_t>{dims} {}
   TensorShape(const std::initializer_list<int64_t>& dims) : std::vector<int64_t>{dims} {}
@@ -239,34 +190,6 @@ class OpKernelContext {
 
 constexpr const char* kMSDomain = "com.microsoft";
 constexpr const char* kMklDnnExecutionProvider = "MKLDNNExecutionProvider";
-
-#if 0
-using AllocateFunc = void* (*)(void*, size_t, size_t);
-using DestroyFunc = void (*)(void*, void*);
-using AllocatorHandle = void*;
-
-typedef struct {
-  //right now we only include allocation for host memory
-  AllocateFunc allocate_func;
-  DestroyFunc release_func;
-  AllocatorHandle allocator_handle;
-  const char* node_name;
-} ComputeContext;
-
-using FunctionState = void*;
-
-// if we are export the fused function to dll, the function will still in the same binary as lotus
-// use std function to give execution provider some chance to capture some state.
-using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
-using ComputeFunc = std::function<Status(FunctionState, const OrtApi*, OrtKernelContext*)>;
-using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
-
-struct NodeComputeInfo {
-  CreateFunctionStateFunc create_state_func;
-  ComputeFunc compute_func;
-  DestroyFunctionStateFunc release_state_func;
-};
-#endif
 
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
