@@ -66,14 +66,14 @@ std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
           .TypeConstraint("T_GRAD_NORM", DataTypeImpl::GetTensorType<T_GRAD_NORM>()), \
       LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>);
 
-REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, MLFloat16)
-REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, float)
+// REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, MLFloat16)
+// REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, float)
 REGISTER_LAMB_KERNEL_TYPED(float, float, float, float, float)
 REGISTER_LAMB_KERNEL_TYPED(double, double, double, double, double)
-REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, MLFloat16)
-REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, float)
-REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, MLFloat16)
-REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, float)
+// REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, MLFloat16)
+// REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, float)
+// REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, MLFloat16)
+// REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, float)
 
 void check_inputs_and_outputs(
     const Tensor* w,

@@ -24,8 +24,8 @@ namespace hip {
       OpName<T1, T2>);
 
 // REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, MLFloat16, 1)
-// REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, float, 1)
-// REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, double, 1)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, float, 1)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, double, 1)
 // REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, MLFloat16, 1)
 REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, float, 1)
 REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, double, 1)
@@ -86,8 +86,8 @@ Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
 }
 
 // REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, MLFloat16, 2)
-// REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, float, 2)
-// REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, double, 2)
+REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, float, 2)
+REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, double, 2)
 // REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, MLFloat16, 2)
 REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, float, 2)
 REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, double, 2)
