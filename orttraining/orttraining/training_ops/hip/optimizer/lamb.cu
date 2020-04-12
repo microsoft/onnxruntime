@@ -165,10 +165,10 @@ void LambComputeDirection(
 
 SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, float, float, float)
 SPECIALIZED_LAMB_COMPUTE_DIRECTION(double, double, double, double)
-SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, half)
-SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, float)
-SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, half)
-SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, float)
+// SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, half)
+// SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, float)
+// SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, half)
+// SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, float)
 
 template <typename T1, typename T2, typename T3>
 __device__ __forceinline__ void _LambUpdateRule(
@@ -287,8 +287,8 @@ void LambUpdate(
 
 INSTANTIATE_LAMB_UPDATE(float, float, float)
 INSTANTIATE_LAMB_UPDATE(double, double, double)
-INSTANTIATE_LAMB_UPDATE(half, float, half)
-INSTANTIATE_LAMB_UPDATE(float, float, half)
+// INSTANTIATE_LAMB_UPDATE(half, float, half)
+// INSTANTIATE_LAMB_UPDATE(float, float, half)
 
 template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
 __global__ void LambMultiTensorComputeDirectionImpl(
@@ -373,10 +373,10 @@ void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()
 
 INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, float, float, float)
 INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(double, double, double, double)
-INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, half)
-INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, float)
-INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, half)
-INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, float)
+// INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, half)
+// INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, float)
+// INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, half)
+// INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, float)
 
 template <typename T1, typename T2, typename T3>
 __global__ void LambMultiTensorUpdateImpl(
@@ -437,8 +437,8 @@ void LambMultiTensorUpdateFunctor<T1, T2, T3>::operator()(
 
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(double, double, double)
-INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(half, float, half)
-INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, half)
+// INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(half, float, half)
+// INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, half)
 
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
 __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group) {
@@ -529,9 +529,9 @@ void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()
 
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, float, float, float, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(double, double, double, double, double)
-INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, half, float)
-INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, float, float)
-INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(half, half, half, half, float)
+// INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, half, float)
+// INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, float, float)
+// INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(half, half, half, half, float)
 
 }  // namespace hip
 }  // namespace onnxruntime
