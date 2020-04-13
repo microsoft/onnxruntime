@@ -19,6 +19,18 @@ using namespace WEX::TestExecution;
       return true;                                                       \
     }
 
+#define WINML_TEST_CLASS_BEGIN_WITH_SETUP_AND_TEARDOWN(test_class_name, setup_method, teardown_method) \
+  class test_class_name {                                                                              \
+    TEST_CLASS(test_class_name);                                                                       \
+    TEST_CLASS_SETUP(TestClassSetup) {                                                                 \
+      getapi().setup_method();                                                                         \
+      return true;                                                                                     \
+    }                                                                                                  \
+    TEST_CLASS_CLEANUP(TestClassCleanup) {                                                             \
+      getapi().teardown_method();                                                                      \
+      return true;                                                                                     \
+    }
+
 #define WINML_TEST_CLASS_END() \
   }                            \
   ;

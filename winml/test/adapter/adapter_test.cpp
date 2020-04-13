@@ -7,7 +7,7 @@
 using namespace winrt::Windows::Storage;
 using namespace winrt::Windows::Storage::Streams;
 
-static void AdapterModelTestSetup() {
+static void AdapterTestSetup() {
   ortApi = OrtGetApiBase()->GetApi(2);
   winmlAdapter = OrtGetWinMLAdapter(ortApi);
   
@@ -19,6 +19,12 @@ static void AdapterModelTestSetup() {
   winmlAdapter->CreateModelFromPath(squeezenetPath.c_str(), squeezenetPath.size(), &squeezenetModel);
   winmlAdapter->CreateModelFromPath(metadataPath.c_str(), metadataPath.size(), &metadataModel);
   winmlAdapter->CreateModelFromPath(float16Path.c_str(), float16Path.size(), &float16Model);
+}
+
+static void AdapterTestTeardown() {
+  winmlAdapter->ReleaseModel(squeezenetModel);
+  winmlAdapter->ReleaseModel(metadataModel);
+  winmlAdapter->ReleaseModel(float16Model);
 }
 
 static void CreateModelFromPath() {
@@ -43,6 +49,7 @@ static void CreateModelFromData() {
   winmlAdapter->ModelGetAuthor(squeezenetModelFromData, &author, &len);
   std::string authorStr(author);
   WINML_EXPECT_EQUAL(authorStr, "onnx-caffe2");
+  winmlAdapter->ReleaseModel(squeezenetModelFromData);
 }
 
 static void CloneModel() {
@@ -297,7 +304,8 @@ static void EnvConfigureCustomLoggerAndProfiler() {
 const AdapterTestApi& getapi() {
   static constexpr AdapterTestApi api =
       {
-          AdapterModelTestSetup,
+          AdapterTestSetup,
+          AdapterTestTeardown,
           CreateModelFromPath,
           CreateModelFromData,
           CloneModel,

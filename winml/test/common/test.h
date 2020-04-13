@@ -5,6 +5,7 @@
 
 using VoidTest = void (*)();
 using SetupTest = VoidTest;
+using TeardownTest = VoidTest;
 
 constexpr bool alwaysTrue() {
     return true;
