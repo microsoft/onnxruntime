@@ -1,8 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
-#define INLINE_TEST_METHOD_MARKUP
-
 #include "WexTestClass.h"
 
 using namespace WEX::Logging;
