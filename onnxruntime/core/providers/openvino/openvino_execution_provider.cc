@@ -243,6 +243,12 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     //TopK opset 10 is currently not supported.
     //K as input is currently not suppported.
     return node->InputDefs().size() > 1;
+  } else if (optype == "ReduceMin") {
+    //Only FP32, INT32 and U8 data types are supported
+    const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
+    const bool data_is_int32 = node->InputDefs()[0]->Type()->find("int32") != std::string::npos;
+    const bool data_is_u8 = node->InputDefs()[0]->Type()->find("uint8") != std::string::npos;
+    return !(data_is_float || data_is_int32 || data_is_u8);
   } else if (optype == "MatMul") {
     //All matmuls except float have computation missmatch
     const bool A_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
