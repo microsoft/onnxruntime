@@ -303,6 +303,7 @@ def main():
 
     cut0_input = {CutEdge('186'), CutEdge('71', {'273', '395'})}
     cut1_input = {CutEdge('308'), CutEdge('71', {'395'})}
+    all_cut_inputs = [cut0_input, cut1_input]
 
     model = onnx.load(input_model_name)
     if len(model.graph.value_info) == 0:
