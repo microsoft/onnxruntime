@@ -309,7 +309,7 @@ process_dropout(model)
 #replace trainable dropout with dropout, when doing this please change opset version to 12.
 #process_trainabledropout(model)
 #add output shape of expand
-#add_expand_shape(model)
+add_expand_shape(model)
 #set opset version to 10
 model.opset_import[0].version = 10
 
