@@ -21,12 +21,25 @@
   namespace {                                                            \
     class test_class_name : public ::testing::Test {                     \
     protected:                                                           \
-      void SetUp() override {                                            \
+      static void SetUpTestSuite() {                                     \
         getapi().setup_method();                                         \
       }                                                                  \
     };
 
+#define WINML_TEST_CLASS_BEGIN_WITH_SETUP_AND_TEARDOWN(test_class_name, setup_method, teardown_method) \
+  namespace {                                                                                          \
+    class test_class_name : public ::testing::Test {                                                   \
+    protected:                                                                                         \
+      static void SetUpTestSuite() {                                                                   \
+        getapi().setup_method();                                                                       \
+      }                                                                                                \
+      static void TearDownTestSuite() {                                                                \
+        getapi().teardown_method();                                                                    \
+      }                                                                                                \
+    };
+  
 #define WINML_TEST_CLASS_END() }
+
 
 // For old versions of gtest without GTEST_SKIP, stream the message and return success instead
 #ifndef GTEST_SKIP
