@@ -15,6 +15,9 @@ jobs:
   variables:
     BuildCommand: ${{ parameters.BuildCommand }}
   steps:
+    - checkout: self
+      ${{ if ne(parameters.SubmoduleCheckoutMode, '') }}:
+        submodules: ${{ parameters.SubmoduleCheckoutMode }}
     - script: |
         export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-11.jdk/Contents/Home
         java --version
