@@ -201,6 +201,9 @@ if bdist_wheel is not None :
     cmd_classes['bdist_wheel'] = bdist_wheel
 cmd_classes['build_ext'] = build_ext
 
+with open('requirements.txt') as f:
+    install_requires = f.read().splitlines()
+
 # Setup
 setup(
     name=package_name,
@@ -222,10 +225,7 @@ setup(
         'onnxruntime': data + examples + extra,
     },
     py_modules=python_modules_list,
-    install_requires=[
-        'onnx>=1.2.3',
-        'numpy>=1.18.0'
-    ],
+    install_requires=install_requires,
     entry_points= {
         'console_scripts': [
             'onnxruntime_test = onnxruntime.tools.onnxruntime_test:main',
