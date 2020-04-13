@@ -201,7 +201,13 @@ if bdist_wheel is not None :
     cmd_classes['bdist_wheel'] = bdist_wheel
 cmd_classes['build_ext'] = build_ext
 
-with open('requirements.txt') as f:
+requirements_path = path.join(getcwd(), "requirements.txt")
+if not path.exists(requirements_path):
+    this = path.dirname(__file__)
+    requirements_path = path.join(this, "requirements.txt")
+if not path.exists(requirements_path):
+    raise FileNotFoundError("Unable to find 'requirements.txt'")
+with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
 # Setup
