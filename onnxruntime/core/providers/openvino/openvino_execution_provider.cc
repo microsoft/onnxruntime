@@ -550,11 +550,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
         has_unsupported_dimension = true;
         return;
       }
-      //Reject 1D symbolic shapes
-      else if (shape->dim_size() == 1 && utils::HasDimParam(shape->dim(0))) {
-        has_unsupported_dimension = true;
-        return;
-      } else {
+      else {
         //Zero dimension check
         for (const auto& dim : shape->dim()) {
           if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
