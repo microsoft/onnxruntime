@@ -11,6 +11,8 @@
 #include "arm_compute/runtime/PoolManager.h"
 #include "arm_compute/runtime/BlobLifetimeManager.h"
 
+#undef ACL_1902
+
 namespace onnxruntime {
 namespace acl {
 

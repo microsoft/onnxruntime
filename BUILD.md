@@ -386,28 +386,34 @@ The DirectML execution provider supports building for both x64 and x86 architect
 ### ARM Compute Library
 See more information on the ACL Execution Provider [here](./docs/execution_providers/ACL-ExecutionProvider.md).
 
+#### Prerequisites
+* Supported backend: i.MX8QM Armv8 CPUs
+* Supported BSP: i.MX8QM BSP
+  * Install i.MX8QM BSP: `source fsl-imx-xwayland-glibc-x86_64-fsl-image-qt5-aarch64-toolchain-4*.sh`
+* Set up the build environment
+```
+source /opt/fsl-imx-xwayland/4.*/environment-setup-aarch64-poky-linux
+alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/share/cmake/OEToolchainConfig.cmake"
+```
 * See [Build ARM](#ARM) below for information on building for ARM devices
 
 #### Build Instructions
 
-1. Build ACL Library (if not present)
+1. Configure ONNX Runtime with ACL support:
 ```
-git clone https://github.com/Arm-software/ComputeLibrary.git
-cd ComputeLibrary
-sudo apt install scons
-sudo apt install g++-arm-linux-gnueabihf
-scons -j8 arch=arm64-v8a  Werror=1 debug=0 asserts=0 neon=1 opencl=1 examples=1 build=native
+cmake ../onnxruntime-arm-upstream/cmake -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_GENERATE_TEST_REPORTS=ON -Donnxruntime_DEV_MODE=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_SHARED_LIB=ON -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_ACL=ON -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=ON -Donnxruntime_USE_TVM=OFF -Donnxruntime_USE_LLVM=OFF -Donnxruntime_ENABLE_MICROSOFT_INTERNAL=OFF -Donnxruntime_USE_BRAINSLICE=OFF -Donnxruntime_USE_NUPHAR=OFF -Donnxruntime_USE_EIGEN_THREADPOOL=OFF -Donnxruntime_BUILD_UNIT_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
 ```
 
-2. Set environment variables to set include directory and shared object library path.
+2. Build ONNX Runtime library, test and performance application:
 ```
-export CPATH=~/ComputeLibrary/include/:~/ComputeLibrary/
-export LD_LIBRARY_PATH=~/ComputeLibrary/build/
+make -j 6
 ```
 
-3. Build onnxruntime with --use_acl flag
+3. Deploy ONNX runtime on the i.MX 8QM board
 ```
-./build.sh --use_acl
+libonnxruntime.so.0.5.0
+onnxruntime_perf_test
+onnxruntime_test_all
 ```
 
 ---
