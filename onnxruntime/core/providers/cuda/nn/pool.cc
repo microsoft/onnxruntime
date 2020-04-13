@@ -32,6 +32,7 @@ namespace cuda {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
       Pool<data_type, pool_type>);
 
+
 POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 7, 9)
 POOLING_KERNEL_VERSIONED(AveragePool, double, AveragePool, 7, 9)
 POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 7, 9)
@@ -62,6 +63,7 @@ POOLING_KERNEL(MaxPool, double, MaxPool<8>, 12)
 POOLING_KERNEL(MaxPool, MLFloat16, MaxPool<8>, 12)
 POOLING_KERNEL(MaxPool, int8_t, MaxPool<8>, 12)
 POOLING_KERNEL(MaxPool, uint8_t, MaxPool<8>, 12)
+
 
 POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 1)
 POOLING_KERNEL(GlobalMaxPool, double, MaxPool<1>, 1)
@@ -165,8 +167,8 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
 
   cudnnPoolingMode_t mode = CUDNN_POOLING_MAX;
   if (PoolType::type == onnxruntime::PoolType::kAveragePool) {
-    mode = pool_attrs_.count_include_pad ? CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING
-                                         : CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING;
+    mode = pool_attrs_.count_include_pad ? CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING 
+    : CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING;
   }
   CudnnPoolingDescriptor pooling_desc;
   ORT_RETURN_IF_ERROR(pooling_desc.Set(mode, kernel_shape, pads, strides));
