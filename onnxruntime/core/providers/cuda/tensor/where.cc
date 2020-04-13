@@ -113,7 +113,7 @@ struct TernaryElementwisePreparation {
       if (b_rank > 0) {
         TensorPitches b_pitches(b_shape.GetDims());
         auto offset = out_rank - b_rank;
-        for (auto i = offset; i < out_rank && b_rank > 0; ++i) {
+        for (auto i = offset; i < out_rank; ++i) {
           // the stride for broadcast dimension is kept as 0
           if (b_shape.GetDims()[i - offset] != 1) {
             b_padded_strides[i] = b_pitches[i];
@@ -127,7 +127,7 @@ struct TernaryElementwisePreparation {
       if (c_rank > 0) {
         TensorPitches c_pitches(c_shape.GetDims());
         auto offset = out_rank - c_rank;
-        for (auto i = offset; i < out_rank && c_rank > 0; ++i) {
+        for (auto i = offset; i < out_rank; ++i) {
           // the stride for broadcast dimension is kept as 0
           if (c_shape.GetDims()[i - offset] != 1) {
             c_padded_strides[i] = c_pitches[i];
