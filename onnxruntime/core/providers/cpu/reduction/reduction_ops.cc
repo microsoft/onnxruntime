@@ -5,6 +5,8 @@
 #include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/cpu/containers.h"
+#include "core/platform/threadpool.h"
+
 using namespace std;
 namespace onnxruntime {
 
@@ -490,13 +492,10 @@ Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
 
   if (no_transpose) {
     const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
-
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
-    for (int64_t i = 0; i < block_size; ++i) {
+    auto lambda = [input_data, blocks, output_data](ptrdiff_t i) {
       output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).mean();
-    }
+    };
+    concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(), block_size, lambda, 0);
   } else {
     EigenVectorMap<T> out_vec(output_data, block_size);
     out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().mean();
@@ -566,13 +565,10 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
 
   if (no_transpose) {
     const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
-
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
-    for (int64_t i = 0; i < block_size; ++i) {
+    auto lambda = [input_data, blocks, output_data](ptrdiff_t i) {
       output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).sum();
-    }
+    };
+    concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(), block_size, lambda, 0);
   } else {
     EigenVectorMap<T> out_vec(output_data, block_size);
     out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().sum();

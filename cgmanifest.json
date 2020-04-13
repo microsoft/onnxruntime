@@ -49,7 +49,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "423f1977d314f05df4be7edb44428c1c0211341c",
+               "commitHash": "8bee53756ba8b8a3aca47c5719e35fca150ab79e",
                "repositoryUrl": "https://github.com/onnx/onnx.git"
             }
          }
@@ -450,7 +450,7 @@
       {
          "component": {
             "git": {
-               "commitHash": "f5f481b1ddf9e55810af437a043465b8917ea29e",
+               "commitHash": "9dfa77ad5c59abd07b77a4c463315ef8112daefc",
                "repositoryUrl": "https://github.com/microsoft/FeaturizersLibrary.git"
             },
             "type": "git"
