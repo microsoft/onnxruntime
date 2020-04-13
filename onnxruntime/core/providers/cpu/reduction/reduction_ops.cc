@@ -566,7 +566,9 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
   if (no_transpose) {
     const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
     auto lambda = [input_data, blocks, output_data](ptrdiff_t i) {
-      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).sum();
+
+      // The ConstEigenMatrixMap type is expanded to work around a MS compiler issue
+      output_data[i] = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(input_data + (i * blocks), blocks).sum();
     };
     concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(), block_size, lambda, 0);
   } else {
