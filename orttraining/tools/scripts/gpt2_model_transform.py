@@ -223,8 +223,8 @@ def process_dropout(model):
     for node in model.graph.node:
         if node.op_type == 'Dropout':
             new_dropout = model.graph.node.add()
-            new_dropout.op_type = 'Dropout'
-            new_dropout.name = 'Dropout_%d' % index
+            new_dropout.op_type = 'TrainableDropout'
+            new_dropout.name = 'TrainableDropout%d' % index
             #make ratio node
             ratio = np.asarray([node.attribute[0].f], dtype=np.float32)
             print(ratio.shape)
@@ -232,6 +232,40 @@ def process_dropout(model):
             ratio_node = add_const(model, 'dropout_node_ratio_%d' % index, 'dropout_node_ratio_%d' % index, t_value=ratio_value)
             print (ratio_node)
             new_dropout.input.extend([node.input[0], ratio_node.output[0]])
+            new_dropout.output.extend(node.output)
+            dropouts.append(get_node_index(model, node))
+            index += 1
+    dropouts.sort(reverse=True)
+    for d in dropouts:
+        del model.graph.node[d]
+
+def process_trainabledropout(model):
+    dropouts = []
+    index = 0
+    for node in model.graph.node:
+        if node.op_type == 'TrainableDropout':
+            new_dropout = model.graph.node.add()
+            new_dropout.op_type = 'Dropout'
+            new_dropout.name = 'Dropout_%d' % index
+
+            #make ratio node
+            ratio_tensor = TensorProto()
+            try:
+                dtype = mapping.NP_TYPE_TO_TENSOR_TYPE[np.dtype(np.float32)]
+            except KeyError:
+                raise RuntimeError(
+                    "Numpy data type not understood yet: {}".format(str(np.float32)))
+            ratio_tensor.data_type = dtype
+            ratio_node = None
+            for node_1 in model.graph.node:
+                if node_1.name == node.input[1]:
+                    #ratio_tensor.raw_data = bytes(bytearray(struct.pack("f", node_1.attribute[0].f)))
+                    ratio_node = add_const(model, 'dropout_ratio_%d' % index, 'dropout_ratio_%d' % index, t_value=node_1.attribute[0].t)
+                    dropouts.append(get_node_index(model, node_1))
+
+            #ratio_node = add_const(model, 'dropout_node_ratio_%d' % index, 'dropout_node_ratio_%d' % index, t_value=ratio_tensor)
+            print (ratio_node)
+            new_dropout.input.extend([node.input[0], ratio_node.name])
             new_dropout.output.extend(node.output)
             dropouts.append(get_node_index(model, node))
             index += 1
@@ -315,9 +349,10 @@ add_name(model)
 process_concat(model)
 #constant fold transpose
 fix_transpose(model)
-#replace dropout with trainable dropout
+#replace dropout with trainable dropout (Review(codemzs): We need to stop using this)
 process_dropout(model)
-
+#replace trainable dropout with dropout, when doing this please change opset version to 12.
+#process_trainabledropout(model)
 remove_input_ids_check_subgraph(model)
 
 fix_split(model)

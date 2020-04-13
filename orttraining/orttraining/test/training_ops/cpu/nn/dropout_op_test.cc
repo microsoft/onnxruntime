@@ -136,10 +136,7 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
     ratio = 0.5f;
   }
   const float input_constant = 3.0f;
-
   std::vector<float> dy_data(input_shape.Size(), input_constant);
-  std::vector<float> ratio_data(1, ratio);
-
   auto mask_buffer = onnxruntime::make_unique<bool[]>(input_shape.Size());
   std::generate_n(
       mask_buffer.get(), input_shape.Size(),
@@ -158,7 +155,7 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
   test.AddInput<float>("dy", input_shape.GetDims(), dy_data);
   test.AddInput<bool>("mask", input_shape.GetDims(), mask_buffer.get(), input_shape.Size());
   if (!default_ratio) {
-    test.AddInput<float>("ratio", {1}, ratio_data);
+    test.AddInput<float>("ratio", {}, {ratio});
   }
 
   test.AddOutput<float>("dx", input_shape.GetDims(), dx_data);
