@@ -432,6 +432,7 @@ class TrainingRunner {
   Parameters params_;
   const SessionOptions session_options_;
   TrainingSession session_;
+  TrainingSession session1_;
   AllocatorPtr input_allocator_;
 
   std::unique_ptr<CheckpointRegistry> checkpoint_registry_;

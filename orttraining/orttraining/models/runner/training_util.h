@@ -113,6 +113,25 @@ class TrainingUtil {
                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
   }
 
+  template <typename T>
+  static void CreateCpuMLScalar(const T value,
+                                MLValue* p_mlvalue,
+                                AllocatorPtr alloc = nullptr) {
+    // Scalar has empty shape.
+    TensorShape shape;
+    auto element_type = DataTypeImpl::GetType<T>();
+    auto allocator = alloc ? alloc : GetCpuAllocator();
+    auto p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, allocator);
+
+    // Copy one element, the scalar, to a tensor object.
+    memcpy(p_tensor->MutableDataRaw(), &value, p_tensor->SizeInBytes());
+
+    // Convert tensor to MLValue.
+    p_mlvalue->Init(p_tensor.release(),
+                    DataTypeImpl::GetType<Tensor>(),
+                    DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  }
+
   static AllocatorPtr GetCpuAllocator() {
     static CPUExecutionProviderInfo info;
     static CPUExecutionProvider cpu_provider(info);

@@ -77,6 +77,7 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
       params_(params),
       session_options_(session_options),
       session_(session_options, env),
+      session1_(session_options, env),
       input_allocator_(params.input_allocator ? params.input_allocator : TrainingUtil::GetCpuAllocator()) {
   ORT_ENFORCE(!params_.model_path.empty());
   if (!params.weights_to_train.empty())
@@ -162,12 +163,10 @@ Status TrainingRunner::Initialize() {
 
   std::cout << "(training_runner.cc) configure for training" << std::endl;
   // [TODO] Pass event names to ConfigureForTraining and set values there.
-  /*
   waited_forward_event_name_ = "waited_forward_event_id";
   recorded_forward_event_name_ = "recorded_forward_event_id";
   waited_backward_event_name_ = "waited_backward_event";
   recorded_backward_event_name_ = "recorded_backward_event";
-  */
   ORT_RETURN_IF_ERROR(session_.ConfigureForTraining(config, config_result));
 
   if (config_result.mixed_precision_config_result.has_value()) {
@@ -259,9 +258,11 @@ Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_
 }
 
 Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader) {
+  /*
   const bool enable_checkpoint_saving =
       params_.mpi_context.world_rank == 0 &&
       checkpoint_registry_ && params_.checkpoint_period > 0;
+  */
 
   VectorString feed_names = training_data_loader.DataSetTensorNames();
   if (loss_scaler_) {
@@ -316,7 +317,15 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
   std::ofstream log_file(std::to_string(params_.mpi_context.world_rank));
 
-  session_.Save("perf_sub_model_" + std::to_string(params_.mpi_context.world_rank) + ".onnx", TrainingSession::SaveOption::NO_RELOAD);
+  if (params_.mpi_context.local_rank == 0) {
+    ORT_RETURN_IF_ERROR(session1_.Load("/bert_ort/wechi/pipe/test_training_model_0_back.onnx"));
+  } else if (params_.mpi_context.local_rank == 1) {
+    ORT_RETURN_IF_ERROR(session1_.Load("/bert_ort/wechi/pipe/test_training_model_1_back.onnx"));
+  } else if (params_.mpi_context.local_rank == 2) {
+    ORT_RETURN_IF_ERROR(session1_.Load("/bert_ort/wechi/pipe/test_training_model_2_back.onnx"));
+  }
+  
+  // session_.Save("perf_sub_model_" + std::to_string(params_.mpi_context.world_rank) + ".onnx", TrainingSession::SaveOption::NO_RELOAD);
 
   log_file << "Step 1 @ " << params_.mpi_context.world_rank << std::endl;
   while (step_ < params_.num_train_steps) {
@@ -330,7 +339,6 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         continue;
       }
 
-      log_file << "Step 2 @ " << params_.mpi_context.world_rank << std::endl;
       // Shuffle the data for each epoch
       if (params_.shuffle_data) {
         printf("Randomly shuffle training data.\n");
@@ -342,6 +350,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
         const size_t worker_id = step_ % num_pipeline_stages_;
 
+        /*
         std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch, input_allocator_);
         if (loss_scaler_) {
           float loss_scale = loss_scaler_->GetLossScale();
@@ -354,141 +363,150 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{learning_rate}, &lr_ort_val, input_allocator_);
           feeds.push_back(lr_ort_val);
         }
+        */
 
-        /*
-        if (do_pipedream_) {
-          int64_t id = 0;
-          id = get_forward_waited_event_id(step_);
+        std::vector<MLValue> feeds;  
+        std::vector<std::string> feed_names;
+        
+        if (params_.mpi_context.local_rank == 0) {
+          OrtValue x;
           TrainingUtil::CreateCpuMLValue(
-            {1},
-            std::vector<int64_t>{id},
-            &worker_states_[worker_id].fw_waited_value,
+            {1, 784},
+            std::vector<int64_t>(784, 1),
+            &x,
             input_allocator_);
-          feeds.push_back(worker_states_[worker_id].fw_waited_value);
+          feeds.push_back(x);
+          feed_names.push_back("X");
+
+          OrtValue fw_send_signal;
+          TrainingUtil::CreateCpuMLScalar(
+            true,
+            &fw_send_signal,
+            input_allocator_);
+          feed_names.push_back("send_input_signal0");
+          
+          OrtValue fw_record_event;
+          int64_t id = -1;
+          id = get_forward_recorded_event_id(step_);
+          TrainingUtil::CreateCpuMLScalar(
+            id,
+            &fw_record_event,
+            input_allocator_);
+          feed_names.push_back("RecordEvent_fw_event_id_0");
+          
+          OrtValue bw_wait_event;
+          id = get_backward_waited_event_id(step_);
+          TrainingUtil::CreateCpuMLScalar(
+            id,
+            &fw_record_event,
+            input_allocator_);
+          feed_names.push_back("WaitEvent_bw_event_id_4");
+
+          fetch_names = {"send_output_signal0"};
+        } else if (params_.mpi_context.local_rank == 1) {
+          OrtValue fw_recv_signal;
+          TrainingUtil::CreateCpuMLScalar(
+            true,
+            &fw_recv_signal,
+            input_allocator_);
+          feeds.push_back(fw_recv_signal);
+          feed_names.push_back("recv_input_signal0");
+
+          OrtValue fw_send_signal;
+          TrainingUtil::CreateCpuMLScalar(
+            true,
+            &fw_send_signal,
+            input_allocator_);
+          feeds.push_back(fw_send_signal);
+          feed_names.push_back("send_input_signal1");
+
+          int64_t id = -1;
+          id = get_backward_recorded_event_id(step_);
+          OrtValue bw_record_event;
+          TrainingUtil::CreateCpuMLScalar(
+            id,
+            &bw_record_event,
+            input_allocator_);
+          feeds.push_back(bw_record_event);
+          feed_names.push_back("RecordEvent_bw_event_id_0");
+
+          id = get_forward_waited_event_id(step_);
+          OrtValue fw_wait_event;
+          TrainingUtil::CreateCpuMLScalar(
+            id,
+            &fw_wait_event,
+            input_allocator_);
+          feeds.push_back(fw_wait_event);
+          feed_names.push_back("WaitEvent_fw_event_id_3");
 
           id = get_forward_recorded_event_id(step_);
-          TrainingUtil::CreateCpuMLValue(
-            {1},
-            std::vector<int64_t>{id},
-            &worker_states_[worker_id].fw_recorded_value,
+          OrtValue fw_record_event;
+          TrainingUtil::CreateCpuMLScalar(
+            id,
+            &fw_record_event,
             input_allocator_);
-          feeds.push_back(worker_states_[worker_id].fw_recorded_value);
+          feeds.push_back(fw_record_event);
+          feed_names.push_back("RecordEvent_fw_event_id_7");
 
           id = get_backward_waited_event_id(step_);
-          TrainingUtil::CreateCpuMLValue(
-            {1},
-            std::vector<int64_t>{id},
-            &worker_states_[worker_id].bw_waited_value,
+          OrtValue bw_wait_event;
+          TrainingUtil::CreateCpuMLScalar(
+            id,
+            &bw_wait_event,
             input_allocator_);
-          feeds.push_back(worker_states_[worker_id].bw_waited_value);
+          feeds.push_back(bw_wait_event);
+          feed_names.push_back("WaitEvent_bw_event_id_11");
+        } else if (params_.mpi_context.local_rank == 2) { 
+          OrtValue fw_recv_signal;
+          TrainingUtil::CreateCpuMLScalar(
+            true,
+            &fw_recv_signal,
+            input_allocator_);
+          feeds.push_back(fw_recv_signal);
+          feed_names.push_back("recv_input_signal1");
 
-          id = get_backward_recorded_event_id(step_);
+          OrtValue labels;
           TrainingUtil::CreateCpuMLValue(
-            {1},
-            std::vector<int64_t>{id},
-            &worker_states_[worker_id].bw_recorded_value,
+            {1, 10},
+            std::vector<int64_t>(10, 0),
+            &labels,
             input_allocator_);
-          feeds.push_back(worker_states_[worker_id].bw_recorded_value);
+          feeds.push_back(labels);
+          feed_names.push_back("labels");
+
+          int64_t id = -1;
+          OrtValue bw_record_event;
+          id = get_backward_waited_event_id(step_);
+          TrainingUtil::CreateCpuMLScalar(
+            id,
+            &bw_record_event,
+            input_allocator_);
+          feeds.push_back(bw_record_event);
+          feed_names.push_back("RecordEvent_bw_event_id_0");
+
+          OrtValue fw_wait_event;
+          id = get_forward_waited_event_id(step_);
+          TrainingUtil::CreateCpuMLScalar(
+            id,
+            &fw_wait_event,
+            input_allocator_);
+          feeds.push_back(fw_wait_event);
+          feed_names.push_back("WaitEvent_fw_event_id_3");
         }
-        */
 
         std::vector<MLValue> fetches;
 
-        log_file << "Step 3 @ " << params_.mpi_context.world_rank << std::endl;
         const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
         auto start = std::chrono::high_resolution_clock::now();
 
-        /*
-        bool gdb_break = true;
-        while(gdb_break) {
-            // set the sleep time to pause the processes
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
-        */
-
         if (is_weight_update_step) {
-          /*
-          bool gdb_break = true;
-          while(gdb_break) {
-              // set the sleep time to pause the processes
-              std::this_thread::sleep_for(std::chrono::seconds(1));
-          }
-          */
-
-          /*
-          // In update step, only one worker is launched per GPU.
-          // The entire graph is executed once as if there is no pipeline.
-          log_file << "Step 4 @ " << params_.mpi_context.world_rank << std::endl;
           join_all_workers();
-
-          bool gdb_break = true;
-          while(gdb_break) {
-              // set the sleep time to pause the processes
-              std::this_thread::sleep_for(std::chrono::seconds(1));
-          }
-
-          Status update_status;
-
-          worker_states_[worker_id].run_options = RunOptions();
-          worker_states_[worker_id].feed_names = feed_names;
-          worker_states_[worker_id].feeds = feeds;
-          worker_states_[worker_id].fetch_names = fetch_names;
-          worker_states_[worker_id].fetches = std::vector<MLValue>();
-
-          auto fw_wait = get_forward_waited_event_id(step_);
-          auto fw_record = get_forward_recorded_event_id(step_);
-          auto bw_wait = get_backward_waited_event_id(step_);
-          auto bw_record = get_backward_recorded_event_id(step_);
-
-          log_file << "(" << step_ << "@" << params_.mpi_context.world_rank << ") " << fw_wait << "," << fw_record << "," << bw_wait << "," << bw_record << std::endl;
-
-          log_file << "Step 5 @ " << params_.mpi_context.world_rank << std::endl;
-          workers_[worker_id] = std::thread([&](const size_t worker_id) {
-            // session_.Run(RunOptions(), feed_names, feeds, fetch_names, &fetches);
-
-            log_file << "(update@" << params_.mpi_context.world_rank << ")" << " launch worker " << worker_id << std::endl;
-
-            log_file << "(update-before) feed_names size " << feed_names.size() << std::endl;
-            log_file << "(update-before) feeds size " << feeds.size() << std::endl;
-            log_file << "(update-before) fetch_names " << fetch_names.size() << std::endl;
-            log_file << "(update-before) fetches size" << fetches.size() << std::endl;
-
-            // Error:
-            // 1. GetLastCudaError
-            update_status = session_.Run(
-              worker_states_[worker_id].run_options,
-              worker_states_[worker_id].feed_names,
-              worker_states_[worker_id].feeds,
-              worker_states_[worker_id].fetch_names,
-              &worker_states_[worker_id].fetches);
-            
-
-            log_file << "(update-after) feed_names size " << feed_names.size() << std::endl;
-            log_file << "(update-after) feeds size " << feeds.size() << std::endl;
-            log_file << "(update-after) fetch_names " << fetch_names.size() << std::endl;
-            log_file << "(update-after) fetches size " << fetches.size() << std::endl;
-
-            log_file << "(update@" << params_.mpi_context.world_rank << ")" << " terminate worker " << worker_id << std::endl;
-            log_file << update_status.ErrorMessage() << std::endl;
-
-            ORT_ENFORCE(update_status == Status::OK());
-          }, worker_id);
-
-          log_file << "Step 6 @ " << params_.mpi_context.world_rank << std::endl;
-
-          workers_[worker_id].join();
-          fetches = worker_states_[worker_id].fetches;
-
-          log_file << "Step 7 @ " << params_.mpi_context.world_rank << std::endl;
-          */
-
-          join_all_workers();
-          ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
+          ORT_RETURN_IF_ERROR(session1_.Run(RunOptions(),
                                            feed_names,
                                            feeds,
                                            fetch_names,
                                            &fetches));
-
+          /*
           if (loss_scaler_) {
             auto it = std::find(fetch_names.begin(), fetch_names.end(), opt_graph_outputs_[OptimizerOutputKey::GradientAllIsFinite]);
             if (it != fetch_names.end()) {
@@ -499,97 +517,20 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             }
           }
 
-          log_file << "Step 8 @ " << params_.mpi_context.world_rank << std::endl;
-
           if (!params_.is_perf_test && weight_update_step_count_ % params_.display_loss_steps == 0) {
-          log_file << "Step 8-0 @ " << params_.mpi_context.world_rank << std::endl;
             if (params_.error_function) {
-              /*
-              log_file << "Step 8-1 @ " << params_.mpi_context.world_rank << std::endl;
-              log_file << "feed_names size " << feed_names.size() << std::endl;
-              log_file << "feeds size " << feeds.size() << std::endl;
-              log_file << "fetch_names " << fetch_names.size() << std::endl;
-              log_file << "fetches size" << fetches.size() << std::endl;
-              */
               params_.error_function(feed_names, feeds, fetch_names, fetches, weight_update_step_count_);
-              /*
-              log_file << "Step 8-2 @ " << params_.mpi_context.world_rank << std::endl;
-              */
             }
-            /*
-            log_file << "Step 8-3 @ " << params_.mpi_context.world_rank << std::endl;
-            */
             if (params_.post_evaluation_callback) {
-              /*
-              log_file << "Step 8-4 @ " << params_.mpi_context.world_rank << std::endl;
-              */
               params_.post_evaluation_callback(params_.batch_size, weight_update_step_count_, "train");
-              /*
-              log_file << "Step 8-5 @ " << params_.mpi_context.world_rank << std::endl;
-              */
             }
-            /*
-            log_file << "Step 8-6 @ " << params_.mpi_context.world_rank << std::endl;
-            */
           }
-
-          /*
-          log_file << "Step 9 @ " << params_.mpi_context.world_rank << std::endl;
           */
 
           weight_update_step_count_++;
         } else {
           RunOptions run_options;
           run_options.only_execute_path_to_fetches = true;
-          /*
-          log_file << "Step 10 @ " << params_.mpi_context.world_rank << std::endl;
-
-          worker_states_[worker_id].run_options = run_options;
-          worker_states_[worker_id].feed_names = feed_names;
-          worker_states_[worker_id].feeds = feeds;
-          worker_states_[worker_id].fetch_names = fetch_grad_accumulator_output;
-          worker_states_[worker_id].fetches = std::vector<MLValue>();
-
-          log_file << "Step 11 @ " << params_.mpi_context.world_rank << std::endl;
-          // If the selected worker is busy, we need to wait.
-          join_worker(worker_id);
-
-          log_file << "Step 12 @ " << params_.mpi_context.world_rank << std::endl;
-          auto fw_wait = get_forward_waited_event_id(step_);
-          auto fw_record = get_forward_recorded_event_id(step_);
-          auto bw_wait = get_backward_waited_event_id(step_);
-          auto bw_record = get_backward_recorded_event_id(step_);
-
-          log_file << "Step 13 @ " << params_.mpi_context.world_rank << std::endl;
-
-          log_file << "(" << step_ << "@" << params_.mpi_context.world_rank << ") " << fw_wait << "," << fw_record << "," << bw_wait << "," << bw_record << std::endl;
-
-          Status grad_status;
-          workers_[worker_id] = std::thread([&](const size_t worker_id) {
-            // session_.Run(run_options, feed_names, feeds, fetch_grad_accumulator_output, &fetches);
-            log_file << "(grad@" << params_.mpi_context.world_rank << ")" << " launch worker " << worker_id << std::endl;
-            grad_status = session_.Run(
-              worker_states_[worker_id].run_options,
-              worker_states_[worker_id].feed_names,
-              worker_states_[worker_id].feeds,
-              worker_states_[worker_id].fetch_names,
-              &(worker_states_[worker_id].fetches));
-
-            log_file << "(grad@" << params_.mpi_context.world_rank << ")" << " terminate worker " << worker_id << std::endl;
-            cudaError_t err = cudaGetLastError();
-            log_file << cudaGetErrorString(err) << std::endl;
-            log_file << grad_status.ErrorMessage() << std::endl;
-
-            ORT_ENFORCE(grad_status == Status::OK());
-          }, worker_id);
-          // workers_[worker_id].join();
-          log_file << "Step 14 @ " << params_.mpi_context.world_rank << std::endl;
-
-          // fetches = worker_states_[worker_id].fetches;
-
-          */
-          log_file << "Step 15 @ " << params_.mpi_context.world_rank << std::endl;
-
           auto fw_wait = get_forward_waited_event_id(step_);
           auto fw_record = get_forward_recorded_event_id(step_);
           auto bw_wait = get_backward_waited_event_id(step_);
@@ -598,45 +539,24 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           worker_states_[worker_id].run_options = run_options;
           worker_states_[worker_id].feed_names = feed_names;
           worker_states_[worker_id].feeds = feeds;
-          worker_states_[worker_id].fetch_names = fetch_grad_accumulator_output;
+          // worker_states_[worker_id].fetch_names = fetch_grad_accumulator_output;
+          worker_states_[worker_id].fetch_names = fetch_names;
           worker_states_[worker_id].fetches = std::vector<MLValue>();
+
           join_worker(worker_id);
-          /*
-          workers_[worker_id] = std::thread(&call_training_step,
-            &session_,
-            worker_states_[worker_id].run_options,
-            worker_states_[worker_id].feed_names,
-            worker_states_[worker_id].feeds,
-            worker_states_[worker_id].fetch_names,
-            &(worker_states_[worker_id].fetches), params_.mpi_context.local_rank);
-          */
 
           workers_[worker_id] = std::thread([&](const size_t worker_id) {
             // session_.Run(run_options, feed_names, feeds, fetch_grad_accumulator_output, &fetches);
-            session_.Run(
+            session1_.Run(
               worker_states_[worker_id].run_options,
               worker_states_[worker_id].feed_names,
               worker_states_[worker_id].feeds,
               worker_states_[worker_id].fetch_names,
               &(worker_states_[worker_id].fetches));
           }, worker_id);
-
-          /*
-          ORT_RETURN_IF_ERROR(session_.Run(run_options,
-                                           feed_names,
-                                           feeds,
-                                           fetch_grad_accumulator_output,
-                                           &fetches));
-
-          std::thread local_worker = std::thread(&call_training_step, &session_, run_options, feed_names, feeds, fetch_grad_accumulator_output, &fetches, params_.mpi_context.local_rank);
-          local_worker.join();
-          */
 
           gradient_accumulation_step_count++;
         }
-        /*
-        log_file << "Step 16 @ " << params_.mpi_context.world_rank << std::endl;
-        */
         step_++;
 
         auto end = std::chrono::high_resolution_clock::now();
@@ -658,11 +578,11 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                static_cast<int>(batch * params_.batch_size),
                static_cast<int>((batch + 1) * params_.batch_size - 1));
 
+        /*
         if (test_data_loader &&
             params_.do_eval && step_ % params_.evaluation_period == 0) {
           ORT_RETURN_IF_ERROR(Evaluate(session_, *test_data_loader));
         }
-
         if (enable_checkpoint_saving && is_weight_update_step &&
             weight_update_step_count_ % params_.checkpoint_period == 0) {
           PathString new_checkpoint_path, old_checkpoint_path;
@@ -687,6 +607,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
           ORT_RETURN_IF_ERROR(SaveCheckpoint(new_checkpoint_path));
         }
+        */
       }  // end of one file/shard
       join_all_workers();
 
