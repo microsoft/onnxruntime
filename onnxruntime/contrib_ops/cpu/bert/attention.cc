@@ -305,7 +305,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         }
       }
     });
-  }  // end scope for mask_data_buffer
+  }
 
   // STEP.4: out_tmp(B, N, S, H) = P(B, N, S, S) x V(B, N, S, H)
   auto out_tmp_data =

@@ -18,6 +18,8 @@ namespace Microsoft.ML.OnnxRuntime
     internal class DisposableList<T> : List<T>, IDisposableReadOnlyCollection<T>
         where T : IDisposable
     {
+        public DisposableList() { }
+        public DisposableList(int count) : base(count) { }
 
         #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
@@ -31,7 +33,7 @@ namespace Microsoft.ML.OnnxRuntime
                     // TODO: dispose managed state (managed objects).
                     for (int i = 0; i < this.Count; i++)
                     {
-                        this[i].Dispose();
+                        this[i]?.Dispose();
                     }
                     this.Clear();
                 }
@@ -62,9 +64,14 @@ namespace Microsoft.ML.OnnxRuntime
     public class DisposableNamedOnnxValue : NamedOnnxValue, IDisposable
     {
         private NativeMemoryHandler _nativeMemoryManager;
-        private DisposableNamedOnnxValue(string name, Object value, NativeMemoryHandler nativeMemoryManager)
+        private TensorElementType _elementType;
+        private OnnxValueType _onnxValueType;
+
+        private DisposableNamedOnnxValue(string name, Object value, OnnxValueType onnxValueType, TensorElementType elementType, NativeMemoryHandler nativeMemoryManager)
             : base(name, value)
         {
+            _onnxValueType = onnxValueType;
+            _elementType = elementType;
             _nativeMemoryManager = nativeMemoryManager;
         }
 
@@ -78,8 +85,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="onnxValue"></param>
         /// <param name="pinnedMemoryHandle"></param>
         /// <param name="disposeOnnxValueAfterUse"></param>
-        internal override void ToNativeOnnxValue(out IntPtr onnxValue, 
-                                                 out MemoryHandle pinnedMemoryHandle)
+        internal override void ToNativeOnnxValue(out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle, out bool disposeOnnxValueAfterUse)
         {
             // Make sure that this instance hasn't been disposed yet
             if (disposedValue)
@@ -101,6 +107,7 @@ namespace Microsoft.ML.OnnxRuntime
             // PinnedMemoryHandle holds the default value as DisposableNamedOnnxValue
             // doesn't hold any managed buffer (that needs to be pinned)
             pinnedMemoryHandle = default;
+            disposeOnnxValueAfterUse = false;
         }
 
         internal static DisposableNamedOnnxValue CreateTensorFromOnnxValue(string name, IntPtr nativeOnnxValue)
@@ -196,15 +203,15 @@ namespace Microsoft.ML.OnnxRuntime
                 case OnnxValueType.ONNX_TYPE_SEQUENCE:
                     IntPtr count = IntPtr.Zero;
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValueCount(nativeOnnxValue, out count));
-                    var sequence = new DisposableList<DisposableNamedOnnxValue>();
-                    for (long i = 0; i < count.ToInt64(); i++)
+                    var sequence = new DisposableList<DisposableNamedOnnxValue>(count.ToInt32());
+                    for (int i = 0; i < count.ToInt32(); i++)
                     {
                         IntPtr nativeOnnxValueSeq;
-                        NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValue(nativeOnnxValue, 0, allocator, out nativeOnnxValueSeq));
+                        NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValue(nativeOnnxValue, i, allocator, out nativeOnnxValueSeq));
                         sequence.Add(CreateFromOnnxValue(string.Empty, nativeOnnxValueSeq, allocator));
                         NativeMethods.OrtReleaseValue(nativeOnnxValueSeq);
                     }
-                    return new DisposableNamedOnnxValue(name, sequence, null);
+                    return new DisposableNamedOnnxValue(name, sequence, OnnxValueType.ONNX_TYPE_SEQUENCE, TensorElementType.DataTypeMax, null);
 
                 case OnnxValueType.ONNX_TYPE_MAP:
                     IntPtr typeAndShape = IntPtr.Zero;
@@ -243,13 +250,13 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 var nativeTensorWrapper = new NativeOnnxTensorMemory<string>(nativeOnnxValue);
                 var dt = new DenseTensor<string>(nativeTensorWrapper.GetBytesAsStringMemory(), nativeTensorWrapper.Dimensions);
-                return new DisposableNamedOnnxValue(name, dt, nativeTensorWrapper);
+                return new DisposableNamedOnnxValue(name, dt, OnnxValueType.ONNX_TYPE_TENSOR, nativeTensorWrapper.ElementType, nativeTensorWrapper);
             }
             else
             {
                 NativeOnnxTensorMemory<T> nativeTensorWrapper = new NativeOnnxTensorMemory<T>(nativeOnnxValue);
                 DenseTensor<T> dt = new DenseTensor<T>(nativeTensorWrapper.Memory, nativeTensorWrapper.Dimensions);
-                return new DisposableNamedOnnxValue(name, dt, nativeTensorWrapper);
+                return new DisposableNamedOnnxValue(name, dt, OnnxValueType.ONNX_TYPE_TENSOR, nativeTensorWrapper.ElementType, nativeTensorWrapper);
             }
         }
 
@@ -270,7 +277,7 @@ namespace Microsoft.ML.OnnxRuntime
                 // release native memory
                 nativeTensorWrapperValues.Dispose();
                 nativeTensorWrapper.Dispose();
-                return new DisposableNamedOnnxValue(string.Empty, map, null);
+                return new DisposableNamedOnnxValue(string.Empty, map, OnnxValueType.ONNX_TYPE_MAP, TensorElementType.DataTypeMax, null);
             }
             else
             {
@@ -284,7 +291,7 @@ namespace Microsoft.ML.OnnxRuntime
                 // release native memory
                 nativeTensorWrapperValues.Dispose();
                 nativeTensorWrapper.Dispose();
-                return new DisposableNamedOnnxValue(string.Empty, map, null);
+                return new DisposableNamedOnnxValue(string.Empty, map, OnnxValueType.ONNX_TYPE_MAP, TensorElementType.DataTypeMax, null);
             }
         }
 
