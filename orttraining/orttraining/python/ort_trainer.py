@@ -648,6 +648,10 @@ class ORTTrainer():
                 *self.model_desc_.outputs_,
                 IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool)]
 
+        if self.state_dict_:
+            self.load_state_dict(self.state_dict_, self.strict_) 
+        self.state_dict_ = None
+
     def _init_onnx_model(self, inputs):
         if self.onnx_model_ is not None:
             return
@@ -674,6 +678,11 @@ class ORTTrainer():
         return torch_state
 
     def load_state_dict(self, state_dict, strict=False):
+        if not self.session:
+            self.state_dict_ = state_dict
+            self.strict_ = strict
+            return
+
         session_state = {}
         for name in state_dict:
             session_state[name] = state_dict[name].numpy()
