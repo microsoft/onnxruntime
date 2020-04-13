@@ -2,8 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/quantize_linear.h"
-#include "core/providers/common.h" 
-
+#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -13,11 +12,8 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     1,
     uint8_t,
     KernelDefBuilder()
-        .TypeConstraint("axis", DataTypeImpl::GetType<int64_t>())
-        .TypeConstraint("x", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("x_scale", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("x_zero_point", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("y", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
     DequantizeLinear<uint8_t>);
 
 ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
@@ -25,11 +21,8 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     1,
     int8_t,
     KernelDefBuilder()
-        .TypeConstraint("axis", DataTypeImpl::GetType<int64_t>())
-        .TypeConstraint("x", DataTypeImpl::GetTensorType<int8_t>())
-        .TypeConstraint("x_scale", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("x_zero_point", DataTypeImpl::GetTensorType<int8_t>())
-        .TypeConstraint("y", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>()),
     DequantizeLinear<int8_t>);
 
 ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
@@ -37,12 +30,9 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     1,
     uint8_t,
     KernelDefBuilder()
-        .TypeConstraint("axis", DataTypeImpl::GetType<int64_t>())
-        .TypeConstraint("x", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("y_scale", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("y_zero_point", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("y", DataTypeImpl::GetTensorType<uint8_t>()),
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
     QuantizeLinear<uint8_t>);
 
-} // namespace contrib
+}  // namespace contrib
 }  // namespace onnxruntime
