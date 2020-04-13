@@ -332,13 +332,13 @@ void RegisterGradientSchemas() {
           "The size of the kernel along each axis.",
           AttributeProto::INTS)
       .Attr(
-          "strides", "Stride along each axis.", AttributeProto::INTS, OPTIONAL)
+          "strides", "Stride along each axis.", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr(
           "auto_pad",
           "auto_pad doc",
           AttributeProto::STRING,
           std::string("NOTSET"))
-      .Attr("pads", "pads_doc", AttributeProto::INTS, OPTIONAL)
+      .Attr("pads", "pads_doc", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr(
           "count_include_pad",
           "",

@@ -146,6 +146,8 @@ def create_backend_test(testname=None):
             '^test_min_uint32_cpu*',
             '^test_min_uint64_cpu*',
             '^test_min_uint8_cpu*',
+            '^test_momentum_cpu',
+            '^test_momentum_multiple_cpu',
             '^test_mod_float_mixed_sign_example_cpu',  # onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be true for float, float16 and double types
             '^test_negative_log_likelihood_loss_input_shape_is_NC_cpu*',
             '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_cpu*',
@@ -154,6 +156,22 @@ def create_backend_test(testname=None):
             '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_cpu*',
             '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_mean_cpu*',
             '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_cpu*',
+            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_ignore_index_cpu',
+            '^test_nesterov_momentum_cpu',
+            '^test_pow_bcast_array_cpu',
+            '^test_pow_bcast_scalar_cpu',
+            '^test_pow_cpu',
+            '^test_pow_example_cpu',
+            '^test_pow_types_float32_int32_cpu',
+            '^test_pow_types_float32_int64_cpu',
+            '^test_pow_types_float32_uint32_cpu',
+            '^test_pow_types_float32_uint64_cpu',
+            '^test_pow_types_float_cpu',
+            '^test_pow_types_int32_float32_cpu',
+            '^test_pow_types_int32_int32_cpu',
+            '^test_pow_types_int64_float32_cpu',
+            '^test_pow_types_int64_int64_cpu',
+            '^test_pow_types_int_cpu',
             '^test_resize_downsample_scales_cubic_align_corners_cpu',  # results mismatch with onnx tests
             '^test_resize_downsample_scales_linear_align_corners_cpu',  # results mismatch with onnx tests
             '^test_resize_tf_crop_and_resize_cpu',  # bad expected data, needs test fix
@@ -171,7 +189,6 @@ def create_backend_test(testname=None):
             '^test_unfoldtodepth_with_padding_cpu*',
             '^test_unfoldtodepth_with_padding_stride_cpu*',
             '^test_unfoldtodepth_without_padding_cpu*',
-            '^test_unique_not_sorted_without_axis_cpu',  # bad expected data. enable after https://github.com/onnx/onnx/pull/2381 is picked up
         ]
 
         # Example of how to disable tests for a specific provider.
@@ -183,14 +200,20 @@ def create_backend_test(testname=None):
                 '^test_argmin_negative_axis.*', '^test_hardmax_negative_axis.*', '^test_gemm_default_no_bias_cpu',
                 '^test_flatten_negative_axis.*', '^test_reduce_[a-z1-9_]*_negative_axes_.*',
                 'test_squeeze_negative_axes_cpu', 'test_unsqueeze_negative_axes_cpu', 'test_constant_pad_cpu',
-                'test_edge_pad_cpu', 'test_reflect_pad_cpu'
+                'test_edge_pad_cpu', 'test_reflect_pad_cpu', '^test_split_zero_size_splits_.*','^test_argmax_keepdims_example_select_last_index_.*', '^test_argmax_no_keepdims_example_select_last_index_.*','^test_argmin_no_keepdims_example_select_last_index_.*','^test_argmin_keepdims_example_select_last_index_.*'
             ]
 
         if c2.supports_device('DNNL'):
             current_failing_tests += [
                 '^test_range_float_type_positive_delta_expanded_cpu',
                 '^test_range_int32_type_negative_delta_expanded_cpu', '^test_averagepool_2d_ceil_cpu',
-                '^test_maxpool_2d_ceil_cpu', '^test_maxpool_2d_dilations_cpu'
+                '^test_maxpool_2d_ceil_cpu', '^test_maxpool_2d_dilations_cpu',
+                '^test_maxpool_2d_uint8'
+            ]
+
+        if c2.supports_device('NNAPI'):
+            current_failing_tests += [
+              '^test_maxpool_2d_uint8'
             ]
 
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):

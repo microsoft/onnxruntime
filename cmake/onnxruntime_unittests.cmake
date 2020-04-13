@@ -187,6 +187,13 @@ if (onnxruntime_ENABLE_TRAINING)
   endif()
 endif()
 
+if (onnxruntime_USE_DNNL)
+  file(GLOB_RECURSE onnxruntime_test_providers_dnnl_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/dnnl/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_dnnl_src})
+endif()
+
 if (onnxruntime_USE_NGRAPH)
   file(GLOB_RECURSE onnxruntime_test_providers_ngraph_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/ngraph/*"

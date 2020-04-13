@@ -541,8 +541,7 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
   return CApiElementTypeFromProtoType(tensor_proto.data_type());
 }
 
-ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name,
-                                                const ONNX_NAMESPACE::TypeProto& tensor_proto_type) {
+ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name) {
   // Given we are using the raw_data field in the protobuf, this will work only for little-endian format.
   ORT_ENFORCE(endian::native == endian::little);
 
@@ -555,12 +554,17 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std:
     tensor_proto.add_dims(dim);
   }
 
-  // TODO Once utils::GetTensorProtoType supports all data types, you can get the tensor proto type from the tensor,
-  // as follows (which will allow us to get rid of the tensor_proto_type argument).
-  //tensor_proto.set_data_type(utils::GetTensorProtoType(tensor));
-
-  tensor_proto.set_data_type(tensor_proto_type.tensor_type().elem_type());
-  tensor_proto.set_raw_data(tensor.DataRaw(), tensor.SizeInBytes());
+  tensor_proto.set_data_type(tensor.GetElementType());
+  if (tensor.IsDataTypeString()) {
+    auto* mutable_string_data = tensor_proto.mutable_string_data();
+    auto f = tensor.Data<std::string>();
+    auto end = f + tensor.Shape().Size();
+    for (; f < end; ++f) {
+      *mutable_string_data->Add() = *f;
+    }
+  } else {
+    tensor_proto.set_raw_data(tensor.DataRaw(), tensor.SizeInBytes());
+  }
 
   return tensor_proto;
 }
