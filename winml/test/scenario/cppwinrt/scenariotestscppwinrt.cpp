@@ -57,13 +57,13 @@ static void ScenarioCppWinrtTestSetup() {
 }
 
 static void ScenarioCppWinrtGpuTestSetup() {
+  GPUTEST;
   ScenarioCppWinrtTestSetup();
-  GPUTEST
 };
 
 static void ScenarioCppWinrtGpuSkipEdgeCoreTestSetup() {
+  SKIP_EDGECORE;
   ScenarioCppWinrtGpuTestSetup();
-  SKIP_EDGECORE
 };
 
 static void Sample1() {
