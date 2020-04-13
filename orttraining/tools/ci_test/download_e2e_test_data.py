@@ -11,8 +11,8 @@ import urllib.request
 import zipfile
 
 # update these if the E2E test data changes
-ARCHIVE_BLOB_URL = "https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2019-12-12T18:53:12.3943496Z"
-ARCHIVE_SHA256_DIGEST = "066abe039a544d4f100ad2047f5983b65dc27d0b24f9f448cf4474076b486500"
+ARCHIVE_BLOB_URL = "https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2020-04-13T02:37:18.0880723Z"
+ARCHIVE_SHA256_DIGEST = "fc2b2df0ae8eebec567261cbc618969e77b81c8feeb6185f5f8cddf3d06c132e"
 
 def _download(url, local_path):
   urllib.request.urlretrieve(url, local_path)

@@ -7,8 +7,6 @@ import subprocess
 import sys
 import os
 
-SCRIPT_DIR = os.path.realpath(os.path.dirname(__file__))
-
 def parse_args():
     parser = argparse.ArgumentParser(description="Runs a BERT batch size test.")
     parser.add_argument("--binary_dir", required=True,
