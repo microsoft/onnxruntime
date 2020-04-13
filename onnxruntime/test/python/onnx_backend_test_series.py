@@ -146,6 +146,8 @@ def create_backend_test(testname=None):
             '^test_min_uint32_cpu*',
             '^test_min_uint64_cpu*',
             '^test_min_uint8_cpu*',
+            '^test_momentum_cpu',
+            '^test_momentum_multiple_cpu',
             '^test_mod_float_mixed_sign_example_cpu',  # onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be true for float, float16 and double types
             '^test_negative_log_likelihood_loss_input_shape_is_NC_cpu*',
             '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_cpu*',
@@ -154,6 +156,22 @@ def create_backend_test(testname=None):
             '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_cpu*',
             '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_mean_cpu*',
             '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_cpu*',
+            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_ignore_index_cpu',
+            '^test_nesterov_momentum_cpu',
+            '^test_pow_bcast_array_cpu',
+            '^test_pow_bcast_scalar_cpu',
+            '^test_pow_cpu',
+            '^test_pow_example_cpu',
+            '^test_pow_types_float32_int32_cpu',
+            '^test_pow_types_float32_int64_cpu',
+            '^test_pow_types_float32_uint32_cpu',
+            '^test_pow_types_float32_uint64_cpu',
+            '^test_pow_types_float_cpu',
+            '^test_pow_types_int32_float32_cpu',
+            '^test_pow_types_int32_int32_cpu',
+            '^test_pow_types_int64_float32_cpu',
+            '^test_pow_types_int64_int64_cpu',
+            '^test_pow_types_int_cpu',
             '^test_resize_downsample_scales_cubic_align_corners_cpu',  # results mismatch with onnx tests
             '^test_resize_downsample_scales_linear_align_corners_cpu',  # results mismatch with onnx tests
             '^test_resize_tf_crop_and_resize_cpu',  # bad expected data, needs test fix
