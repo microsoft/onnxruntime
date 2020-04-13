@@ -249,23 +249,22 @@ def process_trainabledropout(model):
             new_dropout.name = 'Dropout_%d' % index
 
             #make ratio node
-            ratio_tensor = TensorProto()
-            try:
-                dtype = mapping.NP_TYPE_TO_TENSOR_TYPE[np.dtype(np.float32)]
-            except KeyError:
-                raise RuntimeError(
-                    "Numpy data type not understood yet: {}".format(str(np.float32)))
-            ratio_tensor.data_type = dtype
             ratio_node = None
             for node_1 in model.graph.node:
                 if node_1.name == node.input[1]:
-                    #ratio_tensor.raw_data = bytes(bytearray(struct.pack("f", node_1.attribute[0].f)))
-                    ratio_node = add_const(model, 'dropout_ratio_%d' % index, 'dropout_ratio_%d' % index, t_value=node_1.attribute[0].t)
+                    ratio_node = node_1
                     dropouts.append(get_node_index(model, node_1))
 
-            #ratio_node = add_const(model, 'dropout_node_ratio_%d' % index, 'dropout_node_ratio_%d' % index, t_value=ratio_tensor)
             print (ratio_node)
-            new_dropout.input.extend([node.input[0], ratio_node.name])
+            new_dropout_ratio = model.graph.node.add()
+            new_dropout_ratio.op_type = 'ConstantOfShape'
+            new_dropout_ratio.name = 'ConstantOfShape_%d' % index
+            attr = new_dropout_ratio.attribute.add()
+            attr.name = 'value'
+            attr.type = 4
+            attr.t.CopyFrom(ratio_node.attribute[0].t)
+            new_dropout_ratio.output.extend(ratio_node.output)
+            new_dropout.input.extend([node.input[0], ratio_node.output[0]])
             new_dropout.output.extend(node.output)
             dropouts.append(get_node_index(model, node))
             index += 1
