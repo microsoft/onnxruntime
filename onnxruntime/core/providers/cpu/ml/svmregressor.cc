@@ -15,7 +15,7 @@ ONNX_CPU_OPERATOR_ML_KERNEL(
 template <typename T>
 SVMRegressor<T>::SVMRegressor(const OpKernelInfo& info)
     : OpKernel(info),
-      SVMCommon<T>(info),
+      SVMCommon(info),
       vector_count_(info.GetAttrOrDefault<int64_t>("n_supports", 0)),
       support_vectors_(info.GetAttrsOrDefault<float>("support_vectors")),
       post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))) {
@@ -65,8 +65,8 @@ Status SVMRegressor<T>::Compute(OpKernelContext* ctx) const {
 
     // combine the input data with the support vectors and apply the kernel type
     // output is {num_batches, vector_count_}
-    batched_kernel_dot(x_data, support_vectors_, num_batches, vector_count_, feature_count_, 0.f, tmp_data_span,
-                       threadpool);
+    batched_kernel_dot<float>(x_data, support_vectors_, num_batches, vector_count_, feature_count_, 0.f, tmp_data_span,
+                              threadpool);
 
     static const TensorShape rho_shape({1});
 
@@ -79,7 +79,7 @@ Status SVMRegressor<T>::Compute(OpKernelContext* ctx) const {
                                       threadpool);
   } else if (mode_ == SVM_TYPE::SVM_LINEAR) {
     // combine the coefficients with the input data and apply the kernel type
-    batched_kernel_dot(x_data, coefficients_, num_batches, 1, feature_count_, rho_[0], out, threadpool);
+    batched_kernel_dot<float>(x_data, coefficients_, num_batches, 1, feature_count_, rho_[0], out, threadpool);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected mode:", static_cast<int>(mode_));
   }

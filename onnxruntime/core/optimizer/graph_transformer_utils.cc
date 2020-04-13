@@ -135,7 +135,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
       std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
       transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(cpu_cuda_execution_providers));
 #endif
     } break;
 
