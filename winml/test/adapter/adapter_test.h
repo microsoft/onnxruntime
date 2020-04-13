@@ -31,13 +31,13 @@ struct AdapterTestApi
   VoidTest EnvConfigureCustomLoggerAndProfiler;
 };
 const AdapterTestApi& getapi();
-const WinmlAdapterApi* winmlAdapter;
-const OrtApi* ortApi;
-OrtModel* squeezenetModel = nullptr;
-OrtModel* metadataModel = nullptr;
-OrtModel* float16Model = nullptr;
-static bool loggingFunctionCalled = false;
-static bool profilingFunctionCalled = false;
+const WinmlAdapterApi* winml_adapter_api;
+const OrtApi* ort_api;
+OrtModel* squeezenet_model = nullptr;
+OrtModel* metadata_model = nullptr;
+OrtModel* float16_Model = nullptr;
+static bool logging_function_called = false;
+static bool profiling_function_called = false;
 
 WINML_TEST_CLASS_BEGIN_WITH_SETUP_AND_TEARDOWN(AdapterTest, AdapterTestSetup, AdapterTestTeardown)
 WINML_TEST(AdapterTest, CreateModelFromPath)

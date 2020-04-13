@@ -8,236 +8,236 @@ using namespace winrt::Windows::Storage;
 using namespace winrt::Windows::Storage::Streams;
 
 static void AdapterTestSetup() {
-  ortApi = OrtGetApiBase()->GetApi(2);
-  winmlAdapter = OrtGetWinMLAdapter(ortApi);
+  ort_api = OrtGetApiBase()->GetApi(2);
+  winml_adapter_api = OrtGetWinMLAdapter(ort_api);
   
   // for model tests
-  std::wstring modulePath = FileHelpers::GetModulePath();
-  std::string squeezenetPath = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(modulePath + L"squeezenet_modifiedforruntimestests.onnx");
-  std::string metadataPath = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(modulePath + L"modelWith2MetaData.onnx");
-  std::string float16Path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(modulePath + L"starry-night-fp16.onnx");
-  winmlAdapter->CreateModelFromPath(squeezenetPath.c_str(), squeezenetPath.size(), &squeezenetModel);
-  winmlAdapter->CreateModelFromPath(metadataPath.c_str(), metadataPath.size(), &metadataModel);
-  winmlAdapter->CreateModelFromPath(float16Path.c_str(), float16Path.size(), &float16Model);
+  std::wstring module_path = FileHelpers::GetModulePath();
+  std::string squeezenet_path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(module_path + L"squeezenet_modifiedforruntimestests.onnx");
+  std::string metadata_path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(module_path + L"modelWith2MetaData.onnx");
+  std::string float16_path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(module_path + L"starry-night-fp16.onnx");
+  winml_adapter_api->CreateModelFromPath(squeezenet_path.c_str(), squeezenet_path.size(), &squeezenet_model);
+  winml_adapter_api->CreateModelFromPath(metadata_path.c_str(), metadata_path.size(), &metadata_model);
+  winml_adapter_api->CreateModelFromPath(float16_path.c_str(), float16_path.size(), &float16_Model);
 }
 
 static void AdapterTestTeardown() {
-  winmlAdapter->ReleaseModel(squeezenetModel);
-  winmlAdapter->ReleaseModel(metadataModel);
-  winmlAdapter->ReleaseModel(float16Model);
+  winml_adapter_api->ReleaseModel(squeezenet_model);
+  winml_adapter_api->ReleaseModel(metadata_model);
+  winml_adapter_api->ReleaseModel(float16_Model);
 }
 
 static void CreateModelFromPath() {
-  WINML_EXPECT_TRUE(squeezenetModel != nullptr);
-  WINML_EXPECT_TRUE(metadataModel != nullptr);
-  WINML_EXPECT_TRUE(float16Model != nullptr);
+  WINML_EXPECT_TRUE(squeezenet_model != nullptr);
+  WINML_EXPECT_TRUE(metadata_model != nullptr);
+  WINML_EXPECT_TRUE(float16_Model != nullptr);
 }
 
 static void CreateModelFromData() {
   StorageFolder folder = StorageFolder::GetFolderFromPathAsync(FileHelpers::GetModulePath()).get();
   StorageFile file = folder.GetFileAsync(L"squeezenet_modifiedforruntimestests.onnx").get();
   IRandomAccessStream stream = file.OpenAsync(FileAccessMode::Read).get();
-  DataReader dataReader(stream.GetInputStreamAt(0));
-  dataReader.LoadAsync(static_cast<uint32_t>(stream.Size())).get();
-  IBuffer dataBuffer = dataReader.DetachBuffer();
-  OrtModel* squeezenetModelFromData = nullptr;
-  winmlAdapter->CreateModelFromData(dataBuffer.data(), dataBuffer.Length(), &squeezenetModelFromData);
-  WINML_EXPECT_TRUE(squeezenetModelFromData != nullptr);
+  DataReader data_reader(stream.GetInputStreamAt(0));
+  data_reader.LoadAsync(static_cast<uint32_t>(stream.Size())).get();
+  IBuffer data_buffer = data_reader.DetachBuffer();
+  OrtModel* squeezenet_model_from_data = nullptr;
+  winml_adapter_api->CreateModelFromData(data_buffer.data(), data_buffer.Length(), &squeezenet_model_from_data);
+  WINML_EXPECT_TRUE(squeezenet_model_from_data != nullptr);
   // Verify a function in the model for thoroughness
   const char* author;
   size_t len;
-  winmlAdapter->ModelGetAuthor(squeezenetModelFromData, &author, &len);
-  std::string authorStr(author);
-  WINML_EXPECT_EQUAL(authorStr, "onnx-caffe2");
-  winmlAdapter->ReleaseModel(squeezenetModelFromData);
+  winml_adapter_api->ModelGetAuthor(squeezenet_model_from_data, &author, &len);
+  std::string author_str(author);
+  WINML_EXPECT_EQUAL(author_str, "onnx-caffe2");
+  winml_adapter_api->ReleaseModel(squeezenet_model_from_data);
 }
 
 static void CloneModel() {
-  OrtModel* squeezenetClone = nullptr;
-  winmlAdapter->CloneModel(squeezenetModel, &squeezenetClone);
-  WINML_EXPECT_TRUE(squeezenetClone != nullptr);
+  OrtModel* squeezenet_clone = nullptr;
+  winml_adapter_api->CloneModel(squeezenet_model, &squeezenet_clone);
+  WINML_EXPECT_TRUE(squeezenet_clone != nullptr);
   // Verify a function in clone
   const char* author;
   size_t len;
-  winmlAdapter->ModelGetAuthor(squeezenetClone, &author, &len);
-  std::string authorStr(author);
-  WINML_EXPECT_EQUAL(authorStr, "onnx-caffe2");
+  winml_adapter_api->ModelGetAuthor(squeezenet_clone, &author, &len);
+  std::string author_str(author);
+  WINML_EXPECT_EQUAL(author_str, "onnx-caffe2");
 }
 
 static void ModelGetAuthor() {
   const char* author;
   size_t len;
-  winmlAdapter->ModelGetAuthor(squeezenetModel, &author, &len);
-  std::string authorStr(author);
-  WINML_EXPECT_EQUAL(authorStr, "onnx-caffe2");
+  winml_adapter_api->ModelGetAuthor(squeezenet_model, &author, &len);
+  std::string author_str(author);
+  WINML_EXPECT_EQUAL(author_str, "onnx-caffe2");
 }
 
 static void ModelGetName() {
   const char* name;
   size_t len;
-  winmlAdapter->ModelGetName(squeezenetModel, &name, &len);
-  std::string nameStr(name);
-  WINML_EXPECT_EQUAL(nameStr, "squeezenet_old");
+  winml_adapter_api->ModelGetName(squeezenet_model, &name, &len);
+  std::string name_str(name);
+  WINML_EXPECT_EQUAL(name_str, "squeezenet_old");
 }
 
 static void ModelGetDomain() {
   const char* domain;
   size_t len;
-  winmlAdapter->ModelGetDomain(squeezenetModel, &domain, &len);
-  std::string domainStr(domain);
-  WINML_EXPECT_EQUAL(domainStr, "test-domain");
+  winml_adapter_api->ModelGetDomain(squeezenet_model, &domain, &len);
+  std::string domain_str(domain);
+  WINML_EXPECT_EQUAL(domain_str, "test-domain");
 }
 
 static void ModelGetDescription() {
   const char* description;
   size_t len;
-  winmlAdapter->ModelGetDescription(squeezenetModel, &description, &len);
-  std::string descriptionStr(description);
-  WINML_EXPECT_EQUAL(descriptionStr, "test-doc_string");
+  winml_adapter_api->ModelGetDescription(squeezenet_model, &description, &len);
+  std::string description_str(description);
+  WINML_EXPECT_EQUAL(description_str, "test-doc_string");
 }
 
 static void ModelGetVersion() {
   int64_t version;
-  winmlAdapter->ModelGetVersion(squeezenetModel, &version);
+  winml_adapter_api->ModelGetVersion(squeezenet_model, &version);
   WINML_EXPECT_EQUAL(version, 123456);
 }
 
 static void ModelGetInputCount() {
-  size_t inputCount;
-  winmlAdapter->ModelGetInputCount(squeezenetModel, &inputCount);
-  WINML_EXPECT_EQUAL(inputCount, 1);
+  size_t input_count;
+  winml_adapter_api->ModelGetInputCount(squeezenet_model, &input_count);
+  WINML_EXPECT_EQUAL(input_count, 1);
 }
 
 static void ModelGetOutputCount() {
-  size_t outputCount;
-  winmlAdapter->ModelGetOutputCount(squeezenetModel, &outputCount);
-  WINML_EXPECT_EQUAL(outputCount, 1);
+  size_t output_count;
+  winml_adapter_api->ModelGetOutputCount(squeezenet_model, &output_count);
+  WINML_EXPECT_EQUAL(output_count, 1);
 }
 
 static void ModelGetInputName() {
-  const char* inputName;
+  const char* input_name;
   size_t count;
-  winmlAdapter->ModelGetInputName(squeezenetModel, 0, &inputName, &count);
-  std::string inputNameStr(inputName);
-  WINML_EXPECT_EQUAL(inputNameStr, "data_0");
+  winml_adapter_api->ModelGetInputName(squeezenet_model, 0, &input_name, &count);
+  std::string input_name_str(input_name);
+  WINML_EXPECT_EQUAL(input_name_str, "data_0");
 }
 
 static void ModelGetOutputName() {
-  const char* outputName;
+  const char* output_name;
   size_t count;
-  winmlAdapter->ModelGetOutputName(squeezenetModel, 0, &outputName, &count);
-  std::string outputNameStr(outputName);
-  WINML_EXPECT_EQUAL(outputNameStr, "softmaxout_1");
+  winml_adapter_api->ModelGetOutputName(squeezenet_model, 0, &output_name, &count);
+  std::string output_name_str(output_name);
+  WINML_EXPECT_EQUAL(output_name_str, "softmaxout_1");
 }
 
 static void ModelGetInputDescription() {
-  const char* inputDescription;
+  const char* input_description;
   size_t count;
-  winmlAdapter->ModelGetInputDescription(metadataModel, 0, &inputDescription, &count);
-  std::string inputDescriptionStr(inputDescription);
-  WINML_EXPECT_EQUAL(inputDescriptionStr, "this is a long input description!");
+  winml_adapter_api->ModelGetInputDescription(metadata_model, 0, &input_description, &count);
+  std::string input_description_str(input_description);
+  WINML_EXPECT_EQUAL(input_description_str, "this is a long input description!");
 }
 
 static void ModelGetOutputDescription() {
-  const char* outputDescription;
+  const char* output_description;
   size_t count;
-  winmlAdapter->ModelGetOutputDescription(metadataModel, 0, &outputDescription, &count);
-  std::string outputDescriptionStr(outputDescription);
-  WINML_EXPECT_EQUAL(outputDescriptionStr, "this is a long output description!");
+  winml_adapter_api->ModelGetOutputDescription(metadata_model, 0, &output_description, &count);
+  std::string output_description_str(output_description);
+  WINML_EXPECT_EQUAL(output_description_str, "this is a long output description!");
 }
 
 static void ModelGetInputTypeInfo() {
-  OrtTypeInfo* inputTypeInfo;
-  winmlAdapter->ModelGetInputTypeInfo(squeezenetModel, 0, &inputTypeInfo);
+  OrtTypeInfo* input_type_info;
+  winml_adapter_api->ModelGetInputTypeInfo(squeezenet_model, 0, &input_type_info);
 
-  ONNXType inputType;
-  ortApi->GetOnnxTypeFromTypeInfo(inputTypeInfo, &inputType);
-  WINML_EXPECT_EQUAL(inputType, ONNX_TYPE_TENSOR);
+  ONNXType input_type;
+  ort_api->GetOnnxTypeFromTypeInfo(input_type_info, &input_type);
+  WINML_EXPECT_EQUAL(input_type, ONNX_TYPE_TENSOR);
 
-  const OrtTensorTypeAndShapeInfo* tensorInfo;
-  ortApi->CastTypeInfoToTensorInfo(inputTypeInfo, &tensorInfo);
+  const OrtTensorTypeAndShapeInfo* tensor_info;
+  ort_api->CastTypeInfoToTensorInfo(input_type_info, &tensor_info);
 
-  ONNXTensorElementDataType tensorType;
-  ortApi->GetTensorElementType(tensorInfo, &tensorType);
-  WINML_EXPECT_EQUAL(tensorType, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+  ONNXTensorElementDataType tensor_type;
+  ort_api->GetTensorElementType(tensor_info, &tensor_type);
+  WINML_EXPECT_EQUAL(tensor_type, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
 
-  size_t dimCount;
-  ortApi->GetDimensionsCount(tensorInfo, &dimCount);
-  WINML_EXPECT_EQUAL(dimCount, 4);
+  size_t dim_count;
+  ort_api->GetDimensionsCount(tensor_info, &dim_count);
+  WINML_EXPECT_EQUAL(dim_count, 4);
 
-  int64_t dimValues[4]; 
-  ortApi->GetDimensions(tensorInfo, dimValues, 4);
-  WINML_EXPECT_EQUAL(dimValues[0], 1);
-  WINML_EXPECT_EQUAL(dimValues[1], 3);
-  WINML_EXPECT_EQUAL(dimValues[2], 224);
-  WINML_EXPECT_EQUAL(dimValues[3], 224);
+  int64_t dim_values[4]; 
+  ort_api->GetDimensions(tensor_info, dim_values, 4);
+  WINML_EXPECT_EQUAL(dim_values[0], 1);
+  WINML_EXPECT_EQUAL(dim_values[1], 3);
+  WINML_EXPECT_EQUAL(dim_values[2], 224);
+  WINML_EXPECT_EQUAL(dim_values[3], 224);
 
-  ortApi->ReleaseTypeInfo(inputTypeInfo);
+  ort_api->ReleaseTypeInfo(input_type_info);
 }
 
 static void ModelGetOutputTypeInfo() {
-  OrtTypeInfo* outputTypeInfo;
-  winmlAdapter->ModelGetOutputTypeInfo(squeezenetModel, 0, &outputTypeInfo);
+  OrtTypeInfo* output_type_info;
+  winml_adapter_api->ModelGetOutputTypeInfo(squeezenet_model, 0, &output_type_info);
 
-  ONNXType outputType;
-  ortApi->GetOnnxTypeFromTypeInfo(outputTypeInfo, &outputType);
-  WINML_EXPECT_EQUAL(outputType, ONNX_TYPE_TENSOR);
+  ONNXType output_type;
+  ort_api->GetOnnxTypeFromTypeInfo(output_type_info, &output_type);
+  WINML_EXPECT_EQUAL(output_type, ONNX_TYPE_TENSOR);
 
-  const OrtTensorTypeAndShapeInfo* tensorInfo;
-  ortApi->CastTypeInfoToTensorInfo(outputTypeInfo, &tensorInfo);
+  const OrtTensorTypeAndShapeInfo* tensor_info;
+  ort_api->CastTypeInfoToTensorInfo(output_type_info, &tensor_info);
 
-  ONNXTensorElementDataType tensorType;
-  ortApi->GetTensorElementType(tensorInfo, &tensorType);
-  WINML_EXPECT_EQUAL(tensorType, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+  ONNXTensorElementDataType tensor_type;
+  ort_api->GetTensorElementType(tensor_info, &tensor_type);
+  WINML_EXPECT_EQUAL(tensor_type, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
 
-  size_t dimCount;
-  ortApi->GetDimensionsCount(tensorInfo, &dimCount);
-  WINML_EXPECT_EQUAL(dimCount, 4);
+  size_t dim_count;
+  ort_api->GetDimensionsCount(tensor_info, &dim_count);
+  WINML_EXPECT_EQUAL(dim_count, 4);
 
-  int64_t dimValues[4];
-  ortApi->GetDimensions(tensorInfo, dimValues, 4);
-  WINML_EXPECT_EQUAL(dimValues[0], 1);
-  WINML_EXPECT_EQUAL(dimValues[1], 1000);
-  WINML_EXPECT_EQUAL(dimValues[2], 1);
-  WINML_EXPECT_EQUAL(dimValues[3], 1);
+  int64_t dim_values[4];
+  ort_api->GetDimensions(tensor_info, dim_values, 4);
+  WINML_EXPECT_EQUAL(dim_values[0], 1);
+  WINML_EXPECT_EQUAL(dim_values[1], 1000);
+  WINML_EXPECT_EQUAL(dim_values[2], 1);
+  WINML_EXPECT_EQUAL(dim_values[3], 1);
 
-  ortApi->ReleaseTypeInfo(outputTypeInfo);
+  ort_api->ReleaseTypeInfo(output_type_info);
 }
 
 static void ModelGetMetadataCount() {
-  size_t metadataCount;
-  winmlAdapter->ModelGetMetadataCount(metadataModel, &metadataCount);
-  WINML_EXPECT_EQUAL(metadataCount, 2);
+  size_t metadata_count;
+  winml_adapter_api->ModelGetMetadataCount(metadata_model, &metadata_count);
+  WINML_EXPECT_EQUAL(metadata_count, 2);
 }
 
 static void ModelGetMetadata() {
-  const char* metadataKey;
-  size_t metadataKeyLen;
-  const char* metadataValue;
-  size_t metadataValueLen;
+  const char* metadata_key;
+  size_t metadata_key_len;
+  const char* metadata_value;
+  size_t metadata_value_len;
 
-  winmlAdapter->ModelGetMetadata(metadataModel, 0, &metadataKey, &metadataKeyLen, &metadataValue, &metadataValueLen);
-  WINML_EXPECT_EQUAL(std::string(metadataKey), "thisisalongkey");
-  WINML_EXPECT_EQUAL(metadataKeyLen, 14);
-  WINML_EXPECT_EQUAL(std::string(metadataValue), "thisisalongvalue");
-  WINML_EXPECT_EQUAL(metadataValueLen, 16);
+  winml_adapter_api->ModelGetMetadata(metadata_model, 0, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len);
+  WINML_EXPECT_EQUAL(std::string(metadata_key), "thisisalongkey");
+  WINML_EXPECT_EQUAL(metadata_key_len, 14);
+  WINML_EXPECT_EQUAL(std::string(metadata_value), "thisisalongvalue");
+  WINML_EXPECT_EQUAL(metadata_value_len, 16);
 
-  winmlAdapter->ModelGetMetadata(metadataModel, 1, &metadataKey, &metadataKeyLen, &metadataValue, &metadataValueLen);
-  WINML_EXPECT_EQUAL(std::string(metadataKey), "key2");
-  WINML_EXPECT_EQUAL(metadataKeyLen, 4);
-  WINML_EXPECT_EQUAL(std::string(metadataValue), "val2");
-  WINML_EXPECT_EQUAL(metadataValueLen, 4);
+  winml_adapter_api->ModelGetMetadata(metadata_model, 1, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len);
+  WINML_EXPECT_EQUAL(std::string(metadata_key), "key2");
+  WINML_EXPECT_EQUAL(metadata_key_len, 4);
+  WINML_EXPECT_EQUAL(std::string(metadata_value), "val2");
+  WINML_EXPECT_EQUAL(metadata_value_len, 4);
 }
 
 static void ModelEnsureNoFloat16() {
-  OrtStatus* float16ErrorStatus;
+  OrtStatus* float16_error_status;
 
-  float16ErrorStatus = winmlAdapter->ModelEnsureNoFloat16(squeezenetModel);
-  WINML_EXPECT_EQUAL(float16ErrorStatus, nullptr);
+  float16_error_status = winml_adapter_api->ModelEnsureNoFloat16(squeezenet_model);
+  WINML_EXPECT_EQUAL(float16_error_status, nullptr);
 
-  float16ErrorStatus = winmlAdapter->ModelEnsureNoFloat16(float16Model);
-  WINML_EXPECT_NOT_EQUAL(float16ErrorStatus, nullptr);
-  WINML_EXPECT_EQUAL(ortApi->GetErrorCode(float16ErrorStatus), ORT_INVALID_GRAPH);
+  float16_error_status = winml_adapter_api->ModelEnsureNoFloat16(float16_Model);
+  WINML_EXPECT_NOT_EQUAL(float16_error_status, nullptr);
+  WINML_EXPECT_EQUAL(ort_api->GetErrorCode(float16_error_status), ORT_INVALID_GRAPH);
 }
 
 static void __stdcall TestLoggingCallback(void* param, OrtLoggingLevel severity, const char* category,
@@ -248,57 +248,57 @@ static void __stdcall TestLoggingCallback(void* param, OrtLoggingLevel severity,
   UNREFERENCED_PARAMETER(logger_id);
   UNREFERENCED_PARAMETER(code_location);
   UNREFERENCED_PARAMETER(message);
-  loggingFunctionCalled = true;
+  logging_function_called = true;
 }
 
 static void __stdcall TestProfileEventCallback(const OrtProfilerEventRecord* profiler_record) noexcept {
   UNREFERENCED_PARAMETER(profiler_record);
-  profilingFunctionCalled = true;
+  profiling_function_called = true;
 }
 
 static void EnvConfigureCustomLoggerAndProfiler() {
-  OrtEnv* ortEnv = nullptr;
-  ortApi->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ortEnv);
-  winmlAdapter->EnvConfigureCustomLoggerAndProfiler(ortEnv,
+  OrtEnv* ort_env = nullptr;
+  ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
+  winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(ort_env,
                                                     &TestLoggingCallback, &TestProfileEventCallback, nullptr,
-                                                    OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ortEnv);
-  loggingFunctionCalled = false;
-  OrtSession* ortSession = nullptr;
-  std::wstring squeezenetPath = FileHelpers::GetModulePath() + L"relu.onnx";
-  ortApi->CreateSession(ortEnv, squeezenetPath.c_str(), nullptr, &ortSession);
-  WINML_EXPECT_TRUE(loggingFunctionCalled);
+                                                    OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
+  logging_function_called = false;
+  OrtSession* ort_session = nullptr;
+  std::wstring squeezenet_path = FileHelpers::GetModulePath() + L"relu.onnx";
+  ort_api->CreateSession(ort_env, squeezenet_path.c_str(), nullptr, &ort_session);
+  WINML_EXPECT_TRUE(logging_function_called);
 
-  size_t inputTensorSize = 5;
-  int64_t inputDimensions[] = {5};
+  size_t input_tensor_size = 5;
+  int64_t input_dimensions[] = {5};
 
-  std::vector<float> inputTensorValues(inputTensorSize);
-  std::vector<const char*> inputNodeNames = {"X"};
-  std::vector<const char*> outputNodeNames = {"Y"};
+  std::vector<float> input_tensor_values(input_tensor_size);
+  std::vector<const char*> input_node_names = {"X"};
+  std::vector<const char*> output_node_names = {"Y"};
 
   // initialize input data with values in [0.0, 1.0]
-  for (size_t i = 0; i < inputTensorSize; i++)
-    inputTensorValues[i] = (float)i / (inputTensorSize + 1);
+  for (size_t i = 0; i < input_tensor_size; i++)
+    input_tensor_values[i] = (float)i / (input_tensor_size + 1);
 
   // create input tensor object from data values
-  OrtMemoryInfo* memoryInfo;
-  ortApi->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memoryInfo);
-  OrtValue* inputTensor = nullptr;
-  ortApi->CreateTensorWithDataAsOrtValue(memoryInfo, inputTensorValues.data(), inputTensorSize * sizeof(float), inputDimensions, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &inputTensor);
-  int isTensor;
-  ortApi->IsTensor(inputTensor, &isTensor);
-  assert(isTensor);
-  ortApi->ReleaseMemoryInfo(memoryInfo);
-  OrtValue* outputTensor = nullptr;
-  winmlAdapter->SessionStartProfiling(ortEnv, ortSession);
-  profilingFunctionCalled = false;
-  ortApi->Run(ortSession, nullptr, inputNodeNames.data(), (const OrtValue* const*)&inputTensor, 1, outputNodeNames.data(), 1, &outputTensor);
-  WINML_EXPECT_TRUE(profilingFunctionCalled);
-  winmlAdapter->SessionEndProfiling(ortSession);
+  OrtMemoryInfo* memory_info;
+  ort_api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info);
+  OrtValue* input_tensor = nullptr;
+  ort_api->CreateTensorWithDataAsOrtValue(memory_info, input_tensor_values.data(), input_tensor_size * sizeof(float), input_dimensions, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor);
+  int is_tensor;
+  ort_api->IsTensor(input_tensor, &is_tensor);
+  assert(is_tensor);
+  ort_api->ReleaseMemoryInfo(memory_info);
+  OrtValue* output_tensor = nullptr;
+  winml_adapter_api->SessionStartProfiling(ort_env, ort_session);
+  profiling_function_called = false;
+  ort_api->Run(ort_session, nullptr, input_node_names.data(), (const OrtValue* const*)&input_tensor, 1, output_node_names.data(), 1, &output_tensor);
+  WINML_EXPECT_TRUE(profiling_function_called);
+  winml_adapter_api->SessionEndProfiling(ort_session);
 
-  ortApi->ReleaseValue(outputTensor);
-  ortApi->ReleaseValue(inputTensor);
-  ortApi->ReleaseSession(ortSession);
-  ortApi->ReleaseEnv(ortEnv);
+  ort_api->ReleaseValue(output_tensor);
+  ort_api->ReleaseValue(input_tensor);
+  ort_api->ReleaseSession(ort_session);
+  ort_api->ReleaseEnv(ort_env);
 }
 
 const AdapterTestApi& getapi() {
