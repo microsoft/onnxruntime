@@ -211,12 +211,12 @@ void MultiThreadMultiSessionOnDevice(const LearningModelDevice& device) {
             modelSessions[i] = LearningModelSession(model, device);
         }
         // start all the threads
-        for (unsigned i = 0; i < NUM_THREADS; ++i) {
-            LearningModelSession &model_session = modelSessions[i];
-            pool.SubmitWork([&model_session,&ivfs,&max_indices,&max_values,tolerance,i]() {
+        for (unsigned i_thread = 0; i_thread < NUM_THREADS; ++i_thread) {
+            LearningModelSession &model_session = modelSessions[i_thread];
+            pool.SubmitWork([&model_session,&ivfs,&max_indices,&max_values,tolerance,i_thread]() {
                 DWORD start_time = GetTickCount();
                 while (((GetTickCount() - start_time) / 1000) < NUM_SECONDS) {
-                    auto j = i % ivfs.size();
+                    auto j = i_thread % ivfs.size();
                     auto input = ivfs[j];
                     auto expected_index = max_indices[j];
                     auto expected_value = max_values[j];
@@ -244,15 +244,17 @@ void MultiThreadMultiSessionOnDevice(const LearningModelDevice& device) {
         }
     }
     catch (...) {
-        WINML_EXPECT_HRESULT_SUCCEEDED(E_FAIL, L"Failed to create session concurrently.");
+        WINML_LOG_ERROR("Failed to create session concurrently.");
     }
 }
 
 void MultiThreadMultiSession() {
     MultiThreadMultiSessionOnDevice(LearningModelDeviceKind::Cpu);
-    if (GPUTEST_ENABLED) {
-        MultiThreadMultiSessionOnDevice(LearningModelDeviceKind::DirectX);
-    }
+}
+
+void MultiThreadMultiSessionGpu() {
+    GPUTEST
+    MultiThreadMultiSessionOnDevice(LearningModelDeviceKind::DirectX);
 }
 
 // Create different sessions for each thread, and evaluate
@@ -318,9 +320,11 @@ void MultiThreadSingleSessionOnDevice(const LearningModelDevice& device) {
 
 void MultiThreadSingleSession() {
     MultiThreadSingleSessionOnDevice(LearningModelDeviceKind::Cpu);
-    if (GPUTEST_ENABLED) {
-        MultiThreadSingleSessionOnDevice(LearningModelDeviceKind::DirectX);
-    }
+}
+
+void MultiThreadSingleSessionGpu() {
+    GPUTEST
+    MultiThreadSingleSessionOnDevice(LearningModelDeviceKind::DirectX);
 }
 }
 
@@ -330,7 +334,9 @@ const ConcurrencyTestsApi& getapi() {
     LoadBindEvalSqueezenetRealDataWithValidationConcurrently,
     MultiThreadLoadModel,
     MultiThreadMultiSession,
+    MultiThreadMultiSessionGpu,
     MultiThreadSingleSession,
+    MultiThreadSingleSessionGpu,
     EvalAsyncDifferentModels,
     EvalAsyncDifferentSessions,
     EvalAsyncDifferentBindings

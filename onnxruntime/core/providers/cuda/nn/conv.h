@@ -88,7 +88,7 @@ class lru_unordered_map {
     lru_list_.clear();
   }
 
-private:
+ private:
   using list_type = std::list<Key, ListAllocator>;
   using iterator_type = typename list_type::iterator;
   struct value_type {
@@ -126,12 +126,12 @@ struct CudnnConvState {
   CudnnConvolutionDescriptor conv_desc;
 
   struct PerfResultParams {
-    decltype(AlgoPerfType().algo)     algo;
-    decltype(AlgoPerfType().memory)   memory;
+    decltype(AlgoPerfType().algo) algo;
+    decltype(AlgoPerfType().memory) memory;
     decltype(AlgoPerfType().mathType) mathType;
   };
 
-  lru_unordered_map<std::vector<int64_t>, PerfResultParams, vector_hash<int64_t>> cached_benchmark_results { MAX_CACHED_ALGO_PERF_RESULTS };
+  lru_unordered_map<std::vector<int64_t>, PerfResultParams, vector_hash<int64_t>> cached_benchmark_results{MAX_CACHED_ALGO_PERF_RESULTS};
 
   // note that conv objects are shared between execution frames, and a lock is needed to avoid multi-thread racing
   OrtMutex mutex;

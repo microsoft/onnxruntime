@@ -12,7 +12,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-using ::ONNX_NAMESPACE::OPTIONAL;
+using ::ONNX_NAMESPACE::OPTIONAL_VALUE;
 using ::ONNX_NAMESPACE::OpSchema;
 using ::ONNX_NAMESPACE::InferenceContext;
 using ::ONNX_NAMESPACE::TensorShapeProto;
