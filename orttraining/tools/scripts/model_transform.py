@@ -1,6 +1,6 @@
 import sys
 import onnx
-from onnx import helper, shape_inference
+from onnx import helper, shape_inference, mapping
 from onnx import TensorProto
 import numpy as np
 from onnx import numpy_helper
@@ -271,6 +271,15 @@ def process_trainabledropout(model):
                     dropouts.append(get_node_index(model, node_1))
 
             print (ratio_node)
+            
+            ratio_input_tensor = TensorProto()
+            try:
+                dtype = mapping.NP_TYPE_TO_TENSOR_TYPE[np.dtype(np.float32)]
+            except KeyError:
+                raise RuntimeError(
+                    "Numpy data type not understood yet: {}".format(str(np.float32)))
+            ratio_input_tensor.data_type = dtype
+            ratio_input_tensor.name = 'RatioInputTensor_%d' % index
             new_dropout_ratio = model.graph.node.add()
             new_dropout_ratio.op_type = 'ConstantOfShape'
             new_dropout_ratio.name = 'ConstantOfShape_%d' % index
@@ -278,6 +287,7 @@ def process_trainabledropout(model):
             attr.name = 'value'
             attr.type = 4
             attr.t.CopyFrom(ratio_node.attribute[0].t)
+            new_dropout_ratio.input.extend([ratio_input_tensor.name])
             new_dropout_ratio.output.extend(ratio_node.output)
             new_dropout.input.extend([node.input[0], ratio_node.output[0]])
             new_dropout.output.extend(node.output)
