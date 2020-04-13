@@ -26,10 +26,11 @@ struct TensorPitches : std::vector<int64_t> {
       return false;
 
     // Guard against Scalars
-    if (pitch_rank > 0) {
-      *(p.rbegin()) = 1;  // The innermost axis is 1 (single values)
+    if (pitch_rank == 0) {
+      return true;
     }
 
+    *(p.rbegin()) = 1;  // The innermost axis is 1 (single values)
     if (tensor_rank > 1) {
       for (size_t i = tensor_rank - 1; i-- > 0;) {
         p.operator[](i + padded_rank) = p.operator[](i + 1 + padded_rank) * dims[i + 1];
