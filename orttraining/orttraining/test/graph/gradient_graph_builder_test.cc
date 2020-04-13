@@ -997,6 +997,44 @@ class PipelineBatchPlanner {
   }
 };
 
+TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline1) {
+  //config.set_gradients_as_graph_outputs = true;
+
+  std::string filename_base = "/bert_ort/xuzhu/sources/onnxruntime/build/Linux/Debug/testdata/test_training_model_";
+  // ASSERT_STATUS_OK(BuildBackPropGraph("/bert_ort/xuzhu/data/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1.onnx", config, backprop_model_file));
+
+  auto back_prop = [](std::string filename) {
+    auto config = MakeBasicTrainingConfig();
+    config.use_pipeline = true;
+    PathString backprop_model_file;
+    ASSERT_STATUS_OK(BuildBackPropGraph(filename + ".onnx", config, backprop_model_file));
+
+    std::cout << "after BuildBackPropGraph" << std::endl;
+
+    // ONNX_NAMESPACE::ModelProto mp;
+    // ASSERT_STATUS_OK(Model::Load(backprop_model_file, mp));
+    std::shared_ptr<Model> model;
+    ASSERT_TRUE(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+{
+    auto mp = model->ToProto();
+    std::ofstream ofs(filename + "_before_inset.onnx", std::ofstream::binary);
+    std::cout << "output to file " << filename + "_back.onnx" << std::endl;
+    mp.SerializeToOstream(&ofs);
+    ofs.close();
+  }
+
+    auto mp = model->ToProto();
+    std::ofstream ofs(filename + "_back.onnx", std::ofstream::binary);
+    std::cout << "output to file " << filename + "_back.onnx" << std::endl;
+    mp.SerializeToOstream(&ofs);
+    ofs.close();
+  };
+  for (int i = 0; i < 3; ++i) {
+    std::string name = filename_base + std::to_string(i);
+    back_prop(name);
+  }
+}
+
 TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   auto config = MakeBasicTrainingConfig();
   //config.set_gradients_as_graph_outputs = true;

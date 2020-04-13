@@ -15,6 +15,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "orttraining/core/graph/mixed_precision_transformer.h"
 #include "orttraining/core/graph/tensorboard_transformer.h"
+#include "orttraining/core/graph/pipeline_transformer.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
 
 //Gist Encoding
@@ -128,18 +129,25 @@ Status TrainingSession::ConfigureForTraining(
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
 
   std::string loss_name{};
-  const optional<LossFunctionInfo> loss_function_info =
-      config.loss_function_config.has_value()
-          ? config.loss_function_config.value().loss_function_info
-          : optional<LossFunctionInfo>{};
-  optional<std::string> loss_scale_input_name =
-      is_mixed_precision_enabled_ ? optional<std::string>{""} : optional<std::string>{};
-  ORT_RETURN_IF_ERROR(ConfigureLossFunction(
-      config.loss_name, loss_function_info,
-      loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
-  ORT_ENFORCE(
-      !loss_scale_input_name.has_value() || !loss_scale_input_name.value().empty(),
-      "loss_scale_input_name should not be set to an empty string.");
+  if (config.use_pipeline) {
+    // if use pipeline, first check if model contains send op. If it does, set the
+    // send node's output as the start tensor to build gradient graph
+    GetPipelineSendOutput(model_->MainGraph(), loss_name);
+  }
+  if (loss_name.empty()) {
+    const optional<LossFunctionInfo> loss_function_info =
+        config.loss_function_config.has_value()
+            ? config.loss_function_config.value().loss_function_info
+            : optional<LossFunctionInfo>{};
+    optional<std::string> loss_scale_input_name =
+        is_mixed_precision_enabled_ ? optional<std::string>{""} : optional<std::string>{};
+    ORT_RETURN_IF_ERROR(ConfigureLossFunction(
+        config.loss_name, loss_function_info,
+        loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
+    ORT_ENFORCE(
+        !loss_scale_input_name.has_value() || !loss_scale_input_name.value().empty(),
+        "loss_scale_input_name should not be set to an empty string.");
+  }
 
   if (is_mixed_precision_enabled_) {
     TrainingConfigurationResult::MixedPrecisionConfigurationResult mp_result{};
@@ -170,7 +178,6 @@ Status TrainingSession::ConfigureForTraining(
                                  << weight_names_stream.str();
   }
 
-  // add gradient graph
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.set_gradients_as_graph_outputs));
 
@@ -238,6 +245,10 @@ Status TrainingSession::ConfigureForTraining(
   // add GIST encoding
   if (config.gist_config.has_value()) {
     ORT_RETURN_IF_ERROR(AddGistEncoding());
+  }
+
+  if (config.use_pipeline) {
+    ORT_RETURN_IF_ERROR(InsertPipelineOps());
   }
 
   if (IsRootNode(config) && config.model_with_training_graph_path.has_value()) {
@@ -436,6 +447,11 @@ Status TrainingSession::AddTensorboard(const std::string& summary_name,
   ORT_RETURN_IF_ERROR(
       TransformGraphForTensorboard(
           model_->MainGraph(), summary_name, scalar_nodes, histogram_nodes, norm_nodes, dump_convergence_metrics));
+  return DoPostLoadProcessing(*model_);
+}
+
+Status TrainingSession::InsertPipelineOps() {
+  ORT_RETURN_IF_ERROR(TransformGraphForPipeline(model_->MainGraph()));
   return DoPostLoadProcessing(*model_);
 }
 
