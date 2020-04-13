@@ -10,8 +10,8 @@ steps:
       import os
 
       if "${{ parameters.is_featurizers_build }}".lower() == "true":
-        flags = "--use_featurizers --wheel_version=%sfeaturizer" % os.getenv("BUILD_BUILDNUMBER")
+        flags = "--use_featurizers --wheel_name_suffix=featurizer"
       else:
-        flags = " "
+        flags = ""
 
       print("##vso[task.setvariable variable=FeaturizerBuildFlag]%s" % flags)

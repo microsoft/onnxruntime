@@ -16,7 +16,7 @@ import datetime
 
 nightly_build = False
 package_name = 'onnxruntime'
-wheel_version = None
+wheel_name_suffix = None
 
 if '--use_tensorrt' in sys.argv:
     package_name = 'onnxruntime-gpu-tensorrt'
@@ -53,8 +53,8 @@ if '--nightly_build' in sys.argv:
     sys.argv.remove('--nightly_build')
 
 for arg in sys.argv[1:]:
-    if arg.startswith("--wheel_version="):
-        wheel_version = arg[len("--wheel_version="):]
+    if arg.startswith("--wheel_name_suffix="):
+        wheel_name_suffix = arg[len("--wheel_name_suffix="):]
         nightly_build = True
 
         sys.argv.remove(arg)
@@ -198,13 +198,18 @@ with open('VERSION_NUMBER') as f:
     version_number = f.readline().strip()
 if nightly_build:
     #https://docs.microsoft.com/en-us/azure/devops/pipelines/build/variables
-    build_suffix = wheel_version or environ.get('BUILD_BUILDNUMBER')
+    build_suffix = environ.get('BUILD_BUILDNUMBER')
     if build_suffix is None:
       #The following line is only for local testing
       build_suffix = str(datetime.datetime.now().date().strftime("%Y%m%d"))
     else:
       build_suffix = build_suffix.replace('.','')
+
+    if wheel_name_suffix:
+        build_suffix += ".{}".format(wheel_name_suffix)
+
     version_number = version_number + ".dev" + build_suffix
+
 
 cmd_classes = {}
 if bdist_wheel is not None :
