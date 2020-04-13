@@ -29,11 +29,10 @@ class TestRandomSeedSetterEnvironment : public ::testing::Environment {
    */
   TestRandomSeedSetterEnvironment(
       optional<RandomSeedType> initial_seed = optional<RandomSeedType>{})
-      : initial_seed_{initial_seed} {}
+      : initial_seed_{std::move(initial_seed)} {}
 
  private:
   virtual void SetUp() override;
-  RandomSeedType GetRandomSeed() const;
 
   const optional<RandomSeedType> initial_seed_;
 };

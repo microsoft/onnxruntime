@@ -46,10 +46,10 @@ std::unique_ptr<Ort::Env> ort_env;
 int main(int argc, char** argv) {
   int status = 0;
   try {
-    ::testing::AddGlobalTestEnvironment(
-        new onnxruntime::test::TestRandomSeedSetterEnvironment());
     ::testing::InitGoogleTest(&argc, argv);
     ort_env.reset(new Ort::Env(ORT_LOGGING_LEVEL_WARNING, "Default"));
+    ::testing::AddGlobalTestEnvironment(
+        new onnxruntime::test::TestRandomSeedSetterEnvironment{});
     status = RUN_ALL_TESTS();
   } catch (const std::exception& ex) {
     std::cerr << ex.what();

@@ -14,17 +14,10 @@ namespace test {
 
 namespace {
 RandomSeedType g_test_random_seed{};
-}
 
-void TestRandomSeedSetterEnvironment::SetUp() {
-  const auto value = GetRandomSeed();
-  std::clog << "Setting test random seed value: " << value << std::endl;
-  g_test_random_seed = value;
-}
-
-RandomSeedType TestRandomSeedSetterEnvironment::GetRandomSeed() const {
-  if (initial_seed_.has_value()) {
-    return initial_seed_.value();
+RandomSeedType LoadRandomSeed(const optional<RandomSeedType>& initial_seed) {
+  if (initial_seed.has_value()) {
+    return initial_seed.value();
   }
 
   // parse from environment variable
@@ -48,6 +41,13 @@ RandomSeedType TestRandomSeedSetterEnvironment::GetRandomSeed() const {
   // generate from time
   return static_cast<RandomSeedType>(
       std::chrono::steady_clock::now().time_since_epoch().count());
+}
+}  // namespace
+
+void TestRandomSeedSetterEnvironment::SetUp() {
+  const auto value = LoadRandomSeed(initial_seed_);
+  std::clog << "Setting test random seed value: " << value << std::endl;
+  g_test_random_seed = value;
 }
 
 RandomSeedType GetTestRandomSeed() {
