@@ -9,23 +9,22 @@ namespace onnxruntime {
 namespace utils {
 
 /**
- * Gets the static random seed value. All calls to GetStaticRandomSeed()
- * throughout the lifetime of the process will return the same value.
+ * Gets the random seed value used by onnxruntime.
  *
- * @param default_seed If the random seed is not set, return this value instead of random if it's positive.
- * @return The static random seed value.
+ * The random seed value can be override with SetRandomSeed().
+ *
+ * @return The random seed value.
  */
-uint32_t GetStaticRandomSeed(uint32_t default_seed = 0);
+int64_t GetRandomSeed();
 
 /**
- * Sets the static random seed value.
+ * Sets the random seed value to be used by onnxruntime.
  *
- * If called, this should be called before calling GetStaticRandomSeed().
- * Not calling this is also fine. In that case, the value will be generated.
+ * If not called manually, the current clock will be used.
  *
  * @param seed The random seed value to use.
  */
-void SetStaticRandomSeed(uint32_t seed);
+void SetRandomSeed(int64_t seed);
 
 }  // namespace test
 }  // namespace onnxruntime

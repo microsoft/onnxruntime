@@ -60,7 +60,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       ("display_loss_steps", "How often to dump loss into tensorboard", cxxopts::value<size_t>()->default_value("1"))
       ("gradient_accumulation_steps", "The number of gradient accumulation steps before performing a backward/update pass.",
         cxxopts::value<int>()->default_value("1"))
-      ("seed", "Random seed.", cxxopts::value<int>()->default_value("-1"))
+      ("seed", "Random seed.", cxxopts::value<int64_t>()->default_value("-1"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
       ("use_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
       ("allreduce_in_fp16", "Whether to do AllReduce in fp16. If false, AllReduce will be done in fp32", cxxopts::value<bool>()->default_value("true"))
@@ -135,12 +135,6 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
     params.output_dir = ToPathString(flags["output_dir"].as<std::string>());
     if (params.output_dir.empty()) {
       printf("No output directory specified. Trained model files will not be saved.\n");
-    }
-
-    int seed = flags["seed"].as<int>();
-    if (seed > 0) {
-      utils::SetStaticRandomSeed(static_cast<uint32_t>(seed));
-      printf("Random seed is set to %d.\n", seed);
     }
 
     params.use_mixed_precision = flags["use_mixed_precision"].as<bool>();
@@ -226,6 +220,15 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
     params.horizontal_parallel_size = flags["horizontal_parallel_size"].as<int>();
     ORT_RETURN_IF_NOT(params.data_parallel_size > 0, "data_parallel_size must > 0");
     ORT_RETURN_IF_NOT(params.horizontal_parallel_size > 0, "horizontal_parallel_size must > 0");
+
+    int64_t seed = flags["seed"].as<int64_t>();
+    if (params.horizontal_parallel_size > 1 && seed <= 0) {
+      seed = 8211; // Megatron needs a random seed.
+    }
+    if (seed > 0) {
+      utils::SetRandomSeed(seed);
+      std::cout << "Random seed is set to: " << seed << std::endl;
+    }
 
     ort_params.log_severity = static_cast<logging::Severity>(flags["ort_log_severity"].as<int>());
     ORT_RETURN_IF_NOT(
