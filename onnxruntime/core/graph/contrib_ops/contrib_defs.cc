@@ -164,7 +164,7 @@ namespace onnxruntime {
 namespace contrib {
 using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::OpSchema;
-using ONNX_NAMESPACE::OPTIONAL_VALUE;
+using ONNX_NAMESPACE::OPTIONAL;
 
 void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index, ::google::protobuf::int32 expectedType, bool isScalar, int expectedTensorSize = 0) {
   if (ctx.getNumInputs() > static_cast<size_t>(index)) {
@@ -436,8 +436,8 @@ the tensor elementwise.
   ONNX_CONTRIB_OPERATOR_SCHEMA(ParametricSoftplus)
       .SinceVersion(1)
       .SetDoc(ParametricSoftplus_ver1_doc)
-      .Attr("alpha", "Value of alpha", AttributeProto::FLOAT, OPTIONAL_VALUE)
-      .Attr("beta", "Value of beta", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Attr("alpha", "Value of alpha", AttributeProto::FLOAT, OPTIONAL)
+      .Attr("beta", "Value of beta", AttributeProto::FLOAT, OPTIONAL)
       .Input(0, "X", "1D input tensor", "T")
       .Output(0, "Y", "1D input tensor", "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
@@ -450,7 +450,7 @@ the same ordering as the image pixel format.)DOC";
   ONNX_CONTRIB_OPERATOR_SCHEMA(ImageScaler)
       .SinceVersion(1)
       .SetDoc(ImageScaler_ver1_doc)
-      .Attr("bias", "Bias applied to each channel, same size as C.", AttributeProto::FLOATS, OPTIONAL_VALUE)
+      .Attr("bias", "Bias applied to each channel, same size as C.", AttributeProto::FLOATS, OPTIONAL)
       .Attr("scale", "The scale to apply.", AttributeProto::FLOAT, 1.0f)
       .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
       .Output(0, "output", "Result, has same shape and type as input", "T")
@@ -465,8 +465,8 @@ If scale is not provided, crop the borders as provided.)DOC";
   ONNX_CONTRIB_OPERATOR_SCHEMA(Crop)
       .SinceVersion(1)
       .SetDoc(Crop_ver1_doc)
-      .Attr("border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder).", AttributeProto::INTS, OPTIONAL_VALUE)
-      .Attr("scale", "A 1-D values of (height, width).", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder).", AttributeProto::INTS, OPTIONAL)
+      .Attr("scale", "A 1-D values of (height, width).", AttributeProto::INTS, OPTIONAL)
       .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
       .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced.", "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.");
@@ -538,10 +538,10 @@ Example 2:
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
-      .Attr("values", "", AttributeProto::FLOATS, OPTIONAL_VALUE)
-      .Attr("shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
-      .Attr("input_as_shape", "", AttributeProto::INT, OPTIONAL_VALUE)
-      .Attr("extra_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("values", "", AttributeProto::FLOATS, OPTIONAL)
+      .Attr("shape", "", AttributeProto::INTS, OPTIONAL)
+      .Attr("input_as_shape", "", AttributeProto::INT, OPTIONAL)
+      .Attr("extra_shape", "", AttributeProto::INTS, OPTIONAL)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
         if (ctx.getAttribute("shape") != nullptr) {
@@ -598,7 +598,7 @@ value at X[t][n] >= seqLengths[n].
       .Attr("drop_states",
             "Bool to determine if hidden state is zeroes or passed "
             "along for timesteps past the given sequence_length.",
-            AttributeProto::INT, OPTIONAL_VALUE)
+            AttributeProto::INT, OPTIONAL)
       .Input(0, "hidden_prev", "The previous GRU hidden state.", "T")
       .Input(
           1,
@@ -632,10 +632,10 @@ value at X[t][n] >= seqLengths[n].
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
-      .Attr("values", "", AttributeProto::FLOATS, OPTIONAL_VALUE)
-      .Attr("shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
-      .Attr("input_as_shape", "", AttributeProto::INT, OPTIONAL_VALUE)
-      .Attr("extra_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("values", "", AttributeProto::FLOATS, OPTIONAL)
+      .Attr("shape", "", AttributeProto::INTS, OPTIONAL)
+      .Attr("input_as_shape", "", AttributeProto::INT, OPTIONAL)
+      .Attr("extra_shape", "", AttributeProto::INTS, OPTIONAL)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
         if (ctx.getAttribute("shape") != nullptr) {
@@ -680,7 +680,7 @@ value at X[t][n] >= seqLengths[n].
       .Attr("drop_states",
             "Bool to determine if hidden state is zeroes or passed "
             "along for timesteps past the given sequence_length.",
-            AttributeProto::INT, OPTIONAL_VALUE)
+            AttributeProto::INT, OPTIONAL)
       .Input(0, "hidden_prev", "The previous GRU hidden state.", "T")
       .Input(
           1,
@@ -720,8 +720,8 @@ value at X[t][n] >= seqLengths[n].
 
   ONNX_OPERATOR_SCHEMA(ScaledTanh)
       .SinceVersion(1)
-      .Attr("alpha", "Scaling value", AttributeProto::FLOAT, OPTIONAL_VALUE)
-      .Attr("beta", "Scaling value", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Attr("alpha", "Scaling value", AttributeProto::FLOAT, OPTIONAL)
+      .Attr("beta", "Scaling value", AttributeProto::FLOAT, OPTIONAL)
       .Input(0, "input", "Input tensor", "T")
       .Output(
           0,
@@ -753,8 +753,8 @@ value at X[t][n] >= seqLengths[n].
       .SinceVersion(10)
       .Deprecate()
       .SetDoc(ParametricSoftplus_ver1_doc)
-      .Attr("alpha", "Value of alpha", AttributeProto::FLOAT, OPTIONAL_VALUE)
-      .Attr("beta", "Value of beta", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Attr("alpha", "Value of alpha", AttributeProto::FLOAT, OPTIONAL)
+      .Attr("beta", "Value of beta", AttributeProto::FLOAT, OPTIONAL)
       .Input(0, "X", "1D input tensor", "T")
       .Output(0, "Y", "1D input tensor", "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
@@ -764,7 +764,7 @@ value at X[t][n] >= seqLengths[n].
       .SinceVersion(10)
       .Deprecate()
       .SetDoc(ImageScaler_ver1_doc)
-      .Attr("bias", "Bias applied to each channel, same size as C.", AttributeProto::FLOATS, OPTIONAL_VALUE)
+      .Attr("bias", "Bias applied to each channel, same size as C.", AttributeProto::FLOATS, OPTIONAL)
       .Attr("scale", "The scale to apply.", AttributeProto::FLOAT, 1.0f)
       .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
       .Output(0, "output", "Result, has same shape and type as input", "T")
@@ -776,7 +776,7 @@ value at X[t][n] >= seqLengths[n].
       .Deprecate()
       .SetDoc(Crop_ver1_doc)
       .Attr("border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder).", AttributeProto::INTS)
-      .Attr("scale", "A 1-D values of (height, width).", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("scale", "A 1-D values of (height, width).", AttributeProto::INTS, OPTIONAL)
       .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
       .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced.", "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
@@ -891,8 +891,8 @@ value at X[t][n] >= seqLengths[n].
   ONNX_OPERATOR_SCHEMA(ScaledTanh)
       .SinceVersion(10)
       .Deprecate()
-      .Attr("alpha", "Scaling value", AttributeProto::FLOAT, OPTIONAL_VALUE)
-      .Attr("beta", "Scaling value", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Attr("alpha", "Scaling value", AttributeProto::FLOAT, OPTIONAL)
+      .Attr("beta", "Scaling value", AttributeProto::FLOAT, OPTIONAL)
       .Input(0, "input", "Input tensor", "T")
       .Output(
           0,
@@ -935,17 +935,17 @@ Sample echo operator.)DOC");
           "kernel_shape",
           "",
           AttributeProto::INTS,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .Attr("pads",
             "",
-            AttributeProto::INTS, OPTIONAL_VALUE)
+            AttributeProto::INTS, OPTIONAL)
       .Attr(
           "storage_order",
           "",
           AttributeProto::INT,
           static_cast<int64_t>(0))
       .Attr(
-          "strides", "", AttributeProto::INTS, OPTIONAL_VALUE)
+          "strides", "", AttributeProto::INTS, OPTIONAL)
       .Input(
           0,
           "X",
@@ -971,21 +971,21 @@ Sample echo operator.)DOC");
           "kernel_shape",
           "",
           AttributeProto::INTS,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .Attr("output_padding",
             "",
             AttributeProto::INTS,
-            OPTIONAL_VALUE)
+            OPTIONAL)
       .Attr(
           "dilations",
           "",
           AttributeProto::INTS,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .Attr(
           "strides",
           "",
           AttributeProto::INTS,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .Attr(
           "auto_pad",
           "",
@@ -1031,22 +1031,22 @@ activation.)DOC")
           "kernel_shape",
           "",
           AttributeProto::INTS,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .Attr(
           "dilations",
           "",
           AttributeProto::INTS,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .Attr(
           "strides",
           "",
           AttributeProto::INTS,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .Attr(
           "pads",
           "",
           AttributeProto::INTS,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .Attr(
           "group",
           "",
@@ -1056,12 +1056,12 @@ activation.)DOC")
           "activation",
           "",
           AttributeProto::STRING,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .Attr(
           "activation_params",
           "",
           AttributeProto::FLOATS,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .Input(
           0,
           "X",
@@ -1150,12 +1150,12 @@ activation and leaky_relu_alpha.)DOC")
           "activation",
           "",
           AttributeProto::STRING,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .Attr(
           "leaky_relu_alpha",
           "",
           AttributeProto::FLOAT,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         if (hasNInputShapes(ctx, 2)) {
@@ -1395,7 +1395,7 @@ of [N, 0] then [N, 0].
           " If set, tokenizer may produce tokens matching the specified pattern. Note that one and only of"
           " 'tokenexp' and 'separators' should be set.",
           AttributeProto::STRING,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .Attr(
           "separators",
           "an optional list of strings attribute that contains a list of separators - regular expressions to match separators"
@@ -1404,7 +1404,7 @@ of [N, 0] then [N, 0].
           " the corresponding output would be [\"Hello\", \"World!\"]. To achieve character-level tokenization,"
           " one should set the 'separators' to [\"\"], which contains an empty string.",
           AttributeProto::STRINGS,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .Attr(
           "mincharnum",
           "Minimum number of characters allowed in the output. For example, if mincharnum is 2, tokens such as \"A\" and \"B\" would be ignored",
@@ -1864,13 +1864,13 @@ Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
           "strides",
           "Stride along each spatial axis. If not present, the stride defaults to 1 along each spatial axis.",
           AttributeProto::INTS,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .Attr(
           "auto_pad",
           contrib_ops_auto_pad_doc,
           AttributeProto::STRING,
           std::string("NOTSET"))
-      .Attr("pads", contrib_ops_pads_doc, AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("pads", contrib_ops_pads_doc, AttributeProto::INTS, OPTIONAL)
       .Attr(
           "ceil_mode",
           "Whether to use ceil or floor (default) to compute the output shape.",
@@ -2123,20 +2123,20 @@ Example 4:
           "Integer representing the embedding vector size for each word."
           "If not provide, use the fileter size of conv weight",
           AttributeProto::INT,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .Attr(
           "conv_window_size",
           "This operator applies convolution to word from left to right with window equal to conv_window_size and stride to 1."
           "Take word 'example' for example, with conv_window_size equal to 2, conv is applied to [ex],[xa], [am], [mp]..."
           "If not provide, use the first dimension of conv kernal shape.",
           AttributeProto::INT,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .Attr(
           "char_embedding_size",
           "Integer representing the embedding vector size for each char."
           "If not provide, use the char embedding size of embedding vector.",
           AttributeProto::INT,
-          OPTIONAL_VALUE)
+          OPTIONAL)
       .Input(0, "Sequence", "Specify batchs of sequence words to embedding", "T")
       .Input(1, "W", "Specify weights of conv", "T1")
       .Input(2, "B", "Specify bias of conv", "T1")
