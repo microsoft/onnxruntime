@@ -98,13 +98,9 @@ struct NodeDef {
 /** GraphAugmenter is a stateless class to add new elements into a Graph.
     The elements to be added could be:
     1. Nodes
-    2. Outputs
-       Note: during Graph::Resolve(), input and output will be infered from the nodes, in which:
-             1. A node arg becomes a graph input if it is not used by any node's output.
-             2. A node arg becomes a graph output if it is not used by any node's input.
-             So we don't have to worry about input, but sometimes need to explicitly
-             set an intermediate node arg as graph output.
-    3. Initializers
+    2. Initializers
+    3. Graph inputs
+    4. Graph outputs
 */
 class GraphAugmenter {
  public:
@@ -133,6 +129,14 @@ class GraphAugmenter {
 
     std::vector<NodeDef>& NodeDefs() {
       return node_defs_;
+    }
+
+    void AddGraphInputs(const std::vector<std::string>& names) {
+      graph_input_names_.insert(graph_input_names_.end(), names.begin(), names.end());
+    }
+
+    const std::vector<std::string>& GraphInputs() const {
+      return graph_input_names_;
     }
 
     void AddGraphOutputs(const std::vector<std::string>& names) {
@@ -182,6 +186,7 @@ class GraphAugmenter {
 
    private:
     std::vector<NodeDef> node_defs_;
+    std::vector<std::string> graph_input_names_;
     std::vector<std::string> graph_output_names_;
     std::vector<TensorProto> graph_initializers_;
 

@@ -273,6 +273,7 @@ static Status AddLossScaling(
       {ArgDef{scaled_loss_name}},
       NodeAttributes(),
       scaled_loss_name});
+  defs.AddGraphInputs({*loss_scale_input_name});
 
   ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, defs));
 

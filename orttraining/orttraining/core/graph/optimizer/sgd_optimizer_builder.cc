@@ -51,6 +51,7 @@ Status SGDOptimizerBuilder::Build(
     if (opt_configs[i].enabled) {
       std::vector<ArgDef> input_args;
       input_args.push_back(ArgDef(opt_configs[i].lr_feed_name, CreateLearningRateTypeProto(graph_defs)));
+      graph_defs.AddGraphInputs({opt_configs[i].lr_feed_name});
       input_args.push_back(weight_argdefs[i]);
       input_args.push_back(gradient_argdefs[i]);
 
