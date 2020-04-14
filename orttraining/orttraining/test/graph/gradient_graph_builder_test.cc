@@ -1015,7 +1015,6 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
 
     auto mp = model->ToProto();
     std::ofstream ofs(filename + "_back.onnx", std::ofstream::binary);
-    std::cout << "output to file " << filename + "_back.onnx" << std::endl;
     mp.SerializeToOstream(&ofs);
     ofs.close();
   };

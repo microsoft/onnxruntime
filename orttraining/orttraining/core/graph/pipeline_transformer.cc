@@ -18,6 +18,10 @@ void GetPipelineSendOutput(const Graph& graph, std::string& loss_name) {
   }
 }
 
+bool IsBackward(Node& node){
+  return (node.Description() == "Backward pass");
+}
+
 Status TransformGraphForPipeline(Graph& graph) {
   // insert WaitEvent and RecordEvent to the partition
   Node* send_fw{nullptr};
@@ -26,13 +30,13 @@ Status TransformGraphForPipeline(Graph& graph) {
   Node* recv_bw{nullptr};
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == "Send") {
-      if (node.Description() == "Backward pass") {
+      if (IsBackward(node)) {
         send_bw = &node;
       } else {
         send_fw = &node;
       }
     } else if (node.OpType() == "Recv") {
-      if (node.Description() == "Backward pass") {
+      if (IsBackward(node)) {
         recv_bw = &node;
       } else {
         recv_fw = &node;
@@ -41,7 +45,7 @@ Status TransformGraphForPipeline(Graph& graph) {
   }
 
   ORT_RETURN_IF_NOT(
-          (send_fw && recv_bw) || (!send_fw && !recv_bw),
+          !send_fw == !recv_bw,
           "Graph requires either having both send forward node "
           "and recv backword node, or none of them. Currently the graph "
           "has send forward: ", send_fw, " and recv backward: ", recv_bw);
