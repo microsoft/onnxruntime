@@ -87,24 +87,14 @@ WinML::IValue* LoadImageValue(LearningModelSession& session, const std::wstring&
   return LoadImageValue(context, image_path);
 }
 
-// struct BindingContext {
-//   BindingType type = BindingType::kInput;
-//   winrt::Windows::AI::MachineLearning::LearningModelSession session = nullptr;
-//   winrt::Windows::AI::MachineLearning::ILearningModelFeatureDescriptor descriptor = nullptr;
-//   winrt::Windows::Foundation::Collections::IPropertySet properties = nullptr;
-//   std::shared_ptr<PoolObjectWrapper> converter;
-// };
-
-
 void AdapterSessionTestSetup() {
   init_apartment();
   WINML_EXPECT_HRESULT_SUCCEEDED(Microsoft::WRL::MakeAndInitialize<WinML::OnnxruntimeEngineFactory>(&engine_factory));
-  // WINML_EXPECT_HRESULT_SUCCEEDED(engine_factory.RuntimeClassInitialize());
   WINML_EXPECT_HRESULT_SUCCEEDED(engine_factory->GetOrtEnvironment(&ort_env));
   WINML_EXPECT_HRESULT_SUCCEEDED(engine_factory->EnableDebugOutput(true));
   WINML_EXPECT_NOT_EQUAL(nullptr, winml_adapter_api = engine_factory->UseWinmlAdapterApi());
+  // THROW_IF_NOT_OK_MSG(winml_adapter_api->OverrideSchema(), ort_api);
   WINML_EXPECT_NOT_EQUAL(nullptr, ort_api = engine_factory->UseOrtApi());
-  // TODO cleanup?
 }
 
 void AppendExecutionProvider_CPU() {
@@ -139,7 +129,7 @@ UniqueOrtSession CreateUniqueOrtSession(const std::wstring& model_path, const Un
   ort_api->SetIntraOpNumThreads(session_options.get(), 1);
   ort_api->SetSessionGraphOptimizationLevel(session_options.get(), ORT_ENABLE_BASIC);
   THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), true), ort_api);
-  // ort_api->DisableMemPattern(session_options.get());
+  // ort_api->DisableMemPattern(session_options.get()), ort_api);
   // const auto device = CreateD3DDevice();
   // const auto queue = CreateD3DQueue(device);
   // THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device, queue), ort_api);
@@ -179,9 +169,6 @@ void GetExecutionProvider_CPU() {
   // const std::string model_path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(FileHelpers::GetModulePath()) + model_name;
   // winml_adapter_api->CreateModelFromPath(model_path.c_str(), model_path.size(), &model);
 
-
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionInitialize(session.get()), ort_api);
-
   OrtExecutionProvider* ort_provider;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
 }
@@ -189,14 +176,13 @@ void GetExecutionProvider_CPU() {
 void GetExecutionProvider_DML() {
   GPUTEST
   const auto session_options = CreateUniqueOrtSessionOptions();
-  ort_api->DisableMemPattern(session_options.get());
+  THROW_IF_NOT_OK_MSG(ort_api->DisableMemPattern(session_options.get()), ort_api);
   const auto device = CreateD3DDevice();
   const auto queue = CreateD3DQueue(device);
   THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device, queue), ort_api);
 
   const auto model_path = FileHelpers::GetModulePath() + L"fns-candy.onnx";
   auto session = CreateUniqueOrtSession(model_path, session_options);
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionInitialize(session.get()), ort_api);
 
   OrtExecutionProvider* ort_provider;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
@@ -207,7 +193,6 @@ void GetExecutionProvider_DML() {
 void RegisterGraphTransformers() {
   const auto session_options = CreateUniqueOrtSessionOptions();
   auto session = CreateUniqueOrtSession(session_options);
-
   winml_adapter_api->SessionRegisterGraphTransformers(session.get());
 }
 
@@ -215,19 +200,15 @@ void RegisterGraphTransformers_DML() {
   GPUTEST
   const auto session_options = CreateUniqueOrtSessionOptions();
   auto session = CreateUniqueOrtSession(session_options);
-
   winml_adapter_api->SessionRegisterGraphTransformers(session.get());
-  // Assert that transformers were registered
 }
 
 void RegisterCustomRegistry() {
   IMLOperatorRegistry* registry;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->CreateCustomRegistry(&registry), ort_api);
-  // TODO add stuff to registry
   if (registry) {
     const auto session_options = CreateUniqueOrtSessionOptions();
     auto session = CreateUniqueOrtSession(session_options);
-
     THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionRegisterCustomRegistry(session.get(), registry), ort_api);
   }
 }
@@ -237,10 +218,8 @@ void RegisterCustomRegistry_DML() {
   IMLOperatorRegistry* registry;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->CreateCustomRegistry(&registry), ort_api);
   WINML_EXPECT_NOT_EQUAL(nullptr, registry);
-  // TODO add stuff
   const auto session_options = CreateUniqueOrtSessionOptions();
   auto session = CreateUniqueOrtSession(session_options);
-
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionRegisterCustomRegistry(session.get(), registry), ort_api);
 }
 
@@ -279,36 +258,41 @@ void Initialize() {
 }
 
 class MockSink : public onnxruntime::logging::ISink {
-  std::vector<std::string> messages;
+public:
+  static bool called;
 
+private:
   void SendImpl(const onnxruntime::logging::Timestamp& timestamp, const std::string& logger_id, const onnxruntime::logging::Capture& message) override {
-    // TODO Assert on profiling data
-    std::cerr << "LOGGING\n";
-    // throw std::runtime_error("bhafsa");
+    called = true;
   }
+
+  void SendProfileEvent(onnxruntime::profiling::EventRecord&) const override { };
 };
+bool MockSink::called = false;
 
 void Profiling() {
+  ort_env->SetLoggingManager(nullptr);
+  const std::string logger_name("Default");
+  auto logging_manager = std::make_unique<onnxruntime::logging::LoggingManager>(
+    std::make_unique<MockSink>(),
+    onnxruntime::logging::Severity::kINFO,
+    false,
+    onnxruntime::logging::LoggingManager::InstanceType::Default,
+    &logger_name);
+  ort_env->SetLoggingManager(std::move(logging_manager));
+
   const auto session_options = CreateUniqueOrtSessionOptions();
   auto session = CreateUniqueOrtSession(session_options);
 
-  auto sink = std::make_unique<MockSink>();
-  const std::string logger_name("DefaultLogger");
-  auto logging_manager = std::make_unique<onnxruntime::logging::LoggingManager>(std::move(sink), onnxruntime::logging::Severity::kINFO, false, onnxruntime::logging::LoggingManager::InstanceType::Default, &logger_name);
-  ort_env->SetLoggingManager(nullptr);
-  ort_env->SetLoggingManager(std::move(logging_manager));
-  // onnxruntime::logging::Logger logger;
   winml_adapter_api->SessionStartProfiling(ort_env, session.get());
   LoadAndPurloinModel(session, "fns-candy.onnx");
   winml_adapter_api->SessionEndProfiling(session.get());
-  // winml_adapter_api->
+  WINML_EXPECT_TRUE(MockSink::called);
 }
 
 void CopyInputAcrossDevices() {
-  GPUTEST
   const auto session_options = CreateUniqueOrtSessionOptions();
   auto session = CreateUniqueOrtSession(L"fns-candy.onnx", session_options);
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionInitialize(session.get()), ort_api);
 
   constexpr std::array<int64_t, 4> dimensions{1, 3, 720, 720};
   constexpr size_t input_tensor_size = [&dimensions]() {
@@ -337,48 +321,37 @@ void CopyInputAcrossDevices() {
 void CopyInputAcrossDevices_DML() {
   GPUTEST
 
-// HRESULT OnnxruntimeEngine::CreateOneInputAcrossDevices(const char* name, IValue* src, IValue** out) {
-//   auto ort_api = engine_factory_->UseOrtApi();
-//   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  const auto session_options = CreateUniqueOrtSessionOptions();
+  THROW_IF_NOT_OK_MSG(ort_api->DisableMemPattern(session_options.get()), ort_api);
+  const auto device = CreateD3DDevice();
+  const auto queue = CreateD3DQueue(device);
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device, queue), ort_api);
+  auto session = CreateUniqueOrtSession(session_options);
 
-//   auto src_value = static_cast<OnnxruntimeValue*>(src);
+  LoadAndPurloinModel(session, "fns-candy.onnx");
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionInitialize(session.get()), ort_api);
+  constexpr std::array<int64_t, 4> dimensions{1, 3, 720, 720};
+  constexpr size_t input_tensor_size = [&dimensions]() {
+    size_t size = 1;
+    for (auto dim : dimensions)
+      size *= dim;
+    return size;
+  } ();
 
-//   bool is_set;
-//   auto is_empty = SUCCEEDED(src_value->IsEmpty(&is_set)) && is_set;
-//   auto is_tensor = SUCCEEDED(src_value->IsTensor(&is_set)) && is_set;
+  OrtMemoryInfo* memory_info;
+  THROW_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info), ort_api);
+  std::vector<float> input_tensor_values(input_tensor_size);
+  OrtValue* input_tensor;
+  THROW_IF_NOT_OK_MSG(ort_api->CreateTensorWithDataAsOrtValue(memory_info, input_tensor_values.data(), input_tensor_size * sizeof(float), dimensions.data(), 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor), ort_api);
 
-//   if (is_tensor && !is_empty) {
-//     int16_t source_location;
-//     int16_t input_required_location;
-//     RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ValueGetDeviceId(src_value->UseOrtValue(), &source_location),
-//                             ort_api);
-//     RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionGetInputRequiredDeviceId(session_.get(), name, &input_required_location),
-//                             ort_api);
+  int is_tensor;
+  THROW_IF_NOT_OK_MSG(ort_api->IsTensor(input_tensor, &is_tensor), ort_api);
+  WINML_EXPECT_TRUE(is_tensor);
 
-//     if (source_location != input_required_location) {
-//       OrtValue* dest_ort_value = nullptr;
-//       RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionCopyOneInputAcrossDevices(session_.get(), name,
-//                                                                                   src_value->UseOrtValue(), &dest_ort_value),
-//                               ort_api);
-//       auto unique_dest_ort_value = UniqueOrtValue(dest_ort_value, ort_api->ReleaseValue);
+  OrtValue* dest_ort_value = nullptr;
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionCopyOneInputAcrossDevices(session.get(), "inputImage", input_tensor, &dest_ort_value), ort_api);
 
-//       RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, this, std::move(unique_dest_ort_value), UniqueOrtAllocator(nullptr, nullptr)));
-//       return S_OK;
-//     }
-//   }
-
-//   *out = src;
-//   (*out)->AddRef();
-//   return S_OK;
-// }
-
-  // const auto session_options = CreateUniqueOrtSessionOptions();
-  // auto session = CreateUniqueOrtSession(session_options);
-  // THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionInitialize(session.get()), ort_api);
-
-  // ...
-
-  // RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionCopyOneInputAcrossDevices(session.get(), name, src_value->UseOrtValue(), &dest_ort_value),
+  ort_api->ReleaseMemoryInfo(memory_info);
 }
 }
 
