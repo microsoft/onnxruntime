@@ -33,14 +33,13 @@ using namespace winrt::Windows::Graphics::Imaging;
 using namespace winrt::Windows::Storage;
 using namespace winrt::Windows::Storage::Streams;
 
-static void CustomOpsScenarioTestSetup()
+static void CustomOpsScenarioTestsClassSetup()
 {
   init_apartment();
 }
 
-static void CustomOpsScenarioGpuTestSetup()
+static void CustomOpsScenarioTestsGpuMethodSetup()
 {
-  init_apartment();
   GPUTEST;
 }
 
@@ -724,11 +723,11 @@ static void CustomKernelWithCustomSchema()
     }
 }
 
-const CustomOpsTestApi& getapi() {
-  static constexpr CustomOpsTestApi api = 
+const CustomOpsTestsApi& getapi() {
+  static constexpr CustomOpsTestsApi api = 
       {
-          CustomOpsScenarioTestSetup,
-          CustomOpsScenarioGpuTestSetup,
+          CustomOpsScenarioTestsClassSetup,
+          CustomOpsScenarioTestsGpuMethodSetup,
           CustomOperatorFusion,
           CustomKernelWithBuiltInSchema,
           CustomKernelWithCustomSchema
