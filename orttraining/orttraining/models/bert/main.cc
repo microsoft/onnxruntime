@@ -136,11 +136,23 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("beta", "Adam/Lamb beta parameter", cxxopts::value<float>()->default_value("0.999"))
       ("lambda", "Adam/Lamb lambda parameter", cxxopts::value<float>()->default_value("0.01"))
       ("epsilon", "Adam/Lamb epsilon parameter", cxxopts::value<float>()->default_value("1e-6"))
+      ("do_bias_correction",
+        "A flag controls if Adam/Lamb should do bias correction. "
+        "Default is false, which means no bias correction. "
+        "Use true to enable bias correction.",
+        cxxopts::value<bool>()->default_value("false"))
+      ("weight_decay_mode",
+        "Chooses the weight decay mode for Adam optimizer "
+        "Default is 0, which does weight decay before updating weight. "
+        "Use 1 to do weight decay after updating weight.",
+        cxxopts::value<int64_t>()->default_value("0"))
       ("ratio_min", "Lamb min ratio parameter", cxxopts::value<float>()->default_value("0.05"))
       ("ratio_max", "Lamb max ratio parameter", cxxopts::value<float>()->default_value("5.0"))
       ("cuda_mem_limit_in_gb", "Max cuda memory ort can use, in GB", cxxopts::value<float>()->default_value("-1.0"))
       ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
-      ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"));
+      ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
+      ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
+        cxxopts::value<bool>()->default_value("true"));
   options
     .add_options("ORT configuration")
       ("ort_log_severity", "ORT minimum logging severity (see onnxruntime::logging::Severity values)",
@@ -305,20 +317,27 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     }
 
     params.partition_optimizer = flags["partition_optimizer"].as<bool>();
+    params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
     float lambda = flags["lambda"].as<float>();
     float epsilon = flags["epsilon"].as<float>();
+    int64_t weight_decay_mode = flags["weight_decay_mode"].as<int64_t>();
     float ratio_min = flags["ratio_min"].as<float>();
     float ratio_max = flags["ratio_max"].as<float>();
     ORT_RETURN_IF_NOT(alpha >= 0.f && alpha <= 1.f, "alpha is not in valid range [0.0, 1.0]");
     ORT_RETURN_IF_NOT(beta >= 0.f && beta <= 1.f, "alpha is not in valid range [0.0, 1.0]");
+    ORT_RETURN_IF_NOT(weight_decay_mode == 0 || weight_decay_mode == 1, "Only 0 and 1 are supported for weight decay mode.");
+    ORT_RETURN_IF_NOT(epsilon >= 0.f, "epsilon should be non-negative.");
     ORT_RETURN_IF_NOT(epsilon >= 0.f, "epsilon should be non-negative.");
     ORT_RETURN_IF_NOT(ratio_min >= 0.f, "ratio_min should be non-negative.");
     ORT_RETURN_IF_NOT(ratio_max >= 0.f, "ratio_max should be non-negative.");
     ORT_RETURN_IF_NOT(ratio_max >= ratio_min, "ratio_max should be greater than or equal to ratio_min.");
     std::vector<std::string> no_decay{"bias", "gamma", "beta", "LayerNorm"};
 
+    bool do_bias_correction = flags["do_bias_correction"].as<bool>();
+
+    // Optimizer's float attributes.
     params.optimizer_attributes = [=](const std::string& weight) {
       // Set lambda attribute to zero if we don't want decay on this weight.
       bool zero_lambda = std::any_of(no_decay.begin(), no_decay.end(), [&](const std::string& name) {
@@ -332,6 +351,14 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
           {"epsilon", epsilon},
           {"ratio_min", ratio_min},
           {"ratio_max", ratio_max}
+      };
+    };
+
+    // Optimizer's int attributes.
+    params.optimizer_int_attributes = [=](const std::string& /*weight*/) {
+      return std::unordered_map<std::string, int64_t>{
+          {"do_bias_correction", do_bias_correction ? static_cast<int64_t>(1) : static_cast<int64_t>(0)},
+          {"weight_decay_mode", weight_decay_mode}
       };
     };
 
@@ -550,7 +577,7 @@ static bool GetParametersForPhase(
   return true;
 }
 
-static Status RunPerformanceTest(const BertParameters& params) {
+static Status RunPerformanceTest(const BertParameters& params, const Environment& env) {
   // setup fake data
   const int batch_size = static_cast<int>(params.batch_size);
   std::vector<std::string> tensor_names = {"input1", /*input_ids*/
@@ -578,17 +605,17 @@ static Status RunPerformanceTest(const BertParameters& params) {
   auto random_perf_data = std::make_shared<RandomDataSet>(num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
   auto random_perf_data_loader = onnxruntime::make_unique<SingleDataLoader>(random_perf_data, tensor_names);
 
-  TrainingRunner runner{params};
+  TrainingRunner runner{params, env};
   ORT_RETURN_IF_ERROR(runner.Initialize());
   ORT_RETURN_IF_ERROR(runner.Run(random_perf_data_loader.get(), random_perf_data_loader.get()));
 
   return Status::OK();
 }
 
-static Status RunTraining(const BertParameters& params) {
+static Status RunTraining(const BertParameters& params, const Environment& env) {
   const size_t max_num_files_preload = 2;
 
-  auto runner = onnxruntime::make_unique<TrainingRunner>(params);
+  auto runner = onnxruntime::make_unique<TrainingRunner>(params, env);
   ORT_RETURN_IF_ERROR(runner->Initialize());
 
   BertParameters params_for_phase;
@@ -648,7 +675,7 @@ int main(int argc, char* argv[]) {
 
   // setup onnxruntime env
   unique_ptr<Environment> env;
-  RETURN_IF_FAIL(Environment::Create(env));
+  RETURN_IF_FAIL(Environment::Create(nullptr, env));
 
   // initialize test output file
   if (!params.convergence_test_output_file.empty()) {
@@ -660,9 +687,9 @@ int main(int argc, char* argv[]) {
 
   // start training session
   if (params.is_perf_test) {
-    RETURN_IF_FAIL(RunPerformanceTest(params));
+    RETURN_IF_FAIL(RunPerformanceTest(params, *env));
   } else {
-    RETURN_IF_FAIL(RunTraining(params));
+    RETURN_IF_FAIL(RunTraining(params, *env));
   }
 
 #ifdef USE_HOROVOD

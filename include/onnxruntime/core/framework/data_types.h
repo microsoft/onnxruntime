@@ -55,20 +55,20 @@ union MLFloat16 {
   MLFloat16() : val(0) {}
 
   // Taken from https://stackoverflow.com/a/60047308/12627730
-  float as_float(uint32_t x) const {
+  float AsFloat(uint32_t x) const {
     float out = 0.0f;
     std::memcpy(&out, &x, sizeof(x));
     return out;
   }
 
   // Taken from https://stackoverflow.com/a/60047308/12627730
-  uint32_t as_uint(float x) const {
+  uint32_t AsUint(float x) const {
     uint32_t out = 0;
     std::memcpy(&out, &x, sizeof(x));
     return out;
   }
 
-  float half_to_float(const uint16_t x) const {
+  float HalfToFloat(const uint16_t x) const {
     uint16_t half = x;
     if (endian::native == endian::big) {
       // Taken from https://stackoverflow.com/a/2182184/12627730
@@ -81,7 +81,7 @@ union MLFloat16 {
     const uint32_t e = (half & 0x7C00) >> 10;  // exponent
     const uint32_t m = (half & 0x03FF) << 13;  // mantissa
     // evil log2 bit hack to count leading zeros in denormalized format
-    const uint32_t v = as_uint(static_cast<float>(m)) >> 23;
+    const uint32_t v = AsUint(static_cast<float>(m)) >> 23;
     uint32_t full = (half & 0x8000) << 16 | (e != 0) * ((e + 112) << 23 | m) |
                     ((e == 0) & (m != 0)) * ((v - 37) << 23 | ((m << (150 - v)) & 0x007FE000));  // sign : normalized : denormalized
 
@@ -93,11 +93,11 @@ union MLFloat16 {
              ((full << 24) & 0xff000000);  // byte 0 to byte 3
     }
 
-    return as_float(full);
+    return AsFloat(full);
   }
 
   operator float() const {
-    return half_to_float(val);
+    return HalfToFloat(val);
   }
 };
 

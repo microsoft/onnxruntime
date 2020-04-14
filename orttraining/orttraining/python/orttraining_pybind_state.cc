@@ -9,6 +9,7 @@
 
 #include "core/framework/random_seed.h"
 #include "core/framework/session_options.h"
+#include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/mpi_setup.h"
@@ -38,6 +39,7 @@ struct TrainingParameters {
   std::string scaled_loss_output_name;
   std::string lr_params_feed_name = "Learning_Rate";
   std::unordered_map<std::string, std::unordered_map<std::string, float>> optimizer_attributes_map;
+  std::unordered_map<std::string, std::unordered_map<std::string, int64_t>> optimizer_int_attributes_map;
   bool use_fp16_moments = false;
 
   bool use_mixed_precision = false;
@@ -52,6 +54,7 @@ struct TrainingParameters {
   int horizontal_parallel_size = 1;
   bool partition_optimizer = false;
   int seed = -1;
+  bool enable_grad_norm_clip = true;
 };
 
 // TODO: this method does not handle parallel optimization.
@@ -124,6 +127,13 @@ void ConfigureSessionForTraining(
           "Failed to find attribute map for weight ", weight_name);
       return it->second;
     };
+    opt.weight_int_attributes_generator = [&parameters](const std::string& weight_name) {
+      const auto it = parameters.optimizer_int_attributes_map.find(weight_name);
+      ORT_ENFORCE(
+          it != parameters.optimizer_int_attributes_map.end(),
+          "Failed to find int attribute map for weight ", weight_name);
+      return it->second;
+    };
     opt.use_fp16_moments = parameters.use_fp16_moments;
     opt.do_all_reduce_in_fp16 = true;
     // TODO: this mapping is temporary.
@@ -133,6 +143,9 @@ void ConfigureSessionForTraining(
     // an allreduce_post_accumulation option and remove the use_nccl option.
     opt.use_nccl = parameters.allreduce_post_accumulation;
     opt.partition_optimizer = parameters.partition_optimizer;
+    // TODO: The norm clipping value is 1.0f which is the default used in most frameworks.
+    // Need to have another option to support more values in the future.
+    opt.enable_grad_norm_clip = parameters.enable_grad_norm_clip;
 
     config.optimizer_config = opt;
   }
@@ -159,6 +172,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("training_optimizer_name", &TrainingParameters::training_optimizer_name)
       .def_readwrite("lr_params_feed_name", &TrainingParameters::lr_params_feed_name)
       .def_readwrite("optimizer_attributes_map", &TrainingParameters::optimizer_attributes_map)
+      .def_readwrite("optimizer_int_attributes_map", &TrainingParameters::optimizer_int_attributes_map)
       .def_readwrite("use_fp16_moments", &TrainingParameters::use_fp16_moments)
       .def_readwrite("use_mixed_precision", &TrainingParameters::use_mixed_precision)
       .def_readwrite("allreduce_post_accumulation", &TrainingParameters::allreduce_post_accumulation)
@@ -166,11 +180,19 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("world_rank", &TrainingParameters::world_rank)
       .def_readwrite("world_size", &TrainingParameters::world_size)
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
-      .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer);
+      .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer)
+      .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip);
+
 
   py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
-  training_session.def(py::init<SessionOptions, SessionObjectInitializer>())
-      .def(py::init<SessionObjectInitializer, SessionObjectInitializer>())
+  training_session.def(py::init([](const SessionOptions& so) {
+      Environment& env = get_env();
+      return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
+      }))
+      .def(py::init([]() {
+        Environment& env = get_env();
+        return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(GetDefaultCPUSessionOptions(), env);
+      }))
       .def("finalize", [](py::object) {
 #ifdef USE_HOROVOD
         training::shutdown_horovod();

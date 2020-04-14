@@ -4,8 +4,8 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
-#include "common.h"
-#include "adam.h"
+#include "orttraining/training_ops/cuda/optimizer/common.h"
+#include "orttraining/training_ops/cuda/optimizer/adam.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -121,6 +121,7 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>::ComputeInternal(OpKer
       return Status::OK();
     }
   }
+
   AdamOptimizerImpl(
       reinterpret_cast<const CudaT1*>(ETA.template Data<T1>()),
       *S_in,
@@ -134,6 +135,8 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>::ComputeInternal(OpKer
       ToCudaType<T4>::FromFloat(beta_),
       ToCudaType<T4>::FromFloat(lambda_),
       ToCudaType<T4>::FromFloat(epsilon_),
+      do_bias_correction_,
+      weight_decay_mode_,
       reinterpret_cast<CudaT4*>(NM1.template MutableData<T4>()),
       reinterpret_cast<CudaT4*>(NM2.template MutableData<T4>()),
       NW != nullptr ? reinterpret_cast<CudaT3*>(NW->template MutableData<T3>()) : nullptr,

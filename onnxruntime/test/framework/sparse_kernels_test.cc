@@ -279,7 +279,7 @@ class SparseTensorTests : public testing::Test {
   std::vector<TypeProto> types;
 
  public:
-  SparseTensorTests() : session_object(SessionOptions(), &DefaultLoggingManager()),
+  SparseTensorTests() : session_object(SessionOptions(), GetEnvironment()),
                         registry(std::make_shared<CustomRegistry>()),
                         custom_schema_registries_{registry->GetOpschemaRegistry()},
                         domain_to_version{{onnxruntime::kMLDomain, 10}},

@@ -534,7 +534,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxGradient) {
   return std::vector<NodeDef>{
-      NodeDef("SoftmaxGrad",
+      NodeDef(OpDef{"SoftmaxGrad", kMSDomain, 1},
               {GO(0), O(0)},
               {GI(0)},
               SrcNodeAttributes())};
@@ -553,7 +553,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherGradient) {
       NodeDef("Shape",
               {I(0)},
               {IA("I0_shape")}),
-      NodeDef("GatherGrad",
+      NodeDef(OpDef{"GatherGrad", kMSDomain, 1},
               {IA("I0_shape"), I(1), GO(0)},
               {GI(0)},
               SrcNodeAttributes())};
@@ -690,7 +690,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
   if (IsGradientRequiredForSrcNodeInput(0) && IsGradientRequiredForSrcNodeInput(1)) {
     return std::vector<NodeDef>{
-        NodeDef("DivGrad",
+        NodeDef(OpDef{"DivGrad", kMSDomain, 1},
                 {GO(0), I(0), I(1)},
                 {GI(0), GI(1)})};
   } else if (IsGradientRequiredForSrcNodeInput(0)) {
@@ -710,7 +710,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
     return output;
   } else if (IsGradientRequiredForSrcNodeInput(1)) {
     return std::vector<NodeDef>{
-        NodeDef("DivGrad",
+        NodeDef(OpDef{"DivGrad", kMSDomain, 1},
                 {GO(0), I(0), I(1)},
                 // TODO: this IA("") does not cause kernel to know it is unneeded.
                 // Gradient for the first input is still calculated.
@@ -862,7 +862,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGeluGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetLayerNormalizationGradient) {
   return std::vector<NodeDef>{
-      NodeDef("LayerNormalizationGrad",
+      NodeDef(OpDef{"LayerNormalizationGrad", kMSDomain, 1},
               {GO(0), I(0), I(1), O(1), O(2)},
               {GI(0), GI(1), GI(2)},
               {SrcNodeAttributes()})};
@@ -873,13 +873,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetBatchNormalizationGradient) {
   if (attributes.find("epsilon") != attributes.end()) {
     float epsilon = attributes.at("epsilon").f();
     return std::vector<NodeDef>{
-        NodeDef("BatchNormalizationGrad",
+        NodeDef(OpDef{"BatchNormalizationGrad", kMSDomain, 1},
                 {GO(0), I(0), I(1), O(3), O(4)},
                 {GI(0), GI(1), GI(2)},
                 {MakeAttribute("epsilon", epsilon)})};
   } else {
     return std::vector<NodeDef>{
-        NodeDef("BatchNormalizationGrad",
+        NodeDef(OpDef{"BatchNormalizationGrad", kMSDomain, 1},
                 {GO(0), I(0), I(1), O(3), O(4)},
                 {GI(0), GI(1), GI(2)})};
   }
@@ -887,7 +887,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetBatchNormalizationGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetMegatronFGradient) {
   return std::vector<NodeDef>{
-      NodeDef("NcclAllReduce",
+      NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
               {GO(0)},
               {GI(0)},
               {MakeAttribute("group_type", static_cast<int64_t>(training::WorkerGroupType::HorizontalParallel))})};
@@ -920,36 +920,56 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetWhereGradient) {
+  std::vector<NodeDef> result;
+  const int64_t data_type = static_cast<int64_t>(I(1).type_proto->tensor_type().elem_type());
+  if (IsGradientRequiredForSrcNodeInput(1)) {
+    result.push_back(NodeDef("Cast", {I(0)}, {IA("Positive_Mask")}, {MakeAttribute("to", data_type)}));
+    result.push_back(NodeDef("Mul", {GO(0), IA("Positive_Mask")}, {GI(1)}));
+  }
+
+  if (IsGradientRequiredForSrcNodeInput(2)) {
+    result.push_back(NodeDef("Not", {I(0)}, {IA("Not_Condition", IType(0))}));
+    result.push_back(NodeDef("Cast", {IA("Not_Condition")}, {IA("Negative_Mask")}, {MakeAttribute("to", data_type)}));
+    result.push_back(NodeDef("Mul", {GO(0), IA("Negative_Mask")}, {GI(2)}));
+  }
+  return result;
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetSendGradient) {
-  NodeAttributes new_attrs;
-  const auto& old_attrs = SrcNodeAttributes();
- 
-  new_attrs["src"] = MakeAttribute("src", old_attrs.at("dst").i());
-  new_attrs["dst"] = MakeAttribute("dst", old_attrs.at("src").i());
-  new_attrs["tag"] = MakeAttribute("tag", old_attrs.at("tag").i());  // keep tag the same for now
-  new_attrs["element_type"] = MakeAttribute("element_type", old_attrs.at("element_type").i());
+  // Send inputs: signal A, remote, data; outputs: signal B
+  // Recv inputs: signal B, remote; outputs: signal A', data'
+
+  std::vector<ArgDef> out_args;
+  out_args.push_back(GI(0));  // Signal
+  for (int i = 2; i < GetSrcNodeInputSize(); ++i) {
+    out_args.push_back(GI(i));  // Data
+  }
 
   return std::vector<NodeDef>{
       NodeDef("Recv",
-              {O(0)},
-              {GI(0), GI(1)},
-              new_attrs)};
+              {O(0), I(1)},  // {Signal, Remote}
+              out_args,
+              SrcNodeAttributes())};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetRecvGradient) {
-  NodeAttributes new_attrs;
-  const auto& old_attrs = SrcNodeAttributes();
+  // Recv inputs: signal A, remote; outputs: signal B, data
+  // Send inputs: signal B, remote, data'; outputs: signal A'
 
-  new_attrs["src"] = MakeAttribute("src", old_attrs.at("dst").i());
-  new_attrs["dst"] = MakeAttribute("dst", old_attrs.at("src").i());
-  new_attrs["tag"] = MakeAttribute("tag", old_attrs.at("tag").i());  // keep tag the same for now
-  new_attrs["element_type"] = MakeAttribute("element_type", old_attrs.at("element_type").i());
+  std::vector<ArgDef> in_args;
+  in_args.push_back(O(0));  // Signal
+  in_args.push_back(I(0));  // Remote
+
+  for (int i = 1; i < GetSrcNodeOutputSize(); ++i) {
+    in_args.push_back(GO(i));  // Data
+  }
 
   return std::vector<NodeDef>{
       NodeDef("Send",
-              {O(0), GO(1)},
-              {GI(0)},
-              new_attrs)};
+              in_args,
+              {GI(0)},  // Signal
+              SrcNodeAttributes())};
 }
 
 }  // namespace training

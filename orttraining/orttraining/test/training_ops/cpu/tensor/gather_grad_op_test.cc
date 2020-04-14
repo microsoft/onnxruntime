@@ -64,7 +64,7 @@ TEST(GatherOpTest, Gather_axis0_indices2d_half) {
 }
 
 TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_half) {
-  OpTester test("GatherGrad", 9);
+  OpTester test("GatherGrad", 1, kMSDomain);
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<int64_t>("shape", {2},
                          {3, 3});
@@ -82,7 +82,7 @@ TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_half) {
 #endif
 
 TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_float) {
-  OpTester test("GatherGrad", 9);
+  OpTester test("GatherGrad", 1, kMSDomain);
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<int64_t>("shape", {2},
                          {3, 3});
@@ -98,7 +98,7 @@ TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_float) {
 }
 
 TEST(GatherGradOpTest, Gather_axis1_float_impl2) {
-  OpTester test("GatherGrad", 9);
+  OpTester test("GatherGrad", 1, kMSDomain);
   int64_t axis_0 = 3;
   int64_t axis_1 = 6;
   int64_t axis_2 = 128;
@@ -125,7 +125,7 @@ TEST(GatherGradOpTest, Gather_axis1_float_impl2) {
 }
 
 TEST(GatherGradOpTest, Gather_axis0_float_impl2) {
-  OpTester test("GatherGrad", 9);
+  OpTester test("GatherGrad", 1, kMSDomain);
   int64_t axis_0 = 3;
   int64_t axis_1 = 6;
   int64_t axis_2 = 128;

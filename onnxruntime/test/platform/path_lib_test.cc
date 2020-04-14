@@ -7,7 +7,12 @@
 
 #include "core/platform/env.h"
 #include "test/framework/test_utils.h"
-#include "core/framework/path_lib.h"  // TODO fix include order dependency, path_lib.h should be first
+
+// Windows.h reserves the word OPTIONAL in macro, which introduces
+// conflict on variables declared from onnx external library. Currently workaround
+// this by re-ordering the included files.
+// TODO: undefine OPTIONAL in path_lib.h and move path_lib.h to the first include
+#include "core/platform/path_lib.h"
 
 namespace onnxruntime {
 namespace test {

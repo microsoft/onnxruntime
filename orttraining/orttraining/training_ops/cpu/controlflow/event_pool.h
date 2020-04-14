@@ -24,7 +24,7 @@ class OrtEventPool final {
   bool QueryEvent(int64_t id) const;
   void WaitEvent(int64_t id) const;
 
-  size_t GetPoolSize() const {
+  static size_t GetPoolSize() {
     return MaxNumItems;
   }
 

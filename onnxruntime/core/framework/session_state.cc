@@ -136,6 +136,7 @@ const std::unordered_map<int, OrtValue>& SessionState::GetConstantInitializedTen
   return constant_initialized_tensors_;
 }
 
+#ifdef ENABLE_TRAINING
 Status SessionState::GetInitializedTensors(
     const std::unordered_set<std::string>& interested_weights,
     bool allow_missing_weights, NameMLValMap& retrieved_weights) const {
@@ -162,6 +163,7 @@ NameMLValMap SessionState::GetInitializedTensors(const std::unordered_set<std::s
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   return result;
 }
+#endif
 
 SessionState& SessionState::SetLogger(const logging::Logger& logger) {
   logger_ = &logger;
@@ -186,10 +188,10 @@ static int64_t CalculateMemoryPatternsKey(const std::vector<std::reference_wrapp
   return key;
 }
 
+#ifdef ENABLE_TRAINING
 namespace {
 Status ResolveDimParams(const GraphViewer& graph, const std::map<std::string, TensorShape>& feeds, std::unordered_map<std::string, int64_t>& out) {
-  for (size_t i = 0; i < graph.GetInputs().size(); ++i) {
-    auto* input = graph.GetInputs()[i];
+  for (const auto* input : graph.GetInputs()) {
     auto* shape = input->Shape();
     auto it = feeds.find(input->Name());
     if (it == feeds.end())
@@ -198,7 +200,7 @@ Status ResolveDimParams(const GraphViewer& graph, const std::map<std::string, Te
       return Status(ONNXRUNTIME, FAIL, "Graph input " + input->Name() +
                                            "'s shape is not present or its shape doesn't match feed's shape."
                                            "Unable to resolve the value for dynamic shape");
-    for (int k = 0; k < shape->dim_size(); ++k) {
+    for (int k = 0, end = shape->dim_size(); k < end; ++k) {
       if (shape->dim()[k].has_dim_param()) {
         out.insert({shape->dim()[k].dim_param(), it->second.GetDims()[k]});
       }
@@ -212,7 +214,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
                                                const std::vector<int>& feed_mlvalue_idxs,
                                                MemoryPatternGroup* output) const {
   std::map<std::string, TensorShape> feeds;
-  for (size_t i = 0; i < feed_mlvalue_idxs.size(); ++i) {
+  for (size_t i = 0, end = feed_mlvalue_idxs.size(); i < end; ++i) {
     std::string name;
     ORT_RETURN_IF_ERROR(this->ort_value_name_idx_map_.GetName(feed_mlvalue_idxs[i], name));
     feeds.insert({name, input_shape[i]});
@@ -228,7 +230,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
     auto* node = graph_viewer_->GetNode(node_plan.node_index);
     int output_start = node_index + static_cast<int>(node->InputDefs().size()) + static_cast<int>(node->ImplicitInputDefs().size());
     //allocate output
-    for (int i = 0; i < static_cast<int>(node->OutputDefs().size()); ++i) {
+    for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
       const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
       if (ml_value_idx == NodeIndexInfo::kInvalidEntry)
         continue;
@@ -251,8 +253,10 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
               return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute");
             }
             len *= it->second;
-          } else {
+          } else if (dim.has_dim_value()) {
             len *= dim.dim_value();
+          } else {
+            return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute");
           }
         }
         if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(len, ml_data_type->Size(), &size)) {
@@ -279,6 +283,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   }
   return Status::OK();
 }
+#endif
 
 const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
                                                               const std::vector<int>& feed_mlvalue_idxs) const {
@@ -458,10 +463,12 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
 }
 
 void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) {
-  if (to_be_executed_nodes_.find(fetch_mlvalue_idxs) != to_be_executed_nodes_.end())
+  std::vector<int> sorted_idxs = fetch_mlvalue_idxs;
+  std::sort(sorted_idxs.begin(), sorted_idxs.end());
+  if (to_be_executed_nodes_.find(sorted_idxs) != to_be_executed_nodes_.end())
     return;
 
-  const Graph* graph = GetGraphViewer()->GetGraph();
+  const Graph& graph = GetGraphViewer()->GetGraph();
 
   // Get the nodes generating the fetches.
   std::vector<const Node*> nodes;
@@ -470,23 +477,23 @@ void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue
 
   for (auto idx : fetch_mlvalue_idxs) {
     std::string node_arg_name;
-    if (!this->GetOrtValueNameIdxMap().GetName(idx, node_arg_name).IsOK()) {
-      to_be_executed_nodes_.insert(std::make_pair(fetch_mlvalue_idxs, reachable_nodes));
-      return;
-    }
-    auto ending_node = graph->GetProducerNode(node_arg_name);
+    const auto status = this->GetOrtValueNameIdxMap().GetName(idx, node_arg_name);
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+    auto ending_node = graph.GetProducerNode(node_arg_name);
     nodes.push_back(ending_node);
   }
 
   // Reversely traverse to get reachable nodes.
-  graph->ReverseDFSFrom(
+  graph.ReverseDFSFrom(
       nodes, {}, [&reachable_nodes](const Node* n) { reachable_nodes.insert(n->Index()); });
-  to_be_executed_nodes_.insert(std::make_pair(fetch_mlvalue_idxs, reachable_nodes));
+  to_be_executed_nodes_.insert(std::make_pair(sorted_idxs, reachable_nodes));
 }
 
 const std::unordered_set<NodeIndex>* SessionState::GetToBeExecutedNodes(
     const std::vector<int>& fetch_mlvalue_idxs) const {
-  auto it = to_be_executed_nodes_.find(fetch_mlvalue_idxs);
+  std::vector<int> sorted_idxs = fetch_mlvalue_idxs;
+  std::sort(sorted_idxs.begin(), sorted_idxs.end());
+  auto it = to_be_executed_nodes_.find(sorted_idxs);
   return (it != to_be_executed_nodes_.end()) ? &it->second : nullptr;
 }
 

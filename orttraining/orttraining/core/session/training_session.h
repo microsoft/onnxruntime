@@ -20,9 +20,8 @@ class TrainingSession : public InferenceSession {
                              std::vector<std::pair<size_t /*InputIndex*/, float /*value*/>>>
       ImmutableWeights;
 
-  explicit TrainingSession(const SessionOptions& session_options,
-                           logging::LoggingManager* logging_manager = nullptr)
-      : InferenceSession(session_options, logging_manager) {}
+  TrainingSession(const SessionOptions& session_options, const Environment& env)
+      : InferenceSession(session_options, env) {}
 
   /**
    * The training configuration options.
@@ -119,6 +118,8 @@ class TrainingSession : public InferenceSession {
       // The per-weight attribute map generator.
       // It should accept a weight name and return the appropriate attribute map.
       std::function<std::unordered_map<std::string, float>(const std::string&)> weight_attributes_generator{};
+      std::function<std::unordered_map<std::string, int64_t>(const std::string&)> weight_int_attributes_generator{};
+
       // Whether to use FP16 moments.
       bool use_fp16_moments{};
       // Whether to use FP16 for the all reduce.
@@ -129,6 +130,8 @@ class TrainingSession : public InferenceSession {
       bool partition_optimizer{};
       // Selects the reduction algorithm for Adasum.
       AdasumReductionType adasum_reduction_type{AdasumReductionType::None};
+      // Whether to enable gradient clipping.
+      bool enable_grad_norm_clip{true};
     };
     // The optimizer configuration.
     // If not provided, no optimizer is added.

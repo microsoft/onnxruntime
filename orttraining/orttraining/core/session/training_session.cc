@@ -50,11 +50,19 @@ Status SetupOptimizerParams(
     OptimizerNodeConfig opt_node_config{};
     opt_node_config.name = optimizer_config.name;
     opt_node_config.lr_feed_name = optimizer_config.learning_rate_input_name;
+
     try {
       opt_node_config.attributes = optimizer_config.weight_attributes_generator(weight_name);
     } catch (const std::exception& ex) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
     }
+
+    try {
+      opt_node_config.int_attributes = optimizer_config.weight_int_attributes_generator(weight_name);
+    } catch (const std::exception& ex) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+    }
+
     opt_node_config.loss_scale_input_name = loss_scale_input_name;
     opt_node_config.use_fp16_moments = optimizer_config.use_fp16_moments;
 
@@ -76,6 +84,7 @@ Status SetupOptimizerParams(
   opt_graph_config.allreduce_in_fp16 = optimizer_config.do_all_reduce_in_fp16;
   opt_graph_config.use_nccl = optimizer_config.use_nccl;
   opt_graph_config.adasum_reduction_type = optimizer_config.adasum_reduction_type;
+  opt_graph_config.enable_grad_norm_clip = optimizer_config.enable_grad_norm_clip;
 #if USE_HOROVOD
   opt_graph_config.horovod_reduce_op =
       opt_graph_config.adasum_reduction_type == AdasumReductionType::None
@@ -362,7 +371,7 @@ void TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transfo
                                                 const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
-    auto transformers_to_register = transformer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides, custom_list);
+    auto transformers_to_register = transformer_utils::GenerateTransformers(level, GetSessionOptions().free_dimension_overrides, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }

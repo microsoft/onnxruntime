@@ -8,7 +8,7 @@
 
 #include "re2/re2.h"
 
-#include "core/framework/path_lib.h"
+#include "core/platform/path_lib.h"
 #include "core/platform/env.h"
 
 namespace onnxruntime {

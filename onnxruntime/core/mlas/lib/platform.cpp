@@ -211,16 +211,19 @@ Return Value:
                     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx512F;
                     this->NchwcBlockSize = 16;
                     this->PreferredBufferAlignment = 64;
-                    //
-                    // Check if the processor supports AVX512BW.
-                    //
-#if !defined(MLAS_AVX512BW_UNSUPPORTED)
 
-                    if ((Cpuid7[1] & 0x40000000) != 0) {
+                    //
+                    // Check if the processor supports AVX512 core features
+                    // (AVX512BW/AVX512DQ/AVX512VL).
+                    //
 
-                        this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512BW;
-                        this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512BW;
-                        this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512BW;
+#if !defined(MLAS_AVX512CORE_UNSUPPORTED)
+
+                    if ((Cpuid7[1] & 0xC0020000) == 0xC0020000) {
+
+                        this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Core;
+                        this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Core;
+                        this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Core;
 
                         //
                         // Check if the processor supports AVX512VNNI.
@@ -233,8 +236,11 @@ Return Value:
                             this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Vnni;
                         }
                     }
-#endif // MLAS_AVX512BW_UNSUPPORTED
+
+#endif // MLAS_AVX512CORE_UNSUPPORTED
+
                 }
+
 #endif // MLAS_AVX512F_UNSUPPORTED
 
             }

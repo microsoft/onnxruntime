@@ -5,7 +5,9 @@
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
+#include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 
 namespace onnxruntime {
@@ -252,108 +254,137 @@ static inline float sigmoid_probability(float score, float proba, float probb) {
   return 1 - ComputeLogistic(val);  // ref: https://github.com/arnaudsj/libsvm/blob/eaaefac5ebd32d0e07902e1ae740e038eaaf0826/svm.cpp#L1818
 }
 
-static inline void ComputeSoftmax(const gsl::span<float>& values) {
+template <typename T>
+static inline void ComputeSoftmax(const gsl::span<T>& values) {
   // TODO: Replace this with usage of code in Softmax operator
 
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
-  for (float value : values) {
-    if (value > v_max)
-      v_max = value;
+  for (auto it = values.cbegin(); it != values.cend(); ++it) {
+    if (static_cast<float>(*it) > v_max)
+      v_max = static_cast<float>(*it);
   }
   float this_sum = 0.f;
-  for (float& value : values) {
-    value = std::exp(value - v_max);
-    this_sum += value;
+  for (auto it = values.begin(); it != values.end(); ++it) {
+    *it = std::exp(static_cast<float>(*it) - v_max);
+    this_sum += static_cast<float>(*it);
   }
-  for (float& value : values)
-    value /= this_sum;
+  for (auto it = values.begin(); it != values.end(); ++it)
+    *it = static_cast<float>(*it) / this_sum;
 }
 
-static inline void ComputeSoftmax(std::vector<float>& values) {
+template <typename T>
+static inline void ComputeSoftmax(std::vector<T>& values) {
   auto span = gsl::make_span(values);
   ComputeSoftmax(span);
 }
 
 //this function skips zero values (since exp(0) is non zero)
-static inline void ComputeSoftmaxZero(const gsl::span<float>& values) {
+template <typename T>
+static inline void ComputeSoftmaxZero(const gsl::span<T>& values) {
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
-  for (float value : values) {
-    if (value > v_max)
-      v_max = value;
+  for (auto it = values.cbegin(); it != values.cend(); ++it) {
+    if (static_cast<float>(*it) > v_max)
+      v_max = static_cast<float>(*it);
   }
   float exp_neg_v_max = std::exp(-v_max);
   float this_sum = 0.f;
-  for (float& value : values) {
-    if (value > 0.0000001f || value < -0.0000001f) {
-      value = std::exp(value - v_max);
-      this_sum += value;
+  for (auto it = values.begin(); it != values.end(); ++it) {
+    if (static_cast<float>(*it) > 0.0000001f || static_cast<float>(*it) < -0.0000001f) {
+      *it = std::exp(static_cast<float>(*it) - v_max);
+      this_sum += static_cast<float>(*it);
     } else {
-      value *= exp_neg_v_max;
+      *it = static_cast<float>(*it) * exp_neg_v_max;
     }
   }
-  for (float& value : values)
-    value /= this_sum;
+  for (auto it = values.begin(); it != values.end(); ++it)
+    *it = *it / this_sum;
 }
 
-static inline void ComputeSoftmaxZero(std::vector<float>& values) {
+template <typename T>
+static inline void ComputeSoftmaxZero(std::vector<T>& values) {
   auto span = gsl::make_span(values);
   ComputeSoftmaxZero(span);
 }
 
-template <typename T>
-void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
-                  int add_second_class) {
+template <typename T, typename IT>
+static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_transform,
+                         T* Z, int add_second_class) {
   if (scores.size() >= 2) {
     switch (post_transform) {
       case POST_EVAL_TRANSFORM::PROBIT:
-        for (float& score : scores)
-          score = ComputeProbit(score);
+        for (auto it = scores.cbegin(); it != scores.cend(); ++it, ++Z)
+          *Z = static_cast<T>(ComputeProbit(static_cast<float>(*it)));
         break;
       case POST_EVAL_TRANSFORM::LOGISTIC:
-        for (float& score : scores)
-          score = ComputeLogistic(score);
+        for (auto it = scores.cbegin(); it != scores.cend(); ++it, ++Z)
+          *Z = static_cast<T>(ComputeLogistic(static_cast<float>(*it)));
         break;
       case POST_EVAL_TRANSFORM::SOFTMAX:
         ComputeSoftmax(scores);
+        for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
+          *Z = static_cast<T>(*it);
         break;
       case POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
         ComputeSoftmaxZero(scores);
+        for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
+          *Z = static_cast<T>(*it);
         break;
       default:
       case POST_EVAL_TRANSFORM::NONE:
+        for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
+          *Z = static_cast<T>(*it);
         break;
     }
   } else if (scores.size() == 1) {  //binary case
     if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
-      scores[0] = ComputeProbit(scores[0]);
+      scores[0] = static_cast<T>(ComputeProbit(static_cast<float>(scores[0])));
+      *Z = scores[0];
     } else {
       switch (add_second_class) {
-        case 0:
-        case 1:
+        case 0:  //0=all positive weights, winning class is positive
           scores.push_back(scores[0]);
-          scores[0] = 1.f - scores[0];
+          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
+          *Z = scores[0];
+          *(Z + 1) = scores[1];
           break;
-        case 2:  //2 = mixed weights, winning class is positive
-        case 3:  //3 = mixed weights, winning class is negative
+        case 1:  //1 = all positive weights, winning class is negative
+          scores.push_back(scores[0]);
+          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
+          *Z = scores[0];
+          *(Z + 1) = scores[1];
+          break;
+        case 2:
+        case 3:  //2 = mixed weights, winning class is positive
           if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-            scores.push_back(ComputeLogistic(scores[0]));  //ml_logit(scores[k]);
-            scores[0] = ComputeLogistic(-scores[0]);
+            scores.resize(2);
+            scores[1] = static_cast<T>(ComputeLogistic(static_cast<float>(scores[0])));
+            scores[0] = static_cast<T>(ComputeLogistic(static_cast<float>(-scores[0])));
           } else {
             scores.push_back(scores[0]);
             scores[0] = -scores[0];
           }
+          *Z = scores[0];
+          *(Z + 1) = scores[1];
+          break;
+        default:
+          *Z = scores[0];
           break;
       }
     }
   }
+}
+
+template <typename T>
+static void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
+                         int add_second_class) {
   T* out_p = Z->template MutableData<T>() + write_index;
   size_t len;
   if (!IAllocator::CalcMemSizeForArray(scores.size(), sizeof(T), &len)) {
     ORT_THROW("length overflow");
   }
-  memcpy(out_p, scores.data(), len);
+  write_scores(scores, post_transform, out_p, add_second_class);
 }
 
 // TODO: Starting with just the pieces needed for LinearRegressor from write_scores (see above).
@@ -390,10 +421,7 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
         break;
       }
       case POST_EVAL_TRANSFORM::LOGISTIC: {
-        while (s < s_end) {
-          *s = ComputeLogistic(*s);
-          ++s;
-        }
+        MlasComputeLogistic(s, s, scores.size());
         break;
       }
       case POST_EVAL_TRANSFORM::SOFTMAX: {
