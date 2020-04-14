@@ -58,7 +58,7 @@ static void ScenarioCppWinrtTestSetup() {
 
 static void ScenarioCppWinrtGpuTestSetup() {
   ScenarioCppWinrtTestSetup();
-  GPUTEST
+  GPUTEST;
 };
 
 static void ScenarioCppWinrtGpuSkipEdgeCoreTestSetup() {
