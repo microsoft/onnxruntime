@@ -208,7 +208,7 @@ if nightly_build:
     version_number = version_number + ".dev" + build_suffix
 
 if wheel_name_suffix:
-    package_name = "{}-{}".format(package_name, wheel_name_suffix)
+    package_name = "{}_{}".format(package_name, wheel_name_suffix)
 
 cmd_classes = {}
 if bdist_wheel is not None :
