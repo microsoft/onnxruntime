@@ -1,19 +1,9 @@
 jobs:
-- job: Linux_CI
-  steps:
-    - template: templates/linux-ci.yml
-      parameters:
-        AgentPool : 'Linux-CPU'
-        JobName: 'Linux_CI_Dev'
-        BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_llvm --use_nuphar --use_dnnl --use_tvm --use_featurizers --build_wheel --build_java --enable_language_interop_ops"'
-        DoNugetPack:  'false'
-        ArtifactName: 'drop-linux'
-        TimeoutInMinutes: 120
-
-    - script: |
-        pip install flake8
-        displayName: 'install flake8'
-
-    - script: |
-        flake8 tools/ci_build/build.py
-        displayName: 'flake8'
+- template: templates/linux-ci.yml
+  parameters:
+    AgentPool : 'Linux-CPU'
+    JobName: 'Linux_CI_Dev'
+    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_llvm --use_nuphar --use_dnnl --use_tvm --use_featurizers --build_wheel --build_java --enable_language_interop_ops"'
+    DoNugetPack:  'false'
+    ArtifactName: 'drop-linux'
+    TimeoutInMinutes: 120
