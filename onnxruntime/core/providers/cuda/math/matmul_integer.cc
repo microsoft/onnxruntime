@@ -5,10 +5,9 @@
 #include "matmul_integer.cuh"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
-#include "core/providers/cuda/shared_inc/int8_support.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/igemm.h"
 #include "core/providers/common.h"
-#include <cublasLt.h>
 
 namespace onnxruntime {
 namespace cuda {
@@ -108,6 +107,28 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
     beta = 1;
   }
 
+#if CUDA_VERSION >= 10010
+  if (DeviceProp::GetDeviceProps().major >= 7 && DeviceProp::GetDeviceProps().minor >= 5) {
+    for (size_t batch = 0; batch < helper.OutputOffsets().size(); batch++) {
+      LtIgemmTensor(
+          static_cast<int>(helper.M()),
+          static_cast<int>(helper.N()),
+          static_cast<int>(helper.K()),
+          alpha,
+          beta,
+          a_ptr + helper.LeftOffsets()[batch],
+          static_cast<int>(helper.K()),
+          b_ptr + helper.RightOffsets()[batch],
+          static_cast<int>(helper.N()),
+          output_ptr + helper.OutputOffsets()[batch],
+          static_cast<int>(helper.N()),
+          this,
+          Base::CublasLtHandle());
+    }
+    return Status::OK();
+  }
+#endif
+
   // pad A and B to make their leading dimension be multiples of 32
   // because cublasGemmEx requires:
   // 1. leading dimension is multiples of 4
@@ -130,39 +151,27 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
                                 b_pad_size,
                                 b_padded));
 
-  for (int batch = 0; batch < helper.OutputOffsets().size(); batch++) {
-    LtIgemmTensor(Base::CublasLtHandle(), static_cast<int>(helper.N()),
-                  static_cast<int>(helper.M()),
-                  static_cast<int>(helper.K()),
-                  alpha,
-                  beta,
-                  b_ptr + helper.RightOffsets()[batch] + helper.RightOffsets()[batch] / helper.N() * b_pad_size,
-                  static_cast<int>(helper.N() + b_pad_size),
-                  a_ptr + helper.LeftOffsets()[batch] + helper.LeftOffsets()[batch] / helper.K() * a_pad_size,
-                  static_cast<int>(helper.K() + a_pad_size),
-                  output_ptr + helper.OutputOffsets()[batch],
-                  static_cast<int>(helper.N()),
-                  this);
-    //CUBLAS_RETURN_IF_ERROR(cublasGemmEx(
-    //    Base::CublasHandle(),
-    //    CUBLAS_OP_N,
-    //    CUBLAS_OP_N,
-    //    static_cast<int>(helper.N()),
-    //    static_cast<int>(helper.M()),
-    //    static_cast<int>(helper.K()),
-    //    &alpha,
-    //    b_ptr + helper.RightOffsets()[batch] + helper.RightOffsets()[batch] / helper.N() * b_pad_size,
-    //    CUDA_R_8I,
-    //    static_cast<int>(helper.N() + b_pad_size),
-    //    a_ptr + helper.LeftOffsets()[batch] + helper.LeftOffsets()[batch] / helper.K() * a_pad_size,
-    //    CUDA_R_8I,
-    //    static_cast<int>(helper.K() + a_pad_size),
-    //    &beta,
-    //    output_ptr + helper.OutputOffsets()[batch],
-    //    CUDA_R_32I,
-    //    static_cast<int>(helper.N()),
-    //    CUDA_R_32I,
-    //    CUBLAS_GEMM_DFALT));
+  for (size_t batch = 0; batch < helper.OutputOffsets().size(); batch++) {
+    CUBLAS_RETURN_IF_ERROR(cublasGemmEx(
+        Base::CublasHandle(),
+        CUBLAS_OP_N,
+        CUBLAS_OP_N,
+        static_cast<int>(helper.N()),
+        static_cast<int>(helper.M()),
+        static_cast<int>(helper.K()),
+        &alpha,
+        b_ptr + helper.RightOffsets()[batch] + helper.RightOffsets()[batch] / helper.N() * b_pad_size,
+        CUDA_R_8I,
+        static_cast<int>(helper.N() + b_pad_size),
+        a_ptr + helper.LeftOffsets()[batch] + helper.LeftOffsets()[batch] / helper.K() * a_pad_size,
+        CUDA_R_8I,
+        static_cast<int>(helper.K() + a_pad_size),
+        &beta,
+        output_ptr + helper.OutputOffsets()[batch],
+        CUDA_R_32I,
+        static_cast<int>(helper.N()),
+        CUDA_R_32I,
+        CUBLAS_GEMM_DFALT));
   }
 
   return Status::OK();
