@@ -629,7 +629,7 @@ class ORTTrainer():
 
         # ORT backend has modified model output dtype from float32 to float16.
         for o_desc in self.model_desc_.outputs_:
-            if self.use_mixed_precision and o_desc.dtype_ == torch.float32:
+            if self.use_mixed_precision and o_desc.dtype_ == torch.float32 and not self.session.is_output_fp32_node(o_desc.name_):
                 o_desc.eval_dtype_ = torch.float16
             else:
                 o_desc.eval_dtype_ = o_desc.dtype_

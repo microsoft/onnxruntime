@@ -36,7 +36,7 @@ static const std::unordered_set<std::string> FP32_Nodes = {
     "SparseSoftmaxCrossEntropy",
     "SparseSoftmaxCrossEntropyGrad"};
 
-static bool IsFP32Node(const Node* node) {
+bool IsFP32Node(const Node* node) {
   return FP32_Nodes.find(node->OpType()) != FP32_Nodes.cend();
 }
 
