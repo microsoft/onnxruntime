@@ -89,11 +89,13 @@
   WINML_SKIP_TEST("GPU tests disabled because this is a WinML only build (no DML)")
 #define GPUTEST_ENABLED alwaysFalse()
 #else
-#define GPUTEST                                                                             \
-  if (auto no_gpu_tests = RuntimeParameters::Parameters.find("noGPUtests");                 \
-      no_gpu_tests != RuntimeParameters::Parameters.end() && no_gpu_tests->second != "0") { \
-    WINML_SKIP_TEST("GPU tests disabled");                                                  \
-  }
+#define GPUTEST                                                                               \
+  do {                                                                                        \
+    if (auto no_gpu_tests = RuntimeParameters::Parameters.find("noGPUtests");                 \
+        no_gpu_tests != RuntimeParameters::Parameters.end() && no_gpu_tests->second != "0") { \
+      WINML_SKIP_TEST("GPU tests disabled");                                                  \
+    }                                                                                         \
+  } while (0)
 #define GPUTEST_ENABLED auto _no_gpu_tests = RuntimeParameters::Parameters.find("noGPUtests");    \
       _no_gpu_tests == RuntimeParameters::Parameters.end() || _no_gpu_tests->second == "0"
 #endif

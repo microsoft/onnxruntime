@@ -13,14 +13,13 @@ namespace NS = Microsoft::Featurizer;
 namespace onnxruntime {
 namespace featurizers {
 
-template <typename T> //float, double
+template <typename T>
 struct ForecastingPivotTransformerImpl {
   void operator()(OpKernelContext* ctx) const {
-    using TransformerT = Microsoft::Featurizer::Featurizers::ForecastingPivotTransformer<T>;
-    using MatrixT = NS::RowMajMatrix<T>;
-    using InputMatrixT = Eigen::Map<const MatrixT>;
-    using InputType = std::vector<InputMatrixT>;
+    using MatrixT = NS::RowMajMatrix<typename NS::Traits<T>::nullable_type>;
+    using InputType = std::vector<Eigen::Map<const MatrixT>>;
     using OutputType = std::vector<T>;
+    using TransformerT = Microsoft::Featurizer::Featurizers::ForecastingPivotTransformer<std::tuple<typename InputType::iterator, typename InputType::iterator>>;
 
     //Get the transformer
     const auto* state_tensor(ctx->Input<Tensor>(0));
@@ -63,12 +62,12 @@ struct ForecastingPivotTransformerImpl {
         const T* input_data(std::get<0>(dataPtrMap.at(index)));
         const int64_t input_dim_1(std::get<1>(dataPtrMap.at(index)));
         const int64_t input_dim_2(std::get<2>(dataPtrMap.at(index)));
-        input.push_back(InputMatrixT(input_data, input_dim_1, input_dim_2));
+        input.push_back(typename InputType::value_type(input_data, input_dim_1, input_dim_2));
         //Increment data pointer
         input_data += input_dim_1 * input_dim_2;
       }
       //Execute
-      transformer.execute(input, callback_fn);
+      transformer.execute(std::make_tuple(input.begin(), input.end()), callback_fn);
     }
     transformer.flush(callback_fn);
 
