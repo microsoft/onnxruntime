@@ -963,6 +963,28 @@ Sample echo operator.)DOC");
         ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 1);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Rfft)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC()DOC")
+      .Input(0, "X", "input tensor", "T")
+      .Attr("signal_ndim", "", AttributeProto::INT)
+      .Attr("normalized", "", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("onesided", "", AttributeProto::INT, static_cast<int64_t>(1))
+      .Output(0, "Y", "output tensor", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Irfft)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC()DOC")
+      .Input(0, "X", "input tensor", "T")
+      .Attr("signal_ndim", "", AttributeProto::INT)
+      .Attr("normalized", "", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("onesided", "", AttributeProto::INT, static_cast<int64_t>(1))
+      .Output(0, "Y", "output tensor", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConvTransposeWithDynamicPads)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
