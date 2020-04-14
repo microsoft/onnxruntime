@@ -40,7 +40,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   //   Input 0 - input       : (batch_size, sequence_length, hidden_size)
   //   Input 1 - weights     : (hidden_size, 3 * hidden_size)
   //   Input 2 - bias        : (3 * hidden_size)
-  //   Input 3 - mask_index  : (batch_size)
+  //   Input 3 - mask_index  : (batch_size) if presented
   //   Output                : (batch_size, sequence_length, hidden_size)
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
@@ -88,7 +88,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
   if (!LaunchAttentionKernel(
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
-          mask_index->template Data<int>(),
+          nullptr == mask_index ? nullptr : mask_index->template Data<int>(),
           output->template MutableData<T>(),
           batch_size,
           sequence_length,
