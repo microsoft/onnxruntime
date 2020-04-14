@@ -24,7 +24,7 @@ struct ForecastingPivotTransformerImpl {
     //Get the transformer
     const auto* state_tensor(ctx->Input<Tensor>(0));
     const uint8_t* const state_data(state_tensor->Data<uint8_t>());
-    Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
+    Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().Size());
     TransformerT transformer(archive);
 
     // Get the Number of Rows
@@ -59,9 +59,10 @@ struct ForecastingPivotTransformerImpl {
           std::tuple<const T*,int64_t, int64_t> info_tuple(input_data, input_dim_1, input_dim_2);
           dataPtrMap.insert(std::pair<int, std::tuple<const T*,int64_t, int64_t>>(index, info_tuple));
         }
-        const T* input_data(std::get<0>(dataPtrMap.at(index)));
-        const int64_t input_dim_1(std::get<1>(dataPtrMap.at(index)));
-        const int64_t input_dim_2(std::get<2>(dataPtrMap.at(index)));
+        std::tuple<const T*,int64_t, int64_t> &inputTuple(dataPtrMap.at(index));
+        const T* input_data(std::get<0>(inputTuple));
+        const int64_t input_dim_1(std::get<1>(inputTuple));
+        const int64_t input_dim_2(std::get<2>(inputTuple));
         input.push_back(typename InputType::value_type(input_data, input_dim_1, input_dim_2));
         //Increment data pointer
         input_data += input_dim_1 * input_dim_2;
