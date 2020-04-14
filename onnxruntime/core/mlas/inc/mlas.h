@@ -443,32 +443,19 @@ MlasRequantizeOutput(
     uint8_t ZeroPoint
     );
 
+template<typename DataType>
 void
 MLASCALL
 MlasQuantizeLinearAdd(
-    const uint8_t* InputA,
+    const DataType* InputA,
     float ScaleA,
-    uint8_t ZeroPointA,
-    const uint8_t* InputB,
+    DataType ZeroPointA,
+    const DataType* InputB,
     float ScaleB,
-    uint8_t ZeroPointB,
+    DataType ZeroPointB,
     float ScaleC,
-    uint8_t ZeroPointC,
-    uint8_t* OutputC,
+    DataType ZeroPointC,
+    DataType* OutputC,
     size_t N
     );
 
-void
-MLASCALL
-MlasQuantizeLinearAdd(
-    const int8_t* InputA,
-    float ScaleA,
-    int8_t ZeroPointA,
-    const int8_t* InputB,
-    float ScaleB,
-    int8_t ZeroPointB,
-    float ScaleC,
-    int8_t ZeroPointC,
-    int8_t* OutputC,
-    size_t N
-    );

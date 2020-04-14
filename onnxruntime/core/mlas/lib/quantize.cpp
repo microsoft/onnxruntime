@@ -365,8 +365,6 @@ MlasQuantizeLinearAddKernel(
     }
 }
 
-#endif
-
 template<typename OutputType>
 void
 MLASCALL
@@ -438,28 +436,11 @@ MlasQuantizeLinear<uint8_t>(
     uint8_t ZeroPoint
     );
 
-void
-MLASCALL
-MlasQuantizeLinearAdd(
-    const uint8_t* InputA,
-    float ScaleA,
-    uint8_t ZeroPointA,
-    const uint8_t* InputB,
-    float ScaleB,
-    uint8_t ZeroPointB,
-    float ScaleC,
-    uint8_t ZeroPointC,
-    uint8_t* OutputC,
-    size_t N
-    )
-{
-    MlasQuantizeLinearAddKernel<uint8_t, 0, 255>(
-        InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
-}
 
+template<>
 void
 MLASCALL
-MlasQuantizeLinearAdd(
+MlasQuantizeLinearAdd<int8_t>(
     const int8_t* InputA,
     float ScaleA,
     int8_t ZeroPointA,
@@ -476,6 +457,25 @@ MlasQuantizeLinearAdd(
         InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
 }
 
+template<>
+void
+MLASCALL
+MlasQuantizeLinearAdd<uint8_t>(
+    const uint8_t* InputA,
+    float ScaleA,
+    uint8_t ZeroPointA,
+    const uint8_t* InputB,
+    float ScaleB,
+    uint8_t ZeroPointB,
+    float ScaleC,
+    uint8_t ZeroPointC,
+    uint8_t* OutputC,
+    size_t N
+    )
+{
+    MlasQuantizeLinearAddKernel<uint8_t, 0, 255>(
+        InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
+}
 
 #if defined(MLAS_SSE2_INTRINSICS)
 
