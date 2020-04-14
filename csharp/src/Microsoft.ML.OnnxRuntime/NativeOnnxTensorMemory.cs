@@ -17,16 +17,17 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     internal interface NativeMemoryHandler : IDisposable
     {
-        IntPtr Handle { get;}
+        IntPtr Handle { get; }
     }
 
-    internal class NativeOnnxTensorMemory<T> : MemoryManager<T>, NativeMemoryHandler 
+    internal class NativeOnnxTensorMemory<T> : MemoryManager<T>, NativeMemoryHandler
     {
         private bool _disposed;
         private int _referenceCount;
         private IntPtr _onnxValueHandle;      // pointer to onnxvalue object in native
         private IntPtr _dataBufferPointer;    // pointer to mutable tensor data in native memory
         private string[] _dataBufferAsString; // string tensor values copied into managed memory
+        private TensorElementType _elementType;
         private int _elementCount;
         private int _elementWidth;
         private int[] _dimensions;
@@ -51,6 +52,7 @@ namespace Microsoft.ML.OnnxRuntime
                 if (typeof(T) != type)
                     throw new NotSupportedException(nameof(NativeOnnxTensorMemory<T>) + " does not support T = " + nameof(T));
 
+                _elementType = elemType;
                 _elementWidth = width;
                 UIntPtr dimension;
                 long count;
@@ -147,37 +149,15 @@ namespace Microsoft.ML.OnnxRuntime
 
         protected bool IsRetained => _referenceCount > 0;
 
-        public int[] Dimensions
-        {
-            get
-            {
-                return _dimensions;
-            }
-        }
+        public int[] Dimensions => _dimensions;
 
-        public int Rank
-        {
-            get
-            {
-                return _dimensions.Length;
-            }
-        }
+        public int Rank => _dimensions.Length;
 
-        public int Count
-        {
-            get
-            {
-                return _elementCount;
-            }
-        }
+        public int Count => _elementCount;
 
-        public int ElementWidth
-        {
-            get
-            {
-                return _elementWidth;
-            }
-        }
+        public int ElementWidth => _elementWidth;
+
+        public TensorElementType ElementType => _elementType;
 
         public override Span<T> GetSpan()
         {

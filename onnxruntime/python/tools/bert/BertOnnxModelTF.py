@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class BertOnnxModelTF(BertOnnxModel):
 
     def __init(self, model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only):
-        super().__init__(model, num_heads, hidden_size, sequence_length)
+        super().__init__(model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only)
 
     """
      Fuse Gelu with Erf into one node:
@@ -31,7 +31,7 @@ class BertOnnxModelTF(BertOnnxModel):
      Note that constant input for Add and Mul could be first or second input: like either A=0.5 or B=0.5 is fine.
     """
 
-    def fuse_gelu_with_elf(self, gelu_op_name):
+    def fuse_gelu_with_elf(self):
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
@@ -89,15 +89,14 @@ class BertOnnxModelTF(BertOnnxModel):
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
-            gelu_node = onnx.helper.make_node(gelu_op_name, inputs=[root_node.output[0]], outputs=[last_mul.output[0]])
+            gelu_node = onnx.helper.make_node('Gelu', inputs=[root_node.output[0]], outputs=[last_mul.output[0]])
             gelu_node.domain = "com.microsoft"
             nodes_to_add.append(gelu_node)
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
         if len(nodes_to_add) > 0:
-            logger.info("Fused {} count:{}".format('FastGelu (approximation)' if gelu_op_name == 'FastGelu' else 'Gelu',
-                                                   len(nodes_to_add)))
+            logger.info(f"Fused Gelu count:{len(nodes_to_add)}")
 
     """
      Fuse Gelu with tanh into one node:
@@ -111,7 +110,7 @@ class BertOnnxModelTF(BertOnnxModel):
      Note that constant input for Add and Mul could be first or second input: like either A=0.5 or B=0.5 is fine.
     """
 
-    def fuse_gelu_with_tanh(self, gelu_op_name):
+    def fuse_gelu_with_tanh(self):
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
@@ -194,16 +193,15 @@ class BertOnnxModelTF(BertOnnxModel):
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
-            gelu_node = onnx.helper.make_node(gelu_op_name,
+            gelu_node = onnx.helper.make_node('FastGelu',
                                               inputs=[root_node.output[0]],
                                               outputs=mul_after_mul_half.output,
-                                              name=self.create_node_name(gelu_op_name))
+                                              name=self.create_node_name('FastGelu'))
             gelu_node.domain = "com.microsoft"
             nodes_to_add.append(gelu_node)
 
         if len(nodes_to_add) > 0:
-            logger.info("Fused {} count: {}".format(
-                'Gelu (FastGelu fits better)' if gelu_op_name == 'Gelu' else 'FastGelu', len(nodes_to_add)))
+            logger.info(f"Fused FastGelu count: {len(nodes_to_add)}")
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
