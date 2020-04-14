@@ -153,6 +153,38 @@ __device__ inline void SoftmaxSmall(const int ld, const int num_valid, const T* 
 }
 
 template <typename T, unsigned TPB>
+__global__ void SoftmaxKernelSmall(const int sequence_length, const T* input, T* output) {
+  SoftmaxSmall<T, TPB>(sequence_length, sequence_length, input, output);
+}
+
+template <typename T, unsigned TPB>
+__global__ void SoftmaxKernel(const int sequence_length, const T* input, T* output) {
+  Softmax<T, TPB>(sequence_length, sequence_length, input, output);
+}
+
+template <typename T>
+bool ComputeSoftmax(
+    cudaStream_t stream, const int sequence_length, const int batch_size, const int num_heads,
+    const T* input, T* output) {
+  const dim3 grid(sequence_length * num_heads, batch_size, 1);
+  if (sequence_length <= 32) {
+    const int blockSize = 32;
+    SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(sequence_length, input, output);
+  } else if (sequence_length <= 128) {
+    const int blockSize = 128;
+    SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(sequence_length, input, output);
+  } else if (sequence_length == 384) {
+    const int blockSize = 384;
+    SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(sequence_length, input, output);
+  } else {
+    const int blockSize = 256;
+    SoftmaxKernel<T, blockSize><<<grid, blockSize, 0, stream>>>(sequence_length, input, output);
+  }
+
+  return CUDA_CALL(cudaPeekAtLastError());
+}
+
+template <typename T, unsigned TPB>
 __global__ void MaskedSoftmaxKernelSmall(const int sequence_length, const int* mask_index, const T* input, T* output) {
   __shared__ int num_valid;
 
@@ -390,8 +422,14 @@ bool QkvToContext(
   }
 
   // apply softmax and store result P to scratch2: BxNxSxS
-  if (!ComputeMaskedSoftmax<T>(stream, sequence_length, batch_size, num_heads, mask_index, scratch1, scratch2)) {
-    return false;
+  if (nullptr != mask_index) {
+    if (!ComputeMaskedSoftmax<T>(stream, sequence_length, batch_size, num_heads, mask_index, scratch1, scratch2)) {
+      return false;
+    }
+  } else {
+    if (!ComputeSoftmax<T>(stream, sequence_length, batch_size, num_heads, scratch1, scratch2)) {
+      return false;
+    }
   }
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH

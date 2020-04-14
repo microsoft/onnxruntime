@@ -91,6 +91,8 @@ Use the individual flags to only run the specified stages.
     # Python bindings
     parser.add_argument("--enable_pybind", action='store_true', help="Enable Python Bindings.")
     parser.add_argument("--build_wheel", action='store_true', help="Build Python Wheel. ")
+    parser.add_argument("--wheel_name_suffix", help="Suffix to append to created wheel names."
+                                                "This value is currently only used for nightly builds.")
     parser.add_argument("--numpy_version", help="Installs a specific version of numpy "
                         "before building the python binding.")
     parser.add_argument("--skip-keras-test", action='store_true', help="Skip tests with Keras if keras is installed")
@@ -805,7 +807,7 @@ def nuphar_run_python_tests(build_dir, configs):
         run_subprocess([sys.executable, 'onnxruntime_test_python_nuphar.py'], cwd=cwd, dll_path=dll_path)
 
 
-def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl, use_tensorrt, use_openvino, use_nuphar, nightly_build = False):
+def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl, use_tensorrt, use_openvino, use_nuphar, wheel_name_suffix, nightly_build = False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -825,6 +827,9 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use
             args.append('--use_openvino')
         elif use_nuphar:
             args.append('--use_nuphar')
+        if wheel_name_suffix:
+            args.append('--wheel_name_suffix={}'.format(wheel_name_suffix))
+
         run_subprocess(args, cwd=cwd)
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
@@ -1079,7 +1084,19 @@ def main():
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
-            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_dnnl, args.use_tensorrt, args.use_openvino, args.use_nuphar, nightly_build)
+            build_python_wheel(
+                source_dir,
+                build_dir,
+                configs,
+                args.use_cuda,
+                args.use_ngraph,
+                args.use_dnnl,
+                args.use_tensorrt,
+                args.use_openvino,
+                args.use_nuphar,
+                args.wheel_name_suffix,
+                nightly_build=nightly_build,
+            )
 
     if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)
