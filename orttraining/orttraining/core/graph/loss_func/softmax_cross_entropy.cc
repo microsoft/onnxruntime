@@ -18,6 +18,7 @@ GraphAugmenter::GraphDefs SoftmaxCrossEntropy::operator()(
   const std::string& prob_name = prediction_name + "_probability";
 
   GraphAugmenter::GraphDefs graph_defs;
+  graph_defs.AddGraphInputs({label_name});
   graph_defs.AddGraphOutputs({loss_name});
   std::vector<NodeDef> new_nodes;
 

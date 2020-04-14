@@ -13,6 +13,10 @@ BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
       info_(device_allocator_->Info().name, OrtAllocatorType::OrtArenaAllocator,
             device_allocator_->Info().device, device_allocator_->Info().id, device_allocator_->Info().mem_type) {
   LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name;
+
+  // TODO - consider to make the initial chunk size and max 'fragmentation' (kMaxDeadBytesInChunk) values configurable. 
+  // But first we need to add a mechanism to allow that sort of low level configuration to be done 
+  // without adding separate parameters to SessionOptions for every single one of them.
   curr_region_allocation_bytes_ = RoundedBytes(std::min(total_memory, size_t{1048576}));
 
   // Allocate the requested amount of memory.
@@ -99,9 +103,10 @@ bool BFCArena::Extend(size_t rounded_bytes) {
         increased_allocation = true;
       }
 
-      extend_bytes = std::min(curr_region_allocation_bytes_, available_bytes);
+      extend_bytes = std::min(static_cast<size_t>(curr_region_allocation_bytes_), available_bytes);
 
-      // we allocated the same number of bytes as the current region, so we have 2x that now
+      // we allocated the same number of bytes as the current region
+      // the 2x is to double the minimum size of the next amount we'll allocate
       if (!increased_allocation) {
         curr_region_allocation_bytes_ *= 2;
       }
@@ -299,11 +304,11 @@ void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
 
         // If we can break the size of the chunk into two reasonably large
         // pieces, do so.  In any case don't waste more than
-        // kMaxInternalFragmentation bytes on padding this alloc.
-        const int64_t kMaxInternalFragmentation = 128 << 20;  // 128mb
+        // kMaxDeadBytesInChunk bytes on padding this alloc.
+        const int64_t kMaxDeadBytesInChunk = 128 << 20;  // 128mb
         if (chunk->size >= rounded_bytes * 2 ||
             static_cast<int64_t>(chunk->size) - rounded_bytes >=
-                kMaxInternalFragmentation) {
+                kMaxDeadBytesInChunk) {
           SplitChunk(h, rounded_bytes);
           chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
         }

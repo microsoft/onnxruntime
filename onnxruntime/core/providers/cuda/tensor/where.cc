@@ -68,10 +68,10 @@ struct TernaryElementwisePreparation {
   const Tensor* a_tensor = nullptr;
   const Tensor* b_tensor = nullptr;
   const Tensor* c_tensor = nullptr;
-  size_t output_rank_or_simple_broadcast = 0;             // for no_broadcast cases, output_rank uses SimpleBroadcast enums
-  TArray<int64_t> a_padded_strides;  // for a shape == output shape, this is nullptr
-  TArray<int64_t> b_padded_strides;  // for b shape == output shape, this is nullptr
-  TArray<int64_t> c_padded_strides;  // for c shape == output shape, this is nullptr
+  size_t output_rank_or_simple_broadcast = 0;  // for no_broadcast cases, output_rank uses SimpleBroadcast enums
+  TArray<int64_t> a_padded_strides;            // for a shape == output shape, this is nullptr
+  TArray<int64_t> b_padded_strides;            // for b shape == output shape, this is nullptr
+  TArray<int64_t> c_padded_strides;            // for c shape == output shape, this is nullptr
   TArray<fast_divmod> fdm_output_strides;
 
   TernaryElementwisePreparation(const Tensor* a, const Tensor* b, const Tensor* c)
@@ -95,37 +95,43 @@ struct TernaryElementwisePreparation {
     output_rank_or_simple_broadcast = out_rank;
 
     if (a_shape != output_shape) {
-      TensorPitches a_pitches(a_shape.GetDims());
       a_padded_strides.size_ = out_rank;
-      auto offset = out_rank - a_rank;
-      for (auto i = offset; i < out_rank; ++i) {
-        // the stride for broadcast dimension is kept as 0
-        if (a_shape.GetDims()[i - offset] != 1) {
-          a_padded_strides[i] = a_pitches[i];
+      if (a_rank > 0) {
+        TensorPitches a_pitches(a_shape.GetDims());
+        auto offset = out_rank - a_rank;
+        for (auto i = offset; i < out_rank; ++i) {
+          // the stride for broadcast dimension is kept as 0
+          if (a_shape.GetDims()[i - offset] != 1) {
+            a_padded_strides[i] = a_pitches[i];
+          }
         }
       }
     }
 
     if (b_shape != output_shape) {
-      TensorPitches b_pitches(b_shape.GetDims());
       b_padded_strides.size_ = out_rank;
-      auto offset = out_rank - b_rank;
-      for (auto i = offset; i < out_rank; ++i) {
-        // the stride for broadcast dimension is kept as 0
-        if (b_shape.GetDims()[i - offset] != 1) {
-          b_padded_strides[i] = b_pitches[i];
+      if (b_rank > 0) {
+        TensorPitches b_pitches(b_shape.GetDims());
+        auto offset = out_rank - b_rank;
+        for (auto i = offset; i < out_rank; ++i) {
+          // the stride for broadcast dimension is kept as 0
+          if (b_shape.GetDims()[i - offset] != 1) {
+            b_padded_strides[i] = b_pitches[i];
+          }
         }
       }
     }
 
     if (c_shape != output_shape) {
-      TensorPitches c_pitches(c_shape.GetDims());
       c_padded_strides.size_ = out_rank;
-      auto offset = out_rank - c_rank;
-      for (auto i = offset; i < out_rank; ++i) {
-        // the stride for broadcast dimension is kept as 0
-        if (c_shape.GetDims()[i - offset] != 1) {
-          c_padded_strides[i] = c_pitches[i];
+      if (c_rank > 0) {
+        TensorPitches c_pitches(c_shape.GetDims());
+        auto offset = out_rank - c_rank;
+        for (auto i = offset; i < out_rank; ++i) {
+          // the stride for broadcast dimension is kept as 0
+          if (c_shape.GetDims()[i - offset] != 1) {
+            c_padded_strides[i] = c_pitches[i];
+          }
         }
       }
     }

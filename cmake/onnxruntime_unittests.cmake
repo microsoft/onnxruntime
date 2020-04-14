@@ -187,6 +187,13 @@ if (onnxruntime_ENABLE_TRAINING)
   endif()
 endif()
 
+if (onnxruntime_USE_DNNL)
+  file(GLOB_RECURSE onnxruntime_test_providers_dnnl_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/dnnl/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_dnnl_src})
+endif()
+
 if (onnxruntime_USE_NGRAPH)
   file(GLOB_RECURSE onnxruntime_test_providers_ngraph_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/ngraph/*"
@@ -385,7 +392,7 @@ else()
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
           "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 endif()
-onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_framework GTest::gtest onnx onnx_proto)
+onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_framework GTest::gtest onnx onnx_proto safeint_interface)
 
 if (onnxruntime_USE_DNNL)
   target_compile_definitions(onnxruntime_test_utils PUBLIC USE_DNNL=1)

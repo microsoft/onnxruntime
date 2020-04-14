@@ -472,17 +472,14 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
       is_split_input_scalar = true;
     } else {
       GetSplitSizesInput(*p_split_input, split_sizes);
-      ORT_ENFORCE(std::all_of(split_sizes.cbegin(), split_sizes.cend(), [](int64_t value) { return value > 0; }),
-                  "Invalid value in 'split' input. All values must be > 0");
+      ORT_ENFORCE(std::all_of(split_sizes.cbegin(), split_sizes.cend(), [](int64_t value) { return value >= 0; }),
+                  "Invalid value in 'split' input. All values must be >= 0");
     }
   }
 
   // Keep the split dimension or not. Default 1, which means we keep split dimension.
   // If input 'split' is specified, this attribute is ignored.
-  bool use_keep_dims = false;
-  if (split_sizes.empty()) {
-    use_keep_dims = true;
-  }
+  bool use_keep_dims = split_sizes.empty();
 
   ORT_RETURN_IF_ERROR(PrepareForCompute(input_shape,
                                         split_scalar,

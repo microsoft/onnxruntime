@@ -28,6 +28,13 @@ jobs:
     - template: linux-set-variables-and-download.yml
     - script: ${{ parameters.BuildCommand }}
       displayName: 'Command Line Script'
+    - task: PublishTestResults@2
+      displayName: 'Publish unit test results'
+      inputs:
+        testResultsFiles: '**/*.results.xml'
+        searchFolder: '$(Build.BinariesDirectory)'
+        testRunTitle: 'Unit Test Run'
+      condition: succeededOrFailed()
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
       - script: |
          ${{ parameters.NuPackScript }}

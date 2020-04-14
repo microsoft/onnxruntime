@@ -29,7 +29,9 @@ REVIEW(codemzs): Investigate this failure, likely due to a change in ONNX repo.
   OpSchema::FormalParameter p("input", "desc: integer input", "tensor(int32)");
   EXPECT_EQ("input", p.GetName());
   EXPECT_EQ("tensor(int32)", p.GetTypeStr());
+#ifndef __ONNX_NO_DOC_STRINGS
   EXPECT_EQ("desc: integer input", p.GetDescription());
+#endif
   // TODO: change onnx to make formal parameter construction self-contain.
   //EXPECT_EQ(Utils::DataTypeUtils::ToType("tensor(int32)"), *p.GetTypes().begin());
 }*/
