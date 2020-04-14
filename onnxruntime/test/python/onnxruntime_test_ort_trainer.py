@@ -13,6 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from helper import get_name
+import onnxruntime
 from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample
 
 def ort_trainer_learning_rate_description():
@@ -66,9 +67,13 @@ def runBertTrainingTest(gradient_accumulation_steps,
     learning_rate_description = ort_trainer_learning_rate_description()
     device = torch.device("cuda", 0)
 
+    torch.manual_seed(1)
+    onnxruntime.seed(1)
+
     onnx_model = onnx.load(get_name("bert_toy_postprocessed.onnx"))
 
     loss_scaler = LossScaler("ort_test_input_loss_scalar", True) if use_internel_loss_scale else None
+
     model = ORTTrainer(onnx_model, None, simple_model_desc, "LambOptimizer",
                        map_optimizer_attributes,
                        learning_rate_description,
@@ -77,8 +82,7 @@ def runBertTrainingTest(gradient_accumulation_steps,
                        world_rank=0, world_size=1,
                        loss_scaler=loss_scaler,
                        use_mixed_precision=use_mixed_precision,
-                       allreduce_post_accumulation=allreduce_post_accumulation,
-                       seed=1)
+                       allreduce_post_accumulation=allreduce_post_accumulation)
 
     if loss_scaler is None:
         loss_scaler = LossScaler(model.loss_scale_input_name, True)
@@ -149,46 +153,43 @@ def runBertTrainingTest(gradient_accumulation_steps,
 
 class TestOrtTrainer(unittest.TestCase):
     def testBertTrainingBasic(self):
-        torch.manual_seed(1)
         expected_losses = [
-            11.032349586486816, 11.165414810180664, 11.018413543701172, 11.050261497497559,
-            10.855697631835938, 10.947554588317871, 11.083847999572754, 10.97836685180664]
-        expected_eval_loss = [10.972074508666992]
+            11.02906322479248, 11.094074249267578, 11.00899887084961, 11.06129264831543,
+            11.029067039489746, 11.040265083312988, 11.046793937683105, 10.993699073791504]
+        expected_eval_loss = [10.9691801071167]
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=1, use_mixed_precision=False, allreduce_post_accumulation=False)
 
         # to update expected outcomes, enable pdb and run the test with -s and copy paste outputs
-        # print('actual_losses ', actual_losses)
-        # print('eval_loss', actual_eval_loss)
+        # print('losses expected: ', expected_losses)
+        # print('losses actual:   ', actual_losses)
+        # print('eval_loss expected: ', expected_eval_loss)
+        # print('eval_loss actual:   ', actual_eval_loss)
         # import pdb; pdb.set_trace()
 
-        rtol = 1e-01
+        rtol = 1e-03
         assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
 
     def testBertTrainingGradientAccumulation(self):
-        torch.manual_seed(1)
-        # this commented expected results are for runing test individually (pytest with -k). 
-        # expected_losses = [
-        #     11.071269035339355, 10.996841430664062, 11.06226921081543, 10.981647491455078,
-        #     11.032355308532715, 11.04256534576416, 10.976116180419922, 11.065701484680176]
-        # expected_eval_loss = [10.991236686706543]
         expected_losses = [
-            11.026690483093262, 11.117761611938477, 11.010371208190918, 11.068782806396484,
-            10.894888877868652, 10.923206329345703, 11.06037425994873, 11.008777618408203]
-        expected_eval_loss = [11.011880874633789]
+            11.02906322479248, 11.094074249267578, 11.008995056152344, 11.061283111572266,
+            11.029059410095215, 11.04024887084961, 11.04680347442627, 10.993708610534668]
+        expected_eval_loss = [10.969207763671875]
         
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=4, use_mixed_precision=False, allreduce_post_accumulation=False)
 
         # to update expected outcomes, enable pdb and run the test with -s and copy paste outputs
-        # print('actual_losses ', actual_losses)
-        # print('eval_loss', actual_eval_loss)
+        # print('losses expected: ', expected_losses)
+        # print('losses actual:   ', actual_losses)
+        # print('eval_loss expected: ', expected_eval_loss)
+        # print('eval_loss actual:   ', actual_eval_loss)
         # import pdb; pdb.set_trace()
 
-        rtol = 1e-01
-        assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
-        assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
+        rtol = 1e-03
+        assert_allclose(expected_losses, actual_losses, err_msg="loss mismatch")
+        assert_allclose(expected_eval_loss, actual_eval_loss, err_msg="evaluation loss mismatch")
 
 if __name__ == '__main__':
     unittest.main(module=__name__, buffer=True)

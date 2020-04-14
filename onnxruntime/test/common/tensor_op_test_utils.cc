@@ -9,19 +9,8 @@
 namespace onnxruntime {
 namespace test {
 
-static uint32_t GetSeedValue(RandomValueGenerator::RandomSeedType random_seed_type) {
-  switch (random_seed_type) {
-    case RandomValueGenerator::RandomSeedType::kStatic:
-      return 42;
-    case RandomValueGenerator::RandomSeedType::kPerProcess:
-      return utils::GetStaticRandomSeed();
-    default:  // dynamic
-      return static_cast<uint32_t>(std::chrono::steady_clock::now().time_since_epoch().count());
-  }
-}
-
-RandomValueGenerator::RandomValueGenerator(RandomSeedType random_seed_type)
-    : generator_{static_cast<decltype(generator_)::result_type>(GetSeedValue(random_seed_type))} {
+RandomValueGenerator::RandomValueGenerator()
+    : generator_{static_cast<decltype(generator_)::result_type>(utils::GetRandomSeed())} {
 }
 
 }  // namespace test
