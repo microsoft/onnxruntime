@@ -29,8 +29,10 @@ void TfidfVectorizerTransformerImpl(OpKernelContext* ctx) {
 
     // Prepare the callback that would output directly to output memory
   std::function<void(NS::Featurizers::SparseVectorEncoding<float>)> callback;
-  callback = [ctx](NS::Featurizers::SparseVectorEncoding<float> result) {
+  bool callback_allow = true;
+  callback = [ctx, callback_allow](NS::Featurizers::SparseVectorEncoding<float> result) {
     // Prepare output
+    ORT_ENFORCE(callback_allow, "callback function can only be called during execute() and special flush() when needed");
     ORT_ENFORCE(result.NumElements < static_cast<uint64_t>(std::numeric_limits<int64_t>::max()),
                 "NumElements in SparseVectorEncoding is GE than max(int64)");
     auto* output_tensor = ctx->Output(0, TensorShape{static_cast<int64_t>(result.NumElements)});
@@ -41,6 +43,8 @@ void TfidfVectorizerTransformerImpl(OpKernelContext* ctx) {
     }
   };
   transformer.execute(*input_data, callback);
+  // The flush() does nothing but shows Featurizers concept
+  callback_allow = false;
   transformer.flush(callback);
 }
 
