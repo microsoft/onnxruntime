@@ -9,7 +9,7 @@ For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://ak
 __version__ = "1.2.0"
 __author__ = "Microsoft"
 
-from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, seed, RunOptions, SessionOptions, set_default_logger_severity, NodeArg, ModelMetadata, GraphOptimizationLevel, ExecutionMode, OrtDevice, SessionIOBinding
+from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, set_seed, RunOptions, SessionOptions, set_default_logger_severity, NodeArg, ModelMetadata, GraphOptimizationLevel, ExecutionMode, OrtDevice, SessionIOBinding
 from onnxruntime.capi.session import InferenceSession, IOBinding
 from onnxruntime.capi import onnxruntime_validation
 
