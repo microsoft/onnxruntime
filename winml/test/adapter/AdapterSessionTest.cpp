@@ -32,69 +32,19 @@ const OrtApi *ort_api;
 const WinmlAdapterApi *winml_adapter_api;
 OrtEnv* ort_env;
 
-UniqueOrtSessionOptions CreateUniqueOrtSessionOptions() {
-  OrtSessionOptions *options;
-  THROW_IF_NOT_OK_MSG(ort_api->CreateSessionOptions(&options), ort_api);
-  return UniqueOrtSessionOptions(options, ort_api->ReleaseSessionOptions);
-}
-
-winml::ILearningModelFeatureDescriptor FindValidBinding(
-    wfc::IIterable<ILearningModelFeatureDescriptor> descriptors,
-    const std::wstring& name) {
-  for (auto descriptor : descriptors) {
-    auto descriptor_native = descriptor.as<ILearningModelFeatureDescriptorNative>();
-    WINML_EXPECT_NOT_EQUAL(nullptr, descriptor_native);
-
-    const wchar_t* feature_name;
-    uint32_t size;
-    WINML_THROW_IF_FAILED(descriptor_native->GetName(&feature_name, &size));
-
-    if (_wcsicmp(feature_name, name.c_str()) == 0) {
-      return descriptor;
-    }
-  }
-  throw std::runtime_error("Binding not found");
-}
-
-winml::ILearningModelFeatureDescriptor FindValidInputBinding(
-    winml::LearningModel& model,
-    const std::wstring& name) {
-  return FindValidBinding(model.InputFeatures(), name);
-}
-
-winml::ILearningModelFeatureDescriptor FindValidOutputBinding(
-    winml::LearningModel& model,
-    const std::wstring& name) {
-  return FindValidBinding(model.OutputFeatures(), name);
-}
-
-WinML::IValue* LoadImageValue(WinML::BindingContext& context, const std::wstring& image_path) {
-  const auto software_bitmap = FileHelpers::GetSoftwareBitmapFromFile(FileHelpers::GetModulePath() + image_path);
-  const auto video_frame = winrt::Windows::Media::VideoFrame::CreateWithSoftwareBitmap(software_bitmap);
-  const auto image_feature_value = ImageFeatureValue::CreateFromVideoFrame(video_frame);
-
-  auto value_provider = image_feature_value.as<WinML::ILotusValueProviderPrivate>();
-  WinML::IValue *value;
-  WINML_EXPECT_HRESULT_SUCCEEDED(value_provider->GetValue(context, &value));
-  WINML_EXPECT_NOT_EQUAL(nullptr, value);
-  return value;
-}
-
-WinML::IValue* LoadImageValue(LearningModelSession& session, const std::wstring& binding_name, const std::wstring& image_path) {
-  auto model = session.Model();
-  auto binding_descriptor = FindValidInputBinding(model, binding_name);
-  WinML::BindingContext context{WinML::BindingType::kInput, session, binding_descriptor, {}, {}};
-  return LoadImageValue(context, image_path);
-}
-
 void AdapterSessionTestSetup() {
   init_apartment();
   WINML_EXPECT_HRESULT_SUCCEEDED(Microsoft::WRL::MakeAndInitialize<WinML::OnnxruntimeEngineFactory>(&engine_factory));
   WINML_EXPECT_HRESULT_SUCCEEDED(engine_factory->GetOrtEnvironment(&ort_env));
   WINML_EXPECT_HRESULT_SUCCEEDED(engine_factory->EnableDebugOutput(true));
   WINML_EXPECT_NOT_EQUAL(nullptr, winml_adapter_api = engine_factory->UseWinmlAdapterApi());
-  // THROW_IF_NOT_OK_MSG(winml_adapter_api->OverrideSchema(), ort_api);
   WINML_EXPECT_NOT_EQUAL(nullptr, ort_api = engine_factory->UseOrtApi());
+}
+
+UniqueOrtSessionOptions CreateUniqueOrtSessionOptions() {
+  OrtSessionOptions *options;
+  THROW_IF_NOT_OK_MSG(ort_api->CreateSessionOptions(&options), ort_api);
+  return UniqueOrtSessionOptions(options, ort_api->ReleaseSessionOptions);
 }
 
 void AppendExecutionProvider_CPU() {
@@ -106,7 +56,7 @@ ID3D12Device* CreateD3DDevice() {
   ID3D12Device* device = nullptr;
   WINML_EXPECT_NO_THROW(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), reinterpret_cast<void**>(&device)));
   return device;
-  // TODO Release at end of test
+  // TODO Check for leaks
 }
 
 ID3D12CommandQueue* CreateD3DQueue(ID3D12Device* device) {
@@ -115,7 +65,7 @@ ID3D12CommandQueue* CreateD3DQueue(ID3D12Device* device) {
   command_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
   device->CreateCommandQueue(&command_queue_desc, __uuidof(ID3D12CommandQueue), reinterpret_cast<void**>(&queue));
   return queue;
-  // TODO Release at end of test
+  // TODO Check for leaks
 }
 
 UniqueOrtSession CreateUniqueOrtSession(const UniqueOrtSessionOptions& session_options) {
@@ -129,10 +79,6 @@ UniqueOrtSession CreateUniqueOrtSession(const std::wstring& model_path, const Un
   ort_api->SetIntraOpNumThreads(session_options.get(), 1);
   ort_api->SetSessionGraphOptimizationLevel(session_options.get(), ORT_ENABLE_BASIC);
   THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), true), ort_api);
-  // ort_api->DisableMemPattern(session_options.get()), ort_api);
-  // const auto device = CreateD3DDevice();
-  // const auto queue = CreateD3DQueue(device);
-  // THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device, queue), ort_api);
   THROW_IF_NOT_OK_MSG(ort_api->CreateSession(ort_env, model_path.c_str(), session_options.get(), &session), ort_api);
   return UniqueOrtSession(session, ort_api->ReleaseSession);
 }
@@ -155,19 +101,6 @@ void GetExecutionProvider_CPU() {
   const auto session_options = CreateUniqueOrtSessionOptions();
   const auto model_path = FileHelpers::GetModulePath() + L"fns-candy.onnx";
   auto session = CreateUniqueOrtSession(model_path, session_options);
-
-  // TODO load model
-  // constexpr std::array<int64_t, 4> dimensions{1, 3, 224, 224};
-  // constexpr size_t input_tensor_size = [&dimensions]() {
-  //   size_t size = 1;
-  //   for (auto dim : dimensions)
-  //     size *= dim;
-  //   return size;
-  // } ();
-
-  // OrtModel* model;
-  // const std::string model_path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(FileHelpers::GetModulePath()) + model_name;
-  // winml_adapter_api->CreateModelFromPath(model_path.c_str(), model_path.size(), &model);
 
   OrtExecutionProvider* ort_provider;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
