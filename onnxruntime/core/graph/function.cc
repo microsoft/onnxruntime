@@ -366,7 +366,9 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
       if (!(*node_attr).ref_attr_name().empty()) {
         auto entry = attr_map.find((*node_attr).ref_attr_name());
         if (entry != attr_map.cend()) {
-          new_attr_map[(*node_attr).name()] = entry->second;
+          onnx::AttributeProto attr_copy = entry->second;
+          attr_copy.set_name(node_attr->name());
+          new_attr_map[(*node_attr).name()] = attr_copy;
         }
       } else {
         new_attr_map[(*node_attr).name()] = *node_attr;

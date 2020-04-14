@@ -70,14 +70,16 @@ Status NonZero<T>::ComputeInternal(OpKernelContext* context) const {
         &nonzero_elements, prefix_counts + number_of_blocks - 1,
         sizeof(int), cudaMemcpyDeviceToHost));
 
-    CudaAsyncBuffer<fast_divmod> fdm_x_strides(this, x_rank);
-    ORT_ENFORCE(CalculateFdmStrides(fdm_x_strides.CpuSpan(), x_dims));
-    ORT_RETURN_IF_ERROR(fdm_x_strides.CopyToGpu());
+    TArray<fast_divmod> fdm_x_strides(x_rank);
+    TensorPitches x_strides(x_dims);
+    for (auto i = 0; i < x_rank; i++) {
+      fdm_x_strides[i] = fast_divmod(static_cast<int>(x_strides[i]));
+    }
 
     auto* output_tensor = context->Output(0, {x_rank, nonzero_elements});
     ORT_ENFORCE(output_tensor, "failed to get first output!");
     CUDA_RETURN_IF_ERROR(NonZeroOutputPositions(
-        x_data, x_size, x_rank, fdm_x_strides.GpuPtr(),
+        x_data, x_size, x_rank, fdm_x_strides,
         prefix_counts, nonzero_elements, output_tensor->template MutableData<int64_t>()));
   } else {
     context->Output(0, {x_rank, nonzero_elements});

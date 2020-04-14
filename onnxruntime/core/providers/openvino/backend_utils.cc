@@ -21,9 +21,6 @@
 #include <ngraph/pass/opset1_upgrade.hpp>
 #include <ngraph/pass/convert_fp32_to_fp16.hpp>
 
-// FIXME: Remove before production
-#include <ngraph/serializer.hpp>
-
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/graph.h"
 #include "core/common/logging/logging.h"
@@ -65,17 +62,6 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto,
     ORT_THROW(log_tag + "[NGRAPHCustomOp] Unknown exception while importing model to nGraph");
   }
 
-  //Serializing nGraph function
-  if (IsDebugEnabled()) {
-    std::string json_string = serialize(ng_function, 4);
-    std::ofstream out("serialize_function_before_PM.json");
-    out << json_string;
-  }
-
-  //Pass Manager for V1 transformations
-  ngraph::pass::Manager pass_manager;
-  pass_manager.register_pass<ngraph::pass::Opset1Upgrade>();
-  pass_manager.run_passes(ng_function);
 
   if (precision == InferenceEngine::Precision::FP16) {
     if (IsDebugEnabled())
@@ -83,13 +69,6 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto,
     //FP16 transformations
     ngraph::pass::ConvertFP32ToFP16().run_on_function(ng_function);
     ng_function->validate_nodes_and_infer_types();
-  }
-
-  //Serializing nGraph function
-  if (IsDebugEnabled()) {
-    std::string json_string_pm = serialize(ng_function, 4);
-    std::ofstream out_pm("serialize_function_after_PM.json");
-    out_pm << json_string_pm;
   }
 
   try {
@@ -193,7 +172,7 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
 }
 
 std::vector<const OrtValue*>
-GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, 
+GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context,
                 std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network,
                 std::vector<int> input_indexes) {
 
@@ -207,7 +186,7 @@ GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context,
   return input_tensors;
 }
 
-std::vector<OrtValue*> 
+std::vector<OrtValue*>
 GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_size,
                  InferenceEngine::InferRequest::Ptr infer_request,
                  std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network,

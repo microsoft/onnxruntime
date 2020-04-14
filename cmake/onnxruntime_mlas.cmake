@@ -98,6 +98,13 @@ else()
     elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86")
       set(X86 TRUE)
     endif()
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "iOSCross")
+    set(IOS TRUE)
+    if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+      set(ARM64 TRUE)
+    elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")  
+      set(ARM TRUE)
+    endif()
   else()
     execute_process(
       COMMAND ${CMAKE_C_COMPILER} -dumpmachine
@@ -123,13 +130,11 @@ else()
     )
   elseif(ARM64)
     enable_language(ASM)
-
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemmKernelNeon.S
     )
   elseif(X86)
     enable_language(ASM)
-
     set(mlas_platform_srcs_sse2
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelSse2.S
     )
@@ -256,5 +261,5 @@ else()
 endif()
 
 add_library(onnxruntime_mlas STATIC ${mlas_common_srcs} ${mlas_platform_srcs})
-target_include_directories(onnxruntime_mlas PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64 ${eigen_INCLUDE_DIRS})
+target_include_directories(onnxruntime_mlas PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64)
 set_target_properties(onnxruntime_mlas PROPERTIES FOLDER "ONNXRuntime")

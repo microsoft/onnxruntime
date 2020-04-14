@@ -58,7 +58,7 @@ void SetDefaultOptions(std::map<std::string, std::string>& options) {
   options.insert(std::make_pair(cache_so_name_opt, cache_so_name_default));
 
   std::string parallel_min_workloads_opt(kNupharParallelMinWorkloads);
-#if defined(USE_OPENMP) || defined(USE_MKLML)
+#if defined(_OPENMP) || defined(USE_MKLML)
   // a rough estimate of workloads based on static dimensions for each thread, when using parallel schedule
   // user may change it to 0 to turn it off,
   // or use OMP_NUM_THREADS to control TVM thread pool similar to control MKL

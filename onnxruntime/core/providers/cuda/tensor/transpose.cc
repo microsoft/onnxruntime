@@ -97,11 +97,11 @@ Status Transpose::DoTranspose(const Transpose& kernel,
 
   TArray<int64_t> input_strides(rank);
   for (auto i = 0; i < rank; i++) {
-    input_strides.data_[i] = original_input_strides[permutations[i]];
+    input_strides[i] = original_input_strides[permutations[i]];
   }
   TArray<fast_divmod> output_strides(rank);
   for (auto i = 0; i < rank; i++) {
-    output_strides.data_[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
+    output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
   }
 
   size_t element_size = input.DataType()->Size();

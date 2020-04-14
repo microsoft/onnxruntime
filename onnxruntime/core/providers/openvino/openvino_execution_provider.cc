@@ -243,6 +243,12 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     //TopK opset 10 is currently not supported.
     //K as input is currently not suppported.
     return node->InputDefs().size() > 1;
+  } else if (optype == "ReduceMin") {
+    //Only FP32, INT32 and U8 data types are supported
+    const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
+    const bool data_is_int32 = node->InputDefs()[0]->Type()->find("int32") != std::string::npos;
+    const bool data_is_u8 = node->InputDefs()[0]->Type()->find("uint8") != std::string::npos;
+    return !(data_is_float || data_is_int32 || data_is_u8);
   } else if (optype == "MatMul") {
     //All matmuls except float have computation missmatch
     const bool A_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
@@ -536,7 +542,11 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   //Check 2
 
   bool has_unsupported_dimension = false;
-  node->ForEachDef([&has_unsupported_dimension, &device_id](const onnxruntime::NodeArg& node_arg, bool /*is_input*/) {
+  node->ForEachDef([&has_unsupported_dimension, &graph_viewer, &device_id](const onnxruntime::NodeArg& node_arg, bool is_input) {
+    if(is_input){
+      if(graph_viewer.IsConstantInitializer(node_arg.Name(), true))
+        return;
+    }
     auto shape = node_arg.Shape();
     if (shape != nullptr) {
       //Can't have no dimensions
@@ -544,11 +554,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
         has_unsupported_dimension = true;
         return;
       }
-      //Reject 1D symbolic shapes
-      else if (shape->dim_size() == 1 && utils::HasDimParam(shape->dim(0))) {
-        has_unsupported_dimension = true;
-        return;
-      } else {
+      else {
         //Zero dimension check
         for (const auto& dim : shape->dim()) {
           if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
@@ -854,42 +860,38 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
 
     const auto connected_clusters = GetConnectedClusters(graph_viewer, ng_clusters);
 
-    size_t max_cluster_size = 0;
-
-    //We can only run one subrgaph on Myriad. We take the subgraph with maximum numnber
-    //of nodes and run that on Myriad.
-    if(info_.device_id_ == "MYRIAD"){
-
-      for(const auto& this_cluster : connected_clusters){
-        if(this_cluster.size() > max_cluster_size)
-          max_cluster_size = this_cluster.size();
-      }
-    }
-
     for (const auto& this_cluster : connected_clusters) {
 
       std::vector<std::string> cluster_inputs, const_inputs, cluster_outputs;
     //If subgraph only has Identity node, EyeLike or Dropout, OpenVINO EP doesn't support it.
       if(this_cluster.size() == 1){
         const auto& node = graph_viewer.GetNode(this_cluster[0]);
-        if(node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType() == "Dropout")
-          continue;
-      }
-
-      if(info_.device_id_ == "MYRIAD"){
-        if(this_cluster.size() != max_cluster_size)
+        if(node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType() == "Dropout" || node->OpType() == "ReduceMin" || node->OpType() == "Concat" || node->OpType() == "Cast")
           continue;
       }
       GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_inputs, const_inputs, cluster_outputs);
-
+      bool omit_subgraph = false;
+      for(auto index : this_cluster){
+        const auto& node = graph_viewer.GetNode(index);
+        if(node->OpType() == "Unsqueeze" || node->OpType() == "Gather" || node->OpType() == "Squeeze"){
+          for(const auto& input : node->InputDefs()){
+            auto input_name = input->Name();
+            auto it = find(cluster_inputs.begin(), cluster_inputs.end(), input_name);
+            if(it != cluster_inputs.end()){
+              omit_subgraph = true;
+              break;
+            }
+          }
+        }
+      }
+      if(omit_subgraph)
+        continue;
 
       /* In scenarios, when there are no inputs or all inputs being initializers,
          ConstantFolding optimization in onnxruntime pre-computes the value.*/
      if (!cluster_inputs.empty() && cluster_inputs.size() > const_inputs.size()) {
         AppendClusterToSubGraph(this_cluster, cluster_inputs, cluster_outputs, result);
       }
-      if(info_.device_id_ == "MYRIAD")
-        break;
     }
   }
 

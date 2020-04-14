@@ -50,14 +50,14 @@ __global__ void ExpandKernel(
     const int N,
     const T* input_data,
     T* output_data,
-    const fast_divmod* fdm_output_strides,
-    const int64_t* input_view_strides) {
+    const TArray<fast_divmod> output_strides,
+    const TArray<int64_t> input_strides) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
 
   int dim, r = id, input_index = 0;
   for (int i = 0; i < rank; ++i) {
-    fdm_output_strides[i].divmod(r, dim, r);
-    input_index += dim * input_view_strides[i];
+    output_strides[i].divmod(r, dim, r);
+    input_index += dim * input_strides[i];
   }
   output_data[id] = input_data[input_index];
 }
@@ -114,9 +114,9 @@ Status ExpandImpl(
     const int N_input,
     const void* input_data,
     void* output_data,
-    CudaKernel::CudaAsyncBuffer<fast_divmod>& fdm_output_strides,
-    CudaKernel::CudaAsyncBuffer<int64_t>& input_view_strides) {
-  const int rank = static_cast<int>(fdm_output_strides.count());
+    const TArray<fast_divmod>& output_strides,
+    const TArray<int64_t>& input_strides) {
+  const int rank = static_cast<int>(output_strides.size_);
   if (rank == 1) {
     if (N_input == N_output) {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, N_output * element_size, cudaMemcpyDeviceToDevice));
@@ -125,20 +125,18 @@ Status ExpandImpl(
     }
   } else if (rank == 2) {
     return Expand2D(element_size, N_output, input_data, output_data,
-                    fdm_output_strides.CpuSpan()[0],
-                    static_cast<int>(input_view_strides.CpuSpan()[0]),
-                    static_cast<int>(input_view_strides.CpuSpan()[1]));
+                    output_strides[0],
+                    static_cast<int>(input_strides[0]),
+                    static_cast<int>(input_strides[1]));
   }
 
   int blocksPerGrid = gsl::narrow_cast<int>(CeilDiv(N_output, GridDim::maxThreadsPerBlock));
-  fdm_output_strides.CopyToGpu();
-  input_view_strides.CopyToGpu();
 
 #define EXPAND_ON(TYPE)                                                                                  \
   case sizeof(TYPE):                                                                                     \
     ExpandKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(                                     \
         rank, N_output, reinterpret_cast<const TYPE*>(input_data), reinterpret_cast<TYPE*>(output_data), \
-        fdm_output_strides.GpuPtr(), input_view_strides.GpuPtr());                                       \
+        output_strides, input_strides);                                                                  \
     break
 
   switch (element_size) {

@@ -19,6 +19,8 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+InferenceEngine::Core BackendManager::ie_core_;
+
 BackendManager::BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger,
                                std::string dev_id, std::string prec_str)
   : device_id_{dev_id}, precision_str_{prec_str} {
@@ -57,7 +59,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
     output_names_.insert({output_def->Name(), i});
     i++;
   }
-
+  subgraph_name_ = fused_node->Name();
   model_proto_ = GetModelProtoFromFusedNode(fused_node, logger);
 
   if (ModelHasSymbolicInputDims(fused_node)) {
@@ -66,11 +68,11 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
     has_dynamic_input_shape_ = true;
   } else {
     LOGS_DEFAULT(INFO) <<
-      "[OpenVINO-EP] Model has concreate input dims. Initializing backend";
+      "[OpenVINO-EP] Model has concreate input dims. Initializing backend for graph " << subgraph_name_;
     has_dynamic_input_shape_ = false;
     concrete_backend_ = BackendFactory::MakeBackend(model_proto_, input_indexes_,
                                                     output_names_, device_id_,
-                                                    precision_);
+                                                    precision_, ie_core_, subgraph_name_);
   }
 }
 
@@ -193,10 +195,12 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
     if (search == backend_map_.end()) {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
                          << "Creating concrete backend for key: " << key;
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
+                         << "Backend created for graph " << subgraph_name_;
       auto modelproto_with_concrete_shapes = ReWriteInputShapeInfo(model_proto_, tensor_shapes);
       dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
                                                     input_indexes_,output_names_,
-                                                    device_id_, precision_);
+                                                    device_id_, precision_, ie_core_,subgraph_name_);
       backend_map_.insert({key, dynamic_backend});
     } else {
       dynamic_backend = search->second;
