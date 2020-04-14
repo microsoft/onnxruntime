@@ -43,7 +43,9 @@ struct NormalizeTransformerImpl {
 
     std::vector<double> result;
     std::function<void(std::vector<double>)> callback;
-    callback = [&result](std::vector<double> val) mutable {
+    bool callback_allow = true;
+    callback = [&result, callback_allow](std::vector<double> val) mutable {
+      ORT_ENFORCE(callback_allow, "callback function can only be called during execute() and special flush() when needed");
       result = std::move(val);
     };
 
@@ -58,6 +60,8 @@ struct NormalizeTransformerImpl {
       std::copy(result.cbegin(), result.cend(), output_data);
       output_data += row_size;
     }
+    // The flush() does nothing but shows Featurizers concept
+    callback_allow = false;
     transformer.flush(callback);
   }
 };
