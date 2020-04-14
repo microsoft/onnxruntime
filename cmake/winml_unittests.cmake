@@ -201,7 +201,7 @@ target_include_directories(winml_test_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR
 
 target_include_directories(winml_test_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
-target_include_directories(winml_test_adapter PRIVATE ${REPO_ROOT}/winml)
+target_include_directories(winml_test_adapter PRIVATE ${REPO_ROOT}/winml ${REPO_ROOT}/winml/lib/Api/inc)
 target_include_directories(winml_test_adapter PRIVATE ${winml_lib_api_dir})                            # needed for generated headers
 target_include_directories(winml_test_adapter PRIVATE ${winml_lib_api_core_dir})
 target_include_directories(winml_test_adapter PRIVATE ${winml_lib_api_ort_dir})
