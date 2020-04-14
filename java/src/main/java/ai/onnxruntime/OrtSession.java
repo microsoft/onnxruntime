@@ -551,11 +551,11 @@ public class OrtSession implements AutoCloseable {
     /**
      * Adds DirectML as an execution backend.
      *
-     * @param deviceNum The id of the DirectML device.
+     * @param deviceId The id of the DirectML device.
      * @throws OrtException If there was an error in native code.
      */
-    public void addDirectML(int deviceNum) throws OrtException {
-      addDirectML(OnnxRuntime.ortApiHandle, nativeHandle, deviceNum);
+    public void addDirectML(int deviceId) throws OrtException {
+      addDirectML(OnnxRuntime.ortApiHandle, nativeHandle, deviceId);
     }
 
     /**
@@ -622,7 +622,7 @@ public class OrtSession implements AutoCloseable {
         long apiHandle, long nativeHandle, int allowUnalignedBuffers, String settings)
         throws OrtException;
 
-    private native void addDirectML(long apiHandle, long nativeHandle, int deviceNum)
+    private native void addDirectML(long apiHandle, long nativeHandle, int deviceId)
         throws OrtException;
 
     private native void addACL(long apiHandle, long nativeHandle, int useArena) throws OrtException;
