@@ -68,7 +68,7 @@ def runBertTrainingTest(gradient_accumulation_steps,
     device = torch.device("cuda", 0)
 
     torch.manual_seed(1)
-    onnxruntime.seed(1)
+    onnxruntime.set_seed(1)
 
     onnx_model = onnx.load(get_name("bert_toy_postprocessed.onnx"))
 
