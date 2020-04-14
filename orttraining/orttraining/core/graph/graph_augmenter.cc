@@ -3,9 +3,44 @@
 
 #include "orttraining/core/graph/graph_augmenter.h"
 
+#include "core/common/logging/logging.h"
+
 namespace onnxruntime {
 namespace training {
-using namespace onnxruntime::common;
+
+namespace {
+Status AddToExistingNodeArgs(
+    const std::string& addition_context,
+    const Graph& graph,
+    const std::vector<std::string>& new_nodearg_names,
+    const std::vector<const NodeArg*>& existing_nodeargs,
+    bool is_duplicate_an_error,
+    std::vector<const NodeArg*>& nodeargs) {
+  std::unordered_set<const NodeArg*> nodeargs_set(existing_nodeargs.begin(), existing_nodeargs.end());
+  nodeargs = existing_nodeargs;
+
+  for (const auto& new_nodearg_name : new_nodearg_names) {
+    const auto* new_nodearg = graph.GetNodeArg(new_nodearg_name);
+    ORT_RETURN_IF_NOT(
+        new_nodearg,
+        addition_context, " - failed to find NodeArg by name: ", new_nodearg_name);
+
+    if (nodeargs_set.find(new_nodearg) != nodeargs_set.end()) {
+      ORT_RETURN_IF(
+          is_duplicate_an_error,
+          addition_context, " - error - attempted to add a duplicate NodeArg: ", new_nodearg_name);
+      LOGS_DEFAULT(WARNING)
+          << addition_context << " - skipping addition of duplicate NodeArg: " << new_nodearg_name;
+      continue;
+    }
+
+    nodeargs_set.emplace(new_nodearg);
+    nodeargs.emplace_back(new_nodearg);
+  }
+
+  return Status::OK();
+};
+}  // namespace
 
 Status GraphAugmenter::AugmentGraph(Graph& graph, const GraphDefs& graph_element_defs) {
   // Add new initializers to the graph. - no op if it already exists
@@ -40,45 +75,33 @@ Status GraphAugmenter::AugmentGraph(Graph& graph, const GraphDefs& graph_element
                   node_def.domain);
   }
 
-  // Add new outputs to the graph.
-  std::vector<const NodeArg*> new_output_args = graph.GetOutputs();  // Make a copy of existing output args.
-  for (const auto& output_name : graph_element_defs.GraphOutputs()) {
-    const auto* output_arg = graph.GetNodeArg(output_name);
-
-    ORT_RETURN_IF(output_arg == nullptr, "Failed to set graph output ", output_name);
-    if (std::find(new_output_args.begin(), new_output_args.end(), output_arg) == new_output_args.end()) {
-      new_output_args.emplace_back(output_arg);
-    }
+  // Add new inputs to the graph.
+  if (!graph_element_defs.GraphInputs().empty()) {
+    std::vector<const NodeArg*> new_inputs;
+    ORT_RETURN_IF_ERROR(AddToExistingNodeArgs(
+        "add graph inputs", graph, graph_element_defs.GraphInputs(), graph.GetInputsIncludingInitializers(),
+        false, new_inputs));
+    graph.SetInputs(new_inputs);
   }
-  graph.SetOutputs(new_output_args);  // By setting this, Graph::SetGraphInputsOutputs could infer the output as expected.
+
+  // Add new outputs to the graph.
+  if (!graph_element_defs.GraphOutputs().empty()) {
+    std::vector<const NodeArg*> new_outputs;
+    ORT_RETURN_IF_ERROR(AddToExistingNodeArgs(
+        "add graph outputs", graph, graph_element_defs.GraphOutputs(), graph.GetOutputs(), false, new_outputs));
+    graph.SetOutputs(new_outputs);
+  }
 
   graph.SetGraphResolveNeeded();
-  graph.SetGraphProtoSyncNeeded();
   return graph.Resolve();
 }
 
 Status GraphAugmenter::OverrideGraphOutputs(Graph& graph, const std::vector<std::string>& graph_outputs) {
-  {
-    std::unordered_set<std::string> unique_graph_outputs(graph_outputs.begin(), graph_outputs.end());
-    if (unique_graph_outputs.size() != graph_outputs.size()) {
-      std::string error_message{"The specified graph outputs are not unique:"};
-      for (const auto& graph_output : graph_outputs) {
-        error_message += "\n  " + graph_output;
-      }
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, error_message);
-    }
-  }
+  std::vector<const NodeArg*> new_outputs;
+  ORT_RETURN_IF_ERROR(AddToExistingNodeArgs(
+      "override graph outputs", graph, graph_outputs, {}, true, new_outputs));
+  graph.SetOutputs(new_outputs);
 
-  std::vector<const NodeArg*> new_output_args;
-  for (const auto& output_name : graph_outputs) {
-    const auto* output_arg = graph.GetNodeArg(output_name);
-    ORT_RETURN_IF(output_arg == nullptr, "Failed to set graph output ", output_name);
-    new_output_args.emplace_back(output_arg);
-  }
-
-  graph.SetOutputs(new_output_args);  // By setting this, Graph::SetGraphInputsOutputs could infer the output as expected.
-  graph.SetGraphResolveNeeded();
-  graph.SetGraphProtoSyncNeeded();
   return graph.Resolve();
 }
 

@@ -763,17 +763,19 @@ class Graph {
     ORT_IGNORE_RETURN_VALUE(outer_scope_node_arg_names_.insert(name));
   }
 
-  /** When programmatically constructing a Graph, explicitly set graph inputs.
+  /** Explicitly set graph inputs.
   @param inputs NodeArgs that represent complete graph inputs which need to be explicitly ordered.
-  @remarks If the Graph was loaded from a GraphProto this has no effect.*/
+  @remarks Note that the input order matters for subgraphs.
+  */
   void SetInputs(const std::vector<const NodeArg*>& inputs);
 
-  /** When programmatically constructing a Graph, explicitly set graph outputs.
+  /** Explicitly set graph outputs.
   @param outputs NodeArgs that represent complete graph outputs which need to be explicitly ordered.
-  @remarks If the Graph was loaded from a GraphProto this has no effect.*/
+  @remarks Note that the output order matters for subgraphs.
+  */
   void SetOutputs(const std::vector<const NodeArg*>& outputs);
 
-  /** Returns true if this is a subgraph or fase if it is a high-level graph. */
+  /** Returns true if this is a subgraph or false if it is a high-level graph. */
   bool IsSubgraph() const { return parent_graph_ != nullptr; }
 
   /** Returns the parent graph if this is a subgraph */
@@ -900,6 +902,8 @@ class Graph {
         const Node* parent_node,
         const logging::Logger& logger,
         const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions);
+
+  void InitializeStateFromModelFileGraphProto();
 
   // Add node with specified <node_proto>.
   Node& AddNode(const ONNX_NAMESPACE::NodeProto& node_proto,
@@ -1141,6 +1145,9 @@ class Graph {
   int num_resolves_ = 0;
 
   const logging::Logger& logger_;
+
+  // distinguishes between graph loaded from model file and graph created from scratch
+  const bool is_loaded_from_model_file_;
 };
 
 std::ostream& operator<<(std::ostream& out, const Graph& graph);
