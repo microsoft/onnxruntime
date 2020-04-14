@@ -43,7 +43,7 @@ void ConcurrencyTestsClassSetup() {
 }
 
 void ConcurrencyTestsGpuMethodSetup() {
-    GPUTEST
+    GPUTEST;
 }
 
 struct EvaluationUnit {
