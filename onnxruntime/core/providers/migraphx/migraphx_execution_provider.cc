@@ -407,9 +407,21 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return true;
     }
   } else if (optype == "Pad") {
-    // Pad is only supported only up to opset 10 (in opset 11 more inputs were added)
-    if (node->InputDefs().size() > 1) {
-      return true;
+    const auto& args = node->InputDefs();
+    if (args.size() == 3)
+    {
+      const auto& val_arg = node->InputDefs()[2];
+      if (initializers.find(val_arg->Name()) == initializers.end()) {
+        return true;
+      }
+    }
+
+    if (args.size() >= 2)
+    {
+      const auto& shape_arg = node->InputDefs()[1];
+      if (initializers.find(shape_arg->Name()) == initializers.end()) {
+        return true;
+      }
     }
 
     const auto& attributes = node->GetAttributes();
@@ -539,7 +551,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, /*out*/ std::unordere
       "ConstantOfShape", "Conv", "Cos", "Cosh", "Div", "Dropout", "Elu", "Erf", "Exp", "Expand", 
       "Flatten", "Floor", "GRU", "Gather", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "Identity", "ImageScaler", 
       "InstanceNormalization", "LRN", "LSTM", "LeakyRelu", "Log", "LogSoftmax", "MatMul", "Max", "MaxPool", "Min", 
-      "Mul", "Pad", "Pow", "PRelu", "RNN", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", 
+      "Mul", "Pad", "Pow", "PRelu", "RNN", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", 
       "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", "Round", "Shape", 
       "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Split", "Sqrt", "Squeeze", "Sub", "Sum", "Tan", "Tanh", 
       "Transpose", "Unsqueeze"};
@@ -877,11 +889,12 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   // print output shape of the graph
   // print_node_output_shapes(graph_viewer);
 
-  // std::string onnx_string_buffer;
-  // model_proto.SerializeToString(&onnx_string_buffer);
-  // std::ofstream ofs("ort_getcapability.onnx", std::ios::binary);
-  // ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
-  // ofs.close();
+  std::string onnx_string_buffer;
+  model_proto.SerializeToString(&onnx_string_buffer);
+
+  std::ofstream ofs("ort_getcapability.onnx", std::ios::binary);
+  ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
+  ofs.close();
 
   // auto prog = migraphx::parse_onnx_buffer(onnx_string_buffer);
   // std::cout << "prog = " << std::endl;
@@ -908,9 +921,6 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   //     }
   //   }
   // }
-
-  std::string onnx_string_buffer;
-  model_proto.SerializeToString(&onnx_string_buffer);
 
   // This is a list of initializers that migraphx considers as constants. 
   // Example weights, reshape shape etc.
@@ -1107,6 +1117,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     // by parsing the model_proto, create a program corresponding to
     // the input fused_node
     migraphx::program prog;
+
     if (!no_input_shape)
     {
       prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
@@ -1150,6 +1161,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       *state = p.release();
       return 0;
     };
+
     compute_info.release_state_func = [](FunctionState state) {
       if (state)
         delete static_cast<MIGraphXFuncState*>(state);
