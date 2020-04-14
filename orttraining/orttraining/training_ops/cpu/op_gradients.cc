@@ -10,7 +10,6 @@
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "gsl/gsl"
-#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -91,8 +90,7 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
                                   scaledata + i, nullptr);
   }
 
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
   math::Gemm<float>(CblasNoTrans, CblasNoTrans, n, d, 1, -1,
                     scaledata, sum_multiplier_.data(), 1,
                     dXdata, tp);
