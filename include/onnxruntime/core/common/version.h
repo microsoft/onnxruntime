@@ -3,4 +3,4 @@
 
 #pragma once
 
-#define ONNXRUNTIME_VERSION_STRING "1.0"
+#define ONNXRUNTIME_VERSION_STRING "1.3"
