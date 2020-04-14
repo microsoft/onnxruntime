@@ -37,9 +37,13 @@ void LoadBindEvalSqueezenetRealDataWithValidationConcurrently() {
     }
 }
 
-void ConcurrencyTestsApiSetup() {
+void ConcurrencyTestsClassSetup() {
     init_apartment();
     std::srand(static_cast<unsigned>(std::time(nullptr)));
+}
+
+void ConcurrencyTestsGpuMethodSetup() {
+    GPUTEST;
 }
 
 struct EvaluationUnit {
@@ -253,7 +257,6 @@ void MultiThreadMultiSession() {
 }
 
 void MultiThreadMultiSessionGpu() {
-    GPUTEST;
     MultiThreadMultiSessionOnDevice(LearningModelDeviceKind::DirectX);
 }
 
@@ -323,14 +326,14 @@ void MultiThreadSingleSession() {
 }
 
 void MultiThreadSingleSessionGpu() {
-    GPUTEST;
     MultiThreadSingleSessionOnDevice(LearningModelDeviceKind::DirectX);
 }
 }
 
 const ConcurrencyTestsApi& getapi() {
   static constexpr ConcurrencyTestsApi api = {
-    ConcurrencyTestsApiSetup,
+    ConcurrencyTestsClassSetup,
+    ConcurrencyTestsGpuMethodSetup,
     LoadBindEvalSqueezenetRealDataWithValidationConcurrently,
     MultiThreadLoadModel,
     MultiThreadMultiSession,

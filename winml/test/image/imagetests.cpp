@@ -38,8 +38,8 @@ protected:
     winrt::Windows::AI::MachineLearning::LearningModelBinding m_model_binding = nullptr;
     winrt::Windows::AI::MachineLearning::LearningModelEvaluationResult m_result = nullptr;
 
-    void SetUp() override {
-        init_apartment();
+    static void SetUpTestSuite() {
+      init_apartment();
     }
 
     void LoadModel(const std::wstring& model_path) {
