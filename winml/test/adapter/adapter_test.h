@@ -7,8 +7,8 @@
 
 struct AdapterTestApi
 {
-  SetupTest AdapterTestSetup;
-  TeardownTest AdapterTestTeardown;
+  SetupClass AdapterTestSetup;
+  TeardownClass AdapterTestTeardown;
   VoidTest CreateModelFromPath;
   VoidTest CreateModelFromData;
   VoidTest CloneModel;
@@ -39,7 +39,10 @@ OrtModel* float16_Model = nullptr;
 static bool logging_function_called = false;
 static bool profiling_function_called = false;
 
-WINML_TEST_CLASS_BEGIN_WITH_SETUP_AND_TEARDOWN(AdapterTest, AdapterTestSetup, AdapterTestTeardown)
+WINML_TEST_CLASS_BEGIN(AdapterTest)
+WINML_TEST_CLASS_SETUP_CLASS(AdapterTestSetup)
+WINML_TEST_CLASS_TEARDOWN_CLASS(AdapterTestTeardown)
+WINML_TEST_CLASS_BEGIN_TESTS
 WINML_TEST(AdapterTest, CreateModelFromPath)
 WINML_TEST(AdapterTest, CreateModelFromData)
 WINML_TEST(AdapterTest, CloneModel)

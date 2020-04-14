@@ -12,31 +12,35 @@
     getapi().test_name();                 \
   }
 
-#define WINML_TEST_CLASS_BEGIN_NO_SETUP(test_class_name) \
-  namespace {                                            \
-    class test_class_name : public ::testing::Test {     \
-    };
+#define WINML_TEST_CLASS_BEGIN(test_class_name)      \
+  namespace {                                        \
+    class test_class_name : public ::testing::Test {
 
-#define WINML_TEST_CLASS_BEGIN_WITH_SETUP(test_class_name, setup_method) \
-  namespace {                                                            \
-    class test_class_name : public ::testing::Test {                     \
-    protected:                                                           \
-      static void SetUpTestSuite() {                                     \
-        getapi().setup_method();                                         \
-      }                                                                  \
-    };
+#define WINML_TEST_CLASS_SETUP_CLASS(setup_class) \
+    protected:                                    \
+      static void SetUpTestSuite() {              \
+        getapi().setup_class();                   \
+      }
 
-#define WINML_TEST_CLASS_BEGIN_WITH_SETUP_AND_TEARDOWN(test_class_name, setup_method, teardown_method) \
-  namespace {                                                                                          \
-    class test_class_name : public ::testing::Test {                                                   \
-    protected:                                                                                         \
-      static void SetUpTestSuite() {                                                                   \
-        getapi().setup_method();                                                                       \
-      }                                                                                                \
-      static void TearDownTestSuite() {                                                                \
-        getapi().teardown_method();                                                                    \
-      }                                                                                                \
-    };
+#define WINML_TEST_CLASS_TEARDOWN_CLASS(teardown_class) \
+    protected:                                          \
+      static void TearDownTestSuite() {                 \
+        getapi().teardown_class();                      \
+      }
+
+#define WINML_TEST_CLASS_SETUP_METHOD(setup_method) \
+    protected:                                      \
+      void SetUp() override {                       \
+        getapi().setup_method();                    \
+      }
+
+#define WINML_TEST_CLASS_TEARDOWN_METHOD(teardown_method) \
+    protected:                                            \
+      void TearDown() override {                          \
+        getapi().teardown_method();                       \
+      }
+
+#define WINML_TEST_CLASS_BEGIN_TESTS };
   
 #define WINML_TEST_CLASS_END() }
 

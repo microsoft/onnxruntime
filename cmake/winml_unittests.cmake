@@ -59,10 +59,14 @@ function(get_winml_test_scenario_src
   output_winml_test_scenario_libs
 )
   if (onnxruntime_USE_DML)
-    file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS "${winml_test_src_path}/scenario/cppwinrt/*.cpp")
+    file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS 
+        "${winml_test_src_path}/scenario/cppwinrt/*.h"
+        "${winml_test_src_path}/scenario/cppwinrt/*.cpp")
     set(${output_winml_test_scenario_libs} "onnxruntime_providers_dml" PARENT_SCOPE)
   else()
-    set(winml_test_scenario_src "${winml_test_src_path}/scenario/cppwinrt/scenariotestscppwinrt.cpp")
+    set(winml_test_scenario_src
+        "${winml_test_src_path}/scenario/cppwinrt/scenariotestscppwinrt.h"
+        "${winml_test_src_path}/scenario/cppwinrt/scenariotestscppwinrt.cpp")
   endif()
   set(${output_winml_test_scenario_src} ${winml_test_scenario_src} PARENT_SCOPE)
 endfunction()
@@ -71,7 +75,9 @@ function(get_winml_test_api_src
   winml_test_src_path
   output_winml_test_api_src
 )
-  file(GLOB winml_test_api_src CONFIGURE_DEPENDS "${winml_test_src_path}/api/*.cpp")
+  file(GLOB winml_test_api_src CONFIGURE_DEPENDS 
+      "${winml_test_src_path}/api/*.h"
+      "${winml_test_src_path}/api/*.cpp")
   set(${output_winml_test_api_src} ${winml_test_api_src} PARENT_SCOPE)
 endfunction()
 
@@ -79,7 +85,9 @@ function(get_winml_test_concurrency_src
   winml_test_src_path
   output_winml_test_concurrency_src
 )
-  file(GLOB winml_test_concurrency_src CONFIGURE_DEPENDS "${winml_test_src_path}/concurrency/*.cpp")
+  file(GLOB winml_test_concurrency_src CONFIGURE_DEPENDS
+      "${winml_test_src_path}/concurrency/*.h"
+      "${winml_test_src_path}/concurrency/*.cpp")
   set(${output_winml_test_concurrency_src} ${winml_test_concurrency_src} PARENT_SCOPE)
 endfunction()
 
@@ -102,11 +110,15 @@ function(get_winml_test_image_src
   if (onnxruntime_USE_DML)
     set(${output_winml_test_scenario_libs} "onnxruntime_providers_dml" PARENT_SCOPE)
   endif()
-  file(GLOB winml_test_image_src CONFIGURE_DEPENDS "${winml_test_src_path}/image/*.cpp")
+  file(GLOB winml_test_image_src CONFIGURE_DEPENDS
+      "${winml_test_src_path}/image/*.h"
+      "${winml_test_src_path}/image/*.cpp")
   set(${output_winml_test_image_src} ${winml_test_image_src} PARENT_SCOPE)
 endfunction()
 
-file(GLOB winml_test_common_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/common/*.cpp")
+file(GLOB winml_test_common_src CONFIGURE_DEPENDS 
+    "${WINML_TEST_SRC_DIR}/common/*.h"
+    "${WINML_TEST_SRC_DIR}/common/*.cpp")
 add_library(winml_test_common STATIC ${winml_test_common_src})
 add_dependencies(winml_test_common
   onnx

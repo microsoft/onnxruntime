@@ -4,6 +4,8 @@
 #pragma once
 
 using VoidTest = void (*)();
+using SetupClass = VoidTest;
+using TeardownClass = VoidTest;
 using SetupTest = VoidTest;
 using TeardownTest = VoidTest;
 

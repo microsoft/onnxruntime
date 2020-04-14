@@ -11,25 +11,35 @@ using namespace WEX::TestExecution;
 
 #define WINML_EXPECT_NO_THROW(statement) VERIFY_NO_THROW(statement)
 
-#define WINML_TEST_CLASS_BEGIN_WITH_SETUP(test_class_name, setup_method) \
-  class test_class_name {                                                \
-    TEST_CLASS(test_class_name);                                         \
-    TEST_CLASS_SETUP(TestClassSetup) {                                   \
-      getapi().setup_method();                                           \
-      return true;                                                       \
+#define WINML_TEST_CLASS_BEGIN(test_class_name) \
+  class test_class_name {                       \
+    TEST_CLASS(test_class_name);
+
+#define WINML_TEST_CLASS_SETUP_CLASS(setup_class) \
+    TEST_CLASS_SETUP(TestMethodSetup) {           \
+      getapi().setup_class();                     \
+      return true;                                \
     }
 
-#define WINML_TEST_CLASS_BEGIN_WITH_SETUP_AND_TEARDOWN(test_class_name, setup_method, teardown_method) \
-  class test_class_name {                                                                              \
-    TEST_CLASS(test_class_name);                                                                       \
-    TEST_CLASS_SETUP(TestClassSetup) {                                                                 \
-      getapi().setup_method();                                                                         \
-      return true;                                                                                     \
-    }                                                                                                  \
-    TEST_CLASS_CLEANUP(TestClassCleanup) {                                                             \
-      getapi().teardown_method();                                                                      \
-      return true;                                                                                     \
+#define WINML_TEST_CLASS_TEARDOWN_CLASS(teardown_class) \
+    TEST_CLASS_CLEANUP(TestClassCleanup) {              \
+      getapi().teardown_class();                        \
+      return true;                                      \
     }
+
+#define WINML_TEST_CLASS_SETUP_METHOD(setup_method) \
+    TEST_METHOD_SETUP(TestMethodSetup) {            \
+      getapi().setup_method();                      \
+      return true;                                  \
+    }
+
+#define WINML_TEST_CLASS_TEARDOWN_METHOD(teardown_method) \
+    TEST_METHOD_CLEANUP(TestClassCleanup) {               \
+      getapi().teardown_method();                         \
+      return true;                                        \
+    }
+
+#define WINML_TEST_CLASS_BEGIN_TESTS
 
 #define WINML_TEST_CLASS_END() \
   }                            \
