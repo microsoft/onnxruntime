@@ -25,23 +25,22 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                            const std::vector<int>& input_indexes,
                            const std::unordered_map<std::string, int>& output_names,
                            std::string device_id,
-                           InferenceEngine::Precision precision)
+                           InferenceEngine::Precision precision,
+                           InferenceEngine::Core& ie, std::string subgraph_name)
     : input_indexes_{input_indexes},output_names_{output_names} {
-  ORT_UNUSED_PARAMETER(device_id);
 
+  subgraph_name_ = subgraph_name;
   ie_cnn_network_ = CreateCNNNetwork(model_proto, precision);
-
   SetIODefs(model_proto, ie_cnn_network_);
-
-  InferenceEngine::Core ie;
   InferenceEngine::ExecutableNetwork exe_network;
+
   // Loading model to the plugin
   try {
     exe_network = ie.LoadNetwork(*ie_cnn_network_, device_id);
   } catch (InferenceEngine::details::InferenceEngineException e) {
-    ORT_THROW(log_tag + " Exception while Loading Network: " + e.what());
+    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_name_ + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network" );
+    ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_name_);
   }
   LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
 
@@ -137,6 +136,8 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort,
 void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // Preliminary Thread safety mechanism
   // Currently allows only one Infer execution at a time
+
+  LOGS_DEFAULT(INFO) << log_tag << "Running graph " << subgraph_name_;
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
   std::lock_guard<std::mutex> lock(compute_lock_);
 

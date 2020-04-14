@@ -20,6 +20,7 @@ class BackendManager {
  public:
   BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger,
                  std::string dev_id, std::string prec_str);
+  static InferenceEngine::Core ie_core_;
   void Compute(Ort::CustomOpApi api, OrtKernelContext* context);
   void ShutdownBackendManager();
 
@@ -36,6 +37,7 @@ class BackendManager {
   std::shared_ptr<IBackend> concrete_backend_;
   std::map<std::string, std::shared_ptr<IBackend>> backend_map_;
   std::vector<int> input_indexes_;
+  std::string subgraph_name_;
   std::unordered_map<std::string, int> output_names_;
 };
 

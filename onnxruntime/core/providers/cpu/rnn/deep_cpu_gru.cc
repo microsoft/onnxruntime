@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/platform/threadpool.h"
 #include "core/framework/op_kernel_context_internal.h"
 
 // there's no way to use a raw pointer as the copy destination with std::copy_n
@@ -22,6 +21,7 @@
 #include "core/framework/tensor.h"
 
 #include "core/platform/ort_mutex.h"
+#include "core/platform/threadpool.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -518,7 +518,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
   const bool output_sequence = !outputs.empty();
 
   if (direction_ == kReverse) {
-    ReverseSequence(inputs, inputs_reverse_, sequence_lengths, seq_length_, batch_size_, input_size_, 1);
+    ReverseSequence(inputs, inputs_reverse_, sequence_lengths, seq_length_, batch_size_, input_size_, 1, ttp_);
     // DumpMatrix("Reversed inputs", inputs_reverse_.data(), seq_length_ * batch_size_, input_size_);
 
     inputs = inputs_reverse_;
@@ -816,7 +816,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
   if (output_sequence && direction_ == kReverse) {
     ReverseSequence<T>(outputs, original_outputs,
                        sequence_lengths, seq_length_,
-                       batch_size_, hidden_size_, num_directions);
+                       batch_size_, hidden_size_, num_directions, ttp_);
   }
 }
 

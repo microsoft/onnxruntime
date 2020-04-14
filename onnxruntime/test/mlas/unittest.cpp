@@ -2109,7 +2109,9 @@ main(
 
         printf("Done.\n");
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
-        if(threadpool != nullptr) threadpool = new onnxruntime::concurrency::ThreadPool("test", 2);
+        if (threadpool != nullptr)
+          threadpool = new onnxruntime::concurrency::ThreadPool(
+              &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 2, true, nullptr);
 #else
         break;
 #endif
