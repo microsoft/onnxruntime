@@ -23,9 +23,6 @@
 #include "test/util/include/asserts.h"
 #include "test/test_environment.h"
 
-#include "core/session/environment.h"
-#include "orttraining/models/runner/training_runner.h"
-
 using onnxruntime::test::CountOpsInGraph;
 
 namespace onnxruntime {
@@ -33,7 +30,7 @@ namespace training {
 namespace test {
 namespace {
 
-const std::vector<const char*> k_weight_names{"weight_1"};
+const std::vector<const char*> k_weight_names{"weight_1", "weight_2"};
 constexpr const char* const k_loss_scaling_factor_name = "loss_scaling_factor";
 constexpr const char* const k_optimizer_op_name = "AdamOptimizer";
 constexpr const char* const k_horovod_all_reduce_op_name = "HorovodAllReduce";
@@ -47,7 +44,6 @@ constexpr const char* const k_inplace_accumulator_op_name = "InPlaceAccumulator"
 constexpr const char* const k_zero_gradient_op_name = "ZeroGradient";
 
 Status SetUpBaseGraph(Graph& graph);
-// Status SetUpToyGraph(Graph& graph);
 
 class OptimizerGraphBuilderTest : public testing::Test {
  protected:
@@ -63,7 +59,6 @@ class OptimizerGraphBuilderTest : public testing::Test {
   Graph& graph_;
 };
 
-/*
 // sets up a base graph with weight and gradient NodeArgs for each weight name
 Status SetUpBaseGraph(Graph& graph) {
   ONNX_NAMESPACE::TypeProto float_tensor_type{};
@@ -71,7 +66,7 @@ Status SetUpBaseGraph(Graph& graph) {
   float_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
   ONNX_NAMESPACE::TensorProto weight_initializer_base{};
-  weight_initializer_base.add_dims(2);
+  weight_initializer_base.add_dims(1);
   weight_initializer_base.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   weight_initializer_base.add_float_data(1.0f);
 
@@ -96,50 +91,6 @@ Status SetUpBaseGraph(Graph& graph) {
     weight_and_gradient_names.emplace(weight_gradient_name);
   }
 
-  Graph::ResolveOptions resolve_options{};
-  resolve_options.initializer_names_to_preserve = &weight_and_gradient_names;
-  return graph.Resolve(resolve_options);
-}
-*/
-// sets up a base graph with weight and gradient NodeArgs for each weight name
-Status SetUpBaseGraph(Graph& graph) {
-  ONNX_NAMESPACE::TypeProto float_tensor_type{};
-  float_tensor_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  float_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1024);
-  float_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4096);
-
-  ONNX_NAMESPACE::TensorProto weight_initializer_base{};
-  weight_initializer_base.add_dims(1024);
-  weight_initializer_base.add_dims(4096);
-  weight_initializer_base.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  ONNX_NAMESPACE::TensorProto weight_gradient_initializer_base{};
-  weight_gradient_initializer_base.add_dims(1024);
-  weight_gradient_initializer_base.add_dims(4096);
-  weight_gradient_initializer_base.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-
-  for(int i=0; i< 4194304; i++){
-    weight_initializer_base.add_float_data(1.0f);
-    weight_gradient_initializer_base.add_float_data(2.0f);
-  } 
-
-  std::unordered_set<std::string> weight_and_gradient_names{};
-
-  for (const auto& weight_name : k_weight_names) {
-    graph.GetOrCreateNodeArg(weight_name, &float_tensor_type);
-    ONNX_NAMESPACE::TensorProto weight_initializer{weight_initializer_base};
-    weight_initializer.set_name(weight_name);
-    graph.AddInitializedTensor(weight_initializer);
-
-    const std::string weight_gradient_name = GradientBuilderBase::GradientName(weight_name);
-    graph.GetOrCreateNodeArg(weight_gradient_name, &float_tensor_type);
-    ONNX_NAMESPACE::TensorProto weight_gradient_initializer{weight_gradient_initializer_base};
-    weight_gradient_initializer.set_name(weight_gradient_name);
-    graph.AddInitializedTensor(weight_gradient_initializer);
-
-    weight_and_gradient_names.emplace(weight_name);
-    weight_and_gradient_names.emplace(weight_gradient_name);
-  }
-  
   Graph::ResolveOptions resolve_options{};
   resolve_options.initializer_names_to_preserve = &weight_and_gradient_names;
   return graph.Resolve(resolve_options);
@@ -489,17 +440,6 @@ TEST_F(OptimizerGraphBuilderTest, ZeRO_NoGradientAccumulation_WithMixedPrecision
 }
 
 TEST_F(OptimizerGraphBuilderTest, ZeRO_WithGradientAccumulation_WithMixedPrecision) {
-  OptimizerGraphConfig config;
-  config.data_parallel_group_size = 4;
-  config.use_nccl = true;
-  config.partition_optimizer = true;
-  config.gradient_accumulation_steps = 10;
-  config.use_mixed_precision = true;
-  config.loss_scale_input_name = k_loss_scaling_factor_name;
-  TestZeROOptimizerGraphBuilder(config, graph_);
-}
-
-TEST_F(OptimizerGraphBuilderTest, ZeRO_WithGradientAccumulation_WithMixedPrecision_mod) {
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
   config.use_nccl = true;
