@@ -107,11 +107,19 @@ Status Transpose::DoTranspose(const Transpose& kernel,
 
   HipAsyncBuffer<int64_t> input_strides(&kernel, rank);
   for (auto i = 0; i < rank; i++) {
-    input_strides.CpuPtr()[i] = original_input_strides[permutations[i]];
+    input_strides.CpuPtr()[rank - 1 - i] = original_input_strides[permutations[i]];
   }
 
   HipAsyncBuffer<fast_divmod> output_strides(&kernel, rank);
-  ORT_ENFORCE(CalculateFdmStrides(output_strides.CpuSpan(), output_dims));
+  //ORT_ENFORCE(CalculateFdmStrides(output_strides.CpuSpan(), output_dims));
+
+  // TODO: use output shape in reverse order for uint24 math
+  for (auto i = 0; i < rank; i++) {
+    output_strides.CpuPtr()[i] = output_dims[rank - 1 - i];
+    if (output_dims[rank-1-i] > 0x7FFFFF) {
+      printf("shape size is: %lx\n", output_dims[rank-1-i]);
+    }
+  }
   ORT_RETURN_IF_ERROR(input_strides.CopyToGpu());
   ORT_RETURN_IF_ERROR(output_strides.CopyToGpu());
 
