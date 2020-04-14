@@ -24,8 +24,8 @@ __global__ void _TransposeKernel(int32_t shape_rank, const int64_t* input_stride
   for (auto dim = 0; dim < shape_rank; ++dim) {
     int out_coord, r;
     output_strides[dim].divmod(output_index, out_coord, r);
-    output_index = r;
-    input_index += input_strides[dim] * out_coord;
+    output_index = out_coord;
+    input_index += input_strides[dim] * r;
   }
   output_data[id] = input_data[input_index];
 }
