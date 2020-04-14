@@ -1,10 +1,10 @@
 # ONNX Runtime Performance Tuning
 
 ## Why do we need to tune performance?
-ONNX Runtime is designed to be open and extensible with its concept of "Execution Provider" to represents different execution kernels. See the [design overview](./HighLevelDesign.md). 
+ONNX Runtime is designed to be open and extensible with its concept of "Execution Provider" to represent different execution kernels. See the [design overview](./HighLevelDesign.md). 
 
 ONNX Runtime supports a variety of execution providers across CPU and GPU: [see the list here](../README.md#high-performance).
-For different models and different hardware, there is no silver bullet which can always perform the best. Even for a single execution provider, often there are several knobs that can be tuned (e.g. thread number, wait policy etc.).
+For different models and different hardware, there is no silver bullet that can always perform the best. Even for a single execution provider, often there are several knobs that can be tuned (e.g. thread number, wait policy etc.).
 
 This document covers basic tools and knobs that can be leveraged to find the best performance for your model and hardware.
 
@@ -84,7 +84,7 @@ sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
 * Thread Count
   * `sess_options.intra_op_num_threads = 2` controls the number of threads to use to run the model
 * Sequential vs Parallel Execution
-  * `sess_options.execution_mode = rt.ExecutionMode.ORT_SEQUENTIAL` controls whether then operators in the graph should run sequentially or in parallel. Usually when a model has many branches, setting this option to false will provide better performance.
+  * `sess_options.execution_mode = rt.ExecutionMode.ORT_SEQUENTIAL` controls whether the operators in the graph run sequentially or in parallel. Usually when a model has many branches, setting this option to false will provide better performance.
   * When `sess_options.execution_mode = rt.ExecutionMode.ORT_PARALLEL`, you can set `sess_options.inter_op_num_threads` to control the
 number of threads used to parallelize the execution of the graph (across nodes).
 
@@ -122,3 +122,9 @@ In both cases, you will get a JSON file which contains the detailed performance 
 * Open chrome browser
 * Type chrome://tracing in the address bar
 * Load the generated JSON file
+
+
+
+## Model graph is not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?
+
+ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may fail some of the graph optimizations, like const folding, operator fusion and etc. Move initializers out of graph inputs if there is no need to override them, by either re-generating the model with latest exporter/converter or with the tool onnxruntime/tools/python/remove_initializer_from_input.py.
