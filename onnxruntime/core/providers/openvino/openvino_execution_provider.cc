@@ -858,10 +858,15 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   } else {  // unsupported_nodes_idx.empty()
     const auto ng_clusters = GetPartitionedClusters(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
 
-    const auto connected_clusters = GetConnectedClusters(graph_viewer, ng_clusters);
+    auto connected_clusters = GetConnectedClusters(graph_viewer, ng_clusters);
+    int no_of_clusters = 0;
 
     for (const auto& this_cluster : connected_clusters) {
 
+
+      if(info_.device_id_ == "MYRIAD" && no_of_clusters == 10){
+        continue;
+      }
       std::vector<std::string> cluster_inputs, const_inputs, cluster_outputs;
     //If subgraph only has Identity node, EyeLike or Dropout, OpenVINO EP doesn't support it.
       if(this_cluster.size() == 1){
@@ -870,6 +875,7 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
           continue;
       }
       GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_inputs, const_inputs, cluster_outputs);
+
       bool omit_subgraph = false;
       for(auto index : this_cluster){
         const auto& node = graph_viewer.GetNode(index);
@@ -891,6 +897,7 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
          ConstantFolding optimization in onnxruntime pre-computes the value.*/
      if (!cluster_inputs.empty() && cluster_inputs.size() > const_inputs.size()) {
         AppendClusterToSubGraph(this_cluster, cluster_inputs, cluster_outputs, result);
+        no_of_clusters++;
       }
     }
   }
