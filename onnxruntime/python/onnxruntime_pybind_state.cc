@@ -18,6 +18,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/random_seed.h"
 #include "core/framework/session_options.h"
 #include "core/framework/bfc_arena.h"
 #include "core/session/IOBinding.h"
@@ -351,6 +352,9 @@ void addGlobalMethods(py::module& m, const Environment& env) {
   m.def(
       "get_device", []() -> std::string { return BACKEND_DEVICE; },
       "Return the device used to compute the prediction (CPU, MKL, ...)");
+  m.def(
+      "seed", [](const int64_t seed) { utils::SetRandomSeed(seed); },
+      "Sets the seed used for random number generation in Onnxruntime.");
   m.def(
       "set_default_logger_severity", [&env](int severity) {
         ORT_ENFORCE(severity >= 0 && severity <= 4,
