@@ -397,7 +397,7 @@ template void reduce_matrix_rows<float, float>(
 template void reduce_matrix_rows<double, double>(
   const double* data, double* output, int m, int n);
 template void reduce_matrix_rows<int64_t, int64_t>(
-  const double* data, double* output, int m, int n);
+  const double* data, int64_t* output, int m, int n);
 
 }  // namespace cuda
 }  // namespace onnxruntime
