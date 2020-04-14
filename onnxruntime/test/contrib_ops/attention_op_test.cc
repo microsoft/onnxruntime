@@ -23,8 +23,7 @@ static void RunAttentionTest(
     bool is_unidirectional = false) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
 
-  // cuda has not implemented unidirectional.
-  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture) && !is_unidirectional;
+  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16;
 
   if (enable_cpu || enable_cuda) {
