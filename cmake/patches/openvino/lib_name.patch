@@ -11,7 +11,7 @@ index d733ff0e3..98fe09253 100644
 +    set_target_properties(ngraph PROPERTIES RUNTIME_OUTPUT_NAME "ovep_ngraph")
 +    set_target_properties(ngraph PROPERTIES ARCHIVE_OUTPUT_NAME "ovep_ngraph")
 +else()
-+    set_target_properties(ngraph PROPERTIES LIBRARY_OUTPUT_NAME "libovep_ngraph")
++    set_target_properties(ngraph PROPERTIES LIBRARY_OUTPUT_NAME "ovep_ngraph")
 +endif()
 +
  if(NGRAPH_JSON_ENABLE)
