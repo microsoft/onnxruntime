@@ -167,7 +167,7 @@ def get_optimization_options(args):
     if args.disable_skip_layer_norm:
         optimization_options.enable_skip_layer_norm = False
     if args.disable_embed_layer_norm:
-        optimization_options.disable_embed_layer_norm = False
+        optimization_options.enable_embed_layer_norm = False
     return optimization_options
 
 def optimize_model(input,
