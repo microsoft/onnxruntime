@@ -13,8 +13,6 @@ set(prebuilt_ONNX_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 set(ngraph_URL "https://github.com/NervanaSystems/ngraph.git")
 set(ngraph_branch "origin/rov.2020.2")
 
-message(INFO "manohar ========= ${ngraph_LIBRARIES}")
-
 # Libraries for python package.
 if (WIN32)
     #set(NGRAPH_STATIC_LIB ngraph.lib)
@@ -47,11 +45,10 @@ if (MSVC)
             PATCH_COMMAND ${NGRAPH_PATCH_DISCARD_COMMAND}
             COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/patches/openvino/ngraph_onnx.cmake ${ngraph_SRC}/cmake/external_onnx.cmake
             COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/openvino/ngraph_protobuf.patch
-            # COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/ngraph/dnnl_v1.patch
+            COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/openvino/lib_name.patch
             CMAKE_ARGS
                 -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                 -DNGRAPH_ONNX_IMPORT_ENABLE=TRUE
-                -DNGRAPH_LIB_VERSIONING_ENABLE=TRUE
                 -DNGRAPH_JSON_ENABLE=FALSE
                 -DNGRAPH_USE_SYSTEM_PROTOBUF=FALSE
                 -DNGRAPH_UNIT_TEST_ENABLE=FALSE
@@ -73,13 +70,9 @@ if (MSVC)
                 -Dprebuilt_ONNX_SOURCE_DIR=${prebuilt_ONNX_SOURCE_DIR}
             DEPENDS onnx
         )
-    add_library(ngraph SHARED IMPORTED)
-    set_property(TARGET ngraph PROPERTY IMPORTED_LOCATION ${ngraph_LIBRARIES}/${NGRAPH_SHARED_LIB})
-    set_property(TARGET ngraph PROPERTY IMPORTED_IMPLIB ${ngraph_LIBRARIES}/ngraph.lib)
-
-                #-DNGRAPH_STATIC_LIB_ENABLE=TRUE
-#    add_library(ngraph STATIC IMPORTED)
-#    set_property(TARGET ngraph PROPERTY IMPORTED_LOCATION ${ngraph_LIBRARIES}/ngraph.lib)
+    add_library(ovep_ngraph SHARED IMPORTED)
+    set_property(TARGET ovep_ngraph PROPERTY IMPORTED_LOCATION ${ngraph_LIBRARIES}/${NGRAPH_SHARED_LIB})
+    set_property(TARGET ovep_ngraph PROPERTY IMPORTED_IMPLIB ${ngraph_LIBRARIES}/ovep_ngraph.lib)
 
 else()
     ExternalProject_Add(project_ngraph
