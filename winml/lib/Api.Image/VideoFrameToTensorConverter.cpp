@@ -537,8 +537,8 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToCPUTensor(
   // get the byte buffer out of a softwarebitmap
   BYTE* pData = nullptr;
   UINT32 bufferSize = 0;
-  winrt::Windows::Graphics::Imaging::BitmapBuffer spBitmapBuffer(softwareBitmap.LockBuffer(winrt::Windows::Graphics::Imaging::BitmapBufferAccessMode::Read));
-  winrt::Windows::Foundation::IMemoryBufferReference reference = spBitmapBuffer.CreateReference();
+  wgi::BitmapBuffer spBitmapBuffer(softwareBitmap.LockBuffer(wgi::BitmapBufferAccessMode::Read));
+  wf::IMemoryBufferReference reference = spBitmapBuffer.CreateReference();
   auto spByteAccess = reference.as<Windows::Foundation::IMemoryBufferByteAccess>();
   WINML_THROW_IF_FAILED(spByteAccess->GetBuffer(&pData, &bufferSize));
 

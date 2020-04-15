@@ -10,7 +10,7 @@ using namespace Microsoft::WRL;
 
 using namespace _winml;
 
-void ImageConverter::SyncD3D11ToD3D12(_In_ _winml::D3DDeviceCache& device_cache, _In_ ID3D11Texture2D* pD3D11Texture) {
+void ImageConverter::SyncD3D11ToD3D12(_In_ D3DDeviceCache& device_cache, _In_ ID3D11Texture2D* pD3D11Texture) {
   assert(pD3D11Texture != nullptr);
 
   ComPtr<ID3D11Device> spTextureDevice;
@@ -26,7 +26,7 @@ void ImageConverter::SyncD3D11ToD3D12(_In_ _winml::D3DDeviceCache& device_cache,
   }
 }
 
-void ImageConverter::SyncD3D12ToD3D11(_In_ _winml::D3DDeviceCache& device_cache, _In_ ID3D11Texture2D* spTexture) {
+void ImageConverter::SyncD3D12ToD3D11(_In_ D3DDeviceCache& device_cache, _In_ ID3D11Texture2D* spTexture) {
   assert(spTexture != nullptr);
 
   ComPtr<ID3D11Device> spTextureDevice;
@@ -42,7 +42,7 @@ void ImageConverter::SyncD3D12ToD3D11(_In_ _winml::D3DDeviceCache& device_cache,
   }
 }
 
-ComPtr<ID3D11Fence> ImageConverter::FetchOrCreateFenceOnDevice(_In_ _winml::D3DDeviceCache& device_cache, _In_ ID3D11Device* pD3D11Device) {
+ComPtr<ID3D11Fence> ImageConverter::FetchOrCreateFenceOnDevice(_In_ D3DDeviceCache& device_cache, _In_ ID3D11Device* pD3D11Device) {
   assert(pD3D11Device != nullptr);
 
   ComPtr<ID3D11Fence> fence;
@@ -61,7 +61,7 @@ ComPtr<ID3D11Fence> ImageConverter::FetchOrCreateFenceOnDevice(_In_ _winml::D3DD
   return fence;
 }
 
-void ImageConverter::ResetCommandList(_In_ _winml::D3DDeviceCache& device_cache) {
+void ImageConverter::ResetCommandList(_In_ D3DDeviceCache& device_cache) {
   if (!command_list_) {
     assert(command_allocator_ == nullptr);
 

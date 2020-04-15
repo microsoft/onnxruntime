@@ -12,8 +12,6 @@
 #include "CommonDeviceHelpers.h"
 #include "LearningModelDevice.h"
 
-using namespace _winml;
-
 HRESULT IsWarpAdapter(IDXGIAdapter1* pAdapter, bool* isWarpAdapter) {
   DXGI_ADAPTER_DESC1 pDesc;
   RETURN_IF_FAILED(pAdapter->GetDesc1(&pDesc));

@@ -26,7 +26,7 @@ using namespace wfc;
 using namespace wm;
 using namespace wgi;
 using namespace ws;
-using namespace ws::Streams;
+using namespace wss;
 
 static void CustomOpsScenarioTestsClassSetup()
 {

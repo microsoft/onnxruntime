@@ -15,7 +15,7 @@ using namespace wfc;
 using namespace wgi;
 using namespace wm;
 using namespace ws;
-using namespace ws::Streams;
+using namespace wss;
 using namespace winml;
 
 namespace WinML::Engine::Test{

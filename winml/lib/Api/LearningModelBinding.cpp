@@ -8,10 +8,7 @@
 #include "LearningModelBinding.h"
 #include "LearningModelSession.h"
 #include "TelemetryEvent.h"
-#include <onnxruntime_c_api.h>
 #include "LearningModel.h"
-
-using namespace _winml;
 
 namespace WINMLP {
 LearningModelBinding::~LearningModelBinding()
@@ -43,15 +40,15 @@ static winml::ILearningModelFeatureDescriptor FindValidBinding(
   return nullptr;
 }
 
-using NullableBindingPort = std::optional<std::pair<winml::ILearningModelFeatureDescriptor, BindingType>>;
+using NullableBindingPort = std::optional<std::pair<winml::ILearningModelFeatureDescriptor, _winml::BindingType>>;
 
 static NullableBindingPort FindValidBinding(
     winml::LearningModel model,
     const std::wstring& name) {
   if (auto descriptor = FindValidBinding(model.InputFeatures(), name)) {
-    return std::make_pair(descriptor, BindingType::kInput);
+    return std::make_pair(descriptor, _winml::BindingType::kInput);
   } else if (auto output_descriptor = FindValidBinding(model.OutputFeatures(), name)) {
-    return std::make_pair(output_descriptor, BindingType::kOutput);
+    return std::make_pair(output_descriptor, _winml::BindingType::kOutput);
   }
 
   return {};
@@ -63,7 +60,7 @@ void LearningModelBinding::CacheProvider(
   m_providers[name] = providerInfo;
 }
 
-std::tuple<std::string, winrt::com_ptr<_winml::IValue>, BindingType> LearningModelBinding::CreateBinding(
+std::tuple<std::string, winrt::com_ptr<_winml::IValue>, _winml::BindingType> LearningModelBinding::CreateBinding(
     const std::string& name,
     const wf::IInspectable& inspectable,
     wfc::IPropertySet const& properties) {
@@ -93,7 +90,7 @@ std::tuple<std::string, winrt::com_ptr<_winml::IValue>, BindingType> LearningMod
   _winml::VerifyFeatureValueCompatibleWithDescriptor(featureValue, descriptor);
 
   // Create the Binding Context to pass to the feature value
-  BindingContext context{
+  _winml::BindingContext context{
       bindingType,
       m_session,
       descriptor,
@@ -102,7 +99,7 @@ std::tuple<std::string, winrt::com_ptr<_winml::IValue>, BindingType> LearningMod
   };
 
   // Get the bound tensor
-  winrt::com_ptr<IValue> value;
+  winrt::com_ptr<_winml::IValue> value;
 
   // Get the native interface for the given bind value
   auto spLotusValueProvider = featureValue.as<_winml::ILotusValueProviderPrivate>();
@@ -118,7 +115,7 @@ std::tuple<std::string, winrt::com_ptr<_winml::IValue>, BindingType> LearningMod
   // This enables the chaining scenario.
   auto spDevice = m_session.Device().as<LearningModelDevice>();
   auto isGpuSession = !spDevice->IsCpuDevice();
-  auto spTensor = featureValue.try_as<ITensor>();
+  auto spTensor = featureValue.try_as<winml::ITensor>();
   auto isTensorWithShape = spTensor != nullptr && spTensor.Shape().Size() != 0;
   auto shouldAlwaysTensorize = isTensorWithShape && isGpuSession;
 
@@ -131,7 +128,7 @@ std::tuple<std::string, winrt::com_ptr<_winml::IValue>, BindingType> LearningMod
   } else {
     WINML_THROW_HR_IF_TRUE_MSG(
         WINML_ERR_INVALID_BINDING,
-        isPlaceHolder && bindingType == BindingType::kInput,
+        isPlaceHolder && bindingType == _winml::BindingType::kInput,
         "The model variable %s is an input, but has no associated resources to bind.",
         name.c_str());
 
@@ -165,16 +162,16 @@ void LearningModelBinding::Bind(
 
   _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding);
 
-  BindingType binding_type;
+  _winml::BindingType binding_type;
   std::string binding_name;
   winrt::com_ptr<_winml::IValue> binding_value = nullptr;
   auto featureName = _winml::Strings::UTF8FromHString(name);
   std::tie(binding_name, binding_value, binding_type) = CreateBinding(featureName, value, properties);
   switch (binding_type) {
-    case BindingType::kInput:
+    case _winml::BindingType::kInput:
       WINML_THROW_IF_FAILED(BindInput(binding_name, binding_value));
       break;
-    case BindingType::kOutput:
+    case _winml::BindingType::kOutput:
       WINML_THROW_IF_FAILED(BindOutput(binding_name, binding_value));
       break;
     default:
@@ -243,15 +240,14 @@ void LearningModelBinding::Split(
 }
 
 ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
-    const winrt::com_ptr<IValue> value,
+    const winrt::com_ptr<_winml::IValue> value,
     ILearningModelFeatureDescriptor& descriptor) {
   bool out;
   if (SUCCEEDED(value->IsTensor(&out)) && out) {
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::Float, &out)) && out) {
       if (descriptor.Kind() == LearningModelFeatureKind::Image) {
-        using namespace Windows::Graphics::Imaging;
         // TODO: this format for unbound output needs more discussion
-        BitmapPixelFormat format = descriptor.as<ImageFeatureDescriptor>()->BitmapPixelFormat();
+        wgi::BitmapPixelFormat format = descriptor.as<ImageFeatureDescriptor>()->BitmapPixelFormat();
         std::vector<int64_t> shape;
         value->GetTensorShape(shape);
         uint32_t width = static_cast<uint32_t>(shape[3]);
@@ -401,12 +397,12 @@ wf::IInspectable LearningModelBinding::CreateUnboundOutput(
   auto bindingType = bindingPort->second;
   WINML_THROW_HR_IF_FALSE_MSG(
       E_UNEXPECTED,
-      bindingType == BindingType::kOutput,
+      bindingType == _winml::BindingType::kOutput,
       "The engine produced an unexpected evaluation output %s, that is not a model variable output.",
       name.c_str());
 
   // Create a binding context
-  BindingContext context{
+  _winml::BindingContext context{
       bindingType,
       m_session,
       descriptor,
@@ -487,7 +483,7 @@ STDMETHODIMP LearningModelBinding::Bind(
     CWinMLAutoLock lock(!device->IsCpuDevice() ? session->GetDMLEPLock() : nullptr);
     
     _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding);
-    BindingType binding_type;
+    _winml::BindingType binding_type;
     std::string binding_name;
     winrt::com_ptr<_winml::IValue> binding_value;
 
@@ -499,10 +495,10 @@ STDMETHODIMP LearningModelBinding::Bind(
     auto featureName = _winml::Strings::UTF8FromUnicode(name, cchName);
     std::tie(binding_name, binding_value, binding_type) = CreateBinding(featureName, to, nullptr);
     switch (binding_type) {
-      case BindingType::kInput:
+      case _winml::BindingType::kInput:
         WINML_THROW_IF_FAILED(BindInput(binding_name, binding_value));
         break;
-      case BindingType::kOutput:
+      case _winml::BindingType::kOutput:
         WINML_THROW_IF_FAILED(BindOutput(binding_name, binding_value));
         break;
       default:
@@ -612,7 +608,7 @@ void LearningModelBinding::BindUnboundOutputs() {
   for (const auto& unbound_output : unbound_output_names) {
     auto engine = m_session.as<LearningModelSession>()->GetEngine();
 
-    winrt::com_ptr<IValue> value;
+    winrt::com_ptr<_winml::IValue> value;
     WINML_THROW_IF_FAILED(engine->CreateNullValue(value.put()));
     WINML_THROW_IF_FAILED(BindOutput(unbound_output, value));
   }

@@ -11,7 +11,7 @@ using namespace wfc;
 using namespace wgi;
 using namespace wm;
 using namespace ws;
-using namespace ws::Streams;
+using namespace wss;
 
 static void LearningModelAPITestsClassSetup() {
   init_apartment();

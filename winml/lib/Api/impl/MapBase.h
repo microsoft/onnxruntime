@@ -40,8 +40,8 @@ struct MapBase : winrt::implements<
           std::is_same<TValue, winrt::hstring>::value,
       "Map values must be int64_t, double, float, or winrt::hstring!");
 
-  using ABIMap = ::winrt::Windows::Foundation::Collections::IMap<TKey, TValue>;
-  using ABIMapView = ::winrt::Windows::Foundation::Collections::IMapView<TKey, TValue>;
+  using ABIMap = wfc::IMap<TKey, TValue>;
+  using ABIMapView = wfc::IMapView<TKey, TValue>;
 
   MapBase(ABIMap const& data) : data_(data) {}
 
@@ -116,7 +116,7 @@ struct MapBase : winrt::implements<
 
   STDMETHOD(AbiRepresentation)
   (
-    winrt::Windows::Foundation::IInspectable& abiRepresentation) {
+    wf::IInspectable& abiRepresentation) {
     data_.as(abiRepresentation);
     return S_OK;
   }

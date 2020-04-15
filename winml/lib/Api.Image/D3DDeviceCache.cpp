@@ -50,7 +50,7 @@ D3DDeviceCache::D3DDeviceCache(winml::LearningModelDeviceKind const& deviceKind)
   }
 
   DXGI_GPU_PREFERENCE preference;
-  WINML_THROW_IF_FAILED(_winml::GetGPUPreference(deviceKind, &preference));
+  WINML_THROW_IF_FAILED(GetGPUPreference(deviceKind, &preference));
 
   CommonDeviceHelpers::AdapterEnumerationSupport support;
   WINML_THROW_IF_FAILED(CommonDeviceHelpers::GetAdapterEnumerationSupport(&support));
@@ -58,13 +58,13 @@ D3DDeviceCache::D3DDeviceCache(winml::LearningModelDeviceKind const& deviceKind)
   const char errStr[] = "No hardware adapters available";
   if (support.has_dxgi) {
     winrt::com_ptr<IDXGIAdapter1> spAdapter;
-    WINML_THROW_IF_FAILED_MSG(_winml::GetDXGIHardwareAdapterWithPreference(preference, spAdapter.put()), errStr);
+    WINML_THROW_IF_FAILED_MSG(GetDXGIHardwareAdapterWithPreference(preference, spAdapter.put()), errStr);
     WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
   }
 #ifdef ENABLE_DXCORE
   if (support.has_dxgi == false) {
     com_ptr<IDXCoreAdapter> spAdapter;
-    WINML_THROW_IF_FAILED_MSG(_winml::GetDXCoreHardwareAdapterWithPreference(preference, spAdapter.put()), errStr);
+    WINML_THROW_IF_FAILED_MSG(GetDXCoreHardwareAdapterWithPreference(preference, spAdapter.put()), errStr);
     WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
   }
 #endif
@@ -189,7 +189,7 @@ void D3DDeviceCache::EnsureD3D11FromD3D12() {
   winrt::com_ptr<IDXGIDevice> spDXGIDevice;
 
   // call our SEH version (for delay loading)
-  WINML_THROW_IF_FAILED(_winml::CreateD3D11On12Device(device_.get(), device_11_.put()));
+  WINML_THROW_IF_FAILED(CreateD3D11On12Device(device_.get(), device_11_.put()));
   winrt::com_ptr<ID3D11DeviceContext> spContext;
   device_11_->GetImmediateContext(spContext.put());
   spContext.as(device_context11_);

@@ -5,8 +5,6 @@
 
 #include "SequenceFeatureDescriptor.h"
 
-using namespace _winml;
-
 namespace WINMLP {
 SequenceFeatureDescriptor::SequenceFeatureDescriptor(
     const char* name,

@@ -183,7 +183,7 @@ inline winml::ILearningModelFeatureValue CreateTensorValueFromInspectable<winmlp
 template <>
 inline winml::ILearningModelFeatureValue CreateTensorValueFromInspectable<winmlp::TensorFloat16Bit, float>(
     _winml::BindingType bindingType,
-    const winrt::Windows::Foundation::IInspectable& inspectable,
+    const wf::IInspectable& inspectable,
     const winml::ITensorFeatureDescriptor& descriptor) {
 
   if (descriptor.TensorKind() == winml::TensorKind::Float16) {

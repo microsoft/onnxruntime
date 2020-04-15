@@ -268,9 +268,9 @@ void TensorToVideoFrameConverter::SoftwareTensorToVideoFrame(
     _In_ winml::LearningModelSession& session,
     _In_ BYTE* pCPUTensorToConvert,
     _In_ ImageTensorDescription tensorDesc,
-    _Inout_ winrt::Windows::Media::VideoFrame& pDestVideoFrame) {
+    _Inout_ wm::VideoFrame& pDestVideoFrame) {
   CWinMLAutoLock lock(&lock_);
-  winrt::Windows::Media::IVideoFrame spTensorFrame;
+  wm::IVideoFrame spTensorFrame;
   UINT32 outputWidth = 0;
   UINT32 outputHeight = 0;
 
@@ -592,8 +592,8 @@ void TensorToVideoFrameConverter::ConvertCPUTensorToSoftwareBitmap(
   BYTE* pData = nullptr;
   UINT32 uiCapacity = 0;
 
-  winrt::Windows::Graphics::Imaging::BitmapBuffer spBitmapBuffer(softwareBitmap.LockBuffer(winrt::Windows::Graphics::Imaging::BitmapBufferAccessMode::Write));
-  winrt::Windows::Foundation::IMemoryBufferReference reference = spBitmapBuffer.CreateReference();
+  wgi::BitmapBuffer spBitmapBuffer(softwareBitmap.LockBuffer(wgi::BitmapBufferAccessMode::Write));
+  wf::IMemoryBufferReference reference = spBitmapBuffer.CreateReference();
   auto spByteAccess = reference.as<Windows::Foundation::IMemoryBufferByteAccess>();
   WINML_THROW_IF_FAILED(spByteAccess->GetBuffer(&pData, &uiCapacity));
 

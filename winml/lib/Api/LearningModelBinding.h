@@ -12,7 +12,7 @@ namespace WINMLP {
 
 struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearningModelBindingNative> {
   struct ProviderInfo {
-    Windows::Foundation::IInspectable CallerSpecifiedFeatureValue = nullptr;
+    wf::IInspectable CallerSpecifiedFeatureValue = nullptr;
     winrt::com_ptr<_winml::ILotusValueProviderPrivate> Provider = nullptr;
     _winml::BindingContext Context = {};
   };
@@ -41,9 +41,9 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   std::tuple<std::string, winrt::com_ptr<_winml::IValue>, _winml::BindingType> CreateBinding(
       const std::string& name,
       const wf::IInspectable& value,
-      Windows::Foundation::Collections::IPropertySet const& properties);
+      wfc::IPropertySet const& properties);
 
-  std::unordered_map<std::string, Windows::Foundation::IInspectable> UpdateProviders();
+  std::unordered_map<std::string, wf::IInspectable> UpdateProviders();
 
   const winml::LearningModelSession& GetSession() { return m_session; }
 

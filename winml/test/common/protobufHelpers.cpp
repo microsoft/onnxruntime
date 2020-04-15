@@ -18,7 +18,7 @@
 
 #include <fstream>
 
-using namespace ws::Streams;
+using namespace wss;
 using namespace wfc;
 using namespace winml;
 

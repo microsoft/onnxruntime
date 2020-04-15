@@ -26,12 +26,12 @@ static LUID GetLUIDFromDirect3DSurface(const wgdx::Direct3D11::IDirect3DSurface&
 }
 
 static HRESULT GetVideoFrameInfo(
-    _In_ const winrt::Windows::Media::IVideoFrame& inputVideoFrame,
+    _In_ const wm::IVideoFrame& inputVideoFrame,
     _Out_ DWORD& format,
     _Out_ int& width,
     _Out_ int& height,
     _Out_ LUID& luid) {
-  winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DSurface spInputSurface = inputVideoFrame.Direct3DSurface();
+  wgdx::Direct3D11::IDirect3DSurface spInputSurface = inputVideoFrame.Direct3DSurface();
   if (spInputSurface != nullptr) {
     wgdx::Direct3D11::Direct3DSurfaceDescription description;
     description = spInputSurface.Description();
@@ -40,7 +40,7 @@ static HRESULT GetVideoFrameInfo(
     height = description.Height;
     luid = GetLUIDFromDirect3DSurface(spInputSurface);
   } else {
-    winrt::Windows::Graphics::Imaging::SoftwareBitmap spInputSoftwareBitmap = inputVideoFrame.SoftwareBitmap();
+    wgi::SoftwareBitmap spInputSoftwareBitmap = inputVideoFrame.SoftwareBitmap();
     if (spInputSoftwareBitmap != nullptr) {
       format = (DWORD)spInputSoftwareBitmap.BitmapPixelFormat();
       height = spInputSoftwareBitmap.PixelHeight();
@@ -58,15 +58,15 @@ void _winmli::ConvertVideoFrameToVideoFrame(
     _In_ const wgi::BitmapBounds& inputBounds,
     _In_ UINT32 outputWidth,
     _In_ UINT32 outputHeight,
-    _Inout_ winrt::Windows::Media::VideoFrame& pOutputVideoFrame) {
+    _Inout_ wm::VideoFrame& pOutputVideoFrame) {
   wgi::BitmapBounds outputBounds = {
       0,
       0,
       outputWidth,
       outputHeight};
 
-  winrt::Windows::Graphics::Imaging::SoftwareBitmap spInputSoftwareBitmap = inputVideoFrame.SoftwareBitmap();
-  winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DSurface spInputDirect3DSurface = inputVideoFrame.Direct3DSurface();
+  wgi::SoftwareBitmap spInputSoftwareBitmap = inputVideoFrame.SoftwareBitmap();
+  wgdx::Direct3D11::IDirect3DSurface spInputDirect3DSurface = inputVideoFrame.Direct3DSurface();
 
   // only one of softwarebitmap or direct3Dsurface should be non-null
   if ((spInputSoftwareBitmap == nullptr && spInputDirect3DSurface == nullptr) || (spInputSoftwareBitmap != nullptr && spInputDirect3DSurface != nullptr)) {

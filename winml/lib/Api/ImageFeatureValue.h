@@ -16,11 +16,11 @@ struct ImageFeatureValue : ImageFeatureValueT<ImageFeatureValue, _winml::ILotusV
 
   ImageFeatureValue() = delete;
   ImageFeatureValue(Windows::Media::VideoFrame const& image);
-  ImageFeatureValue(winrt::Windows::Foundation::Collections::IVector<Windows::Media::VideoFrame> const& images);
-  ImageFeatureValue(winrt::Windows::Foundation::Collections::IVectorView<Windows::Media::VideoFrame> const& images);
+  ImageFeatureValue(wfc::IVector<Windows::Media::VideoFrame> const& images);
+  ImageFeatureValue(wfc::IVectorView<Windows::Media::VideoFrame> const& images);
 
   Windows::Media::VideoFrame VideoFrame();
-  winrt::Windows::Foundation::Collections::IIterable<Windows::Media::VideoFrame> VideoFrames();
+  wfc::IIterable<Windows::Media::VideoFrame> VideoFrames();
   winml::LearningModelFeatureKind Kind();
 
   static winml::ImageFeatureValue ImageFeatureValue::Create(
@@ -40,7 +40,7 @@ struct ImageFeatureValue : ImageFeatureValueT<ImageFeatureValue, _winml::ILotusV
   STDMETHOD(UpdateSourceResourceData)
   (_winml::BindingContext& context, _winml::IValue* value);
   STDMETHOD(AbiRepresentation)
-  (winrt::Windows::Foundation::IInspectable& abiRepresentation);
+  (wf::IInspectable& abiRepresentation);
 
   std::vector<uint32_t> Widths() { return m_widths; }
   std::vector<uint32_t> Heights() { return m_heights; }
