@@ -29,11 +29,12 @@ function(AddTest)
   add_executable(${_UT_TARGET} ${_UT_SOURCES})
 
   source_group(TREE ${REPO_ROOT} FILES ${_UT_SOURCES})
+
   if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     #TODO: fix the warnings, they are dangerous
     target_compile_options(${_UT_TARGET} PRIVATE "/wd4244")
   endif()
-  #source_group(TREE ${TEST_SRC_DIR} FILES ${_UT_SOURCES})
+
   set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest")
 
   if (_UT_DEPENDS)
