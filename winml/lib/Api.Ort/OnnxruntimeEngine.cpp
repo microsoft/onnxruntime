@@ -493,19 +493,6 @@ HRESULT OnnxruntimeEngine::FlushContext() {
   return S_OK;
 }
 
-HRESULT OnnxruntimeEngine::TrimUploadHeap() {
-  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
-
-  OrtExecutionProvider* ort_provider;
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session_.get(), 0, &ort_provider),
-                          engine_factory_->UseOrtApi());
-
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->DmlExecutionProviderTrimUploadHeap(ort_provider),
-                          engine_factory_->UseOrtApi());
-
-  return S_OK;
-}
-
 HRESULT OnnxruntimeEngine::ReleaseCompletedReferences() {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 

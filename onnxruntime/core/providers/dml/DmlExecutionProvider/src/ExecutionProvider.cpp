@@ -532,17 +532,6 @@ namespace Dml
         return onnxruntime::common::Status::OK();
     }
 
-    Status ExecutionProviderImpl::WaitForGpuCompletion()
-    {
-        assert(!m_closed);
-
-        Flush();
-        m_context->GetCurrentCompletionEvent().WaitForSignal();
-        m_context->ReleaseCompletedReferences();
-
-        return Status::OK();
-    }
-
     void __stdcall ExecutionProviderImpl::Flush() const
     {
         assert(!m_closed);
@@ -557,11 +546,6 @@ namespace Dml
     void ExecutionProviderImpl::ReleaseCompletedReferences()
     {
          m_context->ReleaseCompletedReferences();
-    }
-    
-    void ExecutionProviderImpl::TrimUploadHeap()
-    {
-        m_uploadHeap->Trim();
     }
 
     void ExecutionProviderImpl::QueueReference(IUnknown* object) 
@@ -701,6 +685,20 @@ namespace Dml
         return m_cpuOutputAllocator;
     }
 
+    
+    onnxruntime::common::Status ExecutionProviderImpl::OnSessionInitializationEnd() 
+    {
+        // Flush and trim resources, including staging memory used to upload weights.
+        // This reduces memory usage immediately after session creation, and avoids
+        // performance impact of deallocation during first evaluation.
+        Flush();
+        m_context->GetCurrentCompletionEvent().WaitForSignal();
+        m_context->ReleaseCompletedReferences();
+        m_uploadHeap->Trim();
+
+        return onnxruntime::common::Status::OK();
+    }
+
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
@@ -731,18 +729,6 @@ namespace Dml
     {
         ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
         dmlexecutionprovider->ReleaseCompletedReferences();
-    }
-
-    void TrimUploadHeap(onnxruntime::IExecutionProvider * provider)
-    {
-        ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
-        dmlexecutionprovider->TrimUploadHeap();
-    }
-
-    void WaitForGpuCompletion(onnxruntime::IExecutionProvider * provider)
-    {
-        ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
-        dmlexecutionprovider->WaitForGpuCompletion();
     }
 
     onnxruntime::common::Status CopyTensor(

@@ -59,7 +59,6 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     // Dml methods (TODO need to figure out how these need to move to session somehow...)
     &winmla::DmlExecutionProviderSetDefaultRoundingMode,
     &winmla::DmlExecutionProviderFlushContext,
-    &winmla::DmlExecutionProviderTrimUploadHeap,
     &winmla::DmlExecutionProviderReleaseCompletedReferences,
     &winmla::DmlCreateGPUAllocationFromD3DResource,
     &winmla::DmlFreeGPUAllocation,

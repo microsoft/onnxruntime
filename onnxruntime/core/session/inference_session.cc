@@ -929,6 +929,14 @@ common::Status InferenceSession::Initialize() {
   if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "session_initialization", tp);
   }
+
+  if (status.IsOK()) {
+    auto retval = status;
+    for (auto& xp : execution_providers_) {
+      auto status = xp->OnSessionInitializationEnd();
+      ORT_CHECK_AND_SET_RETVAL(status);
+    }
+  }
   return status;
 }
 

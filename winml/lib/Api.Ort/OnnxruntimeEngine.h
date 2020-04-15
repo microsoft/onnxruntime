@@ -76,8 +76,6 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   () override;
   STDMETHOD(FlushContext)
   () override;
-  STDMETHOD(TrimUploadHeap)
-  () override;
   STDMETHOD(ReleaseCompletedReferences)
   () override;
   STDMETHOD(Sync)
