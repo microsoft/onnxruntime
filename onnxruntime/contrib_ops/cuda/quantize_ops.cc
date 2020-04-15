@@ -20,8 +20,7 @@ using namespace onnxruntime::cuda;
       kCudaExecutionProvider,                                      \
       KernelDefBuilder()                                           \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<U>())  \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>())  \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<U>()), \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
       QuantizeLinear<T, U>);
 
 REGISTER_KERNEL_TYPED_QL(int8_t, MLFloat16)
