@@ -39,7 +39,6 @@
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/test_environment.h"
-#include "test/util/include/test_random_seed.h"
 
 std::unique_ptr<Ort::Env> ort_env;
 
@@ -48,9 +47,6 @@ int main(int argc, char** argv) {
   try {
     ::testing::InitGoogleTest(&argc, argv);
     ort_env.reset(new Ort::Env(ORT_LOGGING_LEVEL_WARNING, "Default"));
-    // std::cout << "ORT random seed: " << onnxruntime::test::GetTestRandomSeed() << "\n";
-    // ::testing::AddGlobalTestEnvironment(
-    //     new onnxruntime::test::TestRandomSeedSetterEnvironment{});
     status = RUN_ALL_TESTS();
   } catch (const std::exception& ex) {
     std::cerr << ex.what();

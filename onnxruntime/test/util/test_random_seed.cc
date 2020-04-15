@@ -13,13 +13,7 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
-RandomSeedType g_test_random_seed{};
-
-RandomSeedType LoadRandomSeed(const optional<RandomSeedType>& initial_seed) {
-  if (initial_seed.has_value()) {
-    return initial_seed.value();
-  }
-
+RandomSeedType LoadRandomSeed() {
   // parse from environment variable
   {
     const std::string value_str = Env::Default().GetEnvironmentVar(
@@ -44,15 +38,8 @@ RandomSeedType LoadRandomSeed(const optional<RandomSeedType>& initial_seed) {
 }
 }  // namespace
 
-void TestRandomSeedSetterEnvironment::SetUp() {
-  const auto value = LoadRandomSeed(initial_seed_);
-  std::clog << "Setting test random seed value: " << value << std::endl;
-  g_test_random_seed = value;
-}
-
 RandomSeedType GetTestRandomSeed() {
-  // return g_test_random_seed;
-  static const RandomSeedType test_random_seed = LoadRandomSeed(optional<RandomSeedType>{});
+  static const RandomSeedType test_random_seed = LoadRandomSeed();
   return test_random_seed;
 }
 
