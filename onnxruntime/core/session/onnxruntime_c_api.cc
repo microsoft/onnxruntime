@@ -1515,7 +1515,8 @@ static constexpr OrtApi ort_api_1_to_3 = {
     &OrtApis::CreateEnvWithGlobalThreadPools,
     &OrtApis::DisablePerSessionThreads,
     &OrtApis::CreateThreadingOptions,
-    &OrtApis::ReleaseThreadingOptions};
+    &OrtApis::ReleaseThreadingOptions,
+    &OrtApis::AddFreeDimensionOverrideByName};
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
 // If this assert hits, read the above 'Rules on how to add a new Ort API version'

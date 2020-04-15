@@ -10,9 +10,17 @@
 #include "core/util/thread_utils.h"
 
 namespace onnxruntime {
+
+enum class FreeDimensionOverrideType {
+  Invalid = 0,
+  Denotation = 1,
+  Name = 2
+};
+
 struct FreeDimensionOverride {
-  std::string dimension_denotation;
-  int64_t dimension_override;
+  std::string dim_identifier;
+  FreeDimensionOverrideType dim_identifer_type;
+  int64_t dim_value;
 };
 
 /**
@@ -62,8 +70,8 @@ struct SessionOptions {
   // configuring this makes sense only when you're using parallel executor
   OrtThreadPoolParams inter_op_param;
 
-  // For models with free input dimensions (most commonly batch size), specifies a set of values to override those
-  // free dimensions with, keyed by dimension denotation.
+  // For models with symbolic input dimensions (most commonly batch size), specifies a set of values to override those
+  // symbolic dimensions with, keyed by dimension parameters.
   std::vector<FreeDimensionOverride> free_dimension_overrides;
 
   // By default the session uses its own set of threadpools, unless this is set to false.
