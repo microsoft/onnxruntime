@@ -10,7 +10,6 @@ import sys
 import argparse
 
 
-import onnxruntime as rt
 import onnxruntime.capi.onnxruntime_pybind11_state as rtpy 
 from onnxruntime.capi.onnxruntime_pybind11_state import opkernel
 from onnxruntime.capi.onnxruntime_pybind11_state import schemadef 
