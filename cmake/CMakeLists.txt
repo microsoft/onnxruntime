@@ -215,6 +215,9 @@ if (MSVC)
   #Always enable exception handling, even for Windows ARM
   string(APPEND CMAKE_CXX_FLAGS " /EHsc")
   string(APPEND CMAKE_C_FLAGS " /EHsc")
+  
+  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /bigobj")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
   if(onnxruntime_USE_AVX)
     string(APPEND CMAKE_CXX_FLAGS " /arch:AVX")
     string(APPEND CMAKE_C_FLAGS " /arch:AVX")
