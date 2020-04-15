@@ -19,7 +19,7 @@
 namespace onnxruntime {
 namespace test {
 
-#ifndef NDEBUG
+#ifdef NDEBUG
 using ONNX_NAMESPACE::MakeAttribute;
 using training::OpDef;
 
