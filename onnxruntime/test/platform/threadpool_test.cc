@@ -115,8 +115,10 @@ TEST(ThreadPoolTest, TestStackSize) {
   ULONG_PTR low_limit, high_limit;
   bool has_thread_limit_info = false;
   tp->Schedule([&]() {
-    FnGetCurrentThreadStackLimits GetTS = (FnGetCurrentThreadStackLimits)GetProcAddress(
-        GetModuleHandle(TEXT("kernel32.dll")), "GetCurrentThreadStackLimits");
+    HMODULE kernel32_module = GetModuleHandle(TEXT("kernel32.dll"));
+    assert(kernel32_module != nullptr);
+    FnGetCurrentThreadStackLimits GetTS =
+        (FnGetCurrentThreadStackLimits)GetProcAddress(kernel32_module, "GetCurrentThreadStackLimits");
     if (GetTS != nullptr) {
       GetTS(&low_limit, &high_limit);
       has_thread_limit_info = true;

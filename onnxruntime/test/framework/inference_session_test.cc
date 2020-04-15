@@ -44,11 +44,17 @@
 using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
-
+namespace {
+struct KernelRegistryAndStatus {
+  std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
+  Status st;
+};
+}  // namespace
 namespace onnxruntime {
 class FuseAdd : public OpKernel {
  public:
-  FuseAdd(const OpKernelInfo& info) : OpKernel(info) {}
+  explicit FuseAdd(const OpKernelInfo& info) : OpKernel(info) {
+  }
 
   Status Compute(OpKernelContext* context) const override {
     auto X = context->Input<Tensor>(0);
@@ -62,8 +68,8 @@ class FuseAdd : public OpKernel {
     return Status::OK();
   }
 };
-std::string kFuseTest = "FuseTest";
-std::string kFuseExecutionProvider = "FuseExecutionProvider";
+constexpr const char* kFuseTest = "FuseTest";
+constexpr const char* kFuseExecutionProvider = "FuseExecutionProvider";
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kFuseExecutionProvider, kFuseTest, 1, FuseAdd);
 ONNX_OPERATOR_KERNEL_EX(FuseAdd,
                         kFuseTest,
@@ -72,22 +78,27 @@ ONNX_OPERATOR_KERNEL_EX(FuseAdd,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         FuseAdd);
 
-void RegisterOperatorKernels(KernelRegistry& kernel_registry) {
-  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kFuseExecutionProvider, kFuseTest, 1, FuseAdd)>());
+Status RegisterOperatorKernels(KernelRegistry& kernel_registry) {
+  return kernel_registry.Register(
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kFuseExecutionProvider, kFuseTest, 1, FuseAdd)>());
 }
 
-std::shared_ptr<KernelRegistry> GetFusedKernelRegistry() {
-  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  RegisterOperatorKernels(*kernel_registry);
-  return kernel_registry;
+KernelRegistryAndStatus GetFusedKernelRegistry() {
+  KernelRegistryAndStatus ret;
+  ret.st = RegisterOperatorKernels(*ret.kernel_registry);
+  return ret;
 }
 
 class FuseExecutionProvider : public IExecutionProvider {
  public:
   explicit FuseExecutionProvider() : IExecutionProvider{kFuseExecutionProvider} {
-    DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault,
-                                                 [](int) { return onnxruntime::make_unique<CPUAllocator>(); },
-                                                 std::numeric_limits<size_t>::max()});
+    DeviceAllocatorRegistrationInfo device_info(
+        {OrtMemTypeDefault,
+         [](int) {
+           return onnxruntime::make_unique<CPUAllocator>(
+               onnxruntime::make_unique<OrtMemoryInfo>("Fuse", OrtAllocatorType::OrtDeviceAllocator));
+         },
+         std::numeric_limits<size_t>::max()});
     InsertAllocator(device_info.factory(0));
   }
 
@@ -113,8 +124,10 @@ class FuseExecutionProvider : public IExecutionProvider {
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
-    static std::shared_ptr<KernelRegistry> kernel_registry = GetFusedKernelRegistry();
-    return kernel_registry;
+    static KernelRegistryAndStatus k = GetFusedKernelRegistry();
+    // throw if the registry failed to initialize
+    ORT_THROW_IF_ERROR(k.st);
+    return k.kernel_registry;
   }
 };
 
@@ -356,7 +369,7 @@ TEST(InferenceSessionTests, DisableCPUArena) {
   so.enable_cpu_mem_arena = false;
 
   InferenceSession session_object{so, GetEnvironment()};
-  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   RunOptions run_options;
@@ -459,7 +472,7 @@ TEST(InferenceSessionTests, ModelMetadata) {
   so.session_logid = "InferenceSessionTests.ModelMetadata";
   InferenceSession session_object{so, GetEnvironment()};
   auto model_uri = ORT_TSTR("../models/opset8/test_squeezenet/model.onnx");
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
 
   std::shared_ptr<onnxruntime::Model> p_model;
   Status st = onnxruntime::Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
@@ -530,7 +543,7 @@ TEST(InferenceSessionTests, CheckRunLogger) {
   std::unique_ptr<Environment> env;
   auto st = Environment::Create(std::move(logging_manager), env);
   InferenceSession session_object{so, *env.get()};
-  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   RunOptions run_options;
@@ -560,7 +573,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   so.profile_file_prefix = ORT_TSTR("onnxprofile_profile_test");
 
   InferenceSession session_object(so, GetEnvironment());
-  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   RunOptions run_options;
@@ -599,7 +612,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
   so.session_logid = "CheckRunProfiler";
 
   InferenceSession session_object(so, GetEnvironment());
-  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   RunOptions run_options;
@@ -637,7 +650,7 @@ TEST(InferenceSessionTests, MultipleSessionsNoTimeout) {
 
   session_options.session_logid = "InferenceSessionTests.MultipleSessionsNoTimeout";
   InferenceSession session_object{session_options, GetEnvironment()};
-  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   std::thread thread1{[&session_object]() {
@@ -662,7 +675,7 @@ TEST(InferenceSessionTests, PreAllocateOutputVector) {
   so.session_logid = "InferenceSessionTests.PreAllocateOutputVector";
 
   InferenceSession session_object{so, GetEnvironment()};
-  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   RunOptions run_options;
@@ -691,7 +704,7 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
   std::unique_ptr<Environment> env;
   auto st = Environment::Create(std::move(logging_manager), env);
   InferenceSession session_object{so, *env.get()};
-  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   RunOptions run_options;
@@ -846,7 +859,7 @@ TEST(InferenceSessionTests, InvalidInputTypeOfTensorElement) {
   so.session_logid = "InferenceSessionTests.InvalidInputTypeOfTensorElement";
 
   InferenceSession session_object{so, GetEnvironment()};
-  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   RunOptions run_options;
@@ -1112,8 +1125,9 @@ TEST(ExecutionProviderTest, FunctionTest) {
   VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
 
   InferenceSession session_object_2{so, GetEnvironment()};
-  session_object_2.RegisterExecutionProvider(std::move(testCPUExecutionProvider));
-  session_object_2.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::FuseExecutionProvider>());
+  ASSERT_STATUS_OK(session_object_2.RegisterExecutionProvider(std::move(testCPUExecutionProvider)));
+  ASSERT_STATUS_OK(
+      session_object_2.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::FuseExecutionProvider>()));
   status = session_object_2.Load(model_file_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object_2.Initialize();
@@ -1746,12 +1760,12 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   so.session_logid = "InferenceSessionTests.TestCopyToFromDevices";
   InferenceSession session_object{so, GetEnvironment()};
 
-  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   auto dummy_provider = onnxruntime::make_unique<DummyExecutionProvider>();
   auto* p_dummy_provider = dummy_provider.get();
-  session_object.RegisterExecutionProvider(std::move(dummy_provider));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(dummy_provider)));
 
   // prepare inputs
   std::vector<int64_t> dims_mul_x = {3, 2};
@@ -1811,9 +1825,9 @@ TEST(InferenceSessionTests, TestRegisterTransformers) {
     // Create and register dummy graph transformer
     auto dummy_transformer_unique_ptr = onnxruntime::make_unique<DummyGraphTransformer>("DummyTransformer");
     const auto* dummy_transformer = dummy_transformer_unique_ptr.get();
-    session_object.RegisterGraphTransformer(std::move(dummy_transformer_unique_ptr));
+    ASSERT_STATUS_OK(session_object.RegisterGraphTransformer(std::move(dummy_transformer_unique_ptr)));
 
-    session_object.Load(model_uri);
+    ASSERT_STATUS_OK(session_object.Load(model_uri));
     ASSERT_TRUE(session_object.Initialize().IsOK());
 
     // Validate transformer was called after Session.Initialize
@@ -1837,7 +1851,7 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
     so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
     so.graph_optimization_level = TransformerLevel::Level2;
     InferenceSession session_object{so, GetEnvironment()};
-    ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+    ASSERT_STATUS_OK(session_object.Load(model_uri));
     ASSERT_TRUE(session_object.Initialize().IsOK());
   }
 }
@@ -1907,7 +1921,7 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
   epi.device_id = 0;
   EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
 
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
 
   auto status = session_object.Initialize();
 
@@ -1980,7 +1994,7 @@ static char ort_load_config_from_model_env_var_disabled[] = "ORT_LOAD_CONFIG_FRO
 TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
   // Part 1 - Load config from model feature enabled
 #ifdef _WIN32
-  _putenv(ort_load_config_from_model_env_var_enabled);
+  (void)_putenv(ort_load_config_from_model_env_var_enabled);
 #else
   putenv(ort_load_config_from_model_env_var_enabled);
 #endif
@@ -2018,7 +2032,7 @@ TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
 
   // Part 2 - Load config from model feature disabled
 #ifdef _WIN32
-  _putenv(ort_load_config_from_model_env_var_disabled);
+  (void)_putenv(ort_load_config_from_model_env_var_disabled);
 #else
   putenv(ort_load_config_from_model_env_var_disabled);
 #endif
@@ -2046,7 +2060,7 @@ TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
 TEST(InferenceSessionTests, LoadModelWithInValidOrtConfigJson) {
   // Part 1 - Load config from model feature enabled
 #ifdef _WIN32
-  _putenv(ort_load_config_from_model_env_var_enabled);
+  (void)_putenv(ort_load_config_from_model_env_var_enabled);
 #else
   putenv(ort_load_config_from_model_env_var_enabled);
 #endif
@@ -2066,7 +2080,7 @@ TEST(InferenceSessionTests, LoadModelWithInValidOrtConfigJson) {
   // Part 2 - Load config from model feature disabled
   // The invalid/improperly formed config json in the model should not come into the picture here
 #ifdef _WIN32
-  _putenv(ort_load_config_from_model_env_var_disabled);
+  (void)_putenv(ort_load_config_from_model_env_var_disabled);
 #else
   putenv(ort_load_config_from_model_env_var_disabled);
 #endif
@@ -2093,7 +2107,7 @@ TEST(InferenceSessionTests, LoadModelWithInValidOrtConfigJson) {
 TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
   // Part 1 - Load config from model feature enabled
 #ifdef _WIN32
-  _putenv(ort_load_config_from_model_env_var_enabled);
+  (void)_putenv(ort_load_config_from_model_env_var_enabled);
 #else
   putenv(ort_load_config_from_model_env_var_enabled);
 #endif
@@ -2120,7 +2134,7 @@ TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
   // Part 2 - Load config from model feature disabled
   // The missing config json should not come into the picture
 #ifdef _WIN32
-  _putenv(ort_load_config_from_model_env_var_disabled);
+  (void)_putenv(ort_load_config_from_model_env_var_disabled);
 #else
   putenv(ort_load_config_from_model_env_var_disabled);
 #endif
@@ -2141,7 +2155,7 @@ TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
   // "10" is unsupported for ORT_LOAD_CONFIG_FROM_MODEL
   char env_var_value_set_to_unsupported_val[] = "ORT_LOAD_CONFIG_FROM_MODEL=10";
 #ifdef _WIN32
-  _putenv(env_var_value_set_to_unsupported_val);
+  (void)_putenv(env_var_value_set_to_unsupported_val);
 #else
   putenv(env_var_value_set_to_unsupported_val);
 #endif
@@ -2160,7 +2174,7 @@ TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
 
   // Disable the feature before exiting the test as this process is likely to be used for running other tests
 #ifdef _WIN32
-  _putenv(ort_load_config_from_model_env_var_disabled);
+  (void)_putenv(ort_load_config_from_model_env_var_disabled);
 #else
   putenv(ort_load_config_from_model_env_var_disabled);
 #endif
@@ -2202,7 +2216,7 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed) {
   ASSERT_TRUE(st.IsOK());
 
   InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
-  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   // make sure we're using the per session threadpools
@@ -2242,7 +2256,7 @@ TEST(InferenceSessionTests, CheckIfGlobalThreadPoolsAreBeingUsed) {
   ASSERT_TRUE(st.IsOK());
 
   InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
-  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   // make sure we're using the global threadpools in both session and session state
@@ -2280,7 +2294,7 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
   ASSERT_TRUE(st.IsOK());
 
   InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
-  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   // make sure we're using the per session threadpools

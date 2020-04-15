@@ -7,20 +7,22 @@ ORT_API(const OrtApi*, GetApi, uint32_t version);
 ORT_API(const char*, GetVersionString);
 
 ORT_API(void, ReleaseEnv, OrtEnv*);
-ORT_API(void, ReleaseStatus, OrtStatus*);
-ORT_API(void, ReleaseMemoryInfo, OrtMemoryInfo*);
-ORT_API(void, ReleaseSession, OrtSession*);
-ORT_API(void, ReleaseValue, OrtValue*);
-ORT_API(void, ReleaseRunOptions, OrtRunOptions*);
-ORT_API(void, ReleaseTypeInfo, OrtTypeInfo*);
-ORT_API(void, ReleaseTensorTypeAndShapeInfo, OrtTensorTypeAndShapeInfo*);
-ORT_API(void, ReleaseSessionOptions, OrtSessionOptions*);
-ORT_API(void, ReleaseCustomOpDomain, OrtCustomOpDomain*);
-ORT_API(void, ReleaseMapTypeInfo, OrtMapTypeInfo*);
-ORT_API(void, ReleaseSequenceTypeInfo, OrtSequenceTypeInfo*);
-ORT_API(void, ReleaseModelMetadata, OrtModelMetadata*);
+ORT_API(void, ReleaseStatus, _Frees_ptr_opt_ OrtStatus*);
+ORT_API(void, ReleaseMemoryInfo, _Frees_ptr_opt_ OrtMemoryInfo*);
+ORT_API(void, ReleaseSession, _Frees_ptr_opt_ OrtSession*);
+ORT_API(void, ReleaseValue, _Frees_ptr_opt_ OrtValue*);
+ORT_API(void, ReleaseRunOptions, _Frees_ptr_opt_ OrtRunOptions*);
+ORT_API(void, ReleaseTypeInfo, _Frees_ptr_opt_ OrtTypeInfo*);
+ORT_API(void, ReleaseTensorTypeAndShapeInfo, _Frees_ptr_opt_ OrtTensorTypeAndShapeInfo*);
+ORT_API(void, ReleaseSessionOptions, _Frees_ptr_opt_ OrtSessionOptions*);
+ORT_API(void, ReleaseCustomOpDomain, _Frees_ptr_opt_ OrtCustomOpDomain*);
+ORT_API(void, ReleaseMapTypeInfo, _Frees_ptr_opt_ OrtMapTypeInfo*);
+ORT_API(void, ReleaseSequenceTypeInfo, _Frees_ptr_opt_ OrtSequenceTypeInfo*);
+ORT_API(void, ReleaseModelMetadata, _Frees_ptr_opt_ OrtModelMetadata*);
 
-ORT_API_STATUS_IMPL(CreateStatus, OrtErrorCode code, _In_ const char* msg);
+_Check_return_ _Ret_notnull_ OrtStatus* ORT_API_CALL CreateStatus(OrtErrorCode code, _In_z_ const char* msg)
+    NO_EXCEPTION ORT_MUST_USE_RESULT;
+
 OrtErrorCode ORT_API_CALL GetErrorCode(_In_ const OrtStatus* status) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 const char* ORT_API_CALL GetErrorMessage(_In_ const OrtStatus* status) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
@@ -36,10 +38,11 @@ ORT_API_STATUS_IMPL(CreateSession, _In_ const OrtEnv* env, _In_ const ORTCHAR_T*
 ORT_API_STATUS_IMPL(CreateSessionFromArray, _In_ const OrtEnv* env, _In_ const void* model_data, size_t model_data_length,
                     _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
 
-ORT_API_STATUS_IMPL(Run, _Inout_ OrtSession* sess,
-                    _In_opt_ const OrtRunOptions* run_options,
-                    _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len,
-                    _In_ const char* const* output_names, size_t output_names_len, _Outptr_ OrtValue** output);
+ORT_API_STATUS_IMPL(Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
+                    _In_reads_(input_len) const char* const* input_names,
+                    _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
+                    _In_reads_(output_names_len) const char* const* output_names1, size_t output_names_len,
+                    _Inout_updates_all_(output_names_len) OrtValue** output);
 
 ORT_API_STATUS_IMPL(CreateSessionOptions, OrtSessionOptions** out);
 ORT_API_STATUS_IMPL(CloneSessionOptions, const OrtSessionOptions* input, OrtSessionOptions** out);
@@ -88,8 +91,7 @@ ORT_API_STATUS_IMPL(ModelMetadataGetDomain, _In_ const OrtModelMetadata* model_m
 ORT_API_STATUS_IMPL(ModelMetadataGetDescription, _In_ const OrtModelMetadata* model_metadata,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 ORT_API_STATUS_IMPL(ModelMetadataLookupCustomMetadataMap, _In_ const OrtModelMetadata* model_metadata,
-                    _Inout_ OrtAllocator* allocator,
-                    _In_ const char* key, _Outptr_ char** value);
+                    _Inout_ OrtAllocator* allocator, _In_ const char* key, _Outptr_result_maybenull_ char** value);
 
 ORT_API_STATUS_IMPL(ModelMetadataGetVersion, _In_ const OrtModelMetadata* model_metadata,
                     _Out_ int64_t* value);
@@ -98,7 +100,7 @@ ORT_API_STATUS_IMPL(CreateRunOptions, _Outptr_ OrtRunOptions** out);
 
 ORT_API_STATUS_IMPL(RunOptionsSetRunLogVerbosityLevel, _Inout_ OrtRunOptions* options, int value);
 ORT_API_STATUS_IMPL(RunOptionsSetRunLogSeverityLevel, _Inout_ OrtRunOptions* options, int value);
-ORT_API_STATUS_IMPL(RunOptionsSetRunTag, _In_ OrtRunOptions*, _In_ const char* run_tag);
+ORT_API_STATUS_IMPL(RunOptionsSetRunTag, _Inout_ OrtRunOptions*, _In_ const char* run_tag);
 
 ORT_API_STATUS_IMPL(RunOptionsGetRunLogVerbosityLevel, _In_ const OrtRunOptions* options, _Out_ int* out);
 ORT_API_STATUS_IMPL(RunOptionsGetRunLogSeverityLevel, _In_ const OrtRunOptions* options, _Out_ int* out);
@@ -117,9 +119,10 @@ ORT_API_STATUS_IMPL(IsTensor, _In_ const OrtValue* value, _Out_ int* out);
 ORT_API_STATUS_IMPL(GetTensorMutableData, _Inout_ OrtValue* value, _Outptr_ void** out);
 ORT_API_STATUS_IMPL(FillStringTensor, _Inout_ OrtValue* value, _In_ const char* const* s, size_t s_len);
 ORT_API_STATUS_IMPL(GetStringTensorDataLength, _In_ const OrtValue* value, _Out_ size_t* len);
-ORT_API_STATUS_IMPL(GetStringTensorContent, _In_ const OrtValue* value, _Out_ void* s, size_t s_len,
-                    _Out_ size_t* offsets, size_t offsets_len);
-ORT_API_STATUS_IMPL(CastTypeInfoToTensorInfo, _In_ const OrtTypeInfo*, _Out_ const OrtTensorTypeAndShapeInfo** out);
+ORT_API_STATUS_IMPL(GetStringTensorContent, _In_ const OrtValue* value, _Out_writes_bytes_all_(s_len) void* s,
+                    size_t s_len, _Out_writes_all_(offsets_len) size_t* offsets, size_t offsets_len);
+ORT_API_STATUS_IMPL(CastTypeInfoToTensorInfo, _In_ const OrtTypeInfo*,
+                    _Outptr_result_maybenull_ const OrtTensorTypeAndShapeInfo** out);
 ORT_API_STATUS_IMPL(GetOnnxTypeFromTypeInfo, _In_ const OrtTypeInfo*, _Out_ enum ONNXType* out);
 ORT_API_STATUS_IMPL(CreateTensorTypeAndShapeInfo, _Outptr_ OrtTensorTypeAndShapeInfo** out);
 ORT_API_STATUS_IMPL(SetTensorElementType, _Inout_ OrtTensorTypeAndShapeInfo*, enum ONNXTensorElementDataType type);
@@ -127,10 +130,11 @@ ORT_API_STATUS_IMPL(SetDimensions, OrtTensorTypeAndShapeInfo* info, _In_ const i
 ORT_API_STATUS_IMPL(GetTensorElementType, _In_ const OrtTensorTypeAndShapeInfo*, _Out_ enum ONNXTensorElementDataType* out);
 ORT_API_STATUS_IMPL(GetDimensionsCount, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(GetDimensions, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
-ORT_API_STATUS_IMPL(GetSymbolicDimensions, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ const char* dim_params[], size_t dim_params_length);
+ORT_API_STATUS_IMPL(GetSymbolicDimensions, _In_ const OrtTensorTypeAndShapeInfo* info,
+                    _Out_writes_all_(dim_params_length) const char* dim_params[], size_t dim_params_length);
 ORT_API_STATUS_IMPL(GetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(GetTensorTypeAndShape, _In_ const OrtValue* value, _Outptr_ OrtTensorTypeAndShapeInfo** out);
-ORT_API_STATUS_IMPL(GetTypeInfo, _In_ const OrtValue* value, _Outptr_ OrtTypeInfo** out);
+ORT_API_STATUS_IMPL(GetTypeInfo, _In_ const OrtValue* value, _Outptr_result_maybenull_ OrtTypeInfo** out);
 ORT_API_STATUS_IMPL(GetValueType, _In_ const OrtValue* value, _Out_ enum ONNXType* out);
 ORT_API_STATUS_IMPL(AddFreeDimensionOverride, _Inout_ OrtSessionOptions* options, _In_ const char* symbolic_dim, _In_ int64_t dim_override);
 
@@ -146,13 +150,13 @@ ORT_API_STATUS_IMPL(MemoryInfoGetType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtA
 
 ORT_API_STATUS_IMPL(AllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size, _Outptr_ void** out);
 ORT_API_STATUS_IMPL(AllocatorFree, _Inout_ OrtAllocator* ptr, void* p);
-ORT_API_STATUS_IMPL(AllocatorGetInfo, _In_ const OrtAllocator* ptr, _Out_ const OrtMemoryInfo** out);
+ORT_API_STATUS_IMPL(AllocatorGetInfo, _In_ const OrtAllocator* ptr, _Outptr_ const struct OrtMemoryInfo** out);
 ORT_API_STATUS_IMPL(GetAllocatorWithDefaultOptions, _Outptr_ OrtAllocator** out);
 ORT_API_STATUS_IMPL(GetValue, _In_ const OrtValue* value, int index, _Inout_ OrtAllocator* allocator, _Outptr_ OrtValue** out);
 ORT_API_STATUS_IMPL(GetValueCount, _In_ const OrtValue* value, _Out_ size_t* out);
-ORT_API_STATUS_IMPL(CreateValue, _In_ const OrtValue* const* in, size_t num_values, enum ONNXType value_type,
-                    _Outptr_ OrtValue** out);
-ORT_API_STATUS_IMPL(CreateOpaqueValue, _In_ const char* domain_name, _In_ const char* type_name,
+ORT_API_STATUS_IMPL(CreateValue, _In_reads_(num_values) const OrtValue* const* in, size_t num_values,
+                    enum ONNXType value_type, _Outptr_ OrtValue** out);
+ORT_API_STATUS_IMPL(CreateOpaqueValue, _In_z_ const char* domain_name, _In_z_ const char* type_name,
                     _In_ const void* data_container, size_t data_container_size, _Outptr_ OrtValue** out);
 ORT_API_STATUS_IMPL(GetOpaqueValue, _In_ const char* domain_name, _In_ const char* type_name,
                     _In_ const OrtValue* in, _Out_ void* data_container, size_t data_container_size);
@@ -168,8 +172,10 @@ ORT_API_STATUS_IMPL(KernelContext_GetOutput, _Inout_ OrtKernelContext* context, 
 
 // OrtTypeInfo methods
 ORT_API_STATUS_IMPL(GetDenotationFromTypeInfo, _In_ const OrtTypeInfo*, _Out_ const char** const denotation, _Out_ size_t* len);
-ORT_API_STATUS_IMPL(CastTypeInfoToMapTypeInfo, _In_ const OrtTypeInfo* type_info, _Out_ const OrtMapTypeInfo** out);
-ORT_API_STATUS_IMPL(CastTypeInfoToSequenceTypeInfo, _In_ const OrtTypeInfo* type_info, _Out_ const OrtSequenceTypeInfo** out);
+ORT_API_STATUS_IMPL(CastTypeInfoToMapTypeInfo, _In_ const OrtTypeInfo* type_info,
+                    _Outptr_result_maybenull_ const OrtMapTypeInfo** out);
+ORT_API_STATUS_IMPL(CastTypeInfoToSequenceTypeInfo, _In_ const OrtTypeInfo* type_info,
+                    _Outptr_result_maybenull_ const OrtSequenceTypeInfo** out);
 
 // OrtMapTypeInfo Accessors
 ORT_API_STATUS_IMPL(GetMapKeyType, _In_ const OrtMapTypeInfo* map_type_info, _Out_ enum ONNXTensorElementDataType* out);

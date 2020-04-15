@@ -57,7 +57,7 @@ option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
-option(onnxruntime_USE_MKLML "Build DNNL with MKL-ML binary dependency" OFF)
+option(onnxruntime_USE_MKLML "Build the defaul cpu provider with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_FEATURIZERS "Build ML Featurizers support" OFF)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
@@ -213,8 +213,8 @@ if (MSVC)
     set(gtest_force_shared_crt ON CACHE BOOL "Use shared (DLL) run-time lib for gtest" FORCE)
   endif()
   #Always enable exception handling, even for Windows ARM
-  string(APPEND CMAKE_CXX_FLAGS " /EHsc")
-  string(APPEND CMAKE_C_FLAGS " /EHsc")
+  string(APPEND CMAKE_CXX_FLAGS " /EHsc /wd26812")
+  string(APPEND CMAKE_C_FLAGS " /EHsc /wd26812")
   if(onnxruntime_USE_AVX)
     string(APPEND CMAKE_CXX_FLAGS " /arch:AVX")
     string(APPEND CMAKE_C_FLAGS " /arch:AVX")
@@ -571,7 +571,7 @@ if (WIN32)
     string(APPEND CMAKE_CXX_FLAGS " /wd4251")
     if (onnxruntime_ENABLE_STATIC_ANALYSIS)
         string(APPEND CMAKE_CXX_FLAGS
-            " /analyze:WX- "
+            " /analyze:stacksize 131072"
             # disable warning because there are many occurrences from test macros
             " /wd6326 " # potential comparison of a constant with another constant
         )
