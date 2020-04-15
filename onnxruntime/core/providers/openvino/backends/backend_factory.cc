@@ -17,7 +17,7 @@ BackendFactory::MakeBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                             const std::unordered_map<std::string, int>& output_names,
                             std::string type, InferenceEngine::Precision precision,
                             InferenceEngine::Core& ie_core, std::string subgraph_name) {
-    if(type == "CPU" || type == "GPU" || type == "MYRIAD") {
+    if(type == "CPU" || type == "GPU" || type == "MYRIAD" || type == "HETERO:FPGA,CPU") {
         return std::make_shared<BasicBackend>(model_proto, input_indexes, output_names,
                                               type, precision, ie_core,subgraph_name);
     } else if (type == "HDDL") {
