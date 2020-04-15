@@ -2,5 +2,5 @@
 // Licensed under the MIT License.
 
 #pragma once
-
-#define ONNXRUNTIME_VERSION_STRING "1.3"
+#include "onnxruntime_config.h"
+#define ONNXRUNTIME_VERSION_STRING ORT_VERSION
