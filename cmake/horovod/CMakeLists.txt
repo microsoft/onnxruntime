@@ -1,8 +1,5 @@
-# Minimum CMake required
-
-cmake_minimum_required(VERSION 3.11)
-
-set(CMAKE_CXX_STANDARD 11)
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
 
 set(THIRD_PARTY_ROOT ${HOROVOD_ROOT}/third_party)
 

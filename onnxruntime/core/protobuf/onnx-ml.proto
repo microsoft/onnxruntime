@@ -370,6 +370,7 @@ message ModelProto {
 
   // Named metadata values; keys should be distinct.
   repeated StringStringEntryProto metadata_props = 14;
+
   // Training-specific information. Sequentially executing all stored
   // `TrainingInfoProto.algorithm`s and assigning their outputs following
   // the corresponding `TrainingInfoProto.update_binding`s is one training
@@ -759,6 +760,7 @@ message FunctionProto {
   repeated NodeProto node = 7;
   // A human-readable documentation for this function. Markdown is allowed.
   optional string doc_string = 8;
+
   // The OperatorSets this function body (graph) relies on.
   // A FunctionProto body (graph) may implicitly rely on the OperatorSet that
   // this function belongs to. It can also explicitly rely on more OperatorSets
