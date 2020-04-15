@@ -191,10 +191,10 @@ class OpKernelContext {
   int GetImplicitInputArgIndex(int index) const;
   int GetOutputArgIndex(int index) const;
 
-  IExecutionFrame* const execution_frame_{nullptr};
-  const OpKernel* const kernel_{nullptr};
-  concurrency::ThreadPool* const threadpool_{nullptr};
-  const logging::Logger* const logger_{nullptr};
+  IExecutionFrame* const execution_frame_;
+  const OpKernel* const kernel_;
+  concurrency::ThreadPool* const threadpool_;
+  const logging::Logger* const logger_;
 
   // The argument starting index in ExecutionFrame.
   int node_input_start_index_{-1};
