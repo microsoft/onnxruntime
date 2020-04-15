@@ -195,7 +195,7 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_uint8) {
   test.AddInput<MLFloat16>("y_scale", {}, ToFloat16({2.0f}));
   test.AddInput<uint8_t>("y_zero_point", {}, {128});
   test.AddOutput<uint8_t>("y", dims, {128, 129, 130, 255, 1, 0});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_int8) {
@@ -205,7 +205,7 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_int8) {
   test.AddInput<MLFloat16>("y_scale", {}, ToFloat16({2.0f}));
   test.AddInput<int8_t>("y_zero_point", {}, {1});
   test.AddOutput<int8_t>("y", dims, {1, 2, 3, 127, -126, -128});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 #endif
 
