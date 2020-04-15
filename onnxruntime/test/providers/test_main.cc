@@ -48,7 +48,7 @@ int main(int argc, char** argv) {
   try {
     ::testing::InitGoogleTest(&argc, argv);
     ort_env.reset(new Ort::Env(ORT_LOGGING_LEVEL_WARNING, "Default"));
-    std::cout << "ORT random seed: " << onnxruntime::test::GetTestRandomSeed() << "\n";
+    // std::cout << "ORT random seed: " << onnxruntime::test::GetTestRandomSeed() << "\n";
     // ::testing::AddGlobalTestEnvironment(
     //     new onnxruntime::test::TestRandomSeedSetterEnvironment{});
     status = RUN_ALL_TESTS();

@@ -1,6 +1,8 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef NDEBUG  // disable for debug builds because some of these tests are slow
+
 #include <algorithm>
 #include <bitset>
 #include <cmath>
@@ -20,7 +22,6 @@
 namespace onnxruntime {
 namespace test {
 
-#ifdef NDEBUG
 using ONNX_NAMESPACE::MakeAttribute;
 using training::OpDef;
 
@@ -1668,7 +1669,8 @@ TEST(Synchronization, WaitAndRecordEventMany) {
     }
   }
 }
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  // NDEBUG
