@@ -41,17 +41,17 @@ The example below shows a sample run using the SqueezeNet model from ONNX model 
 
 ## Deployment
 
-Your installer should put the onnxruntime.dll into the same folder as your application.   Your application can either use [load-time dynamic](https://docs.microsoft.com/en-us/windows/win32/dlls/using-load-time-dynamic-linking) linking or [run-time dynamic linking](https://docs.microsoft.com/en-us/windows/win32/dlls/using-run-time-dynamic-linking) to bind to the dll.
+Your installer should put the onnxruntime.dll into the same folder as your application.   Your application can either use [load-time dynamic linking](https://docs.microsoft.com/en-us/windows/win32/dlls/using-load-time-dynamic-linking) or [run-time dynamic linking](https://docs.microsoft.com/en-us/windows/win32/dlls/using-run-time-dynamic-linking) to bind to the dll.
 
 ### Dynamic Link Library Search Order
 
-This is an important article to be aware of on how the Windows OS finds supporting dlls: [Dynamic Link Library Search Order](https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-search-order).
+This is an important article on how the Windows OS finds supporting dlls: [Dynamic Link Library Search Order](https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-search-order).
 
-There are some cases where a middleware dll might be using the onnxruntime engine and might not be in the same folder as the app.
+There are some cases where a middleware dll is using the onnxruntime engine and is not in the same folder as the app.
 
-Do not modify the system %path% variable to add your middleware folder.  This can conflict with other software on the machine that also has it's own version of the runtime.  Instead you must use [run-time dynamic linking](https://docs.microsoft.com/en-us/windows/win32/dlls/using-run-time-dynamic-linking) to make sure you are binding the copy in your folder.
+Do not modify the system %path% variable to add your middleware folder.  This can conflict with other software on the machine that is also using the onnxruntme.  Instead you must use [run-time dynamic linking](https://docs.microsoft.com/en-us/windows/win32/dlls/using-run-time-dynamic-linking) to bind explicity to the copy in your folder.
 
-You can use code like this sample does in [GetModulePath()](https://github.com/microsoft/Windows-Machine-Learning/blob/master/Samples/SampleSharedLib/SampleSharedLib/FileHelper.cpp) to find out what folder your dll is loaded from.  You can use that to build a path to the onnxruntime.dll for LoadLibrary().
+You can use code like this sample does in [GetModulePath()](https://github.com/microsoft/Windows-Machine-Learning/blob/master/Samples/SampleSharedLib/SampleSharedLib/FileHelper.cpp) to find out what folder your dll is loaded from.  You use that to build a path to the onnxruntime.dll to pass to LoadLibrary().
 
 ## Telemetry
 
