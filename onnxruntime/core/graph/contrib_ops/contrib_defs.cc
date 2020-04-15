@@ -299,7 +299,7 @@ void RegisterBertSchemas() {
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "T")
       .Input(1, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T")
       .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
-      .Input(3, "mask_index", "Attention mask index with shape (batch_size)", "M")
+      .Input(3, "mask_index", "Attention mask index with shape (batch_size).", "M", OpSchema::Optional)
       .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
@@ -962,6 +962,28 @@ Sample echo operator.)DOC");
         ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
         ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 1);
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Rfft)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC()DOC")
+      .Input(0, "X", "input tensor", "T")
+      .Attr("signal_ndim", "", AttributeProto::INT)
+      .Attr("normalized", "", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("onesided", "", AttributeProto::INT, static_cast<int64_t>(1))
+      .Output(0, "Y", "output tensor", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Irfft)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC()DOC")
+      .Input(0, "X", "input tensor", "T")
+      .Attr("signal_ndim", "", AttributeProto::INT)
+      .Attr("normalized", "", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("onesided", "", AttributeProto::INT, static_cast<int64_t>(1))
+      .Output(0, "Y", "output tensor", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConvTransposeWithDynamicPads)
       .SetDomain(kMSDomain)
@@ -2325,7 +2347,6 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   RegisterBertSchemas();
-
 }
 }  // namespace contrib
 }  // namespace onnxruntime

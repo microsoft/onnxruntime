@@ -46,6 +46,11 @@ namespace cuda {
                           ? common::Status::OK() \
                           : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDNN2 error executing ", #expr))
 
+#define CUFFT_RETURN_IF_ERROR(expr)              \
+  ORT_RETURN_IF_ERROR(CUFFT_CALL(expr)           \
+                          ? common::Status::OK() \
+                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUFFT error executing ", #expr))
+
 // -----------------------------------------------------------------------
 // Base class for CUDA kernels
 // -----------------------------------------------------------------------
@@ -159,16 +164,9 @@ class CudaKernel : public OpKernel {
     return provider_->PerThreadCublasHandle();
   }
 
-#if CUDA_VERSION >= 10010
-  inline cublasLtHandle_t CublasLtHandle() const {
-    return provider_->PerThreadCublasLtHandle();
-  }
-#endif
-
   inline cudnnHandle_t CudnnHandle() const {
     return provider_->PerThreadCudnnHandle();
   }
-
   inline curandGenerator_t CurandGenerator() const {
     return provider_->PerThreadCurandGenerator();
   }

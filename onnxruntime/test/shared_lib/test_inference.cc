@@ -346,7 +346,7 @@ TEST(CApiTest, DISABLED_test_custom_op_library) {
 #elif defined(__APPLE__)
   lib_name = "libcustom_op_library.dylib";
 #else
-  lib_name = "libcustom_op_library.so";
+  lib_name = "./libcustom_op_library.so";
 #endif
 
   TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
