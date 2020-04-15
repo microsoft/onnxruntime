@@ -1836,4 +1836,44 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
     }
+
+    // A Disposable list is a list of IDisposable objects. All elements will be disposed when the container is disposed.
+    internal class DisposableList<T> : List<T>, IDisposableReadOnlyCollection<T>
+    where T : IDisposable
+    {
+        public DisposableList() { }
+        public DisposableList(int count) : base(count) { }
+
+        #region IDisposable Support
+        private bool disposedValue = false; // To detect redundant calls
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    for (int i = 0; i < this.Count; i++)
+                    {
+                        this[i]?.Dispose();
+                    }
+                    this.Clear();
+                }
+
+                disposedValue = true;
+            }
+        }
+
+        ~DisposableList()
+        {
+            Dispose(false);
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+        #endregion
+    }
 }
