@@ -296,7 +296,9 @@ TEST(GradientCheckerTest, TanhGrad) {
   UnaryOpGradientTest("Tanh");
 }
 
-TEST(GradientCheckerTest, GemmGrad) {
+// TODO fix flaky test (https://msdata.visualstudio.com/Vienna/_workitems/edit/596949)
+// failing random seed: 322298223
+TEST(GradientCheckerTest, DISABLED_GemmGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Gemm"};
@@ -969,7 +971,9 @@ TEST(GradientCheckerTest, SqueezeGrad) {
 // TODO: Reshape missing
 
 #ifdef USE_CUDA
-TEST(GradientCheckerTest, BatchNormalizationGrad) {
+// TODO fix flaky test (https://msdata.visualstudio.com/Vienna/_workitems/edit/596949)
+// failing random seed: 4133818171
+TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"BatchNormalization"};
