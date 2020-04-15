@@ -277,7 +277,11 @@ void addObjectMethodsForTraining(py::module& m) {
           state_tensors.insert(std::make_pair(initializer.first, ml_value));
         }
         ORT_THROW_IF_ERROR(sess->SetStateTensors(state_tensors, strict));
+      })
+      .def("is_output_fp32_node", [](onnxruntime::training::TrainingSession* sess, const std::string& output_name) {
+        return sess->IsGraphOutputFp32Node(output_name);
       });
+
 }
 }  // namespace python
 }  // namespace onnxruntime

@@ -18,15 +18,13 @@
 #include "orttraining/training_ops/cpu/nn/conv_grad.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 namespace contrib {
 
 template <typename T>
 Status ConvGrad<T>::Compute(OpKernelContext* context) const {
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
 
   const Tensor* dY = context->Input<Tensor>(0);
   const Tensor* X = context->Input<Tensor>(1);
