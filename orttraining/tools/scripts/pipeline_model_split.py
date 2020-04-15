@@ -93,7 +93,7 @@ def split_graph(model, split_edge_groups):
             inputs=['recv_input_signal' +
                     str(cut_index), 'recv_src_rank' + str(cut_index)],
             outputs=['receive_output_signal' + str(cut_index)],
-            tag=1,
+            tag=0,
             domain=ms_domain,
             element_types=element_types,
             name='receive'))
@@ -188,8 +188,48 @@ def add_identity(model, cuttingEdge, newEdgeIdName):
                     if output_nodes[i].input[j] == edgeId:
                         output_nodes[i].input[j] = newEdgeIdName
 
-    return newEdgeIdName
+    return new_identity
 
+
+def insert_identity(model, all_cut_inputs):
+    count = 0
+    updated_edges = {}
+    new_added_identity = []
+    split_edge_groups = []
+    need_shape_inference = False
+    # Sweep the cut edge to see if there are edges feeding into nodes from two sub-graphs. If so,
+    # insert identity node after those edges with a new ID to distinguish the rest.
+    for cut_input in all_cut_inputs:
+        split_edges = []
+        for i in cut_input:
+            if i.consumingNodes:
+                # if this edge has previously been modified, update its edgeId before inserting new identity
+                if i.edgeId in updated_edges:
+                    i.edgeId = updated_edges[i.edgeId]
+
+                new_edge_name = 'identity_output_' + str(count)
+                new_added_identity.append(
+                    add_identity(model, i, new_edge_name))
+                count += 1
+                split_edges.append(new_edge_name)
+                updated_edges[i.edgeId] = new_edge_name
+            else:
+                split_edges.append(i.edgeId)
+        split_edge_groups.append(split_edges)
+    return split_edge_groups, new_added_identity, need_shape_inference
+
+# after the graph is split, remove the added identity node because identity op is not registered in gradient builder.
+
+
+def remove_identity(model, new_added_identity):
+    for node in new_added_identity:
+        assert node.op_type == 'Identity'
+        output_nodes = [
+            n for n in model.graph.node if node.output[0] in n.input]
+        for output_node in output_nodes:
+            for i in range(len(output_node.input)):
+                if output_node.input[i] == node.output[0]:
+                    output_node.input[i] = node.input[0]
 
 def find_all_connected_nodes(model, node):
     nodes0, inputs = find_all_input_nodes(model, node)
@@ -206,11 +246,24 @@ def get_index(node_list, node):
 # traverse the graph, group connected nodes and generate subgraph
 
 
-def generate_subgraph(model, start_nodes):
+def generate_subgraph(model, start_nodes, identity_node_list):
     subgraphs = []
 
     main_graph = onnx.ModelProto()
     main_graph.CopyFrom(model)
+
+    # remove added identity node before copy to subgraph
+    identity_node_index = []
+    for n in identity_node_list:
+        identity_node_index.append(get_index(main_graph.graph.node, n))
+    identity_node_index.sort(reverse=True)
+
+    for i in reversed(range(len(main_graph.graph.node))):
+        try:
+            if i in identity_node_index:
+                del main_graph.graph.node[i]
+        except:
+            print("error deleting identity node", i)
 
     all_visited_nodes = []
     model_count = len(start_nodes)
@@ -314,29 +367,8 @@ def main():
     output_model_names = [os.path.splitext(input_model_name)[0] + '_' +
                           str(i) + '.onnx' for i in range(stage_count)]
 
-    split_edge_groups = []
-    count = 0
-    updated_edges = {}
-    need_shape_inference = False
-    # Sweep the cut edge to see if there are edges feeding into nodes from two sub-graphs. If so,
-    # insert identity node after those edges with a new ID to distinguish the rest.
-    for cut_input in all_cut_inputs:
-        split_edges = []
-        for i in cut_input:
-            if i.consumingNodes:
-                # if this edge has previously been modified, update its edgeId before inserting new identity
-                if i.edgeId in updated_edges:
-                    i.edgeId = updated_edges[i.edgeId]
+    split_edge_groups, new_identity, need_shape_inference = insert_identity(model, all_cut_inputs)
 
-                new_edge_name = 'identity_output_' + str(count)
-                add_identity(model, i, new_edge_name)
-                count += 1
-                split_edges.append(new_edge_name)
-                updated_edges[i.edgeId] = new_edge_name
-                need_shape_inference = True
-            else:
-                split_edges.append(i.edgeId)
-        split_edge_groups.append(split_edges)
 
     # new edge is being added, need to re-inference shape
     if need_shape_inference:
@@ -344,7 +376,8 @@ def main():
 
     # after all need-to-be-cut edges identified, split the graph
     new_sends, new_receives = split_graph(model, split_edge_groups)
-    sub_graphs = generate_subgraph(model, new_receives)
+    remove_identity(model, new_identity)
+    sub_graphs = generate_subgraph(model, new_receives, new_identity)
 
     for i in range(stage_count):
         sub_graphs[i] = onnx.shape_inference.infer_shapes(sub_graphs[i])
