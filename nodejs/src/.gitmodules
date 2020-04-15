@@ -1,3 +1,0 @@
-[submodule "deps/onnx"]
-	path = deps/onnx
-	url = https://github.com/onnx/onnx.git
