@@ -41,9 +41,11 @@ The example below shows a sample run using the SqueezeNet model from ONNX model 
 
 ## Deployment
 
+### Windows 10
+
 Your installer should put the onnxruntime.dll into the same folder as your application.   Your application can either use [load-time dynamic linking](https://docs.microsoft.com/en-us/windows/win32/dlls/using-load-time-dynamic-linking) or [run-time dynamic linking](https://docs.microsoft.com/en-us/windows/win32/dlls/using-run-time-dynamic-linking) to bind to the dll.
 
-### Dynamic Link Library Search Order
+#### Dynamic Link Library Search Order
 
 This is an important article on how the Windows OS finds supporting dlls: [Dynamic Link Library Search Order](https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-search-order).
 
