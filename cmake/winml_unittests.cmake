@@ -98,7 +98,7 @@ function(get_winml_test_adapter_src
   output_winml_test_adapter_src
   output_winml_test_adapter_libs
 )
-  set(${output_winml_test_adapter_libs} "onnxruntime" PARENT_SCOPE)
+  set(${output_winml_test_adapter_libs} onnxruntime winml_lib_ort winml_test_common PARENT_SCOPE)
   file(GLOB winml_test_adapter_src CONFIGURE_DEPENDS
       "${winml_test_src_path}/adapter/*.h"
       "${winml_test_src_path}/adapter/*.cpp")
@@ -190,7 +190,7 @@ get_winml_test_adapter_src(${WINML_TEST_SRC_DIR} winml_test_adapter_src winml_te
 add_winml_test(
   TARGET winml_test_adapter
   SOURCES ${winml_test_adapter_src}
-  LIBS onnxruntime_common onnxruntime_graph onnxruntime_mlas onnxruntime_session onnxruntime_util winml_adapter winml_lib_ort winml_test_common ${winml_test_adapter_libs}
+  LIBS ${winml_test_adapter_libs}
 )
 target_include_directories(winml_test_adapter PRIVATE ${REPO_ROOT}/winml/adapter)
 target_include_directories(winml_test_adapter PRIVATE ${REPO_ROOT}/winml/lib/Api.Ort)

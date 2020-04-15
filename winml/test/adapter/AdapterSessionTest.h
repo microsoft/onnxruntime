@@ -8,7 +8,7 @@ struct AdapterSessionTestAPi
   VoidTest AppendExecutionProvider_CPU;
   VoidTest AppendExecutionProvider_DML;
   VoidTest CreateWithoutModel;
-  VoidTest GetExecutionProvider_CPU;
+  VoidTest GetExecutionProvider;
   VoidTest GetExecutionProvider_DML;
   VoidTest Initialize;
   VoidTest RegisterGraphTransformers;
@@ -22,11 +22,13 @@ struct AdapterSessionTestAPi
 };
 const AdapterSessionTestAPi& getapi();
 
-WINML_TEST_CLASS_BEGIN_WITH_SETUP(AdapterSessionTest, AdapterSessionTestSetup)
+WINML_TEST_CLASS_BEGIN(AdapterSessionTest)
+WINML_TEST_CLASS_SETUP_CLASS(AdapterSessionTestSetup)
+WINML_TEST_CLASS_BEGIN_TESTS
 WINML_TEST(AdapterSessionTest, AppendExecutionProvider_CPU)
 WINML_TEST(AdapterSessionTest, AppendExecutionProvider_DML)
 WINML_TEST(AdapterSessionTest, CreateWithoutModel)
-WINML_TEST(AdapterSessionTest, GetExecutionProvider_CPU)
+WINML_TEST(AdapterSessionTest, GetExecutionProvider)
 WINML_TEST(AdapterSessionTest, GetExecutionProvider_DML)
 WINML_TEST(AdapterSessionTest, Initialize)
 WINML_TEST(AdapterSessionTest, RegisterGraphTransformers)

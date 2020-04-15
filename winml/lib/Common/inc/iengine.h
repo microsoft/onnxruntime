@@ -3,9 +3,7 @@
 
 #pragma once
 
-#include "NamespaceAliases.h"
-
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 MIDL_INTERFACE("eaae30b5-7381-432d-9730-322136b02371")
 IModelInfo : IUnknown {
