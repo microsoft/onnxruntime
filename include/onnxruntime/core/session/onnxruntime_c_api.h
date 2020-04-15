@@ -34,6 +34,7 @@ extern "C" {
 #define _Out_writes_bytes_all_(X)
 #define _Out_writes_all_(X)
 #define _Success_(X)
+#define _Outptr_result_buffer_maybenull_(X)
 #define ORT_ALL_ARGS_NONNULL __attribute__((nonnull))
 #else
 #include <specstrings.h>
@@ -807,8 +808,7 @@ struct OrtApi {
    * 'keys' will be a nullptr if custom metadata map is empty.
    */
   ORT_API2_STATUS(ModelMetadataGetCustomMetadataMapKeys, _In_ const OrtModelMetadata* model_metadata,
-                                                                  _Inout_ OrtAllocator* allocator,
-                                                                  _Outptr_ char*** keys, _Out_ int64_t* num_keys);
+                                                                  _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*num_keys) char*** keys, _Out_ int64_t* num_keys);
 };
 
 /*

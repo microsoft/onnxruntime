@@ -765,7 +765,7 @@ ORT_API_STATUS_IMPL(OrtApis::ModelMetadataLookupCustomMetadataMap, _In_ const Or
 
 ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetCustomMetadataMapKeys,
                     _In_ const OrtModelMetadata* model_metadata,
-                    _Inout_ OrtAllocator* allocator, _Outptr_ char*** keys, _Out_ int64_t* num_keys) {
+                    _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*num_keys) char*** keys, _Out_ int64_t* num_keys) {
   API_IMPL_BEGIN
   const auto& custom_metadata_map =
       reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->custom_metadata_map;
@@ -779,14 +779,15 @@ ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetCustomMetadataMapKeys,
 
     // alloc_count * sizeof(...) will throw if there was an overflow which will be caught in API_IMPL_END
     // and be returned to the user as a status
-    *keys = reinterpret_cast<char**>(allocator->Alloc(allocator, alloc_count * sizeof(char*)));
-
+    char** p = reinterpret_cast<char**>(allocator->Alloc(allocator, alloc_count * sizeof(char*)));
+    assert(p != nullptr);
     auto map_iter = custom_metadata_map.cbegin();
     int64_t i = 0;
     while (map_iter != custom_metadata_map.cend()) {
-      *keys[i++] = StrDup(map_iter->first, allocator);
+      p[i++] = StrDup(map_iter->first, allocator);
       ++map_iter;
     }
+    *keys = p;
   }
 
   *num_keys = static_cast<int64_t>(count);
