@@ -33,9 +33,8 @@ REGISTER_KERNEL_TYPED(SoftmaxCrossEntropyLoss, kOnnxDomain, 12, float, int32_t)
 REGISTER_KERNEL_TYPED(SoftmaxCrossEntropyLoss, kOnnxDomain, 12, float, int64_t)
 
 void GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, int64_t& N_D, int64_t& C) {
-  int64_t N = logit_shape[0];
   // N_D = N * D1 * D2...D*K
-  N_D = N * (label_shape.Size() / N);
+  N_D = label_shape.Size();
   C = logit_shape.Size() / N_D;
 }
 
