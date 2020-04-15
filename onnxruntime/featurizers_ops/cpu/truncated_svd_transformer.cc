@@ -25,7 +25,7 @@ struct TruncatedSVDTransformerImpl {
           const auto* state_tensor(ctx->Input<Tensor>(0));
           const uint8_t* const state_data(state_tensor->Data<uint8_t>());
 
-          Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
+          Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().Size());
           return Microsoft::Featurizer::Featurizers::TruncatedSVDTransformer<InputMatrixT>(archive);
         }());
 
@@ -47,10 +47,15 @@ struct TruncatedSVDTransformerImpl {
     Eigen::Map<MatrixT> output_matrix(output_data, dim_0, dim_1);
 
     std::function<void(MatrixT val)> callback;
-    callback = [&output_matrix](MatrixT val) {
+    bool callback_allow = true;
+    callback = [&output_matrix, callback_allow](MatrixT val) {
+      ORT_ENFORCE(callback_allow, "callback function can only be called during execute() and special flush() when needed");
       output_matrix = val;
     };
     transformer.execute(input_matrix, callback);
+    // The flush() does nothing but shows Featurizers concept
+    callback_allow = false;
+    transformer.flush(callback);
   }
 };
 
