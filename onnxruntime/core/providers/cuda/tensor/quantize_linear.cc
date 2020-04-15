@@ -9,41 +9,20 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T, U)                                \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
-      QuantizeLinear,                                              \
-      kMSDomain,                                                   \
-      1,                                                           \
-      T##_##U,                                                     \
-      kCudaExecutionProvider,                                      \
-      KernelDefBuilder()                                           \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<U>())  \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>())  \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<U>()), \
-      QuantizeLinear<T, U>);
+#define REGISTER_KERNEL_TYPED(T)                                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
+      QuantizeLinear,                                                 \
+      kOnnxDomain,                                                    \
+      10,                                                             \
+      T,                                                              \
+      kCudaExecutionProvider,                                         \
+      KernelDefBuilder()                                              \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
+      QuantizeLinear<T, float>);
 
-REGISTER_KERNEL_TYPED(int8_t, MLFloat16)
-REGISTER_KERNEL_TYPED(uint8_t, MLFloat16)
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(QuantizeLinear,
-                              kOnnxDomain,
-                              10,
-                              uint8_t,
-                              kCudaExecutionProvider,
-                              KernelDefBuilder()
-                                  .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-                                  .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
-                              QuantizeLinear<uint8_t>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(QuantizeLinear,
-                              kOnnxDomain,
-                              10,
-                              int8_t,
-                              kCudaExecutionProvider,
-                              KernelDefBuilder()
-                                  .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-                                  .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>()),
-                              QuantizeLinear<int8_t>);
+REGISTER_KERNEL_TYPED(int8_t)
+REGISTER_KERNEL_TYPED(uint8_t)
 
 template <class T, class U>
 Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
@@ -122,6 +101,14 @@ Status DequantizeLinear<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   return Status::OK();
 }
+
+#define SPECIALIZED_QL_COMPUTE(T, U) \
+  template Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const;
+
+SPECIALIZED_QL_COMPUTE(int8_t, float)
+SPECIALIZED_QL_COMPUTE(uint8_t, float)
+SPECIALIZED_QL_COMPUTE(int8_t, MLFloat16)
+SPECIALIZED_QL_COMPUTE(uint8_t, MLFloat16)
 
 }  // namespace cuda
 }  // namespace onnxruntime
