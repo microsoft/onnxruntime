@@ -18,6 +18,7 @@
   * <a href="#com.microsoft.FusedConv">com.microsoft.FusedConv</a>
   * <a href="#com.microsoft.FusedGemm">com.microsoft.FusedGemm</a>
   * <a href="#com.microsoft.GatherND">com.microsoft.GatherND</a>
+  * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.MatMulInteger16">com.microsoft.MatMulInteger16</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
@@ -30,6 +31,7 @@
   * <a href="#com.microsoft.QuantizeLinear">com.microsoft.QuantizeLinear</a>
   * <a href="#com.microsoft.Range">com.microsoft.Range</a>
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
+  * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
   * <a href="#com.microsoft.Unique">com.microsoft.Unique</a>
@@ -1134,6 +1136,45 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.Irfft"></a><a name="com.microsoft.irfft">**com.microsoft.Irfft**</a>
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>normalized</tt> : int</dt>
+<dd></dd>
+<dt><tt>onesided</tt> : int</dt>
+<dd></dd>
+<dt><tt>signal_ndim</tt> : int (required)</dt>
+<dd></dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>input tensor</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>output tensor</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(double), tensor(float16)</dt>
+<dd>Constrain input and output types to float or half tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.MatMulInteger16"></a><a name="com.microsoft.matmulinteger16">**com.microsoft.MatMulInteger16**</a>
 
   Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html.
@@ -1720,6 +1761,45 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.Rfft"></a><a name="com.microsoft.rfft">**com.microsoft.Rfft**</a>
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>normalized</tt> : int</dt>
+<dd></dd>
+<dt><tt>onesided</tt> : int</dt>
+<dd></dd>
+<dt><tt>signal_ndim</tt> : int (required)</dt>
+<dd></dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>input tensor</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>output tensor</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(double), tensor(float16)</dt>
+<dd>Constrain input and output types to float or half tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.SampleOp"></a><a name="com.microsoft.sampleop">**com.microsoft.SampleOp**</a>
 
   Sample echo operator.
@@ -1933,7 +2013,7 @@ No versioning maintained for experimental ops.
 <dd>Number of attention heads</dd>
 </dl>
 
-#### Inputs
+#### Inputs (3 - 4)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
@@ -1942,8 +2022,8 @@ No versioning maintained for experimental ops.
 <dd>2D input tensor with shape (hidden_size, 3 * hidden_size)</dd>
 <dt><tt>bias</tt> : T</dt>
 <dd>1D input tensor with shape (3 * hidden_size)</dd>
-<dt><tt>mask_index</tt> : M</dt>
-<dd>Attention mask index with shape (batch_size)</dd>
+<dt><tt>mask_index</tt> (optional) : M</dt>
+<dd>Attention mask index with shape (batch_size).</dd>
 </dl>
 
 #### Outputs
