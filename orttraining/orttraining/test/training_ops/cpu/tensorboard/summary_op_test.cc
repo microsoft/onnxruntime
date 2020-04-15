@@ -30,7 +30,11 @@ TEST(SummaryOpTest, SummaryScalarOp_Tags_Missing) {
   // Attribute 'tags' is missing
   test.AddInput("input", {N}, X);
   test.AddOutput("summary", {}, {summary.SerializeAsString()});
-  test.Run(OpTester::ExpectResult::kExpectFailure);
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+  test.Run(OpTester::ExpectResult::kExpectFailure, "",
+                 {},
+                 &run_option);
 }
 
 TEST(SummaryOpTest, SummaryScalarOp_Input_Incorrect_Shape) {
@@ -44,7 +48,12 @@ TEST(SummaryOpTest, SummaryScalarOp_Input_Incorrect_Shape) {
   test.AddAttribute("tags", tags);
   test.AddInput("input", {N}, X);
   test.AddOutput("summary", {}, {summary.SerializeAsString()});
-  test.Run(OpTester::ExpectResult::kExpectFailure);
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "",
+                 {},
+                 &run_option);
 }
 
 TEST(SummaryOpTest, SummaryScalarOp_Valid) {
@@ -58,7 +67,14 @@ TEST(SummaryOpTest, SummaryScalarOp_Valid) {
   test.AddAttribute("tags", tags);
   test.AddInput("input", {N}, X);
   test.AddOutput("summary", {}, {summary.SerializeAsString()});
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(SummaryOpTest, SummaryHistogramOp_Tag_Missing) {
@@ -71,7 +87,12 @@ TEST(SummaryOpTest, SummaryHistogramOp_Tag_Missing) {
   // Attribute 'tag' is missing
   test.AddInput("input", {N}, X);
   test.AddOutput("summary", {}, {summary.SerializeAsString()});
-  test.Run(OpTester::ExpectResult::kExpectFailure);
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "",
+                 {},
+                 &run_option);
 }
 
 TEST(SummaryOpTest, SummaryHistogramOp_Valid) {
@@ -85,7 +106,14 @@ TEST(SummaryOpTest, SummaryHistogramOp_Valid) {
   test.AddAttribute("tag", tag);
   test.AddInput("input", {N}, X);
   test.AddOutput<std::string>("summary", {}, {summary.SerializeAsString()});
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(SummaryOpTest, SummaryMergeOp_SingleInput) {
@@ -95,7 +123,14 @@ TEST(SummaryOpTest, SummaryMergeOp_SingleInput) {
 
   test.AddInput("input_0", {}, {summary.SerializeAsString()});
   test.AddOutput<std::string>("summary", {}, {summary.SerializeAsString()});
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(SummaryOpTest, SummaryMergeOp_MultipleInput) {
@@ -110,7 +145,14 @@ TEST(SummaryOpTest, SummaryMergeOp_MultipleInput) {
   test.AddInput("input_1", {}, {summary1.SerializeAsString()});
   test.AddInput("input_2", {}, {summary2.SerializeAsString()});
   test.AddOutput<std::string>("summary", {}, {expected.SerializeAsString()});
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(SummaryOpTest, SummaryMergeOp_DuplicateTag) {
@@ -123,7 +165,12 @@ TEST(SummaryOpTest, SummaryMergeOp_DuplicateTag) {
   test.AddInput("input_0", {}, {summary0.SerializeAsString()});
   test.AddInput("input_1", {}, {summary1.SerializeAsString()});
   test.AddOutput<std::string>("summary", {}, {expected.SerializeAsString()});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "duplicate tag");
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "duplicate tag",
+                 {},
+                 &run_option);
 }
 
 TEST(SummaryOpTest, SummaryTextOp_Tag_Missing) {
@@ -136,7 +183,12 @@ TEST(SummaryOpTest, SummaryTextOp_Tag_Missing) {
   // Attribute 'tag' is missing
   test.AddInput("input", {N}, X);
   test.AddOutput("summary", {}, {summary.SerializeAsString()});
-  test.Run(OpTester::ExpectResult::kExpectFailure);
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "",
+                 {},
+                 &run_option);
 }
 
 TEST(SummaryOpTest, SummaryTextOp_1D_Tensor) {
@@ -158,7 +210,14 @@ TEST(SummaryOpTest, SummaryTextOp_1D_Tensor) {
   test.AddAttribute("tag", tag);
   test.AddInput("input", {N}, X);
   test.AddOutput<std::string>("summary", {}, {summary.SerializeAsString()});
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(SummaryOpTest, SummaryTextOp_2D_Tensor) {
@@ -181,7 +240,14 @@ TEST(SummaryOpTest, SummaryTextOp_2D_Tensor) {
   test.AddAttribute("tag", tag);
   test.AddInput("input", {N/2, 2}, X);
   test.AddOutput<std::string>("summary", {}, {summary.SerializeAsString()});
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 }  // namespace test

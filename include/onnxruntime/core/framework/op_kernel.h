@@ -69,6 +69,12 @@ class OpKernelContext {
                            concurrency::ThreadPool* threadpool,
                            const logging::Logger& logger);
 
+  explicit OpKernelContext(IExecutionFrame* frame,
+                           const OpKernel* kernel,
+                           concurrency::ThreadPool* threadpool,
+                           const logging::Logger& logger,
+                           const bool is_training_mode);
+
   virtual ~OpKernelContext() = default;
 
   /**
@@ -179,6 +185,11 @@ class OpKernelContext {
   */
   _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return threadpool_; }
 
+  /**
+  Returns if the kernel should run in training mode or not.
+  **/
+  bool IsTrainingMode() const { return is_training_mode_; };
+
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;
 
@@ -209,6 +220,8 @@ class OpKernelContext {
   int node_input_start_index_{-1};
   int node_implicit_input_start_index_{-1};
   int node_output_start_index_{-1};
+
+  bool is_training_mode_;
 };
 
 // Fetching output tensor without shape is not allowed except when it already exists

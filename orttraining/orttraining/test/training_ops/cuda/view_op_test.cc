@@ -45,8 +45,13 @@ void RunTest(const ShapeAndData<T>& input,
   }
 
   std::unordered_set<std::string> excluded_providers;
+  RunOptions run_option;
+  run_option.is_training_mode = true;
 
-  test.Run(expect_failure ? ExpectResult::kExpectFailure : ExpectResult::kExpectSuccess, err_msg, excluded_providers);
+  test.Run(expect_failure ? ExpectResult::kExpectFailure : ExpectResult::kExpectSuccess,
+           err_msg,
+           excluded_providers,
+           &run_option);
 }
 
 TEST(ViewOperatorTest, TwoViewFloat_1) {

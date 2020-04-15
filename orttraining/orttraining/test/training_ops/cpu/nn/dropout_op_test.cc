@@ -34,7 +34,7 @@ const Tensor& FetchTensor(const OrtValue& ort_value) {
 }
 
 void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1,
-                    bool use_float16_ratio = false) {
+                    bool use_float16_ratio = false, bool is_training_mode=true) {
   OpTester t{op, k_dropout_opset_version, kOnnxDomain};
 
   const auto input_size = std::accumulate(
@@ -69,7 +69,12 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
     auto output_span = output_tensor.DataAsSpan<float>();
 
     const auto num_output_zeros = std::count(output_span.begin(), output_span.end(), 0.0f);
-
+    if(!is_training_mode) {
+      for (decltype(output_span.size()) i = 0; i < output_span.size(); ++i) {
+        ASSERT_EQ(output_span[i], input[i])
+            << "Output not equal to input at index " << i << ", provider: " << provider_type;
+      }
+    }
     if (ratio == 1.0f) {
       ASSERT_EQ(num_output_zeros, static_cast<size_t>(output_span.size())) << "provider: " << provider_type;
     } else {
@@ -101,8 +106,10 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
       }
     }
   };
+  RunOptions run_option;
+  run_option.is_training_mode = is_training_mode;
 
-  t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, nullptr, ExecutionMode::ORT_SEQUENTIAL, output_verifier);
+  t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, &run_option, nullptr, ExecutionMode::ORT_SEQUENTIAL, output_verifier);
 }
 }  // namespace
 
@@ -148,6 +155,10 @@ TEST(TrainableDropoutTest, Float16Ratio) {
   RunDropoutTest("TrainableDropout", true, {1000}, 0.0f, true);
 }
 
+TEST(DropoutTest, SwitchInferenceMode) {
+  RunDropoutTest("Dropout", false, {10, 10, 10}, 0.75, false, true);
+}
+
 namespace {
 void RunDropoutGradTest(const char* op, float ratio, const std::vector<int64_t>& input_dims, bool default_ratio = true) {
   const auto input_shape = TensorShape(input_dims);
@@ -183,7 +194,13 @@ void RunDropoutGradTest(const char* op, float ratio, const std::vector<int64_t>&
 
   test.AddOutput<float>("dx", input_shape.GetDims(), dx_data);
 
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
 }
 }  // namespace
 

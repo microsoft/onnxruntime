@@ -760,13 +760,14 @@ class ORTTrainer():
 
         self.current_step += 1
 
-        # handle gradient accumulation in fully optimized mode
-        run_options = None
+        # Always create run option to set run mode.
+        run_options = ort.RunOptions()
+        run_options.is_training_mode = True
         has_if_all_finite = False
         if fetches:
             output_desc = [output for fetch in fetches for output in self.model_desc_.outputs_ if output.name_ == fetch]
+        # handle gradient accumulation in fully optimized mode
         elif self.current_step % self.gradient_accumulation_steps != 0:
-            run_options = ort.RunOptions()
             run_options.only_execute_path_to_fetches = True
             output_desc = self.output_desc_with_group_accumulated_gradients
         elif self.use_mixed_precision:
@@ -844,6 +845,8 @@ class ORTTrainer():
             input = (input,)
 
         run_options = ort.RunOptions()
+        # Explicitly change to inference mode though default is inference.
+        run_options.is_training_mode = False
         run_options.only_execute_path_to_fetches = True
 
         session_run_results = ort_training_session_run_helper(self.session, self.eval_io_binding, input,

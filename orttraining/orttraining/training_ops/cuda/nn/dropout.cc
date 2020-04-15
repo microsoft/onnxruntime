@@ -62,15 +62,21 @@ Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
 
   //Get the ratio_data
   float ratio_data;
-  auto ratio = context->Input<Tensor>(1);
+  // In inferencing mode, Dropout is same as identity.
+  if (!context->IsTrainingMode()) {
+    ratio_data = 0.0f;
+  }
+  else {
+    auto ratio = context->Input<Tensor>(1);
 
-  static_assert(std::is_same<T2, MLFloat16>::value || std::is_same<T2, float>::value || std::is_same<T2, double>::value,
-                "T2 must be float16 or float or double");
+    static_assert(std::is_same<T2, MLFloat16>::value || std::is_same<T2, float>::value || std::is_same<T2, double>::value,
+                  "T2 must be float16 or float or double");
 
-  if (ratio) {
-    ratio_data = static_cast<float>(*reinterpret_cast<const CudaT2*>(ratio->template Data<T2>()));
-  } else {
-    ratio_data = default_ratio_;
+    if (ratio) {
+      ratio_data = static_cast<float>(*reinterpret_cast<const CudaT2*>(ratio->template Data<T2>()));
+    } else {
+      ratio_data = default_ratio_;
+    }
   }
   ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
 

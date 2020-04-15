@@ -25,7 +25,14 @@ void test_all_1d_true(size_t size) {
   OpTester test("All", 1, kMSDomain);
   test.AddInput<bool>("data", {static_cast<int64_t>(size)}, p_data.get(), size);
   test.AddOutput<bool>("result", {1}, {true});
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 void test_all_1d_false(size_t size) {
@@ -37,7 +44,14 @@ void test_all_1d_false(size_t size) {
   OpTester test("All", 1, kMSDomain);
   test.AddInput<bool>("data", {static_cast<int64_t>(size)}, p_data.get(), size);
   test.AddOutput<bool>("result", {1}, {false});
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 void test_all_1d_first_false(size_t size) {
@@ -50,7 +64,14 @@ void test_all_1d_first_false(size_t size) {
   OpTester test("All", 1, kMSDomain);
   test.AddInput<bool>("data", {static_cast<int64_t>(size)}, p_data.get(), size);
   test.AddOutput<bool>("result", {1}, {false});
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 void test_all_1d_last_false(size_t size) {
@@ -63,7 +84,14 @@ void test_all_1d_last_false(size_t size) {
   OpTester test("All", 1, kMSDomain);
   test.AddInput<bool>("data", {static_cast<int64_t>(size)}, p_data.get(), size);
   test.AddOutput<bool>("result", {1}, {false});
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(AllOpTest, All_1d_small) {
@@ -93,7 +121,14 @@ TEST(ReductionOpTest, ReduceAllL2) {
   test.AddInput<float>("data0", {3}, data0);
   test.AddInput<float>("data1", {2}, data1);
   test.AddOutput<float>("reduced", {}, {4.358898943540674f});
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(ReductionOpTest, ReduceAllL2HalfHalf) {
@@ -115,7 +150,14 @@ TEST(ReductionOpTest, ReduceAllL2HalfHalf) {
   test.AddInput<MLFloat16>("data1", {2}, data1_half);
 
   test.AddOutput<MLFloat16>("reduced", {}, result_half);
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(ReductionOpTest, ReduceAllL2FloatHalf) {
@@ -132,7 +174,14 @@ TEST(ReductionOpTest, ReduceAllL2FloatHalf) {
   ConvertFloatToMLFloat16(result.data(), result_half.data(), 1);
 
   test.AddOutput<MLFloat16>("reduced", {}, result_half);
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(ReductionOpTest, ReduceAllL2HalfFloat) {
@@ -152,7 +201,14 @@ TEST(ReductionOpTest, ReduceAllL2HalfFloat) {
   test.AddInput<MLFloat16>("data1", {2}, data1_half);
 
   test.AddOutput<float>("reduced", {}, result);
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 void TestMultiTensorReduce(
@@ -193,7 +249,14 @@ void TestMultiTensorReduce(
   }
   test.AddOutput<float>("reduced", {}, {static_cast<float>(std::sqrt(result))});
 
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(ReductionOpTest, ReduceAllL2LargeOne) {

@@ -60,7 +60,14 @@ TEST(GatherOpTest, Gather_axis0_indices2d_half) {
   test.AddOutput<MLFloat16>("output", {2, 2, 3},
                             FloatToMLFloat16({1.0f, 1.1f, 1.2f, 0.0f, 0.1f, 0.2f,
                                               2.0f, 2.1f, 2.2f, 1.0f, 1.1f, 1.2f}));
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_half) {
@@ -76,7 +83,14 @@ TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_half) {
                            FloatToMLFloat16({0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5}));
   test.AddOutput<MLFloat16>("output", {3, 3},
                             FloatToMLFloat16({0, 2, 4, 6, 8, 10, 0, 0, 0}));
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 #endif
 #endif
@@ -94,7 +108,14 @@ TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_float) {
                        {0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5});
   test.AddOutput<float>("output", {3, 3},
                         {0, 2, 4, 6, 8, 10, 0, 0, 0});
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(GatherGradOpTest, Gather_axis1_float_impl2) {
@@ -121,7 +142,14 @@ TEST(GatherGradOpTest, Gather_axis1_float_impl2) {
                        grad);
   test.AddOutput<float>("output", shape,
                         output);
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(GatherGradOpTest, Gather_axis0_float_impl2) {
@@ -147,7 +175,14 @@ TEST(GatherGradOpTest, Gather_axis0_float_impl2) {
                        grad);
   test.AddOutput<float>("output", shape,
                         output);
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 }  // namespace test

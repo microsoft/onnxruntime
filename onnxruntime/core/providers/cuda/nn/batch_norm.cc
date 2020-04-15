@@ -116,8 +116,8 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   CudnnTensor bn_tensor_desc;
   ORT_RETURN_IF_ERROR(bn_tensor_desc.Set(data_desc, cudnn_batch_norm_mode_));
 
-  // in BatchNorm Forward Training mode if all 5 outputs present
-  if (running_mean && running_var && saved_mean && saved_var) {
+  // in BatchNorm Forward Training mode if all 5 outputs present and current mode is training
+  if (running_mean && running_var && saved_mean && saved_var && p_op_kernel_context->IsTrainingMode()) {
     auto running_mean_data = reinterpret_cast<CudaT*>(running_mean->template MutableData<T>());
     auto running_var_data = reinterpret_cast<CudaT*>(running_var->template MutableData<T>());
     auto saved_mean_data = reinterpret_cast<CudaT*>(saved_mean->template MutableData<T>());

@@ -12,11 +12,13 @@ namespace onnxruntime {
 OpKernelContext::OpKernelContext(IExecutionFrame* frame,
                                  const OpKernel* kernel,
                                  concurrency::ThreadPool* threadpool,
-                                 const logging::Logger& logger)
+                                 const logging::Logger& logger,
+                                 const bool is_training_mode)
     : execution_frame_(frame),
       kernel_(kernel),
       threadpool_(threadpool),
-      logger_(&logger) {
+      logger_(&logger),
+      is_training_mode_(is_training_mode) {
   ORT_ENFORCE(frame != nullptr, "Execution frame was null");
   ORT_ENFORCE(kernel != nullptr, "OpKernel was null");
 
@@ -24,6 +26,12 @@ OpKernelContext::OpKernelContext(IExecutionFrame* frame,
   node_implicit_input_start_index_ = node_input_start_index_ + InputCount();
   node_output_start_index_ = node_implicit_input_start_index_ + ImplicitInputCount();
 }
+
+OpKernelContext::OpKernelContext(IExecutionFrame* frame,
+                                 const OpKernel* kernel,
+                                 concurrency::ThreadPool* threadpool,
+                                 const logging::Logger& logger)
+    : OpKernelContext(frame, kernel, threadpool, logger, false/*is_training_mode*/) {}
 
 Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
   auto p_ml_value = OutputMLValue(index, shape);

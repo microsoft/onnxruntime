@@ -21,7 +21,14 @@ TEST(IsFiniteTest, Float) {
   test.AddInput<float>("X", shape, input);
   test.AddOutput<bool>("Y", shape, {false, true, false});
 
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(IsFiniteTest, Double) {
@@ -34,7 +41,14 @@ TEST(IsFiniteTest, Double) {
   test.AddInput<double>("X", shape, input);
   test.AddOutput<bool>("Y", shape, {false, true, false});
 
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(IsFiniteTest, MLFloat16) {
@@ -49,7 +63,14 @@ TEST(IsFiniteTest, MLFloat16) {
   test.AddInput<MLFloat16>("X", shape, input_half);
   test.AddOutput<bool>("Y", shape, {false, true, false});
 
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(IsAllFiniteTest, FalseFloat) {
@@ -63,7 +84,14 @@ TEST(IsAllFiniteTest, FalseFloat) {
   test.AddInput<float>("X1", shape, input1);
   test.AddOutput<bool>("Y", {}, {false});
 
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(IsAllFiniteTest, TrueFloat) {
@@ -77,7 +105,14 @@ TEST(IsAllFiniteTest, TrueFloat) {
   test.AddInput<float>("X1", shape, input1);
   test.AddOutput<bool>("Y", {}, {true});
 
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 std::vector<std::vector<float>> generate_is_all_finite_test_data(
@@ -147,7 +182,14 @@ TEST(IsAllFiniteTest, MoreFalseFloatTensorLarge) {
       test.AddInput<float>(name.c_str(), {size}, tensors[i]);
     }
     test.AddOutput<bool>("Y", {}, {expected_answer});
-    test.Run();
+    RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
   }
 }
 
@@ -162,7 +204,14 @@ TEST(IsAllFiniteTest, MoreFalseFloatManyBlock) {
       test.AddInput<float>(name.c_str(), {size}, tensors[i]);
     }
     test.AddOutput<bool>("Y", {}, {expected_answer});
-    test.Run();
+    RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
   }
 }
 
@@ -175,7 +224,14 @@ TEST(IsAllFiniteTest, MoreFalseFloatMultipleFalse) {
     test.AddInput<float>(name.c_str(), {size}, tensors[i]);
   }
   test.AddOutput<bool>("Y", {}, {false});
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(IsAllFiniteTest, MoreTrueFloatTensorLarge) {
@@ -190,7 +246,14 @@ TEST(IsAllFiniteTest, MoreTrueFloatTensorLarge) {
 
   test.AddOutput<bool>("Y", {}, {expected_answer});
 
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(IsAllFiniteTest, MoreFalseFloatManyBlockFloat16) {
@@ -205,7 +268,14 @@ TEST(IsAllFiniteTest, MoreFalseFloatManyBlockFloat16) {
     test.AddInput<MLFloat16>(name.c_str(), {size}, buffer_half);
   }
   test.AddOutput<bool>("Y", {}, {expected_answer});
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 TEST(IsAllFiniteTest, MoreFalseFloatTensorLargeFloat16) {
@@ -220,7 +290,14 @@ TEST(IsAllFiniteTest, MoreFalseFloatTensorLargeFloat16) {
     test.AddInput<MLFloat16>(name.c_str(), {size}, buffer_half);
   }
   test.AddOutput<bool>("Y", {}, {expected_answer});
-  test.Run();
+  RunOptions run_option;
+  run_option.is_training_mode = true;
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+                 "",
+                 {},
+                 &run_option);
+
 }
 
 #endif
