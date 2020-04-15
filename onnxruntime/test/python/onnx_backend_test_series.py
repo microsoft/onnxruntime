@@ -172,7 +172,8 @@ def create_backend_test(testname=None):
             '^test_resize_downsample_scales_cubic_align_corners_cpu',  # results mismatch with onnx tests
             '^test_resize_downsample_scales_linear_align_corners_cpu'  # results mismatch with onnx tests
         ]
-
+        if platform.architecture()[0] == '32bit':
+            current_failing_tests += ['^test_vgg19', '^test_zfnet512', '^test_bvlc_alexnet_cpu']
         # Example of how to disable tests for a specific provider.
         # if c2.supports_device('NGRAPH'):
         #    current_failing_tests.append('^test_operator_repeat_dim_overflow_cpu')
