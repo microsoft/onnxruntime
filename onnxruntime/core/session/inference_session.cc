@@ -931,12 +931,14 @@ common::Status InferenceSession::Initialize() {
   }
 
   if (status.IsOK()) {
-    auto retval = status;
     for (auto& xp : execution_providers_) {
-      auto status = xp->OnSessionInitializationEnd();
-      ORT_CHECK_AND_SET_RETVAL(status);
+      auto endStatus = xp->OnSessionInitializationEnd();
+      if (status.IsOK()) {
+        status = endStatus;
+      }
     }
   }
+
   return status;
 }
 
