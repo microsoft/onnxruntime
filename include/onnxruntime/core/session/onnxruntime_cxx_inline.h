@@ -324,6 +324,12 @@ inline char* ModelMetadata::LookupCustomMetadataMap(const char* key, OrtAllocato
   return out;
 }
 
+inline char** ModelMetadata::GetCustomMetadataMapKeys(OrtAllocator* allocator, _Out_ int64_t& num_keys) const {
+  char** out;
+  ThrowOnError(Global<void>::api_.ModelMetadataGetCustomMetadataMapKeys(p_, allocator, &out, &num_keys));
+  return out;
+}
+
 inline int64_t ModelMetadata::GetVersion() const {
   int64_t out;
   ThrowOnError(Global<void>::api_.ModelMetadataGetVersion(p_, &out));

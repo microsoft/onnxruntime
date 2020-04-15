@@ -799,6 +799,16 @@ struct OrtApi {
   ORT_API2_STATUS(CreateThreadingOptions, _Outptr_ OrtThreadingOptions** out);
 
   ORT_CLASS_RELEASE(ThreadingOptions);
+
+  /**
+   * \param num_keys contains the number of keys in the custom metadata map
+   * \param keys is an array of null terminated strings (array count = num_keys) allocated using 'allocator'. 
+   * The caller is responsible for freeing each string and the pointer array.
+   * 'keys' will be a nullptr if custom metadata map is empty.
+   */
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetCustomMetadataMapKeys)(_In_ const OrtModelMetadata* model_metadata,
+                                                                  _Inout_ OrtAllocator* allocator,
+                                                                  _Outptr_ char*** keys, _Out_ int64_t* num_keys)NO_EXCEPTION;
 };
 
 /*
