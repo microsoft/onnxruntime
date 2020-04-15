@@ -709,7 +709,7 @@ if(onnxruntime_USE_OPENVINO)
 
   add_definitions(-DUSE_OPENVINO=1)
   include(openvino)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ngraph)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ovep_ngraph)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
 
 	if (onnxruntime_USE_OPENVINO_BINARY)

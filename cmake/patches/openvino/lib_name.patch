@@ -1,0 +1,18 @@
+diff --git a/src/ngraph/CMakeLists.txt b/src/ngraph/CMakeLists.txt
+index d733ff0e3..e005bbe30 100644
+--- a/src/ngraph/CMakeLists.txt
++++ b/src/ngraph/CMakeLists.txt
+@@ -708,6 +708,13 @@ if(NGRAPH_LIB_VERSIONING_ENABLE)
+         VERSION ${NGRAPH_VERSION}
+         SOVERSION ${NGRAPH_API_VERSION})
+ endif()
++
++if(WIN32)
++    set_target_properties(ngraph PROPERTIES PREFIX "ovep_")
++else()
++    set_target_properties(ngraph PROPERTIES PREFIX "libovep_")
++endif()
++
+ if(NGRAPH_JSON_ENABLE)
+     target_link_libraries(ngraph PRIVATE libjson)
+ endif()
