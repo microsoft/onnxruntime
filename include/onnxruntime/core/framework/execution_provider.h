@@ -136,6 +136,13 @@ class IExecutionProvider {
   */
   virtual common::Status OnRunEnd();
 
+  /**
+     Called when session creation is complete
+     This provides an opportunity for execution providers to optionally synchronize and
+     clean up its temporary resources to reduce memory and ensure the first run is fast.
+  */
+  virtual common::Status OnSessionInitializationEnd();
+
   void InsertAllocator(AllocatorPtr allocator);
 
   /**

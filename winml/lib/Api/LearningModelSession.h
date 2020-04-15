@@ -121,12 +121,6 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   // Synchronization
   CWinMLLock session_creation_lock_;
   CWinMLLock dml_ep_lock_;
-
-  // is_first_evaluate_ is used as a heuristic to determine
-  // when the dml upload heap can be trimmed.
-  bool is_first_evaluate_ = true;
-
-
 };
 
 }  // namespace winrt::Windows::AI::MachineLearning::implementation

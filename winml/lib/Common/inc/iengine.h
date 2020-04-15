@@ -99,9 +99,6 @@ IEngine : IUnknown {
   STDMETHOD(FlushContext)
   () PURE;
 
-  STDMETHOD(TrimUploadHeap)
-  () PURE;
-
   STDMETHOD(ReleaseCompletedReferences)
   () PURE;
 
