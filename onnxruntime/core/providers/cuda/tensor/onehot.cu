@@ -28,10 +28,13 @@ __global__ void _OneHotImpl(
 
   CUDA_LONG indices_index = prefix_index * fdm_suffix.d_ + suffix_index;
 
+  // handle index outside the range [-depth, depth-1] case
+  bool is_valid_range = indices_data[indices_index] >= -depth_val || indices_data[indices_index] < depth_val;
+
   // handle negative index
   in_type adjusted_indice = (indices_data[indices_index] + depth_val) % depth_val;
 
-  output_data[id] = (adjusted_indice == in_type(depth_index)) ? on_value : off_value;
+  output_data[id] = (is_valid_range && adjusted_indice == in_type(depth_index)) ? on_value : off_value;
 }
 
 template <typename in_type, typename out_type>

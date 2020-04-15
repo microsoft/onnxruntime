@@ -68,6 +68,28 @@ TEST(OneHotOpTest, DefaultAxis_int64_float_int64 /*indices, output, depth*/) {
                          0, 0, 0, 0, 0, 0, 1, 0, 0, 0});
   test.Run();
 }
+TEST(OneHotOpTest, DefaultAxis_int64_MLFloat16_int64 /*indices, output, depth*/) {
+  OpTester test("OneHot", 11);
+
+  std::vector<float> values{0.0f, 1.0f};
+  std::vector<MLFloat16> fp16_values(values.size());
+  ConvertFloatToMLFloat16(values.data(), fp16_values.data(), values.size());
+
+  std::vector<float> output{0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                            0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+                            0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                            0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                            0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                            0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
+  std::vector<MLFloat16> fp16_output(output.size());
+  ConvertFloatToMLFloat16(output.data(), fp16_output.data(), output.size());
+
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
+  test.AddInput<int64_t>("depth", {1}, {10});
+  test.AddInput<MLFloat16>("values", {2}, fp16_values);
+  test.AddOutput<MLFloat16>("output", {2, 3, 10}, fp16_output);
+  test.Run();
+}
 
 TEST(OneHotOpTest, DefaultAxis_int32_float_float /*indices, output, depth*/) {
   OpTester test("OneHot", 11);

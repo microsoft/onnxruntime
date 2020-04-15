@@ -31,6 +31,8 @@ REGISTER_TYPED_ONE_HOT_OP(int32_t, MLFloat16, int32_t)
 
 template <typename in_type, typename out_type, typename depth_type>
 Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext* ctx) const {
+  typedef typename ToCudaType<out_type>::MappedType CudaT_Out;
+
   const Tensor* indices = ctx->Input<Tensor>(0);
   const Tensor* depth = ctx->Input<Tensor>(1);
   const Tensor* values = ctx->Input<Tensor>(2);
@@ -50,7 +52,7 @@ Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext*
   ORT_RETURN_IF_ERROR(PrepareOutputShape(indices, depth_val, axis_, prefix_dim_size, suffix_dim_size, output_shape));
 
   // allocate output
-  const auto* values_data = values->Data<out_type>();
+  const auto* values_data = reinterpret_cast<const CudaT_Out*>(values->Data<out_type>());
   Tensor* output = ctx->Output(0, TensorShape(output_shape));
 
   // edge case where we have a dim with a value of 0
@@ -61,10 +63,13 @@ Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext*
   const fast_divmod fdm_suffix(gsl::narrow_cast<int>(suffix_dim_size));
 
   const auto* indices_data = indices->Data<in_type>();
-  auto* output_data = output->MutableData<out_type>();
+  auto* output_data = reinterpret_cast<CudaT_Out*>(output->MutableData<out_type>());
 
   OneHotImpl(indices_data, fdm_depth_suffix, fdm_suffix, depth_val,
-             values_data[1], values_data[0], output_data, output->Shape().Size());
+             values_data[1],
+             values_data[0],
+             output_data,
+             output->Shape().Size());
 
   return Status::OK();
 }
