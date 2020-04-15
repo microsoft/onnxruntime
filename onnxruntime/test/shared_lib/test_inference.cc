@@ -324,7 +324,11 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
 }
 #endif
 
+#ifndef __ANDROID__
 TEST(CApiTest, test_custom_op_library) {
+#else
+TEST(CApiTest, DISABLED_test_custom_op_library) {
+#endif
   std::cout << "Running inference using custom op shared library" << std::endl;
 
   std::vector<Input> inputs(2);
