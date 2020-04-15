@@ -100,7 +100,6 @@ function(target_cppwinrt
         get_sdk_cppwinrt_exe(${sdk_folder} ${sdk_version} cppwinrt_exe)
 
         # Filename variables
-        convert_forward_slashes_to_back(${file} idl_file_forward_slash)
         set(header_filename ${output_name}.h)
         set(winmd_filename ${output_name}.winmd)
         set(tlb_filename ${output_name}.tlb)
@@ -121,6 +120,18 @@ function(target_cppwinrt
           set(ns_prefix "")
         endif()
 
+        # Get name
+        set(renamed_idl_filename ${output_name}.idl)
+        set(renamed_idl_fullpath ${target_outputs}/${renamed_idl_filename})
+
+        get_filename_component(idl_source_filename ${file} NAME)
+        set(copied_idl_fullpath ${target_outputs}/${idl_source_filename})
+
+        file(COPY ${file} DESTINATION ${target_outputs})
+        file(RENAME ${copied_idl_fullpath} ${renamed_idl_fullpath})
+
+        convert_forward_slashes_to_back(${renamed_idl_fullpath} renamed_idl_fullpath_back_slash)
+
         # using add_custom_command trick to prevent rerunning script unless ${file} is changed
         add_custom_command(
             OUTPUT ${header_filename} ${winmd_filename}
@@ -138,7 +149,7 @@ function(target_cppwinrt
                 /h ${header_filename}
                 /tlb ${tlb_filename}
                 ${midl_options}
-                ${idl_file_forward_slash}
+                ${renamed_idl_fullpath_back_slash}
             COMMAND
                     ${cppwinrt_exe} -in ${winmd_filename} -comp ${output_dir_back_slash} -ref ${sdk_metadata_directory} -out ${generated_dir_back_slash} -verbose
             COMMAND
