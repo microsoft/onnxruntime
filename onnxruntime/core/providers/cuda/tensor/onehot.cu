@@ -71,6 +71,8 @@ void OneHotImpl(
 SPECIALIZED_OneHotImpl(int64_t, int64_t)
 SPECIALIZED_OneHotImpl(int64_t, float)
 SPECIALIZED_OneHotImpl(int32_t, float)
+SPECIALIZED_OneHotImpl(int64_t, half)
+SPECIALIZED_OneHotImpl(int32_t, half)
 
 }  // namespace cuda
 }  // namespace onnxruntime

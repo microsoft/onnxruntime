@@ -26,6 +26,8 @@ namespace cuda {
 REGISTER_TYPED_ONE_HOT_OP(int64_t, int64_t, int64_t)
 REGISTER_TYPED_ONE_HOT_OP(int64_t, float, int64_t)
 REGISTER_TYPED_ONE_HOT_OP(int32_t, float, int32_t)
+REGISTER_TYPED_ONE_HOT_OP(int64_t, MLFloat16, int64_t)
+REGISTER_TYPED_ONE_HOT_OP(int32_t, MLFloat16, int32_t)
 
 template <typename in_type, typename out_type, typename depth_type>
 Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext* ctx) const {

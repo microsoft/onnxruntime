@@ -90,7 +90,6 @@ Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const 
   const auto& indices_shape = indices->Shape();
   const auto& indices_dims = indices_shape.GetDims();
   const auto indices_num_dims = indices_shape.NumDimensions();
-  //std::vector<int64_t> output_shape(indices_shape.GetDims());
   output_shape = indices_dims;
 
   // output rank is always 1 more than the input rank as a new dimension is added to the input shape
