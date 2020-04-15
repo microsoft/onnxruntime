@@ -19,7 +19,7 @@
 namespace onnxruntime {
 namespace test {
 
-#ifdef NDEBUG
+#ifndef NDEBUG
 using ONNX_NAMESPACE::MakeAttribute;
 using training::OpDef;
 
@@ -1298,13 +1298,13 @@ TEST(GradientCheckerTest, SoftmaxCrossEntropyLossGrad) {
   TestSoftmaxCrossEntropyLossGrad({5}, "mean");
   TestSoftmaxCrossEntropyLossGrad({5}, "sum");
   TestSoftmaxCrossEntropyLossGrad({2}, "none");
-  TestSoftmaxCrossEntropyLossGrad({2, 2, 2}, "mean");
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "mean");
   TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "sum");
   TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "none");
   TestSoftmaxCrossEntropyLossGrad({5}, "mean", -1);
   TestSoftmaxCrossEntropyLossGrad({5}, "sum", -1);
   TestSoftmaxCrossEntropyLossGrad({2}, "none", -1);
-  TestSoftmaxCrossEntropyLossGrad({2, 2, 2}, "mean", -1);
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "mean", -1);
   TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "sum", -1);
   TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "none", -1);
 }

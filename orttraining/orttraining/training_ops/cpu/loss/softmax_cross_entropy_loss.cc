@@ -205,9 +205,12 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
     new_shape.clear();
     permutations.clear();
     GetPermutationAndShape(false, log_prob_shape, new_shape, permutations);
-    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(permutations, *log_prob, *transpose_output.GetMutable<Tensor>()));
     auto* transposed_data = (*transpose_output.GetMutable<Tensor>()).template Data<T1>();
+    transpose_output.GetMutable<Tensor>()->Reshape(log_prob->Shape());
+    log_prob->Reshape(log_prob_shape);
+    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(permutations, *log_prob, *transpose_output.GetMutable<Tensor>()));
     memcpy(log_prob_data, transposed_data, log_prob_shape.Size() * sizeof(T1));
+    log_prob->Reshape(new_shape);
   }
 
   return Status::OK();
@@ -351,9 +354,12 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
     new_shape.clear();
     permutations.clear();
     GetPermutationAndShape(false, logit_shape, new_shape, permutations);
+    transpose_output.GetMutable<Tensor>()->Reshape(d_logit->Shape());
+    d_logit->Reshape(logit_shape);
     ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(permutations, *d_logit, *transpose_output.GetMutable<Tensor>()));
     auto* transposed_data = (*transpose_output.GetMutable<Tensor>()).template Data<T1>();
     memcpy(d_logit_data, transposed_data, probability_shape.Size() * sizeof(T1));
+    d_logit->Reshape(new_shape);
   }
 
   return Status::OK();

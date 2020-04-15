@@ -482,16 +482,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"dropout_default", "result differs", {"onnxtip"}},
       {"dropout_random", "result differs", {"onnxtip"}},
       {"celu", "invalid model", {"onnxtip"}},
-      {"celu_expanded", "invalid model", {"onnxtip"}},
-      {"max_float16", "invalid model", {"onnxtip"}},
-      {"mean_square_distance_mean_3d_expanded", "invalid model", {"onnxtip"}},
-      {"mean_square_distance_mean_4d_expanded", "invalid model", {"onnxtip"}},
-      {"mean_square_distance_mean_expanded", "invalid model", {"onnxtip"}},
-      {"mean_square_distance_none_expanded", "invalid model", {"onnxtip"}},
-      {"mean_square_distance_none_weights_expanded", "invalid model", {"onnxtip"}},
-      {"mean_square_distance_sum_expanded", "invalid model", {"onnxtip"}},
-      {"min_float16", "invalid model", {"onnxtip"}},
-      {"sequence_model4", "invalid model", {"onnxtip"}},
       {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"}
   };
 
@@ -567,14 +557,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"range_int32_type_negative_delta_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
     broken_tests.insert({"maxpool_2d_uint8", "result mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NC_expanded", "shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_expanded", "shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_mean_expanded", "shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_sum_expanded", "shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_expanded", "shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_mean_expanded", "shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_expanded", "shape mismatch"});
-    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_ignore_index_expanded", "shape mismatch"});
   }
 
   if (enable_tensorrt) {
