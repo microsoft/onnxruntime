@@ -31,7 +31,7 @@ static bool IsErrorWithinTolerance(float error, float tolerance) {
   EXPECT_TRUE(IsErrorWithinTolerance(max_error, tolerance)) \
       << "max_error: " << max_error                         \
       << "; tolerance: " << tolerance                       \
-      << "; ORT test random seed: " << utils::GetStaticRandomSeed() << "; "
+      << "; ORT test random seed: " << utils::GetRandomSeed() << "; "
 
 #define EXPECT_IS_TINY(max_error) \
   EXPECT_IS_TINIER_THAN(max_error, 1.5e-2f)
@@ -45,7 +45,7 @@ void GenerateRandomDataWithOneHot(
     // TODO: Consider varying mean and variance
     float scale = 5.f;
     float mean = 0.f;
-    const uint32_t seed = utils::GetStaticRandomSeed();
+    const int64_t seed = utils::GetRandomSeed();
 
     std::default_random_engine generator{gsl::narrow_cast<decltype(generator)::result_type>(seed)};
     std::normal_distribution<T> distribution{mean, scale};
