@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 namespace onnxruntime {
 namespace test {
 
