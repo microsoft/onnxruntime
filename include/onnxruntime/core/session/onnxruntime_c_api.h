@@ -545,10 +545,10 @@ struct OrtApi {
   // Always returns the same instance on every invocation.
   OrtStatus*(ORT_API_CALL* GetAllocatorWithDefaultOptions)(_Outptr_ OrtAllocator** out)NO_EXCEPTION;
 
-  // Override symbolic dimensions with actual values if known at session initialization time to enable
+  // Override symbolic dimensions (by specific denotation strings) with actual values if known at session initialization time to enable
   // optimizations that can take advantage of fixed values (such as memory planning, etc)
   OrtStatus*(ORT_API_CALL* AddFreeDimensionOverride)(_Inout_ OrtSessionOptions* options,
-                                                     _In_ const char* symbolic_dim, _In_ int64_t dim_override)NO_EXCEPTION;
+                                                                 _In_ const char* dim_denotation, _In_ int64_t dim_value)NO_EXCEPTION;
 
   /**
    * APIs to support non-tensor types - map and sequence.
@@ -748,7 +748,6 @@ struct OrtApi {
                                                                  _In_ const char* key, _Outptr_ char** value)NO_EXCEPTION;
 
   OrtStatus*(ORT_API_CALL* ModelMetadataGetVersion)(_In_ const OrtModelMetadata* model_metadata, _Out_ int64_t* value)NO_EXCEPTION;
-
   ORT_CLASS_RELEASE(ModelMetadata);
 
   /*
@@ -772,6 +771,11 @@ struct OrtApi {
       NO_EXCEPTION;
 
   ORT_CLASS_RELEASE(ThreadingOptions);
+
+  // Override symbolic dimensions (by specific name strings) with actual values if known at session initialization time to enable
+  // optimizations that can take advantage of fixed values (such as memory planning, etc)
+  OrtStatus*(ORT_API_CALL* AddFreeDimensionOverrideByName)(_Inout_ OrtSessionOptions* options,
+                                                           _In_ const char* dim_name, _In_ int64_t dim_value)NO_EXCEPTION;
 };
 
 /*
