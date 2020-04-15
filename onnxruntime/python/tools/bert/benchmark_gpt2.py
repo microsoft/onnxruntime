@@ -50,9 +50,7 @@ def pytorch_inference(model, input_ids, past=None, total_runs=100):
     with torch.no_grad():
         for _ in range(total_runs):
             start = time.time()
-            outputs = model(
-                input_ids=input_ids,
-                past=past)
+            outputs = model(input_ids=input_ids, past=past)
             latency.append(time.time() - start)
 
     logger.info("PyTorch Inference time = {} ms".format(format(sum(latency) * 1000 / len(latency), '.2f')))
@@ -94,7 +92,11 @@ def inference(model, ort_session, input_ids, past=None, total_runs=100, verify_o
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--model_type', required=True, type=str, choices=list(MODEL_CLASSES.keys()), help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
+    parser.add_argument('--model_type',
+                        required=True,
+                        type=str,
+                        choices=list(MODEL_CLASSES.keys()),
+                        help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
 
     parser.add_argument('--cache_dir', required=True, type=str, help="cache directory")
 
@@ -139,6 +141,7 @@ def setup_logger(verbose=True):
 
     logger.setLevel(logging_level)
 
+
 def remove_past_outputs(export_model_path):
     from onnx import ModelProto
     from OnnxModel import OnnxModel
@@ -155,6 +158,7 @@ def remove_past_outputs(export_model_path):
     onnx_model_path = os.path.join(output_dir, 'gpt2_past{}_out1.onnx'.format(int(enable_past_input)))
     bert_model.save_model_to_file(onnx_model_path)
     return onnx_model_path
+
 
 def main():
     args = parse_arguments()
@@ -261,6 +265,7 @@ def main():
         for layer in range(model.config.n_layer):
             logger.info('PyTorch and OnnxRuntime layer {} state (present_{}) are close:'.format(layer, layer),
                         numpy.allclose(ort_outputs[1 + layer], outputs[1][layer].cpu(), rtol=1e-05, atol=1e-04))
+
 
 if __name__ == '__main__':
     main()

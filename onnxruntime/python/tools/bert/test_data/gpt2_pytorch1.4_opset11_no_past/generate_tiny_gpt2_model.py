@@ -42,6 +42,7 @@ new_parameters = {
     "max_word_position": 8
 }
 
+
 class TinyBertOnnxModel(OnnxModel):
 
     def __init__(self, model):
@@ -60,7 +61,7 @@ class TinyBertOnnxModel(OnnxModel):
         elif len(target_shape) == 3:
             target_w = w[:target_shape[0], :target_shape[1], :target_shape[2]]
         elif len(target_shape) == 4:
-            target_w = w[:target_shape[0], :target_shape[1], :target_shape[2],  :target_shape[3]]
+            target_w = w[:target_shape[0], :target_shape[1], :target_shape[2], :target_shape[3]]
         else:
             print("at most 3 dimensions")
 
@@ -173,8 +174,7 @@ class TinyBertOnnxModel(OnnxModel):
                                                 initializer.name))
                 elif tensor == np.sqrt(old_parameters["size_per_head"]):
                     print("initializer type={}".format(initializer.data_type), initializer.name,
-                          np.sqrt(old_parameters["size_per_head"]), "=>",
-                          np.sqrt(new_parameters["size_per_head"]))
+                          np.sqrt(old_parameters["size_per_head"]), "=>", np.sqrt(new_parameters["size_per_head"]))
                     initializer.CopyFrom(
                         numpy_helper.from_array(np.asarray(np.sqrt(new_parameters["size_per_head"]), dtype=dtype),
                                                 initializer.name))
@@ -213,37 +213,46 @@ class TinyBertOnnxModel(OnnxModel):
         nodes_to_remove = []
         for i, node in enumerate(graph.node):
             if node.op_type == "Split":
-                nodes_to_add.append(onnx.helper.make_node(
-                                'Split',
-                                node.input,
-                                node.output,
-                                name = "Split_{}".format(i),
-                                axis=2,
-                                split=[new_parameters["hidden_size"],new_parameters["hidden_size"], new_parameters["hidden_size"]]
-                            ))
+                nodes_to_add.append(
+                    onnx.helper.make_node('Split',
+                                          node.input,
+                                          node.output,
+                                          name="Split_{}".format(i),
+                                          axis=2,
+                                          split=[
+                                              new_parameters["hidden_size"], new_parameters["hidden_size"],
+                                              new_parameters["hidden_size"]
+                                          ]))
                 nodes_to_remove.append(node)
-                print("update split", [new_parameters["hidden_size"],new_parameters["hidden_size"], new_parameters["hidden_size"]])
+                print("update split",
+                      [new_parameters["hidden_size"], new_parameters["hidden_size"], new_parameters["hidden_size"]])
             if node.op_type == "Constant":
                 for att in node.attribute:
                     if att.name == 'value':
                         if numpy_helper.to_array(att.t) == old_parameters["num_heads"]:
-                            nodes_to_add.append(onnx.helper.make_node('Constant',
-                                                inputs=node.input,
-                                                outputs=node.output,
-                                                value=onnx.helper.make_tensor(name=att.t.name,
-                                                                              data_type=TensorProto.INT64,
-                                                                              dims=[],
-                                                                              vals=[new_parameters["num_heads"]])))
-                            print("constant", att.t.name, old_parameters["num_heads"], "=>", new_parameters["num_heads"])
+                            nodes_to_add.append(
+                                onnx.helper.make_node('Constant',
+                                                      inputs=node.input,
+                                                      outputs=node.output,
+                                                      value=onnx.helper.make_tensor(name=att.t.name,
+                                                                                    data_type=TensorProto.INT64,
+                                                                                    dims=[],
+                                                                                    vals=[new_parameters["num_heads"]
+                                                                                         ])))
+                            print("constant", att.t.name, old_parameters["num_heads"], "=>",
+                                  new_parameters["num_heads"])
                         if numpy_helper.to_array(att.t) == np.sqrt(old_parameters["size_per_head"]):
-                            nodes_to_add.append(onnx.helper.make_node('Constant',
-                                                inputs=node.input,
-                                                outputs=node.output,
-                                                value=onnx.helper.make_tensor(name=att.t.name,
-                                                                              data_type=TensorProto.FLOAT,
-                                                                              dims=[],
-                                                                              vals=[np.sqrt(new_parameters["size_per_head"])])))
-                            print("constant", att.t.name, np.sqrt(old_parameters["size_per_head"]), "=>", np.sqrt(new_parameters["size_per_head"]))
+                            nodes_to_add.append(
+                                onnx.helper.make_node('Constant',
+                                                      inputs=node.input,
+                                                      outputs=node.output,
+                                                      value=onnx.helper.make_tensor(
+                                                          name=att.t.name,
+                                                          data_type=TensorProto.FLOAT,
+                                                          dims=[],
+                                                          vals=[np.sqrt(new_parameters["size_per_head"])])))
+                            print("constant", att.t.name, np.sqrt(old_parameters["size_per_head"]), "=>",
+                                  np.sqrt(new_parameters["size_per_head"]))
             else:
                 node.name = node.op_type + "_" + str(i)
         for node in nodes_to_remove:
@@ -251,7 +260,7 @@ class TinyBertOnnxModel(OnnxModel):
         graph.node.extend(nodes_to_add)
 
     def remove_past_outputs(self):
-        keep_output_names = [self.model.graph.output[0].name] # remove past state outputs which is not needed.
+        keep_output_names = [self.model.graph.output[0].name]  # remove past state outputs which is not needed.
         print(f"Prune graph to keep the first output and drop past state outputs:{keep_output_names}")
         self.prune_graph(keep_output_names)
 
@@ -297,15 +306,18 @@ def generate_test_data(onnx_file,
         for i, output_name in enumerate(output_names):
             if i == 0:
                 tensor_result = numpy_helper.from_array(
-                    np.asarray(result[i]).reshape((batch_size, sequence_length, new_parameters["hidden_size"])), output_names[i])
+                    np.asarray(result[i]).reshape((batch_size, sequence_length, new_parameters["hidden_size"])),
+                    output_names[i])
                 with open(os.path.join(path, 'output_{}.pb'.format(i)), 'wb') as f:
                     f.write(tensor_result.SerializeToString())
             else:
                 tensor_result = numpy_helper.from_array(
-                    np.asarray(result[i]).reshape((2, batch_size, new_parameters["num_heads"], sequence_length, new_parameters["size_per_head"])), output_names[i])
+                    np.asarray(result[i]).reshape(
+                        (2, batch_size, new_parameters["num_heads"], sequence_length, new_parameters["size_per_head"])),
+                    output_names[i])
                 with open(os.path.join(path, 'output_{}.pb'.format(i)), 'wb') as f:
                     f.write(tensor_result.SerializeToString())
-                    
+
         start_time = timeit.default_timer()
 
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
@@ -355,10 +367,10 @@ def main():
 
     if args.no_past_outputs:
         bert_model.remove_past_outputs()
-    
+
     bert_model.update_graph()
     bert_model.remove_unused_constant()
-    
+
     print("opset verion", bert_model.model.opset_import[0].version)
 
     with open(args.output, "wb") as out:
@@ -370,7 +382,12 @@ def main():
     batch_size = 1
     sequence_length = SEQ_LEN
 
-    generate_test_data(args.output, data_path, batch_size, sequence_length, use_cpu=not args.float16, output_optimized_model=args.output_optimized_model)
+    generate_test_data(args.output,
+                       data_path,
+                       batch_size,
+                       sequence_length,
+                       use_cpu=not args.float16,
+                       output_optimized_model=args.output_optimized_model)
 
 
 if __name__ == "__main__":

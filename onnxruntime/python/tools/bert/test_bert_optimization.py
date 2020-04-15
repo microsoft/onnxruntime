@@ -235,8 +235,17 @@ class TestBertOptimization(unittest.TestCase):
                                     input_int32=False,
                                     float16=False)
 
-        expected_node_count = {'EmbedLayerNormalization': 0, 'Attention': 12, 'Gelu': 0, 'FastGelu': 12, 'BiasGelu': 0, 'LayerNormalization': 25, 'SkipLayerNormalization': 0}
+        expected_node_count = {
+            'EmbedLayerNormalization': 0,
+            'Attention': 12,
+            'Gelu': 0,
+            'FastGelu': 12,
+            'BiasGelu': 0,
+            'LayerNormalization': 25,
+            'SkipLayerNormalization': 0
+        }
         self.verify_node_count(bert_model, expected_node_count)
+
 
 if __name__ == '__main__':
     unittest.main()

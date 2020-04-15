@@ -140,10 +140,16 @@ def parse_arguments():
     parser.add_argument('--disable_attention', required=False, action='store_true', help="disable Attention fusion")
     parser.set_defaults(disable_attention=False)
 
-    parser.add_argument('--disable_skip_layer_norm', required=False, action='store_true', help="disable SkipLayerNormalization fusion")
+    parser.add_argument('--disable_skip_layer_norm',
+                        required=False,
+                        action='store_true',
+                        help="disable SkipLayerNormalization fusion")
     parser.set_defaults(disable_skip_layer_norm=False)
 
-    parser.add_argument('--disable_embed_layer_norm', required=False, action='store_true', help="disable EmbedLayerNormalization fusion")
+    parser.add_argument('--disable_embed_layer_norm',
+                        required=False,
+                        action='store_true',
+                        help="disable EmbedLayerNormalization fusion")
     parser.set_defaults(disable_embed_layer_norm=False)
 
     parser.add_argument('--verbose', required=False, action='store_true')
@@ -160,6 +166,7 @@ def parse_arguments():
 
     return args
 
+
 def get_optimization_options(args):
     optimization_options = BertOptimizationOptions(args.model_type)
     if args.disable_attention:
@@ -169,6 +176,7 @@ def get_optimization_options(args):
     if args.disable_embed_layer_norm:
         optimization_options.enable_embed_layer_norm = False
     return optimization_options
+
 
 def optimize_model(input,
                    model_type,
@@ -220,7 +228,8 @@ def main():
     optimization_options = get_optimization_options(args)
 
     bert_model = optimize_model(args.input, args.model_type, args.gpu_only, args.num_heads, args.hidden_size,
-                                args.sequence_length, args.input_int32, args.float16, args.opt_level, optimization_options)
+                                args.sequence_length, args.input_int32, args.float16, args.opt_level,
+                                optimization_options)
 
     bert_model.save_model_to_file(args.output)
 

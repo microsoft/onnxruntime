@@ -13,6 +13,7 @@ from BertOnnxModel import BertOnnxModel
 
 logger = logging.getLogger(__name__)
 
+
 class Gpt2OnnxModel(BertOnnxModel):
 
     def __init(self, model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only):
@@ -63,10 +64,7 @@ class Gpt2OnnxModel(BertOnnxModel):
                 logger.debug("Add and LayerNormalization shall have one same input")
                 continue
 
-            qk_nodes = self.match_parent_path(
-                matmul_qkv,
-                ['Softmax', 'Sub', 'Mul', 'Div', 'MatMul'],
-                [0, 0, 0, 0, 0])
+            qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Sub', 'Mul', 'Div', 'MatMul'], [0, 0, 0, 0, 0])
             if qk_nodes is None:
                 logger.debug("fuse_attention: failed to match qk path")
                 continue
@@ -97,13 +95,15 @@ class Gpt2OnnxModel(BertOnnxModel):
             if mask_nodes is None:
                 logger.debug("fuse_attention: failed to match mask path")
                 continue
-            (mul_mask, sub_mask, slice_mask, slice_mask_0, unsqueeze_mask, sub_mask, squeeze_mask, slice_mask_1, shape_mask, div_mask) = mask_nodes
+            (mul_mask, sub_mask, slice_mask, slice_mask_0, unsqueeze_mask, sub_mask, squeeze_mask, slice_mask_1,
+             shape_mask, div_mask) = mask_nodes
 
             if div_qk != div_mask:
                 logger.debug("fuse_attention: skip since div_qk != div_mask")
                 continue
 
-            self.create_attention_node(gemm, gemm_qkv, layernorm_before_attention.output[0], reshape_qkv.output[0], attention_count==0)
+            self.create_attention_node(gemm, gemm_qkv, layernorm_before_attention.output[0], reshape_qkv.output[0],
+                                       attention_count == 0)
             nodes_to_remove.extend([reshape_qkv, transpose_qkv, matmul_qkv])
             nodes_to_remove.extend(qk_nodes)
             nodes_to_remove.extend(q_nodes)
@@ -118,28 +118,24 @@ class Gpt2OnnxModel(BertOnnxModel):
 
     def create_attention_node(self, gemm, gemm_qkv, input, output, add_graph_input):
         attention_node_name = self.create_node_name('Attention')
-        attention_node = onnx.helper.make_node(
-            'Attention',
-            inputs=[input, gemm.input[1], gemm.input[2]],
-            outputs=[attention_node_name + "_output"],
-            name=attention_node_name)
+        attention_node = onnx.helper.make_node('Attention',
+                                               inputs=[input, gemm.input[1], gemm.input[2]],
+                                               outputs=[attention_node_name + "_output"],
+                                               name=attention_node_name)
         attention_node.domain = "com.microsoft"
-        attention_node.attribute.extend([
-            onnx.helper.make_attribute("num_heads", self.num_heads),
-            onnx.helper.make_attribute("unidirectional", 1)
-            ])
+        attention_node.attribute.extend(
+            [onnx.helper.make_attribute("num_heads", self.num_heads),
+             onnx.helper.make_attribute("unidirectional", 1)])
 
-        matmul_node = onnx.helper.make_node(
-            'MatMul',
-            inputs=[attention_node_name + "_output", gemm_qkv.input[1]],
-            outputs=[attention_node_name + "_matmul_output"],
-            name=attention_node_name + "_matmul")
+        matmul_node = onnx.helper.make_node('MatMul',
+                                            inputs=[attention_node_name + "_output", gemm_qkv.input[1]],
+                                            outputs=[attention_node_name + "_matmul_output"],
+                                            name=attention_node_name + "_matmul")
 
-        add_node = onnx.helper.make_node(
-            'Add',
-            inputs=[attention_node_name + "_matmul_output", gemm_qkv.input[2]],
-            outputs=[output],
-            name=attention_node_name + "_add")
+        add_node = onnx.helper.make_node('Add',
+                                         inputs=[attention_node_name + "_matmul_output", gemm_qkv.input[2]],
+                                         outputs=[output],
+                                         name=attention_node_name + "_add")
 
         self.add_node(attention_node)
         self.add_node(matmul_node)
@@ -156,29 +152,31 @@ class Gpt2OnnxModel(BertOnnxModel):
 
         reshape_count = 0
         for gemm_node in self.get_nodes_by_op_type("Gemm"):
-            reshape_after_gemm = self.find_first_child_by_type(gemm_node, 'Reshape', input_name_to_nodes, recursive=False)
+            reshape_after_gemm = self.find_first_child_by_type(gemm_node,
+                                                               'Reshape',
+                                                               input_name_to_nodes,
+                                                               recursive=False)
 
             return_indice = []
             nodes = self.match_parent_path(gemm_node, ['Reshape', 'Gelu'], [0, 0], output_name_to_node)
             if nodes is None:
-                nodes = self.match_parent_path(gemm_node, ['Reshape', 'LayerNormalization'], [0, 0], output_name_to_node)
+                nodes = self.match_parent_path(gemm_node, ['Reshape', 'LayerNormalization'], [0, 0],
+                                               output_name_to_node)
                 if nodes is None:
                     continue
             (reshape_before_gemm, root_node) = nodes
 
             matmul_node_name = self.create_node_name('MatMul', 'FullyConnect_MatMul')
-            matmul_node = onnx.helper.make_node(
-                'MatMul',
-                inputs=[matmul_node_name + "_input", gemm_node.input[1]],
-                outputs=[matmul_node_name + "_output"],
-                name=matmul_node_name)
+            matmul_node = onnx.helper.make_node('MatMul',
+                                                inputs=[matmul_node_name + "_input", gemm_node.input[1]],
+                                                outputs=[matmul_node_name + "_output"],
+                                                name=matmul_node_name)
 
             add_node_name = self.create_node_name('Add', 'FullyConnect_Add')
-            add_node = onnx.helper.make_node(
-                'Add',
-                inputs=[matmul_node_name + "_output", gemm_node.input[2]],
-                outputs=[add_node_name + "_output"],
-                name=add_node_name)
+            add_node = onnx.helper.make_node('Add',
+                                             inputs=[matmul_node_name + "_output", gemm_node.input[2]],
+                                             outputs=[add_node_name + "_output"],
+                                             name=add_node_name)
 
             root_node.output[0] = matmul_node_name + "_input"
             self.replace_input_of_all_nodes(reshape_after_gemm.output[0], add_node_name + "_output")
