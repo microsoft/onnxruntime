@@ -14,14 +14,19 @@ from OnnxModel import OnnxModel
 
 logger = logging.getLogger(__name__)
 
+
 class BertOptimizationOptions:
+
     def __init__(self, model_type):
         self.enable_attention = True
         self.enable_skip_layer_norm = True
         self.enable_embed_layer_norm = True
+        self.enable_bias_skip_layer_norm = True
+        self.enable_bias_gelu = True
 
         if model_type == 'gpt2':
             self.enable_skip_layer_norm = False
+
 
 class BertOnnxModel(OnnxModel):
 
@@ -46,15 +51,31 @@ class BertOnnxModel(OnnxModel):
 
         self.bert_inputs = []
 
+    def cast_input_to_int32(self, input_name):
+        cast_output = input_name + '_int32'
+
+        # Avoid consequent Cast nodes.
+        inputs = [input_name]
+        output_name_to_node = self.output_name_to_node()
+        if input_name in output_name_to_node:
+            parent_node = output_name_to_node[input_name]
+            if parent_node and parent_node.op_type == 'Cast':
+                inputs = [parent_node.input[0]]
+
+        cast_node = onnx.helper.make_node('Cast', inputs=inputs, outputs=[cast_output])
+        cast_node.attribute.extend([onnx.helper.make_attribute("to", int(TensorProto.INT32))])
+        self.add_node(cast_node)
+
+        return cast_output, cast_node
+
     def cast_graph_input_to_int32(self, input_name):
         graph_input = self.find_graph_input(input_name)
         if graph_input is not None and graph_input.type.tensor_type.elem_type != TensorProto.INT32:
-            cast_output = input_name + '_int32'
-            cast_node = onnx.helper.make_node('Cast', inputs=[input_name], outputs=[cast_output])
-            cast_node.attribute.extend([onnx.helper.make_attribute("to", int(TensorProto.INT32))])
-            self.add_node(cast_node)
+            cast_output, cast_node = self.cast_input_to_int32(input_name)
+            logger.debug("Casted graph input {input_name} to int32")
             return True, cast_output
 
+        logger.debug(f"Did not cast graph input {input_name} to int32: found {graph_input is not None}")
         return False, input_name
 
     def undo_cast_input_to_int32(self, input_name):
@@ -77,7 +98,12 @@ class BertOnnxModel(OnnxModel):
             return self.mask_indice[input]
 
         # Add cast to convert int64 to int32
-        casted, input_name = self.cast_graph_input_to_int32(input)
+        if self.find_graph_input(input):
+            casted, input_name = self.cast_graph_input_to_int32(input)
+        else:
+            input_name, cast_node = self.cast_input_to_int32(input)
+            casted = True
+
         if casted:
             self.mask_casted[input] = input_name
 
@@ -442,15 +468,18 @@ class BertOnnxModel(OnnxModel):
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
 
-    def fuse_add_bias_gelu(self):
-        logger.debug(f"start Gelu fusion...")
+    def fuse_bias_gelu(self, is_fastgelu):
+        gelu_op_type = 'FastGelu' if is_fastgelu else 'Gelu'
+        bias_gelu_op_type = 'FastGelu' if is_fastgelu else 'BiasGelu'
+        logger.debug(f"start Bias and {gelu_op_type} fusion...")
+
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
         nodes_to_remove = []
         nodes_to_add = []
 
         # Don't need to fuse Gelu+Add here because ORT native code can handle it
-        for node in self.get_nodes_by_op_type('FastGelu'):
+        for node in self.get_nodes_by_op_type(gelu_op_type):
             if len(node.input) != 1:
                 continue
 
@@ -479,15 +508,15 @@ class BertOnnxModel(OnnxModel):
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
-            gelu_node = onnx.helper.make_node('FastGelu',
+            gelu_node = onnx.helper.make_node(bias_gelu_op_type,
                                               inputs=[matmul.output[0], add.input[bias_index]],
                                               outputs=node.output,
-                                              name=self.create_node_name('FastGelu', "FastGelu_AddBias_"))
+                                              name=self.create_node_name(bias_gelu_op_type, gelu_op_type + "_AddBias_"))
             gelu_node.domain = "com.microsoft"
             nodes_to_add.append(gelu_node)
 
         if len(nodes_to_add) > 0:
-            logger.info(f"Fused FastGelu with Bias count:{len(nodes_to_add)}")
+            logger.info(f"Fused {bias_gelu_op_type} with Bias count:{len(nodes_to_add)}")
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
@@ -710,21 +739,11 @@ class BertOnnxModel(OnnxModel):
                               SkipLayerNormalization
     """
 
-    def fuse_embed_layer(self):
-        logger.debug(f"start EmbedLayerNormalization fusion...")
+    def fuse_embed_layer_without_mask(self):
+        logger.debug(f"start EmbedLayerNormalization (no mask) fusion...")
         nodes = self.nodes()
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
-
-        if len(self.mask_indice) == 0:
-            logger.info("skip embed layer fusion since mask input is not found")
-            return
-        if len(self.mask_indice) > 1:
-            logger.info("skip embed layer fusion since there are multiple mask inputs found")
-            return
-        mask_input_name = next(iter(self.mask_indice))
-        mask_output_name = self.mask_indice[mask_input_name]
-        mask_node = output_name_to_node[mask_output_name]
 
         nodes_to_remove = []
 
@@ -735,6 +754,14 @@ class BertOnnxModel(OnnxModel):
         for node in skip_layer_norm_nodes:
             if self.match_parent_path(node, ['Add', 'Gather'], [0, 0]) is not None:
                 if self.find_first_child_by_type(node, 'Attention', input_name_to_nodes, recursive=False) is not None:
+                    normalize_node = node
+                    break
+                # In case user disables attention fusion, check whether subgraph looks like Attention.
+                if node.output[0] not in input_name_to_nodes:
+                    continue
+                children = input_name_to_nodes[node.output[0]]
+                children_types = sorted([child.op_type for child in children])
+                if children_types == ['MatMul', 'MatMul', 'MatMul', 'SkipLayerNormalization']:
                     normalize_node = node
                     break
 
@@ -786,7 +813,9 @@ class BertOnnxModel(OnnxModel):
         segment_ids = segment_embedding_gather.input[1]
 
         if position_embedding_expand:
-            subgraph_nodes = self.get_parent_subgraph_nodes(position_embedding_expand, [], output_name_to_node)
+            input_parent = self.get_parent(position_embedding_shape, 0, output_name_to_node)
+            subgraph_nodes = self.get_parent_subgraph_nodes(position_embedding_expand,
+                                                            [input_parent] if input_parent else [], output_name_to_node)
             nodes_to_remove.extend(subgraph_nodes)
 
         nodes_to_remove.extend(word_embedding_path)
@@ -794,22 +823,37 @@ class BertOnnxModel(OnnxModel):
         nodes_to_remove.extend(segment_embedding_path)
 
         nodes_to_remove.extend([normalize_node])
-        nodes_to_remove.extend([mask_node])
 
         # store inputs for further processing
-        self.bert_inputs = [input_ids, segment_ids, mask_input_name]
+        if self.find_graph_input(input_ids):
+            self.bert_inputs = [input_ids, segment_ids] if self.find_graph_input(segment_ids) else [input_ids]
 
-        if not self.input_int32:
-            # When mask has been casted to int32, use that casted one as input of embed layer norm.
-            if mask_input_name in self.mask_casted:
-                mask_input_name = self.mask_casted[mask_input_name]
-
-            # Cast input_ids and segment_ids to int32.
-            casted, input_ids = self.cast_graph_input_to_int32(input_ids)
-
-            casted, segment_ids = self.cast_graph_input_to_int32(segment_ids)
+        # Cast input_ids and segment_ids to int32.
+        if self.find_graph_input(input_ids):
+            if not self.input_int32:
+                casted, input_ids = self.cast_graph_input_to_int32(input_ids)
         else:
-            self.undo_cast_input_to_int32(mask_input_name)
+            input_ids, input_ids_cast_node = self.cast_input_to_int32(input_ids)
+
+        if self.find_graph_input(segment_ids):
+            if not self.input_int32:
+                casted, segment_ids = self.cast_graph_input_to_int32(segment_ids)
+        else:
+            segment_ids, segment_ids_cast_node = self.cast_input_to_int32(segment_ids)
+
+            segment_id_path = self.match_parent_path(
+                segment_ids_cast_node, ['ConstantOfShape', 'Concat', 'Unsqueeze', 'Gather', 'Shape', 'Cast'],
+                [0, 0, 1, 0, 0, 0])
+            if segment_id_path and input_ids_cast_node and input_ids_cast_node.input[0] == segment_id_path[-1].input[0]:
+                logger.debug("Simplify semgent id path...")
+                self.add_node(
+                    onnx.helper.make_node('Shape', inputs=[input_ids_cast_node.input[0]], outputs=["input_shape"]))
+                self.add_node(
+                    onnx.helper.make_node('ConstantOfShape',
+                                          inputs=["input_shape"],
+                                          outputs=["zeros_for_input_shape"],
+                                          value=onnx.helper.make_tensor("value", onnx.TensorProto.INT32, [1], [1])))
+                segment_ids = "zeros_for_input_shape"
 
         embed_node = onnx.helper.make_node(
             'EmbedLayerNormalization',
@@ -820,10 +864,9 @@ class BertOnnxModel(OnnxModel):
                 position_embedding_weight_node.input[0],
                 segment_embedding_gather.input[0],
                 normalize_node.input[2],
-                normalize_node.input[3],  # gamma and beta
-                mask_input_name
+                normalize_node.input[3]  # gamma and beta
             ],
-            outputs=["embed_output", mask_output_name],
+            outputs=["embed_output", "dummy_mask_index"],
             name="EmbedLayer")
 
         embed_node.domain = "com.microsoft"
@@ -832,12 +875,49 @@ class BertOnnxModel(OnnxModel):
 
         self.remove_nodes(nodes_to_remove)
         self.add_node(embed_node)
-        self.update_graph()
-        logger.info("Fused EmbedLayerNormalization count: 1")
+        self.prune_graph()
+
+        return embed_node
+
+    def fuse_embed_layer(self):
+        embed_node = self.fuse_embed_layer_without_mask()
+        if embed_node is None:
+            logger.info("Fused EmbedLayerNormalization count: 0")
+            return
+
+        if len(self.mask_indice) > 1:
+            logger.info("There are multiple mask inputs found!")
+
+        if len(self.mask_indice) != 1:
+            logger.info("Fused EmbedLayerNormalization (no mask) count: 1")
+            return
+
+        mask_input_name = next(iter(self.mask_indice))
+        mask_output_name = self.mask_indice[mask_input_name]
+        mask_node = output_name_to_node[mask_output_name]
+
+        nodes_to_remove = []
+        nodes_to_remove.extend([mask_node])
+
+        # store inputs for further processing
+        self.bert_inputs.append(mask_input_name)
+
+        if not self.input_int32:
+            # When mask has been casted to int32, use that casted one as input of embed layer norm.
+            if mask_input_name in self.mask_casted:
+                mask_input_name = self.mask_casted[mask_input_name]
+        else:
+            self.undo_cast_input_to_int32(mask_input_name)
+
+        embed_node.input[7] = mask_input_name
+        embed_node.output[1] = mask_output_name
+        logger.info("Added mask to EmbedLayerNormalization")
 
         # Change graph input data type int32 if needed.
         if self.input_int32:
             self.change_input_to_int32()
+
+        logger.info("Fused EmbedLayerNormalization count: 1")
 
     def get_bert_inputs(self, include_mask=True):
         return self.bert_inputs if include_mask else self.bert_inputs[:2]
@@ -1052,9 +1132,9 @@ class BertOnnxModel(OnnxModel):
         return
 
     def postprocess(self):
-        return
+        self.prune_graph()
 
-    def optimize(self, options:BertOptimizationOptions=None):
+    def optimize(self, options: BertOptimizationOptions = None):
         self.fuse_layer_norm()
 
         self.fuse_gelu()
@@ -1072,11 +1152,14 @@ class BertOnnxModel(OnnxModel):
         if (options is None) or options.enable_embed_layer_norm:
             self.fuse_embed_layer()
 
-        # Fuse Gelu and Add Bias before it.
-        self.fuse_add_bias_gelu()
+        if (options is None) or options.enable_bias_gelu:
+            # Fuse Gelu and Add Bias before it.
+            self.fuse_bias_gelu(is_fastgelu=True)
+            self.fuse_bias_gelu(is_fastgelu=False)
 
-        # Fuse SkipLayerNormalization and Add Bias before it.
-        self.fuse_add_bias_skip_layer_norm()
+        if (options is None) or options.enable_bias_skip_layer_norm:
+            # Fuse SkipLayerNormalization and Add Bias before it.
+            self.fuse_add_bias_skip_layer_norm()
 
         self.postprocess()
 

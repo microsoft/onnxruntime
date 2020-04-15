@@ -152,6 +152,18 @@ def parse_arguments():
                         help="disable EmbedLayerNormalization fusion")
     parser.set_defaults(disable_embed_layer_norm=False)
 
+    parser.add_argument('--disable_bias_skip_layer_norm',
+                        required=False,
+                        action='store_true',
+                        help="disable Add Bias and SkipLayerNormalization fusion")
+    parser.set_defaults(disable_bias_skip_layer_norm=False)
+
+    parser.add_argument('--disable_bias_gelu',
+                        required=False,
+                        action='store_true',
+                        help="disable Add Bias and Gelu/FastGelu fusion")
+    parser.set_defaults(disable_bias_gelu=False)
+
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
@@ -175,6 +187,10 @@ def get_optimization_options(args):
         optimization_options.enable_skip_layer_norm = False
     if args.disable_embed_layer_norm:
         optimization_options.enable_embed_layer_norm = False
+    if args.disable_bias_skip_layer_norm:
+        optimization_options.enable_bias_skip_layer_norm = False
+    if args.disable_bias_gelu:
+        optimization_options.enable_bias_gelu = False
     return optimization_options
 
 
