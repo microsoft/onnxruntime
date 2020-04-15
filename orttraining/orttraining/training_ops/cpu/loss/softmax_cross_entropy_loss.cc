@@ -32,14 +32,18 @@ namespace contrib {
 REGISTER_KERNEL_TYPED(SoftmaxCrossEntropyLoss, kOnnxDomain, 12, float, int32_t)
 REGISTER_KERNEL_TYPED(SoftmaxCrossEntropyLoss, kOnnxDomain, 12, float, int64_t)
 
-void GetNDCFromLogitAndLabelShape(TensorShape logit_shape, TensorShape label_shape, int64_t& N, int64_t& D, int64_t& C) {
-  N = logit_shape[0];
-  D = logit_shape.NumDimensions() > 2 ? label_shape.Size() / N : 1;
-  int64_t N_D = N * D;
+void GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, int64_t& N_D, int64_t& C) {
+  int64_t N = logit_shape[0];
+  // N_D = N * D1 * D2...D*K
+  N_D = N * (label_shape.Size() / N);
   C = logit_shape.Size() / N_D;
 }
 
-void VerifyLogitAndLabelShape(TensorShape logit_shape, TensorShape label_shape) {
+void VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape,
+                                    const TensorShape& label_shape,
+                                    const TensorShape* weight_shape) {
+  ORT_ENFORCE(nullptr == weight_shape || 1 == weight_shape->NumDimensions(), "Weights tensor is not 1-D.");
+
   const size_t label_dims = label_shape.NumDimensions();
   ORT_ENFORCE(logit_shape.NumDimensions() == label_dims + 1,
               "logit_shape must be (1 + label_shape)");
@@ -53,7 +57,7 @@ void VerifyLogitAndLabelShape(TensorShape logit_shape, TensorShape label_shape) 
   }
 }
 
-void GetPermutationAndShape(bool ncd_to_ndc, TensorShape tensor_shape, std::vector<int64_t>& new_shape,
+void GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, std::vector<int64_t>& new_shape,
                             std::vector<size_t>& permutations) {
   if (ncd_to_ndc) {
     new_shape.emplace_back(tensor_shape[0]);
@@ -83,13 +87,13 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
   const Tensor& label = *context->Input<Tensor>(1);
   const TensorShape logit_shape{logit.Shape()};
   const TensorShape label_shape{label.Shape()};
-  VerifyLogitAndLabelShape(logit_shape, label_shape);
+  VerifyLogitWeightAndLabelShape(logit_shape, label_shape,
+                                 OpKernel::Node().InputDefs().size() == 3 ? &(*(context->Input<Tensor>(2))).Shape() : nullptr);
 
-  int64_t N;
-  int64_t D;
+  // N_D = N * D1 * D2...D*K
+  int64_t N_D;
   int64_t C;
-  GetNDCFromLogitAndLabelShape(logit_shape, label_shape, N, D, C);
-  int64_t N_D = N * D;
+  GetNDCFromLogitAndLabelShape(logit_shape, label_shape, N_D, C);
   const T1* logit_data = logit.template Data<T1>();
   OrtValue transpose_output;
   std::vector<int64_t> new_shape;
@@ -141,8 +145,6 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
   // 2) Use parallel for below everywhere.
   if (OpKernel::Node().InputDefs().size() == 3) {
     const Tensor& weight = *context->Input<Tensor>(2);
-    const TensorShape weight_shape{weight.Shape()};
-    ORT_ENFORCE(1 == weight_shape.NumDimensions(), "Weights tensor is not 1-D.");
     const T1* weight_data = weight.template Data<T1>();
     T1 sum_weight = (T1)0;
 
@@ -226,13 +228,13 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
   const Tensor& label = *context->Input<Tensor>(2);
   const TensorShape probability_shape{log_prob.Shape()};
   const TensorShape label_shape{label.Shape()};
-  VerifyLogitAndLabelShape(probability_shape, label_shape);
+  VerifyLogitWeightAndLabelShape(probability_shape, label_shape,
+                                 OpKernel::Node().InputDefs().size() == 4 ? &(*(context->Input<Tensor>(3))).Shape() : nullptr);
 
-  int64_t N;
-  int64_t D;
+  // N_D = N * D1 * D2...D*K
+  int64_t N_D;
   int64_t C;
-  GetNDCFromLogitAndLabelShape(probability_shape, label_shape, N, D, C);
-  int64_t N_D = N * D;
+  GetNDCFromLogitAndLabelShape(probability_shape, label_shape, N_D, C);
   const int n_d = gsl::narrow_cast<int>(N_D);
   const int c = gsl::narrow_cast<int>(C);
   const T1* dY_data = dY.template Data<T1>();
@@ -257,8 +259,6 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
   // REVIEW(codemzs): Use parallel for below.
   if (OpKernel::Node().InputDefs().size() == 4) {
     const Tensor& weight = *context->Input<Tensor>(3);
-    const TensorShape weight_shape{weight.Shape()};
-    ORT_ENFORCE(1 == weight_shape.NumDimensions(), "Weights tensor is not 1-D.");
     const T1* weight_data = weight.template Data<T1>();
 
     if (reduction_ == ReductionType::NONE) {

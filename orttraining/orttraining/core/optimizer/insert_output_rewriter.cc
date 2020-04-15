@@ -34,11 +34,10 @@ bool InsertMaxPoolOutput::SatisfyCondition(const Graph& /*graph*/, const Node& n
 
 Status InsertSoftmaxCrossEntropyLossOutput::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& /*logger*/) const {
   auto& outputs = node.MutableOutputDefs();
-  auto& inputs = node.MutableInputDefs();
-  const NodeArg* X = inputs[0];
+  const NodeArg* X = node.InputDefs()[0];
 
   TypeProto t;
-  t.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  t.mutable_tensor_type()->set_elem_type(X->TypeAsProto()->tensor_type().elem_type());
   t.mutable_tensor_type()->mutable_shape()->CopyFrom(*X->Shape());  // log probability should have the same shape as logits.
 
   NodeArg& node_arg = graph.GetOrCreateNodeArg(X->Name() + "_log_prob", &t);

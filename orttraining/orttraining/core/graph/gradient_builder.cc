@@ -902,7 +902,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossGradient) {
                 {GI(0)},
                 SrcNodeAttributes())};
   } else {
-    ORT_ENFORCE(false, "the number of input arguments must be 2 or 3");
+    ORT_THROW(false, "the number of input arguments must be 2 or 3");
   }
 }
 

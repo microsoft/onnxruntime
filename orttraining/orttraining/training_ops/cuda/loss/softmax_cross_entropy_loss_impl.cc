@@ -29,20 +29,29 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
   const Tensor& label = *ctx->Input<Tensor>(1);
   const TensorShape logit_shape{logit.Shape()};
   const TensorShape label_shape{label.Shape()};
-  onnxruntime::contrib::VerifyLogitAndLabelShape(logit_shape, label_shape);
+  onnxruntime::contrib::VerifyLogitWeightAndLabelShape(logit_shape, label_shape,
+                                                       OpKernel::Node().InputDefs().size() == 3 ? &(*(ctx->Input<Tensor>(2))).Shape() : nullptr);
 
-  int64_t N;
-  int64_t D;
+  // N_D = N * D1 * D2...D*K
+  int64_t N_D;
   int64_t C;
-  onnxruntime::contrib::GetNDCFromLogitAndLabelShape(logit_shape, label_shape, N, D, C);
-  int64_t N_D = N * D;
+  onnxruntime::contrib::GetNDCFromLogitAndLabelShape(logit_shape, label_shape, N_D, C);
   const TensorShape logit_reshape({N_D, C});
   const TensorShape label_reshape({N_D});
-  IAllocatorUniquePtr<T> tmp_loss_sample = GetScratchBuffer<T>(N_D);
-  const T* logit_data = logit.template Data<T>();
-  const Tin* label_data = label.template Data<Tin>();
   Tensor* total_loss = ctx->Output(0, reduction_ == ReductionType::NONE ? TensorShape(label.Shape()) : TensorShape({}));
   T* total_loss_data = total_loss->template MutableData<T>();
+  T* tmp_loss_sample_buffer = nullptr;
+  IAllocatorUniquePtr<T> tmp_loss_sample;
+  if (reduction_ == ReductionType::NONE) {
+    tmp_loss_sample_buffer = total_loss_data;
+  } else {
+    tmp_loss_sample = GetScratchBuffer<T>(N_D);
+    tmp_loss_sample_buffer = tmp_loss_sample.get();
+  }
+
+  const T* logit_data = logit.template Data<T>();
+  const Tin* label_data = label.template Data<Tin>();
+
   T* log_prob_data = nullptr;
   Tensor* log_prob = nullptr;
   IAllocatorUniquePtr<T> log_prob_scratch_buffer;
@@ -81,15 +90,13 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
   const T* weight_data = nullptr;
   if (OpKernel::Node().InputDefs().size() == 3) {
     const Tensor& weight = *ctx->Input<Tensor>(2);
-    const TensorShape weight_shape{weight.Shape()};
-    ORT_ENFORCE(1 == weight_shape.NumDimensions(), "Weights tensor is not 1-D.");
     weight_data = weight.template Data<T>();
   }
 
   IAllocatorUniquePtr<T> weight_data_nd = GetScratchBuffer<T>(N_D);
   T* weight_data_nd_data = weight_data_nd.get();
   ORT_ENFORCE(cudaMemset(weight_data_nd_data, 0, N_D * sizeof(T)) == cudaSuccess);
-  ComputeWeightsSoftmaxCrossEntropyImpl(weight_data_nd_data, label_data, weight_data, N_D, C, ignore_index_);
+  ComputeWeightsSoftmaxCrossEntropyImpl(label_data, weight_data, N_D, C, ignore_index_, weight_data_nd_data);
 
   auto normalize_factor_data = GetScratchBuffer<T>(1);
   if (reduction_ == ReductionType::MEAN) {
@@ -113,10 +120,10 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
                               label_data,
                               weight_data_nd_data,
                               normalize_factor_data.get(),
-                              tmp_loss_sample.get(),
                               N_D,
                               C,
-                              ignore_index_);
+                              ignore_index_,
+                              tmp_loss_sample_buffer);
 
   // Transpose log probability from [N, D1, D2...Dk, C] to [N, C, D1, D2 .. Dk].
   if (logit_shape.NumDimensions() > 2 && log_prob != nullptr) {
@@ -132,20 +139,17 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
     log_prob->Reshape(new_shape);
   }
 
-  if (reduction_ == ReductionType::NONE) {
-    cudaMemcpyAsync(total_loss_data, tmp_loss_sample.get(), sizeof(T) * N_D, cudaMemcpyDeviceToDevice);
-    return Status::OK();
+  if (reduction_ != ReductionType::NONE) {
+    // ReduceSum on loss_per_sample
+    std::vector<int64_t> output_dims(1, 1);
+    ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+        tmp_loss_sample_buffer,
+        label_reshape,
+        total_loss_data,
+        TensorShape({}),
+        CUDNN_REDUCE_TENSOR_ADD,
+        output_dims);
   }
-
-  // ReduceSum on loss_per_sample
-  std::vector<int64_t> output_dims(1, 1);
-  ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
-      tmp_loss_sample.get(),
-      label_reshape,
-      total_loss_data,
-      TensorShape({}),
-      CUDNN_REDUCE_TENSOR_ADD,
-      output_dims);
 
   return Status::OK();
 }
@@ -157,13 +161,13 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
   const Tensor& label = *ctx->Input<Tensor>(2);
   const TensorShape probability_shape{log_prob.Shape()};
   const TensorShape label_shape{label.Shape()};
-  onnxruntime::contrib::VerifyLogitAndLabelShape(probability_shape, label_shape);
+  onnxruntime::contrib::VerifyLogitWeightAndLabelShape(probability_shape, label_shape,
+                                                       OpKernel::Node().InputDefs().size() == 4 ? &(*(ctx->Input<Tensor>(3))).Shape() : nullptr);
 
-  int64_t N;
-  int64_t D;
+  // N_D = N * D1 * D2...D*K
+  int64_t N_D;
   int64_t C;
-  onnxruntime::contrib::GetNDCFromLogitAndLabelShape(probability_shape, label_shape, N, D, C);
-  int64_t N_D = N * D;
+  onnxruntime::contrib::GetNDCFromLogitAndLabelShape(probability_shape, label_shape, N_D, C);
   Tensor* d_logit = ctx->Output(0, probability_shape);
   const T* dY_data = dY.template Data<T>();
   const T* log_prob_data = log_prob.template Data<T>();
@@ -187,37 +191,29 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
 
   if (OpKernel::Node().InputDefs().size() == 4) {
     const Tensor& weight = *ctx->Input<Tensor>(3);
-    const TensorShape weight_shape{weight.Shape()};
-    ORT_ENFORCE(1 == weight_shape.NumDimensions(), "Weights tensor is not 1-D.");
     weight_data = weight.template Data<T>();
   }
 
   IAllocatorUniquePtr<T> weight_data_nd = GetScratchBuffer<T>(N_D);
   T* weight_data_nd_data = weight_data_nd.get();
   ORT_ENFORCE(cudaMemset(weight_data_nd_data, 0, N_D * sizeof(T)) == cudaSuccess);
-  ComputeWeightsSoftmaxCrossEntropyImpl(weight_data_nd_data, label_data, weight_data, N_D, C, ignore_index_);
-
+  ComputeWeightsSoftmaxCrossEntropyImpl(label_data, weight_data, N_D, C, ignore_index_, weight_data_nd_data);
   auto normalize_factor_data = GetScratchBuffer<T>(1);
-  if (reduction_ == ReductionType::NONE) {
+  if (reduction_ == ReductionType::MEAN) {
+    // Compute buffer size in byte for reduction APIs.
+    const auto buffer_size = static_cast<size_t>(
+        compute_reduction_buffer_size(
+            static_cast<int>(sizeof(T)), static_cast<int>(N_D)));
+    // Allocate reduction buffer whose size is buffer_size bytes.
+    IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
+        buffer_size);
+    reduce_sum(weight_data_nd_data,
+               normalize_factor_data.get(),
+               static_cast<int>(N_D),
+               reinterpret_cast<T*>(reduction_buffer.get()));
+  } else {
     const T normalize_factor = static_cast<T>(1);
     cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
-  } else {
-    if (reduction_ == ReductionType::MEAN) {
-      // Compute buffer size in byte for reduction APIs.
-      const auto buffer_size = static_cast<size_t>(
-          compute_reduction_buffer_size(
-              static_cast<int>(sizeof(T)), static_cast<int>(N_D)));
-      // Allocate reduction buffer whose size is buffer_size bytes.
-      IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
-          buffer_size);
-      reduce_sum(weight_data_nd_data,
-                 normalize_factor_data.get(),
-                 static_cast<int>(N_D),
-                 reinterpret_cast<T*>(reduction_buffer.get()));
-    } else {
-      const T normalize_factor = static_cast<T>(1);
-      cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
-    }
   }
 
   SoftmaxCrossEntropyLossGradImpl(dY_data,
@@ -225,11 +221,10 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
                                   label_data,
                                   weight_data_nd_data,
                                   normalize_factor_data.get(),
-                                  d_logit_data,
                                   N_D,
                                   C,
-                                  ignore_index_,
-                                  ReductionType::NONE == reduction_);
+                                  ReductionType::NONE == reduction_,
+                                  d_logit_data);
 
   // Transpose logit from [N, D1, D2...Dk, C] to [N, C, D1, D2 .. Dk]
   if (probability_shape.NumDimensions() > 2) {

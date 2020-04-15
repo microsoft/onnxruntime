@@ -16,10 +16,10 @@ void SoftmaxCrossEntropyLossImpl(
     const Tin* label,
     const T* weight,
     const T* normalize_factor,
-    T* output_data,
     size_t count,
     size_t label_depth,
-    int64_t ignore_index);
+    int64_t ignore_index,
+    T* output_data);
 
 template <typename T, typename Tin>
 void SoftmaxCrossEntropyLossGradImpl(
@@ -28,20 +28,19 @@ void SoftmaxCrossEntropyLossGradImpl(
     const Tin* label,
     const T* weight,
     const T* normalize_factor,
-    T* output_data,
     size_t count,
     size_t label_depth,
-    int64_t ignore_index,
-    bool reduction_none);
+    bool reduction_none,
+    T* output_data);
 
 template <typename T, typename Tin>
 void ComputeWeightsSoftmaxCrossEntropyImpl(
-    T* weight_data_nd,
     const Tin* label,
     const T* weight,
     size_t count,
     size_t label_depth,
-    int64_t ignore_index);
+    int64_t ignore_index,
+    T* weight_data_nd);
 
 template <typename T, typename Tin>
 class SoftmaxCrossEntropyLoss final : public LossBase {

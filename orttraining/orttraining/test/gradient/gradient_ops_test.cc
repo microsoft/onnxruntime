@@ -1207,8 +1207,10 @@ TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
   TestSparseSoftmaxCrossEntropyGrad({2, 3, 2}, "sum");
 }
 
-void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape, const std::string& reduction,
-                                     int64_t ignore_index = 0, int64_t D = 2) {
+void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_shape
+                                     const std::string& reduction,
+                                     int64_t ignore_index = 0,
+                                     int64_t D = 2 /* num_class*/) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"SoftmaxCrossEntropyLoss", kOnnxDomain, 12};
@@ -1307,6 +1309,9 @@ TEST(GradientCheckerTest, SoftmaxCrossEntropyLossGrad) {
   TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "mean", -1);
   TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "sum", -1);
   TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "none", -1);
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "mean", -1, 10);
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "sum", -1, 10);
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "none", -1, 10);
 }
 
 TEST(GradientCheckerTest, GeluGrad) {
