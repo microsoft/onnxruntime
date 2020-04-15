@@ -71,7 +71,7 @@ static Status RegisterTensorrtKernels(KernelRegistry& kernel_registry) {
   return Status::OK();
 }
 
-KernelRegistryAndStatus GetDnnlKernelRegistry() {
+KernelRegistryAndStatus GetTensorrtKernelRegistry() {
   KernelRegistryAndStatus ret;
   ret.st = RegisterTensorrtKernels(*ret.kernel_registry);
   return ret;

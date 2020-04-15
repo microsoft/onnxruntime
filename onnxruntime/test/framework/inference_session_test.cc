@@ -354,8 +354,8 @@ TEST(InferenceSessionTests, NoTimeout) {
 
   InferenceSession session_object{so, GetEnvironment()};
   Status st;
-  ASSERT_TRUE((st = session_object.Load(MODEL_URI)).IsOK()) << st.ErrorMessage();
-  ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st.ErrorMessage();
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   RunOptions run_options;
   run_options.run_tag = "one session/one tag";
@@ -370,7 +370,7 @@ TEST(InferenceSessionTests, DisableCPUArena) {
 
   InferenceSession session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   RunOptions run_options;
   run_options.run_tag = "one session/one tag";
@@ -398,7 +398,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   so.optimized_model_filepath = ToWideString(test_model + "-TransformLevel-" + std::to_string(static_cast<uint32_t>(so.graph_optimization_level)));
   InferenceSessionGetGraphWrapper session_object{so, GetEnvironment()};
   ASSERT_TRUE(session_object.Load(test_model).IsOK());
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   // Assert that model has been transformed and identity Node is removed.
   const auto& graph = session_object.GetGraph();
@@ -475,8 +475,7 @@ TEST(InferenceSessionTests, ModelMetadata) {
   ASSERT_STATUS_OK(session_object.Load(model_uri));
 
   std::shared_ptr<onnxruntime::Model> p_model;
-  Status st = onnxruntime::Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
-  ASSERT_TRUE(st.IsOK());
+  ASSERT_STATUS_OK(onnxruntime::Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()));
   const onnxruntime::Graph& graph = p_model->MainGraph();
 
   // 1. first test the model meta
@@ -544,7 +543,7 @@ TEST(InferenceSessionTests, CheckRunLogger) {
   auto st = Environment::Create(std::move(logging_manager), env);
   InferenceSession session_object{so, *env.get()};
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   RunOptions run_options;
   run_options.run_tag = "RunTag";
@@ -574,7 +573,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
 
   InferenceSession session_object(so, GetEnvironment());
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   RunOptions run_options;
   run_options.run_tag = "RunTag";
@@ -613,7 +612,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
 
   InferenceSession session_object(so, GetEnvironment());
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   RunOptions run_options;
   run_options.run_tag = "RunTag";
@@ -651,7 +650,7 @@ TEST(InferenceSessionTests, MultipleSessionsNoTimeout) {
   session_options.session_logid = "InferenceSessionTests.MultipleSessionsNoTimeout";
   InferenceSession session_object{session_options, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   std::thread thread1{[&session_object]() {
     RunOptions run_options;
@@ -676,7 +675,7 @@ TEST(InferenceSessionTests, PreAllocateOutputVector) {
 
   InferenceSession session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   RunOptions run_options;
   run_options.run_tag = "InferenceSessionTests.PreAllocateOutputVector";
@@ -705,7 +704,7 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
   auto st = Environment::Create(std::move(logging_manager), env);
   InferenceSession session_object{so, *env.get()};
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   RunOptions run_options;
   run_options.run_tag = "ConfigureVerbosityLevel";
@@ -743,7 +742,7 @@ TEST(InferenceSessionTests, TestWithIstream) {
   std::ifstream model_file_stream(MODEL_URI, ios::in | ios::binary);
   ASSERT_TRUE(model_file_stream.good());
   ASSERT_TRUE(session_object.Load(model_file_stream).IsOK());
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   RunOptions run_options;
   run_options.run_tag = "InferenceSessionTests.TestWithIstream";
@@ -762,7 +761,7 @@ TEST(InferenceSessionTests, TestRegisterExecutionProvider) {
   std::ifstream model_file_stream(MODEL_URI, ios::in | ios::binary);
   ASSERT_TRUE(model_file_stream.good());
   ASSERT_TRUE(session_object.Load(model_file_stream).IsOK());
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   RunOptions run_options;
   run_options.run_tag = "InferenceSessionTests.TestWithIstream";
@@ -825,7 +824,7 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
   p_model->ToProto().SerializeToString(&s1);
   std::stringstream sstr(s1);
   ASSERT_TRUE(session_object.Load(sstr).IsOK());
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
   unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
   ASSERT_TRUE(st.IsOK());
@@ -860,7 +859,7 @@ TEST(InferenceSessionTests, InvalidInputTypeOfTensorElement) {
 
   InferenceSession session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
@@ -1650,7 +1649,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
   SessionOptions so;
   InferenceSession session_object(so, GetEnvironment());
   ASSERT_TRUE(session_object.Load(LSTM_MODEL_URI).IsOK());
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   RunOptions run_options;
   run_options.run_tag = "one session/one tag";
@@ -1761,7 +1760,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   InferenceSession session_object{so, GetEnvironment()};
 
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   auto dummy_provider = onnxruntime::make_unique<DummyExecutionProvider>();
   auto* p_dummy_provider = dummy_provider.get();
@@ -1828,7 +1827,7 @@ TEST(InferenceSessionTests, TestRegisterTransformers) {
     ASSERT_STATUS_OK(session_object.RegisterGraphTransformer(std::move(dummy_transformer_unique_ptr)));
 
     ASSERT_STATUS_OK(session_object.Load(model_uri));
-    ASSERT_TRUE(session_object.Initialize().IsOK());
+    ASSERT_STATUS_OK(session_object.Initialize());
 
     // Validate transformer was called after Session.Initialize
     ASSERT_TRUE(dummy_transformer->IsTransformerInvoked());
@@ -1852,7 +1851,7 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
     so.graph_optimization_level = TransformerLevel::Level2;
     InferenceSession session_object{so, GetEnvironment()};
     ASSERT_STATUS_OK(session_object.Load(model_uri));
-    ASSERT_TRUE(session_object.Initialize().IsOK());
+    ASSERT_STATUS_OK(session_object.Initialize());
   }
 }
 
@@ -1942,7 +1941,7 @@ TEST(InferenceSessionTests, ModelThatTriggersAllocationPlannerToReuseDoubleTenso
   Status st;
   ASSERT_TRUE((st = session_object.Load("testdata/test_cast_back_to_back_non_const_mixed_types_origin.onnx")).IsOK())
       << st.ErrorMessage();
-  ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st.ErrorMessage();
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   RunOptions run_options;
   run_options.run_tag = "one session/one tag";
@@ -2217,7 +2216,7 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed) {
 
   InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   // make sure we're using the per session threadpools
   auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
@@ -2257,7 +2256,7 @@ TEST(InferenceSessionTests, CheckIfGlobalThreadPoolsAreBeingUsed) {
 
   InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   // make sure we're using the global threadpools in both session and session state
   auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
@@ -2295,7 +2294,7 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
 
   InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   // make sure we're using the per session threadpools
   auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();

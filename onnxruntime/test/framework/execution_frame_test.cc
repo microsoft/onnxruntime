@@ -52,29 +52,25 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
 
   onnxruntime::Node* node = &graph.AddNode("node1", "Relu", "Relu operator", ArgMap{&input_def}, ArgMap{&output_def});
   node->SetExecutionProviderType(kCpuExecutionProvider);
-  Status status = graph.Resolve();
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(graph.Resolve());
 
   auto cpu_xp = CreateCPUExecutionProvider();
   auto xp_typ = cpu_xp->Type();
   ExecutionProviders execution_providers;
   execution_providers.Add(xp_typ, std::move(cpu_xp));
   KernelRegistryManager kernel_registry_manager;
-  status = kernel_registry_manager.RegisterKernels(execution_providers);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   SessionState state{execution_providers, true, &tp_, nullptr};
-  status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(state.SetGraphAndCreateKernels(graph, kernel_registry_manager));
 
   node->SetExecutionProviderType(xp_typ);
 
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan;
   // TODO below line is for testing only. In production use SequentialPlanner::CreatePlan()
   SequentialPlannerContext context(ExecutionMode::ORT_SEQUENTIAL);
-  status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
-                                         state.GetOrtValueNameIdxMap(), context, p_seq_exec_plan);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
+                                         state.GetOrtValueNameIdxMap(), context, p_seq_exec_plan));
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
 
   vector<OrtValue> outputs;
@@ -85,9 +81,8 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
 
   TensorShape shape(std::vector<int64_t>{2, 3});
   OrtValue& mlvalue0 = *frame.GetMutableNodeInputOrOutputMLValue(start_index);
-  status = frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue0, start_index, DataTypeImpl::GetType<float>(),
-                                                    execution_providers.Get(xp_typ)->GetAllocator(0, OrtMemTypeDefault)->Info(), shape);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue0, start_index, DataTypeImpl::GetType<float>(),
+                                                    execution_providers.Get(xp_typ)->GetAllocator(0, OrtMemTypeDefault)->Info(), shape));
 
   OrtValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   ASSERT_TRUE(p_ml_value != nullptr);
@@ -101,12 +96,11 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   //test share memory from tensor
   TensorShape shape2(std::vector<int64_t>{3, 2});
   OrtValue& mlvalue1 = *frame.GetMutableNodeInputOrOutputMLValue(start_index + 1);
-  status = frame.AllocateMLValueTensorPreAllocateBuffer(mlvalue1,
+  ASSERT_STATUS_OK(frame.AllocateMLValueTensorPreAllocateBuffer(mlvalue1,
                                                         start_index,
                                                         DataTypeImpl::GetType<float>(),
                                                         p_tensor->Location(),
-                                                        shape2);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+                                                        shape2));
 
   const OrtValue* p_ml_value_const = frame.GetNodeInputOrOutputMLValue(1);
   auto tensor2 = p_ml_value_const ? &(p_ml_value_const->Get<Tensor>()) : nullptr;
@@ -146,10 +140,9 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
   execution_providers.Add(xp_typ, std::move(cpu_xp));
-  ASSERT_TRUE(kernel_registry_manager.RegisterKernels(execution_providers).IsOK());
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
   SessionState state{execution_providers, true, &tp_, nullptr};
-  auto status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(state.SetGraphAndCreateKernels(graph, kernel_registry_manager));
 
   const OrtValueNameIdxMap& mlvalue_name_idx_map = state.GetOrtValueNameIdxMap();
   int x_idx = -1, y_idx = -1;
@@ -193,8 +186,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   graph.AddNode("node3", "Clip", "clip1", ArgMap{&gemm2_out_def}, ArgMap{&clip_out_def})
       .SetExecutionProviderType(xp_type);
 
-  auto status = graph.Resolve();
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(graph.Resolve());
 
   KernelRegistryManager kernel_registry_manager;
 
@@ -203,8 +195,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
   //1. prepare input
   SessionState state{execution_providers, true, &tp_, nullptr};
-  status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(state.SetGraphAndCreateKernels(graph, kernel_registry_manager));
 
   const OrtValueNameIdxMap& mlvalue_name_idx_map(state.GetOrtValueNameIdxMap());
 
@@ -233,9 +224,8 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
 
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan = onnxruntime::make_unique<SequentialExecutionPlan>();
   SequentialPlannerContext context(ExecutionMode::ORT_SEQUENTIAL);
-  status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
-                                         mlvalue_name_idx_map, context, p_seq_exec_plan);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
+                                         mlvalue_name_idx_map, context, p_seq_exec_plan));
 
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
 
@@ -246,27 +236,22 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   OrtValue& mlvalue4 = *frame.GetMutableNodeInputOrOutputMLValue(4);
   OrtValue& mlvalue5 = *frame.GetMutableNodeInputOrOutputMLValue(5);
 
-  status = frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue3, 3,
+  ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue3, 3,
                                                     DataTypeImpl::GetType<float>(),
                                                     cpu_allocator->Info(),
-                                                    TensorShape(std::vector<int64_t>{2, 2}));
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+                                                    TensorShape(std::vector<int64_t>{2, 2})));
 
-  status = frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue4, 4,
+  ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue4, 4,
                                                     DataTypeImpl::GetType<float>(),
                                                     cpu_allocator->Info(),
-                                                    TensorShape(std::vector<int64_t>{2, 3}));
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+                                                    TensorShape(std::vector<int64_t>{2, 3})));
 
-  status = frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue5, 5,
+  ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue5, 5,
                                                     DataTypeImpl::GetType<float>(),
                                                     cpu_allocator->Info(),
-                                                    TensorShape(std::vector<int64_t>{2, 3}));
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-
+                                                    TensorShape(std::vector<int64_t>{2, 3})));
   MemoryPatternGroup pattern;
-  status = frame.GeneratePatterns(&pattern);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(frame.GeneratePatterns(&pattern));
 
   ASSERT_EQ(pattern.patterns.size(), pattern.locations.size());
   ASSERT_EQ(pattern.patterns.size(), 1u);
@@ -284,9 +269,8 @@ TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {
   so.session_logid = "BadModelInvalidDimParamUsage";
 
   InferenceSession session_object{so, GetEnvironment()};
-  Status st;
-  ASSERT_TRUE((st = session_object.Load("testdata/invalid_dim_param_value_repetition.onnx")).IsOK()) << st;
-  ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
+  ASSERT_STATUS_OK(session_object.Load("testdata/invalid_dim_param_value_repetition.onnx"));
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   std::vector<int64_t> dims_X = {10, 6};
   std::vector<float> values_X;
@@ -307,7 +291,7 @@ TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {
 
   // Now run
   RunOptions run_options;
-  st = session_object.Run(run_options, feeds, output_names, &fetches);
+  auto st = session_object.Run(run_options, feeds, output_names, &fetches);
 
   EXPECT_FALSE(st.IsOK()) << st;
   EXPECT_THAT(st.ErrorMessage(), testing::HasSubstr("Shape mismatch attempting to re-use buffer."));
