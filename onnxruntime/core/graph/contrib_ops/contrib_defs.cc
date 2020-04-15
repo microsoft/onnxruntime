@@ -1287,7 +1287,7 @@ The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale),
           "T2")
       .TypeConstraint(
           "T1",
-          {"tensor(float)"},
+          {"tensor(float16)", "tensor(float)"},
           "Constrain 'x', 'y_scale' to float tensors.")
       .TypeConstraint(
           "T2",
@@ -1318,35 +1318,36 @@ Scale and zero point must have same shape. They must be either scalar (per tenso
             "If it's specified, it means per 'axis' quantization and input 'x_scale' and 'x_zero_point' must be 1-D tensors.",
             AttributeProto::INT,
             false)
-      .Input(0,
-             "x",
-             "N-D quantized Input tensor to be de-quantized.",
-             "T2")
+      .Input(
+          0,
+          "x",
+          "N-D quantized Input tensor to be de-quantized.",
+          "T1")
       .Input(
           1,
           "x_scale",
           "Scale for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization."
           "If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
-          "T1")
+          "T2")
       .Input(
           2,
           "x_zero_point",
           "Zero point for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization."
           "If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
-          "T2")
+          "T1")
       .Output(
           0,
           "y",
           "N-D full precision output tensor. It has same shape as input 'x'.",
-          "T1")
+          "T2")
       .TypeConstraint(
           "T1",
-          {"tensor(float)"},
-          "Constrain 'y', 'x_scale' to float tensors.")
+          {"tensor(int8)", "tensor(uint8)"},
+          "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors.")
       .TypeConstraint(
           "T2",
-          {"tensor(int8)", "tensor(uint8)"},
-          "Constrain 'x_zero_point' and 'x' to 8-bit integer tensors.")
+          {"tensor(float16)", "tensor(float)"},
+          "Constrain 'y', 'x_scale' to float tensors.")
       .SetDoc(DequantizeLinear_ver1_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto y_type = ctx.getOutputType(0);

@@ -9,6 +9,22 @@
 namespace onnxruntime {
 namespace cuda {
 
+#define REGISTER_KERNEL_TYPED(T, U)                                \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
+      QuantizeLinear,                                              \
+      kMSDomain,                                                   \
+      1,                                                           \
+      T##_##U,                                                     \
+      kCudaExecutionProvider,                                      \
+      KernelDefBuilder()                                           \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<U>())  \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>())  \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<U>()), \
+      QuantizeLinear<T, U>);
+
+REGISTER_KERNEL_TYPED(int8_t, MLFloat16)
+REGISTER_KERNEL_TYPED(uint8_t, MLFloat16)
+
 ONNX_OPERATOR_TYPED_KERNEL_EX(QuantizeLinear,
                               kOnnxDomain,
                               10,
@@ -29,8 +45,10 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(QuantizeLinear,
                                   .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>()),
                               QuantizeLinear<int8_t>);
 
-template <class T>
-Status QuantizeLinear<T>::ComputeInternal(OpKernelContext* ctx) const {
+template <class T, class U>
+Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
+  typedef typename ToCudaType<U>::MappedType CudaU;
+
   auto x = ctx->Input<Tensor>(0);
   auto y_scale = ctx->Input<Tensor>(1);
   auto y_zero_point = ctx->Input<Tensor>(2);
@@ -42,14 +60,15 @@ Status QuantizeLinear<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   const auto& x_shape = x->Shape();
 
-  const float* input = x->template Data<float>();
+  const CudaU* input = reinterpret_cast<const CudaU*>(x->template Data<U>());
   T* output = y->template MutableData<T>();
 
+  // TO DO: support per-channel
   ORT_ENFORCE(IsScalarOr1ElementVector(y_scale), "x_scale must be a scalar or 1D tensor of size 1.");
   ORT_ENFORCE(IsScalarOr1ElementVector(y_zero_point), "x_zero_point must be a scalar or 1D tensor of size 1.");
 
   const T* zero_point = y_zero_point->template Data<T>();
-  const float* scale = y_scale->template Data<float>();
+  const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale->template Data<U>());
   const auto num_of_elements = x_shape.Size();
 
   CudaQuantizeLinear(input, output, scale, zero_point, num_of_elements);

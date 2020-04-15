@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
@@ -120,7 +121,7 @@ TEST(DequantizeLinearContribOpTest, DequantizeLinear_3) {
 }
 
 // quantize with scalar zero point and scale
-TEST(QuantizeLinearContribOpTest, QuantizeLinear_0) {
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float) {
   OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
   std::vector<int64_t> dims{6};
   test.AddInput<float>("x", dims, {0, 2, 3, 1000, -254, -1000});
@@ -130,8 +131,31 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_0) {
   test.Run();
 }
 
+#ifdef USE_CUDA
+// quantize with scalar zero point and scale
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_uint8) {
+  OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{6};
+  test.AddInput<MLFloat16>("x", dims, ToFloat16({0, 2, 3, 1000, -254, -1000}));
+  test.AddInput<MLFloat16>("y_scale", {}, ToFloat16({2.0f}));
+  test.AddInput<uint8_t>("y_zero_point", {}, {128});
+  test.AddOutput<uint8_t>("y", dims, {128, 129, 130, 255, 1, 0});
+  test.Run();
+}
+
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_int8) {
+  OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{6};
+  test.AddInput<MLFloat16>("x", dims, ToFloat16({0, 2, 3, 1000, -254, -1000}));
+  test.AddInput<MLFloat16>("y_scale", {}, ToFloat16({2.0f}));
+  test.AddInput<int8_t>("y_zero_point", {}, {1});
+  test.AddOutput<int8_t>("y", dims, {1, 2, 3, 127, -126, -128});
+  test.Run();
+}
+#endif
+
 // quantize with broadcasting
-TEST(QuantizeLinearContribOpTest, QuantizeLinear_1) {
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_channel) {
   OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
   std::vector<int64_t> dims{3, 4};
   test.AddInput<float>("X", dims,
@@ -149,7 +173,7 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_1) {
 }
 
 // quantize with broadcasting and negative axis (-2 resolves to axis 0)
-TEST(QuantizeLinearContribOpTest, QuantizeLinear_2) {
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_channel_negative_axis) {
   OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
   std::vector<int64_t> dims{3, 4};
   test.AddInput<float>("X", dims,
