@@ -33,11 +33,8 @@
 #endif
 #endif
 
-#include <iostream>
-
-#include "gtest/gtest.h"
-
 #include "core/session/onnxruntime_cxx_api.h"
+#include "gtest/gtest.h"
 #include "test/test_environment.h"
 
 std::unique_ptr<Ort::Env> ort_env;

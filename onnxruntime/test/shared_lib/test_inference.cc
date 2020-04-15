@@ -165,35 +165,31 @@ TEST_P(CApiTestWithProvider, simple) {
 }
 
 TEST(CApiTest, dim_param) {
-  try {
-    Ort::SessionOptions session_options;
-    Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
+  Ort::SessionOptions session_options;
+  Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
 
-    auto in0 = session.GetInputTypeInfo(0);
-    auto in0_ttsi = in0.GetTensorTypeAndShapeInfo();
+  auto in0 = session.GetInputTypeInfo(0);
+  auto in0_ttsi = in0.GetTensorTypeAndShapeInfo();
 
-    auto num_input_dims = in0_ttsi.GetDimensionsCount();
-    ASSERT_GE(num_input_dims, 1u);
-    // reading 1st dimension only so don't need to malloc int64_t* or const char** values for the Get*Dimensions calls
-    int64_t dim_value = 0;
-    const char* dim_param = nullptr;
-    in0_ttsi.GetDimensions(&dim_value, 1);
-    in0_ttsi.GetSymbolicDimensions(&dim_param, 1);
-    ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
-    ASSERT_EQ(strcmp(dim_param, "n"), 0) << "Expected 'n'. Got: " << dim_param;
+  auto num_input_dims = in0_ttsi.GetDimensionsCount();
+  ASSERT_GE(num_input_dims, 1u);
+  // reading 1st dimension only so don't need to malloc int64_t* or const char** values for the Get*Dimensions calls
+  int64_t dim_value = 0;
+  const char* dim_param = nullptr;
+  in0_ttsi.GetDimensions(&dim_value, 1);
+  in0_ttsi.GetSymbolicDimensions(&dim_param, 1);
+  ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
+  ASSERT_EQ(strcmp(dim_param, "n"), 0) << "Expected 'n'. Got: " << dim_param;
 
-    auto out0 = session.GetOutputTypeInfo(0);
-    auto out0_ttsi = out0.GetTensorTypeAndShapeInfo();
-    auto num_output_dims = out0_ttsi.GetDimensionsCount();
-    ASSERT_EQ(num_output_dims, 1u);
+  auto out0 = session.GetOutputTypeInfo(0);
+  auto out0_ttsi = out0.GetTensorTypeAndShapeInfo();
+  auto num_output_dims = out0_ttsi.GetDimensionsCount();
+  ASSERT_EQ(num_output_dims, 1u);
 
-    out0_ttsi.GetDimensions(&dim_value, 1);
-    out0_ttsi.GetSymbolicDimensions(&dim_param, 1);
-    ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
-    ASSERT_EQ(strcmp(dim_param, ""), 0);
-  } catch (const onnxruntime::OnnxRuntimeException& e) {
-    FAIL() << "OnnxRuntimeException: " << e.what();
-  }
+  out0_ttsi.GetDimensions(&dim_value, 1);
+  out0_ttsi.GetSymbolicDimensions(&dim_param, 1);
+  ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
+  ASSERT_EQ(strcmp(dim_param, ""), 0);
 }
 
 INSTANTIATE_TEST_SUITE_P(CApiTestWithProviders,
