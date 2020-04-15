@@ -286,9 +286,6 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     else:
         raise RuntimeError("Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
 
-    if loss_fn:
-        model = model_loss_cls(model, loss_fn)
-
     # pytorch onnx exporter/trace does not try to match argument names.
     # e.g. for models with optional inputs, it requires all inputs be present.
     # this is a problem because the model graph depends on inputs provided.
@@ -305,12 +302,12 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
 
     f = io.BytesIO()
 
-    # Other export options to use(this is for backward compatibility).
-    other_export_options = {}
+    if loss_fn:
+        model = model_loss_cls(model, loss_fn)
+
     # This option was added after 1.4 release.
     if LooseVersion(torch.__version__) > LooseVersion('1.4.0'):
         other_export_options['enable_onnx_checker'] = False
-
     torch.onnx._export(model, tuple(sample_inputs), f,
                        input_names=input_names,
                        output_names=output_names,
@@ -724,6 +721,19 @@ class ORTTrainer():
             input = input + (internal_learning_rate,)
         if internal_loss_scale is not None:
             input = input + (internal_loss_scale,)
+
+        # loss_scale input name is needed to call train_step.
+        # loss_scale input name is determined at the time training session is created.
+        # training session creation is delay to train_step.
+        # as a result, loss_scale input name is not available when calling train_step. 
+        # to work around this problem, we have to use the following pattern matching code to get the loss_scaler argument.
+        # this problem can be solved if leter it is decided that loss scaler is always internal.
+        extra_kargs_keys = [key for key in kwargs.keys() if key not in [desc.name_ for desc in input_desc_with_]]
+        if len(input_desc_with_) > len(input) and len(extra_kargs_keys) == 1 and internal_loss_scale is None:
+            print("In mixed precision mode with external loss scaler, loss_scale input name is not available at train_step call. Argument")
+            print(extra_kargs_keys[0])
+            print(" is used as the loss scale input.")
+            input = input + (kwargs[extra_kargs_keys[0]],)
 
         fetches = None
         if 'fetches' in kwargs:

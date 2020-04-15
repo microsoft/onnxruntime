@@ -15,8 +15,6 @@ nvidia_deep_learning_examples_repo = ''
 
 sys.path.append(transformer_repo)
 
-from transformers import is_torch_available
-
 # from configuration_common_test import ConfigTester
 
 # from modeling_common_test import (CommonTestCases, ids_tensor, floats_tensor)
@@ -56,15 +54,12 @@ def floats_tensor(shape, scale=1.0, rng=None, name=None):
     return torch.tensor(data=values, dtype=torch.float).view(shape).contiguous()
 
 
-if is_torch_available():
-    from transformers import (BertConfig, BertModel, BertForMaskedLM,
-                              BertForNextSentencePrediction, BertForPreTraining,
-                              BertForQuestionAnswering, BertForSequenceClassification,
-                              BertForTokenClassification, BertForMultipleChoice)
-    from transformers.modeling_bert import BERT_PRETRAINED_MODEL_ARCHIVE_MAP
-else:
-    pytestmark = pytest.mark.skip("Require Torch")
+from transformers import (BertConfig, BertModel, BertForMaskedLM,
+                            BertForNextSentencePrediction, BertForPreTraining,
+                            BertForQuestionAnswering, BertForSequenceClassification,
+                            BertForTokenClassification, BertForMultipleChoice)
 
+sys.path.append("/bert_ort/liqun/onnxruntime/build/Linux/Debug/")
 import onnxruntime as ort
 from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample
 import torch
@@ -159,7 +154,7 @@ def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
             learning_rate = torch.tensor([lr])
 
         if not use_internal_loss_scaler and fp16:
-            loss_scale = torch.tensor(loss_scaler.loss_scale_)
+            loss_scale = torch.tensor([loss_scaler.loss_scale_])
 
         if batch_args_option == BatchArgsOption.List:
             if not use_internal_get_lr_this_step:
@@ -199,10 +194,6 @@ def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
 
 
 class BertModelTest(unittest.TestCase):
-
-    all_model_classes = (BertModel, BertForMaskedLM, BertForNextSentencePrediction,
-                         BertForPreTraining, BertForQuestionAnswering, BertForSequenceClassification,
-                         BertForTokenClassification) if is_torch_available() else ()
 
     class BertModelTester(object):
 
@@ -281,15 +272,6 @@ class BertModelTest(unittest.TestCase):
             self.last_hidden_state_desc = IODescription('last_hidden_state', ['batch', 'max_seq_len_in_batch', self.hidden_size], torch.float32)
             self.pooler_output_desc = IODescription('pooler_output', ['batch', self.hidden_size], torch.float32)
 
-            # BertForPreTraining forward:
-            # def forward(self, input_ids=None, attention_mask=None, token_type_ids=None,
-            # 	position_ids??=None, head_mask??=None, inputs_embeds??=None,
-            #     masked_lm_labels=None, next_sentence_label=None):
-            #
-            # create_and_check_bert_for_pretraining calls BertForPreTraining:
-            # model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids,
-            #     masked_lm_labels=token_labels, next_sentence_label=sequence_labels)
-
         def BertForPreTraining_descs(self):
             return ModelDescription(
                 [self.input_ids_desc, self.attention_mask_desc, self.token_type_ids_desc, self.masked_lm_labels_desc, self.next_sentence_label_desc],
@@ -319,6 +301,7 @@ class BertModelTest(unittest.TestCase):
                 choice_labels = ids_tensor([self.batch_size], self.num_choices).to(self.device)
 
             config = BertConfig(
+                vocab_size=self.vocab_size,
                 vocab_size_or_config_json_file=self.vocab_size,
                 hidden_size=self.hidden_size,
                 num_hidden_layers=self.num_hidden_layers,
@@ -333,124 +316,6 @@ class BertModelTest(unittest.TestCase):
                 initializer_range=self.initializer_range)
 
             return config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
-
-        def prepare_config_and_inputs_for_decoder(self):
-            config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels = self.prepare_config_and_inputs()
-
-            config.is_decoder = True
-            encoder_hidden_states = floats_tensor([self.batch_size, self.seq_length, self.hidden_size])
-            encoder_attention_mask = ids_tensor([self.batch_size, self.seq_length], vocab_size=2)
-
-            return config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels, encoder_hidden_states, encoder_attention_mask
-
-        def check_loss_output(self, result):
-            self.parent.assertListEqual(
-                list(result["loss"].size()),
-                [])
-
-        def create_and_check_bert_model(self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels):
-            model = BertModel(config=config)
-            model.to(input_ids.device)
-            model.eval()
-
-            sequence_output, pooled_output = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids)
-
-            # failed because there is not loss output
-            model_desc = ModelDescription([self.input_ids_desc, self.attention_mask_desc, self.token_type_ids_desc],
-                [self.last_hidden_state_desc, self.pooler_output_desc])
-            args_gradient_accumulation_steps = 8
-            args_local_rank = 0
-            args_world_size = 1
-            args_fp16 = True
-            args_allreduce_post_accumulation = True
-
-            model = ORTTrainer(model, None, model_desc, "LambOptimizer",
-                               map_optimizer_attributes=map_optimizer_attributes,
-                               learning_rate_description=IODescription('Learning_Rate', [1, ], torch.float32),
-                               device=self.device, postprocess_model=postprocess_model,
-                               gradient_accumulation_steps=args_gradient_accumulation_steps,
-                               world_rank=args_local_rank, world_size=args_world_size,
-                               use_mixed_precision=True if args_fp16 else False,
-                               allreduce_post_accumulation=True if args_allreduce_post_accumulation else False)
-
-            sequence_output, pooled_output = model(input_ids, token_type_ids=token_type_ids)
-            sequence_output, pooled_output = model(input_ids)
-
-            result = {
-                "sequence_output": sequence_output,
-                "pooled_output": pooled_output,
-            }
-            self.parent.assertListEqual(
-                list(result["sequence_output"].size()),
-                [self.batch_size, self.seq_length, self.hidden_size])
-            self.parent.assertListEqual(list(result["pooled_output"].size()), [self.batch_size, self.hidden_size])
-
-        def create_and_check_bert_model_as_decoder(self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels, encoder_hidden_states, encoder_attention_mask):
-            model = BertModel(config)
-            model.eval()
-            sequence_output, pooled_output = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, encoder_hidden_states=encoder_hidden_states, encoder_attention_mask=encoder_attention_mask)
-            sequence_output, pooled_output = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, encoder_hidden_states=encoder_hidden_states)
-            sequence_output, pooled_output = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids)
-
-            result = {
-                "sequence_output": sequence_output,
-                "pooled_output": pooled_output,
-            }
-            self.parent.assertListEqual(
-                list(result["sequence_output"].size()),
-                [self.batch_size, self.seq_length, self.hidden_size])
-            self.parent.assertListEqual(list(result["pooled_output"].size()), [self.batch_size, self.hidden_size])
-
-        def create_and_check_bert_for_masked_lm(self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels):
-            model = BertForMaskedLM(config=config)
-            model.eval()
-            loss, prediction_scores = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, masked_lm_labels=token_labels)
-
-            #####
-            model_desc = ModelDescription([self.input_ids_desc, self.attention_mask_desc, self.token_type_ids_desc, self.masked_lm_labels_desc],
-                [self.loss_desc, self.prediction_scores_desc])
-            args_gradient_accumulation_steps = 8
-            args_local_rank = 0
-            args_world_size = 1
-            args_fp16 = True
-            args_allreduce_post_accumulation = True
-
-            model = ORTTrainer(model, None, model_desc, "LambOptimizer",
-                               map_optimizer_attributes=map_optimizer_attributes,
-                               learning_rate_description=IODescription('Learning_Rate', [1, ], torch.float32),
-                               device=self.device, postprocess_model=postprocess_model,
-                               gradient_accumulation_steps=args_gradient_accumulation_steps,
-                               world_rank=args_local_rank, world_size=args_world_size,
-                               use_mixed_precision=True if args_fp16 else False,
-                               allreduce_post_accumulation=True if args_allreduce_post_accumulation else False)
-            model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, masked_lm_labels=token_labels)
-
-        def create_and_check_bert_model_for_masked_lm_as_decoder(self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels, encoder_hidden_states, encoder_attention_mask):
-            model = BertForMaskedLM(config=config)
-            model.eval()
-            loss, prediction_scores = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, masked_lm_labels=token_labels, encoder_hidden_states=encoder_hidden_states, encoder_attention_mask=encoder_attention_mask)
-            loss, prediction_scores = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, masked_lm_labels=token_labels, encoder_hidden_states=encoder_hidden_states)
-            result = {
-                "loss": loss,
-                "prediction_scores": prediction_scores,
-            }
-            self.parent.assertListEqual(
-                list(result["prediction_scores"].size()),
-                [self.batch_size, self.seq_length, self.vocab_size])
-            self.check_loss_output(result)
-
-        def create_and_check_bert_for_next_sequence_prediction(self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels):
-            model = BertForNextSentencePrediction(config=config)
-            model.eval()
-            loss, seq_relationship_score = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, next_sentence_label=sequence_labels)
-            result = {
-                "loss": loss,
-                "seq_relationship_score": seq_relationship_score,
-            }
-            self.parent.assertListEqual(
-                list(result["seq_relationship_score"].size()),
-                [self.batch_size, 2])
-            self.check_loss_output(result)
 
         def create_and_check_bert_for_pretraining(self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels):
             model = BertForPreTraining(config=config)
@@ -475,157 +340,33 @@ class BertModelTest(unittest.TestCase):
             loss_scaler = LossScaler('loss_scale_input_name', True, up_scale_window=2000)
 
             option_gradient_accumulation_steps = [8]
-            option_fp16 = [True, False]
+            option_fp16 = [True]
             option_allreduce_post_accumulation = True
             option_use_internal_get_lr_this_step = False
-            option_use_internal_loss_scaler = False
+            option_use_internal_loss_scaler = True
+            option_split_batch = [BatchArgsOption.ListAndDict]
             # TODO: with with fetches
 
             for gradient_accumulation_steps in option_gradient_accumulation_steps:
                 for fp16 in option_fp16:
-                    for option_split_batch in BatchArgsOption:                
+                    for split_batch in option_split_batch:                
                         loss_ort, prediction_scores_ort, seq_relationship_score_ort =\
                             run_test(model, model_desc, self.device, args, gradient_accumulation_steps, fp16,
                                      option_allreduce_post_accumulation,
                                      get_lr_this_step, option_use_internal_get_lr_this_step,
                                      loss_scaler, option_use_internal_loss_scaler,
-                                     option_split_batch)
+                                     split_batch)
 
                         print(loss_ort)
                         print(prediction_scores_ort)
                         print(seq_relationship_score_ort)
 
-        def create_and_check_bert_for_question_answering(self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels):
-            model = BertForQuestionAnswering(config=config)
-            model.eval()
-            loss, start_logits, end_logits = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids,
-                                                   start_positions=sequence_labels, end_positions=sequence_labels)
-            result = {
-                "loss": loss,
-                "start_logits": start_logits,
-                "end_logits": end_logits,
-            }
-            self.parent.assertListEqual(
-                list(result["start_logits"].size()),
-                [self.batch_size, self.seq_length])
-            self.parent.assertListEqual(
-                list(result["end_logits"].size()),
-                [self.batch_size, self.seq_length])
-            self.check_loss_output(result)
-
-        def create_and_check_bert_for_sequence_classification(self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels):
-            config.num_labels = self.num_labels
-            model = BertForSequenceClassification(config)
-            model.eval()
-            loss, logits = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, labels=sequence_labels)
-            result = {
-                "loss": loss,
-                "logits": logits,
-            }
-            self.parent.assertListEqual(
-                list(result["logits"].size()),
-                [self.batch_size, self.num_labels])
-            self.check_loss_output(result)
-
-        def create_and_check_bert_for_token_classification(self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels):
-            config.num_labels = self.num_labels
-            model = BertForTokenClassification(config=config)
-            model.eval()
-            loss, logits = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, labels=token_labels)
-            result = {
-                "loss": loss,
-                "logits": logits,
-            }
-            self.parent.assertListEqual(
-                list(result["logits"].size()),
-                [self.batch_size, self.seq_length, self.num_labels])
-            self.check_loss_output(result)
-
-        def create_and_check_bert_for_multiple_choice(self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels):
-            config.num_choices = self.num_choices
-            model = BertForMultipleChoice(config=config)
-            model.eval()
-            multiple_choice_inputs_ids = input_ids.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
-            multiple_choice_token_type_ids = token_type_ids.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
-            multiple_choice_input_mask = input_mask.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
-            loss, logits = model(multiple_choice_inputs_ids,
-                                 attention_mask=multiple_choice_input_mask,
-                                 token_type_ids=multiple_choice_token_type_ids,
-                                 labels=choice_labels)
-            result = {
-                "loss": loss,
-                "logits": logits,
-            }
-            self.parent.assertListEqual(
-                list(result["logits"].size()),
-                [self.batch_size, self.num_choices])
-            self.check_loss_output(result)
-
-        def prepare_config_and_inputs_for_common(self):
-            config_and_inputs = self.prepare_config_and_inputs()
-            (config, input_ids, token_type_ids, input_mask,
-             sequence_labels, token_labels, choice_labels) = config_and_inputs
-            inputs_dict = {'input_ids': input_ids, 'token_type_ids': token_type_ids, 'attention_mask': input_mask}
-            return config, inputs_dict
-
     def setUp(self):
         self.model_tester = BertModelTest.BertModelTester(self)
-        # self.config_tester = ConfigTester(self, config_class=BertConfig, hidden_size=37)
-
-    # def test_config(self):
-    #     self.config_tester.run_common_tests()
-
-    # def test_bert_model(self, use_cuda=False):
-    #     # ^^ This could be a real fixture
-    #     if use_cuda:
-    #         self.model_tester.device = "cuda"
-    #     config_and_inputs = self.model_tester.prepare_config_and_inputs()
-    #     self.model_tester.create_and_check_bert_model(*config_and_inputs)
-
-    # def test_bert_model_as_decoder(self):
-    #     config_and_inputs = self.model_tester.prepare_config_and_inputs_for_decoder()
-    #     self.model_tester.create_and_check_bert_model_as_decoder(*config_and_inputs)
-
-    def test_for_masked_lm(self):
-        config_and_inputs = self.model_tester.prepare_config_and_inputs()
-        self.model_tester.create_and_check_bert_for_masked_lm(*config_and_inputs)
-
-    # def test_for_masked_lm_decoder(self):
-    #     config_and_inputs = self.model_tester.prepare_config_and_inputs_for_decoder()
-    #     self.model_tester.create_and_check_bert_model_for_masked_lm_as_decoder(*config_and_inputs)
-
-    # def test_for_multiple_choice(self):
-    #     config_and_inputs = self.model_tester.prepare_config_and_inputs()
-    #     self.model_tester.create_and_check_bert_for_multiple_choice(*config_and_inputs)
-
-    # def test_for_next_sequence_prediction(self):
-    #     config_and_inputs = self.model_tester.prepare_config_and_inputs()
-    #     self.model_tester.create_and_check_bert_for_next_sequence_prediction(*config_and_inputs)
 
     def test_for_pretraining(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_bert_for_pretraining(*config_and_inputs)
-
-    # def test_for_question_answering(self):
-    #     config_and_inputs = self.model_tester.prepare_config_and_inputs()
-    #     self.model_tester.create_and_check_bert_for_question_answering(*config_and_inputs)
-
-    # def test_for_sequence_classification(self):
-    #     config_and_inputs = self.model_tester.prepare_config_and_inputs()
-    #     self.model_tester.create_and_check_bert_for_sequence_classification(*config_and_inputs)
-
-    # def test_for_token_classification(self):
-    #     config_and_inputs = self.model_tester.prepare_config_and_inputs()
-    #     self.model_tester.create_and_check_bert_for_token_classification(*config_and_inputs)
-
-    # @pytest.mark.slow
-    # def test_model_from_pretrained(self):
-    #     cache_dir = "/tmp/transformers_test/"
-    #     for model_name in list(BERT_PRETRAINED_MODEL_ARCHIVE_MAP.keys())[:1]:
-    #         model = BertModel.from_pretrained(model_name, cache_dir=cache_dir)
-    #         shutil.rmtree(cache_dir)
-    #         self.assertIsNotNone(model)
-
 
 if __name__ == "__main__":
     unittest.main()
