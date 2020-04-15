@@ -28,7 +28,7 @@ struct LagLeadOperatorTransformerImpl {
     //Get the transformer
     const auto* state_tensor(ctx->Input<Tensor>(0));
     const uint8_t* const state_data(state_tensor->Data<uint8_t>());
-    Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
+    Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().Size());
     typename EstimatorT::TransformerType transformer(archive);
 
     // Get the Grains
@@ -52,8 +52,8 @@ struct LagLeadOperatorTransformerImpl {
     bool has_allocate_output_data = false;
     std::function<void(OutputType)> callback_fn;
     callback_fn = [ctx, &output_grains_data, &output_data, &has_allocate_output_data, output_dim_0](OutputType value) -> void {
-      GrainT & output_grains(std::get<GrainT>(value));
-      const OutputMatrixType & output_matrix(std::get<OutputMatrixType>(value));
+      GrainT & output_grains(std::get<0>(value));
+      const OutputMatrixType & output_matrix(std::get<1>(value));
       //Allocate tensor memory after first output is generated
       if (!has_allocate_output_data) {
         TensorShape output_shape({output_dim_0, output_matrix.rows(), output_matrix.cols()});
