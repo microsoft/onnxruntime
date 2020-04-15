@@ -1283,5 +1283,49 @@ TEST_F(GraphTest, AddRemoveInitializerHandling) {
   ASSERT_EQ(num_initializers, 0) << "Expected unused initializers to be removed from proto. "
                                  << num_initializers << " remain.";
 }
+
+TEST_F(GraphTest, SetInputsAndSetOutputs_NewInputAndOutput) {
+  std::shared_ptr<Model> model;
+  {
+    ModelProto m;
+    m.set_ir_version(4);
+    ImportOpset(m, "", 10);
+    ConstructASimpleAddGraph(*m.mutable_graph(), nullptr);
+    ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+  }
+
+  // starting from:
+  //   x + y = sum
+  // modify to:
+  //   (x + y) + z = sum_with_z
+  // set z as an additional input
+  // set sum_with_z as an additional output
+
+  Graph& graph = model->MainGraph();
+  TypeProto type_proto{};
+  SetTypeAndShape(type_proto.mutable_tensor_type(), 1, {3, 4, 5});
+  auto* sum = graph.GetNodeArg("sum");
+  auto* z = &graph.GetOrCreateNodeArg("z", &type_proto);
+  auto* sum_with_z = &graph.GetOrCreateNodeArg("sum_with_z", &type_proto);
+
+  graph.AddNode("add_z", "Add", "add z to sum", {sum, z}, {sum_with_z});
+
+  auto inputs = graph.GetInputsIncludingInitializers();
+  inputs.push_back(z);
+  graph.SetInputs(inputs);
+
+  auto outputs = graph.GetOutputs();
+  outputs.push_back(sum_with_z);
+  graph.SetOutputs(outputs);
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  inputs = graph.GetInputsIncludingInitializers();
+  ASSERT_TRUE(std::find(inputs.begin(), inputs.end(), z) != inputs.end()) << "expected new input z";
+
+  outputs = graph.GetOutputs();
+  ASSERT_TRUE(std::find(outputs.begin(), outputs.end(), sum_with_z) != outputs.end())
+      << "expected new output sum_with_z";
+}
 }  // namespace test
 }  // namespace onnxruntime

@@ -40,3 +40,6 @@ class TrainingSession(InferenceSession):
 
     def load_state(self, dict, strict=False):
         self._sess.load_state(dict, strict)
+
+    def is_output_fp32_node(self, output_name):
+        return self._sess.is_output_fp32_node(output_name)

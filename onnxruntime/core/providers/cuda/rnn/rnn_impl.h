@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template<typename T>
+template <typename T>
 void ReverseBySequence(const int32_t seq_length,
                        const int32_t batch_size,
                        const int32_t input_or_hidden_size,

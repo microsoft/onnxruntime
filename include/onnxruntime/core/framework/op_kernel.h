@@ -383,4 +383,12 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
         static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); }));        \
   }
 
+// Use within macro definitions to create a custom vector of constraints.
+// Example: #define REG_KERNEL(OP, VERSION, KERNEL_CLASS, Type, ...)
+//  .TypeConstraint("T", BuildKernelDefConstraints<Type, __VA_ARGS_>())
+template <typename T, typename... Types>
+inline std::vector<MLDataType> BuildKernelDefConstraints() {
+  return {DataTypeImpl::GetTensorType<T>(), DataTypeImpl::GetTensorType<Types>()...};
+}
+
 }  // namespace onnxruntime

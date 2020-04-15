@@ -62,8 +62,8 @@ enum Version {
   _START_VERSION = 0;
   // The version field is always serialized and we will use it to store the
   // version that the  graph is generated from. This helps us set up version
-  // control. 
-  // For the IR, we are using simple numbers starting with 0x00000001, 
+  // control.
+  // For the IR, we are using simple numbers starting with 0x00000001,
   // which was the version we published on Oct 10, 2017.
   IR_VERSION_2017_10_10 = 0x0000000000000001;
 
@@ -259,7 +259,7 @@ message TrainingInfoProto {
   optional GraphProto algorithm = 2;
 
   // This field specifies the bindings from the outputs of "initialization" to
-  // some initializers in "ModelProto.graph.initializer" and 
+  // some initializers in "ModelProto.graph.initializer" and
   // the "algorithm.initializer" in the same TrainingInfoProto.
   // See "update_binding" below for details.
   //
@@ -298,7 +298,7 @@ message TrainingInfoProto {
   //  3. The values must be output names of "algorithm".
   //  4. If an optional input of a graph is omitted when using GraphCall, the
   //     global variable with the same name may be used.
-  //  5. When using GraphCall, the users always can pass values to optional 
+  //  5. When using GraphCall, the users always can pass values to optional
   //     inputs of the called graph even if the associated initializers appears
   //     as keys in "update_binding"s.
   //  6. The graphs in TrainingInfoProto's can use global variables as
@@ -370,7 +370,6 @@ message ModelProto {
 
   // Named metadata values; keys should be distinct.
   repeated StringStringEntryProto metadata_props = 14;
-  
   // Training-specific information. Sequentially executing all stored
   // `TrainingInfoProto.algorithm`s and assigning their outputs following
   // the corresponding `TrainingInfoProto.update_binding`s is one training
@@ -505,7 +504,7 @@ message TensorProto {
   // For float and complex64 values
   // Complex64 tensors are encoded as a single array of floats,
   // with the real components appearing in odd numbered positions,
-  // and the corresponding imaginary component apparing in the
+  // and the corresponding imaginary component appearing in the
   // subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
   // is encoded as [1.0, 2.0 ,3.0 ,4.0]
   // When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
@@ -577,7 +576,7 @@ message TensorProto {
   // For double
   // Complex128 tensors are encoded as a single array of doubles,
   // with the real components appearing in odd numbered positions,
-  // and the corresponding imaginary component apparing in the
+  // and the corresponding imaginary component appearing in the
   // subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
   // is encoded as [1.0, 2.0 ,3.0 ,4.0]
   // When this field is present, the data_type field MUST be DOUBLE or COMPLEX128
@@ -668,7 +667,7 @@ message TypeProto {
     optional int32 elem_type = 1;
     optional TensorShapeProto shape = 2;
   }
-  
+
   message Opaque {
     // When missing, the domain is the same as the model's.
     optional string domain = 1;
@@ -697,10 +696,8 @@ message TypeProto {
 
 
     SparseTensor sparse_tensor_type = 8;
-    
+
     Opaque opaque_type = 7;
-
-
   }
 
   // An optional denotation can be used to denote the whole 
@@ -734,7 +731,7 @@ enum OperatorStatus {
 message FunctionProto {
   // The name of the function, similar usage of op_type in OperatorProto.
   optional string name = 1;
-  
+
   // The first version of a function set which contains this function.
   // When there's any breaking change for this function, the function set
   // contains the function needs to bump its version, and since_version of
@@ -757,12 +754,11 @@ message FunctionProto {
 
   // The attributes of the function.
   repeated string attribute= 6;
-  
+
   // The nodes in the function.
   repeated NodeProto node = 7;
   // A human-readable documentation for this function. Markdown is allowed.
   optional string doc_string = 8;
-  
   // The OperatorSets this function body (graph) relies on.
   // A FunctionProto body (graph) may implicitly rely on the OperatorSet that
   // this function belongs to. It can also explicitly rely on more OperatorSets

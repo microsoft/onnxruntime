@@ -273,6 +273,7 @@ static Status AddLossScaling(
       {ArgDef{scaled_loss_name}},
       NodeAttributes(),
       scaled_loss_name});
+  defs.AddGraphInputs({*loss_scale_input_name});
 
   ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, defs));
 
@@ -638,6 +639,12 @@ common::Status TrainingSession::GetStateTensors(NameMLValMap& state_tensors) {
 
 const DataTransferManager& TrainingSession::GetDataTransferManager() const {
   return session_state_->GetDataTransferMgr();
+}
+
+bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) const {
+  auto output_producer_node = model_->MainGraph().GetProducerNode(output_name);
+  ORT_ENFORCE(output_producer_node != nullptr, "Output: " + output_name + " is not produced by any node.");
+  return IsFP32Node(output_producer_node);
 }
 
 Status TrainingSession::SetStateTensors(const NameMLValMap& state_tensors, bool strict) {
