@@ -43,31 +43,14 @@
 
 std::unique_ptr<Ort::Env> ort_env;
 
-namespace {
-class GtestEnvironmentGuard {
- public:
-  GtestEnvironmentGuard(::testing::Environment& env) : env_{env} {
-    env_.SetUp();
-  }
-
-  ~GtestEnvironmentGuard() {
-    env_.TearDown();
-  }
-
- private:
-  ::testing::Environment& env_;
-};
-}  // namespace
-
 int main(int argc, char** argv) {
   int status = 0;
   try {
     ::testing::InitGoogleTest(&argc, argv);
     ort_env.reset(new Ort::Env(ORT_LOGGING_LEVEL_WARNING, "Default"));
+    std::cout << "ORT random seed: " << onnxruntime::test::GetTestRandomSeed() << "\n";
     // ::testing::AddGlobalTestEnvironment(
     //     new onnxruntime::test::TestRandomSeedSetterEnvironment{});
-    auto random_seed_env = onnxruntime::test::TestRandomSeedSetterEnvironment{};
-    GtestEnvironmentGuard random_seed_env_guard{random_seed_env};
     status = RUN_ALL_TESTS();
   } catch (const std::exception& ex) {
     std::cerr << ex.what();

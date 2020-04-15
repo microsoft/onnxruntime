@@ -51,7 +51,9 @@ void TestRandomSeedSetterEnvironment::SetUp() {
 }
 
 RandomSeedType GetTestRandomSeed() {
-  return g_test_random_seed;
+  //return g_test_random_seed;
+  static const RandomSeedType test_random_seed = LoadRandomSeed(optional<RandomSeedType>{});
+  return test_random_seed;
 }
 
 }  // namespace test
