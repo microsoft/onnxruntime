@@ -35,8 +35,8 @@ protected:
     winml::LearningModelBinding m_model_binding = nullptr;
     winml::LearningModelEvaluationResult m_result = nullptr;
 
-    void SetUp() override {
-        init_apartment();
+    static void SetUpTestSuite() {
+      init_apartment();
     }
 
     void LoadModel(const std::wstring& model_path) {

@@ -46,17 +46,20 @@ using namespace ws;
 using namespace wss;
 using namespace winrt::Windows::UI::Xaml::Media::Imaging;
 
-static void ScenarioCppWinrtTestSetup() {
+static void ScenarioCppWinrtTestsClassSetup() {
   winrt::init_apartment();
 }
 
-static void ScenarioCppWinrtGpuTestSetup() {
-  ScenarioCppWinrtTestSetup();
-  GPUTEST
+static void ScenarioCppWinrtTestsGpuMethodSetup() {
+  GPUTEST;
 };
 
-static void ScenarioCppWinrtGpuSkipEdgeCoreTestSetup() {
-  ScenarioCppWinrtGpuTestSetup();
+static void ScenarioCppWinrtTestsSkipEdgeCoreMethodSetup() {
+  SKIP_EDGECORE
+};
+
+static void ScenarioCppWinrtTestsGpuSkipEdgeCoreMethodSetup() {
+  ScenarioCppWinrtTestsGpuMethodSetup();
   SKIP_EDGECORE
 };
 
@@ -1405,12 +1408,13 @@ static void D2DInterop() {
       renderTarget.put()));
 }
 
-const ScenarioTestApi& getapi() {
-  static constexpr ScenarioTestApi api =
+const ScenarioTestsApi& getapi() {
+  static constexpr ScenarioTestsApi api =
       {
-        ScenarioCppWinrtTestSetup,
-        ScenarioCppWinrtGpuTestSetup,
-        ScenarioCppWinrtGpuSkipEdgeCoreTestSetup,
+        ScenarioCppWinrtTestsClassSetup,
+        ScenarioCppWinrtTestsGpuMethodSetup,
+        ScenarioCppWinrtTestsSkipEdgeCoreMethodSetup,
+        ScenarioCppWinrtTestsGpuSkipEdgeCoreMethodSetup,
         Sample1,
         Scenario1LoadBindEvalDefault,
         Scenario2LoadModelFromStream,

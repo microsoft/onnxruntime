@@ -28,12 +28,13 @@ using namespace wgi;
 using namespace ws;
 using namespace ws::Streams;
 
-static void CustomOpsScenarioTestSetup() {
+static void CustomOpsScenarioTestsClassSetup()
+{
   winrt::init_apartment();
 }
 
-static void CustomOpsScenarioGpuTestSetup() {
-  winrt::init_apartment();
+static void CustomOpsScenarioTestsGpuMethodSetup()
+{
   GPUTEST;
 }
 
@@ -675,11 +676,11 @@ static void CustomKernelWithCustomSchema() {
   }
 }
 
-const CustomOpsTestApi& getapi() {
-  static constexpr CustomOpsTestApi api =
+const CustomOpsTestsApi& getapi() {
+  static constexpr CustomOpsTestsApi api = 
       {
-          CustomOpsScenarioTestSetup,
-          CustomOpsScenarioGpuTestSetup,
+          CustomOpsScenarioTestsClassSetup,
+          CustomOpsScenarioTestsGpuMethodSetup,
           CustomOperatorFusion,
           CustomKernelWithBuiltInSchema,
           CustomKernelWithCustomSchema};

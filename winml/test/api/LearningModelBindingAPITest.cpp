@@ -16,13 +16,12 @@ using namespace wgi;
 using namespace wm;
 using namespace ws;
 
-static void LearningModelBindingAPITestSetup() {
+static void LearningModelBindingAPITestsClassSetup() {
   init_apartment();
 }
 
-static void LearningModelBindingAPITestGpuSetup() {
+static void LearningModelBindingAPITestsGpuMethodSetup() {
   GPUTEST;
-  init_apartment();
 }
 
 static void CpuSqueezeNet()
@@ -712,11 +711,11 @@ static void SequenceConstructTensorString()
   WINML_EXPECT_EQUAL(3, bound_output_sequence.GetAt(1).Shape().GetAt(1));
 }
 
-const LearningModelBindingAPITestApi& getapi() {
-  static constexpr LearningModelBindingAPITestApi api =
+const LearningModelBindingAPITestsApi& getapi() {
+  static constexpr LearningModelBindingAPITestsApi api =
   {
-    LearningModelBindingAPITestSetup,
-    LearningModelBindingAPITestGpuSetup,
+    LearningModelBindingAPITestsClassSetup,
+    LearningModelBindingAPITestsGpuMethodSetup,
     CpuSqueezeNet,
     CpuSqueezeNetEmptyOutputs,
     CpuSqueezeNetUnboundOutputs,

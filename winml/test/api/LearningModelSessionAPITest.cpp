@@ -19,17 +19,16 @@ using namespace wfc;
 
 using wf::IPropertyValue;
 
-static void LearningModelSessionAPITestSetup() {
+static void LearningModelSessionAPITestsClassSetup() {
   init_apartment();
 }
 
-static void LearningModelSessionAPITestGpuSetup() {
+static void LearningModelSessionAPITestsGpuMethodSetup() {
   GPUTEST;
-  init_apartment();
 }
 
-static void LearningModelSessionAPITestsSkipEdgeCoreSetup() {
-  LearningModelSessionAPITestGpuSetup();
+static void LearningModelSessionAPITestsGpuSkipEdgeCoreMethodSetup() {
+  LearningModelSessionAPITestsGpuMethodSetup();
   SKIP_EDGECORE
 }
 
@@ -398,12 +397,12 @@ static void CloseSession()
     });
  }
 
-const LearningModelSesssionAPITestApi& getapi() {
-  static constexpr LearningModelSesssionAPITestApi api =
+const LearningModelSesssionAPITestsApi& getapi() {
+  static constexpr LearningModelSesssionAPITestsApi api =
   {
-    LearningModelSessionAPITestSetup,
-    LearningModelSessionAPITestGpuSetup,
-    LearningModelSessionAPITestsSkipEdgeCoreSetup,
+    LearningModelSessionAPITestsClassSetup,
+    LearningModelSessionAPITestsGpuMethodSetup,
+    LearningModelSessionAPITestsGpuSkipEdgeCoreMethodSetup,
     CreateSessionDeviceDefault,
     CreateSessionDeviceCpu,
     CreateSessionWithModelLoadedFromStream,

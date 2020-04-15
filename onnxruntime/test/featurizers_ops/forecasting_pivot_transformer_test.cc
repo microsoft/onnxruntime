@@ -14,12 +14,13 @@ namespace NS = Microsoft::Featurizer;
 
 namespace onnxruntime {
 namespace test {
-
 namespace {
 
 template <typename T>
 std::vector<uint8_t> GetStream() {
-  NS::Featurizers::ForecastingPivotTransformer<T> transformer;
+  using MatrixT = NS::RowMajMatrix<typename NS::Traits<T>::nullable_type>;
+  using InputType = std::vector<Eigen::Map<MatrixT>>;
+  NS::Featurizers::ForecastingPivotTransformer<std::tuple<typename InputType::iterator, typename InputType::iterator>> transformer;
   NS::Archive ar;
   transformer.save(ar);
   return ar.commit();
