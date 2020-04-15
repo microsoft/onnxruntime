@@ -53,7 +53,7 @@ class ImageConverter {
   Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_state_;
   Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> descriptor_heap_;
   Microsoft::WRL::ComPtr<ID3D11Texture2D> D3D11_cached_texture_;
-  winrt::Windows::Media::VideoFrame converted_video_frame_;
+  wm::VideoFrame converted_video_frame_;
   CWinMLLock lock_;
 
   void SyncD3D11ToD3D12(_In_ _winml::D3DDeviceCache& device_cache, _In_ ID3D11Texture2D* D3D11_texture);

@@ -45,7 +45,6 @@ using namespace wgdx::Direct3D11;
 using namespace ws;
 using namespace wss;
 using namespace winrt::Windows::UI::Xaml::Media::Imaging;
-using namespace Windows::Graphics::DirectX::Direct3D11;
 
 static void ScenarioCppWinrtTestSetup() {
   winrt::init_apartment();

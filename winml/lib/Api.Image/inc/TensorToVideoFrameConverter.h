@@ -84,7 +84,7 @@ class TensorToVideoFrameConverter : ITensorToVideoFrameConverter, public ImageCo
   static void ConvertCPUTensorToSoftwareBitmap(
       _In_ void* CPU_tensor,
       _In_ const ImageTensorDescription& tensor_description,
-      _Inout_ winrt::Windows::Graphics::Imaging::SoftwareBitmap& software_bitmap);
+      _Inout_ wgi::SoftwareBitmap& software_bitmap);
 
   static Microsoft::WRL::ComPtr<ID3D12Resource> CreateShareableD3D12Texture(
       const D3D11_TEXTURE2D_DESC& d3d11Desc,

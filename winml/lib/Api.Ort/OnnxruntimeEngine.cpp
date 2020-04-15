@@ -809,8 +809,8 @@ auto CastToWinrtMap(IInspectable* map_insp) {
   using cppwinrt_key_type = typename AbiTypeInfo<TAbiKey>::CppWinRTType;
   using cppwinrt_value_type = typename AbiTypeInfo<TAbiValue>::CppWinRTType;
 
-  ::winrt::Windows::Foundation::IInspectable map_inspectable;
-  ::winrt::Windows::Foundation::Collections::IMap<cppwinrt_key_type, cppwinrt_value_type> map;
+  wf::IInspectable map_inspectable;
+  wfc::IMap<cppwinrt_key_type, cppwinrt_value_type> map;
   winrt::copy_from_abi(map_inspectable, map_insp);
   map_inspectable.as(map);
   return map;
@@ -821,10 +821,10 @@ auto CastToWinrtSequenceOfMaps(IInspectable* sequence_insp) {
   using cppwinrt_key_type = typename AbiTypeInfo<TAbiKey>::CppWinRTType;
   using cppwinrt_value_type = typename AbiTypeInfo<TAbiValue>::CppWinRTType;
 
-  using cppwinrt_element_map_type = ::winrt::Windows::Foundation::Collections::IMap<cppwinrt_key_type, cppwinrt_value_type>;
-  using cppwinrt_sequence_type = ::winrt::Windows::Foundation::Collections::IVector<cppwinrt_element_map_type>;
+  using cppwinrt_element_map_type = wfc::IMap<cppwinrt_key_type, cppwinrt_value_type>;
+  using cppwinrt_sequence_type = wfc::IVector<cppwinrt_element_map_type>;
   cppwinrt_sequence_type sequence;
-  ::winrt::Windows::Foundation::IInspectable sequence_inspectable;
+  wf::IInspectable sequence_inspectable;
   winrt::copy_from_abi(sequence_inspectable, sequence_insp);
   sequence_inspectable.as(sequence);
   return sequence;
@@ -1045,12 +1045,12 @@ HRESULT OnnxruntimeEngine::CreateSequenceOfMapsValue(IInspectable* sequence, win
 }
 
 template <typename TAbiKey, typename TAbiValue>
-static HRESULT FillAbiSequence(IInspectable* sequence_insp, std::vector<::winrt::Windows::Foundation::IInspectable>& elements) {
+static HRESULT FillAbiSequence(IInspectable* sequence_insp, std::vector<wf::IInspectable>& elements) {
   using cppwinrt_key_type = typename AbiTypeInfo<TAbiKey>::CppWinRTType;
   using cppwinrt_value_type = typename AbiTypeInfo<TAbiValue>::CppWinRTType;
   auto sequence = CastToWinrtSequenceOfMaps<TAbiKey, TAbiValue>(sequence_insp);
   for (auto element : elements) {
-    ::winrt::Windows::Foundation::Collections::IMap<cppwinrt_key_type, cppwinrt_value_type> map_element;
+    wfc::IMap<cppwinrt_key_type, cppwinrt_value_type> map_element;
     element.as(map_element);
     sequence.Append(map_element);
   }
@@ -1067,8 +1067,8 @@ static auto GetAbiSequenceFiller(winml::TensorKind key_kind, winml::TensorKind v
   THROW_HR(E_NOTIMPL);
 }
 
-static winrt::Windows::Foundation::IInspectable CreateMap(winml::TensorKind key_kind, winml::TensorKind value_kind) {
-  winrt::Windows::Foundation::IInspectable map_insp;
+static wf::IInspectable CreateMap(winml::TensorKind key_kind, winml::TensorKind value_kind) {
+  wf::IInspectable map_insp;
   if (key_kind == winml::TensorKind::String && value_kind == winml::TensorKind::Float) {
     auto map = winrt::single_threaded_map<winrt::hstring, float>();
     map.as(map_insp);
@@ -1092,7 +1092,7 @@ HRESULT OnnxruntimeEngine::FillSequenceOfMapsValue(IInspectable* sequence, winml
   RETURN_HR_IF_NOT_OK_MSG(ort_api->GetValueCount(ort_sequence_value, &num_elements), ort_api);
 
   // get the elements
-  std::vector<::winrt::Windows::Foundation::IInspectable> element_map_inspectables;
+  std::vector<wf::IInspectable> element_map_inspectables;
   for (size_t index = 0; index < num_elements; index++) {
     OrtValue* elements_ort_value = nullptr;
     RETURN_HR_IF_NOT_OK_MSG(ort_api->GetValue(ort_sequence_value, static_cast<int>(index), ort_allocator, &elements_ort_value), ort_api);
@@ -1101,7 +1101,7 @@ HRESULT OnnxruntimeEngine::FillSequenceOfMapsValue(IInspectable* sequence, winml
     winrt::com_ptr<IValue> element_value;
     RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(element_value.put(), this, std::move(unique_element_value), UniqueOrtAllocator(nullptr, nullptr)));
 
-    ::winrt::Windows::Foundation::IInspectable map_inspectable = CreateMap(key_kind, value_kind);
+    wf::IInspectable map_inspectable = CreateMap(key_kind, value_kind);
     RETURN_IF_FAILED(FillFromMapValue(reinterpret_cast<IInspectable*>(winrt::get_abi(map_inspectable)), key_kind, value_kind, element_value.get()));
     element_map_inspectables.push_back(map_inspectable);
   }

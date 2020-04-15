@@ -58,7 +58,7 @@ HRESULT __stdcall WINRT_RoGetActivationFactory(HSTRING classId_hstring, GUID con
         return hr;
     }
 
-    winrt::com_ptr<winrt::Windows::Foundation::IActivationFactory> activation_factory;
+    winrt::com_ptr<wf::IActivationFactory> activation_factory;
     HRESULT const hr = call(classId_hstring, activation_factory.put_void());
 
     if (FAILED(hr))
@@ -67,7 +67,7 @@ HRESULT __stdcall WINRT_RoGetActivationFactory(HSTRING classId_hstring, GUID con
         return hr;
     }
 
-    if (winrt::guid(iid) != winrt::guid_of<winrt::Windows::Foundation::IActivationFactory>())
+    if (winrt::guid(iid) != winrt::guid_of<wf::IActivationFactory>())
     {
         return activation_factory->QueryInterface(iid, factory);
     }
