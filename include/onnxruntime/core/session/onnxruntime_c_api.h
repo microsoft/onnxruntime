@@ -806,9 +806,9 @@ struct OrtApi {
    * The caller is responsible for freeing each string and the pointer array.
    * 'keys' will be a nullptr if custom metadata map is empty.
    */
-  OrtStatus*(ORT_API_CALL* ModelMetadataGetCustomMetadataMapKeys)(_In_ const OrtModelMetadata* model_metadata,
+  ORT_API2_STATUS(ModelMetadataGetCustomMetadataMapKeys, _In_ const OrtModelMetadata* model_metadata,
                                                                   _Inout_ OrtAllocator* allocator,
-                                                                  _Outptr_ char*** keys, _Out_ int64_t* num_keys)NO_EXCEPTION;
+                                                                  _Outptr_ char*** keys, _Out_ int64_t* num_keys);
 };
 
 /*
