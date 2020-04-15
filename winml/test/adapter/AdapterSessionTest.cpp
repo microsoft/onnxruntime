@@ -160,8 +160,8 @@ void LoadAndPurloinModel(const UniqueOrtSession& session, const std::string& mod
   com_ptr<WinML::IModel> model;
   WINML_THROW_IF_FAILED(engine_factory->CreateModel(model_path.c_str(), sizeof(model_path), model.put()));
 
-  Microsoft::WRL::ComPtr<WinML::IOnnxruntimeModel> onnxruntime_model;
-  WINML_EXPECT_HRESULT_SUCCEEDED(model->QueryInterface(IID_PPV_ARGS(&onnxruntime_model)));
+  winrt::com_ptr<WinML::IOnnxruntimeModel> onnxruntime_model;
+  WINML_EXPECT_NO_THROW(onnxruntime_model = model.as<WinML::IOnnxruntimeModel>());
   OrtModel* ort_model;
   WINML_EXPECT_HRESULT_SUCCEEDED(onnxruntime_model->DetachOrtModel(&ort_model));
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionLoadAndPurloinModel(session.get(), ort_model), ort_api);
@@ -181,8 +181,8 @@ void Initialize() {
   const auto model_path = "fns-candy.onnx";
   WINML_THROW_IF_FAILED(engine_factory->CreateModel(model_path, sizeof(model_path), model.put()));
 
-  Microsoft::WRL::ComPtr<WinML::IOnnxruntimeModel> onnxruntime_model;
-  WINML_EXPECT_HRESULT_SUCCEEDED(model->QueryInterface(IID_PPV_ARGS(&onnxruntime_model)));
+  winrt::com_ptr<WinML::IOnnxruntimeModel> onnxruntime_model;
+  WINML_EXPECT_NO_THROW(onnxruntime_model = model.as<WinML::IOnnxruntimeModel>());
   OrtModel* ort_model;
   WINML_EXPECT_HRESULT_SUCCEEDED(onnxruntime_model->DetachOrtModel(&ort_model));
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionLoadAndPurloinModel(session.get(), ort_model), ort_api);
@@ -190,29 +190,24 @@ void Initialize() {
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionInitialize(session.get()), ort_api);
 }
 
-class MockSink : public onnxruntime::logging::ISink {
-public:
-  static bool called;
-
-private:
-  void SendImpl(const onnxruntime::logging::Timestamp& timestamp, const std::string& logger_id, const onnxruntime::logging::Capture& message) override {
-    called = true;
-  }
-
-  void SendProfileEvent(onnxruntime::profiling::EventRecord&) const override { };
-};
-bool MockSink::called = false;
-
+static bool logging_called = false, profile_called = false;
 void Profiling() {
-  ort_env->SetLoggingManager(nullptr);
-  const std::string logger_name("Default");
-  auto logging_manager = std::make_unique<onnxruntime::logging::LoggingManager>(
-    std::make_unique<MockSink>(),
-    onnxruntime::logging::Severity::kINFO,
-    false,
-    onnxruntime::logging::LoggingManager::InstanceType::Default,
-    &logger_name);
-  ort_env->SetLoggingManager(std::move(logging_manager));
+  const auto logging_callback = [](void*, OrtLoggingLevel, const char*, const char*, const char*, const char*) {
+    logging_called = true;
+  };
+  const auto profile_callback = [](const OrtProfilerEventRecord*) {
+    profile_called = true;
+  };
+
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(
+      ort_env,
+      logging_callback,
+      profile_callback,
+      nullptr,
+      OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE,
+      "Default",
+      &ort_env),
+    ort_api);
 
   const auto session_options = CreateUniqueOrtSessionOptions();
   auto session = CreateUniqueOrtSession(session_options);
@@ -220,7 +215,8 @@ void Profiling() {
   winml_adapter_api->SessionStartProfiling(ort_env, session.get());
   LoadAndPurloinModel(session, "fns-candy.onnx");
   winml_adapter_api->SessionEndProfiling(session.get());
-  WINML_EXPECT_TRUE(MockSink::called);
+  WINML_EXPECT_TRUE(logging_called);
+  WINML_EXPECT_TRUE(profile_called);
 }
 
 void CopyInputAcrossDevices() {
