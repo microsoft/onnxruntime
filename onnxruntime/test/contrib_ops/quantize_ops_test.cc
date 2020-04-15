@@ -8,6 +8,51 @@
 namespace onnxruntime {
 namespace test {
 
+// scalar zero & scale with uint8
+TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_uint8) {
+  OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{4};
+  test.AddInput<uint8_t>("x", dims, {0, 3, 128, 255});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddInput<uint8_t>("x_zero_point", {}, {128});
+  test.AddOutput<float>("y", dims, {-256.0f, -250.0f, 0.0f, 254.0f});
+  test.Run();
+}
+
+// scalar zero & scale with int8
+TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_int8) {
+  OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int8_t>("x", dims, {-30, -3, 100, 127});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddInput<int8_t>("x_zero_point", {}, {-10});
+  test.AddOutput<float>("y", dims, {-40.0f, 14.0f, 220.0f, 274.0f});
+  test.Run();
+}
+
+#ifdef USE_CUDA
+TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_half_uint8) {
+  OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{4};
+  test.AddInput<uint8_t>("x", dims, {0, 3, 128, 255});
+  test.AddInput<MLFloat16>("x_scale", {}, ToFloat16({2.0f}));
+  test.AddInput<uint8_t>("x_zero_point", {}, {128});
+  test.AddOutput<MLFloat16>("y", dims, ToFloat16({-256.0f, -250.0f, 0.0f, 254.0f}));
+  test.Run();
+}
+
+// scalar zero & scale with int8
+TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_half_int8) {
+  OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int8_t>("x", dims, {-30, -3, 100, 127});
+  test.AddInput<MLFloat16>("x_scale", {}, ToFloat16({2.0f}));
+  test.AddInput<int8_t>("x_zero_point", {}, {-10});
+  test.AddOutput<MLFloat16>("y", dims, ToFloat16({-40.0f, 14.0f, 220.0f, 274.0f}));
+  test.Run();
+}
+#endif
+
 // 1d zero & scale with uint8 broadcast axis 0
 TEST(DequantizeLinearContribOpTest, DequantizeLinear_0) {
   OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
@@ -121,13 +166,23 @@ TEST(DequantizeLinearContribOpTest, DequantizeLinear_3) {
 }
 
 // quantize with scalar zero point and scale
-TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float) {
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_uint8) {
   OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
   std::vector<int64_t> dims{6};
   test.AddInput<float>("x", dims, {0, 2, 3, 1000, -254, -1000});
   test.AddInput<float>("y_scale", {}, {2.0f});
   test.AddInput<uint8_t>("y_zero_point", {}, {128});
   test.AddOutput<uint8_t>("y", dims, {128, 129, 130, 255, 1, 0});
+  test.Run();
+}
+
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_int8) {
+  OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{6};
+  test.AddInput<float>("x", dims, {0, 2, 3, 1000, -254, -1000});
+  test.AddInput<float>("y_scale", {}, {2.0f});
+  test.AddInput<int8_t>("y_zero_point", {}, {1});
+  test.AddOutput<int8_t>("y", dims, {1, 2, 3, 127, -126, -127});
   test.Run();
 }
 

@@ -19,7 +19,7 @@ class QuantizeLinear final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* p_op_kernel_context) const override;
 };
 
-template <class T>
+template <class T, class U = float>
 class DequantizeLinear final : public CudaKernel {
  public:
   DequantizeLinear(const OpKernelInfo& info) : CudaKernel(info) {}
