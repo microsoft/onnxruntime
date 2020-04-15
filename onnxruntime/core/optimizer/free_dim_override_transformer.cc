@@ -83,7 +83,7 @@ Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified,
           if (dimension.dim_value() != dimension_override) {
             LOGS(logger, ERROR) << "The model has input '" << graph_input->Name() << "' "
                                 << "with a fixed dimension size " << dimension.dim_value() << " "
-                                << "which does not equal the specified override of" << dimension_override << ".";
+                                << "which does not equal the specified override of " << dimension_override << ".";
 
             return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid free dimension override.");
           }
