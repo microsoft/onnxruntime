@@ -22,6 +22,8 @@ final class OnnxRuntime {
 
   // The initial release of the ORT API.
   private static final int ORT_API_VERSION_1 = 1;
+  // Post 1.0 builds of the ORT API.
+  private static final int ORT_API_VERSION_2 = 2;
 
   /** The short name of the ONNX runtime shared library */
   static final String ONNXRUNTIME_LIBRARY_NAME = "onnxruntime";
@@ -48,7 +50,7 @@ final class OnnxRuntime {
     try {
       load(tempDirectory, ONNXRUNTIME_LIBRARY_NAME);
       load(tempDirectory, ONNXRUNTIME_JNI_LIBRARY_NAME);
-      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_1);
+      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_2);
       loaded = true;
     } finally {
       if (!isAndroid()) {

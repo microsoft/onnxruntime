@@ -49,31 +49,35 @@ OrtTypeInfo::~OrtTypeInfo() {
   }
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetOnnxTypeFromTypeInfo, _In_ const struct OrtTypeInfo* input, ONNXType* out) {
+ORT_API_STATUS_IMPL(OrtApis::GetOnnxTypeFromTypeInfo, _In_ const struct OrtTypeInfo* input, _Out_ ONNXType* out) {
   *out = input->type;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToTensorInfo, _In_ const struct OrtTypeInfo* input, const struct OrtTensorTypeAndShapeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToTensorInfo, _In_ const struct OrtTypeInfo* input,
+                    _Outptr_result_maybenull_ const struct OrtTensorTypeAndShapeInfo** out) {
   *out = input->type == ONNX_TYPE_TENSOR ? input->data : nullptr;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToMapTypeInfo, const OrtTypeInfo* type_info, const OrtMapTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToMapTypeInfo, _In_ const OrtTypeInfo* type_info,
+                    _Outptr_result_maybenull_ const OrtMapTypeInfo** out) {
   API_IMPL_BEGIN
   *out = type_info->type == ONNX_TYPE_MAP ? type_info->map_type_info : nullptr;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToSequenceTypeInfo, const OrtTypeInfo* type_info, const OrtSequenceTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToSequenceTypeInfo, _In_ const OrtTypeInfo* type_info,
+                    _Outptr_result_maybenull_ const OrtSequenceTypeInfo** out) {
   API_IMPL_BEGIN
   *out = type_info->type == ONNX_TYPE_SEQUENCE ? type_info->sequence_type_info : nullptr;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetDenotationFromTypeInfo, const OrtTypeInfo* type_info, const char** const out, size_t* len) {
+ORT_API_STATUS_IMPL(OrtApis::GetDenotationFromTypeInfo, _In_ const OrtTypeInfo* type_info, _Out_ const char** const out,
+                    _Out_ size_t* len) {
   API_IMPL_BEGIN
   *out = type_info->denotation.c_str();
   *len = type_info->denotation.size();
