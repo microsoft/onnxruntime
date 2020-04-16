@@ -17,6 +17,13 @@
 
 using namespace onnxruntime::common;
 
+namespace {
+struct KernelRegistryAndStatus {
+  std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
+  Status st;
+};
+}  // namespace
+
 namespace onnxruntime {
 
 namespace cuda {
@@ -745,8 +752,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, int8_t, ReduceMin);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, uint8_t, ReduceMin);
 
-
-static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
+static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
@@ -1257,26 +1263,28 @@ static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
   };
 
   for (auto& function_table_entry : function_table) {
-    kernel_registry.Register(function_table_entry());
+    ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
   }
-}
-
-std::shared_ptr<KernelRegistry> GetCudaKernelRegistry() {
-  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  RegisterCudaKernels(*kernel_registry);
 
 #ifndef DISABLE_CONTRIB_OPS
-  ::onnxruntime::contrib::cuda::RegisterCudaContribKernels(*kernel_registry);
+  ORT_RETURN_IF_ERROR(::onnxruntime::contrib::cuda::RegisterCudaContribKernels(kernel_registry));
 #endif
+  return Status::OK();
+}
 
-  return kernel_registry;
+KernelRegistryAndStatus GetCudaKernelRegistry() {
+  KernelRegistryAndStatus ret;
+  ret.st = RegisterCudaKernels(*ret.kernel_registry);
+  return ret;
 }
 
 }  // namespace cuda
 
 std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::cuda::GetCudaKernelRegistry();
-  return kernel_registry;
+  static KernelRegistryAndStatus k = onnxruntime::cuda::GetCudaKernelRegistry();
+  // throw if the registry failed to initialize
+  ORT_THROW_IF_ERROR(k.st);
+  return k.kernel_registry;
 }
 
 static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
@@ -1344,7 +1352,7 @@ static bool ConvNeedFallbackToCPU(const onnxruntime::Node& node) {
 
     //cudnn only supports symmetric padding
     if ("pads" == attr_name && ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS == attr_value.type()) {
-      auto pads = attr_value.ints();
+      auto& pads = attr_value.ints();
       int pads_size = pads.size();
       ORT_ENFORCE(pads_size % 2 == 0);
       int rank = pads_size / 2;
