@@ -309,11 +309,11 @@ def is_windows():
 def get_linux_distro():
     try:
         with open('/etc/os-release', 'r') as f:
-            dist_info = dict(line.strip().split('=', 1)
-                             for line in f.readlines())
+            dist_info = dict(
+                line.strip().split('=', 1) for line in f.readlines())
         return dist_info.get('NAME', '').strip('"'), dist_info.get(
             'VERSION', '').strip('"')
-    except IOError:
+    except (IOError, ValueError):
         return '', ''
 
 
