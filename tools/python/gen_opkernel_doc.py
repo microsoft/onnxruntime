@@ -40,7 +40,7 @@ def format_param_strings(params):
     firstparam = True
     s = ''
     if params:
-        for param in params:
+        for param in sorted(params):
             if firstparam:
                 firstparam = False
             else:
@@ -131,7 +131,7 @@ def main(args):  # type: (Type[Args]) -> None
                                 fout.write('|')
 
                             tclist = []
-                            for tc in tcset:
+                            for tc in sorted(tcset):
                                 tclist.append(tc)
                             fout.write('**'+tname+'** = '+format_type_constraints(tclist)+'|\n')
                         

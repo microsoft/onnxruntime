@@ -43,7 +43,7 @@
 |CategoryMapper|(*in* X:**T1**, *out* Y:**T2**)|1+|**T1** = tensor(int64), tensor(string)|
 | | ||**T2** = tensor(int64), tensor(string)|
 |Ceil|(*in* X:**T**, *out* Y:**T**)|6+|**T** = tensor(float)|
-|Clip|(*in* input:**T**, *out* output:**T**) or (*in* input:**T**, *in* min:**T**, *in* max:**T**, *out* output:**T**)|12+|**T** = tensor(double), tensor(float), tensor(int64), tensor(int8), tensor(uint64), tensor(uint8)|
+|Clip|(*in* input:**T**, *in* min:**T**, *in* max:**T**, *out* output:**T**) or (*in* input:**T**, *out* output:**T**)|12+|**T** = tensor(double), tensor(float), tensor(int64), tensor(int8), tensor(uint64), tensor(uint8)|
 | | |[11, 11]|**T** = tensor(float)|
 | | |[6, 10]|**T** = tensor(float)|
 |Compress|(*in* input:**T**, *in* condition:**T1**, *out* output:**T**)|11+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -74,7 +74,7 @@
 |DictVectorizer|(*in* X:**T1**, *out* Y:**T2**)|1+|**T1** = map(int64,tensor(double)), map(int64,tensor(float)), map(int64,tensor(string)), map(string,tensor(double)), map(string,tensor(float)), map(string,tensor(int64))|
 | | ||**T2** = tensor(double), tensor(float), tensor(int64), tensor(string)|
 |Div|(*in* A:**T**, *in* B:**T**, *out* C:**T**)|7+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
-|Dropout|(*in* data:**T**, *out* output:**T**, *out* mask:**T1**) or (*in* data:**T**, *out* output:**T**, *out* mask:**T**) or (*in* data:**T**, *in* ratio:**T1**, *out* output:**T**, *out* mask:**T2**)|10+|**T** = tensor(double), tensor(float), tensor(float16)|
+|Dropout|(*in* data:**T**, *in* ratio:**T1**, *out* output:**T**, *out* mask:**T2**) or (*in* data:**T**, *out* output:**T**, *out* mask:**T**) or (*in* data:**T**, *out* output:**T**, *out* mask:**T1**)|10+|**T** = tensor(double), tensor(float), tensor(float16)|
 | | ||**T1** = tensor(bool)|
 | | |[7, 9]|**T** = tensor(double), tensor(float), tensor(float16)|
 | | ||**T1** = tensor(bool)|
@@ -181,7 +181,7 @@
 | | ||**T2** = tensor(int64)|
 |Mean|(*in* data_0:**T**, *out* mean:**T**)|8+|**T** = tensor(float)|
 | | |[6, 7]|**T** = tensor(float)|
-|MeanVarianceNormalization|(*in* input:**T**, *out* output:**T**) or (*in* X:**T**, *out* Y:**T**)|9+|**T** = tensor(float)|
+|MeanVarianceNormalization|(*in* X:**T**, *out* Y:**T**) or (*in* input:**T**, *out* output:**T**)|9+|**T** = tensor(float)|
 | | |[1, 8]|**T** = tensor(float)|
 |Min|(*in* data_0:**T**, *out* min:**T**)|12+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 | | ||**T1** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
@@ -207,7 +207,7 @@
 |Or|(*in* A:**T**, *in* B:**T**, *out* C:**T1**)|7+|**T** = tensor(bool)|
 | | ||**T1** = tensor(bool)|
 |PRelu|(*in* X:**T**, *in* slope:**T**, *out* Y:**T**)|[7, 9]|**T** = tensor(float)|
-|Pad|(*in* data:**T**, *out* output:**T**) or (*in* data:**T**, *in* pads:**tensor(int64)**, *in* constant_value:**T**, *out* output:**T**)|11+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
+|Pad|(*in* data:**T**, *in* pads:**tensor(int64)**, *in* constant_value:**T**, *out* output:**T**) or (*in* data:**T**, *out* output:**T**)|11+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
 | | |[2, 10]|**T** = tensor(float)|
 |ParametricSoftplus|(*in* X:**T**, *out* Y:**T**)|1+|**T** = tensor(float)|
 |Pow|(*in* X:**T**, *in* Y:**T**, *out* Z:**T**) or (*in* X:**T**, *in* Y:**T1**, *out* Z:**T**)|7+|**T** = tensor(double), tensor(float)|
@@ -253,7 +253,7 @@
 |ReduceSumSquare|(*in* data:**T**, *out* reduced:**T**)|11+|**T** = tensor(float), tensor(int32)|
 | | |[1, 10]|**T** = tensor(float), tensor(int32)|
 |Relu|(*in* X:**T**, *out* Y:**T**)|6+|**T** = tensor(float)|
-|Reshape|(*in* data:**T**, *out* reshaped:**T**) or (*in* data:**T**, *in* shape:**tensor(int64)**, *out* reshaped:**T**)|5+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|Reshape|(*in* data:**T**, *in* shape:**tensor(int64)**, *out* reshaped:**T**) or (*in* data:**T**, *out* reshaped:**T**)|5+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 | | ||**shape** = tensor(int64)|
 |Reshape_1||[1, 4]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |Resize|(*in* X:**T**, *in* scales:**tensor(float)**, *out* Y:**T**) or (*in* X:**T1**, *in* roi:**T2**, *in* scales:**tensor(float)**, *in* sizes:**tensor(int64)**, *out* Y:**T1**)|11+|**T1** = tensor(float), tensor(int32), tensor(uint8)|
@@ -302,7 +302,7 @@
 |Sinh|(*in* input:**T**, *out* output:**T**)|9+|**T** = tensor(float)|
 |Size|(*in* data:**T**, *out* size:**T1**)|1+|**T** = tensor(bool), tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 | | ||**T1** = tensor(int64)|
-|Slice|(*in* data:**T**, *out* output:**T**) or (*in* data:**T**, *in* starts:**Tind**, *in* ends:**Tind**, *in* axes:**Tind**, *in* steps:**Tind**, *out* output:**T**)|11+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|Slice|(*in* data:**T**, *in* starts:**Tind**, *in* ends:**Tind**, *in* axes:**Tind**, *in* steps:**Tind**, *out* output:**T**) or (*in* data:**T**, *out* output:**T**)|11+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 | | ||**Tind** = tensor(int32), tensor(int64)|
 | | |[1, 9]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 | | |[10, 10]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -330,9 +330,9 @@
 | | ||**T1** = tensor(float)|
 |ThresholdedRelu|(*in* X:**T**, *out* Y:**T**)|10+|**T** = tensor(float)|
 | | |[1, 9]|**T** = tensor(float)|
-|Tile|(*in* input:**T**, *in* tiles:**T**, *in* axis:**T**, *out* output:**T**) or (*in* input:**T**, *in* repeats:**T1**, *out* output:**T**)|6+|**T** = tensor(bool), tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|Tile|(*in* input:**T**, *in* repeats:**T1**, *out* output:**T**) or (*in* input:**T**, *in* tiles:**T**, *in* axis:**T**, *out* output:**T**)|6+|**T** = tensor(bool), tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 | | ||**T1** = tensor(int64)|
-|TopK|(*in* X:**T**, *out* Values:**T**, *out* Indices:**I**) or (*in* X:**T**, *in* K:**tensor(int64)**, *out* Values:**T**, *out* Indices:**I**)|11+|**I** = tensor(int64)|
+|TopK|(*in* X:**T**, *in* K:**tensor(int64)**, *out* Values:**T**, *out* Indices:**I**) or (*in* X:**T**, *out* Values:**T**, *out* Indices:**I**)|11+|**I** = tensor(int64)|
 | | ||**T** = tensor(float), tensor(int64)|
 | | |[1, 9]|**I** = tensor(int64)|
 | | ||**T** = tensor(float)|
@@ -437,7 +437,7 @@
 | | |[6, 8]|**T1** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 | | ||**T2** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |Ceil|(*in* X:**T**, *out* Y:**T**)|6+|**T** = tensor(double), tensor(float), tensor(float16)|
-|Clip|(*in* input:**T**, *out* output:**T**) or (*in* input:**T**, *in* min:**T**, *in* max:**T**, *out* output:**T**)|12+|**T** = tensor(double), tensor(float), tensor(int64), tensor(int8), tensor(uint64), tensor(uint8)|
+|Clip|(*in* input:**T**, *in* min:**T**, *in* max:**T**, *out* output:**T**) or (*in* input:**T**, *out* output:**T**)|12+|**T** = tensor(double), tensor(float), tensor(int64), tensor(int8), tensor(uint64), tensor(uint8)|
 | | |[11, 11]|**T** = tensor(float)|
 | | |[6, 10]|**T** = tensor(float)|
 |Compress|(*in* input:**T**, *in* condition:**T1**, *out* output:**T**)|11+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -457,7 +457,7 @@
 | | ||**T2** = tensor(int32), tensor(int64)|
 |DequantizeLinear|(*in* x:**T**, *in* x_scale:**tensor(float)**, *in* x_zero_point:**T**, *out* y:**tensor(float)**)|10+|**T** = tensor(int8), tensor(uint8)|
 |Div|(*in* A:**T**, *in* B:**T**, *out* C:**T**)|7+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
-|Dropout|(*in* data:**T**, *out* output:**T**, *out* mask:**T1**) or (*in* data:**T**, *out* output:**T**, *out* mask:**T**) or (*in* data:**T**, *in* ratio:**T1**, *out* output:**T**, *out* mask:**T2**)|10+|**T** = tensor(double), tensor(float), tensor(float16)|
+|Dropout|(*in* data:**T**, *in* ratio:**T1**, *out* output:**T**, *out* mask:**T2**) or (*in* data:**T**, *out* output:**T**, *out* mask:**T**) or (*in* data:**T**, *out* output:**T**, *out* mask:**T1**)|10+|**T** = tensor(double), tensor(float), tensor(float16)|
 | | ||**T1** = tensor(bool)|
 | | |[7, 9]|**T** = tensor(double), tensor(float), tensor(float16)|
 |DynamicSlice|(*in* data:**T**, *in* starts:**Tind**, *in* ends:**Tind**, *in* axes:**Tind**, *out* output:**T**)|1+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -544,7 +544,7 @@
 |Or|(*in* A:**T**, *in* B:**T**, *out* C:**T1**)|7+|**T** = tensor(bool)|
 | | ||**T1** = tensor(bool)|
 |PRelu|(*in* X:**T**, *in* slope:**T**, *out* Y:**T**)|7+|**T** = tensor(double), tensor(float), tensor(float16)|
-|Pad|(*in* data:**T**, *out* output:**T**) or (*in* data:**T**, *in* pads:**tensor(int64)**, *in* constant_value:**T**, *out* output:**T**)|11+|**T** = tensor(double), tensor(float), tensor(float16)|
+|Pad|(*in* data:**T**, *in* pads:**tensor(int64)**, *in* constant_value:**T**, *out* output:**T**) or (*in* data:**T**, *out* output:**T**)|11+|**T** = tensor(double), tensor(float), tensor(float16)|
 | | |[2, 10]|**T** = tensor(double), tensor(float), tensor(float16)|
 |ParametricSoftplus|(*in* X:**T**, *out* Y:**T**)|1+|**T** = tensor(double), tensor(float), tensor(float16)|
 |Pow|(*in* X:**T**, *in* Y:**T**, *out* Z:**T**) or (*in* X:**T**, *in* Y:**T1**, *out* Z:**T**)|7+|**T** = tensor(double), tensor(float), tensor(float16)|
@@ -577,7 +577,7 @@
 |ReduceSumSquare|(*in* data:**T**, *out* reduced:**T**)|11+|**T** = tensor(double), tensor(float), tensor(float16)|
 | | |[1, 10]|**T** = tensor(double), tensor(float), tensor(float16)|
 |Relu|(*in* X:**T**, *out* Y:**T**)|6+|**T** = tensor(double), tensor(float), tensor(float16)|
-|Reshape|(*in* data:**T**, *out* reshaped:**T**) or (*in* data:**T**, *in* shape:**tensor(int64)**, *out* reshaped:**T**)|5+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|Reshape|(*in* data:**T**, *in* shape:**tensor(int64)**, *out* reshaped:**T**) or (*in* data:**T**, *out* reshaped:**T**)|5+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 | | ||**shape** = tensor(int64)|
 |Reshape_1||[1, 4]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |Resize|(*in* X:**T**, *in* scales:**tensor(float)**, *out* Y:**T**) or (*in* X:**T1**, *in* roi:**T2**, *in* scales:**tensor(float)**, *in* sizes:**tensor(int64)**, *out* Y:**T1**)|11+|**T1** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(uint8)|
@@ -602,7 +602,7 @@
 | | ||**T1** = tensor(int64)|
 |Shrink|(*in* input:**T**, *out* output:**T**)|9+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |Sigmoid|(*in* X:**T**, *out* Y:**T**)|6+|**T** = tensor(double), tensor(float), tensor(float16)|
-|Slice|(*in* data:**T**, *out* output:**T**) or (*in* data:**T**, *in* starts:**Tind**, *in* ends:**Tind**, *in* axes:**Tind**, *in* steps:**Tind**, *out* output:**T**)|11+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|Slice|(*in* data:**T**, *in* starts:**Tind**, *in* ends:**Tind**, *in* axes:**Tind**, *in* steps:**Tind**, *out* output:**T**) or (*in* data:**T**, *out* output:**T**)|11+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 | | ||**Tind** = tensor(float), tensor(int32), tensor(int64)|
 | | |[1, 9]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 | | ||**Tind** = tensor(float), tensor(int32), tensor(int64)|
@@ -623,9 +623,9 @@
 |Tanh|(*in* input:**T**, *out* output:**T**)|6+|**T** = tensor(double), tensor(float), tensor(float16)|
 |ThresholdedRelu|(*in* X:**T**, *out* Y:**T**)|1+|**T** = tensor(double), tensor(float), tensor(float16)|
 | | |10+|**T** = tensor(double), tensor(float), tensor(float16)|
-|Tile|(*in* input:**T**, *in* tiles:**T**, *in* axis:**T**, *out* output:**T**) or (*in* input:**T**, *in* repeats:**T1**, *out* output:**T**)|6+|**T** = tensor(double), tensor(float), tensor(float16)|
+|Tile|(*in* input:**T**, *in* repeats:**T1**, *out* output:**T**) or (*in* input:**T**, *in* tiles:**T**, *in* axis:**T**, *out* output:**T**)|6+|**T** = tensor(double), tensor(float), tensor(float16)|
 | | ||**T1** = tensor(int64)|
-|TopK|(*in* X:**T**, *out* Values:**T**, *out* Indices:**I**) or (*in* X:**T**, *in* K:**tensor(int64)**, *out* Values:**T**, *out* Indices:**I**)|11+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|TopK|(*in* X:**T**, *in* K:**tensor(int64)**, *out* Values:**T**, *out* Indices:**I**) or (*in* X:**T**, *out* Values:**T**, *out* Indices:**I**)|11+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 | | |[1, 9]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 | | |[10, 10]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |Transpose|(*in* data:**T**, *out* transposed:**T**)|1+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
