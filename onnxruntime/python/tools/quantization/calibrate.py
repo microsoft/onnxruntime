@@ -248,7 +248,7 @@ def main():
     if args.data_preprocess == "None":
         inputs = load_pb_file(images_folder, args.dataset_size, samples, channels, height, width)
     else:
-        inputs = load_batch(images_folder, height, width, size_limit, args.data_preprocess)
+        inputs = load_batch(images_folder, height, width, args.data_preprocess, size_limit)
     print(inputs.shape)
     dict_for_quantization = get_intermediate_outputs(model_path, session, inputs, calib_mode)
     quantization_params_dict = calculate_quantization_params(model, quantization_thresholds=dict_for_quantization)
