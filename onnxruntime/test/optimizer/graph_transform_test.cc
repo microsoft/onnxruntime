@@ -959,6 +959,85 @@ TEST_F(GraphTransformationTests, ReshapeFusionOneConstTest) {
   }
 }
 
+// Test Reshape Fusion with an internal node being the output of the graph.
+TEST(GraphTransformationTests, ReshapeFusionInternalNodeIsOutput) {
+  auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_internal_node_is_graph_output.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Shape"], 1);
+  ASSERT_EQ(op_to_count["Gather"], 1);
+  ASSERT_EQ(op_to_count["Unsqueeze"], 0);
+  ASSERT_EQ(op_to_count["Concat"], 0);
+  ASSERT_EQ(op_to_count["Reshape"], 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Reshape") {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
+      ASSERT_TRUE(tensor_proto != nullptr);
+
+      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
+      EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      EXPECT_EQ(initializer->size(), 3);
+
+      const int64_t* val = initializer->data<int64_t>();
+      EXPECT_EQ(val[0], 0);
+      EXPECT_EQ(val[1], 0);
+      EXPECT_EQ(val[2], -1);
+    }
+  }
+}
+
+// Test Reshape Fusion where some of the internal nodes are reused:
+// A Shape is used in two Gather's, and the third Gather is the graph output.
+TEST(GraphTransformationTests, ReshapeFusionInternalReuseTest) {
+  auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_internal_nodes_reused.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Shape"], 1);
+  ASSERT_EQ(op_to_count["Gather"], 1);
+  ASSERT_EQ(op_to_count["Unsqueeze"], 0);
+  ASSERT_EQ(op_to_count["Concat"], 0);
+  ASSERT_EQ(op_to_count["Reshape"], 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Reshape") {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
+      ASSERT_TRUE(tensor_proto != nullptr);
+
+      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
+      EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      EXPECT_EQ(initializer->size(), 5);
+
+      const int64_t* val = initializer->data<int64_t>();
+      EXPECT_EQ(val[0], 0);
+      EXPECT_EQ(val[1], 128);
+      EXPECT_EQ(val[2], 0);
+      EXPECT_EQ(val[3], 0);
+      EXPECT_EQ(val[4], -1);
+    } else if (node.OpType() == "Shape") {
+      EXPECT_EQ(node.Name(), "shape2");
+    } else if (node.OpType() == "Gather") {
+      EXPECT_EQ(node.Name(), "gather3");
+    }
+  }
+}
+
 #ifndef DISABLE_CONTRIB_OPS
 
 static void ValidateAttention(Graph& graph) {
