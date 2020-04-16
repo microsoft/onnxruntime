@@ -823,6 +823,7 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
 
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
   if (unsupported_nodes.empty()) {
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is fully supported on OpenVINO ";
     std::vector<std::string> inputs;
     std::vector<std::string> outputs;
 
@@ -859,13 +860,23 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     const auto ng_clusters = GetPartitionedClusters(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
 
     auto connected_clusters = GetConnectedClusters(graph_viewer, ng_clusters);
+
+    //Myriad plugin can only load 10 subgraphs
+    if(info_.device_id_ == "MYRIAD" && connected_clusters.size() > 10){
+
+      std::sort(connected_clusters.begin(), connected_clusters.end(),
+        [](const std::vector<NodeIndex>& v1, const std::vector<NodeIndex>& v2) ->bool
+        {
+          return v1.size() > v2.size();
+        });
+    }
     int no_of_clusters = 0;
 
     for (const auto& this_cluster : connected_clusters) {
 
 
       if(info_.device_id_ == "MYRIAD" && no_of_clusters == 10){
-        continue;
+        break;
       }
       std::vector<std::string> cluster_inputs, const_inputs, cluster_outputs;
     //If subgraph only has Identity node, EyeLike or Dropout, OpenVINO EP doesn't support it.

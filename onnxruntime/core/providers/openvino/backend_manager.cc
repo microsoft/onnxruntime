@@ -43,7 +43,16 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
   }
 
   auto graph_inputs = fused_node->GetFunctionBody()->Body().GetInputs();
+  set_vpu_config_ = false;
   for (auto input : graph_inputs) {
+    if(device_id_ == "MYRIAD"){
+      auto shape = input->Shape();
+      if(shape != nullptr){
+        if(shape->dim_size() != 4){
+          set_vpu_config_ = true;
+        }
+      }
+    }
     auto it = inputdef_index_map.find(input->Name());
     if (it == inputdef_index_map.end()) {
       ORT_THROW("Input not found in the input defs list");
@@ -72,7 +81,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
     has_dynamic_input_shape_ = false;
     concrete_backend_ = BackendFactory::MakeBackend(model_proto_, input_indexes_,
                                                     output_names_, device_id_,
-                                                    precision_, ie_core_, subgraph_name_);
+                                                    precision_, ie_core_, subgraph_name_, set_vpu_config_);
   }
 }
 
@@ -200,7 +209,7 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
       auto modelproto_with_concrete_shapes = ReWriteInputShapeInfo(model_proto_, tensor_shapes);
       dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
                                                     input_indexes_,output_names_,
-                                                    device_id_, precision_, ie_core_,subgraph_name_);
+                                                    device_id_, precision_, ie_core_,subgraph_name_, set_vpu_config_);
       backend_map_.insert({key, dynamic_backend});
     } else {
       dynamic_backend = search->second;

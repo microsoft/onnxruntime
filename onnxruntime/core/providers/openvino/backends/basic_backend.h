@@ -20,7 +20,7 @@ class BasicBackend : public IBackend {
  public:
   BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto, const std::vector<int>& input_indexes,
                const std::unordered_map<std::string, int>& output_names, std::string device_id,
-               InferenceEngine::Precision precision, InferenceEngine::Core& ie, std::string subgraph_name);
+               InferenceEngine::Precision precision, InferenceEngine::Core& ie, std::string subgraph_name, bool set_vpu_config);
 
   void Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) override;
 

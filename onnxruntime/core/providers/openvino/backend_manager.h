@@ -43,6 +43,7 @@ class BackendManager {
   std::map<std::string, std::shared_ptr<IBackend>> backend_map_;
   std::vector<int> input_indexes_;
   std::string subgraph_name_;
+  bool set_vpu_config_;
   std::unordered_map<std::string, int> output_names_;
 };
 

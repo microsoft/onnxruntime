@@ -16,10 +16,10 @@ BackendFactory::MakeBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                             const std::vector<int>& input_indexes,
                             const std::unordered_map<std::string, int>& output_names,
                             std::string type, InferenceEngine::Precision precision,
-                            InferenceEngine::Core& ie_core, std::string subgraph_name) {
+                            InferenceEngine::Core& ie_core, std::string subgraph_name, bool set_vpu_config) {
     if(type == "CPU" || type == "GPU" || type == "MYRIAD" || type == "HETERO:FPGA,CPU") {
         return std::make_shared<BasicBackend>(model_proto, input_indexes, output_names,
-                                              type, precision, ie_core,subgraph_name);
+                                              type, precision, ie_core,subgraph_name, set_vpu_config);
     } else if (type == "HDDL") {
         return std::make_shared<VADMBackend>(model_proto, input_indexes, output_names,
                                              type, precision, ie_core, subgraph_name);
