@@ -148,7 +148,7 @@ jobs:
     buildArch: x64
     BuildConfig: 'Debug'
     setVcvars: true
-  timeoutInMinutes: 90
+  timeoutInMinutes: 60
   workspace:
     clean: all
   steps:
@@ -221,7 +221,7 @@ jobs:
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     setVcvars: true    
-  timeoutInMinutes: 90
+  timeoutInMinutes: 120
   workspace:
     clean: all
   steps:    
@@ -349,7 +349,7 @@ jobs:
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     setVcvars: true    
-  timeoutInMinutes: 60
+  timeoutInMinutes: 120
   workspace:
     clean: all
   steps:    
@@ -466,7 +466,7 @@ jobs:
     EnvSetupScript: setup_env.bat
     buildArch: x64
     setVcvars: true    
-  timeoutInMinutes: 60
+  timeoutInMinutes: 120
   workspace:
     clean: all
   steps:    
