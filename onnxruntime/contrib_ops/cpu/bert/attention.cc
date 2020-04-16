@@ -186,10 +186,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   BufferUniquePtr scratch_buffer(scratch_data, BufferDeleter(allocator));
 
   {
-    size_t mask_data_bytes = 0;
-    if (mask_index != nullptr) {
-      mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * element_size;
-    }
+    size_t mask_data_bytes =
+        mask_index == nullptr ? SafeInt<size_t>(0) : SafeInt<size_t>(batch_size) * sequence_length * element_size;
 
     void* mask_data = nullptr;
     if (mask_data_bytes > 0) {
@@ -198,7 +196,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     }
     BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
 
-    if (mask_index != nullptr) {
+    if (mask_index != nullptr && mask_data != nullptr) {
       T* p_mask = reinterpret_cast<T*>(mask_data);
       for (int b_i = 0; b_i < batch_size; b_i++) {
         // TODO: mask_index can be used in softmax to save some calculation.
