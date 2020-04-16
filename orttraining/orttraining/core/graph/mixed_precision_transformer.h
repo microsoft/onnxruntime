@@ -26,5 +26,12 @@ Status TransformGraphForMixedPrecision(Graph& graph,
                                        bool use_fp16_initializer,
                                        std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg);
 
+/**
+ * Checks if a node is an fp32-only node.
+ *
+ * @param node The node to check.
+ * @return Whether it's an fp32-only node.
+ */
+bool IsFP32Node(const Node* node);
 }  // namespace training
 }  // namespace onnxruntime

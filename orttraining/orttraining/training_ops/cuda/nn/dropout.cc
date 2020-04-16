@@ -34,12 +34,6 @@ REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, float, 1)
 REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, double, 1)
 
 
-static DropoutGenerator& GetGenerator() {
-  // This generator is shared by all Dropouts.
-  static DropoutGenerator generator(static_cast<uint64_t>(utils::GetStaticRandomSeed()));
-  return generator;
-}
-
 template <typename T1, typename T2>
 Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T1>::MappedType CudaT;
@@ -80,7 +74,8 @@ Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   }
   ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
 
-  DropoutKernelImpl(GetDeviceProp(), N, ratio_data, generator_ != nullptr ? *generator_.get() : GetGenerator(), X_data, Y_data, mask_data);
+  PhiloxGenerator& generator = generator_ != nullptr ? *generator_.get() : PhiloxGenerator::Default();
+  DropoutKernelImpl(GetDeviceProp(), N, ratio_data, generator, X_data, Y_data, mask_data);
 
   return Status::OK();
 }
