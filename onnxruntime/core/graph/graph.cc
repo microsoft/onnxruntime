@@ -890,10 +890,12 @@ void Graph::InitializeStateFromModelFileGraphProto() {
   }
 
   // Set graph value_info_.
-  for (auto& graph_value_info : graph_proto_->value_info()) {
-    auto& name = graph_value_info.name();
+  for (const auto& graph_value_info : graph_proto_->value_info()) {
+    const auto& name = graph_value_info.name();
     const auto* node_arg = GetNodeArg(name);
-    value_info_.push_back(node_arg);
+    if (node_arg != nullptr) {
+      value_info_.push_back(node_arg);
+    }
   }
 
   ComputeOverridableInitializers();
@@ -1619,7 +1621,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
     return outer_scope_node_arg_names_.find(name) != outer_scope_node_arg_names_.cend();
   };
 
-// <k> index used to navigate node->InputDefs().
+  // <k> index used to navigate node->InputDefs().
   int k = 0;
   std::unordered_map<std::string, DataType> type_parameter_to_type_map;
 
