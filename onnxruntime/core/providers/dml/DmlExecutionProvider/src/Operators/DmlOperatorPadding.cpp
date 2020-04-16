@@ -9,13 +9,16 @@ namespace Dml
 class DmlOperatorPadding : public DmlOperator, public PaddingHelper
 {
 public:
-    DmlOperatorPadding(const MLOperatorKernelCreationContext& kernelInfo)
+    DmlOperatorPadding(const MLOperatorKernelCreationContext& kernelInfo, uint32_t opsetVersion)
     :   DmlOperator(kernelInfo),
-        PaddingHelper(kernelInfo, kernelInfo.GetTensorShapeDescription())
+        PaddingHelper(kernelInfo, kernelInfo.GetTensorShapeDescription(), opsetVersion)
     {
-        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 1);
+        ML_CHECK_VALID_ARGUMENT((kernelInfo.GetInputCount() == 1 && (opsetVersion >= 2 && opsetVersion < 11))
+                             || (kernelInfo.GetInputCount() == 3 && (opsetVersion >= 11)));
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
-        DmlOperator::Initialize(kernelInfo);
+
+        std::vector<std::optional<uint32_t>> kernelInputIndices = { 0 }; // Only bind GPU to first 'data' tensor.
+        DmlOperator::Initialize(kernelInfo, kernelInputIndices);
 
         assert(m_inputTensorDescs[0].GetDimensionCount() >= gsl::narrow_cast<uint32_t>(m_startPadding.size()));
         assert(m_inputTensorDescs[0].GetDimensionCount() >= gsl::narrow_cast<uint32_t>(m_endPadding.size()));
@@ -52,7 +55,16 @@ public:
             ML_INVALID_ARGUMENT("Unknown Pad mode attribute.");
         }
 
-        float value = kernelInfo.GetOptionalAttribute<float>(AttrName::Value, 0.0f);
+        float value;
+        if (opsetVersion >= 11)
+        {
+            auto valueTensor = kernelInfo.GetConstantInputTensor(2);
+            value = static_cast<float>(ReadScalarTensorCastToFloat64(valueTensor));
+        }
+        else
+        {
+             value = kernelInfo.GetOptionalAttribute<float>(AttrName::Value, 0.0f);
+        }
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -72,6 +84,18 @@ public:
     }
 };
 
-DML_OP_DEFINE_CREATION_FUNCTION(Pad, DmlOperatorPadding);
+// A specific type of operation for registration.
+template <uint32_t opsetVersion>
+class DmlOperatorPaddingTemplate : public DmlOperatorPadding
+{
+public:
+    DmlOperatorPaddingTemplate(const MLOperatorKernelCreationContext& kernelInfo)
+    :   DmlOperatorPadding(kernelInfo, opsetVersion)
+    {
+    }
+};
+
+DML_OP_DEFINE_CREATION_FUNCTION(Pad7, DmlOperatorPaddingTemplate<7>);
+DML_OP_DEFINE_CREATION_FUNCTION(Pad11, DmlOperatorPaddingTemplate<11>);
 
 } // namespace Dml

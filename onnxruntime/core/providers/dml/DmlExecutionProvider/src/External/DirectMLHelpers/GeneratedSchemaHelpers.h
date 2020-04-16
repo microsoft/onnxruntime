@@ -920,6 +920,18 @@ inline std::vector<OperatorField> GetFields(const DML_MEAN_VARIANCE_NORMALIZATIO
         OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_SCHEMA.Fields[8], ToOperatorFieldType(static_cast<const DML_OPERATOR_DESC*>(desc.FusedActivation))),
     };
 }
+inline std::vector<OperatorField> GetFields(const DML_RESAMPLE1_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_RESAMPLE1_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_RESAMPLE1_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_RESAMPLE1_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.InterpolationMode))),
+        OperatorField(&DML_RESAMPLE1_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<UINT>(desc.DimensionCount))),
+        OperatorField(&DML_RESAMPLE1_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const FLOAT*>(desc.Scales), desc.DimensionCount)),
+        OperatorField(&DML_RESAMPLE1_OPERATOR_SCHEMA.Fields[5], ToOperatorFieldType(static_cast<const FLOAT*>(desc.InputPixelOffsets), desc.DimensionCount)),
+        OperatorField(&DML_RESAMPLE1_OPERATOR_SCHEMA.Fields[6], ToOperatorFieldType(static_cast<const FLOAT*>(desc.OutputPixelOffsets), desc.DimensionCount)),
+    };
+}
 inline std::vector<OperatorField> GetFields(const DML_QUANTIZED_LINEAR_MATRIX_MULTIPLY_OPERATOR_DESC& desc)
 {
     return {
@@ -1215,6 +1227,7 @@ inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
     case DML_OPERATOR_DEPTH_TO_SPACE1: return DML_DEPTH_TO_SPACE1_OPERATOR_SCHEMA;
     case DML_OPERATOR_SPACE_TO_DEPTH1: return DML_SPACE_TO_DEPTH1_OPERATOR_SCHEMA;
     case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1: return DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_SCHEMA;
+    case DML_OPERATOR_RESAMPLE1: return DML_RESAMPLE1_OPERATOR_SCHEMA;
     case DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY: return DML_QUANTIZED_LINEAR_MATRIX_MULTIPLY_OPERATOR_SCHEMA;
     case DML_OPERATOR_QUANTIZED_LINEAR_CONVOLUTION: return DML_QUANTIZED_LINEAR_CONVOLUTION_OPERATOR_SCHEMA;
     case DML_OPERATOR_DYNAMIC_QUANTIZE_LINEAR: return DML_DYNAMIC_QUANTIZE_LINEAR_OPERATOR_SCHEMA;
@@ -1630,6 +1643,10 @@ inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
         return AbstractOperatorDesc(
             &DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_SCHEMA,
             GetFields(*static_cast<const DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_RESAMPLE1:
+        return AbstractOperatorDesc(
+            &DML_RESAMPLE1_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_RESAMPLE1_OPERATOR_DESC*>(opDesc.Desc)));
     case DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY:
         return AbstractOperatorDesc(
             &DML_QUANTIZED_LINEAR_MATRIX_MULTIPLY_OPERATOR_SCHEMA,
