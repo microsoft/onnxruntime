@@ -1,8 +1,8 @@
 # ONNX Runtime Performance Tuning
 
-ONNX Runtime provides high performance and flexibility of hardware options with the concept of "Execution Providers" to represents different execution kernels. See: [design overview](./HighLevelDesign.md), [supported execution providers](../README.md#supported-accelerators).
+ONNX Runtime provides high performance and flexibility of hardware options with the concept of "Execution Providers" to represent different execution kernels. See: [design overview](./HighLevelDesign.md), [supported execution providers](../README.md#supported-accelerators).
 
-Along with this flexibility comes decisions for tuning and usage options. For different models and different hardware, there is no silver bullet which can always perform the best. Even for a single execution provider, often there are several knobs that can be tuned (e.g. thread number, wait policy, etc).
+Along with this flexibility comes decisions for tuning and usage options. For different models and different hardware, there is no silver bullet that can always perform the best. Even for a single execution provider, often there are several knobs that can be tuned (e.g. thread number, wait policy, etc).
 
 This document covers basic tools and knobs that can be leveraged to find the best performance for your model and hardware.
 
@@ -122,7 +122,7 @@ sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
 * Thread Count
   * `sess_options.intra_op_num_threads = 2` controls the number of threads to use to run the model
 * Sequential vs Parallel Execution
-  * `sess_options.execution_mode = rt.ExecutionMode.ORT_SEQUENTIAL` controls whether then operators in the graph should run sequentially or in parallel. Usually when a model has many branches, setting this option to false will provide better performance.
+  * `sess_options.execution_mode = rt.ExecutionMode.ORT_SEQUENTIAL` controls whether the operators in the graph run sequentially or in parallel. Usually when a model has many branches, setting this option to false will provide better performance.
   * When `sess_options.execution_mode = rt.ExecutionMode.ORT_PARALLEL`, you can set `sess_options.inter_op_num_threads` to control the
 number of threads used to parallelize the execution of the graph (across nodes).
 
@@ -152,6 +152,9 @@ Here is a list of things to check through when assessing performance issues.
 * Have you searched through prior filed [Github issues](https://github.com/microsoft/onnxruntime/issues) to see if your problem has been discussed previously? Please do this before filing new issues.
 * If using CUDA or TensorRT, do you have the right versions of the dependent libraries installed? 
 
+### Why is the model graph not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?
+The ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may fail some of the graph optimizations, like const folding, operator fusion and etc. Move initializers out of graph inputs if there is no need to override them, by either re-generating the model with latest exporter/converter or with the tool [remove_initializer_from_input.py](./../tools/python/remove_initializer_from_input.py).
+
 ### Why is my model running slower on GPU than CPU?
 Depending on which execution provider you're using, it may not have full support for all the operators in your model. Fallback to CPU ops can cause hits in performance speed. Moreover even if an op is implemented by the CUDA execution provider, it may not necessarily assign/place the op to the CUDA EP due to performance reasons. To see the placement decided by ORT, turn on verbose logging and look at the console output.
 
@@ -162,3 +165,7 @@ Most TensorFlow operations used by a CNN support both NHWC and NCHW data format.
 
 ### I'm using the Python APIs on GPU and my model is slower than PyTorch.
 This is likely not an execution latency issue with ONNX Runtime. When using the GPU provider, inputs and outputs need to be copied from CPU to GPU and vice-versa. The current version of the ORT Python API makes this copy during execution, while PyTorch allows these to be set up on the GPU prior to execution. Work is in progress to add support of IOBinding in the Python API that allows copying of inputs to the GPU prior to calling Run.
+
+
+
+

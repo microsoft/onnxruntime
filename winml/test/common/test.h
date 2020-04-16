@@ -4,10 +4,16 @@
 #pragma once
 
 using VoidTest = void (*)();
+using SetupClass = VoidTest;
+using TeardownClass = VoidTest;
 using SetupTest = VoidTest;
+using TeardownTest = VoidTest;
 
 constexpr bool alwaysTrue() {
     return true;
+}
+constexpr bool alwaysFalse() {
+    return false;
 }
 #define WINML_SUPRESS_UNREACHABLE_BELOW(statement)    \
     if (alwaysTrue()) { statement; }

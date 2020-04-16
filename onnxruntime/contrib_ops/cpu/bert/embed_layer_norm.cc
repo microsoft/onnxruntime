@@ -77,7 +77,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
     std::atomic_bool failed{false};
 
     int n = batch_size * sequence_length;
-    concurrency::ThreadPool::TryBatchParallelFor(context->GetOperatorThreadPool(), n, [=, &failed](int index) {
+    concurrency::ThreadPool::TryBatchParallelFor(context->GetOperatorThreadPool(), n, [=, &failed](ptrdiff_t index) {
       int word_col_index = input_ids_data[index];
       if (word_col_index < 0 || word_col_index >= word_embedding_length) {
         failed.store(true, std::memory_order_release);
@@ -116,7 +116,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
       for (int i = 0; i < hidden_size; i++) {
         y[i] = y[i] / e * gamma_data[i] + beta_data[i];
       }
-    });
+    }, 0);
 
     if (failed.load(std::memory_order_acquire)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "input index out of range");

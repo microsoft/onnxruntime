@@ -21,7 +21,8 @@ If there are particular important use cases blocked by this or strict project-re
 - GPU model and memory:
 
 **To Reproduce**
-Describe steps/code to reproduce the behavior:
+- Describe steps/code to reproduce the behavior.
+- Attach the ONNX model to the issue (where applicable) to expedite investigation.
 
 **Expected behavior**
 A clear and concise description of what you expected to happen.

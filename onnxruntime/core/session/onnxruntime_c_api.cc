@@ -13,6 +13,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
+#include "core/common/safeint.h"
 #include "core/graph/graph.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
@@ -81,11 +82,11 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel default_warning_level,
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithGlobalThreadPools, OrtLoggingLevel default_warning_level,
-                    _In_ const char* logid, _In_ ThreadingOptions tp_options, _Outptr_ OrtEnv** out) {
+                    _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, default_warning_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status, &tp_options);
+  *out = OrtEnv::GetInstance(lm_info, status, tp_options);
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -751,6 +752,37 @@ ORT_API_STATUS_IMPL(OrtApis::ModelMetadataLookupCustomMetadataMap,
     *value = StrDup(iter->second, allocator);
   }
 
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetCustomMetadataMapKeys,
+                    _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char*** keys, _Out_ int64_t* num_keys) {
+  API_IMPL_BEGIN
+  const auto& custom_metadata_map =
+      reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->custom_metadata_map;
+
+  auto count = custom_metadata_map.size();
+  if (count == 0) {
+    *keys = nullptr;
+  } else {
+    // To guard against overflow in the next step where we compute bytes to allocate
+    SafeInt<size_t> alloc_count(count);
+
+    // alloc_count * sizeof(...) will throw if there was an overflow which will be caught in API_IMPL_END
+    // and be returned to the user as a status
+    *keys = reinterpret_cast<char**>(allocator->Alloc(allocator, alloc_count * sizeof(char*)));
+
+    auto map_iter = custom_metadata_map.cbegin();
+    int64_t i = 0;
+    while (map_iter != custom_metadata_map.cend()) {
+      *keys[i++] = StrDup(map_iter->first, allocator);
+      ++map_iter;
+    }
+  }
+
+  *num_keys = static_cast<int64_t>(count);
   return nullptr;
   API_IMPL_END
 }
@@ -1514,7 +1546,9 @@ static constexpr OrtApi ort_api_1_to_3 = {
     // Version 3 - In development, feel free to add/remove/rearrange here
     &OrtApis::CreateEnvWithGlobalThreadPools,
     &OrtApis::DisablePerSessionThreads,
-};
+    &OrtApis::CreateThreadingOptions,
+    &OrtApis::ReleaseThreadingOptions,
+    &OrtApis::ModelMetadataGetCustomMetadataMapKeys};
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
 // If this assert hits, read the above 'Rules on how to add a new Ort API version'

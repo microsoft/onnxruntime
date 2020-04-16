@@ -7,7 +7,7 @@
 #include <string.h>
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
-#define ORT_API_VERSION 2
+#define ORT_API_VERSION 3
 
 #ifdef __cplusplus
 extern "C" {
@@ -159,6 +159,8 @@ ORT_RUNTIME_CLASS(CustomOpDomain);
 ORT_RUNTIME_CLASS(MapTypeInfo);
 ORT_RUNTIME_CLASS(SequenceTypeInfo);
 ORT_RUNTIME_CLASS(ModelMetadata);
+ORT_RUNTIME_CLASS(ThreadPoolParams);
+ORT_RUNTIME_CLASS(ThreadingOptions);
 
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.
@@ -211,14 +213,6 @@ typedef enum OrtMemType {
   OrtMemTypeCPU = OrtMemTypeCPUOutput,  // temporary CPU accessible memory allocated by non-CPU execution provider, i.e. CUDA_PINNED
   OrtMemTypeDefault = 0,                // the default allocator for execution provider
 } OrtMemType;
-
-typedef struct ThreadingOptions {
-  // number of threads used to parallelize execution of an op
-  int intra_op_num_threads;  // use 0 if you want onnxruntime to choose a value for you
-
-  // number of threads used to parallelize execution across ops
-  int inter_op_num_threads;  // use 0 if you want onnxruntime to choose a value for you
-} ThreadingOptions;
 
 struct OrtApi;
 typedef struct OrtApi OrtApi;
@@ -678,6 +672,7 @@ struct OrtApi {
 	 * This api augments OrtTypeInfo to return an OrtMapTypeInfo when the type is a map.
 	 * The OrtMapTypeInfo has additional information about the map's key type and value type.
 	 * This is used by WinML to support model reflection APIs.
+	 * This is used by WinML to support model reflection APIs.
 	 *
 	 * Don't free the 'out' value
     */
@@ -762,7 +757,7 @@ struct OrtApi {
   * its own thread pools.
   */
   OrtStatus*(ORT_API_CALL* CreateEnvWithGlobalThreadPools)(OrtLoggingLevel default_logging_level, _In_ const char* logid,
-                                                           _In_ ThreadingOptions t_options, _Outptr_ OrtEnv** out)
+                                                           _In_ const OrtThreadingOptions* t_options, _Outptr_ OrtEnv** out)
       NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
   /* TODO: Should there be a version of CreateEnvWithGlobalThreadPools with custom logging function? */
@@ -772,6 +767,21 @@ struct OrtApi {
   * This API should be used in conjunction with CreateEnvWithGlobalThreadPools API.
   */
   OrtStatus*(ORT_API_CALL* DisablePerSessionThreads)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* CreateThreadingOptions)(_Outptr_ OrtThreadingOptions** out)
+      NO_EXCEPTION;
+
+  ORT_CLASS_RELEASE(ThreadingOptions);
+
+  /**
+   * \param num_keys contains the number of keys in the custom metadata map
+   * \param keys is an array of null terminated strings (array count = num_keys) allocated using 'allocator'. 
+   * The caller is responsible for freeing each string and the pointer array.
+   * 'keys' will be a nullptr if custom metadata map is empty.
+   */
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetCustomMetadataMapKeys)(_In_ const OrtModelMetadata* model_metadata,
+                                                                  _Inout_ OrtAllocator* allocator,
+                                                                  _Outptr_ char*** keys, _Out_ int64_t* num_keys)NO_EXCEPTION;
 };
 
 /*

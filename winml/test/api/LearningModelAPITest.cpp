@@ -17,13 +17,12 @@ using namespace winrt::Windows::Media;
 using namespace winrt::Windows::Storage;
 using namespace winrt::Windows::Storage::Streams;
 
-static void LearningModelAPITestSetup() {
+static void LearningModelAPITestsClassSetup() {
   init_apartment();
 }
 
-static void LearningModelAPITestGpuSetup() {
+static void LearningModelAPITestsGpuMethodSetup() {
   GPUTEST;
-  init_apartment();
 }
 
 static void CreateModelFromFilePath() {
@@ -254,11 +253,11 @@ static void CloseModelNoNewSessions() {
       });
 }
 
-const LearningModelApiTestApi& getapi() {
-  static constexpr LearningModelApiTestApi api =
+const LearningModelApiTestsApi& getapi() {
+  static constexpr LearningModelApiTestsApi api =
   {
-    LearningModelAPITestSetup,
-    LearningModelAPITestGpuSetup,
+    LearningModelAPITestsClassSetup,
+    LearningModelAPITestsGpuMethodSetup,
     CreateModelFromFilePath,
     CreateModelFromIStorage,
     CreateModelFromIStorageOutsideCwd,
