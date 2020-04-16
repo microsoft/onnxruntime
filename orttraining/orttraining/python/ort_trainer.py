@@ -600,6 +600,7 @@ class ORTTrainer():
         self.frozen_weights_ = frozen_weights
         self.loss_scale_input_name = ''
         self.seed_ = seed
+        self.state_dict_ = None
 
         self._init_session()
 
