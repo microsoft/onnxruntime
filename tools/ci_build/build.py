@@ -126,6 +126,9 @@ def parse_arguments():
     parser.add_argument(
         "--build_wheel", action='store_true', help="Build Python Wheel.")
     parser.add_argument(
+        "--wheel_name_suffix", help="Suffix to append to created wheel names. "
+        "This value is currently only used for nightly builds.")
+    parser.add_argument(
         "--numpy_version", help="Installs a specific version of numpy "
         "before building the python binding.")
     parser.add_argument(
@@ -287,10 +290,6 @@ def parse_arguments():
     parser.add_argument(
         "--enable_lto", action='store_true',
         help="Enable Link Time Optimization")
-    parser.add_argument(
-        "--use_acl", nargs="?", const="ACL_1905",
-        choices=["ACL_1905", "ACL_1902"],
-        help="Build with ACL for ARM architectures.")
     return parser.parse_args()
 
 
@@ -465,7 +464,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             "OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         "-Donnxruntime_DEV_MODE=" + (
-            "OFF" if args.android or args.use_acl else "ON"),
+            "OFF" if args.android else "ON"),
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
         "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
@@ -537,9 +536,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_TELEMETRY=" + (
             "ON" if args.use_telemetry else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
-        "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
-        "-Donnxruntime_USE_ACL_1902=" + (
-            "ON" if args.use_acl == "ACL_1902" else "OFF"),
     ]
 
     # nGraph and TensorRT providers currently only supports
@@ -1152,7 +1148,7 @@ def nuphar_run_python_tests(build_dir, configs):
 
 def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph,
                        use_dnnl, use_tensorrt, use_openvino, use_nuphar,
-                       use_acl, nightly_build=False):
+                       wheel_name_suffix, nightly_build=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -1173,8 +1169,9 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph,
             args.append('--use_openvino')
         elif use_nuphar:
             args.append('--use_nuphar')
-        elif use_acl:
-            args.append('--use_acl')
+        if wheel_name_suffix:
+            args.append('--wheel_name_suffix={}'.format(wheel_name_suffix))
+
         run_subprocess(args, cwd=cwd)
 
 
@@ -1466,10 +1463,6 @@ def main():
                     build_dir, configs, onnx_test_data_dir, 'dml',
                     args.enable_multi_device_test, False, 1)
 
-            if args.use_acl:
-                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'acl',
-                               args.enable_multi_device_test, False, 1, 1)
-
             # Run some models are disabled to keep memory utilization
             # under control.
             if args.use_dnnl:
@@ -1493,10 +1486,18 @@ def main():
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
             build_python_wheel(
-                source_dir, build_dir, configs, args.use_cuda,
-                args.use_ngraph, args.use_dnnl, args.use_tensorrt,
-                args.use_openvino, args.use_nuphar, args.use_acl,
-                nightly_build)
+                source_dir,
+                build_dir,
+                configs,
+                args.use_cuda,
+                args.use_ngraph,
+                args.use_dnnl,
+                args.use_tensorrt,
+                args.use_openvino,
+                args.use_nuphar,
+                args.wheel_name_suffix,
+                nightly_build=nightly_build,
+            )
 
     if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)

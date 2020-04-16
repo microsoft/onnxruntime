@@ -5,9 +5,10 @@
 
 #include "core/common/status.h"
 #include "core/common/exceptions.h"
+#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
-OrtStatus* ToOrtStatus(const onnxruntime::common::Status& st);
+_Ret_notnull_ OrtStatus* ToOrtStatus(const onnxruntime::common::Status& st);
 };
 
 #define API_IMPL_BEGIN try {

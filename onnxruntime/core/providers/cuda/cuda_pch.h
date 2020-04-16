@@ -13,6 +13,7 @@
 #include <cusparse.h>
 #include <curand.h>
 #include <cudnn.h>
+#include <cufft.h>
 
 #ifdef USE_NCCL
 #include <nccl.h>
