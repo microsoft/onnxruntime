@@ -5,9 +5,10 @@
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
-class Inverse final : public CudaKernel {
+class Inverse final : public ::onnxruntime::cuda::CudaKernel {
  public:
   explicit Inverse(const OpKernelInfo& info) : CudaKernel{info} {
   }
@@ -24,8 +25,8 @@ class Inverse final : public CudaKernel {
 
 ONNX_OPERATOR_KERNEL_EX(
     Inverse,
-    kOnnxDomain,
-    12,
+    kMSDomain,
+    1,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", BuildKernelDefConstraints<float, double, MLFloat16>()),
@@ -65,6 +66,7 @@ struct Inverse::ComputeImpl {
   Status operator()(Inverse::CublasHandle cublas_h, const Inverse* inst, const Tensor& input, Tensor& output,
                     const IAllocatorUniquePtr<int>& info, const IAllocatorUniquePtr<int>& pivots,
                     size_t num_batches, size_t rows) const {
+    using namespace onnxruntime::cuda;
     using namespace inverse_internal;
     using CudaT = typename ToCudaType<T>::MappedType;
     const size_t input_count = static_cast<size_t>(input.Shape().Size());
@@ -154,4 +156,5 @@ Status Inverse::ComputeInternal(OpKernelContext* ctx) const {
 }
 
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime

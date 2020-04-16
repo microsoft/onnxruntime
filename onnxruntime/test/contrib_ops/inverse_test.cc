@@ -8,22 +8,22 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(InverseOpTest, two_by_two_float) {
-  OpTester test("Inverse", 12);
+TEST(InverseContribOpTest, two_by_two_float) {
+  OpTester test("Inverse", 1, kMSDomain);
   test.AddInput<float>("X", {2, 2}, {4, 7, 2, 6});
   test.AddOutput<float>("Y", {2, 2}, {0.6f, -0.7f, -0.2f, 0.4f});
   test.Run();
 }
 
-TEST(InverseOpTest, two_by_two_double) {
-  OpTester test("Inverse", 12);
+TEST(InverseContribOpTest, two_by_two_double) {
+  OpTester test("Inverse", 1, kMSDomain);
   test.AddInput<double>("X", {2, 2}, {4, 7, 2, 6});
   test.AddOutput<double>("Y", {2, 2}, {0.6f, -0.7f, -0.2f, 0.4f});
   test.Run();
 }
 
-TEST(InverseOpTest, two_by_two_float16) {
-  OpTester test("Inverse", 12);
+TEST(InverseContribOpTest, two_by_two_float16) {
+  OpTester test("Inverse", 1, kMSDomain);
 
   auto input_float = {4.f, 7.f, 2.f, 6.f};
   std::vector<MLFloat16> input;
@@ -45,8 +45,8 @@ TEST(InverseOpTest, two_by_two_float16) {
   test.Run();
 }
 
-TEST(InverseOpTest, four_by_four_float) {
-  OpTester test("Inverse", 12);
+TEST(InverseContribOpTest, four_by_four_float) {
+  OpTester test("Inverse", 1, kMSDomain);
   test.AddInput<float>("X", {4, 4}, 
     {4.f, 0.f, 0.f, 0.f,
      0.f, 0.f, 2.f, 0.f,
@@ -61,8 +61,8 @@ TEST(InverseOpTest, four_by_four_float) {
   test.Run();
 }
 
-TEST(InverseOpTest, four_by_four_batches_float) {
-  OpTester test("Inverse", 12);
+TEST(InverseContribOpTest, four_by_four_batches_float) {
+  OpTester test("Inverse", 1, kMSDomain);
 
   auto one_input_matrix_4x4 = {
       4.f, 0.f, 0.f, 0.f,
