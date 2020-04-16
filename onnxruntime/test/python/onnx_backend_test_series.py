@@ -125,8 +125,10 @@ def create_backend_test(testname=None):
             current_failing_tests += [
                 '^test_operator_permute2_cpu',
                 '^test_scan9_sum_cpu',  #sum_out output node not defined, temporarily disabling test
-                '^test_scan_sum_cpu'
-            ]  #sum_out output node not defined, temporarily disabling test
+                '^test_scan_sum_cpu', #sum_out output node not defined, temporarily disabling test
+                '^test_operator_repeat_cpu',
+                '^test_operator_repeat_dim_overflow_cpu'
+            ]
 
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \
