@@ -125,7 +125,16 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.data_parallel_size,
                                          config.distributed_config.horizontal_parallel_size});
 
-  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph());
+  // derive actual set of weights to train
+  std::unordered_set<std::string> weight_names_to_train =
+      !config.weight_names_to_train.empty()
+          ? config.weight_names_to_train
+          : GetTrainableModelInitializers(config.immutable_weights);
+  for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
+    weight_names_to_train.erase(weight_name_to_not_train);
+  }
+
+  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(weight_names_to_train));
 
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
 
@@ -152,15 +161,6 @@ Status TrainingSession::ConfigureForTraining(
   if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
-  }
-
-  // derive actual set of weights to train
-  std::unordered_set<std::string> weight_names_to_train =
-      !config.weight_names_to_train.empty()
-          ? config.weight_names_to_train
-          : GetTrainableModelInitializers(config.immutable_weights);
-  for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
-    weight_names_to_train.erase(weight_name_to_not_train);
   }
 
   {
@@ -354,9 +354,9 @@ static Status AddGradientAccumulationNodes(Graph& graph,
   return GraphAugmenter::AugmentGraph(graph, graph_defs);
 }
 
-Status TrainingSession::ApplyTransformationsToMainGraph() {
+Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train) {
   GraphTransformerManager graph_transformation_mgr{1};
-  AddPreTrainingTransformers(graph_transformation_mgr);
+  AddPreTrainingTransformers(graph_transformation_mgr, weights_to_train);
 
   // apply transformers
   Graph& graph = model_->MainGraph();
@@ -368,11 +368,12 @@ Status TrainingSession::ApplyTransformationsToMainGraph() {
 
 // Registers all the pre transformers with transformer manager
 void TrainingSession::AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
+                                                 const std::unordered_set<std::string>& weights_to_train,
                                                  TransformerLevel graph_optimization_level,
                                                  const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
-    auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(level, custom_list);
+    auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(level, weights_to_train, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }

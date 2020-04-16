@@ -523,7 +523,8 @@ bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg) {
   return IsConstantInitializer(graph, node_arg.Name(), true);
 }
 
-bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs) {
+bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs,
+                              const std::unordered_set<std::string>& excluded_inputs) {
   // clear so we have a known state. if we fail part way through we go back to this state.
   constant_inputs.clear();
 
@@ -538,7 +539,7 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedT
     // because it can be overridden by the user at runtime. For constant folding to be applied, the initializer should
     // not appear in the graph's inputs (that is the only way to guarantee it will always be constant).
     const ONNX_NAMESPACE::TensorProto* initializer = GetConstantInitializer(graph, input_def->Name(), true);
-    if (initializer) {
+    if (initializer && excluded_inputs.find(input_def->Name()) == excluded_inputs.cend()) {
       constant_inputs.insert({input_def->Name(), initializer});
     } else {
       constant_inputs.clear();

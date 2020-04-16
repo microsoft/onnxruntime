@@ -262,10 +262,11 @@ class TrainingSession : public InferenceSession {
                                 const std::vector<std::string>& norm_nodes,
                                 const bool dump_convergence_metrics);
 
-  common::Status ApplyTransformationsToMainGraph();
+  common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train);
 
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
+                                  const std::unordered_set<std::string>& weights_to_train,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
                                   const std::vector<std::string>& custom_list = {});
 

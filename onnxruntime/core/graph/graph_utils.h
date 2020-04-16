@@ -63,7 +63,8 @@ bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg);
 
 /** Checks if the given node has only constant inputs (initializers) and if so returns them in constant_inputs as they
 may come from outer scope. */
-bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs);
+bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs,
+                              const std::unordered_set<std::string>& excluded_inputs = {});
 
 /** Gets the name of the incoming NodeArg with the specified index for the given node. */
 const std::string& GetNodeInputName(const Node& node, int index);
