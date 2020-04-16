@@ -31,6 +31,8 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", BuildKernelDefConstraints<float, double, MLFloat16>()),
     Inverse);
 
+namespace inverse_internal {
+
 template <typename T>
 Status ComputeMatrixOffsets(T* workspace_data, size_t num_batches, size_t rows, IAllocatorUniquePtr<T*>& matrix_ptrs) {
   std::vector<T*> cuda_ptrs;
@@ -48,7 +50,7 @@ Status CheckForSingularity(const IAllocatorUniquePtr<int>& info, const std::uniq
   // Let's check if any of the info values is non-zero
   CUDA_RETURN_IF_ERROR(cudaMemcpy(info_cpu.get(), info.get(), sizeof(int) * num_batches,
                                   cudaMemcpyDeviceToHost));
-  for (auto i = 0; i < num_batches; ++i) {
+  for (size_t i = 0; i < num_batches; ++i) {
     if (info_cpu[i] != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Matrix is singular at batch:", i);
     }
@@ -56,11 +58,14 @@ Status CheckForSingularity(const IAllocatorUniquePtr<int>& info, const std::uniq
   return Status::OK();
 }
 
+}  // namespace inverse_internal
+
 template <typename T>
 struct Inverse::ComputeImpl {
   Status operator()(Inverse::CublasHandle cublas_h, const Inverse* inst, const Tensor& input, Tensor& output,
                     const IAllocatorUniquePtr<int>& info, const IAllocatorUniquePtr<int>& pivots,
                     size_t num_batches, size_t rows) const {
+    using namespace inverse_internal;
     using CudaT = typename ToCudaType<T>::MappedType;
     const size_t input_count = static_cast<size_t>(input.Shape().Size());
     auto info_cpu = onnxruntime::make_unique<int[]>(num_batches);
@@ -128,7 +133,6 @@ struct Inverse::ComputeImpl {
 
 Status Inverse::ComputeInternal(OpKernelContext* ctx) const {
   const auto* input = ctx->Input<Tensor>(0);
-  const auto elem_type = input->GetElementType();
   const auto& input_shape = input->Shape();
   const auto num_dim = input_shape.NumDimensions();
   auto* output = ctx->Output(0, input_shape);
