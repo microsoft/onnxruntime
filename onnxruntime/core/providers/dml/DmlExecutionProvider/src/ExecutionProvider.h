@@ -92,6 +92,7 @@ namespace Dml
         uint32_t GetSuppportedDeviceDataTypeMask() const;
 
         onnxruntime::common::Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const;
+        onnxruntime::common::Status CopyTensors(const onnxruntime::Tensor** src, onnxruntime::Tensor** dst, uint32_t count) const;
         onnxruntime::common::Status WaitForGpuCompletion();
 
         // IWinmlExecutionProvider methods
@@ -197,6 +198,12 @@ namespace Dml
         {
             assert(exec_queue_id == 0);
             return m_impl->CopyTensor(src, dst);
+        }
+        
+        onnxruntime::common::Status CopyTensors(const onnxruntime::Tensor** src, onnxruntime::Tensor** dst, uint32_t count, int exec_queue_id) const 
+        {
+            assert(exec_queue_id == 0);
+            return m_impl->CopyTensors(src, dst, count);
         }
 
         bool CanCopy(const OrtDevice& srcDevice, const OrtDevice& dstDevice) const final
