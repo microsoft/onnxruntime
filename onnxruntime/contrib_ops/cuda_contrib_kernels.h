@@ -8,7 +8,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-void RegisterCudaContribKernels(KernelRegistry& kernel_registry);
+Status RegisterCudaContribKernels(KernelRegistry& kernel_registry);
 
 }  // namespace cuda
 }  // namespace contrib
