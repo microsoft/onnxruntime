@@ -28,6 +28,7 @@ ONNX Runtime stays up to date with the ONNX standard and supports all operators 
   * [Builds and Packages](#Builds-and-Packages)
 * **[Usage](#usage)**
   * [Samples and Tutorials](./samples)
+  * [Frequently Asked Questions](./docs/FAQ.md)
   * [Getting ONNX Models](#getting-onnx-models)
   * [Deploying ONNX Runtime](#deploying-onnx-runtime)
   * [Data/Telemetry](#Data/Telemetry)
@@ -54,7 +55,7 @@ Please refer to [Roadmap](./docs/Roadmap.md#accelerators-and-execution-providers
 
 #### CPU
 * Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*
-* [Intel DNNL](./docs/execution_providers/MKL-DNN-ExecutionProvider.md)
+* [Intel DNNL](./docs/execution_providers/DNNL-ExecutionProvider.md)
 * [Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)
 * Intel MKL-ML 
 
@@ -148,7 +149,8 @@ system.
 ***
 # Usage
 ## [Samples and Tutorials](./samples)
-## [Frequently Asked Questions and Troubleshooting](./docs/FAQ.md)
+
+## [Frequently Asked Questions](./docs/FAQ.md)
 
 ## Getting ONNX Models
 To get an ONNX model, please view these [ONNX Tutorials](https://github.com/onnx/tutorials#getting-onnx-models).
