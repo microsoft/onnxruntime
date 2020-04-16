@@ -272,5 +272,177 @@ TEST(CudaKernelTest, SparseSoftmaxCrossEntropyGrad_LargeSizeTensor) {
   TestSparseSoftmaxCrossEntropyGrad(dY_dims, log_prob_dims, index_dims, dX_dims, "mean");
   TestSparseSoftmaxCrossEntropyGrad(dY_dims, log_prob_dims, index_dims, dX_dims, "sum");
 }
+
+static void TestSoftmaxCrossEntropyLoss(const std::vector<int64_t>* X_dims,
+                                        const std::vector<int64_t>* index_dims,
+                                        const std::vector<int64_t>* weight_dims,
+                                        const std::vector<int64_t>* Y_dims,
+                                        const std::vector<int64_t>* log_prob_dims,
+                                        const std::string& reduction,
+                                        const std::int64_t ignore_index = -1) {
+  CompareOpTester test("SoftmaxCrossEntropyLoss", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute("reduction", reduction);
+  test.AddAttribute("ignore_index", ignore_index);
+
+  // create rand inputs
+  RandomValueGenerator random{};
+  std::vector<float> X_data = random.Uniform<float>(*X_dims, -200.0f, 200.0f);
+  std::vector<int64_t> index_data = random.Uniform<int64_t>(*index_dims, 0.0f, static_cast<float>((*X_dims)[1]));
+  //Add one data point that has ignore_index.
+  if (index_data.size() > 0) {
+    index_data[0] = ignore_index;
+  }
+
+  test.AddInput<float>("X", *X_dims, X_data);
+  test.AddInput<int64_t>("index", *index_dims, index_data);
+
+  if (weight_dims) {
+    std::vector<float> weight_data = random.Uniform<float>(*weight_dims, 0.0f, 1.0f);
+    test.AddInput<float>("weight", *weight_dims, weight_data);
+  }
+
+  std::vector<float> Y_data = FillZeros<float>(*Y_dims);
+  std::vector<float> log_prob_data = FillZeros<float>(*log_prob_dims);
+
+  test.AddOutput<float>("output", *Y_dims, Y_data);
+  test.AddOutput<float>("log_prob", *log_prob_dims, log_prob_data);
+
+  test.CompareWithCPU(kCudaExecutionProvider);
+}
+
+TEST(CudaKernelTest, SoftmaxCrossEntropyLoss_TinySizeTensor) {
+  std::vector<int64_t> X_dims{8, 2};
+  std::vector<int64_t> index_dims{8};
+  std::vector<int64_t> weight_dims{8};
+  std::vector<int64_t> Y_dims{};
+  std::vector<int64_t> Y_dims_none{8};
+  std::vector<int64_t> log_prob_dims{8, 2};
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "mean");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims, &log_prob_dims, "mean");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "sum");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims, &log_prob_dims, "sum");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, &weight_dims, &Y_dims_none, &log_prob_dims, "none");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims_none, &log_prob_dims, "none");
+
+  // Just test ignore_index for small tensor because it will increase test time a lot with little verification gain.
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "mean", 0);
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims, &log_prob_dims, "mean", 0);
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "sum", 0);
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims, &log_prob_dims, "sum", 0);
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, &weight_dims, &Y_dims_none, &log_prob_dims, "none", 0);
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims_none, &log_prob_dims, "none", 0);
+}
+
+TEST(CudaKernelTest, SoftmaxCrossEntropyLoss_SmallSizeTensor) {
+  std::vector<int64_t> X_dims{8, 20, 10};
+  std::vector<int64_t> index_dims{8, 10};
+  std::vector<int64_t> weight_dims{20};
+  std::vector<int64_t> Y_dims{};
+  std::vector<int64_t> Y_dims_none{8, 10};
+  std::vector<int64_t> log_prob_dims{8, 20, 10};
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "mean");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims, &log_prob_dims, "mean");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "sum");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims, &log_prob_dims, "sum");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, &weight_dims, &Y_dims_none, &log_prob_dims, "none");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims_none, &log_prob_dims, "none");
+}
+
+TEST(CudaKernelTest, SoftmaxCrossEntropyLoss_MediumSizeTensor) {
+  std::vector<int64_t> X_dims{8, 1024};
+  std::vector<int64_t> index_dims{8};
+  std::vector<int64_t> weight_dims{1024};
+  std::vector<int64_t> Y_dims{};
+  std::vector<int64_t> Y_dims_none{8};
+  std::vector<int64_t> log_prob_dims{8, 1024};
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "mean");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims, &log_prob_dims, "mean");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "sum");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims, &log_prob_dims, "sum");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, &weight_dims, &Y_dims_none, &log_prob_dims, "none");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims_none, &log_prob_dims, "none");
+}
+
+TEST(CudaKernelTest, SoftmaxCrossEntropyLoss_LargeSizeTensor) {
+  std::vector<int64_t> X_dims{4, 512, 30528};
+  std::vector<int64_t> index_dims{4, 30528};
+  std::vector<int64_t> weight_dims{512};
+  std::vector<int64_t> Y_dims{};
+  std::vector<int64_t> Y_dims_none{4, 30528};
+  std::vector<int64_t> log_prob_dims{4, 512, 30528};
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "mean");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims, &log_prob_dims, "mean");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "sum");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims, &log_prob_dims, "sum");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, &weight_dims, &Y_dims_none, &log_prob_dims, "none");
+  TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims_none, &log_prob_dims, "none");
+}
+
+static void TestSoftmaxCrossEntropyLossGrad(const std::vector<int64_t>& dY_dims,
+                                            const std::vector<int64_t>& log_prob_dims,
+                                            const std::vector<int64_t>& index_dims,
+                                            const std::vector<int64_t>& dX_dims,
+                                            const std::string& reduction,
+                                            const std::int64_t ignore_index = -1) {
+  CompareOpTester test("SoftmaxCrossEntropyLossGrad", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("reduction", reduction);
+  test.AddAttribute("ignore_index", ignore_index);
+
+  // create rand inputs
+  RandomValueGenerator random{};
+  std::vector<float> dY_data = random.Uniform<float>(dY_dims, -10.0f, 10.0f);
+  std::vector<float> log_prob_data = random.Uniform<float>(log_prob_dims, -10.0f, 10.0f);
+  std::vector<int64_t> index_data = random.Uniform<int64_t>(index_dims, 0.0f, static_cast<float>(dX_dims[1]));
+  //Add one data point that has ignore_index.
+  if (index_data.size() > 0) {
+    index_data[0] = ignore_index;
+  }
+
+  test.AddInput<float>("dY", dY_dims, dY_data);
+  test.AddInput<float>("log_prob", log_prob_dims, log_prob_data);
+  test.AddInput<int64_t>("index", index_dims, index_data);
+
+  std::vector<float> dX_data = FillZeros<float>(dX_dims);
+
+  test.AddOutput<float>("dX", dX_dims, dX_data);
+
+  test.CompareWithCPU(kCudaExecutionProvider);
+}
+
+TEST(CudaKernelTest, SoftmaxCrossEntropyLossGrad_TinySizeTensor) {
+  std::vector<int64_t> dY_dims{};
+  std::vector<int64_t> log_prob_dims{8, 2};
+  std::vector<int64_t> index_dims{8};
+  std::vector<int64_t> dX_dims{8, 2};
+  TestSoftmaxCrossEntropyLossGrad(dY_dims, log_prob_dims, index_dims, dX_dims, "mean");
+  TestSoftmaxCrossEntropyLossGrad(dY_dims, log_prob_dims, index_dims, dX_dims, "sum");
+  TestSoftmaxCrossEntropyLossGrad({8}, log_prob_dims, index_dims, dX_dims, "none");
+
+  // Just test ignore_index for small tensor because it will increase test time a lot with little verification gain.
+  TestSoftmaxCrossEntropyLossGrad(dY_dims, log_prob_dims, index_dims, dX_dims, "mean", 0);
+  TestSoftmaxCrossEntropyLossGrad(dY_dims, log_prob_dims, index_dims, dX_dims, "sum", 0);
+  TestSoftmaxCrossEntropyLossGrad({8}, log_prob_dims, index_dims, dX_dims, "none", 0);
+}
+
+TEST(CudaKernelTest, SoftmaxCrossEntropyLossGrad_SmallSizeTensor) {
+  std::vector<int64_t> dY_dims{};
+  std::vector<int64_t> log_prob_dims{8, 20, 10};
+  std::vector<int64_t> index_dims{8, 10};
+  std::vector<int64_t> dX_dims{8, 20, 10};
+  TestSoftmaxCrossEntropyLossGrad(dY_dims, log_prob_dims, index_dims, dX_dims, "mean");
+  TestSoftmaxCrossEntropyLossGrad(dY_dims, log_prob_dims, index_dims, dX_dims, "sum");
+  TestSoftmaxCrossEntropyLossGrad({8, 10}, log_prob_dims, index_dims, dX_dims, "none");
+}
+
+TEST(CudaKernelTest, SoftmaxCrossEntropyLossGrad_LargeSizeTensor) {
+  std::vector<int64_t> dY_dims{};
+  std::vector<int64_t> log_prob_dims{2, 512, 30528};
+  std::vector<int64_t> index_dims{2, 30528};
+  std::vector<int64_t> dX_dims{2, 512, 30528};
+  TestSoftmaxCrossEntropyLossGrad(dY_dims, log_prob_dims, index_dims, dX_dims, "mean");
+  TestSoftmaxCrossEntropyLossGrad(dY_dims, log_prob_dims, index_dims, dX_dims, "sum");
+  TestSoftmaxCrossEntropyLossGrad({2, 30528}, log_prob_dims, index_dims, dX_dims, "none");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

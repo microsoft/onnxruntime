@@ -19,7 +19,7 @@
 namespace onnxruntime {
 namespace test {
 
-#ifdef NDEBUG
+#ifndef NDEBUG
 using ONNX_NAMESPACE::MakeAttribute;
 using training::OpDef;
 
@@ -1205,6 +1205,129 @@ TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
   TestSparseSoftmaxCrossEntropyGrad({5}, "sum");
   TestSparseSoftmaxCrossEntropyGrad({2, 3, 2}, "mean");
   TestSparseSoftmaxCrossEntropyGrad({2, 3, 2}, "sum");
+}
+
+void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_shape
+                                     const std::string& reduction,
+                                     int64_t ignore_index = 0,
+                                     int64_t D = 2 /* num_class*/) {
+  float max_error;
+  bool include_ignore_index = false;
+  bool insert_ignore_index = false;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"SoftmaxCrossEntropyLoss", kOnnxDomain, 12};
+  std::function<float(float)> transformer_index = [D, &include_ignore_index, &insert_ignore_index, ignore_index](float x) {
+    if (include_ignore_index) {
+      if (insert_ignore_index) {
+        insert_ignore_index = false;
+        return static_cast<float>(ignore_index);
+      } else {
+        insert_ignore_index = true;
+        return std::fmod(std::fabs(x) * 5.0f, D * 1.0f);
+      }
+    } else {
+      return std::fmod(std::fabs(x) * 5.0f, D * 1.0f);
+    }
+  };
+
+  std::function<float(float)> transformer_weight = [](float x) { return std::fmod(std::fabs(x), 2.0f); };
+
+  // without weight and ignore_index
+  {
+    std::vector<int64_t> logit_shape(index_shape.GetDims());
+    auto it = logit_shape.begin() + 1;
+    logit_shape.insert(it, D);
+    TensorInfo loss_info = {};
+    if (reduction == "none") {
+      loss_info = {TensorInfo(index_shape.GetDims())};
+    }
+
+    include_ignore_index = true;
+    TensorInfo x_info(logit_shape);
+    TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info},
+                                          {loss_info, {logit_shape, false}}, &max_error,
+                                          {MakeAttribute("reduction", reduction)});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // with weight and no ignore_index
+  {
+    std::vector<int64_t> logit_shape(index_shape.GetDims());
+    auto it = logit_shape.begin() + 1;
+    logit_shape.insert(it, D);
+    TensorInfo loss_info = {};
+    if (reduction == "none") {
+      loss_info = {TensorInfo(index_shape.GetDims())};
+    }
+
+    include_ignore_index = false;
+    TensorInfo x_info(logit_shape);
+    TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo weight_info({logit_shape[1]}, false, &transformer_weight);
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info},
+                                          {loss_info, {logit_shape, false}}, &max_error,
+                                          {MakeAttribute("reduction", reduction)});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // without weight and ignore index
+  {
+    std::vector<int64_t> logit_shape(index_shape.GetDims());
+    auto it = logit_shape.begin() + 1;
+    logit_shape.insert(it, D);
+    TensorInfo loss_info = {};
+    if (reduction == "none") {
+      loss_info = {TensorInfo(index_shape.GetDims())};
+    }
+
+    include_ignore_index = true;
+    TensorInfo x_info(logit_shape);
+    TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info},
+                                          {loss_info, {logit_shape, false}}, &max_error,
+                                          {MakeAttribute("reduction", reduction), MakeAttribute("ignore_index", ignore_index)});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // with weight and ignore_index
+  {
+    std::vector<int64_t> logit_shape(index_shape.GetDims());
+    auto it = logit_shape.begin() + 1;
+    logit_shape.insert(it, D);
+    TensorInfo loss_info = {};
+    if (reduction == "none") {
+      loss_info = {TensorInfo(index_shape.GetDims())};
+    }
+
+    include_ignore_index = true;
+    TensorInfo x_info(logit_shape);
+    TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo weight_info({logit_shape[1]}, false, &transformer_weight);
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info},
+                                          {loss_info, {logit_shape, false}}, &max_error,
+                                          {MakeAttribute("reduction", reduction), MakeAttribute("ignore_index", ignore_index)});
+    EXPECT_IS_TINY(max_error);
+  }
+}
+
+TEST(GradientCheckerTest, SoftmaxCrossEntropyLossGrad) {
+  TestSoftmaxCrossEntropyLossGrad({5}, "mean");
+  TestSoftmaxCrossEntropyLossGrad({5}, "sum");
+  TestSoftmaxCrossEntropyLossGrad({2}, "none");
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "mean");
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "sum");
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "none");
+  TestSoftmaxCrossEntropyLossGrad({5}, "mean", -1);
+  TestSoftmaxCrossEntropyLossGrad({5}, "sum", -1);
+  TestSoftmaxCrossEntropyLossGrad({2}, "none", -1);
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "mean", -1);
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "sum", -1);
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "none", -1);
 }
 
 TEST(GradientCheckerTest, GeluGrad) {
