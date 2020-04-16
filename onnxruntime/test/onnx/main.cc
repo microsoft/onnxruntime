@@ -517,6 +517,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
   }
+
+  if (enable_openvino){
+    broken_tests.insert({"operator_permute2", "Disabled temporariliy"});
+    broken_tests.insert({"operator_repeat", "Disabled temporariliy"});
+    broken_tests.insert({"operator_repeat_dim_overflow", "Disabled temporariliy"});
+    broken_tests.insert({"mlperf_ssd_resnet34_1200", "Disabled temporariliy"});
+  }
   if (enable_nuphar) {
     broken_tests.insert({"cgan", "TVM exception during initialization"});
   }
