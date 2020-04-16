@@ -172,6 +172,7 @@ namespace OperatorHelper
 
     namespace OnnxOperatorSet10
     {
+        static const int sc_sinceVer_Crop = 10; // Removed in this version.
         static const int sc_sinceVer_Resize = 10;
         static const int sc_sinceVer_MaxPool = 10;
         static const int sc_sinceVer_QuantizeLinear = 10;
@@ -186,6 +187,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_RoiAlign = 10;
         static const int sc_sinceVer_TopK = 10;
         static const int sc_sinceVer_ReverseSequence = 10;
+        static const int sc_sinceVer_AveragePool = 10;
     } // namespace OnnxOperatorSet10
 
     namespace OnnxOperatorSet11
@@ -197,6 +199,8 @@ namespace OperatorHelper
         static const int sc_sinceVer_Clip = 11;
         static const int sc_sinceVer_Compress = 11;
         static const int sc_sinceVer_Concat = 11;
+        static const int sc_sinceVer_Conv = 11;
+        static const int sc_sinceVer_ConvTranspose = 11;
         static const int sc_sinceVer_CumSum = 11;
         static const int sc_sinceVer_DepthToSpace = 11;
         static const int sc_sinceVer_Equal = 11;
@@ -207,6 +211,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Gemm = 11;
         static const int sc_sinceVer_Hardmax = 11;
         static const int sc_sinceVer_LogSoftmax = 11;
+        static const int sc_sinceVer_LpPool = 11;
         static const int sc_sinceVer_MaxPool = 11;
         static const int sc_sinceVer_MaxUnpool = 11;
         static const int sc_sinceVer_OneHot = 11;

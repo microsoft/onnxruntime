@@ -64,7 +64,7 @@ struct OperatorRegistrationInformation
     gsl::span<const SupportedTensorDataTypes> supportedTensorDataTypes;
     DmGraphSupport DmGraphSupport;
 
-    std::vector<uint32_t> requiresFloatFormatsExceptConstInputs;
+    std::vector<uint32_t> requiredConstantCpuInputs;
 
     // For use by operators such as Sum, which may require multiple calls to DML, in which case they
     // can't be represented as nodes in an optimized graph yet.
@@ -102,7 +102,8 @@ DML_OP_EXTERN_CREATION_FUNCTION(Concat);
 DML_OP_EXTERN_CREATION_FUNCTION(Slice7);
 DML_OP_EXTERN_CREATION_FUNCTION(Slice10);
 DML_OP_EXTERN_CREATION_FUNCTION(Slice11);
-DML_OP_EXTERN_CREATION_FUNCTION(Pad);
+DML_OP_EXTERN_CREATION_FUNCTION(Pad7);
+DML_OP_EXTERN_CREATION_FUNCTION(Pad11);
 DML_OP_EXTERN_CREATION_FUNCTION(SpaceToDepth);
 DML_OP_EXTERN_CREATION_FUNCTION(DepthToSpace);
 DML_OP_EXTERN_CREATION_FUNCTION(Sqrt);
@@ -146,7 +147,9 @@ DML_OP_EXTERN_CREATION_FUNCTION(Gemm);
 DML_OP_EXTERN_CREATION_FUNCTION(Neg);
 DML_OP_EXTERN_CREATION_FUNCTION(Crop);
 DML_OP_EXTERN_CREATION_FUNCTION(ImageScaler);
-DML_OP_EXTERN_CREATION_FUNCTION(Upsample);
+DML_OP_EXTERN_CREATION_FUNCTION(Upsample7);
+DML_OP_EXTERN_CREATION_FUNCTION(Upsample9);
+DML_OP_EXTERN_CREATION_FUNCTION(Upsample10);
 DML_OP_EXTERN_CREATION_FUNCTION(Sigmoid);
 DML_OP_EXTERN_CREATION_FUNCTION(HardSigmoid);
 DML_OP_EXTERN_CREATION_FUNCTION(Tanh);
@@ -169,7 +172,9 @@ DML_OP_EXTERN_CREATION_FUNCTION(MatMul);
 DML_OP_EXTERN_CREATION_FUNCTION(Cast);
 DML_OP_EXTERN_CREATION_FUNCTION(MemcpyFromHost);
 DML_OP_EXTERN_CREATION_FUNCTION(MemcpyToHost);
-DML_OP_EXTERN_CREATION_FUNCTION(TopK);
+DML_OP_EXTERN_CREATION_FUNCTION(TopK7);
+DML_OP_EXTERN_CREATION_FUNCTION(TopK10);
+DML_OP_EXTERN_CREATION_FUNCTION(TopK11);
 DML_OP_EXTERN_CREATION_FUNCTION(Expand);
 DML_OP_EXTERN_CREATION_FUNCTION(Cos);
 DML_OP_EXTERN_CREATION_FUNCTION(Sin);
@@ -204,7 +209,8 @@ DML_OP_EXTERN_CREATION_FUNCTION(EyeLike);
 DML_OP_EXTERN_CREATION_FUNCTION(MaxUnpool);
 DML_OP_EXTERN_CREATION_FUNCTION(Scatter9);
 DML_OP_EXTERN_CREATION_FUNCTION(Scatter11);
-DML_OP_EXTERN_CREATION_FUNCTION(Resize);
+DML_OP_EXTERN_CREATION_FUNCTION(Resize10);
+DML_OP_EXTERN_CREATION_FUNCTION(Resize11);
 DML_OP_EXTERN_CREATION_FUNCTION(ConstantOfShape);
 DML_OP_EXTERN_CREATION_FUNCTION(IsInf);
 DML_OP_EXTERN_CREATION_FUNCTION(Mod);
@@ -225,6 +231,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(ConvInteger);
 
 DML_OP_EXTERN_QUERY_FUNCTION(MaxPool);
 DML_OP_EXTERN_QUERY_FUNCTION(Slice);
+DML_OP_EXTERN_QUERY_FUNCTION(Resize);
 
 const static char* const typeNameListDefault[1] = {"T"};
 const static char* const typeNameListTopK[2] = { "T", "I" };
@@ -239,6 +246,7 @@ const static char* const typeNameListWhere[2] = { "B", "T" };
 const static char* const typeNameListOneHot[3] = { "T1", "T2", "T3" };
 const static char* const typeNameListEyeLike[1] = { "T2" };
 const static SupportedTensorDataTypes supportedTypeListAll[1] = {SupportedTensorDataTypes::All};
+const static SupportedTensorDataTypes supportedTypeListFloat32[1] = {SupportedTensorDataTypes::Float32};
 const static SupportedTensorDataTypes supportedTypeListFloat16to32[1] = {SupportedTensorDataTypes::Float16to32};
 const static SupportedTensorDataTypes supportedTypeListInt8to32[1] = {SupportedTensorDataTypes::Int8to32};
 const static SupportedTensorDataTypes supportedTypeListInt32to64AndFloat16to32[1] = {SupportedTensorDataTypes::Int32to64|SupportedTensorDataTypes::Float16to32};
@@ -295,24 +303,21 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
 
     // Deep Learning Standard Layers
     {REG_INFO(      7,  Conv,                               typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  Conv,                               typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  ConvTranspose,                      typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ConvTranspose,                      typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  AveragePool,                        typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-#if 0
-    // TODO:DwayneR add ceil mode https://microsoft.visualstudio.com/OS/_workitems/edit/24674310
     {REG_INFO(     10,  AveragePool,                        typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(     11,  AveragePool,                        typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-#endif
     {REG_INFO(      7,  GlobalAveragePool,                  typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      8,  MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported, {}, std::nullopt, QueryMaxPool)},
     {REG_INFO(      10, MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported, {}, std::nullopt, QueryMaxPool)},
-#if 0
-    // TODO:DwayneR add ceil mode https://microsoft.visualstudio.com/OS/_workitems/edit/24674310
     {REG_INFO(      11, MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported, {}, std::nullopt, QueryMaxPool)},
-#endif
 
     {REG_INFO(      7,  GlobalMaxPool,                      typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  LpPool,                             typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  LpPool,                             typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  GlobalLpPool,                       typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  MaxRoiPool,                         typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  InstanceNormalization,              typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
@@ -320,6 +325,7 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(      9,  BatchNormalization,                 typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, // v9 just removes 'spatial' attribute.
     {REG_INFO(      7,  LRN,                                typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  MeanVarianceNormalization,          typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      9,  MeanVarianceNormalization,          typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  LpNormalization,                    typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  RNN,                                typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::NotSupported)},
     {REG_INFO(      7,  GRU,                                typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::NotSupported)},
@@ -335,16 +341,11 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO_VER( 7,   Slice,                              typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
     {REG_INFO_VER( 10,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,           DmGraphSupport::Supported,      {1, 2, 3, 4}, std::nullopt, QuerySlice)}, // Adds negative axes.
     {REG_INFO_VER( 11,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,           DmGraphSupport::Supported,      {1, 2, 3, 4}, std::nullopt, QuerySlice)},
-    {REG_INFO(      7,  Pad,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-#if 0 // TODO:NickFe Pads and Value are inputs. https://microsoft.visualstudio.com/OS/_workitems/edit/24674281, https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pad-11
-    {REG_INFO(     11,  Pad,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-#endif
+    {REG_INFO_VER(  7,  Pad,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_VER( 11,  Pad,                                typeNameListDefault,            supportedTypeListFloat32,           DmGraphSupport::Supported,      {1, 2} /*pads, value*/)}, // https://microsoft.visualstudio.com/OS/_workitems/edit/26007728
     {REG_INFO(      7,  SpaceToDepth,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  DepthToSpace,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-#if 0
-    // TODO:DwayneR Update operator DepthToSpace-11 - added column-row-depth shuffle order mode https://microsoft.visualstudio.com/OS/_workitems/edit/24672169
     {REG_INFO(     11,  DepthToSpace,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-#endif
     {REG_INFO(      7,  Tile,                               typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported,      {1})},
     {REG_INFO(      8,  Expand,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1})},
     {REG_INFO(      9,  ConstantOfShape,                    typeNameListConstantOfShape,    supportedTypeListConstantOfShape,   DmGraphSupport::NotSupported,   {0})},
@@ -451,14 +452,16 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(      7,  Or,                                 typeNameListDefault,            supportedTypeListBool,              DmGraphSupport::Supported)},
     {REG_INFO(      7,  Xor,                                typeNameListDefault,            supportedTypeListBool,              DmGraphSupport::Supported)},
 
-    // Imaging Operators                                
+    // Imaging Operators
     {REG_INFO(      7,  Crop,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  ImageScaler,                        typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Upsample,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      9,  Upsample,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1})},
-    {REG_INFO(     10,  Resize,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1})},
-                                                        
-    // Activation Functions                             
+    {REG_INFO_VER(  7,  Upsample,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_VER(  9,  Upsample,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1} /*scales*/)},
+    {REG_INFO_VER( 10,  Upsample,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1} /*scales*/)},
+    {REG_INFO_VER( 10,  Resize,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1} /*scales*/)},
+    {REG_INFO_VER( 11,  Resize,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1, 2, 3} /*roi, scales, sizes*/, std::nullopt, QueryResize)},
+
+    // Activation Functions
     {REG_INFO(      7,  Sigmoid,                            typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  HardSigmoid,                        typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  Tanh,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
@@ -482,25 +485,21 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(      7,  ParametricSoftplus,                 typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  Dropout,                            typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      9,  Shrink,                             typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
-                                                        
-    // Uncategorized                                    
+
+    // Uncategorized
     {REG_INFO(      7,  MatMul,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      9,  MatMul,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  Cast,                               typeNameListT1T2,               supportedTypeListCast,              DmGraphSupport::Supported)},
     {REG_INFO(      9,  Cast,                               typeNameListT1T2,               supportedTypeListCast,              DmGraphSupport::Supported)},
     {REG_INFO(      7,  MemcpyFromHost,                     typeNameListDefault,            supportedTypeListAll)},
     {REG_INFO(      7,  MemcpyToHost,                       typeNameListDefault,            supportedTypeListAll)},
-    {REG_INFO(      7,  TopK,                               typeNameListTopK,               supportedTypeListTopK,              DmGraphSupport::Supported)},
-#if 0
-    // TODO:Dwayner https://microsoft.visualstudio.com/OS/_workitems/edit/24674287
-    {REG_INFO(     10,  TopK,                               typeNameListTopK,               supportedTypeListTopK,              DmGraphSupport::Supported)},
-    // TODO:Dwayner https://microsoft.visualstudio.com/OS/_workitems/edit/24671996
-    {REG_INFO(     11,  TopK,                               typeNameListTopK,               supportedTypeListTopK,              DmGraphSupport::Supported)},
-#endif
+    {REG_INFO_VER(  7,  TopK,                               typeNameListTopK,               supportedTypeListTopK,              DmGraphSupport::Supported)},
+    {REG_INFO_VER( 10,  TopK,                               typeNameListTopK,               supportedTypeListTopK,              DmGraphSupport::Supported,      {1})},
+    {REG_INFO_VER( 11,  TopK,                               typeNameListTopK,               supportedTypeListTopK,              DmGraphSupport::Supported,      {1})},
     {REG_INFO(      9,  OneHot,                             typeNameListOneHot,             supportedTypeListOneHot,            DmGraphSupport::Supported,      {1})},
     {REG_INFO(     11,  OneHot,                             typeNameListOneHot,             supportedTypeListOneHot,            DmGraphSupport::Supported,      {1})},
-                                                        
-    // Fused operators                                  
+
+    // Fused operators
     {REG_INFO_MSDML(1,  FusedConv,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO_MSDML(1,  FusedConvTranspose,                 typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO_MSDML(1,  FusedInstanceNormalization,         typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
@@ -521,9 +520,6 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
 
     {REG_INFO(      9,  MaxUnpool,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {2})},
     {REG_INFO(     11,  MaxUnpool,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {2})}, // 11 is identical to 9.
-#if 0 // TODO:DwayneR
-    {REG_INFO(     11,  Resize,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1})},
-#endif
 
 #if 0 // TODO:NickFe
     {REG_INFO(     11,  QLinearConv,                        typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
@@ -649,8 +645,8 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
             kernelSupportsGraph, // supportsGraph
             information.requiredInputCountForDmlGraphSupport ? &(*information.requiredInputCountForDmlGraphSupport) : nullptr,
             information.requiresFloatFormatsForGraph,
-            information.requiresFloatFormatsExceptConstInputs.empty() ? nullptr : information.requiresFloatFormatsExceptConstInputs.data(),
-            static_cast<uint32_t>(information.requiresFloatFormatsExceptConstInputs.size())
+            information.requiredConstantCpuInputs.empty() ? nullptr : information.requiredConstantCpuInputs.data(),
+            static_cast<uint32_t>(information.requiredConstantCpuInputs.size())
         ));
     }
 }
