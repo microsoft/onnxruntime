@@ -248,6 +248,12 @@ jobs:
   steps:
   - template: ../../templates/set-version-number-variables-step.yml
 
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+    inputs:
+      artifactName: 'drop-signed-nuget'
+      targetPath: '${{ parameters.downloadPath }}'
+
   - template: get-nuget-package-version-as-variable.yml
     parameters:
       packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
