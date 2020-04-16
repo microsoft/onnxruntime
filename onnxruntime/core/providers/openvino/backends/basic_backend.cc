@@ -26,25 +26,21 @@ namespace openvino_ep {
 using namespace backend_utils;
 
 BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
-                           const std::vector<int>& input_indexes,
-                           const std::unordered_map<std::string, int>& output_names,
-                           std::string device_id,
-                           InferenceEngine::Precision precision,
-                           InferenceEngine::Core& ie, std::string subgraph_name)
-    : input_indexes_{input_indexes},output_names_{output_names} {
+                          GlobalContext& global_context,
+                          const SubGraphContext& subgraph_context)
+    : global_context_(global_context), subgraph_context_(subgraph_context) {
 
-  subgraph_name_ = subgraph_name;
-  ie_cnn_network_ = CreateCNNNetwork(model_proto, precision);
+  ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_.precision);
   SetIODefs(model_proto, ie_cnn_network_);
   InferenceEngine::ExecutableNetwork exe_network;
 
   // Loading model to the plugin
   try {
-    exe_network = ie.LoadNetwork(*ie_cnn_network_, device_id);
+    exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, subgraph_context_.device_id);
   } catch (InferenceEngine::details::InferenceEngineException e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_name_ + e.what());
+    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_name_);
+    ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_context_.subgraph_name);
   }
   LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
 
@@ -141,14 +137,14 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // Preliminary Thread safety mechanism
   // Currently allows only one Infer execution at a time
 
-  LOGS_DEFAULT(INFO) << log_tag << "Running graph " << subgraph_name_;
+  LOGS_DEFAULT(INFO) << log_tag << "Running graph " << subgraph_context_.subgraph_name;
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
   std::lock_guard<std::mutex> lock(compute_lock_);
 
   size_t batch_size = 1;
   // Get Input and Output tensors
-  auto input_tensors = GetInputTensors(ort, context, ie_cnn_network_, input_indexes_);
-  auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_request_, ie_cnn_network_, output_names_);
+  auto input_tensors = GetInputTensors(ort, context, ie_cnn_network_, subgraph_context_.input_indexes);
+  auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_request_, ie_cnn_network_, subgraph_context_.output_names);
 
   StartAsyncInference(ort, input_tensors, infer_request_, ie_cnn_network_);
   CompleteAsyncInference(ort, output_tensors, infer_request_, ie_cnn_network_);
