@@ -542,6 +542,7 @@ target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/onnx)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/eigen)
+target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
 
 # Properties
 set_target_properties(winml_dll
