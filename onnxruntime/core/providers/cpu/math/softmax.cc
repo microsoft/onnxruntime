@@ -6,7 +6,7 @@
 // TODO: fix the warning
 #pragma warning(disable : 28020)
 #endif
-// Ignore a wired warning in gcc 7.4.0. The latest gcc doesn't generate this warning
+// Ignore a weird warning in gcc 7.4.0. The latest gcc doesn't generate this warning
 #ifdef __GNUC__
 #ifdef HAS_MAYBE_UNINITIALIZED
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
