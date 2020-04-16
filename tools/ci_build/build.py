@@ -296,7 +296,7 @@ def setup_test_data(build_dir, configs):
             dest_model_dir = os.path.join(config_build_dir, 'models')
             if os.path.exists('C:\\local\\models') and not os.path.exists(dest_model_dir):
                 log.debug("creating shortcut %s -> %s"  % (src_model_dir, dest_model_dir))
-                run_subprocess(['mklink', '/D', '/J', dest_model_dir, src_model_dir], shell=True)            
+                run_subprocess(['mklink', '/D', '/J', dest_model_dir, 'C:\\local\\models'], shell=True)            
             elif os.path.exists(src_model_dir) and not os.path.exists(dest_model_dir):
                 log.debug("creating shortcut %s -> %s"  % (src_model_dir, dest_model_dir))
                 run_subprocess(['mklink', '/D', '/J', dest_model_dir, src_model_dir], shell=True)                
