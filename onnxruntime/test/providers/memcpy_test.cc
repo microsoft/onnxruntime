@@ -13,6 +13,7 @@
 #include "core/platform/path_lib.h"
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "test/test_environment.h"
+#include "asserts.h"
 
 namespace onnxruntime {
 namespace {
@@ -34,7 +35,7 @@ TEST(MemcpyTest, copy1) {
   SessionState s{execution_providers, true, &tp, nullptr};
   s.SetLogger(logging::LoggingManager::DefaultLogger());
   KernelRegistryManager kernel_registry_manager;
-  kernel_registry_manager.RegisterKernels(execution_providers);
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   ONNX_NAMESPACE::ModelProto mp;
   std::ifstream model_istream("testdata/matmul_1.onnx", std::ifstream::in | std::ifstream::binary);

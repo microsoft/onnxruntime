@@ -1,5 +1,6 @@
 plugins {
 	id 'java'
+	id 'jacoco'
 	id 'com.diffplug.gradle.spotless' version '3.26.0'
 }
 
@@ -105,7 +106,6 @@ if (cmakeBuildDir != null) {
 
 }
 
-
 dependencies {
 	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.1.1'
 	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.1.1'
@@ -116,5 +116,13 @@ test {
 	useJUnitPlatform()
 	testLogging {
 		events "passed", "skipped", "failed"
+	}
+}
+
+jacocoTestReport {
+	reports {
+		xml.enabled true
+		csv.enabled true
+		html.destination file("${buildDir}/jacocoHtml")
 	}
 }

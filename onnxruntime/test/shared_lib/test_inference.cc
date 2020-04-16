@@ -100,7 +100,7 @@ void TestInference(Ort::Env& env, T model_uri,
 
   if (custom_op_library_filename) {
     void* library_handle = nullptr;  // leak this, no harm.
-    Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle);
+    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle));
   }
 
   // if session creation passes, model loads fine
@@ -318,7 +318,11 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
 }
 #endif
 
+#ifndef __ANDROID__
+TEST(CApiTest, test_custom_op_library) {
+#else
 TEST(CApiTest, DISABLED_test_custom_op_library) {
+#endif
   std::cout << "Running inference using custom op shared library" << std::endl;
 
   std::vector<Input> inputs(2);
