@@ -53,7 +53,8 @@ ONNX_OPERATOR_KERNEL_EX(
           fdm_indices_strides,                                                \
           reinterpret_cast<const ToCudaType<T>::MappedType*>(update_data),    \
           axis,                                                               \
-          reinterpret_cast<ToCudaType<T>::MappedType*>(output_data));         \
+          reinterpret_cast<ToCudaType<T>::MappedType*>(output_data),          \
+          is_scatter_add_);                                                   \
     }                                                                         \
     if (utils::IsPrimitiveDataType<int64_t>(Tin_type)) {                      \
       const int64_t* indices_data = indices_tensor->template Data<int64_t>(); \
@@ -69,7 +70,8 @@ ONNX_OPERATOR_KERNEL_EX(
           fdm_indices_strides,                                                \
           reinterpret_cast<const ToCudaType<T>::MappedType*>(update_data),    \
           axis,                                                               \
-          reinterpret_cast<ToCudaType<T>::MappedType*>(output_data));         \
+          reinterpret_cast<ToCudaType<T>::MappedType*>(output_data),          \
+          is_scatter_add_);                                                   \
     }                                                                         \
   }
 

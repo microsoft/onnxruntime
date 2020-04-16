@@ -22,8 +22,8 @@ Status ScatterElementsImpl(
     TArray<fast_divmod>& indices_strides,
     const T* updates,
     const int axis,
-    T* output_data);
+    T* output_data,
+    const bool is_scatter_add);
 
 }  // namespace cuda
 }  // namespace onnxruntime
-

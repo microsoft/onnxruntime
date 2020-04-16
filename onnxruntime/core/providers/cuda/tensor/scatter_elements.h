@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-class ScatterElements final : public CudaKernel {
+class ScatterElements : public CudaKernel {
  public:
   ScatterElements(const OpKernelInfo& info) : CudaKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK(),
@@ -20,8 +20,11 @@ class ScatterElements final : public CudaKernel {
 
  private:
   int64_t axis_;
+  // If True, then updates are added with inputs as the outputs.
+  // ScatterElements in ONNX spec doesn't have this feature.
+  // We use this to implement gradients for GatherElements.
+  bool is_scatter_add_;
 };
 
 }  // namespace cuda
 }  // namespace onnxruntime
-
