@@ -170,14 +170,14 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_uint8) {
   OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
   std::vector<int64_t> dims{16};
   test.AddInput<float>("x", dims, {
-                                      0, 2,
-                                      3, -3,       // rounding half to even
-                                      2.9, -2.9,   // low case
-                                      3.1, -3.1,   // up case
-                                      254, -256,   // critical point
-                                      255, -257,   // critical point
-                                      256, -258,   // critical point
-                                      1000, -1000  // saturate case
+                                      0.f, 2.f,
+                                      3.f, -3.f,       // rounding half to even
+                                      2.9f, -2.9f,     // low case
+                                      3.1f, -3.1f,     // up case
+                                      254.f, -256.f,   // critical point
+                                      255.f, -257.f,   // critical point
+                                      256.f, -258.f,   // critical point
+                                      1000.f, -1000.f  // saturate case
                                   });
   test.AddInput<float>("y_scale", {}, {2.0f});
   test.AddInput<uint8_t>("y_zero_point", {}, {128});
@@ -196,14 +196,14 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_int8) {
   OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
   std::vector<int64_t> dims{16};
   test.AddInput<float>("x", dims, {
-                                      0, 2,
-                                      3, -3,       // rounding half to even
-                                      2.9, -2.9,   // low case
-                                      3.1, -3.1,   // up case
-                                      254, -256,   // critical point
-                                      255, -257,   // critical point
-                                      256, -258,   // critical point
-                                      1000, -1000  // saturate case
+                                      0.f, 2.f,
+                                      3.f, -3.f,       // rounding half to even
+                                      2.9f, -2.9f,     // low case
+                                      3.1f, -3.1f,     // up case
+                                      254.f, -256.f,   // critical point
+                                      255.f, -257.f,   // critical point
+                                      256.f, -258.f,   // critical point
+                                      1000.f, -1000.f  // saturate case
                                   });
   test.AddInput<float>("y_scale", {}, {2.0f});
   test.AddInput<int8_t>("y_zero_point", {}, {1});
@@ -223,14 +223,14 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_uint8) {
   OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
   std::vector<int64_t> dims{16};
   test.AddInput<MLFloat16>("x", dims, ToFloat16({
-                                          0, 2,
-                                          3, -3,       // rounding half to even
-                                          2.9, -2.9,   // low case
-                                          3.1, -3.1,   // up case
-                                          254, -256,   // critical point
-                                          255, -257,   // critical point
-                                          256, -258,   // critical point
-                                          1000, -1000  // saturate case
+                                          0.f, 2.f,
+                                          3.f, -3.f,       // rounding half to even
+                                          2.9f, -2.9f,     // low case
+                                          3.1f, -3.1f,     // up case
+                                          254.f, -256.f,   // critical point
+                                          255.f, -257.f,   // critical point
+                                          256.f, -258.f,   // critical point
+                                          1000.f, -1000.f  // saturate case
                                       }));
   test.AddInput<MLFloat16>("y_scale", {}, ToFloat16({2.0f}));
   test.AddInput<uint8_t>("y_zero_point", {}, {128});
@@ -242,21 +242,21 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_uint8) {
                                       255, 0,
                                       255, 0,
                                       255, 0});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_int8) {
   OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
   std::vector<int64_t> dims{16};
   test.AddInput<MLFloat16>("x", dims, ToFloat16({
-                                          0, 2,
-                                          3, -3,       // rounding half to even
-                                          2.9, -2.9,   // low case
-                                          3.1, -3.1,   // up case
-                                          254, -256,   // critical point
-                                          255, -257,   // critical point
-                                          256, -258,   // critical point
-                                          1000, -1000  // saturate case
+                                          0.f, 2.f,
+                                          3.f, -3.f,       // rounding half to even
+                                          2.9f, -2.9f,     // low case
+                                          3.1f, -3.1f,     // up case
+                                          254.f, -256.f,   // critical point
+                                          255.f, -257.f,   // critical point
+                                          256.f, -258.f,   // critical point
+                                          1000.f, -1000.f  // saturate case
                                       }));
   test.AddInput<MLFloat16>("y_scale", {}, ToFloat16({2.0f}));
   test.AddInput<int8_t>("y_zero_point", {}, {1});
@@ -268,7 +268,7 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_int8) {
                                      127, -127,
                                      127, -128,
                                      127, -128});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 #endif
 
