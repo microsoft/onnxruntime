@@ -226,9 +226,6 @@ def handle_expand_input_is_not_constant_case(model):
             [expand_input.output[0]], "contant_to_expand_", value=np.arange(0, 256)))
 
 
-    # onnx.save(model, "/bert_ort/liqun/test_out/handle_expand_input_is_not_constant_case.onnx")
-    # import pdb; pdb.set_trace()
-
 # will be longer needed after Range is supported in ORT.
 def fix_expand(model):
     #find expand node

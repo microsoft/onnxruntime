@@ -112,6 +112,9 @@ elif [ $DEVICE_TYPE = "gpu" ]; then
     if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
       ${PYTHON_EXE} -m pip install --upgrade --pre torch torchvision -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
     fi
+    if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
+      ${PYTHON_EXE} -m pip install transformer
+    fi
 fi
 
 

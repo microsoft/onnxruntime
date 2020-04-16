@@ -1,6 +1,8 @@
+# TODO: postprocess transforms are to be moved to either pytorch exporter or onnxruntime front end (ort_trainer.py)
+from orttraining_test_model_transform import add_name, process_concat, handle_expand_input_is_not_constant_case, fix_expand, fix_dim, fix_transpose, process_dropout, add_expand_shape
+from orttraining_test_layer_norm_transform import layer_norm_transform
+
 def postprocess_model(model):
-    # TODO: postprocess transforms are to be moved to either pytorch exporter or onnxruntime front end (ort_trainer.py)
-    from helpers.model_transform import add_name, process_concat, handle_expand_input_is_not_constant_case, fix_expand, fix_dim, fix_transpose, process_dropout, add_expand_shape
 
     add_name(model)
     #replace garther&concat to reshape
@@ -32,5 +34,4 @@ def postprocess_model(model):
     ################
     # layer_norm
     ################
-    from helpers.layer_norm_transform import layer_norm_transform
     layer_norm_transform(model)

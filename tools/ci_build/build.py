@@ -942,6 +942,8 @@ def run_training_python_frontend_e2e_tests(args, cwd, dll_path):
     run_subprocess(
         [sys.executable, 'onnxruntime_test_ort_trainer_with_mixed_precision.py'],
         cwd=cwd, dll_path=dll_path)
+    run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd, dll_path=dll_path)
+    run_subprocess([sys.executable, 'orttraining_test_transformers.py'], cwd=cwd, dll_path=dll_path)
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                           enable_tvm=False, enable_tensorrt=False):
