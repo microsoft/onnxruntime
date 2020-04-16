@@ -10,6 +10,7 @@
 #include <functional>
 
 namespace onnxruntime {
+namespace contrib {
 class Inverse final : public OpKernel {
  public:
   explicit Inverse(const OpKernelInfo& info) : OpKernel(info) {}
@@ -20,9 +21,11 @@ class Inverse final : public OpKernel {
   struct ComputeImpl;
 };
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     Inverse,
-    12,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", BuildKernelDefConstraints<float, double, MLFloat16>()),
     Inverse);
@@ -83,4 +86,5 @@ Status Inverse::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
+}  // namespace contrib
 }  // namespace onnxruntime
