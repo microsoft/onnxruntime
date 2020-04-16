@@ -12,6 +12,7 @@
 #include "core/graph/graph.h"
 #include "core/graph/model.h"
 #include "core/platform/env.h"
+#include "contexts.h"
 #include "backend_manager.h"
 #include "ibackend.h"
 #include "backend_utils.h"
@@ -19,17 +20,18 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-InferenceEngine::Core BackendManager::ie_core_;
+GlobalContext BackendManager::global_context_;
 
 BackendManager::BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger,
-                               std::string dev_id, std::string prec_str)
-  : device_id_{dev_id}, precision_str_{prec_str} {
-  if(precision_str_ == "FP32") {
-    precision_ = InferenceEngine::Precision::FP32;
-  } else if (precision_str_ == "FP16") {
-    precision_ = InferenceEngine::Precision::FP16;
+                               std::string dev_id, std::string prec_str) {
+  subgraph_context_.device_id = dev_id;
+  subgraph_context_.precision_str = prec_str;
+  if(prec_str == "FP32") {
+    subgraph_context_.precision = InferenceEngine::Precision::FP32;
+  } else if (prec_str == "FP16") {
+    subgraph_context_.precision = InferenceEngine::Precision::FP16;
   } else {
-    ORT_THROW("Invalid OpenVINO Precision type: " + precision_str_);
+    ORT_THROW("Invalid OpenVINO Precision type: " + prec_str);
   }
 
   // Save the indexes of graph inputs among fused_node's inputDefs
@@ -50,30 +52,70 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
     }
 
     int index = it->second;
-    input_indexes_.push_back(index);
+    subgraph_context_.input_indexes.push_back(index);
   }
 
   auto graph_outputs_defs = fused_node->OutputDefs();
   i = 0;
   for (auto output_def : graph_outputs_defs){
-    output_names_.insert({output_def->Name(), i});
+    subgraph_context_.output_names.insert({output_def->Name(), i});
     i++;
   }
-  subgraph_name_ = fused_node->Name();
+  subgraph_context_.subgraph_name = fused_node->Name();
   model_proto_ = GetModelProtoFromFusedNode(fused_node, logger);
 
-  if (ModelHasSymbolicInputDims(fused_node)) {
+  if(ModelHasBatchedInputs(model_proto_) &&
+    global_context_.is_wholly_supported_graph &&
+    subgraph_context_.device_id == "HDDL") {
+
+    subgraph_context_.enable_batching = true;
+    LOGS_DEFAULT(INFO) <<
+      "[OpenVINO-EP] Model can be Batch inferenced \n";
+    auto model_copy = ReWriteBatchDimWithOne(model_proto_);
+    concrete_backend_ = BackendFactory::MakeBackend(*model_copy, global_context_, subgraph_context_);
+    subgraph_context_.has_dynamic_input_shape = false;
+
+  } else if (ModelHasSymbolicInputDims(fused_node)) {
     LOGS_DEFAULT(INFO) <<
       "[OpenVINO-EP] Model has symbolic input dims. Defering backend initialization";
-    has_dynamic_input_shape_ = true;
+    subgraph_context_.has_dynamic_input_shape = true;
   } else {
     LOGS_DEFAULT(INFO) <<
-      "[OpenVINO-EP] Model has concreate input dims. Initializing backend for graph " << subgraph_name_;
-    has_dynamic_input_shape_ = false;
-    concrete_backend_ = BackendFactory::MakeBackend(model_proto_, input_indexes_,
-                                                    output_names_, device_id_,
-                                                    precision_, ie_core_, subgraph_name_);
+      "[OpenVINO-EP] Model has concreate input dims. Initializing backend for graph " <<
+      subgraph_context_.subgraph_name;
+
+    subgraph_context_.has_dynamic_input_shape = false;
+    concrete_backend_ = BackendFactory::MakeBackend(model_proto_, global_context_, subgraph_context_);
   }
+}
+
+bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const {
+  bool has_batched_inputs = true;
+  for (int i=0; i < (int)subgraph_context_.input_indexes.size(); i++) {
+    auto input = model_proto.graph().input(subgraph_context_.input_indexes[i]);
+    // Batch-process only raw image inputs (NCHW or NHWC layouts)
+    auto shape = input.type().tensor_type().shape();
+    if (shape.dim_size() != 4) {
+      has_batched_inputs = false;
+      break;
+    }
+
+    if(shape.dim(0).value_case() == shape.dim(0).kDimValue) {
+      has_batched_inputs = false;
+      break;
+    }
+
+    for(int index = 1; index < 4; index++) {
+      if(shape.dim(index).value_case() != shape.dim(0).kDimValue) {
+        has_batched_inputs = false;
+        break;
+      }
+    }
+    if(!has_batched_inputs) {
+      break;
+    }
+  }
+  return has_batched_inputs;
 }
 
 //Save ONNX Model
@@ -165,7 +207,7 @@ std::string MakeMapKeyString(std::vector<std::vector<int64_t>>& shapes,
 }
 
 std::shared_ptr<ONNX_NAMESPACE::ModelProto>
-ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto,
+BackendManager::ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto,
                       std::vector<std::vector<int64_t>> input_shapes) {
   auto model_copy = std::make_shared<ONNX_NAMESPACE::ModelProto>();
   std::string proto_str;
@@ -185,10 +227,27 @@ ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto,
   return model_copy;
 }
 
+std::shared_ptr<ONNX_NAMESPACE::ModelProto>
+BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_proto) {
+  auto model_copy = std::make_shared<ONNX_NAMESPACE::ModelProto>();
+  std::string proto_str;
+  model_proto.SerializeToString(&proto_str);
+  model_copy->ParseFromString(proto_str);
+  auto graph_proto = model_copy->mutable_graph();
+
+  for (int i = 0; i < graph_proto->input_size(); i++) {
+    ONNX_NAMESPACE::TensorShapeProto* g_in_shape = graph_proto->mutable_input((int)i)->
+                        mutable_type()->mutable_tensor_type()->mutable_shape();
+    g_in_shape->mutable_dim(0)->clear_dim_value();
+    g_in_shape->mutable_dim(0)->set_dim_value(1);
+  }
+  return model_copy;
+}
+
 void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
-  if (has_dynamic_input_shape_) {
+  if (subgraph_context_.has_dynamic_input_shape) {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(api, context);
-    auto key = MakeMapKeyString(tensor_shapes, device_id_);
+    auto key = MakeMapKeyString(tensor_shapes, subgraph_context_.device_id);
 
     std::shared_ptr<IBackend> dynamic_backend;
     auto search = backend_map_.find(key);
@@ -196,11 +255,10 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
                          << "Creating concrete backend for key: " << key;
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
-                         << "Backend created for graph " << subgraph_name_;
+                         << "Backend created for graph " << subgraph_context_.subgraph_name;
       auto modelproto_with_concrete_shapes = ReWriteInputShapeInfo(model_proto_, tensor_shapes);
       dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
-                                                    input_indexes_,output_names_,
-                                                    device_id_, precision_, ie_core_,subgraph_name_);
+                                                    global_context_, subgraph_context_);
       backend_map_.insert({key, dynamic_backend});
     } else {
       dynamic_backend = search->second;

@@ -17,6 +17,7 @@
 #include "core/graph/graph.h"
 #include "core/common/logging/logging.h"
 
+#include "../contexts.h"
 #include "../backend_utils.h"
 #include "vadm_backend.h"
 
@@ -26,14 +27,9 @@ namespace openvino_ep {
 using namespace backend_utils;
 
 VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
-                         const std::vector<int>& input_indexes,
-                         const std::unordered_map<std::string, int>& output_names,
-                         std::string device_id, InferenceEngine::Precision precision,
-                         InferenceEngine::Core& ie, std::string subgraph_name)
-    : input_indexes_{input_indexes} , output_names_{output_names} {
-  ORT_UNUSED_PARAMETER(device_id);
-
-  subgraph_name_ = subgraph_name;
+                         GlobalContext& global_context,
+                         const SubGraphContext& subgraph_context)
+    : global_context_(global_context) , subgraph_context_(subgraph_context) {
 
   // Infer Request class represents OpenVINO's logical hardware instance. These logical
   // instances are bound to physical hardware instances at runtime depending
@@ -49,18 +45,18 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   // sets number of maximum parallel inferences
   num_inf_reqs_ = 8;
 
-  ie_cnn_network_ = CreateCNNNetwork(model_proto, precision);
+  ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_.precision);
 
   SetIODefs(model_proto, ie_cnn_network_);
 
   // Loading model to the plugin
   InferenceEngine::ExecutableNetwork exe_network;
   try {
-    exe_network = ie.LoadNetwork(*ie_cnn_network_, "HDDL");
+    exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, "HDDL");
   } catch (InferenceEngine::details::InferenceEngineException e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_name_ + e.what());
+    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_name);
+    ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_context_.subgraph_name);
   }
   LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
 
@@ -83,8 +79,8 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
 void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const OrtValue*> input_tensors,
-                                     size_t batch_slice_idx,
-                                     size_t infer_req_idx, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
+                                     size_t batch_slice_idx, size_t infer_req_idx,
+                                     std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
                                      std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
   auto infer_request = infer_requests[infer_req_idx];
   auto graph_input_info = ie_cnn_network->getInputsInfo();
@@ -164,28 +160,47 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtV
     std::memcpy(batch_memory_offset, graph_output_buffer, output_data_size);
   }
 }
+size_t DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* input_tensor,
+                                      InferenceEngine::SizeVector graph_dims) {
+  size_t batch_size = 1;
+
+  // All the inputs and outputs are batched the same way.
+  // So it is sufficient to use any one of these tensors to deduce the batch size.
+  const auto& input_shape = ort.GetTensorShape(ort.GetTensorTypeAndShape(input_tensor));
+
+  if ((input_shape.size() == graph_dims.size() && input_shape[0] > 1 && graph_dims[0] == 1) || (input_shape.size() == graph_dims.size() + 1)) {
+    batch_size = input_shape[0];
+  }
+
+  LOGS_DEFAULT(INFO) << log_tag << "Deduced batch size: " << batch_size;
+
+  return batch_size;
+}
 
 void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // Preliminary Thread safety mechanism
   // Currently allows only one Infer execution at a time
-  LOGS_DEFAULT(INFO) << log_tag << "Running graph " << subgraph_name_;
+  LOGS_DEFAULT(INFO) << log_tag << "Running graph " << subgraph_context_.subgraph_name;
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
   std::lock_guard<std::mutex> lock(compute_lock_);
 
   // Get Input and Output tensors
-  auto input_tensors = GetInputTensors(ort, context, ie_cnn_network_, input_indexes_);
-
-  // Calculate the batch_size from the input tensor shape.
-  // auto batch_size = DeduceBatchSize(ort, input_tensors[0],
-  //                                   ie_cnn_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
+  auto input_tensors = GetInputTensors(ort, context, ie_cnn_network_, subgraph_context_.input_indexes);
 
   size_t batch_size = 1;
+
+  if(subgraph_context_.enable_batching) {
+  // Calculate the batch_size from the input tensor shape.
+    batch_size = DeduceBatchSize(ort, input_tensors[0],
+                               ie_cnn_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
+  }
+
   size_t full_parallel_runs = batch_size / num_inf_reqs_;
   size_t remainder_parallel_runs = batch_size % num_inf_reqs_;
 
   // All infer_requests process identical tensor slices from the batch.
   // So using info from first infer_request to allocate all output tensors.
-  auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_requests_[0], ie_cnn_network_, output_names_);
+  auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_requests_[0], ie_cnn_network_, subgraph_context_.output_names);
 
   // Distribute the batched inputs among available Infer Requests
   // for parallel inference.
