@@ -39,7 +39,7 @@ void ComputeWeightsSoftmaxCrossEntropyImpl(
       weight_data_nd,
       label,
       weight,
-      count,
+      N_D,
       C,
       II);
 }

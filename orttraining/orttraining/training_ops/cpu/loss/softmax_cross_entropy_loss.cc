@@ -318,15 +318,10 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
     } else {
       T1 dY_scaled = *dY_data;
       int unignored_sample_count = 0;
-
-      if (ignore_index_ >= 0 && ignore_index_ < C) {
-        for (int i = 0; i < n_d; i++) {
-          if (ignore_index_ != label_data[i]) {
-            unignored_sample_count += 1;
-          }
+      for (int i = 0; i < n_d; i++) {
+        if (ignore_index_ != label_data[i]) {
+          unignored_sample_count += 1;
         }
-      } else {
-        unignored_sample_count = n_d;
       }
 
       if (reduction_ == ReductionType::MEAN) {
