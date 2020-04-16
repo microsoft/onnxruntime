@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <unistd.h>
+#include <sys/types.h>
+#include <thread>
 #include "wait.h"
 #include "core/providers/cpu/tensor/utils.h"
 
@@ -32,6 +35,7 @@ Status WaitEvent::Compute(OpKernelContext* ctx) const {
   const int64_t event_id = *event_id_tensor->template Data<int64_t>();
 
   // -1 is reserved to skip wait event
+  std::cout << "pid: " << getpid() << ", tid: " << std::this_thread::get_id() << ", wait id: " << event_id << std::endl;
   if (event_id != -1) {
     // Wait the event to be recorded by a RecordEvent operator.
     OrtEventPool::GetInstance().WaitEvent(event_id);
@@ -40,6 +44,7 @@ Status WaitEvent::Compute(OpKernelContext* ctx) const {
     // Destory the recorded event.
     OrtEventPool::GetInstance().ResetEvent(event_id);
   }
+  std::cout << "pid: " << getpid() << ", tid: " << std::this_thread::get_id() << ", wait id done: " << event_id << std::endl;
 
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
     const Tensor* X = ctx->Input<Tensor>(i_out + 1);

@@ -3,6 +3,12 @@
 
 #ifdef USE_HOROVOD
 
+#include <unistd.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <thread>
+#include <sys/types.h>
+#include <thread>
 #include "orttraining/training_ops/cuda/communication/recv.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
 #include <mpi.h>
@@ -40,6 +46,8 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* remote_rank_tensor = ctx->Input<Tensor>(1);
   const int64_t* remote_rank = remote_rank_tensor->template Data<int64_t>();
   const int src = static_cast<int>(*remote_rank);
+
+  std::cout << "pid: " << getpid() << ", tid: " << std::this_thread::get_id() << ", recv src: " << src << std::endl;
 
   // Create buffers
   const int tensor_num = static_cast<int>(element_types_.size());
@@ -104,7 +112,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
     // Keep the sync copy in the previous design
     // TODO they can be moved to async call after global stream becoming accessible
-    ORT_ENFORCE(cudaMemcpy(x_tensor->MutableData<void>(), buffer.get() + tensor_offset_in_bytes,
+    ORT_ENFORCE(cudaMemcpy(x_tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
                            x_tensor->SizeInBytes(), cudaMemcpyHostToDevice) == cudaSuccess);
     tensor_offset_in_bytes += x_tensor->SizeInBytes();
   }
@@ -114,6 +122,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   bool* output_signal = output_signal_tensor->template MutableData<bool>();
   *output_signal = true;
 
+  std::cout << "pid: " << getpid() << ", tid: " << std::this_thread::get_id() << ", recv src done: " << src << std::endl;
   return Status::OK();
 }
 

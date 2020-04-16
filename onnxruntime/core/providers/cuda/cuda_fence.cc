@@ -13,10 +13,6 @@ CUDAFence::CUDAFence(const GPUDataTransfer* data_transfer) : data_transfer_(data
   int event_flags = /*cudaEventBlockingSync |*/ cudaEventDisableTiming;
   CUDA_CALL_THROW(cudaEventCreate(&read_event_, event_flags));
   CUDA_CALL_THROW(cudaEventCreate(&write_event_, event_flags));
-  // int cuda_device;
-  // CUDA_CALL_THROW(cudaGetDevice(&cuda_device));
-  // std::cout << "(create) GPU: " << cuda_device << ", read event: " << &read_event_ << std::endl;;
-  // std::cout << "(create) GPU: " << cuda_device << ", write event: " << &read_event_ << std::endl;;
 }
 
 CUDAFence::~CUDAFence() {
@@ -55,14 +51,7 @@ bool CUDAFence::CanRelease() {
 void CUDAFence::AfterUsedAsInput(int queue_id) {
   // update read fence
   cudaStream_t stream = data_transfer_->GetStream(queue_id);
-  // cudaDeviceSynchronize();
-
-  // int cuda_device;
-  // CUDA_CALL_THROW(cudaGetDevice(&cuda_device));
-  // std::cout << "(record) GPU: " << cuda_device << ", stream" << queue_id << ", read event: " << &read_event_ << std::endl;;
-
   CUDA_CALL_THROW(cudaEventRecord(read_event_, stream));
-  // cudaDeviceSynchronize();
 }
 
 void CUDAFence::AfterUsedAsOutput(int queue_id) {
@@ -71,8 +60,6 @@ void CUDAFence::AfterUsedAsOutput(int queue_id) {
 
   int cuda_device;
   CUDA_CALL_THROW(cudaGetDevice(&cuda_device));
-  std::cout << "(record) GPU: " << cuda_device << ", stream" << queue_id << ", write event: " << &read_event_ << std::endl;;
-
   CUDA_CALL_THROW(cudaEventRecord(write_event_, stream));
 }
 

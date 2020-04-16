@@ -3,6 +3,9 @@
 
 #ifdef USE_HOROVOD
 
+#include <unistd.h>
+#include <sys/types.h>
+#include <thread>
 #include "orttraining/training_ops/cuda/communication/send.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
 #include <mpi.h>
@@ -41,6 +44,8 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* remote_rank_tensor = ctx->Input<Tensor>(1);
   const int64_t* remote_rank = remote_rank_tensor->template Data<int64_t>();
   const int dst = static_cast<int>(*remote_rank);
+
+  std::cout << "pid: " << getpid() << ", tid: " << std::this_thread::get_id() << ", send dst: " << dst << std::endl;
 
   // Create buffers
   const int tensor_num = static_cast<int>(element_types_.size());
@@ -83,7 +88,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   // TODO they can be moved to async call after global stream becoming accessible
   for (int i = 0; i < tensor_num; ++i) {
     const Tensor* x_tensor = ctx->Input<Tensor>(i + 2);
-    ORT_ENFORCE(cudaMemcpy(buffer.get() + tensor_offsets_in_bytes[i], x_tensor->Data<void>(),
+    ORT_ENFORCE(cudaMemcpy(buffer.get() + tensor_offsets_in_bytes[i], x_tensor->DataRaw(),
                            tensor_sizes_in_bytes[i], cudaMemcpyDeviceToHost) == cudaSuccess);
   }
 
@@ -135,6 +140,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   bool* output_signal = output_signal_tensor->MutableData<bool>();
   *output_signal = true;
 
+  std::cout << "pid: " << getpid() << ", tid: " << std::this_thread::get_id() << ", send dst done: " << dst << std::endl;
   return Status::OK();
 }
 

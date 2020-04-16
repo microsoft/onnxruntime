@@ -7,6 +7,9 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <unistd.h>
+#include <sys/types.h>
+#include <thread>
 
 #include "gsl/gsl"
 #include "core/common/common.h"
@@ -146,6 +149,12 @@ class Tensor final {
   template <typename T>
   const T* Data() const {
     // Type check
+    if (!utils::IsPrimitiveDataType<T>(dtype_)) {
+      bool gdb_flag = true;
+      while(gdb_flag) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+      }
+    }
     ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
                 "T ", "!=", dtype_);
     return reinterpret_cast<const T*>(static_cast<char*>(p_data_) + byte_offset_);

@@ -3,6 +3,9 @@
 
 #include "record.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include <unistd.h>
+#include <sys/types.h>
+#include <thread>
 
 namespace onnxruntime {
 namespace contrib {
@@ -31,9 +34,10 @@ Status RecordEvent::Compute(OpKernelContext* ctx) const {
   const Tensor* event_id_tensor = ctx->Input<Tensor>(0);
   const int64_t event_id = *event_id_tensor->template Data<int64_t>();
 
-  ORT_RETURN_IF_NOT(event_id != -1, "-1 is reserved for skip wait, so cannot be used in RecordEvent");
-
-  OrtEventPool::GetInstance().SignalEvent(event_id);
+  std::cout << "pid: " << getpid() << ", tid: " << std::this_thread::get_id() << ", record id: " << event_id << std::endl;
+  if (event_id != -1) {
+    OrtEventPool::GetInstance().SignalEvent(event_id);
+  }
 
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
     const Tensor* X = ctx->Input<Tensor>(i_out + 1);
@@ -41,6 +45,7 @@ Status RecordEvent::Compute(OpKernelContext* ctx) const {
     Tensor* Y = ctx->Output(i_out, data_shape);
     CopyCpuTensor(X, Y);
   }
+  std::cout << "pid: " << getpid() << ", tid: " << std::this_thread::get_id() << ", record id done: " << event_id << std::endl;
   return Status::OK();
 }
 
