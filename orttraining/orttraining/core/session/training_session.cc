@@ -663,6 +663,9 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
 }
 
 common::Status TrainingSession::GetStateTensors(NameMLValMap& state_tensors) {
+  if(opt_graph_config_.partition_optimizer)
+    return session_state_->GetInitializedTensors(GetStateTensorNames(), true, state_tensors);
+
   return session_state_->GetInitializedTensors(GetStateTensorNames(), false, state_tensors);
 }
 

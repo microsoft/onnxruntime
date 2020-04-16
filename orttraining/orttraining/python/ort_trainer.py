@@ -8,6 +8,7 @@ import torch.nn
 import torch.onnx
 import onnxruntime as ort
 from distutils.version import LooseVersion
+from checkpointing_utils import list_checkpoint_files, Combine_Zero_Checkpoint
 
 DEFAULT_OPSET_VERSION = 10
 
@@ -690,6 +691,73 @@ class ORTTrainer():
         for name in state_dict:
             session_state[name] = state_dict[name].numpy()
         self.session.load_state(session_state, strict)
+
+    def save_checkpoint(self, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", checkpoint_state_dict=None):
+        if checkpoint_state_dict==None:
+            checkpoint_state_dict={'model': self.state_dict()}
+        else:
+            checkpoint_state_dict.update({'model': self.state_dict()})
+
+        if not os.path.exists(checkpoint_dir):
+            os.makedirs(checkpoint_dir)
+
+        if self.partition_optimizer_:
+            checkpoint_name = checkpoint_prefix + "_ZeROrank_" + str(self.world_rank) + "_of_" + str(self.world_size-1) + ".tar"
+        else:
+            checkpoint_name = checkpoint_prefix + ".tar" 
+        checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
+
+        if os.path.exists(checkpoint_file):
+            print("WARNING: {} already exists, overwriting.".format(checkpoint_file))
+
+        print("Saving checkpoint {}".format(checkpoint_file))
+        torch.save(checkpoint_state_dict, checkpoint_file)
+        print("Saved checkpoint at: {}".format(checkpoint_file))
+    
+    def _load_single_checkpoint(self, checkpoint_dir, checkpoint_prefix, is_partitioned, strict):
+
+        if is_partitioned:
+            checkpoint_file = os.path.join(checkpoint_dir, checkpoint_prefix + "_ZeROrank_" + str(self.world_rank) + "_of_" + str(self.world_size-1) + ".tar")
+            assert_msg = ("Couldn't find checkpoint file {}." +
+                "Optimizer partitioning is enabled using ZeRO. Please make sure that the "+
+                "checkpoint file exists for rank {} of {}.").format(checkpoint_file,self.world_rank, self.world_size)
+            assert os.path.exists(checkpoint_file), assert_msg
+        else:
+            checkpoint_file = os.path.join(checkpoint_dir, checkpoint_prefix + ".tar")
+            assert_msg = "Couldn't find checkpoint file {}.".format(checkpoint_file)
+            assert os.path.exists(checkpoint_file), assert_msg
+
+        print("Loading checkpoint {}".format(checkpoint_file))
+        checkpoint_state = torch.load(checkpoint_file, map_location='cpu')
+
+        self.load_state_dict(checkpoint_state['model'], strict=strict)
+        del(checkpoint_state['model'])
+        return checkpoint_state
+
+    def _load_multi_checkpoint(self, checkpoint_dir, checkpoint_prefix, strict):
+        checkpoint_files = list_checkpoint_files(checkpoint_dir, checkpoint_prefix)
+        assert len(checkpoint_files) > 0, "No checkpoint files found with prefix \"{}\" in directory {}.".format(checkpoint_prefix, checkpoint_dir)
+        print("Loading checkpoint files: {}".format(checkpoint_files))
+
+        ckpt_agg = Combine_Zero_Checkpoint(checkpoint_files, clean_state_dict=cleanStateDict)
+        aggregate_state_dict = ckpt_agg.aggregate_checkpoints()
+
+        self.load_state_dict(aggregate_state_dict, strict=strict)
+
+        # aggregate other keys in the state_dict. 
+        # Values will be overwritten for matching keys among workers
+        all_checkpoint_states=dict()
+        for checkpoint_file in checkpoint_files:
+            checkpoint_state = torch.load(checkpoint_file, map_location='cpu')
+            del(checkpoint_state['model'])
+            all_checkpoint_states.update(checkpoint_state)            
+        return all_checkpoint_states
+
+    def load_checkpoint(self, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", is_partitioned=False, strict=False):
+        if (not self.partition_optimizer_) and is_partitioned:
+            return self._load_multi_checkpoint(checkpoint_dir, checkpoint_prefix, strict) 
+        else:
+            return self._load_single_checkpoint(checkpoint_dir, checkpoint_prefix, is_partitioned, strict)
 
     def save_as_onnx(self, path):
         state_tensors = self.session.get_state()
