@@ -394,7 +394,7 @@ class OnnxTestCase : public ITestCase {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTestCase);
 
  public:
-  OnnxTestCase(const std::string& test_case_name, TestModelInfo* model, double default_per_sample_tolerance,
+  OnnxTestCase(const std::string& test_case_name, _In_ TestModelInfo* model, double default_per_sample_tolerance,
                double default_relative_per_sample_tolerance);
   ~OnnxTestCase() override { delete model_info_; }
   Status GetPerSampleTolerance(double* value) override;

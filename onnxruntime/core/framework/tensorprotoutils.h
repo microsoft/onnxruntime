@@ -12,7 +12,6 @@
 #include "core/framework/ml_value.h"
 #include "core/framework/mem_buffer.h"
 #include "core/framework/tensor_external_data_info.h"
-#include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/env.h"
 
