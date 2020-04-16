@@ -39,14 +39,16 @@ static void RunAttentionTest(
       tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
       tester.AddInput<MLFloat16>("weight", weights_dims, ToFloat16(weights_data));
       tester.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
-      tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
       tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
     } else {
       tester.AddInput<float>("input", input_dims, input_data);
       tester.AddInput<float>("weight", weights_dims, weights_data);
       tester.AddInput<float>("bias", bias_dims, bias_data);
-      tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
       tester.AddOutput<float>("output", output_dims, output_data);
+    }
+
+    if (mask_index_data.size() > 0) { // mask index is optional.
+      tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
     }
 
     tester.Run();
@@ -204,5 +206,34 @@ TEST(AttentionTest, AttentionMaskExceedSequence) {
                    batch_size, sequence_length, hidden_size, number_of_heads);
 }
 
+TEST(AttentionTest, AttentionNoMaskIndex) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> weight_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  // No mask_index
+  std::vector<int32_t> mask_index_data = {};
+
+  std::vector<float> output_data = {
+      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
+      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
+
+  RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads);
+}
 }  // namespace test
 }  // namespace onnxruntime

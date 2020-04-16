@@ -88,11 +88,11 @@ static void SplitTestInt() {
 }
 
 TEST(SplitOperatorTest, Axis0EqualSplitInt32) {
-   SplitTestInt<int32_t>();
+  SplitTestInt<int32_t>();
 }
 
 TEST(SplitOperatorTest, Axis0EqualSplitInt64) {
-   SplitTestInt<int64_t>();
+  SplitTestInt<int64_t>();
 }
 
 TEST(SplitOperatorTest, Axis0EqualSplitString) {
@@ -320,6 +320,15 @@ TEST(SplitOperatorTest, Axis2UnequalSplit) {
                       22.f, 23.f, 24.f}});
 
   RunTest<float>(axis, splits, input, outputs, false);
+}
+
+TEST(SplitOperatorTest, ZeroSizeInput) {
+  const int64_t axis = -1;
+  std::vector<ShapeAndFloatData> outputs{{{0, 1}, {}}, {{0, 1}, {}}};
+
+  ShapeAndFloatData input = CreateInput({0, 2});
+
+  RunTest<float>(axis, {}, input, outputs, false);
 }
 
 // test a split of a dimension that has leading and trailing dimensions
