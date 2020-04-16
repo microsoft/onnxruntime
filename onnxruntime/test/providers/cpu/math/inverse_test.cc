@@ -61,5 +61,35 @@ TEST(InverseOpTest, four_by_four_float) {
   test.Run();
 }
 
+TEST(InverseOpTest, four_by_four_batches_float) {
+  OpTester test("Inverse", 12);
+
+  auto one_input_matrix_4x4 = {
+      4.f, 0.f, 0.f, 0.f,
+      0.f, 0.f, 2.f, 0.f,
+      0.f, 1.f, 2.f, 0.f,
+      1.f, 0.f, 0.f, 1.f};
+
+  // batches 3x4 i.e. 12 batches so the full shape is 3x4x4x4
+  std::vector<float> input;
+  for (int64_t i = 0; i < 3 * 4; ++i) {
+    std::copy(one_input_matrix_4x4.begin(), one_input_matrix_4x4.end(), std::back_inserter(input));
+  }
+
+  auto one_output_matrix_4x4 = {
+      0.25f, 0.f, 0.f, 0.f,
+      0.f, -1.f, 1.f, 0.f,
+      0.f, 0.5f, 0.f, 0.f,
+      -0.25f, 0.f, 0.f, 1.f};
+
+  std::vector<float> output;
+  for (int64_t i = 0; i < 3 * 4; ++i) {
+    std::copy(one_output_matrix_4x4.begin(), one_output_matrix_4x4.end(), std::back_inserter(output));
+  }
+
+  test.AddInput<float>("Input", {3, 4, 4, 4}, input);
+  test.AddOutput<float>("Output", {3, 4, 4, 4}, output);
+  test.Run();
+}
 }  // namespace test
 }  // namespace onnxruntime
