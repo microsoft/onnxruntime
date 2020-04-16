@@ -1248,9 +1248,10 @@ activation and leaky_relu_alpha.)DOC")
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
   static const char* QuantizeLinear_ver1_doc = R"DOC(
-The linear quantization operator. It consumes a full precision data, a scale, a zero point and computes the quantized data.
-The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale), it computes the nearest integer value to arg (in floating-point format),
- rounding halfway cases away from zero. Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
+The linear quantization operator. It consumes a full precision data, a scale, a zero point to compute the low precision / quantized tensor.
+The quantization formula is y = saturate ((x / y_scale) + y_zero_point).For saturation, it saturates to [0, 255] if it's uint8, or [-128, 127] if it's int8.
+For (x / y_scale), it's rounding to nearest ties to even. Refer to https://en.wikipedia.org/wiki/Rounding for details.
+Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QuantizeLinear)
       .SetDomain(kMSDomain)
