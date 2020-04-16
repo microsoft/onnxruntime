@@ -1,8 +1,11 @@
-parameters:
-- name: is_featurizers_build
-  displayName: "Is Featurizers Build"
-  type: boolean
-  default: false
+# Note that any variable set in this file overrides a value set within the Azure pipeline UX.
+# Therefore, do not set default values here, but instead do it within a template script.
+#
+#   parameters:
+#   - name: is_featurizers_build
+#     displayName: "Is Featurizers Build"
+#     type: boolean
+#     default: false
 
 jobs:
 - job: Manylinux2010_py_Wheels
@@ -36,7 +39,7 @@ jobs:
 
     - template: templates/set-featurizer-build-flag-step.yml
       parameters:
-        is_featurizers_build: ${{ parameters.is_featurizers_build }}
+        is_featurizers_build: $(is_featurizers_build)
 
     - task: CmdLine@2
       displayName: 'Download azcopy'
@@ -111,7 +114,7 @@ jobs:
 
     - template: templates/set-featurizer-build-flag-step.yml
       parameters:
-        is_featurizers_build: ${{ parameters.is_featurizers_build }}
+        is_featurizers_build: $(is_featurizers_build)
 
     - task: CmdLine@2
       displayName: 'Download azcopy'
@@ -193,7 +196,7 @@ jobs:
 
   - template: templates/set-featurizer-build-flag-step.yml
     parameters:
-      is_featurizers_build: ${{ parameters.is_featurizers_build }}
+      is_featurizers_build: $(is_featurizers_build)
 
   - task: BatchScript@1
     displayName: 'setup env'
@@ -284,7 +287,7 @@ jobs:
 
     - template: templates/set-featurizer-build-flag-step.yml
       parameters:
-        is_featurizers_build: ${{ parameters.is_featurizers_build }}
+        is_featurizers_build: $(is_featurizers_build)
 
     - task: PythonScript@0
       displayName: 'Download test data'
@@ -336,6 +339,10 @@ jobs:
       clean: true
       submodules: recursive
 
+    - template: templates/set-featurizer-build-flag-step.yml
+      parameters:
+        is_featurizers_build: $(is_featurizers_build)
+
     - task: UsePythonVersion@0
       displayName: 'Use Python'
       inputs:
@@ -344,7 +351,7 @@ jobs:
     - script: |
         sudo python -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        ./build.sh --config Release --skip_submodule_sync --parallel --build_wheel --use_openmp
+        ./build.sh --config Release --skip_submodule_sync --parallel --build_wheel --use_openmp $(FeaturizerBuildFlag)
       displayName: 'Command Line Script'
 
     - task: CopyFiles@2
