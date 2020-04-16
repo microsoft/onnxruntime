@@ -406,6 +406,7 @@ target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/eig
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/onnx)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
+target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/SafeInt/safeint)
 
 # Properties
 set_target_properties(winml_lib_api
