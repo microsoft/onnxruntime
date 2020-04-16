@@ -297,60 +297,61 @@ TEST(GradientCheckerTest, TanhGrad) {
 }
 
 // TODO fix flaky test (https://msdata.visualstudio.com/Vienna/_workitems/edit/596949)
-// failing random seed: 322298223
-TEST(GradientCheckerTest, DISABLED_GemmGrad) {
+// failing random seed with error_tolerance of 1.5e-2f: 322298223
+TEST(GradientCheckerTest, GemmGrad) {
   float max_error;
+  const float error_tolerance = 2e-2f;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Gemm"};
 
   // Single Batch with Scalar Bias
   {
     gradient_checker.ComputeGradientError(op_def, {{1, 4}, {4, 3}, {}}, {{1, 3}}, &max_error);
-    EXPECT_IS_TINY(max_error);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // Single Batch with Vector Bias
   {
     gradient_checker.ComputeGradientError(op_def, {{1, 4}, {4, 3}, {3}}, {{1, 3}}, &max_error);
-    EXPECT_IS_TINY(max_error);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // Non-Single Batch with Scalar Bias
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {}}, {{2, 3}}, &max_error);
-    EXPECT_IS_TINY(max_error);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // Non-Single Batch with Vector Bias
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {3}}, {{2, 3}}, &max_error);
-    EXPECT_IS_TINY(max_error);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // Non-Single Batch with Broadcast Bias
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {1, 3}}, {{2, 3}}, &max_error);
-    EXPECT_IS_TINY(max_error);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // Non-Single Batch with Non-BroadcastBias
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {2, 3}}, {{2, 3}}, &max_error);
-    EXPECT_IS_TINY(max_error);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // TransA
   {
     gradient_checker.ComputeGradientError(op_def, {{4, 2}, {4, 3}, {3}}, {{2, 3}}, &max_error,
                                           {MakeAttribute("transA", int64_t(1))});
-    EXPECT_IS_TINY(max_error);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // TransB
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 4}, {3, 4}, {3}}, {{2, 3}}, &max_error,
                                           {MakeAttribute("transB", int64_t(1))});
-    EXPECT_IS_TINY(max_error);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // TransA and TransB
@@ -358,7 +359,7 @@ TEST(GradientCheckerTest, DISABLED_GemmGrad) {
     gradient_checker.ComputeGradientError(op_def, {{4, 2}, {3, 4}, {3}}, {{2, 3}}, &max_error,
                                           {MakeAttribute("transA", int64_t(1)),
                                            MakeAttribute("transB", int64_t(1))});
-    EXPECT_IS_TINY(max_error);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // alpha and beta + no_broadcast
@@ -366,7 +367,7 @@ TEST(GradientCheckerTest, DISABLED_GemmGrad) {
     gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {2, 3}}, {{2, 3}}, &max_error,
                                           {MakeAttribute("alpha", 0.7f),
                                            MakeAttribute("beta", 5.0f)});
-    EXPECT_IS_TINY(max_error);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // alpha and beta + broadcast
@@ -374,7 +375,7 @@ TEST(GradientCheckerTest, DISABLED_GemmGrad) {
     gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {3}}, {{2, 3}}, &max_error,
                                           {MakeAttribute("alpha", 0.7f),
                                            MakeAttribute("beta", 5.0f)});
-    EXPECT_IS_TINY(max_error);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
 
