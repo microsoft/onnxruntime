@@ -20,7 +20,10 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-GlobalContext BackendManager::global_context_;
+GlobalContext& BackendManager::GetGlobalContext() {
+  static GlobalContext global_context;
+  return global_context;
+}
 
 BackendManager::BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger,
                                std::string dev_id, std::string prec_str) {
@@ -65,14 +68,14 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
   model_proto_ = GetModelProtoFromFusedNode(fused_node, logger);
 
   if(ModelHasBatchedInputs(model_proto_) &&
-    global_context_.is_wholly_supported_graph &&
+    GetGlobalContext().is_wholly_supported_graph &&
     subgraph_context_.device_id == "HDDL") {
 
     subgraph_context_.enable_batching = true;
     LOGS_DEFAULT(INFO) <<
       "[OpenVINO-EP] Model can be Batch inferenced \n";
     auto model_copy = ReWriteBatchDimWithOne(model_proto_);
-    concrete_backend_ = BackendFactory::MakeBackend(*model_copy, global_context_, subgraph_context_);
+    concrete_backend_ = BackendFactory::MakeBackend(*model_copy, GetGlobalContext(), subgraph_context_);
     subgraph_context_.has_dynamic_input_shape = false;
 
   } else if (ModelHasSymbolicInputDims(fused_node)) {
@@ -85,7 +88,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
       subgraph_context_.subgraph_name;
 
     subgraph_context_.has_dynamic_input_shape = false;
-    concrete_backend_ = BackendFactory::MakeBackend(model_proto_, global_context_, subgraph_context_);
+    concrete_backend_ = BackendFactory::MakeBackend(model_proto_, GetGlobalContext(), subgraph_context_);
   }
 }
 
@@ -258,7 +261,7 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
                          << "Backend created for graph " << subgraph_context_.subgraph_name;
       auto modelproto_with_concrete_shapes = ReWriteInputShapeInfo(model_proto_, tensor_shapes);
       dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
-                                                    global_context_, subgraph_context_);
+                                                    GetGlobalContext(), subgraph_context_);
       backend_map_.insert({key, dynamic_backend});
     } else {
       dynamic_backend = search->second;

@@ -28,7 +28,7 @@ class BackendManager {
                  std::string dev_id, std::string prec_str);
   void Compute(Ort::CustomOpApi api, OrtKernelContext* context);
   void ShutdownBackendManager();
-  static GlobalContext global_context_;
+  static GlobalContext& GetGlobalContext();
 
  private:
   ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(
