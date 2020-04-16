@@ -960,7 +960,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionOneConstTest) {
 }
 
 // Test Reshape Fusion with an internal node being the output of the graph.
-TEST(GraphTransformationTests, ReshapeFusionInternalNodeIsOutput) {
+TEST_F(GraphTransformationTests, ReshapeFusionInternalNodeIsOutput) {
   auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_internal_node_is_graph_output.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
@@ -983,7 +983,7 @@ TEST(GraphTransformationTests, ReshapeFusionInternalNodeIsOutput) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
       ASSERT_TRUE(tensor_proto != nullptr);
 
-      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
+      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       EXPECT_EQ(initializer->size(), 3);
 
@@ -997,7 +997,7 @@ TEST(GraphTransformationTests, ReshapeFusionInternalNodeIsOutput) {
 
 // Test Reshape Fusion where some of the internal nodes are reused:
 // A Shape is used in two Gather's, and the third Gather is the graph output.
-TEST(GraphTransformationTests, ReshapeFusionInternalReuseTest) {
+TEST_F(GraphTransformationTests, ReshapeFusionInternalReuseTest) {
   auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_internal_nodes_reused.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
@@ -1020,7 +1020,7 @@ TEST(GraphTransformationTests, ReshapeFusionInternalReuseTest) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
       ASSERT_TRUE(tensor_proto != nullptr);
 
-      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
+      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       EXPECT_EQ(initializer->size(), 5);
 
