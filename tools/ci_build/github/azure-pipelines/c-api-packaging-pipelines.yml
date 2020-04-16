@@ -56,13 +56,12 @@ jobs:
   pool: 
     vmImage: 'macOS-10.14'
   steps:
-    - template: templates/mac-set-variables-and-download.yml
     - template: templates/set-version-number-variables-step.yml
 
     - script: |
         sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config RelWithDebInfo --enable_onnx_tests
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config RelWithDebInfo
       displayName: 'Build and Test MacOS'
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -109,7 +108,7 @@ jobs:
         workingFolder: '$(Build.BinariesDirectory)'
 
     - script: |
-       python -m pip install -q pyopenssl setuptools wheel numpy     
+       python -m pip install -q pyopenssl setuptools wheel numpy scipy
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Install python modules' 
     
@@ -186,7 +185,7 @@ jobs:
         workingFolder: '$(Build.BinariesDirectory)'
 
     - script: |
-       python -m pip install -q pyopenssl setuptools wheel numpy     
+       python -m pip install -q pyopenssl setuptools wheel numpy scipy
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Install python modules' 
     
