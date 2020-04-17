@@ -73,7 +73,7 @@ TEST(OneHotOpTest, DefaultAxis_int64_MLFloat16_int64 /*indices, output, depth*/)
 
   std::vector<float> values{0.0f, 1.0f};
   std::vector<MLFloat16> fp16_values(values.size());
-  ConvertFloatToMLFloat16(values.data(), fp16_values.data(), static_cast<>(values.size()));
+  ConvertFloatToMLFloat16(values.data(), fp16_values.data(), static_cast<int>(values.size()));
 
   std::vector<float> output{0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                             0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
