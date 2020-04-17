@@ -127,8 +127,6 @@ if platform.system() == 'Linux':
   if package_name == 'onnxruntime-openvino':
     if platform.system() == 'Linux':
       libs.extend(['libovep_ngraph.so'])
-    else:
-      libs.extend(['ovep_ngraph.dll'])
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
   if nightly_build:
