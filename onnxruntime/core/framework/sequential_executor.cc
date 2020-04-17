@@ -3,8 +3,6 @@
 
 #include "core/framework/sequential_executor.h"
 
-#include <unistd.h>
-#include <sys/types.h>
 #include <chrono>
 #include <thread>
 #include <vector>
