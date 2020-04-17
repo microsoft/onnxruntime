@@ -1291,13 +1291,7 @@ void TestDropoutOp(float ratio, TensorShape& x_shape, bool default_ratio = true)
     test.AddInput<float>("ratio", {}, {ratio});
   test.AddOutput<float>("y", x_shape.GetDims(), y_data);
   test.AddOutput<bool>("mask", x_shape.GetDims(), {true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true});
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
+  test.Run();
 
   //Check output
   auto fwd_output = test.GetFetches();
@@ -1349,13 +1343,7 @@ void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = t
 
   test.AddOutput<float>("dx", x_shape.GetDims(), dx_data);
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
+  test.Run();
 }
 
 #ifdef USE_CUDA
@@ -1507,13 +1495,7 @@ TEST(GradientUtilsTest, InPlaceAccumulatorFloat32) {
 
   test.AddOutput<float>("new_sum", {3}, {5, 7, 9});
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
+  test.Run();
 }
 
 #ifdef USE_CUDA
@@ -1532,7 +1514,7 @@ TEST(GradientUtilsTest, InPlaceAccumulatorFloat16) {
   test.AddOutput<float>("new_sum", {3}, new_sum);
 
   // Didn't implement mixed precision InPlaceAccumulator in CPU
-  test.Run(OpTester::OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
 }
 #endif
 
@@ -1544,13 +1526,7 @@ TEST(GradientUtilsTest, ZeroGradientFloat32) {
 
   test.AddOutput<float>("zero_gradient", {3}, {0, 0, 0});
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
+  test.Run();
 }
 
 #ifdef USE_CUDA
@@ -1571,13 +1547,7 @@ TEST(GradientUtilsTest, ZeroGradientFloat16) {
 
   test.AddOutput<MLFloat16>("zero_gradient", {3}, zero_gradient_half);
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
+  test.Run();
 }
 #endif
 
@@ -1656,13 +1626,7 @@ void record_event(int64_t event_id) {
   test_record.AddInput<int64_t>("EventIdentifier", {}, {event_id});
   test_record.AddInput<bool>("InputSignal", {}, {true});
   test_record.AddOutput<bool>("OutputSignal", {}, {true});
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test_record.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
+  test_record.Run();
 }
 
 void wait_event(int64_t event_id) {
@@ -1670,13 +1634,7 @@ void wait_event(int64_t event_id) {
   test_wait.AddInput<int64_t>("EventIdentifier", {}, {event_id});
   test_wait.AddInput<bool>("InputSignal", {}, {true});
   test_wait.AddOutput<bool>("OutputSignal", {}, {true});
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test_wait.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
+  test_wait.Run();
 }
 
 TEST(Synchronization, RecordAndWaitEvent) {

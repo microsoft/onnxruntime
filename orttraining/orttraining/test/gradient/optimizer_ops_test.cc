@@ -15,14 +15,7 @@ TEST(OptimizerTest, SGDOptimizerTest) {
   test.AddInput<float>("W", {3}, {1, 2, 3});
   test.AddInput<float>("G", {3}, {4, 5, 6});
   test.AddOutput<float>("W_New", {3}, {-1.f, -0.5f, 0.f});
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(OptimizerTest, SGDOptimizerTest_Gradient) {
@@ -32,14 +25,7 @@ TEST(OptimizerTest, SGDOptimizerTest_Gradient) {
   test.AddInput<float>("G", {3}, {4, 5, 6});
   test.AddMissingOptionalOutput<float>();
   test.AddOutput<float>("G_New", {3}, {-2.f, -2.5f, -3.f});
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 struct AdamOptimizerInputOutput {
@@ -112,14 +98,7 @@ TEST(OptimizerTest, AdamOptimizerTest) {
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
   test.AddAttribute("weight_decay_mode", static_cast<int64_t>(0));
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(OptimizerTest, AdamOptimizerTest_Gradient) {
@@ -143,14 +122,7 @@ TEST(OptimizerTest, AdamOptimizerTest_Gradient) {
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
   test.AddAttribute("weight_decay_mode", static_cast<int64_t>(0));
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(OptimizerTest, AdamBiasCorrection) {
@@ -172,14 +144,7 @@ TEST(OptimizerTest, AdamBiasCorrection) {
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(1));
   test.AddAttribute("weight_decay_mode", static_cast<int64_t>(0));
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(OptimizerTest, AdamWeightDecayMode0NoBiasCorrection) {
@@ -202,14 +167,7 @@ TEST(OptimizerTest, AdamWeightDecayMode0NoBiasCorrection) {
   test.AddAttribute("lambda", 0.01f);
   test.AddAttribute("weight_decay_mode", static_cast<int64_t>(0));
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(OptimizerTest, AdamWeightDecayMode0WithBiasCorrection) {
@@ -232,14 +190,7 @@ TEST(OptimizerTest, AdamWeightDecayMode0WithBiasCorrection) {
   test.AddAttribute("lambda", 0.01f);
   test.AddAttribute("weight_decay_mode", static_cast<int64_t>(0));
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(OptimizerTest, AdamWeightDecayMode1NoBiasCorrection) {
@@ -262,14 +213,7 @@ TEST(OptimizerTest, AdamWeightDecayMode1NoBiasCorrection) {
   test.AddAttribute("lambda", 0.01f);
   test.AddAttribute("weight_decay_mode", static_cast<int64_t>(1));
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(OptimizerTest, AdamWeightDecayMode1WithBiasCorrection) {
@@ -292,14 +236,7 @@ TEST(OptimizerTest, AdamWeightDecayMode1WithBiasCorrection) {
   test.AddAttribute("lambda", 0.01f);
   test.AddAttribute("weight_decay_mode", static_cast<int64_t>(1));
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 #ifdef USE_CUDA
@@ -323,14 +260,7 @@ TEST(OptimizerTest, AdamOptimizerMixPrecisionTest) {
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
   test.AddAttribute("weight_decay_mode", static_cast<int64_t>(0));
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_Test) {
@@ -356,14 +286,7 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_Test) {
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
   test.AddAttribute("weight_decay_mode", static_cast<int64_t>(0));
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_SkipUpdate_Test) {
@@ -393,14 +316,7 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_SkipUpdate_Test) {
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
   test.AddAttribute("weight_decay_mode", static_cast<int64_t>(0));
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(OptimizerTest, AdamOptimizerMixPrecisionTestFloatEta) {
@@ -423,14 +339,7 @@ TEST(OptimizerTest, AdamOptimizerMixPrecisionTestFloatEta) {
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
   test.AddAttribute("weight_decay_mode", static_cast<int64_t>(0));
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(OptimizerTest, AdamOptimizerMixPrecisionTest_Gradient) {
@@ -453,14 +362,7 @@ TEST(OptimizerTest, AdamOptimizerMixPrecisionTest_Gradient) {
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 // This helper function is a CPU-based LAMB optimizer
@@ -618,14 +520,7 @@ void run_lamb_test_with_baseline(
     test.AddMissingOptionalOutput<MLFloat16>();
   }
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 template <typename T1, typename T2, typename T3, typename T4>
@@ -738,14 +633,7 @@ void run_multi_tensor_lamb_test_with_baseline(
   test.AddAttribute("ratio_min", ratio_min);
   test.AddAttribute("ratio_max", ratio_max);
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 // Lamb test without baseline. This function computes

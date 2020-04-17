@@ -41,14 +41,7 @@ TEST(CudaKernelTest, MixedPrecisionScaleF2F) {
   test.AddInput<float>("scale", {1}, data.scale);
   test.AddInput<float>("input1", {3}, data.input1);
   test.AddOutput<float>("output1", {3}, data.output1);
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(CudaKernelTest, MixedPrecisionScaleF2F_MultiInputs) {
@@ -60,14 +53,7 @@ TEST(CudaKernelTest, MixedPrecisionScaleF2F_MultiInputs) {
   test.AddInput<float>("input2", {4}, data.input2);
   test.AddOutput<float>("output1", {3}, data.output1);
   test.AddOutput<float>("output2", {4}, data.output2);
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(CudaKernelTest, MixedPrecisionScaleF2H) {
@@ -77,14 +63,7 @@ TEST(CudaKernelTest, MixedPrecisionScaleF2H) {
   test.AddInput<float>("scale", {1}, data.scale);
   test.AddInput<float>("input1", {3}, data.input1);
   test.AddOutput<MLFloat16>("output1", {3}, data.output1_half);
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(CudaKernelTest, MixedPrecisionScaleF2H_MultiInput_FuseOutput) {
@@ -100,14 +79,7 @@ TEST(CudaKernelTest, MixedPrecisionScaleF2H_MultiInput_FuseOutput) {
   output.insert(output.end(), data.output1_half.begin(), data.output1_half.end());
   output.insert(output.end(), data.output2_half.begin(), data.output2_half.end());
   test.AddOutput<MLFloat16>("output", {7}, output);
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(CudaKernelTest, MixedPrecisionScaleH2F) {
@@ -117,14 +89,7 @@ TEST(CudaKernelTest, MixedPrecisionScaleH2F) {
   test.AddInput<float>("scale", {1}, data.scale);
   test.AddInput<MLFloat16>("input1", {3}, data.input1_half);
   test.AddOutput<float>("output1", {3}, data.output1);
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(CudaKernelTest, MixedPrecisionScaleH2F_MultiInputs) {
@@ -136,14 +101,7 @@ TEST(CudaKernelTest, MixedPrecisionScaleH2F_MultiInputs) {
   test.AddInput<MLFloat16>("input2", {4}, data.input2_half);
   test.AddOutput<float>("output1", {3}, data.output1);
   test.AddOutput<float>("output2", {4}, data.output2);
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(CudaKernelTest, MixedPrecisionScaleH2F_MultiInput_FuseOutput) {
@@ -159,14 +117,7 @@ TEST(CudaKernelTest, MixedPrecisionScaleH2F_MultiInput_FuseOutput) {
   output.insert(output.end(), data.output1.begin(), data.output1.end());
   output.insert(output.end(), data.output2.begin(), data.output2.end());
   test.AddOutput<float>("output", {7}, output);
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(CudaKernelTest, MixedPrecisionScaleH2H) {
@@ -176,14 +127,7 @@ TEST(CudaKernelTest, MixedPrecisionScaleH2H) {
   test.AddInput<float>("scale", {1}, data.scale);
   test.AddInput<MLFloat16>("input1", {3}, data.input1_half);
   test.AddOutput<MLFloat16>("output1", {3}, data.output1_half);
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 }  // namespace test

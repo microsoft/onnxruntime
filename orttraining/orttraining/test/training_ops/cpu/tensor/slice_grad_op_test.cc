@@ -17,14 +17,7 @@ TEST(SliceGradOpTest, SliceGrad_basic) {
   test.AddInput<int64_t>("axes", {2}, {0LL, 1LL});
   test.AddInput<int64_t>("steps", {2}, {1LL, 2LL});
   test.AddOutput<float>("output", {2, 4}, {0, 0, 0, 0, 5, 0, 7, 0});
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(SliceGradOpTest, SliceGrad_basic_double) {
@@ -36,14 +29,7 @@ TEST(SliceGradOpTest, SliceGrad_basic_double) {
   test.AddInput<int64_t>("axes", {2}, {0LL, 1LL});
   test.AddInput<int64_t>("steps", {2}, {1LL, 2LL});
   test.AddOutput<double>("output", {2, 4}, {0, 0, 0, 0, 5, 0, 7, 0});
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(SliceGradOpTest, SliceGrad_blockcopy) {
@@ -55,14 +41,7 @@ TEST(SliceGradOpTest, SliceGrad_blockcopy) {
   test.AddInput<int64_t>("axes", {2}, {0LL, 1LL});
   test.AddInput<int64_t>("steps", {2}, {1LL, 1LL});
   test.AddOutput<float>("output", {2, 4}, {1, 2, 3, 4, 5, 6, 7, 8});
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 TEST(SliceGradOpTest, SliceGrad_blockcopy_double) {
@@ -74,14 +53,7 @@ TEST(SliceGradOpTest, SliceGrad_blockcopy_double) {
   test.AddInput<int64_t>("axes", {2}, {0LL, 1LL});
   test.AddInput<int64_t>("steps", {2}, {1LL, 1LL});
   test.AddOutput<double>("output", {2, 4}, {1, 2, 3, 4, 5, 6, 7, 8});
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 }  // namespace test

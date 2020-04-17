@@ -134,9 +134,6 @@ int main(int argc, char* argv[]) {
     }
 
     MPI_Barrier(MPI_COMM_WORLD);
-    
-    RunOptions run_options;
-    run_options.is_training_mode = true;
 
     if (world_rank == 0) {
       // Prepare inputs and outputs.
@@ -149,7 +146,9 @@ int main(int argc, char* argv[]) {
       std::vector<std::string> output_names{"X8"};
       std::vector<OrtValue> fetches;
 
+      RunOptions run_options;
       run_options.run_tag = "Session at MPI rank " + std::to_string(world_rank);
+
       // Run a model.
       st = session_object.Run(run_options, feeds, output_names, &fetches);
       ORT_ENFORCE(st == Status::OK(), "MPI rank ", world_rank, ": ", st.ErrorMessage());
@@ -162,6 +161,7 @@ int main(int argc, char* argv[]) {
         }
       }
     } else if (world_rank == 1) {
+      RunOptions run_options;
       run_options.run_tag = "Session at MPI rank " + std::to_string(world_rank);
 
       // Prepare inputs and outputs.
@@ -181,6 +181,7 @@ int main(int argc, char* argv[]) {
         }
       }
     } else if (world_rank == 2) {
+      RunOptions run_options;
       run_options.run_tag = "Session at MPI rank " + std::to_string(world_rank);
 
       // Prepare inputs and outputs.

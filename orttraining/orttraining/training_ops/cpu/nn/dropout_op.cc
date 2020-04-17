@@ -78,8 +78,7 @@ Status Dropout<T1, T2>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(Y->Shape() == X_shape, "X and Y should have the same shape");
   ORT_ENFORCE(!mask || mask->Shape() == X_shape, "X and mask should have the same shape");
 
-  // In inferencing mode, Dropout is same as identity.
-  if (ratio_value == 0.0f || !context->IsTrainingMode()) {
+  if (ratio_value == 0.0f) {
     // drop none
     if (X_span.data() != Y_span.data()) {
       std::copy(X_span.begin(), X_span.end(), Y_span.begin());

@@ -139,14 +139,7 @@ TEST(CudaKernelTest, SparseSoftmaxCrossEntropy_Basic) {
   test.AddOutput<float>("output", {}, Y_data);
   test.AddOutput<float>("log_prob", {3, 5}, log_prob_data);
 
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
-
+  test.Run();
 }
 
 static void TestSparseSoftmaxCrossEntropy(const std::vector<int64_t>* X_dims,

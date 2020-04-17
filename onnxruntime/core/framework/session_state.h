@@ -236,9 +236,6 @@ class SessionState {
   bool ExportDll() const { return export_fused_dll_; }
   void SetExportDllFlag(bool flag) { export_fused_dll_ = flag; }
 
-  bool IsTrainingMode() const { return is_training_mode_; }
-  void SetIsTrainingMode(bool is_training_mode) { is_training_mode_ = is_training_mode; }
-
   const FuncManager& GetFuncMgr() const { return fused_funcs_mgr_; }
   FuncManager& GetMutableFuncMgr() { return fused_funcs_mgr_; }
 
@@ -304,7 +301,6 @@ class SessionState {
   concurrency::ThreadPool* const inter_op_thread_pool_{};
 
   bool export_fused_dll_ = false;
-  bool is_training_mode_ = false;
   FuncManager fused_funcs_mgr_;
   const DataTransferManager* data_transfer_mgr_ = nullptr;
 

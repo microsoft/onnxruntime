@@ -31,10 +31,8 @@ void TestGradientOpWithTwoInputs(const char* szOp,
   test.AddInput<float>("dY", dims, dY);
   test.AddInput<float>("X", dims, X);
   test.AddOutput<float>("dX", dims, expected_vals);
-  RunOptions run_option;
-  run_option.is_training_mode = true;
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, &run_option);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {});
 }
 
 TEST(GeluGradTest, Basic) {

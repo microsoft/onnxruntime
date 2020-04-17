@@ -1153,10 +1153,6 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     if (run_options.only_execute_path_to_fetches) {
       session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
     }
-
-    // Set session run mode
-    session_state_->SetIsTrainingMode(run_options.is_training_mode);
-
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,

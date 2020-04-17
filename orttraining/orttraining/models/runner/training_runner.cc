@@ -290,12 +290,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
         const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
         auto start = std::chrono::high_resolution_clock::now();
-        
-        RunOptions run_options;
-        run_options.is_training_mode = true;
 
         if (is_weight_update_step) {
-          ORT_RETURN_IF_ERROR(session_.Run(run_options,
+          ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
                                            feed_names,
                                            feeds,
                                            fetch_names,
@@ -322,6 +319,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
           weight_update_step_count_++;
         } else {
+          RunOptions run_options;
           run_options.only_execute_path_to_fetches = true;
           ORT_RETURN_IF_ERROR(session_.Run(run_options,
                                            feed_names,

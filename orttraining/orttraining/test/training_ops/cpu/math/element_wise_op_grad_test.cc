@@ -14,13 +14,7 @@ TEST(ElementWiseOpGrad, SinGrad) {
   test.AddInput<float>("X", {3}, {-1, 0, 1});
 
   test.AddOutput<float>("dX", {3}, {std::cos(-1.0f) * 0, std::cos(0.0f) * 1, std::cos(1.0f) * 2});
-  RunOptions run_option;
-  run_option.is_training_mode = true;
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-                 "",
-                 {},
-                 &run_option);
+  test.Run();
 }
 }  // namespace test
 }  // namespace onnxruntime
