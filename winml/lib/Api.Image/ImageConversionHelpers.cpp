@@ -4,6 +4,8 @@
 #include "pch.h"
 #include "inc/ImageConversionHelpers.h"
 
+#include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
+
 using namespace Microsoft::WRL;
 using namespace Windows::Graphics::DirectX::Direct3D11;
 
