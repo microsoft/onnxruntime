@@ -22,7 +22,7 @@ chmod +x install_dependencies.sh
 
 mkdir -p build
 cd build
-#cmake ..
+
 cmake -DNGRAPH_ONNX_IMPORT_ENABLE=ON -DNGRAPH_UNIT_TEST_ENABLE=OFF -DCMAKE_BUILD_TYPE=Release ..
 make --jobs=$(nproc --all)
 
