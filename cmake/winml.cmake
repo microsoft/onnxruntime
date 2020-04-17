@@ -348,11 +348,10 @@ add_dependencies(winml_lib_image winml_api_native)
 add_dependencies(winml_lib_image winml_api_native_internal)
 
 # Link libraries
-target_link_libraries(winml_lib_image PRIVATE dxgi d3d11 d3d12 wil winml_lib_common)
 
 get_target_property(winml_lib_image_include_directories winml_lib_image INCLUDE_DIRECTORIES)
 
-target_link_libraries(winml_lib_image PRIVATE dxcore wil winml_lib_common)
+target_link_libraries(winml_lib_image PRIVATE dxcore dxgi d3d11 d3d12 wil winml_lib_common)
 if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_image)
 endif(onnxruntime_USE_DML)
