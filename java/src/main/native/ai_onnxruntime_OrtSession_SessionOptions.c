@@ -7,6 +7,11 @@
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "OrtJniUtil.h"
 #include "ai_onnxruntime_OrtSession_SessionOptions.h"
+#ifdef WIN32
+#include <Windows.h>
+#else
+#include <dlfcn.h>
+#endif
 
 // Providers
 #include "onnxruntime/core/providers/cpu/cpu_provider_factory.h"
@@ -121,6 +126,57 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_closeO
     (void) jniEnv; (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     api->ReleaseSessionOptions((OrtSessionOptions*) handle);
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    registerCustomOpLibrary
+ * Signature: (JJLjava/lang/String;)J
+ */
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_registerCustomOpLibrary
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jstring libraryPath) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+
+  // Extract the string chars
+  const char* cPath = (*jniEnv)->GetStringUTFChars(jniEnv, libraryPath, NULL);
+
+  // Load the library
+  void* libraryHandle;
+  checkOrtStatus(jniEnv,api,api->RegisterCustomOpsLibrary((OrtSessionOptions*)optionsHandle,cPath,&libraryHandle));
+
+  // Release the string chars
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv,libraryPath,cPath);
+
+  return (jlong) libraryHandle;
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    closeCustomLibraries
+ * Signature: ([J)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_closeCustomLibraries
+    (JNIEnv * jniEnv, jobject jobj, jlongArray libraryHandles) {
+  (void) jniEnv; (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+
+  // Get the number of elements in the array
+  jsize numHandles = (*jniEnv)->GetArrayLength(jniEnv, libraryHandles);
+
+  // Get the elements of the libraryHandles array
+  jlong* handles = (*jniEnv)->GetLongArrayElements(jniEnv,libraryHandles,NULL);
+
+  // Iterate the handles, calling the appropriate close function
+  for (jint i = 0; i < numHandles; i++) {
+#ifdef WIN32
+    FreeLibrary((void*)handles[i]);
+#else
+    dlclose((void*)handles[i]);
+#endif
+  }
+
+  // Release the long array
+  (*jniEnv)->ReleaseLongArrayElements(jniEnv,libraryHandles,handles,JNI_ABORT);
 }
 
 /*

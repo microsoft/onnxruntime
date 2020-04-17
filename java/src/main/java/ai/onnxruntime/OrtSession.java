@@ -368,6 +368,9 @@ public class OrtSession implements AutoCloseable {
    * options.
    *
    * <p>Modifying this after the session has been constructed will have no effect.
+   *
+   * <p>The SessionOptions object must not be closed until all sessions which use it are closed, as
+   * otherwise it could release resources that are in use.
    */
   public static class SessionOptions implements AutoCloseable {
 
@@ -421,14 +424,24 @@ public class OrtSession implements AutoCloseable {
 
     private final long nativeHandle;
 
+    private final List<Long> customLibraryHandles;
+
     /** Create an empty session options. */
     public SessionOptions() {
       nativeHandle = createOptions(OnnxRuntime.ortApiHandle);
+      customLibraryHandles = new ArrayList<>();
     }
 
     /** Closes the session options, releasing any memory acquired. */
     @Override
     public void close() {
+      if (customLibraryHandles.size() > 0) {
+        long[] longArray = new long[customLibraryHandles.size()];
+        for (int i = 0; i < customLibraryHandles.size(); i++) {
+          longArray[i] = customLibraryHandles.get(i);
+        }
+        closeCustomLibraries(longArray);
+      }
       closeOptions(OnnxRuntime.ortApiHandle, nativeHandle);
     }
 
@@ -482,6 +495,17 @@ public class OrtSession implements AutoCloseable {
      */
     public void setOptimizedModelFilePath(String outputPath) throws OrtException {
       setOptimizationModelFilePath(OnnxRuntime.ortApiHandle, nativeHandle, outputPath);
+    }
+
+    /**
+     * Registers a library of custom ops for use with {@link OrtSession}s using this SessionOptions.
+     *
+     * @param path The path to the library on disk.
+     * @throws OrtException If there was an error loading the library.
+     */
+    public void registerCustomOpLibrary(String path) throws OrtException {
+      long customHandle = registerCustomOpLibrary(OnnxRuntime.ortApiHandle, nativeHandle, path);
+      customLibraryHandles.add(customHandle);
     }
 
     /**
@@ -614,6 +638,11 @@ public class OrtSession implements AutoCloseable {
         long apiHandle, long nativeHandle, String modelPath) throws OrtException;
 
     private native long createOptions(long apiHandle);
+
+    private native long registerCustomOpLibrary(long apiHandle, long nativeHandle, String path)
+        throws OrtException;
+
+    private native void closeCustomLibraries(long[] nativeHandle);
 
     private native void closeOptions(long apiHandle, long nativeHandle);
 
