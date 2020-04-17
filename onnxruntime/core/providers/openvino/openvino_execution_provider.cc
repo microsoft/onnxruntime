@@ -834,7 +834,6 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
-  //TODO: Handle If and Loop operators
   if (graph_viewer.IsSubgraph()) {
     return result;
   }
@@ -847,8 +846,7 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     }
   }
 
-  /* This is a list of initializers that nGraph considers as constants. Example weights, reshape shape etc.
-     TODO: Support overridable initializers */
+  // This is a list of initializers that nGraph considers as constants. Example weights, reshape shape etc.
   std::unordered_set<std::string> ng_required_initializers;
 
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, info_.device_id_, ng_required_initializers);

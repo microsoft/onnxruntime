@@ -183,7 +183,6 @@ GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_
 
   std::vector<OrtValue*> output_tensors;
 
-  //TODO: Replace this with output_indexes
   auto graph_output_info = ie_cnn_network->getOutputsInfo();
 
   size_t i = 0;
