@@ -17,7 +17,8 @@ ONNX_CPU_OPERATOR_KERNEL(
 Status Einsum::Compute(OpKernelContext* context) const {
   int num_inputs = context->InputCount();
   if (num_inputs == 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Einsum op: There must be atleast one input");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, 
+                           "Einsum op: There must be atleast one input");
   }
 
   std::vector<const Tensor*> inputs;
@@ -30,7 +31,8 @@ Status Einsum::Compute(OpKernelContext* context) const {
   AllocatorPtr allocator;
   auto status = context->GetTempSpaceAllocator(&allocator);
   if (!status.IsOK()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "There was a problem acquiring temporary space allocator in Einsum op");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, 
+                           "There was a problem acquiring temporary space allocator in Einsum op");
   }
 
   // Instantiate EinsumComputePreprocessor
@@ -40,7 +42,9 @@ Status Einsum::Compute(OpKernelContext* context) const {
     return EinsumTypedComputeProcessor<float>(context, allocator, einsum_compute_preprocessor);
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Einsum op: An implementation for the input type ", inputs[0]->DataType(), " is not supported yet");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, 
+                         "Einsum op: An implementation for the input type ", 
+                          inputs[0]->DataType(), " is not supported yet");
 }
 
 }  // namespace onnxruntime

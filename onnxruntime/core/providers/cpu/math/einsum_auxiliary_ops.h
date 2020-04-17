@@ -33,7 +33,8 @@ Tensor MatMul(const Tensor& input_1, const Tensor& input_2, AllocatorPtr allocat
 
 // Thin wrapper over the ReduceSum op
 template <typename T>
-Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp);
+Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes, 
+                 AllocatorPtr allocator, concurrency::ThreadPool* tp);
 
 // Thin wrapper over the ReduceSum op (single axis overload)
 template <typename T>
@@ -46,7 +47,7 @@ Tensor ReduceSum(const Tensor& input, int64_t axis, AllocatorPtr allocator, conc
 // The rank of the output is 1 less than the rank of the input and the squeezed dim is the greater of dim_1 and dim_2.
 
 // Eg. input_shape = [2, 3, 5, 3] and dim_1 = 1 and dim_2 = 3
-// The output_shape will be [2, 3, 5] and dim_1 will contain the diagonal elements in the original tensor along the specified dimensions
+// The output_shape will be [2, 3, 5] and dim_1 will contain the diagonal elements
 Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator);
 
 }  // namespace EinsumOp

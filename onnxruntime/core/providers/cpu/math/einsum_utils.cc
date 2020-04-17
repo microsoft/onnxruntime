@@ -216,7 +216,7 @@ static Tensor PairwiseOperandProcess(Tensor& left, Tensor& right,
 
 EinsumComputePreprocessor::EinsumComputePreprocessor(EinsumEquationPreprocessor& einsum_equation_preprocessor,
                                                      const std::vector<const Tensor*>& inputs,
-                                                     const AllocatorPtr& allocator)
+                                                     AllocatorPtr allocator)
     : einsum_equation_preprocessor_(einsum_equation_preprocessor), inputs_(inputs), allocator_(allocator) {
   letter_to_index_.fill(-1);
 
@@ -593,7 +593,7 @@ void EinsumComputePreprocessor::PreprocessInputs() {
 // Templated core Einsum logic
 template <typename T>
 Status EinsumTypedComputeProcessor<T>(OpKernelContext* context,
-                                      const AllocatorPtr& allocator,
+                                      AllocatorPtr allocator,
                                       EinsumComputePreprocessor& einsum_compute_preprocessor) {
   const auto& mapped_indices_to_last_input_index = einsum_compute_preprocessor.GetMappedSubscriptIndicesToLastInputIndex();
 
@@ -673,6 +673,6 @@ Status EinsumTypedComputeProcessor<T>(OpKernelContext* context,
 }
 
 // Explicit template instantiation
-template Status EinsumTypedComputeProcessor<float>(OpKernelContext* context, const AllocatorPtr& allocator, EinsumComputePreprocessor& einsum_compute_preprocessor);
+template Status EinsumTypedComputeProcessor<float>(OpKernelContext* context, AllocatorPtr allocator, EinsumComputePreprocessor& einsum_compute_preprocessor);
 
 }  // namespace onnxruntime

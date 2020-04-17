@@ -82,7 +82,8 @@ Tensor MatMul(const Tensor& input_1, const Tensor& input_2, AllocatorPtr allocat
 }
 
 template <typename T>
-Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp) {
+Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes, 
+                 AllocatorPtr allocator, concurrency::ThreadPool* tp) {
   return onnxruntime::ReduceSum<T>::Impl(input, reduce_axes, allocator, tp, true);
 }
 
@@ -110,7 +111,8 @@ static inline bool IsTransposeRequiredForDiagonal(int64_t dim_1, int64_t dim_2, 
 // Parse diagnoal elements along the 2 innermost dimensions
 // eg: input_shape = [1, 2, 3, 3]
 
-// This implementation provides flexibility as to which of the 2 innermost dim values is preserved via `preserve_innermost_dim_val` param
+// This implementation provides flexibility as to which of the 2 innermost dim values is preserved 
+// via `preserve_innermost_dim_val` param
 
 // preserve_innermost_dim_val == true,
 //       output_shape = [1, 2, 1, 3] => the diagonal contains 3 elements and the dim value of the innermost dim is preserved
@@ -236,7 +238,7 @@ Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr 
     // Parse the diagonal from the innermost dims
     output = DiagonalInnermostDims(transposed, preserve_innermost_dim_val, allocator);
 
-    // Swap back the dimensions to the original axes ordering
+    // Swap back the dimensions to the original axes ordering using a "reverse permutation"
 
     // Find the "reverse" permutation
     iter = 0;

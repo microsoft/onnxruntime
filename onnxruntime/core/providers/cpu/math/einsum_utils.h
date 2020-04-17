@@ -2,10 +2,15 @@
 // Licensed under the MIT License.
 
 // This module hosts 3 abstractions -
-// 1) EinsumEquationPreprocessor - Holds logic to statically pre-process the equation string (i.e.) without input shapes being known
+
+// 1) EinsumEquationPreprocessor - 
+// Holds logic to statically pre-process the equation string (i.e.) without input shapes being known
 // These need not be repeated at Compute() time again
-// 2) EinsumComputePreprocessor - Holds logic to process the equation along with known input shapes to parse info required during Einsum Compute()
-// For example, mapping subscript labels to a dimension value, etc.
+
+// 2) EinsumComputePreprocessor - 
+// Holds logic to process the data from  EinsumEquationPreprocessor using known input shapes to parse data required 
+// during Einsum Compute(). For example, mapping subscript labels to a dimension value, etc.
+
 // 3) EinsumTypedComputeProcessor - The core logic of the Einsum operator. Invoked from Einsum Compute().
 
 #pragma once
@@ -85,7 +90,7 @@ class EinsumComputePreprocessor final {
  public:
   explicit EinsumComputePreprocessor(EinsumEquationPreprocessor& equation_preprocessor,
                                      const std::vector<const Tensor*>& inputs,
-                                     const AllocatorPtr& allocator);
+                                     AllocatorPtr allocator);
 
   // Get the output dims of the op's output
   const std::vector<int64_t>& GetOutputDims() const;
@@ -169,11 +174,12 @@ class EinsumComputePreprocessor final {
   std::vector<int64_t> subscript_indices_to_output_indices_;
 
   // Allocator to use for ad-hoc tensor buffer allocation
-  const AllocatorPtr& allocator_;
+  AllocatorPtr allocator_;
 };
 
 // This method does the heavy-lifting compute portion of Einsum Compute()
 template <typename T>
-Status EinsumTypedComputeProcessor(OpKernelContext* context, const AllocatorPtr& allocator, EinsumComputePreprocessor& einsum_compute_preprocessor);
+Status EinsumTypedComputeProcessor(OpKernelContext* context, AllocatorPtr allocator, 
+                                   EinsumComputePreprocessor& einsum_compute_preprocessor);
 
 }  // namespace onnxruntime
