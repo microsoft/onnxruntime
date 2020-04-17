@@ -540,7 +540,7 @@ namespace Dml
     }
 
 
-    Status ExecutionProviderImpl::CopyTensors(const onnxruntime::Tensor** src, onnxruntime::Tensor** dst, uint32_t count) const
+    Status ExecutionProviderImpl::CopyTensors(const std::vector<onnxruntime::IDataTransfer::SrcDstPair>& src_dst_pairs) const
     {
         // Source and destination for batched GPU -> CPU copies
         std::vector<ID3D12Resource*> srcDatas;
@@ -550,24 +550,24 @@ namespace Dml
         assert(!m_closed);
         auto provider = const_cast<ExecutionProviderImpl*>(this);
 
-        for (uint32_t i = 0; i < count; ++i)
+        for (uint32_t i = 0; i < src_dst_pairs.size(); ++i)
         {
             // This batching implementation only handles GPU -> CPU copies.  Other copies do not require synchronization
             // and are batched across multiple calls to CopyTensor.
-            if (!IsGpuTensor(*src[i]) || IsGpuTensor(*dst[i])) 
+            if (!IsGpuTensor(src_dst_pairs[i].src) || IsGpuTensor(src_dst_pairs[i].dst)) 
             {
-                ORT_RETURN_IF_ERROR(CopyTensor(*src[i], *dst[i]));
+                ORT_RETURN_IF_ERROR(CopyTensor(src_dst_pairs[i].src, src_dst_pairs[i].dst));
                 continue;
             }
             
             TensorWrapper srcWrapper = TensorWrapper(
-                const_cast<onnxruntime::Tensor*>(src[i]), 
+                const_cast<onnxruntime::Tensor*>(&src_dst_pairs[i].src.get()), 
                 false,
                 provider,
                 true);
 
             TensorWrapper dstWrapper = TensorWrapper(
-                dst[i], 
+                &src_dst_pairs[i].dst.get(), 
                 true, 
                 provider,
                 true);
