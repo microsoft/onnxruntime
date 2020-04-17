@@ -8,7 +8,7 @@ d) DEVICE_TYPE=${OPTARG};;
 esac
 done
 
-PYTHON_VER=${PYTHON_VER:=3.6}
+PYTHON_VER=${PYTHON_VER:=3.5}
 # Some Edge devices only have limited disk space, use this option to exclude some package
 DEVICE_TYPE=${DEVICE_TYPE:=Normal}
 
