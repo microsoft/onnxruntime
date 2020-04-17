@@ -35,10 +35,10 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         auto shape = node->MutableInputDefs()[0]->Shape();
         bool is_concrete_shape = true;
         std::vector<int64_t> dim_values;
-        if (shape != nullptr && shape->dim_size() > 0) {
+        if (shape != nullptr) {
           for (int i = 0; i < shape->dim_size(); i++) {
             auto dim = shape->dim(i);
-            if (!utils::HasDimValue(dim) || dim.dim_value() < 1) {
+            if (!utils::HasDimValue(dim)) {
               is_concrete_shape = false;
               break;
             }
@@ -55,9 +55,9 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           shape_constant.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
           shape_constant.add_dims(dim_values.size());
           shape_constant.set_raw_data(dim_values.data(), dim_values.size() * sizeof(int64_t));
-          ONNX_NAMESPACE::TensorShapeProto resultShape;
-          resultShape.add_dim()->set_dim_value(dim_values.size());
-          constant_arg_out->SetShape(resultShape);
+          ONNX_NAMESPACE::TensorShapeProto result_shape;
+          result_shape.add_dim()->set_dim_value(dim_values.size());
+          constant_arg_out->SetShape(result_shape);
           graph.AddInitializedTensor(shape_constant);
           convert_to_constant = true;
         }
@@ -138,12 +138,12 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
             ONNX_NAMESPACE::TensorProto out_tensorproto =
                 utils::TensorToTensorProto(out_tensor, constant_arg_out->Name());
 
-            ONNX_NAMESPACE::TensorShapeProto resultShape;
+            ONNX_NAMESPACE::TensorShapeProto result_shape;
             for (auto& dim : out_tensor.Shape().GetDims()) {
-              resultShape.add_dim()->set_dim_value(dim);
+              result_shape.add_dim()->set_dim_value(dim);
             }
 
-            constant_arg_out->SetShape(resultShape);
+            constant_arg_out->SetShape(result_shape);
             graph.AddInitializedTensor(out_tensorproto);
           }
         }
@@ -153,10 +153,6 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         // Remove the output edges of the constant node and then remove the node itself.
         graph_utils::RemoveNodeOutputEdges(graph, *node);
         graph.RemoveNode(node->Index());
-
-        // The output nodes already have the right input arg, since we used the same name in the initializer.
-        // We could remove unused graph initializers here, but Graph::Resolve() will take care of it.
-
         modified = true;
         keep_going  = true;
       }

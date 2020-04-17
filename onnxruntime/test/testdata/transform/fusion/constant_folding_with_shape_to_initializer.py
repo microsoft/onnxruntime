@@ -32,7 +32,7 @@ reshape = helper.make_node('Reshape', ['matmul2', 'concat'], ['output'], name='r
 # Create the graph (GraphProto)
 graph_def = helper.make_graph(
     [shape1, constant_of_shape, transpose, matmul1, matmul2, shape2, gather1, gather2, div, unsqueeze1, unsqueeze2, unsqueeze3, concat, reshape],
-    'self-attention-megatron-test-model',
+    'constant_folding_with_shape_to_initializer_model',
     [X],
     [Y],
     [matmul_weight_initializer, gather_constant_zero, gather_constant_one, div_constant_two, unsqueeze_constant_16]
@@ -55,3 +55,26 @@ kwargs['opset_imports'] = opsets
 # Create the model (ModelProto)
 model_def = helper.make_model(graph_def, producer_name='onnx-example', **kwargs)
 onnx.save(model_def, 'constant_folding_with_shape_to_initializer.onnx')
+
+
+
+X = helper.make_tensor_value_info('input', TensorProto.FLOAT, [1])
+Y = helper.make_tensor_value_info('output', TensorProto.FLOAT, [1])
+
+squeeze = helper.make_node('Squeeze', ['input'], ['squeeze'], name='squeeze', axes=[0])
+shape = helper.make_node('Shape', ['squeeze'], ['shape'], name='shape')
+constant_of_shape = helper.make_node('ConstantOfShape', ['shape'], ['constant_of_shape'], name='constant_of_shape')
+add = helper.make_node('Add', ['squeeze', 'constant_of_shape'], ['add'], name='add')
+unsqueeze = helper.make_node('Unsqueeze', ['add'], ['output'], name='unsqueeze', axes=[0])
+
+# Create the graph (GraphProto)
+graph_def = helper.make_graph(
+    [squeeze, shape, constant_of_shape, add, unsqueeze],
+    'constant_folding_with_scalar_shape_to_initializer_model',
+    [X],
+    [Y]
+)
+
+# Create the model (ModelProto)
+model_def = helper.make_model(graph_def, producer_name='onnx-example', **kwargs)
+onnx.save(model_def, 'constant_folding_with_scalar_shape_to_initializer.onnx')
