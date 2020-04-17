@@ -222,7 +222,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         }
         p_mask += sequence_length * sequence_length;
       }
-    } else if (is_unidirectional_) {  // unidirectional mask
+    } else if (is_unidirectional_ && mask_data != nullptr) {  // unidirectional mask
       T* p_mask = reinterpret_cast<T*>(mask_data);
       for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
         for (int m_i = s_i + 1; m_i < sequence_length; m_i++) {
