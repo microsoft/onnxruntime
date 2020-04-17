@@ -260,7 +260,7 @@ static bool can_eval_cast(const Node* cast, const InitializedTensorSet& initiali
   return false;
 }
 
-static bool can_eval_reshape_input_shape(const Node* node, const InitializedTensorSet& initializers, const logging::Logger& logger)
+static bool can_eval_input_shape(const Node* node, const InitializedTensorSet& initializers, const logging::Logger& logger)
 {
   // scenario 1: [Root] --> Shape --> Cast --> Cast
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
@@ -603,7 +603,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         return false;
       }
 
-      if (can_eval_reshape_input_shape(node, initializers, logger))
+      if (can_eval_input_shape(node, initializers, logger))
       {
         return false;
       }
