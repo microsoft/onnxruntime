@@ -79,7 +79,6 @@ for t in range(1000):
     # forward + backward + weight update 
     loss, y_pred = trainer.step(x, y)
     ...
-    
 ```
 
 A sample for end-to-end training with ONNX Runtime trainer is *coming soon*.
