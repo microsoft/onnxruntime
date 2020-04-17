@@ -51,9 +51,9 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto) {
     ng_function = ngraph::onnx_import::import_onnx_model(model_stream);
     LOGS_DEFAULT(INFO) << "ONNX Import Done";
   } catch (const std::exception& exp) {
-    ORT_THROW(log_tag + "[NGRAPHCustomOp] Exception while importing model to nGraph: " + std::string(exp.what()));
+    ORT_THROW(log_tag + "[OpenVINO-EP] Exception while importing model to nGraph Func: " + std::string(exp.what()));
   } catch (...) {
-    ORT_THROW(log_tag + "[NGRAPHCustomOp] Unknown exception while importing model to nGraph");
+    ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while importing model to nGraph Func");
   }
 
   try {
