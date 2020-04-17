@@ -29,6 +29,9 @@
 #pragma warning(disable : 4506) /*no definition for inline function 'function'*/
 #pragma warning(disable : 4800) /*'type' : forcing value to bool 'true' or 'false' (performance warning)*/
 #pragma warning(disable : 4996) /*The compiler encountered a deprecated declaration.*/
+#pragma warning(disable : 6011) /*Dereferencing NULL pointer*/
+#pragma warning(disable : 6387) /*'value' could be '0'*/
+#pragma warning(disable : 26495) /*Variable is uninitialized.*/
 #endif
 #include "onnx/defs/schema.h"
 #include "onnx/onnx_pb.h"

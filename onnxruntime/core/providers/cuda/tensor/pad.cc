@@ -65,7 +65,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
 
     const int64_t* pads_tensor_raw_data = pads_tensor.template Data<int64_t>();
     size_t pads_size = static_cast<size_t>(pads_tensor.Shape().Size());
-    ORT_ENFORCE(pads_size == 2 * dimension_count,
+    ORT_ENFORCE(pads_size == 2 * static_cast<size_t>(dimension_count),
                 "Pads tensor size should be equal to twice the input dimension count ");
 
     pads.reserve(2 * dimension_count);

@@ -26,7 +26,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionOptions, OrtSessionOptions** out) {
   API_IMPL_END
 }
 
-ORT_API(void, OrtApis::ReleaseSessionOptions, OrtSessionOptions* ptr) {
+ORT_API(void, OrtApis::ReleaseSessionOptions, _Frees_ptr_opt_ OrtSessionOptions* ptr) {
   delete ptr;
 }
 
@@ -140,12 +140,12 @@ ORT_API_STATUS_IMPL(OrtApis::SetSessionGraphOptimizationLevel, _In_ OrtSessionOp
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SetIntraOpNumThreads, _In_ OrtSessionOptions* options, int intra_op_num_threads) {
+ORT_API_STATUS_IMPL(OrtApis::SetIntraOpNumThreads, _Inout_ OrtSessionOptions* options, int intra_op_num_threads) {
   options->value.intra_op_param.thread_pool_size = intra_op_num_threads;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SetInterOpNumThreads, _In_ OrtSessionOptions* options, int inter_op_num_threads) {
+ORT_API_STATUS_IMPL(OrtApis::SetInterOpNumThreads, _Inout_ OrtSessionOptions* options, int inter_op_num_threads) {
   options->value.inter_op_param.thread_pool_size = inter_op_num_threads;
   return nullptr;
 }

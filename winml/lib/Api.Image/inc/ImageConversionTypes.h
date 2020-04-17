@@ -3,7 +3,7 @@
 
 #pragma once
 
-namespace Windows::AI::MachineLearning::Internal {
+namespace _winml {
 const UINT kImageTensorDimensionCountMax = 4;  // NCHW format
 
 enum ImageTensorDataType {
@@ -30,4 +30,4 @@ struct ImageTensorDescription {
   ImageTensorChannelType channelType;
   int64_t sizes[kImageTensorDimensionCountMax];
 };
-}  // namespace Windows::AI::MachineLearning::Internal
+}  // namespace _winml

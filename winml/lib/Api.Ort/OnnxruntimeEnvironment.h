@@ -6,7 +6,7 @@
 #pragma warning(push)
 #pragma warning(disable : 4505)
 
-namespace Windows::AI ::MachineLearning {
+namespace _winml {
 
 class OnnxruntimeEnvironment {
  public:
@@ -19,6 +19,6 @@ class OnnxruntimeEnvironment {
   UniqueOrtEnv ort_env_;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml
 
 #pragma warning(pop)
