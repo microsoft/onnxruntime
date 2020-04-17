@@ -15,12 +15,6 @@
 
 #include <ngraph/frontend/onnx_import/onnx.hpp>
 
-// FIXME: These should not be needed after v1 ops
-// are fully integrated into onnx importer
-#include <ngraph/pass/manager.hpp>
-#include <ngraph/pass/opset1_upgrade.hpp>
-#include <ngraph/pass/convert_fp32_to_fp16.hpp>
-
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/graph.h"
 #include "core/common/logging/logging.h"
@@ -48,8 +42,7 @@ void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::stri
 }
 
 std::shared_ptr<InferenceEngine::CNNNetwork>
-CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto,
-                 InferenceEngine::Precision precision) {
+CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto) {
 
   std::istringstream model_stream{model_proto.SerializeAsString()};
   std::shared_ptr<ngraph::Function> ng_function;
@@ -60,15 +53,6 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto,
     ORT_THROW(log_tag + "[NGRAPHCustomOp] Exception while importing model to nGraph: " + std::string(exp.what()));
   } catch (...) {
     ORT_THROW(log_tag + "[NGRAPHCustomOp] Unknown exception while importing model to nGraph");
-  }
-
-
-  if (precision == InferenceEngine::Precision::FP16) {
-    if (IsDebugEnabled())
-      std::cout << "FP16" << std::endl;
-    //FP16 transformations
-    ngraph::pass::ConvertFP32ToFP16().run_on_function(ng_function);
-    ng_function->validate_nodes_and_infer_types();
   }
 
   try {

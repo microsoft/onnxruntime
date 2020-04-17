@@ -21,8 +21,7 @@ namespace backend_utils {
                  std::shared_ptr<InferenceEngine::CNNNetwork> network);
 
   std::shared_ptr<InferenceEngine::CNNNetwork>
-  CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto,
-                   InferenceEngine::Precision precision);
+  CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto);
 
   InferenceEngine::Precision
   ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type);
