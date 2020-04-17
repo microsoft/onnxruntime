@@ -66,19 +66,20 @@ OrtStatus* OrtMapTypeInfo::Clone(OrtMapTypeInfo** out) {
 }
 
 // OrtMapTypeInfo Accessors
-ORT_API_STATUS_IMPL(OrtApis::GetMapKeyType, const OrtMapTypeInfo* map_type_info, enum ONNXTensorElementDataType* out) {
+ORT_API_STATUS_IMPL(OrtApis::GetMapKeyType, _In_ const OrtMapTypeInfo* map_type_info,
+                    _Out_ enum ONNXTensorElementDataType* out) {
   API_IMPL_BEGIN
   *out = map_type_info->map_key_type_;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetMapValueType, const OrtMapTypeInfo* map_type_info, OrtTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::GetMapValueType, _In_ const OrtMapTypeInfo* map_type_info, _Outptr_ OrtTypeInfo** out) {
   API_IMPL_BEGIN
   return map_type_info->map_value_type_->Clone(out);
   API_IMPL_END
 }
 
-ORT_API(void, OrtApis::ReleaseMapTypeInfo, OrtMapTypeInfo* ptr) {
+ORT_API(void, OrtApis::ReleaseMapTypeInfo, _Frees_ptr_opt_ OrtMapTypeInfo* ptr) {
   delete ptr;
 }

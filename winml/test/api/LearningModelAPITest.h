@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 #include "test.h"
-struct LearningModelApiTestApi
+struct LearningModelApiTestsApi
 {
-  SetupTest LearningModelAPITestSetup;
-  SetupTest LearningModelAPITestGpuSetup;
+  SetupClass LearningModelAPITestsClassSetup;
+  SetupTest LearningModelAPITestsGpuMethodSetup;
   VoidTest CreateModelFromFilePath;
   VoidTest CreateModelFromIStorage;
   VoidTest CreateModelFromIStorageOutsideCwd;
@@ -21,24 +21,29 @@ struct LearningModelApiTestApi
   VoidTest CloseModelCheckEval;
   VoidTest CloseModelNoNewSessions;
 };
-const LearningModelApiTestApi& getapi();
+const LearningModelApiTestsApi& getapi();
 
-WINML_TEST_CLASS_BEGIN_WITH_SETUP(LearningModelAPITest, LearningModelAPITestSetup)
-WINML_TEST(LearningModelAPITest, CreateModelFromFilePath)
-WINML_TEST(LearningModelAPITest, CreateModelFromIStorage)
-WINML_TEST(LearningModelAPITest, CreateModelFromIStorageOutsideCwd)
-WINML_TEST(LearningModelAPITest, CreateModelFromIStream)
-WINML_TEST(LearningModelAPITest, ModelGetAuthor)
-WINML_TEST(LearningModelAPITest, ModelGetName)
-WINML_TEST(LearningModelAPITest, ModelGetDomain)
-WINML_TEST(LearningModelAPITest, ModelGetDescription)
-WINML_TEST(LearningModelAPITest, ModelGetVersion)
-WINML_TEST(LearningModelAPITest, EnumerateInputs)
-WINML_TEST(LearningModelAPITest, EnumerateOutputs)
-WINML_TEST(LearningModelAPITest, CloseModelCheckMetadata)
-WINML_TEST(LearningModelAPITest, CloseModelNoNewSessions)
+WINML_TEST_CLASS_BEGIN(LearningModelAPITests)
+WINML_TEST_CLASS_SETUP_CLASS(LearningModelAPITestsClassSetup)
+WINML_TEST_CLASS_BEGIN_TESTS
+WINML_TEST(LearningModelAPITests, CreateModelFromFilePath)
+WINML_TEST(LearningModelAPITests, CreateModelFromIStorage)
+WINML_TEST(LearningModelAPITests, CreateModelFromIStorageOutsideCwd)
+WINML_TEST(LearningModelAPITests, CreateModelFromIStream)
+WINML_TEST(LearningModelAPITests, ModelGetAuthor)
+WINML_TEST(LearningModelAPITests, ModelGetName)
+WINML_TEST(LearningModelAPITests, ModelGetDomain)
+WINML_TEST(LearningModelAPITests, ModelGetDescription)
+WINML_TEST(LearningModelAPITests, ModelGetVersion)
+WINML_TEST(LearningModelAPITests, EnumerateInputs)
+WINML_TEST(LearningModelAPITests, EnumerateOutputs)
+WINML_TEST(LearningModelAPITests, CloseModelCheckMetadata)
+WINML_TEST(LearningModelAPITests, CloseModelNoNewSessions)
 WINML_TEST_CLASS_END()
 
-WINML_TEST_CLASS_BEGIN_WITH_SETUP(LearningModelAPITestGpu, LearningModelAPITestGpuSetup)
-WINML_TEST(LearningModelAPITestGpu, CloseModelCheckEval)
+WINML_TEST_CLASS_BEGIN(LearningModelAPITestsGpu)
+WINML_TEST_CLASS_SETUP_CLASS(LearningModelAPITestsClassSetup)
+WINML_TEST_CLASS_SETUP_METHOD(LearningModelAPITestsGpuMethodSetup)
+WINML_TEST_CLASS_BEGIN_TESTS
+WINML_TEST(LearningModelAPITestsGpu, CloseModelCheckEval)
 WINML_TEST_CLASS_END()
