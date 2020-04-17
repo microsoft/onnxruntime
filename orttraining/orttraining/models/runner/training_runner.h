@@ -22,18 +22,6 @@
 namespace onnxruntime {
 namespace training {
 
-struct WorkerState {
-  RunOptions run_options;
-  std::vector<std::string> feed_names;
-  std::vector<MLValue> feeds;
-  std::vector<std::string> fetch_names;
-  std::vector<MLValue> fetches;
-  MLValue fw_waited_value;
-  MLValue fw_recorded_value;
-  MLValue bw_waited_value;
-  MLValue bw_recorded_value;
-};
-
 class TrainingRunner {
  public:
   struct Parameters {
@@ -170,6 +158,10 @@ class TrainingRunner {
     int horizontal_parallel_size = 1;
     // Enable gradient clipping.
     bool enable_grad_norm_clip=true;
+
+    // Pipeline configuration.
+    bool do_pipeline;
+    size_t num_pipeline_stages;
   };
 
   TrainingRunner(Parameters params, const Environment& env);
@@ -186,19 +178,6 @@ class TrainingRunner {
   common::Status ResetLossScaler();
 
   size_t GetRound() const { return round_; }
-
-  void join_all_workers() {
-    for (size_t i = 0; i < workers_.size(); ++i) {
-      if (workers_[i].joinable())
-        workers_[i].join();
-    }
-  }
-
-  void join_worker(size_t worker_id) {
-    if (workers_[worker_id].joinable()) {
-      workers_[worker_id].join();
-    }
-  }
 
  private:
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader);
@@ -220,24 +199,18 @@ class TrainingRunner {
   Parameters params_;
   const SessionOptions session_options_;
   TrainingSession session_;
-  TrainingSession session1_;
   AllocatorPtr input_allocator_;
 
   std::unique_ptr<CheckpointRegistry> checkpoint_registry_;
 
-  std::vector<std::thread> workers_;
-  std::vector<WorkerState> worker_states_;
-  std::string waited_forward_event_name_;
-  std::string recorded_forward_event_name_;
-  std::string waited_backward_event_name_;
-  std::string recorded_backward_event_name_;
-  bool do_pipedream_;
-
-  size_t num_pipeline_stages_;
-  size_t pipeline_stage_id_;
-  size_t num_pipeline_batches_;
-  size_t num_gradient_accumulation_steps_;
+  // Pipeline fields are valid only if do_pipeline_ is true.
+  bool do_pipeline_;
+  // Information for running pipeline.
+  PipelineContext pipeline_context_;
+  // Pipeline schedule for deciding when to run batch, forward, or backward.
   PipelineSchedule pipeline_schedule_;
+  // Workers to run pipeline stage.
+  PipelineWorkerPool pipeline_worker_pool_;
 };
 
 

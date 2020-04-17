@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "event_pool.h"
-#include <iostream>
 
 namespace onnxruntime {
 namespace contrib {
@@ -10,7 +9,6 @@ namespace contrib {
 void OrtEventPool::SignalEvent(int64_t id) {
   ORT_ENFORCE(id >= 0 && id < MaxNumItems);
   std::unique_lock<std::mutex> lock(pool_[id].mutex);
-  std::cout << "(event_pool.cc) Record " << id << std::endl;
   pool_[id].signaled.store(true);
   lock.unlock();
   pool_[id].cv.notify_all();
@@ -30,7 +28,6 @@ bool OrtEventPool::QueryEvent(int64_t id) const {
 void OrtEventPool::WaitEvent(int64_t id) const {
   ORT_ENFORCE(id >= 0 && id < MaxNumItems);
   std::unique_lock<std::mutex> lock(pool_[id].mutex);
-  std::cout << "(event_pool.cc) Wait " << id << std::endl;
   pool_[id].cv.wait(lock, [this, id] { return pool_[id].signaled.load(); });
 };
 

@@ -151,6 +151,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("cuda_mem_limit_in_gb", "Max cuda memory ort can use, in GB", cxxopts::value<float>()->default_value("-1.0"))
       ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
+      ("do_pipeline", "Enable pipeline.", cxxopts::value<bool>()->default_value("false"))
+      ("num_pipeline_stages", "Number of pipeline stages.", cxxopts::value<int>()->default_value("1"))
       ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
         cxxopts::value<bool>()->default_value("true"));
   options
@@ -367,6 +369,9 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     ORT_RETURN_IF_NOT(params.data_parallel_size > 0, "data_parallel_size must > 0");
     ORT_RETURN_IF_NOT(params.horizontal_parallel_size > 0, "horizontal_parallel_size must > 0");
 
+    params.do_pipeline = flags["do_pipeline"].as<bool>();
+    params.num_pipeline_stages = flags["num_pipeline_stages"].as<int>();
+
     ort_params.log_severity = static_cast<logging::Severity>(flags["ort_log_severity"].as<int>());
     ORT_RETURN_IF_NOT(
         logging::Severity::kVERBOSE <= ort_params.log_severity &&
@@ -439,7 +444,6 @@ void setup_training_params(BertParameters& params) {
 #endif
 
 #ifdef USE_CUDA
-  std::cout << "params.mpi_context.local_rank: " <<  params.mpi_context.local_rank << std::endl;
   OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(params.mpi_context.local_rank);
   size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
   if (params.cuda_mem_limit_in_gb > 0)
@@ -495,18 +499,12 @@ void setup_training_params(BertParameters& params) {
                                    const std::vector<std::string>& fetch_names,
                                    const std::vector<OrtValue>& fetches,
                                    size_t step) {
-    std::cout << "Err0-" << params.mpi_context.world_rank << std::endl;
     const Tensor& total_loss_t = fetches[0].Get<Tensor>();
-    std::cout << "Err1-" << params.mpi_context.world_rank << std::endl;
     const Tensor& mlm_loss_t = fetches[1].Get<Tensor>();
-    std::cout << "Err2-" << params.mpi_context.world_rank << std::endl;
     const Tensor& nsp_loss_t = fetches[2].Get<Tensor>();
 
-    std::cout << "Err3-" << params.mpi_context.world_rank << std::endl;
     const auto curr_total_loss = GetLossValue(total_loss_t);
-    std::cout << "Err4-" << params.mpi_context.world_rank << std::endl;
     const auto curr_mlm_loss = GetLossValue(mlm_loss_t);
-    std::cout << "Err5-" << params.mpi_context.world_rank << std::endl;
     const auto curr_nsp_loss = GetLossValue(nsp_loss_t);
 
     total_loss += curr_total_loss;

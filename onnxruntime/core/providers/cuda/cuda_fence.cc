@@ -57,9 +57,6 @@ void CUDAFence::AfterUsedAsInput(int queue_id) {
 void CUDAFence::AfterUsedAsOutput(int queue_id) {
   // update write fence
   cudaStream_t stream = data_transfer_->GetStream(queue_id);
-
-  int cuda_device;
-  CUDA_CALL_THROW(cudaGetDevice(&cuda_device));
   CUDA_CALL_THROW(cudaEventRecord(write_event_, stream));
 }
 

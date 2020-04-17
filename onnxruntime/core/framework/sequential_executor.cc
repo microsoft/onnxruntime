@@ -183,7 +183,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 
     auto p_op_kernel = session_state.GetKernel(node_index);
-    std::cout << "(seq) pid: " << getpid() << ", tid: " << std::this_thread::get_id() << ", op: " << node.OpType() << ", name: " << node.Name() << std::endl;
     // if a kernel has been added in the session state, it better be NON-null.
     if (p_op_kernel == nullptr)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",

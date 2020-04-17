@@ -191,10 +191,8 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
   ArgDef reduced_fused_gradient_argdef;
 
   if (opt_graph_config_.use_nccl) {
-    if (false)
     ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, fused_gradient_argdef, graph_defs, reduced_fused_gradient_argdef));
   } else {
-    if (false)
     ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
   }
 
