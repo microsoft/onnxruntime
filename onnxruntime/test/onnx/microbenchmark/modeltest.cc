@@ -42,7 +42,7 @@ static void BM_CreateSession_WithGPU(benchmark::State& state) {
   const ORTCHAR_T* model_path = ORT_TSTR("../models/opset8/test_bvlc_alexnet/model.onnx");
   OrtSessionOptions* session_option;
   ORT_BREAK_ON_ERROR(g_ort->CreateSessionOptions(&session_option));
-  ORT_BREAK_ON_ERROR(g_ort->SessionOptionsAppendExecutionProvider_CUDA(session_option, 0));
+  ORT_BREAK_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_option, 0));
   for (auto _ : state) {
     OrtSession* session;
     ORT_BREAK_ON_ERROR(g_ort->CreateSession(env, model_path, session_option, &session));

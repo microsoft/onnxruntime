@@ -256,9 +256,16 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
           } else if (dim.has_dim_value()) {
             len *= dim.dim_value();
           } else {
-            return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute");
+            // tensor shape is unknown
+            len = 0;
           }
         }
+
+        // Skip planning for this tensor if shape is unknown
+        if (len == 0) {
+          continue;
+        }
+
         if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(len, ml_data_type->Size(), &size)) {
           return Status(ONNXRUNTIME, FAIL, "Size overflow");
         }

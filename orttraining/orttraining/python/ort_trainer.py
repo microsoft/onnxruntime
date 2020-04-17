@@ -49,9 +49,9 @@ def generate_sample(desc, device=None):
     # symbolic dimensions are described with strings. set symbolic dimensions to be 1
     size = [s if isinstance(s, (int)) else 1 for s in desc.shape_]
     if desc.num_classes_:
-        return torch.randint(0, desc.num_classes_, size, dtype=desc.dtype_, device=device)
+        return torch.randint(0, desc.num_classes_, size, dtype=desc.dtype_).to(device)
     else:
-        return torch.randn(size, dtype=desc.dtype_, device=device)
+        return torch.randn(size, dtype=desc.dtype_).to(device)
 
 def get_device_index(device):
     if type(device) == str:
@@ -359,21 +359,6 @@ def generate_node_name(graph, base_name):
             return new_name
         generator += 1
 
-def add_loss_scale_input(model):
-    # verify_fully_optimized_model ensures that the first output is the loss
-    output_name = model.graph.output[0].name
-    loss_scale_input_name = generate_node_arg_name(model.graph, 'loss_scale_' + output_name)
-    scaled_loss_output_name = generate_node_arg_name(model.graph, 'scaled_loss_' + output_name)
-    node_name = generate_node_name(model.graph, "loss_scale_" + output_name)
-
-    loss_scale_input_value_info = helper.make_tensor_value_info(loss_scale_input_name, onnx.TensorProto.FLOAT, [])
-    model.graph.input.extend([loss_scale_input_value_info])
-
-    node = model.graph.node.add()
-    inputs = [loss_scale_input_name, output_name]
-    node.CopyFrom(onnx.helper.make_node("Mul", inputs, [scaled_loss_output_name], node_name))
-    return loss_scale_input_name, scaled_loss_output_name
-
 def create_and_bind_grad_or_grad_accumulate_buffer(train_io_binding, torch_tensor, param,
                                                    enable_grad_accumulation, device, device_index):
     if torch_tensor.grad is None:
@@ -407,17 +392,11 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
-    ort_parameters.scaled_loss_output_name = scaled_loss_output_name
     ort_parameters.use_mixed_precision = use_mixed_precision
     ort_parameters.world_rank = world_rank
     ort_parameters.world_size = world_size
     ort_parameters.gradient_accumulation_steps = gradient_accumulation_steps
     ort_parameters.use_mixed_precision = use_mixed_precision
-    if ort_parameters.use_mixed_precision:
-        assert(loss_scale_input_name)
-        assert(scaled_loss_output_name)
-        ort_parameters.loss_scale_input_name = loss_scale_input_name
-        ort_parameters.scaled_loss_output_name = scaled_loss_output_name
     ort_parameters.allreduce_post_accumulation = allreduce_post_accumulation
     ort_parameters.partition_optimizer = partition_optimizer
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
@@ -625,12 +604,6 @@ class ORTTrainer():
         if self.onnx_model_ is None:
             return
 
-        if self.use_mixed_precision:
-            self.loss_scale_input_name, self.scaled_loss_output_name = add_loss_scale_input(self.onnx_model_)
-            self.input_desc_with_lr_and_loss_scale = [*self.input_desc_with_lr, IODescription(self.loss_scale_input_name, [], torch.float32)]
-        else:
-            self.loss_scale_input_name, self.scaled_loss_output_name = '', ''
-
         self.verify_fully_optimized_model(self.onnx_model_)
         self.session, self.train_io_binding, self.eval_io_binding, self.output_name, _, self.output_types = \
             create_ort_training_session_with_optimizer(
@@ -643,9 +616,16 @@ class ORTTrainer():
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
                 frozen_weights=self.frozen_weights_, opset_version=self.opset_version_)
 
+        self.loss_scale_input_name = self.session.loss_scale_input_name
+
+        if self.use_mixed_precision:
+            self.input_desc_with_lr_and_loss_scale = [
+                *self.input_desc_with_lr,
+                IODescription(self.loss_scale_input_name, [], torch.float32)]
+
         # ORT backend has modified model output dtype from float32 to float16.
         for o_desc in self.model_desc_.outputs_:
-            if self.use_mixed_precision and o_desc.dtype_ == torch.float32:
+            if self.use_mixed_precision and o_desc.dtype_ == torch.float32 and not self.session.is_output_fp32_node(o_desc.name_):
                 o_desc.eval_dtype_ = torch.float16
             else:
                 o_desc.eval_dtype_ = o_desc.dtype_
@@ -764,7 +744,7 @@ class ORTTrainer():
             lr_this_step = self.get_lr_this_step_(self.global_step_)
             learning_rate = torch.tensor([lr_this_step])
         if self.loss_scaler_ is not None and self.use_mixed_precision:
-            loss_scale = torch.tensor(self.loss_scaler_.loss_scale_)
+            loss_scale = torch.tensor([self.loss_scaler_.loss_scale_])
 
         if self.onnx_model_ is None:
             sample_input, _ = self.prepare_input_and_fetches(self.model_desc_.inputs_,

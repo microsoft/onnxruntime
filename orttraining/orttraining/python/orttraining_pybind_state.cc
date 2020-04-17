@@ -7,7 +7,6 @@
 // pybind11/stl.h is needed to support std::unordered_set, etc.
 #include <pybind11/stl.h>
 
-#include "core/framework/random_seed.h"
 #include "core/framework/session_options.h"
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
@@ -35,8 +34,6 @@ struct TrainingParameters {
 
   // optimizer
   std::string training_optimizer_name;
-  std::string loss_scale_input_name;
-  std::string scaled_loss_output_name;
   std::string lr_params_feed_name = "Learning_Rate";
   std::unordered_map<std::string, std::unordered_map<std::string, float>> optimizer_attributes_map;
   std::unordered_map<std::string, std::unordered_map<std::string, int64_t>> optimizer_int_attributes_map;
@@ -53,12 +50,15 @@ struct TrainingParameters {
   int data_parallel_size = 1;
   int horizontal_parallel_size = 1;
   bool partition_optimizer = false;
-  int seed = -1;
   bool enable_grad_norm_clip = true;
 };
 
+struct TrainingConfigurationResult {
+  optional<std::string> loss_scale_input_name;
+};
+
 // TODO: this method does not handle parallel optimization.
-void ConfigureSessionForTraining(
+TrainingConfigurationResult ConfigureSessionForTraining(
     training::TrainingSession* sess, TrainingParameters& parameters) {
   //TODO tix, refactor the mpi related code to populate all fields correctly by default.
   ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size);
@@ -107,14 +107,12 @@ void ConfigureSessionForTraining(
 
   if (parameters.use_mixed_precision) {
     training::TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
-    mp.add_loss_scaling = false;
     mp.use_fp16_initializers = true;
 
     config.mixed_precision_config = mp;
   }
 
-  config.loss_name =
-      parameters.use_mixed_precision ? parameters.scaled_loss_output_name : parameters.loss_output_name;
+  config.loss_name = parameters.loss_output_name;
 
   if (!parameters.training_optimizer_name.empty()) {
     training::TrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
@@ -150,14 +148,17 @@ void ConfigureSessionForTraining(
     config.optimizer_config = opt;
   }
 
-  if (parameters.seed > 0) {
-    utils::SetStaticRandomSeed(static_cast<uint32_t>(parameters.seed));
-    std::cout << "Random seed is set to " << parameters.seed << std::endl;
-  }
-
   training::TrainingSession::TrainingConfigurationResult config_result{};
 
   OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
+
+  TrainingConfigurationResult python_config_result{};
+  if (config_result.mixed_precision_config_result.has_value()) {
+    const auto& mp_config_result = config_result.mixed_precision_config_result.value();
+    python_config_result.loss_scale_input_name = mp_config_result.loss_scale_input_name;
+  }
+
+  return python_config_result;
 }
 
 void addObjectMethodsForTraining(py::module& m) {
@@ -167,8 +168,6 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("immutable_weights", &TrainingParameters::immutable_weights)
       .def_readwrite("weights_not_to_train", &TrainingParameters::weights_not_to_train)
       .def_readwrite("weights_to_train", &TrainingParameters::weights_to_train)
-      .def_readwrite("loss_scale_input_name", &TrainingParameters::loss_scale_input_name)
-      .def_readwrite("scaled_loss_output_name", &TrainingParameters::scaled_loss_output_name)
       .def_readwrite("training_optimizer_name", &TrainingParameters::training_optimizer_name)
       .def_readwrite("lr_params_feed_name", &TrainingParameters::lr_params_feed_name)
       .def_readwrite("optimizer_attributes_map", &TrainingParameters::optimizer_attributes_map)
@@ -183,6 +182,14 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip);
 
+  py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
+  config_result.def(py::init())
+      .def_property_readonly("loss_scale_input_name", [](const TrainingConfigurationResult& result) -> py::object {
+        if (result.loss_scale_input_name.has_value()) {
+          return py::str{result.loss_scale_input_name.value()};
+        }
+        return py::none();
+      });
 
   py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
   training_session.def(py::init([](const SessionOptions& so) {
@@ -201,19 +208,23 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("load_model", [](onnxruntime::training::TrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
         OrtPybindThrowIfError(sess->Load(path));
 
-        ConfigureSessionForTraining(sess, parameters);
+        const auto config_result = ConfigureSessionForTraining(sess, parameters);
 
         std::vector<std::string> provider_types = {};
         InitializeSession(sess, provider_types);
+
+        return config_result;
       })
       .def("read_bytes", [](onnxruntime::training::TrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
         std::istringstream buffer(serialized_model);
         OrtPybindThrowIfError(sess->Load(buffer));
 
-        ConfigureSessionForTraining(sess, parameters);
+        const auto config_result = ConfigureSessionForTraining(sess, parameters);
 
         std::vector<std::string> provider_types = {};
         InitializeSession(sess, provider_types);
+
+        return config_result;
       })
       .def("get_state", [](onnxruntime::training::TrainingSession* sess) {
         NameMLValMap state_tensors;
@@ -258,7 +269,11 @@ void addObjectMethodsForTraining(py::module& m) {
           state_tensors.insert(std::make_pair(initializer.first, ml_value));
         }
         ORT_THROW_IF_ERROR(sess->SetStateTensors(state_tensors, strict));
+      })
+      .def("is_output_fp32_node", [](onnxruntime::training::TrainingSession* sess, const std::string& output_name) {
+        return sess->IsGraphOutputFp32Node(output_name);
       });
+
 }
 }  // namespace python
 }  // namespace onnxruntime

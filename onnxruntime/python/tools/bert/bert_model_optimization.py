@@ -23,6 +23,7 @@
 #      PyTorch 1.2 or above, and exported to Onnx using opset version 10 or 11.
 
 import logging
+import coloredlogs
 import onnx
 import os
 import sys
@@ -33,17 +34,20 @@ from onnx import ModelProto, TensorProto, numpy_helper
 from BertOnnxModel import BertOnnxModel
 from BertOnnxModelTF import BertOnnxModelTF
 from BertOnnxModelKeras import BertOnnxModelKeras
+from Gpt2OnnxModel import Gpt2OnnxModel
 
 logger = logging.getLogger('')
 
 # Map model type to tuple: optimizer class, export tools (pytorch, tf2onnx, keras2onnx) and whether OnnxRuntime has the optimization.
 MODEL_CLASSES = {
-    "bert" : (BertOnnxModel, "pytorch", True),
+    "bert": (BertOnnxModel, "pytorch", True),
     "bert_tf": (BertOnnxModelTF, "tf2onnx", False),
-    "bert_keras" : (BertOnnxModelKeras, "keras2onnx", False)
+    "bert_keras": (BertOnnxModelKeras, "keras2onnx", False),
+    "gpt2": (Gpt2OnnxModel, "pytorch", True)
 }
 
-def optimize_by_onnxruntime(onnx_model_path, use_gpu, optimized_model_path=None):
+
+def optimize_by_onnxruntime(onnx_model_path, use_gpu, optimized_model_path=None, opt_level=99):
     """
     Use onnxruntime package to optimize model. It could support models exported by PyTorch.
 
@@ -62,10 +66,16 @@ def optimize_by_onnxruntime(onnx_model_path, use_gpu, optimized_model_path=None)
         return onnx_model_path
 
     sess_options = onnxruntime.SessionOptions()
-    sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+    if opt_level == 1:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+    elif opt_level == 2:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+    else:
+        assert opt_level == 99
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
 
     if optimized_model_path is None:
-        path_prefix = onnx_model_path[:-5]   #remove .onnx suffix
+        path_prefix = onnx_model_path[:-5]  #remove .onnx suffix
         optimized_model_path = "{}_ort_{}.onnx".format(path_prefix, "gpu" if use_gpu else "cpu")
 
     sess_options.optimized_model_filepath = optimized_model_path
@@ -74,58 +84,88 @@ def optimize_by_onnxruntime(onnx_model_path, use_gpu, optimized_model_path=None)
         session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=['CPUExecutionProvider'])
     else:
         session = onnxruntime.InferenceSession(onnx_model_path, sess_options)
-        assert 'CUDAExecutionProvider' in session.get_providers() # Make sure there is GPU
+        assert 'CUDAExecutionProvider' in session.get_providers()  # Make sure there is GPU
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
     logger.info("Save optimized model by onnxruntime to {}".format(optimized_model_path))
     return optimized_model_path
 
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input', required=True, type=str,
-                        help="input onnx model path")
+    parser.add_argument('--input', required=True, type=str, help="input onnx model path")
 
-    parser.add_argument('--output', required=True, type=str,
-                        help="optimized onnx model path")
+    parser.add_argument('--output', required=True, type=str, help="optimized onnx model path")
 
-    parser.add_argument('--model_type', required=False, type=str.lower, default="bert",
+    parser.add_argument('--model_type',
+                        required=False,
+                        type=str.lower,
+                        default="bert",
                         choices=list(MODEL_CLASSES.keys()),
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
 
-    parser.add_argument('--num_heads', required=False, type=int, default=12,
+    parser.add_argument('--num_heads',
+                        required=False,
+                        type=int,
+                        default=12,
                         help="number of attention heads. 12 for bert-base model and 16 for bert-large")
 
-    parser.add_argument('--hidden_size', required=False, type=int, default=768,
+    parser.add_argument('--hidden_size',
+                        required=False,
+                        type=int,
+                        default=768,
                         help="bert model hidden size. 768 for bert-base model and 1024 for bert-large")
 
-    parser.add_argument('--sequence_length', required=False, type=int, default=128,
-                        help="max sequence length")
+    parser.add_argument('--sequence_length', required=False, type=int, default=128, help="max sequence length")
 
-    parser.add_argument('--input_int32', required=False, action='store_true',
-                         help="Use int32 (instead of int64) tensor as input to avoid unnecessary data cast")
+    parser.add_argument('--input_int32',
+                        required=False,
+                        action='store_true',
+                        help="Use int32 (instead of int64) tensor as input to avoid unnecessary data cast")
     parser.set_defaults(input_int32=False)
 
-    parser.add_argument('--float16', required=False, action='store_true',
-                        help="If your target device is V100 or T4 GPU, use this to convert float32 to float16 for best performance")
+    parser.add_argument(
+        '--float16',
+        required=False,
+        action='store_true',
+        help="If your target device is V100 or T4 GPU, use this to convert float32 to float16 for best performance")
     parser.set_defaults(float16=False)
 
-    parser.add_argument('--gpu_only', required=False, action='store_true',
+    parser.add_argument('--gpu_only',
+                        required=False,
+                        action='store_true',
                         help="whether the target device is gpu or not")
     parser.set_defaults(gpu_only=False)
 
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
+    parser.add_argument('--opt_level',
+                        required=False,
+                        type=int,
+                        choices=[0, 1, 2, 99],
+                        default=99,
+                        help="onnxruntime optimization level. 0 will disable onnxruntime.")
+
     args = parser.parse_args()
 
     return args
 
-def optimize_model(input, model_type, gpu_only, num_heads, hidden_size, sequence_length, input_int32, float16):
+
+def optimize_model(input,
+                   model_type,
+                   gpu_only,
+                   num_heads,
+                   hidden_size,
+                   sequence_length,
+                   input_int32,
+                   float16,
+                   opt_level=99):
     (optimizer_class, producer, run_onnxruntime) = MODEL_CLASSES[model_type]
 
     input_model_path = input
-    if run_onnxruntime:
-        input_model_path = optimize_by_onnxruntime(input_model_path, gpu_only)
+    if run_onnxruntime and opt_level > 0:
+        input_model_path = optimize_by_onnxruntime(input_model_path, gpu_only, opt_level=opt_level)
         logger.info("Use OnnxRuntime to optimize and save the optimized model to {}".format(input_model_path))
 
     model = ModelProto()
@@ -133,33 +173,30 @@ def optimize_model(input, model_type, gpu_only, num_heads, hidden_size, sequence
         model.ParseFromString(f.read())
 
     if model.producer_name and producer != model.producer_name:
-        logger.warning(f"Model producer not matched: Expect {producer},  Got {model.producer_name} {model.producer_version}. Please specify correct --model_type parameter.")
+        logger.warning(
+            f"Model producer not matched: Expect {producer},  Got {model.producer_name} {model.producer_version}. Please specify correct --model_type parameter."
+        )
 
     bert_model = optimizer_class(model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only)
     bert_model.optimize()
 
     return bert_model
 
+
+def setup_logger(verbose):
+    if verbose:
+        coloredlogs.install(level='DEBUG', fmt='[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s')
+    else:
+        coloredlogs.install(fmt='%(funcName)20s: %(message)s')
+
+
 def main():
     args = parse_arguments()
 
-    # output logging to stdout
-    log_handler = logging.StreamHandler(sys.stdout)
-    if args.verbose:
-        log_handler.setFormatter(logging.Formatter('[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s'))
-        logging_level = logging.DEBUG
-    else:
-        log_handler.setFormatter(logging.Formatter('%(filename)20s: %(message)s'))
-        logging_level = logging.INFO
-    log_handler.setLevel(logging_level)
+    setup_logger(args.verbose)
 
-    # Avoid duplicated handlers when runing this script in multiple cells of Jupyter Notebook.
-    if not logger.hasHandlers():
-        logger.addHandler(log_handler)
-
-    logger.setLevel(logging_level)
-
-    bert_model = optimize_model(args.input, args.model_type, args.gpu_only, args.num_heads, args.hidden_size, args.sequence_length, args.input_int32, args.float16)
+    bert_model = optimize_model(args.input, args.model_type, args.gpu_only, args.num_heads, args.hidden_size,
+                                args.sequence_length, args.input_int32, args.float16, args.opt_level)
 
     bert_model.save_model_to_file(args.output)
 
@@ -167,6 +204,7 @@ def main():
         logger.info("The output model is fully optimized.")
     else:
         logger.warning("The output model is not fully optimized. It might not be usable.")
+
 
 if __name__ == "__main__":
     main()

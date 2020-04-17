@@ -136,6 +136,7 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
   }
 
   graph_defs.AddNodeDefs(new_nodes);
+  graph_defs.AddGraphInputs({masked_lm_positions, masked_lm_ids, masked_lm_weights, next_sentence_labels});
   graph_defs.AddGraphOutputs({mlm_loss, nsp_loss, total_loss});
 
   return graph_defs;

@@ -420,24 +420,15 @@ MlasNchwcUpsample(
 // Linear quantization routines.
 //
 
+template<typename OutputType>
 void
 MLASCALL
 MlasQuantizeLinear(
     const float* Input,
-    uint8_t* Output,
+    OutputType* Output,
     size_t N,
     float Scale,
-    uint8_t ZeroPoint
-    );
-
-void
-MLASCALL
-MlasQuantizeLinear(
-    const float* Input,
-    int8_t* Output,
-    size_t N,
-    float Scale,
-    int8_t ZeroPoint
+    OutputType ZeroPoint
     );
 
 void

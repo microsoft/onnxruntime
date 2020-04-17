@@ -5,6 +5,7 @@
 #include <bitset>
 #include <cmath>
 #include <random>
+#include <thread>
 
 #include "gtest/gtest.h"
 #include "core/framework/random_seed.h"
@@ -18,6 +19,7 @@
 namespace onnxruntime {
 namespace test {
 
+#ifndef NDEBUG
 using ONNX_NAMESPACE::MakeAttribute;
 using training::OpDef;
 
@@ -29,7 +31,7 @@ static bool IsErrorWithinTolerance(float error, float tolerance) {
   EXPECT_TRUE(IsErrorWithinTolerance(max_error, tolerance)) \
       << "max_error: " << max_error                         \
       << "; tolerance: " << tolerance                       \
-      << "; ORT test random seed: " << utils::GetStaticRandomSeed() << "; "
+      << "; ORT test random seed: " << utils::GetRandomSeed() << "; "
 
 #define EXPECT_IS_TINY(max_error) \
   EXPECT_IS_TINIER_THAN(max_error, 1.5e-2f)
@@ -43,7 +45,7 @@ void GenerateRandomDataWithOneHot(
     // TODO: Consider varying mean and variance
     float scale = 5.f;
     float mean = 0.f;
-    const uint32_t seed = utils::GetStaticRandomSeed();
+    const int64_t seed = utils::GetRandomSeed();
 
     std::default_random_engine generator{gsl::narrow_cast<decltype(generator)::result_type>(seed)};
     std::normal_distribution<T> distribution{mean, scale};
@@ -431,6 +433,89 @@ TEST(GradientCheckerTest, ReduceMeanGrad) {
                                            MakeAttribute("keepdims", int64_t(0))});
     EXPECT_IS_TINY(max_error);
   }
+
+  // axes = [-2], keepdims = 1
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4, 1, 2}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{-2}),
+                                           MakeAttribute("keepdims", int64_t(1))});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // axes = [-2, -1], keepdims = 0
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{-2, -1}),
+                                           MakeAttribute("keepdims", int64_t(0))});
+    EXPECT_IS_TINY(max_error);
+  }
+}
+
+TEST(GradientCheckerTest, ReduceSumGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"ReduceSum"};
+
+  // default
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{1, 1, 1}}, &max_error);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // axes = [0, 1, 2], keepdims = 0
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{0, 1, 2}),
+                                           MakeAttribute("keepdims", int64_t(0))});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // axes = [0, 2], keepdims = 1
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{1, 3, 1}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{0, 2})});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // axes = [0, 1], keepdims = 0
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{2}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{0, 1}),
+                                           MakeAttribute("keepdims", int64_t(0))});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // axes = [1], keepdims = 1
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4, 1, 2}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{1}),
+                                           MakeAttribute("keepdims", int64_t(1))});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // axes = [2], keepdims = 0
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4, 3}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{2}),
+                                           MakeAttribute("keepdims", int64_t(0))});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // axes = [-2], keepdims = 1
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4, 1, 2}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{-2}),
+                                           MakeAttribute("keepdims", int64_t(1))});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // axes = [-1, -3], keepdims = 0
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{3}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{-1, -3}),
+                                           MakeAttribute("keepdims", int64_t(0))});
+    EXPECT_IS_TINY(max_error);
+  }
 }
 
 #ifndef USE_CUDA
@@ -622,6 +707,26 @@ TEST(GradientCheckerTest, ConcatGrad) {
     TensorShape y_shape({1, 2, 9});
     gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape}, {y_shape}, &max_error,
                                           {MakeAttribute("axis", int64_t(2))});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  //concat_different_shape
+  {
+    TensorShape x1_shape({2, 2});
+    TensorShape x2_shape({2, 4});
+    TensorShape y_shape({2, 6});
+    gradient_checker.ComputeGradientError(op_def, {x1_shape, x2_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("axis", int64_t(1))});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  //concat_different_shape_and_negative_axis
+  {
+    TensorShape x1_shape({2, 2});
+    TensorShape x2_shape({2, 4});
+    TensorShape y_shape({2, 6});
+    gradient_checker.ComputeGradientError(op_def, {x1_shape, x2_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("axis", int64_t(-1))});
     EXPECT_IS_TINY(max_error);
   }
 }
@@ -1102,6 +1207,129 @@ TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
   TestSparseSoftmaxCrossEntropyGrad({2, 3, 2}, "sum");
 }
 
+void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_shape
+                                     const std::string& reduction,
+                                     int64_t ignore_index = 0,
+                                     int64_t D = 2 /* num_class*/) {
+  float max_error;
+  bool include_ignore_index = false;
+  bool insert_ignore_index = false;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"SoftmaxCrossEntropyLoss", kOnnxDomain, 12};
+  std::function<float(float)> transformer_index = [D, &include_ignore_index, &insert_ignore_index, ignore_index](float x) {
+    if (include_ignore_index) {
+      if (insert_ignore_index) {
+        insert_ignore_index = false;
+        return static_cast<float>(ignore_index);
+      } else {
+        insert_ignore_index = true;
+        return std::fmod(std::fabs(x) * 5.0f, D * 1.0f);
+      }
+    } else {
+      return std::fmod(std::fabs(x) * 5.0f, D * 1.0f);
+    }
+  };
+
+  std::function<float(float)> transformer_weight = [](float x) { return std::fmod(std::fabs(x), 2.0f); };
+
+  // without weight and ignore_index
+  {
+    std::vector<int64_t> logit_shape(index_shape.GetDims());
+    auto it = logit_shape.begin() + 1;
+    logit_shape.insert(it, D);
+    TensorInfo loss_info = {};
+    if (reduction == "none") {
+      loss_info = {TensorInfo(index_shape.GetDims())};
+    }
+
+    include_ignore_index = true;
+    TensorInfo x_info(logit_shape);
+    TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info},
+                                          {loss_info, {logit_shape, false}}, &max_error,
+                                          {MakeAttribute("reduction", reduction)});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // with weight and no ignore_index
+  {
+    std::vector<int64_t> logit_shape(index_shape.GetDims());
+    auto it = logit_shape.begin() + 1;
+    logit_shape.insert(it, D);
+    TensorInfo loss_info = {};
+    if (reduction == "none") {
+      loss_info = {TensorInfo(index_shape.GetDims())};
+    }
+
+    include_ignore_index = false;
+    TensorInfo x_info(logit_shape);
+    TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo weight_info({logit_shape[1]}, false, &transformer_weight);
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info},
+                                          {loss_info, {logit_shape, false}}, &max_error,
+                                          {MakeAttribute("reduction", reduction)});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // without weight and ignore index
+  {
+    std::vector<int64_t> logit_shape(index_shape.GetDims());
+    auto it = logit_shape.begin() + 1;
+    logit_shape.insert(it, D);
+    TensorInfo loss_info = {};
+    if (reduction == "none") {
+      loss_info = {TensorInfo(index_shape.GetDims())};
+    }
+
+    include_ignore_index = true;
+    TensorInfo x_info(logit_shape);
+    TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info},
+                                          {loss_info, {logit_shape, false}}, &max_error,
+                                          {MakeAttribute("reduction", reduction), MakeAttribute("ignore_index", ignore_index)});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // with weight and ignore_index
+  {
+    std::vector<int64_t> logit_shape(index_shape.GetDims());
+    auto it = logit_shape.begin() + 1;
+    logit_shape.insert(it, D);
+    TensorInfo loss_info = {};
+    if (reduction == "none") {
+      loss_info = {TensorInfo(index_shape.GetDims())};
+    }
+
+    include_ignore_index = true;
+    TensorInfo x_info(logit_shape);
+    TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo weight_info({logit_shape[1]}, false, &transformer_weight);
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info},
+                                          {loss_info, {logit_shape, false}}, &max_error,
+                                          {MakeAttribute("reduction", reduction), MakeAttribute("ignore_index", ignore_index)});
+    EXPECT_IS_TINY(max_error);
+  }
+}
+
+TEST(GradientCheckerTest, SoftmaxCrossEntropyLossGrad) {
+  TestSoftmaxCrossEntropyLossGrad({5}, "mean");
+  TestSoftmaxCrossEntropyLossGrad({5}, "sum");
+  TestSoftmaxCrossEntropyLossGrad({2}, "none");
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "mean");
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "sum");
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "none");
+  TestSoftmaxCrossEntropyLossGrad({5}, "mean", -1);
+  TestSoftmaxCrossEntropyLossGrad({5}, "sum", -1);
+  TestSoftmaxCrossEntropyLossGrad({2}, "none", -1);
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "mean", -1);
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "sum", -1);
+  TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "none", -1);
+}
+
 TEST(GradientCheckerTest, GeluGrad) {
   UnaryOpGradientTest("Gelu", kMSDomain, 1);
 }
@@ -1552,16 +1780,17 @@ TEST(Synchronization, WaitAndRecordEventMany) {
   const size_t event_count = 16;
   for (int i = 0; i < 8; ++i) {
     std::thread thread_pool[2 * event_count];
-    for (int j = 0; j < event_count; ++j) {
+    for (int j = 0; j < static_cast<int>(event_count); ++j) {
       thread_pool[j] = std::thread(wait_event, j);
       thread_pool[j + event_count] = std::thread(record_event, j);
     }
-    for (int j = 0; j < event_count; ++j) {
+    for (size_t j = 0; j < event_count; ++j) {
       thread_pool[j].join();
       thread_pool[j + event_count].join();
     }
   }
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

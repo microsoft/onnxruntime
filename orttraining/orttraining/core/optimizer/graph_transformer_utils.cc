@@ -53,6 +53,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
       rule_transformer->Register(make_unique<InsertMaxPoolOutput>());
       rule_transformer->Register(make_unique<AdjustBatchNormOutputs>());
       rule_transformer->Register(make_unique<UnsqueezeElimination>());
+      rule_transformer->Register(make_unique<InsertSoftmaxCrossEntropyLossOutput>());
 
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(compatible_eps));

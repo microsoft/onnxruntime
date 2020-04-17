@@ -87,7 +87,7 @@ Status Slice<dynamic>::ComputeInternal(OpKernelContext* ctx) const {
                                           p_flattened_output_dims));
 
   } else {
-    ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_,
+    ORT_RETURN_IF_ERROR(PrepareForCompute(StartsAttribute(), EndsAttribute(), AxesAttribute(),
                                           input_dimensions, starts, steps, output_dims,
                                           p_flattened_output_dims));
   }
@@ -98,16 +98,8 @@ Status Slice<dynamic>::ComputeInternal(OpKernelContext* ctx) const {
     dimension_count = flattened_output_dims.size();
   }
 
-  TArray<int64_t> starts_buffer(gsl::narrow_cast<int32_t>(starts.size()));
-  for (size_t i = 0; i < starts.size(); ++i) {
-    starts_buffer.data_[i] = starts[i];
-  }
-
-  TArray<int64_t> steps_buffer(gsl::narrow_cast<int32_t>(steps.size()));
-  for (size_t i = 0; i < steps.size(); ++i) {
-    steps_buffer.data_[i] = steps[i];
-  }
-
+  TArray<int64_t> starts_buffer(starts);
+  TArray<int64_t> steps_buffer(steps);
   TArray<int64_t> input_strides(gsl::narrow_cast<int32_t>(dimension_count));
   const gsl::span<int64_t> input_strides_span = gsl::make_span(input_strides.data_, input_strides.size_);
   if (p_flattened_output_dims != nullptr) {
@@ -129,8 +121,8 @@ Status Slice<dynamic>::ComputeInternal(OpKernelContext* ctx) const {
 
   TensorPitches original_output_strides(p_flattened_output_dims != nullptr ? flattened_output_dims : output_dims);
   TArray<fast_divmod> output_strides(gsl::narrow_cast<int32_t>(original_output_strides.size()));
-  for (size_t i = 0; i < original_output_strides.size(); ++i) {
-    output_strides.data_[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
+  for (int32_t i = 0; i < static_cast<int32_t>(original_output_strides.size()); ++i) {
+    output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
   }
 
   size_t element_size = input_tensor->DataType()->Size();

@@ -13,7 +13,9 @@ from onnx import ModelProto, TensorProto, numpy_helper
 
 logger = logging.getLogger(__name__)
 
+
 class OnnxModel:
+
     def __init__(self, model):
         self.model = model
         self.node_name_counter = {}
@@ -32,7 +34,7 @@ class OnnxModel:
         output_name_to_node = {}
         for node in self.model.graph.node:
             for output_name in node.output:
-                    output_name_to_node[output_name] = node
+                output_name_to_node[output_name] = node
         return output_name_to_node
 
     def nodes(self):
@@ -57,7 +59,7 @@ class OnnxModel:
 
     def add_initializer(self, tensor):
         self.model.graph.initializer.extend([tensor])
- 
+
     def add_input(self, input):
         self.model.graph.input.extend([input])
 
@@ -95,7 +97,7 @@ class OnnxModel:
     def get_children(self, node, input_name_to_nodes=None):
         if (input_name_to_nodes is None):
             input_name_to_nodes = self.input_name_to_nodes()
-            
+
         children = []
         for output in node.output:
             if output in input_name_to_nodes:
@@ -149,7 +151,13 @@ class OnnxModel:
                     logger.debug(f"To find first {parent_op_type}, current {parent.op_type}")
         return None, None
 
-    def match_parent(self, node, parent_op_type, input_index=None, output_name_to_node=None, exclude=[], return_indice=None):
+    def match_parent(self,
+                     node,
+                     parent_op_type,
+                     input_index=None,
+                     output_name_to_node=None,
+                     exclude=[],
+                     return_indice=None):
         '''
         Find parent node based on constraints on op_type and index.
         When input_index is None, we will find the first parent node based on constraints, and return_indice will be appended the corresponding input index.
@@ -190,7 +198,12 @@ class OnnxModel:
 
         return None
 
-    def match_parent_path(self, node, parent_op_types, parent_input_index, output_name_to_node=None, return_indice=None):
+    def match_parent_path(self,
+                          node,
+                          parent_op_types,
+                          parent_input_index,
+                          output_name_to_node=None,
+                          return_indice=None):
         '''
         Find a sequence of input edges based on constraints on parent op_type and index.
         When input_index is None, we will find the first parent node based on constraints, and return_indice will be appended the corresponding input index.
@@ -205,7 +218,7 @@ class OnnxModel:
         Returns:
             parents: a list of matched parent node.
         '''
-        assert(len(parent_input_index) == len(parent_op_types))
+        assert (len(parent_input_index) == len(parent_op_types))
 
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
@@ -213,9 +226,15 @@ class OnnxModel:
         current_node = node
         matched_parents = []
         for i, op_type in enumerate(parent_op_types):
-            matched_parent = self.match_parent(current_node, op_type, parent_input_index[i], output_name_to_node, exclude=[], return_indice=return_indice)
+            matched_parent = self.match_parent(current_node,
+                                               op_type,
+                                               parent_input_index[i],
+                                               output_name_to_node,
+                                               exclude=[],
+                                               return_indice=return_indice)
             if matched_parent is None:
-                logger.debug(f"Failed to match index={i} parent_input_index={parent_input_index[i]} op_type={op_type}")
+                logger.debug(f"Failed to match index={i} parent_input_index={parent_input_index[i]} op_type={op_type}",
+                             stack_info=True)
                 return None
 
             matched_parents.append(matched_parent)
@@ -241,7 +260,7 @@ class OnnxModel:
     def find_first_parent_by_type(self, node, parent_type, output_name_to_node=None, recursive=True):
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
-            
+
         parents = self.get_parents(node, output_name_to_node)
         dq = deque(parents)
         while len(dq) > 0:
@@ -286,6 +305,18 @@ class OnnxModel:
 
         return -1
 
+    def is_constant_with_specified_dimension(self, output_name, dimensions, description):
+        value = self.get_constant_value(output_name)
+        if value is None:
+            logger.debug(f"{description} {output_name} is not initializer.")
+            return False
+
+        if len(value.shape) != dimensions:
+            logger.debug(f"{description} {output_name} shall have {dimensions} dimensions. Got shape {value.shape}")
+            return False
+
+        return True
+
     def has_constant_input(self, node, expected_value, delta=0.000001):
         return self.find_constant_input(node, expected_value, delta) >= 0
 
@@ -320,13 +351,16 @@ class OnnxModel:
 
         for initializer in initializers:
             if initializer.data_type == 1:
-                initializer.CopyFrom(numpy_helper.from_array(numpy_helper.to_array(initializer).astype(np.float16), initializer.name))
+                initializer.CopyFrom(
+                    numpy_helper.from_array(numpy_helper.to_array(initializer).astype(np.float16), initializer.name))
 
         for node in graph.node:
             if node.op_type == 'Constant':
                 for att in node.attribute:
                     if att.name == 'value' and att.t.data_type == 1:
-                        att.CopyFrom(onnx.helper.make_attribute("value", numpy_helper.from_array(numpy_helper.to_array(att.t).astype(np.float16))))
+                        att.CopyFrom(
+                            onnx.helper.make_attribute(
+                                "value", numpy_helper.from_array(numpy_helper.to_array(att.t).astype(np.float16))))
             if node.op_type == 'Cast':
                 for att in node.attribute:
                     if att.name == 'to' and att.i == 1:
@@ -335,7 +369,7 @@ class OnnxModel:
         for input_value_info in graph.input:
             if input_value_info.type.tensor_type.elem_type == TensorProto.FLOAT:
                 initializer = self.get_initializer(input_value_info.name)
-                if initializer is not None: # for compatibility for old converter/exporter
+                if initializer is not None:  # for compatibility for old converter/exporter
                     input_value_info.type.tensor_type.elem_type = 10
                 else:
                     cast_input = input_value_info.name
@@ -362,7 +396,7 @@ class OnnxModel:
             self.node_name_counter[op_type] = 1
 
         if name_prefix is not None:
-            full_name = name_prefix + str(self.node_name_counter[op_type]) 
+            full_name = name_prefix + str(self.node_name_counter[op_type])
         else:
             full_name = op_type + "_" + str(self.node_name_counter[op_type])
 
@@ -479,7 +513,7 @@ class OnnxModel:
         self.remove_nodes(nodes_to_remove)
 
         # remove outputs not in list
-        output_to_remove=[]
+        output_to_remove = []
         for output in self.model.graph.output:
             if output.name not in outputs:
                 output_to_remove.append(output)
@@ -488,14 +522,15 @@ class OnnxModel:
 
         # remove inputs not used by any node.
         input_name_to_nodes = self.input_name_to_nodes()
-        input_to_remove=[]
+        input_to_remove = []
         for input in self.model.graph.input:
             if input.name not in input_name_to_nodes:
                 input_to_remove.append(input)
         for input in input_to_remove:
             self.model.graph.input.remove(input)
 
-        logger.info("Graph pruned: {} inputs, {} outputs and {} nodes are removed".format(len(input_to_remove), len(output_to_remove), len(nodes_to_remove)))
+        logger.info("Graph pruned: {} inputs, {} outputs and {} nodes are removed".format(
+            len(input_to_remove), len(output_to_remove), len(nodes_to_remove)))
 
         self.update_graph()
 
@@ -509,7 +544,7 @@ class OnnxModel:
                     if input_name not in remaining_input_names:
                         remaining_input_names.append(input_name)
         if verbose:
-            logger.debug(f"remaining input names: {remaining_input_names}" )
+            logger.debug(f"remaining input names: {remaining_input_names}")
 
         # remove graph input that is not used
         inputs_to_remove = []
@@ -521,7 +556,7 @@ class OnnxModel:
 
         names_to_remove = [input.name for input in inputs_to_remove]
         logger.debug(f"remove {len(inputs_to_remove)} unused inputs: {names_to_remove}")
-        
+
         # remove weights that are not used
         weights_to_remove = []
         weights_to_keep = []
@@ -549,7 +584,9 @@ class OnnxModel:
                 if output_to_remove in input_name_to_nodes:
                     for impacted_node in input_name_to_nodes[output_to_remove]:
                         if impacted_node not in nodes_to_remove:
-                            logger.debug(f"it is not safe to remove nodes since output {output_to_remove} is used by {impacted_node}")
+                            logger.debug(
+                                f"it is not safe to remove nodes since output {output_to_remove} is used by {impacted_node}"
+                            )
                             return False
         return True
 

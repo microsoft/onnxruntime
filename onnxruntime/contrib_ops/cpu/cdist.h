@@ -9,7 +9,7 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/util/math_cpuonly.h"
 #include "assert.h"
-#ifndef USE_OPENMP
+#ifndef _OPENMP
 #include "core/util/eigen_common_wrapper.h"
 #endif
 
@@ -24,8 +24,10 @@ template <typename T, typename ElemFunc>
 void cdist_single_threaded(const T* a, const T* b, T* dest, size_t ma, size_t mb, size_t n) {
   ElemFunc f;
   for (size_t i = 0; i != ma; ++i) {
+    // i-th row of matrix A
     const T* a1 = a + n * i;
     for (size_t j = 0; j != mb; ++j) {
+      // j-th row of matrix B
       const T* b1 = b + n * j;
       *dest++ = f(a1, b1, n);
     }
@@ -75,17 +77,15 @@ class CDistOneBlock {
 
 template <typename T, typename ElemFunc>
 void cdist(const T* a, const T* b, T* dest, size_t ma, size_t mb, size_t n, concurrency::ThreadPool* tp) {
-#ifndef USE_OPENMP
+#ifndef _OPENMP
   if (tp == nullptr) {
 #else
   (void)tp;
 #endif
     return cdist_single_threaded<T, ElemFunc>(a, b, dest, ma, mb, n);
-#ifndef USE_OPENMP
+#ifndef _OPENMP
   }
-  Eigen::ThreadPoolDevice device(&tp->GetHandler(), tp->NumThreads());
-  device.parallelFor(ma * mb, Eigen::TensorOpCost(0, 0, static_cast<double>(3 * n)),
-                     CDistOneBlock<T, ElemFunc>(a, b, dest, mb, n));
+  tp->ParallelFor(ma * mb, static_cast<double>(3 * n), CDistOneBlock<T, ElemFunc>(a, b, dest, mb, n));
 #endif
 }
 
