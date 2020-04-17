@@ -708,9 +708,11 @@ if(onnxruntime_USE_OPENVINO)
   endif()
 
   add_definitions(-DUSE_OPENVINO=1)
-  include(openvino)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ovep_ngraph)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
+  if (NOT WIN32)
+    include(openvino)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ovep_ngraph)
+    list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
+  endif()
 
 	if (onnxruntime_USE_OPENVINO_BINARY)
 	    #TODO: set plugin path var
