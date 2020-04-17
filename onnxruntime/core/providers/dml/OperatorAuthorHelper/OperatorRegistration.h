@@ -188,6 +188,10 @@ namespace OperatorHelper
         static const int sc_sinceVer_TopK = 10;
         static const int sc_sinceVer_ReverseSequence = 10;
         static const int sc_sinceVer_AveragePool = 10;
+        static const int sc_sinceVer_ConvInteger = 10;
+        static const int sc_sinceVer_MatMulInteger = 10;
+        static const int sc_sinceVer_QLinearConv = 10;
+        static const int sc_sinceVer_QLinearMatMul = 10;
     } // namespace OnnxOperatorSet10
 
     namespace OnnxOperatorSet11

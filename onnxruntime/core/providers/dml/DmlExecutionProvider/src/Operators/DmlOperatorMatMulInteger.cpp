@@ -8,31 +8,48 @@ namespace Dml
 
 class DmlOperatorMatMulInteger : public DmlOperator
 {
-public:
-    using Self = DmlOperatorMatMulInteger;
+    enum InputTensors { 
+        IN_A, 
+        IN_A_ZERO_POINT, 
+        IN_B, 
+        IN_B_ZERO_POINT 
+    };
 
-    DmlOperatorMatMulInteger(const MLOperatorKernelCreationContext& kernelCreationContext)
-    :   DmlOperator(kernelCreationContext)
+public:
+    DmlOperatorMatMulInteger(const MLOperatorKernelCreationContext& kernelInfo)
+        :   DmlOperator(kernelInfo)
     {
-#if 0 // TODO:NickFe - https://github.com/onnx/onnx/blob/master/docs/Operators.md#MatMulInteger
-        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() >= 2 || kernelCreationContext.GetInputCount() <= 4);
-        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1);
-        DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices);
+        std::vector<std::optional<uint32_t>> inputIndices = { 0, 2, 1, 3 };
+        DmlOperator::Initialize(kernelInfo, inputIndices);
+
+        std::vector<DimensionType> inputShape0 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(0);
+        std::vector<DimensionType> inputShape1 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(1);
+        std::vector<DimensionType> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
+
+        OperatorHelper::MatMulShapeMapping(inputShape0, inputShape1, outputShape);
+
+        // Initialize the input descriptions with broadcasting
+        m_inputTensorDescs[IN_A] = CreateTensorDescFromInput(kernelInfo, 0/*OnnxIndex*/, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape0);
+        m_inputTensorDescs[IN_B] = CreateTensorDescFromInput(kernelInfo, 1/*OnnxIndex*/, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape1);
+
+        // Initialize the output description while overriding the shape
+        m_outputTensorDescs[0] = CreateTensorDescFromOutput(kernelInfo, 0, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, outputShape);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        DML_PLACEHOLDER_OPERATOR_DESC operatorDesc = {};
-        operatorDesc.IndicesTensor = &inputDescs[0];
-        operatorDesc.ValuesTensor = &inputDescs[1];
-        operatorDesc.OutputTensor = outputDescs.data();
-        operatorDesc.Axis = dmlAxis;
+        DML_MATRIX_MULTIPLY_INTEGER_OPERATOR_DESC matmulDesc = {};
+        matmulDesc.ATensor = &inputDescs[IN_A];
+        matmulDesc.AZeroPointTensor = inputDescs[IN_A_ZERO_POINT].Desc != nullptr ? &inputDescs[IN_A_ZERO_POINT] : nullptr;
+        matmulDesc.BTensor = &inputDescs[IN_B];
+        matmulDesc.BZeroPointTensor = inputDescs[IN_B_ZERO_POINT].Desc != nullptr ? &inputDescs[IN_B_ZERO_POINT] : nullptr;
+        matmulDesc.OutputTensor = &outputDescs[0];
 
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_PLACEHOLDER, &operatorDesc };
-        SetDmlOperatorDesc(opDesc, kernelCreationContext);
-#endif
+        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_MATRIX_MULTIPLY_INTEGER, &matmulDesc };
+        SetDmlOperatorDesc(opDesc, kernelInfo);
     }
 };
+
 
 DML_OP_DEFINE_CREATION_FUNCTION(MatMulInteger, DmlOperatorMatMulInteger);
 

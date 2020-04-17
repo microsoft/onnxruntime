@@ -195,6 +195,11 @@ void ResolveAutoPadding(
     KernelArgs& args,
     gsl::span<const DimensionType> inputDimensions);
 
+void MatMulShapeMapping(
+  std::vector<DimensionType>& inputShape0,
+  std::vector<DimensionType>& inputShape1,
+  std::vector<DimensionType>& outputShape);
+
 class GetOutputShapeAsInputShapeHelper {
  public:
   // Info_t is used to obtain attributes which will be used for calculating the output shape later.
@@ -321,14 +326,15 @@ class ConvolutionHelperBase
 {
 public:
     enum FilterDims { K };
-    enum InputTensor { X, Filter};
     enum InputDims { N, C, H, W };
 
 public:
     // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
     template<typename Info_t, typename Shape_t>
-    ConvolutionHelperBase(const Info_t& info, const Shape_t& shape, bool transpose, bool hasDynamicPads) :
-        m_kernel(InitializeKernel(info, shape.GetInputTensorDimensionCount(0), shape.GetInputTensorShape(1)))
+    ConvolutionHelperBase(const Info_t& info, const Shape_t& shape, bool transpose, bool hasDynamicPads, uint32_t inputTensorIndex, uint32_t filterTensorIndex) :
+        m_kernel(InitializeKernel(info, shape.GetInputTensorDimensionCount(inputTensorIndex), shape.GetInputTensorShape(filterTensorIndex))),
+        m_inputTensorIndex(inputTensorIndex),
+        m_filterTensorIndex(filterTensorIndex)
     {
         m_groupCount = info.GetOptionalAttribute<uint32_t>(AttrName::Group, 1);
         
@@ -351,8 +357,8 @@ public:
 
   template <typename Shape_t>
   void InitializeKernelAndShapes(const Shape_t& shapeInfo) {
-    const std::vector<DimensionType> inputDimensions = shapeInfo.GetInputTensorShape(0);
-    const std::vector<DimensionType> filterDims = shapeInfo.GetInputTensorShape(1);
+    const std::vector<DimensionType> inputDimensions = shapeInfo.GetInputTensorShape(m_inputTensorIndex);
+    const std::vector<DimensionType> filterDims = shapeInfo.GetInputTensorShape(m_filterTensorIndex);
 
         ML_CHECK_VALID_ARGUMENT(
             inputDimensions.size() >= 3 && inputDimensions.size() <= 5,
@@ -379,8 +385,8 @@ public:
             );
         }
 
-        const std::vector<DimensionType> inputDimensions = shapeInfo.GetInputTensorShape(0);
-        const std::vector<DimensionType> filterDims = shapeInfo.GetInputTensorShape(1);
+        const std::vector<DimensionType> inputDimensions = shapeInfo.GetInputTensorShape(m_inputTensorIndex);
+        const std::vector<DimensionType> filterDims = shapeInfo.GetInputTensorShape(m_filterTensorIndex);
 
         ML_CHECK_VALID_ARGUMENT(inputDimensions.size() > NonspatialDimensionCount, "Input dimensions must be >= 3");
 
@@ -454,6 +460,8 @@ public:
 
  protected:
   uint32_t m_groupCount;
+  uint32_t m_inputTensorIndex;
+  uint32_t m_filterTensorIndex;
   KernelArgs m_kernel;
   std::vector<EdgeShapes> m_outputShapes;
 };
@@ -462,21 +470,28 @@ class ConvHelper : public ConvolutionHelperBase
 {
 public:
     template<typename Info_t, typename Shape_t>
-    ConvHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, false, false) {}
+    ConvHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, false, false, 0, 1) {}
 };
 
 class ConvTransposeHelper : public ConvolutionHelperBase
 {
 public:
     template<typename Info_t, typename Shape_t>
-    ConvTransposeHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, true, false) {}
+    ConvTransposeHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, true, false, 0, 1) {}
 };
 
 class ConvTransposeWithDynamicPadsHelper : public ConvolutionHelperBase
 {
 public:
     template<typename Info_t, typename Shape_t>
-    ConvTransposeWithDynamicPadsHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, true, true) {}
+    ConvTransposeWithDynamicPadsHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, true, true, 0, 1) {}
+};
+
+class QLinearConvHelper : public ConvolutionHelperBase
+{
+public:
+    template<typename Info_t, typename Shape_t>
+    QLinearConvHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, false, false, 0, 3) {}
 };
 
 class GemmHelper
@@ -753,15 +768,36 @@ class ReduceHelper : public ReduceHelperBase {
   ReduceHelper(const Info_t& info, const Shape_t& shape) : ReduceHelperBase(info, shape, true) {}
 };
 
-class MatMulHelper {
+class MatMulHelperBase {
  public:
   // Info_t is used to obtain attributes which will be used for calculating the output shape later.
   // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
   template <typename Info_t, typename Shape_t>
-  MatMulHelper(const Info_t& info, const Shape_t& shape) {}
+  MatMulHelperBase(const Info_t& info, const Shape_t& shape, uint32_t aTensorIndex, uint32_t bTensorIndex) :
+    m_aTensorIndex(aTensorIndex),
+    m_bTensorIndex(bTensorIndex)
+  {}
 
   std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+ protected:
+  uint32_t m_aTensorIndex = 0;
+  uint32_t m_bTensorIndex = 1;
 };
+
+class MatMulHelper : public MatMulHelperBase
+{
+public:
+    template<typename Info_t, typename Shape_t>
+    MatMulHelper(const Info_t& info, const Shape_t& shape) : MatMulHelperBase(info, shape, 0, 1) {}
+};
+
+class QLinearMatMulHelper : public MatMulHelperBase
+{
+public:
+    template<typename Info_t, typename Shape_t>
+    QLinearMatMulHelper(const Info_t& info, const Shape_t& shape) : MatMulHelperBase(info, shape, 0, 3) {}
+};
+
 
 class TopKHelper {
  public:
@@ -1283,6 +1319,8 @@ class OneHotHelper {
 using ShapeInferenceHelper_Conv = ConvHelper;
 using ShapeInferenceHelper_ConvTranspose = ConvTransposeHelper;
 using ShapeInferenceHelper_ConvTransposeWithDynamicPads = ConvTransposeWithDynamicPadsHelper;
+using ShapeInferenceHelper_ConvInteger = ConvHelper;
+using ShapeInferenceHelper_QLinearConv = QLinearConvHelper;
 using ShapeInferenceHelper_AveragePool = PoolingHelper;
 using ShapeInferenceHelper_GlobalAveragePool = GlobalPoolingHelper;
 using ShapeInferenceHelper_MaxPool = PoolingHelper;
@@ -1423,6 +1461,9 @@ using ShapeInferenceHelper_Shrink = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_Identity = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MatMul = MatMulHelper;
+using ShapeInferenceHelper_MatMulInteger = MatMulHelper;
+using ShapeInferenceHelper_QLinearMatMul = QLinearMatMulHelper;
+
 using ShapeInferenceHelper_Cast = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MemcpyFromHost = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MemcpyToHost = GetOutputShapeAsInputShapeHelper;
