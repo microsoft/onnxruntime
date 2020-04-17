@@ -10,17 +10,10 @@ namespace cuda {
 
 using namespace ::onnxruntime::cuda;
 
-template <typename T>
+template <typename T, bool is_conj>
 class ComplexMul : public BinaryElementwise<ShouldBroadcast> {
  public:
   ComplexMul(const OpKernelInfo info) : BinaryElementwise{info} {}
-  Status ComputeInternal(OpKernelContext* context) const override;
-};
-
-template <typename T>
-class ComplexMulConj : public BinaryElementwise<ShouldBroadcast> {
- public:
-  ComplexMulConj(const OpKernelInfo info) : BinaryElementwise{info} {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
