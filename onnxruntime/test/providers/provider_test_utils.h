@@ -5,6 +5,7 @@
 
 #include "core/graph/onnx_protobuf.h"
 #include "core/common/logging/logging.h"
+#include "core/common/optional.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/customregistry.h"
 #include "core/framework/execution_frame.h"
@@ -43,23 +44,6 @@ struct SeqTensors {
     std::vector<U> data;
   };
   std::vector<Tensor<T>> tensors;
-};
-
-// unfortunately std::optional is in C++17 so use a miniversion of it
-template <typename T>
-class optional {
- public:
-  optional(T v) : has_value_(true), value_(v) {}
-  optional() : has_value_(false) {}
-  bool has_value() const { return has_value_; }
-  const T& value() const {
-    ORT_ENFORCE(has_value_);
-    return value_;
-  }
-
- private:
-  bool has_value_;
-  T value_;
 };
 
 // Function templates to translate C++ types into ONNX_NAMESPACE::TensorProto_DataTypes
