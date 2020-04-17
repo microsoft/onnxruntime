@@ -121,6 +121,7 @@ bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& mod
   return has_batched_inputs;
 }
 
+#ifndef NDEBUG
 //Save ONNX Model
 static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto,
                                 const std::string& file_path) {
@@ -133,6 +134,7 @@ static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto,
   else
     return Status::OK();
 }
+#endif
 
 bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::Node* fused_node) const {
   bool has_sym_dims = false;
@@ -172,9 +174,11 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node,
 
   *(model_proto.mutable_graph()) = node_subgraph.ToGraphProto();
 
+#ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     SaveModel(model_proto, name + ".onnx");
   }
+#endif
 
   return model_proto;
 }

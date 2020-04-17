@@ -25,8 +25,7 @@ namespace onnxruntime {
 namespace openvino_ep {
 namespace backend_utils {
 
-
-//TODO: Remove this before production
+#ifndef NDEBUG
 bool IsDebugEnabled() {
   #ifdef __linux__
     return (std::getenv("UEP_ENABLE_DEBUG") != nullptr);
@@ -40,6 +39,8 @@ void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::stri
   model_proto.SerializeToOstream(&outfile);
   outfile.close();
 }
+
+#endif
 
 std::shared_ptr<InferenceEngine::CNNNetwork>
 CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto) {
@@ -90,10 +91,14 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
                std::shared_ptr<InferenceEngine::CNNNetwork> network) {
   // Configure input & output
   // Prepare input blobs
+
+  #ifndef NDEBUG
   if (network) {
     if (IsDebugEnabled())
       std::cout << "Network is not NULL" << std::endl;
   }
+  #endif
+
   auto inputInfo = network->getInputsInfo();
   int input_idx = 0;
   for (auto iter = inputInfo.begin(); iter != inputInfo.end(); ++iter, ++input_idx) {

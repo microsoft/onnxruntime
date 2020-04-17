@@ -15,7 +15,10 @@ namespace onnxruntime {
 namespace openvino_ep {
 namespace backend_utils {
   const std::string log_tag = "[OpenVINO-EP] ";
+
+#ifndef NDEBUG
   bool IsDebugEnabled();
+#endif
 
   void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
                  std::shared_ptr<InferenceEngine::CNNNetwork> network);
