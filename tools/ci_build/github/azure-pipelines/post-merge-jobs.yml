@@ -67,12 +67,6 @@ jobs:
 
   - template: templates/set-test-data-variables-step.yml
 
-  - task: PythonScript@0
-    displayName: 'Download test data'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-      arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-      workingDirectory: $(Build.BinariesDirectory)
 
   - task: BatchScript@1
     displayName: 'Setup VS2019 env vars'
