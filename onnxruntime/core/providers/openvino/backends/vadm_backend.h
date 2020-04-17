@@ -11,6 +11,7 @@
 #endif
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/openvino/contexts.h"
 #include "core/providers/openvino/ibackend.h"
 
 namespace onnxruntime {
@@ -19,10 +20,8 @@ namespace openvino_ep {
 class VADMBackend : public IBackend {
  public:
   VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
-              const std::vector<int>& input_indexes,
-              const std::unordered_map<std::string, int>& output_names,
-              std::string device_id, InferenceEngine::Precision precision,
-              InferenceEngine::Core& ie, std::string subgraph_name);
+              GlobalContext& global_context,
+              const SubGraphContext& subgraph_context);
 
   void Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) override;
 
@@ -40,13 +39,12 @@ class VADMBackend : public IBackend {
                               std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
                               std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
 
-  const std::vector<int>& input_indexes_;
-  const std::unordered_map<std::string, int>& output_names_;
-  mutable std::mutex compute_lock_;
+  GlobalContext& global_context_;
+  const SubGraphContext& subgraph_context_;
   std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network_;
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
   size_t num_inf_reqs_;
-  std::string subgraph_name_;
+  mutable std::mutex compute_lock_;
 };
 }  // namespace openvino_ep
 }  // namespace onnxruntime

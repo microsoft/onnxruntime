@@ -15,6 +15,7 @@
 #undef OPTIONAL
 #endif
 
+#include "contexts.h"
 #include "ibackend.h"
 
 namespace onnxruntime {
@@ -25,26 +26,27 @@ class BackendManager {
  public:
   BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger,
                  std::string dev_id, std::string prec_str);
-  static InferenceEngine::Core ie_core_;
   void Compute(Ort::CustomOpApi api, OrtKernelContext* context);
   void ShutdownBackendManager();
+  static GlobalContext& GetGlobalContext();
 
  private:
   ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(
     const onnxruntime::Node* fused_node, const logging::Logger& logger) const;
   bool ModelHasSymbolicInputDims(const onnxruntime::Node* fused_node) const;
+  bool ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const;
 
-  std::string device_id_;
-  InferenceEngine::Precision precision_;
-  std::string precision_str_;
+  std::shared_ptr<ONNX_NAMESPACE::ModelProto>
+  ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_proto);
+
+  std::shared_ptr<ONNX_NAMESPACE::ModelProto>
+  ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto,
+                        std::vector<std::vector<int64_t>> input_shapes);
+
   ONNX_NAMESPACE::ModelProto model_proto_;
-  bool has_dynamic_input_shape_ = false;
   std::shared_ptr<IBackend> concrete_backend_;
   std::map<std::string, std::shared_ptr<IBackend>> backend_map_;
-  std::vector<int> input_indexes_;
-  std::string subgraph_name_;
-  bool set_vpu_config_;
-  std::unordered_map<std::string, int> output_names_;
+  SubGraphContext subgraph_context_;
 };
 
 }  // namespace openvino_ep

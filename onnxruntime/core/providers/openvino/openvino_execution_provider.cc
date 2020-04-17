@@ -12,6 +12,7 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
+#include "contexts.h"
 #include "backend_manager.h"
 #include "backend_utils.h"
 
@@ -856,6 +857,9 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     // Create and add this graph to result.
     AppendClusterToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), inputs, outputs, result);
 
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is fully supported by OpenVINO";
+    openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph = true;
+
   } else {  // unsupported_nodes_idx.empty()
     const auto ng_clusters = GetPartitionedClusters(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
 
@@ -911,6 +915,7 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
         no_of_clusters++;
       }
     }
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Supported subgraphs on OpenVINO: " << no_of_clusters;
   }
 
   return result;
