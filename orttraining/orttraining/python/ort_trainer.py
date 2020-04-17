@@ -672,6 +672,9 @@ class ORTTrainer():
         return torch_state
 
     def load_state_dict(self, state_dict, strict=False):
+        # Note: It may happen ONNX model has not yet been initialized
+        # In this case we cache a reference to desired state and delay the restore until after initialization
+        # Unexpected behavior will result if the user changes the reference before initialization
         if not self.session:
             self.state_dict_ = state_dict
             self.strict_ = strict
