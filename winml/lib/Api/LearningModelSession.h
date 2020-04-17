@@ -11,7 +11,7 @@
 #include "core/providers/winml/winml_provider_factory.h"
 #include "iengine.h"
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 
 struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   /* LearningModelSession constructors (MachineLearningContract 1). */
@@ -68,7 +68,7 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
  public:
   /* Non-ABI methods */
 
-  WinML::IEngine*
+  _winml::IEngine*
   GetEngine();
 
   void
@@ -84,10 +84,10 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   void
   Initialize();
 
-  WinML::IModel*
+  _winml::IModel*
   GetOptimizedModel();
 
-  WinML::IModel*
+  _winml::IModel*
   GetOptimizedModel(bool should_close_model);
 
   uint64_t
@@ -107,8 +107,8 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   ToggleProfiler();
 
  private:
-  com_ptr<WinML::IEngineFactory> engine_factory_;
-  com_ptr<WinML::IEngine> engine_;
+  com_ptr<_winml::IEngineFactory> engine_factory_;
+  com_ptr<_winml::IEngine> engine_;
 
   using MLOperatorRegistry = std::unique_ptr<IMLOperatorRegistry, void (*)(IMLOperatorRegistry*)>;
   MLOperatorRegistry operator_registry_;
@@ -129,11 +129,11 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
 
 };
 
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP
 
-namespace winrt::Windows::AI::MachineLearning::factory_implementation {
+namespace WINML::factory_implementation {
 
 struct LearningModelSession : LearningModelSessionT<LearningModelSession, implementation::LearningModelSession> {
 };
 
-}  // namespace winrt::Windows::AI::MachineLearning::factory_implementation
+}  // namespace WINML::factory_implementation
