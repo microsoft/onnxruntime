@@ -132,17 +132,18 @@ void topk_element(int64_t* pos, size_t k, const typename HeapCmp::DataType* valu
   if (shape.NumDimensions() == 1) {
     _topk_element(values, k, shape[0], pos, sorted, heap_cmp);
   } else {
-    auto tdim = flattened_dimension(shape);
     auto vdim = shape[shape.NumDimensions() - 1];
-    const HeapCmp::DataType* data = values;
-    const HeapCmp::DataType* end = data + tdim;
-
     auto ptr = pos;
+
     if (shape[0] <= th_parallel) {
+      auto tdim = flattened_dimension(shape);
+      const typename HeapCmp::DataType* data = values;
+      const typename HeapCmp::DataType* end = data + tdim;
       for (; data != end; data += vdim, ptr += k)
         _topk_element(data, k, vdim, ptr, sorted, heap_cmp);
     } else {
 // parallelisation
+      const typename HeapCmp::DataType* data = values;
 #ifdef USE_OPENMP
 #pragma omp parallel for
 #endif
