@@ -170,6 +170,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--enable_multi_device_test", action='store_true', help="Test with multi-device. Mostly used for multi-device GPU")
     parser.add_argument("--use_dml", action='store_true', help="Build with DirectML.")
     parser.add_argument("--use_winml", action='store_true', help="Build with WinML.")
+    parser.add_argument("--winml_root_namespace_override", type=str, help="Specify the namespace that WinML builds into.")
     parser.add_argument("--use_telemetry", action='store_true', help="Only official builds can set this flag to enable telemetry.")
     parser.add_argument("--enable_wcos", action='store_true', help="Build for Windows Core OS.")
     parser.add_argument("--enable_lto", action='store_true', help="Enable Link Time Optimization")
@@ -290,13 +291,19 @@ def setup_test_data(build_dir, configs):
     # create a shortcut for test models if there is a 'models' folder in build_dir
     if is_windows():
         src_model_dir = os.path.join(build_dir, 'models')
+        if os.path.exists('C:\\local\\models') and not os.path.exists(src_model_dir):
+          log.debug("creating shortcut %s -> %s"  % ('C:\\local\\models', src_model_dir))
+          run_subprocess(['mklink', '/D', '/J', src_model_dir, 'C:\\local\\models'], shell=True)
         for config in configs:
             config_build_dir = get_config_build_dir(build_dir, config)
             os.makedirs(config_build_dir, exist_ok=True)
             dest_model_dir = os.path.join(config_build_dir, 'models')
-            if os.path.exists(src_model_dir) and not os.path.exists(dest_model_dir):
+            if os.path.exists('C:\\local\\models') and not os.path.exists(dest_model_dir):
+                log.debug("creating shortcut %s -> %s"  % ('C:\\local\\models', dest_model_dir))
+                run_subprocess(['mklink', '/D', '/J', dest_model_dir, 'C:\\local\\models'], shell=True)            
+            elif os.path.exists(src_model_dir) and not os.path.exists(dest_model_dir):
                 log.debug("creating shortcut %s -> %s"  % (src_model_dir, dest_model_dir))
-                run_subprocess(['mklink', '/D', '/J', dest_model_dir, src_model_dir], shell=True)
+                run_subprocess(['mklink', '/D', '/J', dest_model_dir, src_model_dir], shell=True)                
 
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, tensorrt_home, path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
@@ -352,6 +359,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
                  "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
                  ]
+
+    if args.winml_root_namespace_override:
+       cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" + args.winml_root_namespace_override]
 
     # nGraph and TensorRT providers currently only supports full_protobuf option.
     if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or args.gen_doc:

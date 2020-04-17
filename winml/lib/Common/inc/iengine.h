@@ -3,7 +3,7 @@
 
 #pragma once
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 MIDL_INTERFACE("eaae30b5-7381-432d-9730-322136b02371")
 IModelInfo : IUnknown {
@@ -55,7 +55,7 @@ IValue : IUnknown {
   (bool* out) PURE;
 
   STDMETHOD(GetResource)
-  (WinML::Resource & resource) PURE;
+  (_winml::Resource & resource) PURE;
 
   STDMETHOD(IsTensor)
   (bool* out) PURE;
@@ -148,7 +148,7 @@ IEngine : IUnknown {
   (IInspectable * sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue * value) PURE;
 
   STDMETHOD(GetSequenceOfTensorValues)
-  (WinML::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<WinML::IValue>>& out_values) PURE;
+  (_winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) PURE;
 };
 
 MIDL_INTERFACE("0452ef15-b66b-47ca-9eff-aedac571764e")
@@ -187,4 +187,4 @@ IEngineFactory : IUnknown {
   (_Out_ IMLOperatorRegistry * *registry) PURE;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

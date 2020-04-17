@@ -84,7 +84,7 @@ inline Env::Env(OrtLoggingLevel default_warning_level, const char* logid, OrtLog
   ThrowOnError(Global<void>::api_.CreateEnvWithCustomLogger(logging_function, logger_param, default_warning_level, logid, &p_));
 }
 
-inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel default_warning_level, const char* logid) {
+inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel default_warning_level, _In_ const char* logid) {
   ThrowOnError(Global<void>::api_.CreateEnvWithGlobalThreadPools(default_warning_level, logid, tp_options, &p_));
 }
 

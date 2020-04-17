@@ -4,14 +4,13 @@
 #include "model.h"
 #include "SqueezeNetValidator.h"
 #include "threadPool.h"
-#include "windows.ai.machinelearning.native.internal.h"
 
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
 
-using namespace winrt::Windows::AI::MachineLearning;
+using namespace winml;
 using namespace winrt;
 
 namespace {
@@ -50,7 +49,7 @@ struct EvaluationUnit {
     LearningModel model;
     LearningModelSession session;
     LearningModelBinding binding;
-    winrt::Windows::Foundation::IAsyncOperation<LearningModelEvaluationResult> operation;
+    wf::IAsyncOperation<LearningModelEvaluationResult> operation;
     LearningModelEvaluationResult result;
 
     EvaluationUnit() : model(nullptr), session(nullptr), binding(nullptr), result(nullptr) {}
@@ -160,7 +159,7 @@ void EvalAsyncDifferentBindings() {
     VerifyEvaluation(evaluation_units, { TABBY_CAT_INDEX, TENCH_INDEX });
 }
 
-winrt::Windows::AI::MachineLearning::ILearningModelFeatureDescriptor UnusedCreateFeatureDescriptor(
+winml::ILearningModelFeatureDescriptor UnusedCreateFeatureDescriptor(
     std::shared_ptr<onnxruntime::Model> model,
     const std::wstring& name,
     const std::wstring& description,

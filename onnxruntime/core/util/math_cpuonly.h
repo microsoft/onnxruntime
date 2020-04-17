@@ -46,16 +46,17 @@
 #pragma warning(disable : 4324)
 #pragma warning(disable : 4245)
 #pragma warning(disable : 4127)
+#pragma warning(disable : 6255)
+#pragma warning(disable : 6294)
 #endif
 #include "Eigen/Core"
-
+#include "Eigen/Dense"
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #else
 #pragma warning(pop)
 #endif
 
-#include "Eigen/Dense"
 #include "core/framework/tensor.h"
 namespace onnxruntime {
 
