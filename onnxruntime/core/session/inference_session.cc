@@ -932,9 +932,9 @@ common::Status InferenceSession::Initialize() {
 
   if (status.IsOK()) {
     for (auto& xp : execution_providers_) {
-      auto endStatus = xp->OnSessionInitializationEnd();
+      auto end_status = xp->OnSessionInitializationEnd();
       if (status.IsOK()) {
-        status = endStatus;
+        status = end_status;
       }
     }
   }
