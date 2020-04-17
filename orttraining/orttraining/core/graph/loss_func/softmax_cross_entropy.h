@@ -16,5 +16,9 @@ struct SparseSoftmaxCrossEntropy : public ILossFunction {
   GraphAugmenter::GraphDefs operator()(const Graph& graph, const LossFunctionInfo& loss_func_info) override;
 };
 
+struct SoftmaxCrossEntropyLoss : public ILossFunction {
+  GraphAugmenter::GraphDefs operator()(const Graph& graph, const LossFunctionInfo& loss_func_info) override;
+};
+
 }  // namespace training
 }  // namespace onnxruntime

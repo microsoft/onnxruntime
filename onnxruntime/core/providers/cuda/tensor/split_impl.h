@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-Status SplitImpl(const size_t element_size, 
+Status SplitImpl(const size_t element_size,
                  const int block_size_including_axis_dim,
                  const int block_size_inside_axis_dim,
                  const int64_t* split_sizes,

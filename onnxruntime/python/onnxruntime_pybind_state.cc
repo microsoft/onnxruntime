@@ -18,6 +18,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/random_seed.h"
 #include "core/framework/session_options.h"
 #include "core/framework/bfc_arena.h"
 #include "core/session/IOBinding.h"
@@ -168,7 +169,7 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransf
     //if it is not cpu tensor, need to copy to host
     if (rtensor.Location().device.Type() != OrtDevice::CPU) {
       if (!data_transfer_manager)
-        throw std::runtime_error("GetPyObjFromTensor: data transfer manager is needed when convert non-CPU tensor to numpy array");
+        throw std::runtime_error("GetPyObjFromTensor: data transfer manager is needed to convert non-CPU tensor to numpy array");
       static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
       std::vector<char> tensor_data_buffer{};
       tensor_data_buffer.resize(rtensor.SizeInBytes());
@@ -351,6 +352,9 @@ void addGlobalMethods(py::module& m, const Environment& env) {
   m.def(
       "get_device", []() -> std::string { return BACKEND_DEVICE; },
       "Return the device used to compute the prediction (CPU, MKL, ...)");
+  m.def(
+      "set_seed", [](const int64_t seed) { utils::SetRandomSeed(seed); },
+      "Sets the seed used for random number generation in Onnxruntime.");
   m.def(
       "set_default_logger_severity", [&env](int severity) {
         ORT_ENFORCE(severity >= 0 && severity <= 4,

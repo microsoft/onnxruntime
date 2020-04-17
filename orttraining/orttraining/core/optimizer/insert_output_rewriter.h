@@ -24,6 +24,24 @@ class InsertMaxPoolOutput : public RewriteRule {
   Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
 };
 
+// Rewrite rule that insert an addtional output to the matched node.
+// Adding this second output to expose FW intermediate result for speeding up BW computation 
+class InsertSoftmaxCrossEntropyLossOutput : public RewriteRule {
+ public:
+  InsertSoftmaxCrossEntropyLossOutput() noexcept
+      : RewriteRule("InsertSoftmaxCrossEntropyLossOutput") {
+  }
+
+  std::vector<std::string> TargetOpTypes() const noexcept override {
+    return {"SoftmaxCrossEntropyLoss"};
+  }
+
+ private:
+  bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const override;
+
+  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
+};
+
 // Rewrite rule that adjust Batch Normalization nodes to have 5 outputs for training mode
 // instead of 1 for inference mode
 class AdjustBatchNormOutputs : public RewriteRule {

@@ -102,7 +102,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<int>()->default_value("1"))
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
-      ("seed", "Random seed.", cxxopts::value<int>()->default_value("-1"))
+      ("seed", "Random seed.", cxxopts::value<int64_t>()->default_value("-1"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
       ("use_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
       ("allreduce_in_fp16", "Whether to do AllReduce in fp16. If false, AllReduce will be done in fp32", cxxopts::value<bool>()->default_value("true"))
@@ -256,12 +256,6 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Incorrect command line for mode: it must be one of [perf|train]");
     }
 
-    int seed = flags["seed"].as<int>();
-    if (seed > 0) {
-      utils::SetStaticRandomSeed(static_cast<uint32_t>(seed));
-      printf("Random seed is set to %d.\n", seed);
-    }
-
     params.use_mixed_precision = flags["use_mixed_precision"].as<bool>();
     params.allreduce_in_fp16 = flags["allreduce_in_fp16"].as<bool>() && params.use_mixed_precision;
     if (params.use_mixed_precision) {
@@ -371,6 +365,15 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
 
     params.do_pipeline = flags["do_pipeline"].as<bool>();
     params.num_pipeline_stages = flags["num_pipeline_stages"].as<int>();
+
+    int64_t seed = flags["seed"].as<int64_t>();
+    if (params.horizontal_parallel_size > 1 && seed <= 0) {
+      seed = 8211; // Megatron needs a random seed.
+    }
+    if (seed > 0) {
+      utils::SetRandomSeed(seed);
+      std::cout << "Random seed is set to: " << seed << std::endl;
+    }
 
     ort_params.log_severity = static_cast<logging::Severity>(flags["ort_log_severity"].as<int>());
     ORT_RETURN_IF_NOT(

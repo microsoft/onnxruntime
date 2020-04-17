@@ -332,13 +332,13 @@ void RegisterGradientSchemas() {
           "The size of the kernel along each axis.",
           AttributeProto::INTS)
       .Attr(
-          "strides", "Stride along each axis.", AttributeProto::INTS, OPTIONAL)
+          "strides", "Stride along each axis.", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr(
           "auto_pad",
           "auto_pad doc",
           AttributeProto::STRING,
           std::string("NOTSET"))
-      .Attr("pads", "pads_doc", AttributeProto::INTS, OPTIONAL)
+      .Attr("pads", "pads_doc", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr(
           "count_include_pad",
           "",
@@ -825,12 +825,41 @@ void RegisterGradientSchemas() {
                       "Constrain indices to integer types")
       .SetDoc(R"DOC(SparseSoftmaxCrossEntropyGrad)DOC");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyLossGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("reduction",
+            reduction_doc,
+            AttributeProto::STRING,
+            std::string("mean"))
+      .Attr(
+          "ignore_index",
+          "Specifies a target value that is ignored and does not contribute to the input gradient.",
+          AttributeProto::INT,
+          false)
+      .Input(0, "dY", "gradient of Y", "T")
+      .Input(1, "log_prob", "logsoftmax(logits), (N+1)-D input of shape (batch_size).", "T")
+      .Input(2, "label",
+             "label is N-D input whose shape should match that of logits. "
+             "It is a tensor of nonnegative integers, "
+             "where each element is the nonnegative integer label for the element of the batch.",
+             "Tind")
+      .Input(3, "weight", "weight for each sample. The shape is 1-D tensor.", "T", OpSchema::Optional)
+      .Output(0, "d_logits", "gradient of logits", "T")
+      .TypeConstraint("T",
+                      {"tensor(float16)", "tensor(float)", "tensor(double)"},
+                      "Constrain to float, float16 and double tensors.")
+      .TypeConstraint("Tind",
+                      {"tensor(int32)", "tensor(int64)"},
+                      "Constrain indices to integer types")
+      .SetDoc(R"DOC(SoftmaxCrossEntropyLossGrad)DOC");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("TrainableDropout")
-      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL)
+      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL_VALUE)
       .AllowUncheckedAttributes()
       .Input(0, "data", "The input data as Tensor.", "T")
       .Input(1, "ratio",

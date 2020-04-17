@@ -843,8 +843,11 @@ TEST(GraphTransformationTests, ReluClip6Fusion) {
 
 // test handling of Clip 11
 TEST(GraphTransformationTests, ReluClip11Fusion) {
-  Model model("ReluClip6Fusion", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 11}},
-              {}, DefaultLoggingManager().DefaultLogger());
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 11;
+  Model model("ReluClip6Fusion", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());  //, true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 11}}, {});
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;

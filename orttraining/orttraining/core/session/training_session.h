@@ -231,6 +231,9 @@ class TrainingSession : public InferenceSession {
   /** Gets the model location. */
   const PathString& GetModelLocation() const { return model_location_; }
 
+  /** Checks to be see if given graph output is produced by an fp32-only node. */
+  bool IsGraphOutputFp32Node(const std::string& output_name) const;
+
  private:
   /** Configures the loss function.
   The loss function can either be provided externally or built from the provided loss function information.

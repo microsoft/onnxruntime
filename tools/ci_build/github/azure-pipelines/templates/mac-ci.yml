@@ -18,7 +18,6 @@ jobs:
     - checkout: self
       ${{ if ne(parameters.SubmoduleCheckoutMode, '') }}:
         submodules: ${{ parameters.SubmoduleCheckoutMode }}
-    - template: mac-set-variables-and-download.yml
     - script: |
         export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-11.jdk/Contents/Home
         java --version
@@ -28,6 +27,13 @@ jobs:
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
         ${{ parameters.BuildCommand }}
       displayName: 'Build and Test OnnxRuntime lib for MacOS'
+    - task: PublishTestResults@2
+      displayName: 'Publish unit test results'
+      inputs:
+        testResultsFiles: '**/*.results.xml'
+        searchFolder: '$(Build.BinariesDirectory)'
+        testRunTitle: 'Unit Test Run'
+      condition: succeededOrFailed()
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
       - script: |
          ${{ parameters.NuPackScript }}

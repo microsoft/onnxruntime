@@ -7,7 +7,6 @@
 // pybind11/stl.h is needed to support std::unordered_set, etc.
 #include <pybind11/stl.h>
 
-#include "core/framework/random_seed.h"
 #include "core/framework/session_options.h"
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
@@ -51,7 +50,6 @@ struct TrainingParameters {
   int data_parallel_size = 1;
   int horizontal_parallel_size = 1;
   bool partition_optimizer = false;
-  int seed = -1;
   bool enable_grad_norm_clip = true;
 };
 
@@ -148,11 +146,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     opt.enable_grad_norm_clip = parameters.enable_grad_norm_clip;
 
     config.optimizer_config = opt;
-  }
-
-  if (parameters.seed > 0) {
-    utils::SetStaticRandomSeed(static_cast<uint32_t>(parameters.seed));
-    std::cout << "Random seed is set to " << parameters.seed << std::endl;
   }
 
   training::TrainingSession::TrainingConfigurationResult config_result{};
@@ -276,7 +269,11 @@ void addObjectMethodsForTraining(py::module& m) {
           state_tensors.insert(std::make_pair(initializer.first, ml_value));
         }
         ORT_THROW_IF_ERROR(sess->SetStateTensors(state_tensors, strict));
+      })
+      .def("is_output_fp32_node", [](onnxruntime::training::TrainingSession* sess, const std::string& output_name) {
+        return sess->IsGraphOutputFp32Node(output_name);
       });
+
 }
 }  // namespace python
 }  // namespace onnxruntime
