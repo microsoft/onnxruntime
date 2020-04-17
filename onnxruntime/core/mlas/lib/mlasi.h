@@ -21,6 +21,7 @@ Abstract:
 #include <memory.h>
 #include <algorithm>
 #include <limits>
+#include <cmath>
 
 #if defined(_WIN32)
 #include <windows.h>
