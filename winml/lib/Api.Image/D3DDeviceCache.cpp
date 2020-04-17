@@ -60,14 +60,11 @@ D3DDeviceCache::D3DDeviceCache(winml::LearningModelDeviceKind const& deviceKind)
     winrt::com_ptr<IDXGIAdapter1> spAdapter;
     WINML_THROW_IF_FAILED_MSG(GetDXGIHardwareAdapterWithPreference(preference, spAdapter.put()), errStr);
     WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
-  }
-#ifdef ENABLE_DXCORE
-  if (support.has_dxgi == false) {
-    com_ptr<IDXCoreAdapter> spAdapter;
+  } else if constexpr (ENABLE_DXCORE) {
+    winrt::com_ptr<IDXCoreAdapter> spAdapter;
     WINML_THROW_IF_FAILED_MSG(GetDXCoreHardwareAdapterWithPreference(preference, spAdapter.put()), errStr);
     WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
   }
-#endif
   InitializeCommandQueue(device_.get());
 
   device_luid_ = device_->GetAdapterLuid();
