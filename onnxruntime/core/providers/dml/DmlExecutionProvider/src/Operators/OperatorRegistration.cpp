@@ -509,8 +509,8 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO_VER(  7,  TopK,                               typeNameListTopK,               supportedTypeListTopK,              DmGraphSupport::Supported)},
     {REG_INFO_VER( 10,  TopK,                               typeNameListTopK,               supportedTypeListTopK,              DmGraphSupport::Supported,      {1})},
     {REG_INFO_VER( 11,  TopK,                               typeNameListTopK,               supportedTypeListTopK,              DmGraphSupport::Supported,      {1})},
-    {REG_INFO(      9,  OneHot,                             typeNameListOneHot,             supportedTypeListOneHot,            DmGraphSupport::Supported,      {1})},
-    {REG_INFO(     11,  OneHot,                             typeNameListOneHot,             supportedTypeListOneHot,            DmGraphSupport::Supported,      {1})},
+    {REG_INFO(      9,  OneHot,                             typeNameListThree,              supportedTypeListOneHot,            DmGraphSupport::Supported,      {1})},
+    {REG_INFO(     11,  OneHot,                             typeNameListThree,              supportedTypeListOneHot,            DmGraphSupport::Supported,      {1})},
 
     // Fused operators
     {REG_INFO_MSDML(1,  FusedConv,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
