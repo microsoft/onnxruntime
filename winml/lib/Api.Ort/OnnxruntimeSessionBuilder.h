@@ -3,7 +3,7 @@
 
 #pragma once
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 // The IOrtSessionBuilder offers an abstraction over the creation of
 // InferenceSession, that enables the creation of the session based on a device (CPU/DML).
@@ -20,4 +20,4 @@ IOrtSessionBuilder : IUnknown {
       OrtSession * session) = 0;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

@@ -94,40 +94,30 @@ struct TernaryElementwisePreparation {
 
     output_rank_or_simple_broadcast = out_rank;
 
-    if (a_shape != output_shape) {
-      TensorPitches a_pitches(a_shape.GetDims());
-      a_padded_strides.size_ = out_rank;
-      auto offset = out_rank - a_rank;
-      for (auto i = offset; i < out_rank; ++i) {
-        // the stride for broadcast dimension is kept as 0
-        if (a_shape.GetDims()[i - offset] != 1) {
-          a_padded_strides[i] = a_pitches[i];
+    auto padder = [out_rank](int32_t rank, const TensorShape& shape, TArray<int64_t>& padded_strides) {
+      padded_strides.size_ = out_rank;
+      if (rank > 0) {
+        TensorPitches pitches(shape.GetDims());
+        auto offset = out_rank - rank;
+        for (auto i = offset; i < out_rank; ++i) {
+          // the stride for broadcast dimension is kept as 0
+          if (shape.GetDims()[i - offset] != 1) {
+            padded_strides[i] = pitches[i - offset];
+          }
         }
       }
+    };
+
+    if (a_shape != output_shape) {
+      padder(a_rank, a_shape, a_padded_strides);
     }
 
     if (b_shape != output_shape) {
-      TensorPitches b_pitches(b_shape.GetDims());
-      b_padded_strides.size_ = out_rank;
-      auto offset = out_rank - b_rank;
-      for (auto i = offset; i < out_rank; ++i) {
-        // the stride for broadcast dimension is kept as 0
-        if (b_shape.GetDims()[i - offset] != 1) {
-          b_padded_strides[i] = b_pitches[i];
-        }
-      }
+      padder(b_rank, b_shape, b_padded_strides);
     }
 
     if (c_shape != output_shape) {
-      TensorPitches c_pitches(c_shape.GetDims());
-      c_padded_strides.size_ = out_rank;
-      auto offset = out_rank - c_rank;
-      for (auto i = offset; i < out_rank; ++i) {
-        // the stride for broadcast dimension is kept as 0
-        if (c_shape.GetDims()[i - offset] != 1) {
-          c_padded_strides[i] = c_pitches[i];
-        }
-      }
+      padder(c_rank, c_shape, c_padded_strides);
     }
 
     TensorPitches output_pitches(output_shape.GetDims());

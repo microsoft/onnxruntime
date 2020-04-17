@@ -16,6 +16,7 @@ import datetime
 
 nightly_build = False
 package_name = 'onnxruntime'
+wheel_name_suffix = None
 
 if '--use_tensorrt' in sys.argv:
     package_name = 'onnxruntime-gpu-tensorrt'
@@ -34,7 +35,7 @@ elif '--use_cuda' in sys.argv:
 elif '--use_ngraph' in sys.argv:
     package_name = 'onnxruntime-ngraph'
     sys.argv.remove('--use_ngraph')
-    
+
 elif '--use_dnnl' in sys.argv:
     package_name = 'onnxruntime-dnnl'
     sys.argv.remove('--use_dnnl')
@@ -50,6 +51,15 @@ if '--nightly_build' in sys.argv:
     package_name = 'ort-nightly'
     nightly_build = True
     sys.argv.remove('--nightly_build')
+
+for arg in sys.argv[1:]:
+    if arg.startswith("--wheel_name_suffix="):
+        wheel_name_suffix = arg[len("--wheel_name_suffix="):]
+        nightly_build = True
+
+        sys.argv.remove(arg)
+
+        break
 
 is_manylinux1 = False
 if environ.get('AUDITWHEEL_PLAT', None) == 'manylinux1_x86_64' or environ.get('AUDITWHEEL_PLAT', None) == 'manylinux2010_x86_64' :
@@ -188,18 +198,31 @@ with open('VERSION_NUMBER') as f:
     version_number = f.readline().strip()
 if nightly_build:
     #https://docs.microsoft.com/en-us/azure/devops/pipelines/build/variables
-    date_suffix = environ.get('BUILD_BUILDNUMBER')
-    if date_suffix is None:
+    build_suffix = environ.get('BUILD_BUILDNUMBER')
+    if build_suffix is None:
       #The following line is only for local testing
-      date_suffix = str(datetime.datetime.now().date().strftime("%Y%m%d"))
+      build_suffix = str(datetime.datetime.now().date().strftime("%Y%m%d"))
     else:
-      date_suffix = date_suffix.replace('.','')
-    version_number = version_number + ".dev" + date_suffix
+      build_suffix = build_suffix.replace('.','')
+
+    version_number = version_number + ".dev" + build_suffix
+
+if wheel_name_suffix:
+    package_name = "{}_{}".format(package_name, wheel_name_suffix)
 
 cmd_classes = {}
 if bdist_wheel is not None :
     cmd_classes['bdist_wheel'] = bdist_wheel
 cmd_classes['build_ext'] = build_ext
+
+requirements_path = path.join(getcwd(), "requirements.txt")
+if not path.exists(requirements_path):
+    this = path.dirname(__file__)
+    requirements_path = path.join(this, "requirements.txt")
+if not path.exists(requirements_path):
+    raise FileNotFoundError("Unable to find 'requirements.txt'")
+with open(requirements_path) as f:
+    install_requires = f.read().splitlines()
 
 # Setup
 setup(
@@ -222,10 +245,7 @@ setup(
         'onnxruntime': data + examples + extra,
     },
     py_modules=python_modules_list,
-    install_requires=[
-        'onnx>=1.2.3',
-        'numpy>=1.18.0'
-    ],
+    install_requires=install_requires,
     entry_points= {
         'console_scripts': [
             'onnxruntime_test = onnxruntime.tools.onnxruntime_test:main',

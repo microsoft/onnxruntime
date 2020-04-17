@@ -26,7 +26,12 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
-
+namespace {
+struct KernelRegistryAndStatus {
+  std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
+  Status st;
+};
+}  // namespace
 namespace onnxruntime {
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -54,27 +59,29 @@ ONNX_OPERATOR_KERNEL_EX(
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
 
-static void RegisterTensorrtKernels(KernelRegistry& kernel_registry) {
+static Status RegisterTensorrtKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
   };
 
   for (auto& function_table_entry : function_table) {
-    kernel_registry.Register(function_table_entry());
+    ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
   }
+  return Status::OK();
 }
 
-std::shared_ptr<KernelRegistry> GetTensorrtKernelRegistry() {
-  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  RegisterTensorrtKernels(*kernel_registry);
-
-  return kernel_registry;
+KernelRegistryAndStatus GetTensorrtKernelRegistry() {
+  KernelRegistryAndStatus ret;
+  ret.st = RegisterTensorrtKernels(*ret.kernel_registry);
+  return ret;
 }
 
 std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::GetTensorrtKernelRegistry();
-  return kernel_registry;
+  static KernelRegistryAndStatus k = onnxruntime::GetTensorrtKernelRegistry();
+  // throw if the registry failed to initialize
+  ORT_THROW_IF_ERROR(k.st);
+  return k.kernel_registry;
 }
 
 // Per TensorRT documentation, logger needs to be a singleton.

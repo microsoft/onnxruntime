@@ -100,7 +100,7 @@ class WindowsThread : public EnvThread {
 
 class WindowsEnv : public Env {
  public:
-  EnvThread* CreateThread(const ORTCHAR_T* name_prefix, int index,
+  EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
                           unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
                           Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) {
     return new WindowsThread(name_prefix, index, start_address, param, thread_options);
@@ -150,7 +150,7 @@ class WindowsEnv : public Env {
     return GetCurrentProcessId();
   }
 
-  Status GetFileLength(const ORTCHAR_T* file_path, size_t& length) const override {
+  Status GetFileLength(_In_z_ const ORTCHAR_T* file_path, size_t& length) const override {
     wil::unique_hfile file_handle{
         CreateFileW(file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
     LARGE_INTEGER filesize;
@@ -165,7 +165,7 @@ class WindowsEnv : public Env {
     return Status::OK();
   }
 
-  Status ReadFileIntoBuffer(const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length,
+  Status ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length,
                             const gsl::span<char> buffer) const override {
     ORT_RETURN_IF_NOT(file_path);
     ORT_RETURN_IF_NOT(offset >= 0);
@@ -212,7 +212,7 @@ class WindowsEnv : public Env {
     return Status::OK();
   }
 
-  Status MapFileIntoMemory(const ORTCHAR_T*, FileOffsetType, size_t, MappedMemoryPtr&) const override {
+  Status MapFileIntoMemory(_In_z_ const ORTCHAR_T*, FileOffsetType, size_t, MappedMemoryPtr&) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "MapFileIntoMemory is not implemented on Windows.");
   }
 
