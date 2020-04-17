@@ -391,17 +391,6 @@ void addGlobalMethods(py::module& m, const Environment& env) {
       "get_all_opkernel_def", []() -> const std::vector<onnxruntime::KernelDef> {
         std::vector<onnxruntime::KernelDef> result;
 
-        // default logger is needed to create the DNNLExecutionProvider
-        std::string default_logger_id{"DefaultLogger"};
-        std::unique_ptr<onnxruntime::logging::LoggingManager> default_logging_manager =
-            onnxruntime::make_unique<LoggingManager>(
-                std::unique_ptr<onnxruntime::logging::ISink>{new onnxruntime::logging::CLogSink{}},
-                onnxruntime::logging::Severity::kWARNING,
-                false,
-                onnxruntime::logging::LoggingManager::InstanceType::Default,
-                &default_logger_id,
-                /*default_max_vlog_level*/ -1);
-
         std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
             onnxruntime::CreateExecutionProviderFactory_CPU(0),
 #ifdef USE_CUDA
