@@ -219,13 +219,6 @@ jobs:
      Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
     displayName: 'Install ONNX'
-    
-  - task: PythonScript@0
-    displayName: 'Download test data'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-      arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-      workingDirectory: $(Build.BinariesDirectory)
 
   - task: PythonScript@0
     displayName: 'BUILD'
@@ -306,13 +299,6 @@ jobs:
     - template: templates/set-featurizer-build-flag-step.yml
       parameters:
         is_featurizers_build: $(is_featurizers_build)
-
-    - task: PythonScript@0
-      displayName: 'Download test data'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-        workingDirectory: $(Build.BinariesDirectory)
 
     - task: PythonScript@0
       displayName: 'build'

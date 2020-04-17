@@ -11,7 +11,7 @@ This document covers basic tools and knobs that can be leveraged to find the bes
 ## Is there a tool to help with performance tuning?
 Yes, the onnxruntime_perf_test.exe tool (available from the build drop) can be used to test various knobs. Please find the usage instructions using `onnxruntime_perf_test.exe -h`.
 
-Additionally, the [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) provides an easy-to-use pipeline for converting models to ONNX and optimizing performance with ONNX Runtime. The tool can help identify the optimal runtime configuration to get the best performance on the target hardware for the model.
+Additionally, the [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) provides an easy-to-use pipeline for converting models to ONNX and optimizing performance with ONNX Runtime. The tool can help identify the optimal runtime configuration to get the best performance on the target hardware for the model. For quickstart, check out the notebooks on how to use OLive [here](https://github.com/microsoft/OLive/blob/master/notebook/Convert_Models_and_Tune_Performance_with_OLive_Python_SDK.ipynb) (using Python) and [here](https://github.com/microsoft/OLive/blob/master/notebook/Convert_Models_and_Tune_Performance_with_OLive_Docker_Images.ipynb) (using Docker). 
 
 ## Using different execution providers
 
@@ -123,6 +123,9 @@ In both cases, you will get a JSON file which contains the detailed performance 
 * Type chrome://tracing in the address bar
 * Load the generated JSON file
 
+## Performance Tuning for Bert Models
+
+For Bert models, sometimes ONNX Runtime cannot apply the best optimization due to reasons such as framework version updates. In this case, we recommend trying out the [Bert optimization tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/bert), which reflects the latest changes in graph pattern matching and model conversions, and a set of [notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/bert/notebooks) for quickstart.
 
 
 ## Model graph is not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?
