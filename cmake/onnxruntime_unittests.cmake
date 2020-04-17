@@ -644,7 +644,9 @@ target_include_directories(onnxruntime_perf_test PRIVATE ${onnx_test_runner_src_
         ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx)
 if (WIN32)
   target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
-  SET(SYS_PATH_LIB shlwapi)
+  if (NOT DEFINED SYS_PATH_LIB)
+    set(SYS_PATH_LIB shlwapi)
+  endif()
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)

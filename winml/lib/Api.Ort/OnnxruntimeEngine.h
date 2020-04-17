@@ -4,6 +4,7 @@
 #include "iengine.h"
 
 #include <memory>
+#include <mutex>
 
 namespace _winml {
 
