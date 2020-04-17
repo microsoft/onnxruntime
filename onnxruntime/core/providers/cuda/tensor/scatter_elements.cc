@@ -9,71 +9,31 @@
 namespace onnxruntime {
 namespace cuda {
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Scatter,
-    kOnnxDomain,
-    9,
-    10,
-    kCudaExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .TypeConstraint("Tind", std::vector<MLDataType>{
-                                    DataTypeImpl::GetTensorType<int32_t>(),
-                                    DataTypeImpl::GetTensorType<int64_t>()}),
-    ScatterElements);
+#define REGISTER_KERNEL_TYPED(T, Tind)                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                              \
+      Scatter,                                                          \
+      kOnnxDomain,                                                      \
+      9,                                                                \
+      10,                                                               \
+      T##_##Tind,                                                       \
+      kCudaExecutionProvider,                                           \
+      KernelDefBuilder()                                                \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>()), \
+      ScatterElements<T, Tind>);                                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+      ScatterElements,                                                  \
+      kOnnxDomain,                                                      \
+      11,                                                               \
+      T##_##Tind,                                                       \
+      kCudaExecutionProvider,                                           \
+      KernelDefBuilder()                                                \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>()), \
+      ScatterElements<T, Tind>);
 
-ONNX_OPERATOR_KERNEL_EX(
-    ScatterElements,
-    kOnnxDomain,
-    11,
-    kCudaExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .TypeConstraint("Tind", std::vector<MLDataType>{
-                                    DataTypeImpl::GetTensorType<int32_t>(),
-                                    DataTypeImpl::GetTensorType<int64_t>()}),
-    ScatterElements);
-
-#define TYPED_FUNCTION_CALL(T)                                                \
-  if (utils::IsPrimitiveDataType<T>(T_type)) {                                \
-    T* output_data = output_tensor->template MutableData<T>();                \
-    const T* input_data = data_tensor->template Data<T>();                    \
-    const T* update_data = updates_tensor->template Data<T>();                \
-    if (utils::IsPrimitiveDataType<int32_t>(Tin_type)) {                      \
-      const int32_t* indices_data = indices_tensor->template Data<int32_t>(); \
-      return ScatterElementsImpl(                                             \
-          rank,                                                               \
-          reinterpret_cast<const ToCudaType<T>::MappedType*>(input_data),     \
-          input_data_size,                                                    \
-          buffer_input_dims,                                                  \
-          buffer_input_strides,                                               \
-          indices_data,                                                       \
-          indices_size,                                                       \
-          buffer_indices_dims,                                                \
-          fdm_indices_strides,                                                \
-          reinterpret_cast<const ToCudaType<T>::MappedType*>(update_data),    \
-          axis,                                                               \
-          reinterpret_cast<ToCudaType<T>::MappedType*>(output_data));         \
-    }                                                                         \
-    if (utils::IsPrimitiveDataType<int64_t>(Tin_type)) {                      \
-      const int64_t* indices_data = indices_tensor->template Data<int64_t>(); \
-      return ScatterElementsImpl(                                             \
-          rank,                                                               \
-          reinterpret_cast<const ToCudaType<T>::MappedType*>(input_data),     \
-          input_data_size,                                                    \
-          buffer_input_dims,                                                  \
-          buffer_input_strides,                                               \
-          indices_data,                                                       \
-          indices_size,                                                       \
-          buffer_indices_dims,                                                \
-          fdm_indices_strides,                                                \
-          reinterpret_cast<const ToCudaType<T>::MappedType*>(update_data),    \
-          axis,                                                               \
-          reinterpret_cast<ToCudaType<T>::MappedType*>(output_data));         \
-    }                                                                         \
-  }
-
-Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
+template <typename T, typename Tind>
+Status ScatterElements<T, Tind>::ComputeInternal(OpKernelContext* context) const {
   const auto* data_tensor = context->Input<Tensor>(0);
   const auto& input_data_shape = data_tensor->Shape();
   const int64_t input_data_size = input_data_shape.Size();
@@ -131,24 +91,45 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
     fdm_indices_strides[i] = fast_divmod(static_cast<int>(indices_strides[i]));
   }
 
-  MLDataType Tin_type = indices_tensor->DataType();
-  MLDataType T_type = data_tensor->DataType();
-
-  TYPED_FUNCTION_CALL(float)
-  TYPED_FUNCTION_CALL(MLFloat16)
-  TYPED_FUNCTION_CALL(int16_t)
-  TYPED_FUNCTION_CALL(int8_t)
-  TYPED_FUNCTION_CALL(int32_t)
-  TYPED_FUNCTION_CALL(int64_t)
-  TYPED_FUNCTION_CALL(uint8_t)
-  TYPED_FUNCTION_CALL(uint16_t)
-  TYPED_FUNCTION_CALL(uint32_t)
-  TYPED_FUNCTION_CALL(uint64_t)
-  TYPED_FUNCTION_CALL(double)
-  TYPED_FUNCTION_CALL(bool)
-
-  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for T is not supported yet in ScatterElements.");
+  T* output_data = output_tensor->template MutableData<T>();
+  const T* input_data = data_tensor->template Data<T>();
+  const T* update_data = updates_tensor->template Data<T>();
+  const Tind* indices_data = indices_tensor->template Data<Tind>();
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  return ScatterElementsImpl<CudaT, Tind, Func_Assignment<CudaT>>(
+      rank,
+      reinterpret_cast<const CudaT*>(input_data),
+      input_data_size,
+      buffer_input_dims,
+      buffer_input_strides,
+      indices_data,
+      indices_size,
+      buffer_indices_dims,
+      fdm_indices_strides,
+      reinterpret_cast<const CudaT*>(update_data),
+      axis,
+      reinterpret_cast<CudaT*>(output_data),
+      Func_Assignment<CudaT>());
 }
+
+#define SPECIALIZED_COMPUTE(T)                                                              \
+  REGISTER_KERNEL_TYPED(T, int32_t)                                                         \
+  REGISTER_KERNEL_TYPED(T, int64_t)                                                         \
+  template Status ScatterElements<T, int32_t>::ComputeInternal(OpKernelContext* ctx) const; \
+  template Status ScatterElements<T, int64_t>::ComputeInternal(OpKernelContext* ctx) const;
+
+SPECIALIZED_COMPUTE(float)
+SPECIALIZED_COMPUTE(MLFloat16)
+SPECIALIZED_COMPUTE(int16_t)
+SPECIALIZED_COMPUTE(int8_t)
+SPECIALIZED_COMPUTE(int32_t)
+SPECIALIZED_COMPUTE(int64_t)
+SPECIALIZED_COMPUTE(uint8_t)
+SPECIALIZED_COMPUTE(uint16_t)
+SPECIALIZED_COMPUTE(uint32_t)
+SPECIALIZED_COMPUTE(uint64_t)
+SPECIALIZED_COMPUTE(double)
+SPECIALIZED_COMPUTE(bool)
 
 }  // namespace cuda
 }  // namespace onnxruntime
