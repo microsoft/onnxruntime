@@ -316,8 +316,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs):
                        training=True,
                        _retain_param_name=True,
                        example_outputs=tuple(sample_outputs),
-                       do_constant_folding=False,
-                       **other_export_options)
+                       do_constant_folding=False)
 
     model = onnx.load_model_from_string(f.getvalue())
 
@@ -507,6 +506,7 @@ def create_ort_training_session_bind_parameters(model, device, world_rank=-1, wo
                                    dtype_torch_to_numpy(torch_params[param].dtype), list(torch_tensor.size()),
                                    torch_tensor.data_ptr())
 
+        device_index = get_device_index(device)
         create_and_bind_grad_or_grad_accumulate_buffer(train_io_binding, torch_tensor, param, enable_grad_accumulation, device, device_index)
 
     return session, train_io_binding, eval_io_binding, output_name, torch_params, output_types
