@@ -242,7 +242,7 @@ class TestOrtTrainer(unittest.TestCase):
         model_desc = mnist_model_description()
 
         trainer = ORTTrainer(model, my_loss, model_desc, "SGDOptimizer", None, IODescription('Learning_Rate', [1, ], 
-                            torch.float32), device, opset_version=12)
+                            torch.float32), device, _opset_version=12)
 
         learningRate = 0.01
         args_epochs = 2

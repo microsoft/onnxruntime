@@ -519,7 +519,7 @@ class ORTTrainer():
                  learning_rate_description, device, gradient_accumulation_steps=1, postprocess_model=None,
                  world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
                  global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False,
-                 enable_grad_norm_clip=True, frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION):
+                 enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION):
         super(ORTTrainer, self).__init__()
         """
         Initializes ORTTrainer.
@@ -595,7 +595,7 @@ class ORTTrainer():
         self.partition_optimizer_ = partition_optimizer
         self.enable_grad_norm_clip_ = enable_grad_norm_clip
         self.frozen_weights_ = frozen_weights
-        self.opset_version_ = opset_version
+        self.opset_version_ = _opset_version
         self.loss_scale_input_name = ''
 
         self._init_session()
@@ -876,7 +876,7 @@ class ORTTrainer():
 
 class ORTModel():
     def __init__(self, model, loss_fn, model_desc, device, postprocess_model=None, world_rank=-1, world_size=1,
-                 gradient_accumulation_steps=1, opset_version=DEFAULT_OPSET_VERSION):
+                 gradient_accumulation_steps=1, _opset_version=DEFAULT_OPSET_VERSION):
         super(ORTModel, self).__init__()
         self.model_ = model
         self.loss_fn_ = loss_fn
@@ -885,7 +885,7 @@ class ORTModel():
         self.world_rank = world_rank
         self.world_size = world_size
         self.gradient_accumulation_steps = gradient_accumulation_steps
-        self.opset_version = opset_version
+        self.opset_version = _opset_version
 
         model = convert_model_loss_fn_to_onnx(self.model_, self.loss_fn_, self.model_desc_, torch.device(
             'cpu'), opset_version=self.opset_version)
