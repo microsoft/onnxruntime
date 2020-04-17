@@ -27,7 +27,7 @@ void shape2strides(const TensorShape& shape, TensorShape& shape_strides) {
   std::vector<int64_t> strides;
   strides.resize(shape.NumDimensions());
   strides[strides.size() - 1] = sizeof(int64_t);
-  for (size_t i = strides.size() - 2; i >= 0; --i)
+  for (int i = (int)strides.size() - 2; i >= 0; --i)
     strides[i] = strides[i + 1] * shape[i + 1];
   shape_strides = strides;
 }
