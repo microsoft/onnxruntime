@@ -401,8 +401,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                map_optimizer_attributes, world_rank=-1, world_size=1,
                                                gradient_accumulation_steps=1, bind_parameters=False,
                                                use_mixed_precision=False, allreduce_post_accumulation=False,
-                                               loss_scale_input_name='', scaled_loss_output_name='',
-                                               partition_optimizer=False, enable_grad_norm_clip=True,
+                                               partition_optimizer=False,
+                                               enable_grad_norm_clip=True,
                                                frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
@@ -639,8 +639,8 @@ class ORTTrainer():
                 self.world_rank, self.world_size,
                 self.gradient_accumulation_steps, bind_parameters=False,
                 use_mixed_precision=self.use_mixed_precision, allreduce_post_accumulation=self.allreduce_post_accumulation_,
-                loss_scale_input_name=self.loss_scale_input_name, scaled_loss_output_name=self.scaled_loss_output_name,
-                partition_optimizer=self.partition_optimizer_, enable_grad_norm_clip=self.enable_grad_norm_clip_,
+                partition_optimizer=self.partition_optimizer_,
+                enable_grad_norm_clip=self.enable_grad_norm_clip_,
                 frozen_weights=self.frozen_weights_, opset_version=self.opset_version_)
 
         # ORT backend has modified model output dtype from float32 to float16.
