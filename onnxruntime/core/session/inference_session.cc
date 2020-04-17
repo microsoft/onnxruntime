@@ -690,7 +690,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
     provider_types.push_back(provider_ptr->Type());
   }
 
-  // Insert copy node/s.
+  // Insert copy nodes.
   MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager};
   ORT_RETURN_IF_ERROR_SESSIONID_(copy_transformer.Apply(graph, modified, *session_logger_));
 
