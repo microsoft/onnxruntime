@@ -12,8 +12,8 @@
 #include "core/common/common.h"
 #include "core/platform/env.h"
 #include "core/platform/ort_mutex.h"
+#include "core/platform/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/path_lib.h"
 #include "core/framework/allocator.h"
 #include "re2/re2.h"
 #include <sstream>
@@ -21,36 +21,7 @@
 #include <regex>
 #include "OrtValueList.h"
 
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wignored-qualifiers"
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#else
-#pragma warning(push)
-#pragma warning(disable : 4018) /*'expression' : signed/unsigned mismatch */
-#pragma warning(disable : 4065) /*switch statement contains 'default' but no 'case' labels*/
-#pragma warning(disable : 4100)
-#pragma warning(disable : 4505)
-#pragma warning(disable : 4146) /*unary minus operator applied to unsigned type, result still unsigned*/
-#pragma warning(disable : 4244) /*'conversion' conversion from 'type1' to 'type2', possible loss of data*/
-#pragma warning(disable : 4251) /*'identifier' : class 'type' needs to have dll-interface to be used by clients of class 'type2'*/
-#pragma warning(disable : 4267) /*'var' : conversion from 'size_t' to 'type', possible loss of data*/
-#pragma warning(disable : 4305) /*'identifier' : truncation from 'type1' to 'type2'*/
-#pragma warning(disable : 4307) /*'operator' : integral constant overflow*/
-#pragma warning(disable : 4309) /*'conversion' : truncation of constant value*/
-#pragma warning(disable : 4334) /*'operator' : result of 32-bit shift implicitly converted to 64 bits (was 64-bit shift intended?)*/
-#pragma warning(disable : 4355) /*'this' : used in base member initializer list*/
-#pragma warning(disable : 4506) /*no definition for inline function 'function'*/
-#pragma warning(disable : 4800) /*'type' : forcing value to bool 'true' or 'false' (performance warning)*/
-#pragma warning(disable : 4996) /*The compiler encountered a deprecated declaration.*/
-#endif
-#include <google/protobuf/util/delimited_message_util.h>
-#include "tml.pb.h"
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#else
-#pragma warning(pop)
-#endif
+#include "pb_helper.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
@@ -309,7 +280,7 @@ void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo* model
   bool clean_eof = false;
   int item_id = 1;
   for (proto::TraditionalMLData data;
-       google::protobuf::util::ParseDelimitedFromCodedStream(&data, &coded_input, &clean_eof);
+       ParseDelimitedFromCodedStream(&data, &coded_input, &clean_eof);
        ++item_id, data.Clear()) {
     try {
       ORT_VALUE_HOLDER gvalue(nullptr, Ort::GetApi().ReleaseValue);
@@ -423,7 +394,7 @@ class OnnxTestCase : public ITestCase {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTestCase);
 
  public:
-  OnnxTestCase(const std::string& test_case_name, TestModelInfo* model, double default_per_sample_tolerance,
+  OnnxTestCase(const std::string& test_case_name, _In_ TestModelInfo* model, double default_per_sample_tolerance,
                double default_relative_per_sample_tolerance);
   ~OnnxTestCase() override { delete model_info_; }
   Status GetPerSampleTolerance(double* value) override;

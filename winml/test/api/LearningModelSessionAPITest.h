@@ -1,0 +1,55 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "test.h"
+
+struct LearningModelSesssionAPITestsApi {
+  SetupClass LearningModelSessionAPITestsClassSetup;
+  SetupTest LearningModelSessionAPITestsGpuMethodSetup;
+  SetupTest LearningModelSessionAPITestsGpuSkipEdgeCoreMethodSetup;
+  VoidTest CreateSessionDeviceDefault;
+  VoidTest CreateSessionDeviceCpu;
+  VoidTest CreateSessionWithModelLoadedFromStream;
+  VoidTest CreateSessionDeviceDirectX;
+  VoidTest CreateSessionDeviceDirectXHighPerformance;
+  VoidTest CreateSessionDeviceDirectXMinimumPower;
+  VoidTest AdapterIdAndDevice;
+  VoidTest EvaluateFeatures;
+  VoidTest EvaluateFeaturesAsync;
+  VoidTest EvaluationProperties;
+  VoidTest CreateSessionWithCastToFloat16InModel;
+  VoidTest DISABLED_CreateSessionWithFloat16InitializersInModel;
+  VoidTest EvaluateSessionAndCloseModel;
+  VoidTest CloseSession;
+};
+const LearningModelSesssionAPITestsApi& getapi();
+
+WINML_TEST_CLASS_BEGIN(LearningModelSessionAPITests)
+WINML_TEST_CLASS_SETUP_CLASS(LearningModelSessionAPITestsClassSetup)
+WINML_TEST_CLASS_BEGIN_TESTS
+WINML_TEST(LearningModelSessionAPITests, CreateSessionDeviceDefault)
+WINML_TEST(LearningModelSessionAPITests,CreateSessionDeviceCpu)
+WINML_TEST(LearningModelSessionAPITests,CreateSessionWithModelLoadedFromStream)
+WINML_TEST(LearningModelSessionAPITests,EvaluateFeatures)
+WINML_TEST(LearningModelSessionAPITests,EvaluateFeaturesAsync)
+WINML_TEST(LearningModelSessionAPITests,EvaluationProperties)
+WINML_TEST(LearningModelSessionAPITests,EvaluateSessionAndCloseModel)
+WINML_TEST_CLASS_END()
+
+WINML_TEST_CLASS_BEGIN(LearningModelSessionAPITestsGpu)
+WINML_TEST_CLASS_SETUP_CLASS(LearningModelSessionAPITestsClassSetup)
+WINML_TEST_CLASS_SETUP_METHOD(LearningModelSessionAPITestsGpuMethodSetup)
+WINML_TEST_CLASS_BEGIN_TESTS
+WINML_TEST(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectX)
+WINML_TEST(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXHighPerformance)
+WINML_TEST(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXMinimumPower)
+WINML_TEST(LearningModelSessionAPITestsGpu, CreateSessionWithCastToFloat16InModel)
+WINML_TEST(LearningModelSessionAPITestsGpu, DISABLED_CreateSessionWithFloat16InitializersInModel)
+WINML_TEST_CLASS_END()
+
+WINML_TEST_CLASS_BEGIN(LearningModelSessionAPITestsGpuSkipEdgeCore)
+WINML_TEST_CLASS_SETUP_CLASS(LearningModelSessionAPITestsClassSetup)
+WINML_TEST_CLASS_SETUP_METHOD(LearningModelSessionAPITestsGpuSkipEdgeCoreMethodSetup)
+WINML_TEST_CLASS_BEGIN_TESTS
+WINML_TEST(LearningModelSessionAPITestsGpuSkipEdgeCore, AdapterIdAndDevice)
+WINML_TEST_CLASS_END()

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/schema_registry.h"
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 // Add customized domain to min/max version.
@@ -69,7 +70,8 @@ common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchemaInternal(ONNX_NAMESP
             << op_schema.line()
             << ", but it is already registered from file "
             << schema.file() << " line " << schema.line() << std::endl;
-    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostream.str());
+    LOGS_DEFAULT(WARNING) << ostream.str();
+    return common::Status::OK();  // an op with the same name can be registered for multiple execution providers
   }
 
   auto ver_range_it = domain_version_range_map_.find(op_domain);
@@ -194,6 +196,17 @@ DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_on
   return domain_version_map;
 }
 
+static bool IsDomainVersionBeyondSupportedRange(
+    const std::string& domain,
+    const int op_set_version) {
+  // check the ONNX schema registry
+  auto& onnx_domain_version_map =
+      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
+
+  auto it = onnx_domain_version_map.find(domain);
+  return it != onnx_domain_version_map.end() && op_set_version > it->second.second;
+}
+
 // Return the schema with biggest version, which is not greater than specified
 // <op_set_version> in specified domain. The value of earliest_opset_where_unchanged
 // is also set to the earliest version preceding op_set_version where the operator
@@ -238,10 +251,14 @@ void SchemaRegistryManager::GetSchemaAndHistory(
     checked_registry_indices.push_back(index);
   }
 
-  // if not found in registered custom schema registry, search in ONNX schema registry
-  *latest_schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema(key, version, domain);
-  if (*latest_schema != nullptr) {
-    *earliest_opset_where_unchanged = (*latest_schema)->SinceVersion();
+  // Reject versions greater than what is actually supported.
+  *latest_schema = nullptr;
+  if (!IsDomainVersionBeyondSupportedRange(domain, version)) {
+    // if not found in registered custom schema registry, search in ONNX schema registry
+    *latest_schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema(key, version, domain);
+    if (*latest_schema != nullptr) {
+      *earliest_opset_where_unchanged = (*latest_schema)->SinceVersion();
+    }
   }
 }
 

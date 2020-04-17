@@ -10,6 +10,10 @@
 static const GUID OrtProviderGuid = {0x3a26b1ff, 0x7484, 0x7484, {0x74, 0x84, 0x15, 0x26, 0x1f, 0x42, 0x61, 0x4d}};
 
 int real_main(int argc, TCHAR* argv[]) {
+  if (argc < 2) {
+    std::cout << "Usage: generate_perf_report_from_etl.exe <filename>" << std::endl;
+    return -1;
+  }
   ProfilingInfo context;
   TraceSession session;
   session.AddHandler(OrtProviderGuid, OrtEventHandler, &context);

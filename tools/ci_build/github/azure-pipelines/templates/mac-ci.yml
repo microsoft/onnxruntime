@@ -1,5 +1,4 @@
 parameters:
-  AgentPool : 'Hosted macOS High Sierra'
   JobName: 'MacOS_CI_Dev'
   BuildCommand: ''
   DoNugetPack: 'false'
@@ -10,11 +9,11 @@ jobs:
   workspace:
     clean: all
   timeoutInMinutes:  120
-  pool: ${{ parameters.AgentPool }}
+  pool:
+    vmImage: 'macOS-10.14'
   variables:
     BuildCommand: ${{ parameters.BuildCommand }}
   steps:
-    - template: mac-set-variables-and-download.yml
     - script: |
         export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-11.jdk/Contents/Home
         java --version
@@ -33,7 +32,7 @@ jobs:
         inputs:
           artifactName: 'drop-osx'
           targetPath: '$(Build.ArtifactStagingDirectory)'
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
-      condition: succeeded()
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
     - template: clean-agent-build-directory-step.yml

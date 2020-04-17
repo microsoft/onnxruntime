@@ -191,9 +191,28 @@ TEST(TensorTest, Int64PtrConstructor) {
   int64_t dimensions[] = {2, 3, 4};
   TensorShape shape(dimensions, 2);  // just use first 2
   EXPECT_EQ(shape.Size(), 6);
-  EXPECT_EQ(shape.NumDimensions(), 2);
+  EXPECT_EQ(shape.NumDimensions(), 2u);
   EXPECT_THAT(shape.GetDims(), testing::ElementsAre(2, 3));
 }
 
+TEST(TensorTest, SizeOverflow) {
+  // shape overflow
+  EXPECT_THROW(TensorShape({std::numeric_limits<int64_t>::max() / 2, 3}).Size(), OnnxRuntimeException);
+
+  auto type = DataTypeImpl::GetType<float>();
+  auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+
+  // total size overflow with 4 bytes per element
+  TensorShape shape1({static_cast<int64_t>(std::numeric_limits<size_t>::max() / 3)});
+  EXPECT_THROW(Tensor(type, shape1, alloc), OnnxRuntimeException);
+
+  Tensor t(type, shape1, nullptr, alloc->Info());
+  EXPECT_THROW(t.SizeInBytes(), OnnxRuntimeException);
+
+  // overflow due to offset. max/4 from shape, *4 from float size, + 4 from offset
+  TensorShape shape2({static_cast<int64_t>(std::numeric_limits<size_t>::max() / 4)});
+  ptrdiff_t offset = sizeof(float);  // one more element to push past max
+  EXPECT_THROW(Tensor(type, shape2, alloc, offset), OnnxRuntimeException);
+}
 }  // namespace test
 }  // namespace onnxruntime

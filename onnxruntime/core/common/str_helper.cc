@@ -7,7 +7,7 @@
 
 namespace onnxruntime {
 std::string ToMBString(const std::wstring& s) {
-  if (s.size() >= std::numeric_limits<int>::max()) throw std::runtime_error("length overflow");
+  if (s.size() >= static_cast<size_t>(std::numeric_limits<int>::max())) throw std::runtime_error("length overflow");
   const int src_len = static_cast<int>(s.size() + 1);
   const int len = WideCharToMultiByte(CP_ACP, 0, s.data(), src_len, nullptr, 0, nullptr, nullptr);
   assert(len > 0);
@@ -18,7 +18,7 @@ std::string ToMBString(const std::wstring& s) {
 }
 
 std::wstring ToWideString(const std::string& s) {
-  if (s.size() >= std::numeric_limits<int>::max()) throw std::runtime_error("length overflow");
+  if (s.size() >= static_cast<size_t>(std::numeric_limits<int>::max())) throw std::runtime_error("length overflow");
   const int src_len = static_cast<int>(s.size() + 1);
   const int len = MultiByteToWideChar(CP_ACP, 0, s.data(), src_len, nullptr, 0);
   assert(len > 0);

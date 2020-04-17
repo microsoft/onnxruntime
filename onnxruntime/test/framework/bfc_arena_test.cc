@@ -2,10 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/bfc_arena.h"
-#include "core/framework/utils.h"
 #include "gtest/gtest.h"
-#include "test_utils.h"
-
 #include <cstdlib>
 
 namespace onnxruntime {
@@ -38,7 +35,7 @@ TEST(BFCArenaTest, NoDups) {
   for (size_t i = 1; i < ptrs.size(); i++) {
     ASSERT_NE(ptrs[i], ptrs[i - 1]);  // No dups
     size_t req_size = a.RequestedSize(ptrs[i - 1]);
-    ASSERT_GT(req_size, 0);
+    ASSERT_GT(req_size, 0u);
     ASSERT_GE(static_cast<size_t>(static_cast<char*>(ptrs[i]) - static_cast<char*>(ptrs[i - 1])),
               req_size);
   }
@@ -92,7 +89,7 @@ TEST(BFCArenaTest, AllocationsAndDeallocations) {
     EXPECT_NE(existing_ptrs[i], existing_ptrs[i - 1]);  // No dups
 
     size_t req_size = a.RequestedSize(existing_ptrs[i - 1]);
-    ASSERT_GT(req_size, 0);
+    ASSERT_GT(req_size, 0u);
 
     // Check that they don't overlap.
     ASSERT_GE(static_cast<size_t>(static_cast<char*>(existing_ptrs[i]) -
@@ -149,8 +146,8 @@ TEST(BFCArenaTest, AllocateZeroBufSize) {
 TEST(BFCArenaTest, AllocatedVsRequested) {
   BFCArena a(std::unique_ptr<IDeviceAllocator>(new CPUAllocator()), 1 << 30);
   void* t1 = a.Alloc(4);
-  EXPECT_EQ(4, a.RequestedSize(t1));
-  EXPECT_EQ(256, a.AllocatedSize(t1));
+  EXPECT_EQ(4u, a.RequestedSize(t1));
+  EXPECT_EQ(256u, a.AllocatedSize(t1));
   a.Free(t1);
 }
 
@@ -210,7 +207,7 @@ TEST(BFCArenaTest, AllocationsAndDeallocationsWithGrowth) {
     EXPECT_NE(existing_ptrs[i], existing_ptrs[i - 1]);  // No dups
 
     size_t req_size = a.RequestedSize(existing_ptrs[i - 1]);
-    ASSERT_GT(req_size, 0);
+    ASSERT_GT(req_size, 0u);
 
     // Check that they don't overlap.
     ASSERT_GE(static_cast<size_t>(
@@ -237,42 +234,5 @@ TEST(BFCArenaTest, TestReserve) {
   a.GetStats(&stats);
   EXPECT_EQ(stats.total_allocated_bytes, 1048576);
 }
-
-// arena is disabled for CPUExecutionProvider on x86 and JEMalloc
-#if (defined(__amd64__) || defined(_M_AMD64)) && !defined(USE_JEMALLOC)
-TEST(BFCArenaTest, UtilsAllocateBlockTest) {
-  // use a local CPUExecutionProvider so it has a clean arena.
-  CPUExecutionProviderInfo info;
-  info.create_arena = true;
-  CPUExecutionProvider cpu_provider(info);
-
-  auto cpu_arena = cpu_provider.GetAllocator(0, OrtMemTypeDefault);
-
-  EXPECT_EQ(cpu_arena->Info().alloc_type, OrtAllocatorType::OrtArenaAllocator);
-
-  // AllocateBlock should use Reserve so the growth rate of the arena doesn't change
-  size_t block_size = 4 * 1024 * 1024;
-  void* block = utils::AllocateBlock(*cpu_arena, block_size);
-  EXPECT_TRUE(block);
-
-  // if Reserve was called the initial allocation via Alloc should allocate 1MB of memory
-  // if Reserve was not called it would grow by another 4MB
-  size_t initial_extend_size = 1024 * 1024;
-  size_t size = 1024;
-  auto bytes = cpu_arena->Alloc(size);
-  EXPECT_TRUE(bytes);
-
-  AllocatorStats stats;
-  BFCArena* arena = dynamic_cast<BFCArena*>(&*cpu_arena);
-  EXPECT_TRUE(arena);
-  arena->GetStats(&stats);
-
-  EXPECT_EQ(size_t(stats.total_allocated_bytes), block_size + initial_extend_size);
-
-  cpu_arena->Free(block);
-  cpu_arena->Free(bytes);
-}
-#endif
-
 }  // namespace test
 }  // namespace onnxruntime

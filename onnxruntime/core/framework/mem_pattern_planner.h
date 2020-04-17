@@ -17,7 +17,7 @@ limitations under the License.
 
 #pragma once
 #include <list>
-
+#include "core/common/safeint.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/allocation_planner.h"
 #include "core/platform/ort_mutex.h"
@@ -60,8 +60,10 @@ class MemPatternPlanner {
       current = allocs_[*it].block_.offset_ + allocs_[*it].block_.size_;
     }
 
+    // we only need to bounds check the addition of size to best_offset as that is the only time we extend
+    // the maximum size of the buffer.
+    buffer_size_ = std::max(buffer_size_, SafeInt<size_t>(best_offset) + size);
     allocs_.emplace_back(ml_value_idx, MemoryBlock(best_offset, size));
-    buffer_size = std::max(buffer_size, best_offset + size);
     blocks_.insert(best_fit_it, (static_cast<int>(allocs_.size()) - 1));
   }
 
@@ -80,7 +82,7 @@ class MemPatternPlanner {
     std::lock_guard<OrtMutex> lock(lock_);
 
     MemoryPattern pattern;
-    pattern.peak_size_ = buffer_size;
+    pattern.peak_size_ = buffer_size_;
     for (auto& alloc : allocs_) {
       pattern.patterns_[alloc.index_] = alloc.block_;
     }
@@ -88,7 +90,7 @@ class MemPatternPlanner {
     return pattern;
   }
 
- protected:
+ private:
   struct OrtValueAllocationBlock {
     int index_{-1};
     MemoryBlock block_;
@@ -100,7 +102,7 @@ class MemPatternPlanner {
   std::vector<OrtValueAllocationBlock> allocs_;
   // blocks_ the list of currently allocated memory blocks, sorted in order of their offset
   std::list<int> blocks_;
-  size_t buffer_size{0};
+  SafeInt<size_t> buffer_size_{0};
   mutable OrtMutex lock_;
 };
 

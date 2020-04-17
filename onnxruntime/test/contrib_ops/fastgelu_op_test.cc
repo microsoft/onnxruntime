@@ -49,6 +49,7 @@ static void RunFastGeluTest(
     const std::vector<int64_t>& output_dims,
     bool has_bias = true,
     bool use_float16 = false) {
+  // Test CUDA operator.
   int min_cuda_architecture = use_float16 ? 530 : 0;
   if (HasCudaEnvironment(min_cuda_architecture)) {
     OpTester tester("FastGelu", 1, onnxruntime::kMSDomain);
@@ -69,6 +70,21 @@ static void RunFastGeluTest(
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+
+  // Test CPU operator: only float32 is implemented for FastGelu CPU.
+  if (nullptr != DefaultCpuExecutionProvider().get() && !use_float16) {
+    OpTester tester("FastGelu", 1, onnxruntime::kMSDomain);
+
+    tester.AddInput<float>("X", input_dims, input_data);
+    if (has_bias) {
+      tester.AddInput<float>("bias", bias_dims, bias_data);
+    }
+    tester.AddOutput<float>("Y", output_dims, output_data);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }

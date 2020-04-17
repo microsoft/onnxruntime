@@ -130,8 +130,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
         std::vector<int64_t> b_dims(2 + kernel_shape.size());
         b_dims[0] = 1;           // N
         b_dims[1] = b_shape[0];  // C
-        for (size_t i = 0; i < kernel_shape.size(); i++)
-          b_dims[2 + i] = 1;
+        for (size_t i = 0; i < kernel_shape.size(); i++) b_dims[2 + i] = 1;
 
         ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
       }

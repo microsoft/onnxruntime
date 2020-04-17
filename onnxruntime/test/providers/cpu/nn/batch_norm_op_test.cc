@@ -16,10 +16,11 @@ namespace test {
 using InputDataMap = unordered_map<string, vector<float>>;
 using InputShapesMap = unordered_map<string, vector<int64_t>>;
 
-void TestBatchNorm(const InputDataMap& input_data_map,
+template <typename T>
+void TestBatchNorm(const unordered_map<string, vector<T>>& input_data_map,
                    const InputShapesMap& input_shapes_map,
                    optional<float> epsilon,
-                   const std::initializer_list<float>& expected_output,
+                   const std::initializer_list<T>& expected_output,
                    const vector<int64_t>& expected_output_shape,
                    int64_t spatial_mode = 1,
                    OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
@@ -32,12 +33,12 @@ void TestBatchNorm(const InputDataMap& input_data_map,
   if (opset_version < 9) {  // spatial is only defined for opset-8 and below in the spec
     test.AddAttribute("spatial", spatial_mode);
   }
-  test.AddInput<float>("X", input_shapes_map.at("X"), input_data_map.at("X"));
-  test.AddInput<float>("scale", input_shapes_map.at("scale"), input_data_map.at("scale"));
-  test.AddInput<float>("B", input_shapes_map.at("B"), input_data_map.at("B"));
-  test.AddInput<float>("mean", input_shapes_map.at("mean"), input_data_map.at("mean"));
-  test.AddInput<float>("var", input_shapes_map.at("var"), input_data_map.at("var"));
-  test.AddOutput<float>("output", expected_output_shape, expected_output);
+  test.AddInput<T>("X", input_shapes_map.at("X"), input_data_map.at("X"));
+  test.AddInput<T>("scale", input_shapes_map.at("scale"), input_data_map.at("scale"));
+  test.AddInput<T>("B", input_shapes_map.at("B"), input_data_map.at("B"));
+  test.AddInput<T>("mean", input_shapes_map.at("mean"), input_data_map.at("mean"));
+  test.AddInput<T>("var", input_shapes_map.at("var"), input_data_map.at("var"));
+  test.AddOutput<T>("output", expected_output_shape, expected_output);
   // Weight as input is not supported by TensorRT and spatial == 0 is not supported by Nuphar
   std::unordered_set<std::string> excluded_eps = {kTensorrtExecutionProvider};
   if (spatial_mode == 0) {
@@ -79,6 +80,43 @@ TEST(BatchNormTest, PositiveTestCase) {
                           0.781831f, 0.760527f, 0.835665f, 1.05825f, 0.611442f, 0.781873f, 1.08437f, 0.907454f, 0.926173f,
                           1.03375f, 0.707961f, 0.968646f, 0.621757f, 0.973095f, 0.700301f, 0.916723f, 0.807602f, 0.692598f,
                           0.621972f, 0.707334f, 0.63723f, 0.63062f};
+  float epsilon = 1e-05f;
+  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape);
+}
+
+TEST(BatchNormTest, PositiveTestCaseDouble) {
+  // This input was taken from the SpatialBN_1.pb, SpatialBN_1_input.pb and SpatialBN_1_output.pb files.
+  vector<double> X{0.329876f, -0.287158f, -0.411425f, 0.473621f, 0.18156f, -0.170596f, -0.329516f, -0.170733f, -0.121664f, 0.4372f,
+                   -0.485668f, 0.218049f, -0.360263f, 0.107016f, 0.45358f, 0.325056f, 0.15995f, 0.098852f, -0.283453f, -0.373051f,
+                   0.257542f, 0.0614853f, -0.0592363f, 0.434488f, -0.0179583f, 0.398374f, -0.451602f, -0.132009f, -0.174468f,
+                   -0.0247169f, 0.418897f, -0.47159f, -0.131925f, 0.470943f, 0.118357f, 0.155664f, 0.370062f, -0.279229f, 0.240311f,
+                   -0.451034f, 0.249178f, -0.294496f, 0.13683f, -0.0806475f, -0.309849f, -0.450604f, -0.28048f, -0.420197f, -0.433369f};
+  vector<double> scale{0.589433f};
+  vector<double> B{-0.384622f};
+  vector<double> mean{-2.45673f};
+  vector<double> var{1.37998f};
+
+  unordered_map<string, vector<double>> input_data_map;
+  input_data_map.insert({"X", X});
+  input_data_map.insert({"scale", scale});
+  input_data_map.insert({"B", B});
+  input_data_map.insert({"mean", mean});
+  input_data_map.insert({"var", var});
+
+  InputShapesMap input_shapes_map;
+  vector<int64_t> input_shape{1, 1, 7, 7, 1};
+  input_shapes_map.insert({"X", input_shape});
+  input_shapes_map.insert({"scale", {1}});
+  input_shapes_map.insert({"B", {1}});
+  input_shapes_map.insert({"mean", {1}});
+  input_shapes_map.insert({"var", {1}});
+
+  const std::initializer_list<double> expected_output = {1.01359f, 0.703983f, 0.641631f, 1.08571f, 0.939167f, 0.762469f, 0.682729f, 0.762401f, 0.787021f,
+                                                         1.06744f, 0.604378f, 0.957476f, 0.667302f, 0.901764f, 1.07566f, 1.01117f, 0.928324f, 0.897667f,
+                                                         0.705842f, 0.660885f, 0.977291f, 0.878918f, 0.818345f, 1.06608f, 0.839057f, 1.04796f, 0.621471f,
+                                                         0.781831f, 0.760527f, 0.835665f, 1.05825f, 0.611442f, 0.781873f, 1.08437f, 0.907454f, 0.926173f,
+                                                         1.03375f, 0.707961f, 0.968646f, 0.621757f, 0.973095f, 0.700301f, 0.916723f, 0.807602f, 0.692598f,
+                                                         0.621972f, 0.707334f, 0.63723f, 0.63062f};
   float epsilon = 1e-05f;
   TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape);
 }
@@ -680,6 +718,35 @@ TEST(BatchNormTest, BatchNorm2d_fp16) {
   test.AddInput<MLFloat16>("var", {3}, f_var);
   test.AddOutput<MLFloat16>("output", input_shape, f_output);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// flacky test - disabled for now
+TEST(BatchNormTest, DISABLED_ForwardTrainingTest) {
+  OpTester test("BatchNormalization");
+  float epsilon = 1e-05f;
+  float momentum = 0.1f;
+  int64_t spatial = 1;
+  test.AddAttribute("epsilon", epsilon);
+  test.AddAttribute("momentum", momentum);
+  test.AddAttribute("spatial", spatial);
+  std::vector<int64_t> input_output_dims{2, 2, 2, 2};
+  std::vector<int64_t> channel_dims{2};
+  test.AddInput<float>("X", input_output_dims, {-0.2953f, 0.1180f, 1.0973f, -0.1931f, -0.1999f, -0.0237f, 1.5181f, 0.0076f, -1.0830f, -1.5433f, 0.4327f, -0.9813f, 0.7875f, -0.4080f, -2.3144f, 1.5493f});
+  test.AddInput<float>("scale", channel_dims, {1.0f, 1.0f});
+  test.AddInput<float>("B", channel_dims, {0.0f, 0.0f});
+  test.AddInput<float>("mean", channel_dims, {1.0f, 2.0f});
+  test.AddInput<float>("var", channel_dims, {1.0f, 2.0f});
+  // values from PyTorch with affine=False, track_running_stats=True flags
+  test.AddOutput<float>("Y", input_output_dims, {0.0131f, 0.5210f, 1.7244f, 0.1387f, -0.2708f, -0.1191f, 1.2089f, -0.0922f, -0.9548f, -1.5203f, 0.9077f, -0.8298f, 0.5796f, -0.4501f, -2.0921f, 1.2358f});
+  // in PyTorch, running_mean and running_var should be initialized to [0.0, 0.0]
+  test.AddOutput<float>("running_mean", channel_dims, {-0.0306f, 0.0115f});
+  test.AddOutput<float>("running_var", channel_dims, {0.0757f, 0.1541f});
+  // mean and variance of X across channel dimension
+  test.AddOutput<float>("saved_mean", channel_dims, {-0.306f, 0.115f});
+  test.AddOutput<float>("saved_var", channel_dims, {1.229f, 0.861f});
+
+  // exclude CPU Execution Provider so that test is run with CUDA with ForwardTraining mode
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
 }
 #endif
 

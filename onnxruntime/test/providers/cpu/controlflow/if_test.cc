@@ -54,8 +54,8 @@ class IfOpTester : public OpTester {
                 std::vector<onnxruntime::NodeArg*>& graph_output_defs,
                 std::vector<std::function<void(onnxruntime::Node& node)>>& /*add_attribute_funcs*/) override {
     // Graph inputs are 0:Split input, 1:Cond for If, 2:if input
-    ASSERT_EQ(graph_input_defs.size(), 3);
-    ASSERT_EQ(graph_output_defs.size(), 1);
+    ASSERT_EQ(graph_input_defs.size(), 3u);
+    ASSERT_EQ(graph_output_defs.size(), 1u);
 
     NodeArg* split_input = graph_input_defs[0];
     NodeArg* if_cond_input = graph_input_defs[1];

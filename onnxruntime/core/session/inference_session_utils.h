@@ -2,11 +2,18 @@
 // Licensed under the MIT License.
 
 #pragma once
-
+#include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/framework/session_options.h"
 #include "core/common/common.h"
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 28020)
+#endif
 #include "single_include/nlohmann/json.hpp"
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
 
 using json = nlohmann::json;
 
@@ -14,9 +21,9 @@ namespace onnxruntime {
 
 namespace inference_session_utils {
 
-static const std::string kOrtConfigKey = "ort_config";
-static const std::string kSessionOptionsKey = "session_options";
-static const std::string kOrtLoadConfigFromModelEnvVar = "ORT_LOAD_CONFIG_FROM_MODEL";
+static constexpr const char* kOrtConfigKey = "ort_config";
+static constexpr const char* kSessionOptionsKey = "session_options";
+static constexpr const char* kOrtLoadConfigFromModelEnvVar = "ORT_LOAD_CONFIG_FROM_MODEL";
 
 }  // namespace inference_session_utils
 

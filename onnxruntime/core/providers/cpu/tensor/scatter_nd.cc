@@ -83,7 +83,7 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) co
 
   std::vector<int64_t> element_counts(last_indice_dimension, 0LL); // Number of elements for each input dimension
 
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp parallel for
 #endif
   for (int64_t i = 0; i < last_indice_dimension; ++i) {
@@ -106,7 +106,7 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) co
     p.output_base     = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
   }
 
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp parallel for
 #endif
   for (int64_t i = 0; i < offset_count; ++i) {
@@ -131,7 +131,7 @@ Status ScatterND::Compute(OpKernelContext* context) const {
 }
 
 Status ScatterND::ScatterNumber(const Prepare& p) const {
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp parallel for
 #endif
   for (int64_t i = 0; i < static_cast<int64_t>(p.element_offsets.size()); ++i) {
@@ -143,7 +143,7 @@ Status ScatterND::ScatterNumber(const Prepare& p) const {
 }
 
 Status ScatterND::ScatterString(const Prepare& p) const {
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp parallel for
 #endif
   for (int64_t i = 0; i < static_cast<int64_t>(p.element_offsets.size()); ++i) {

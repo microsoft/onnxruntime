@@ -30,6 +30,7 @@ const char* CudaErrString<cudaError_t>(cudaError_t x) {
   cudaDeviceSynchronize();
   return cudaGetErrorString(x);
 }
+
 template <>
 const char* CudaErrString<cublasStatus_t>(cublasStatus_t e) {
   cudaDeviceSynchronize();
@@ -62,6 +63,29 @@ const char* CudaErrString<cudnnStatus_t>(cudnnStatus_t e) {
   return cudnnGetErrorString(e);
 }
 
+template <>
+const char* CudaErrString<cufftResult>(cufftResult e) {
+  cudaDeviceSynchronize();
+  switch (e) {
+    CASE_ENUM_TO_STR(CUFFT_SUCCESS);
+    CASE_ENUM_TO_STR(CUFFT_ALLOC_FAILED);
+    CASE_ENUM_TO_STR(CUFFT_INVALID_VALUE);
+    CASE_ENUM_TO_STR(CUFFT_INTERNAL_ERROR);
+    CASE_ENUM_TO_STR(CUFFT_SETUP_FAILED);
+    CASE_ENUM_TO_STR(CUFFT_INVALID_SIZE);
+    default:
+      return "Unknown cufft error status";
+  }
+}
+
+#ifdef USE_NCCL
+template <>
+const char* CudaErrString<ncclResult_t>(ncclResult_t e) {
+  cudaDeviceSynchronize();
+  return ncclGetErrorString(e);
+}
+#endif
+
 template <typename ERRTYPE, bool THRW>
 bool CudaCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
   if (retCode != successCode) {
@@ -82,12 +106,14 @@ bool CudaCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRT
 #endif
       int currentCudaDevice;
       cudaGetDevice(&currentCudaDevice);
+      cudaGetLastError();  // clear last CUDA error
       static char str[1024];
       snprintf(str, 1024, "%s failure %d: %s ; GPU=%d ; hostname=%s ; expr=%s; %s",
                libName, (int)retCode, CudaErrString(retCode), currentCudaDevice,
                hostname,
                exprString, msg);
       if (THRW) {
+        // throw an exception with the error info
         ORT_THROW(str);
       } else {
         LOGS_DEFAULT(ERROR) << str;
@@ -110,5 +136,12 @@ template bool CudaCall<cublasStatus_t, false>(cublasStatus_t retCode, const char
 template bool CudaCall<cublasStatus_t, true>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg);
 template bool CudaCall<cudnnStatus_t, false>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg);
 template bool CudaCall<cudnnStatus_t, true>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg);
+template bool CudaCall<curandStatus_t, false>(curandStatus_t retCode, const char* exprString, const char* libName, curandStatus_t successCode, const char* msg);
+template bool CudaCall<curandStatus_t, true>(curandStatus_t retCode, const char* exprString, const char* libName, curandStatus_t successCode, const char* msg);
+template bool CudaCall<cufftResult, false>(cufftResult retCode, const char* exprString, const char* libName, cufftResult successCode, const char* msg);
+template bool CudaCall<cufftResult, true>(cufftResult retCode, const char* exprString, const char* libName, cufftResult successCode, const char* msg);
 
+#ifdef USE_NCCL
+template bool CudaCall<ncclResult_t, false>(ncclResult_t retCode, const char* exprString, const char* libName, ncclResult_t successCode, const char* msg);
+#endif
 }  // namespace onnxruntime

@@ -5,6 +5,10 @@
 
 #include "core/platform/threadpool.h"
 
+#if defined(_M_AMD64) || defined(__x86_64__) || defined(_M_IX86) || defined(__i386__)
+#define MLAS_SUPPORTS_GEMM_U8X8
+#endif
+
 namespace onnxruntime {
 
 void QGemmu8s8_s32(

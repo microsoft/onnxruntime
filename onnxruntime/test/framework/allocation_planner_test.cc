@@ -11,6 +11,7 @@
 #include "core/framework/op_kernel.h"
 #include "test/framework/model_builder_utils.h"
 #include "core/framework/allocation_planner.h"
+#include "core/util/thread_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "test/test_environment.h"
 using namespace ONNX_NAMESPACE;
@@ -102,9 +103,9 @@ class AllocationPlanTestUtility {
     for (OrtValueIndex index : plan.to_be_freed) {
       // Every index should be in the valid range [0, num_ml_values-1]
       EXPECT_GE(index, 0);
-      EXPECT_LT(index, num_ml_values);
+      EXPECT_LT(static_cast<size_t>(index), num_ml_values);
       // An index should not be freed more than once
-      EXPECT_EQ(freed.count(index), 0) << "OrtValue " << index << " freed multiple times";
+      EXPECT_EQ(freed.count(index), 0u) << "OrtValue " << index << " freed multiple times";
       freed.insert(index);
     }
     // Check the free-index information for every execution step: they should cover the
@@ -156,7 +157,7 @@ class PlannerTest : public ::testing::Test {
   std::vector<std::unique_ptr<OpKernelInfo>> op_kernel_infos_;
   std::vector<std::pair<onnxruntime::Node*, KernelDef&>> kernel_bindings_;
   ExecutionProviders execution_providers_;
-  concurrency::ThreadPool tp_;
+  std::unique_ptr<concurrency::ThreadPool> tp_;
   SessionState state_;
   ShapeMap shape_map_;
   std::unique_ptr<SequentialExecutionPlan> plan_;
@@ -165,8 +166,8 @@ class PlannerTest : public ::testing::Test {
   PlannerTest()
       : model_("test", false, DefaultLoggingManager().DefaultLogger()),
         graph_(model_.MainGraph()),
-        tp_("test", 1),
-        state_(execution_providers_, false, &tp_, nullptr) {
+        tp_(concurrency::CreateThreadPool(&onnxruntime::Env::Default(), OrtThreadPoolParams())),
+        state_(execution_providers_, false, tp_.get(), nullptr) {
     std_kernel_ = KernelDefBuilder().SetName("Transpose").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
     in_place_kernel_ =
         KernelDefBuilder().SetName("Relu").Provider(kCpuExecutionProvider).SinceVersion(1, 10).MayInplace(0, 0).Build();
@@ -437,7 +438,7 @@ TEST_F(PlannerTest, PlanOutputTest) {
     output << std::make_pair(&GetPlan(), &GetState());
     auto output_size = output.str().size();
     // Currently, we don't check details of the output, as it may change over time.
-    EXPECT_GT(output_size, 0);
+    EXPECT_GT(output_size, 0u);
   } catch (const std::exception& ex) {
     EXPECT_TRUE(false) << "Exception in producing output: " << ex.what();
   }

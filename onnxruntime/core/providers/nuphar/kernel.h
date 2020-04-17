@@ -47,7 +47,7 @@ class NupharKernelState {
 
   // A owner of generated Tensor for weight layout for now
   // TODO: remove it after weight layout refactoring
-  std::unordered_map<std::string, std::unique_ptr<Tensor>> generated_initailizers_;
+  std::unordered_map<std::string, std::unique_ptr<Tensor>> generated_initializers_;
 
   Status codegen_status_;
 

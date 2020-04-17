@@ -1,5 +1,6 @@
 parameters:
   AgentPool : 'Win-CPU'
+  Skipx86Tests: 'false'
 
 jobs:
 - job: NuGet_Test_Win
@@ -13,15 +14,29 @@ jobs:
   - group: ORT_TEST_DATA_SAS
   - name: OnnxRuntimeBuildDirectory
     value: '$(Build.BinariesDirectory)'
+  - name: SKIPNONPACKAGETESTS
+    value: 'ON'
 
   steps:
-  - template: set-test-data-variables-step.yml
-  - template: ../../templates/windows-build-tools-setup-steps.yml
-    parameters:
-      EnvSetupScript: 'setup_env.bat'
-      buildArch: 'x64'
-      setVcvars: true
-      DoDataDownload: false
+  - task: UsePythonVersion@0
+    inputs: 
+      versionSpec: '3.7' 
+      addToPath: true 
+      architecture: x64
+
+  - task: NuGetToolInstaller@0
+    displayName: Use Nuget 4.9
+    inputs:
+      versionSpec: 4.9.4
+
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_cuda.bat'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - template: set-test-data-variables-step.yml  
   - template: win-download-test-data.yml
 
   - task: BatchScript@1
@@ -47,31 +62,36 @@ jobs:
     parameters:
       packageFolder: '$(Build.BinariesDirectory)\nuget-artifact'
 
+  # TODO: Add .Net Core AnyCPU test task
+
   - script: |
      @echo "Running Runtest.bat"
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
-    displayName: 'Run End to End Test (C#) .Net Core'
+    displayName: 'Run End to End Test (C#) .Net Core x64'
 
-  - script: |
-     @echo "Running Runtest.bat"
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
-    workingDirectory: '$(Build.SourcesDirectory)\csharp'
-    displayName: 'Run End to End Test (C#) .Net Core x86'
-    enabled: false
+  - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
+      - script: |
+         @echo "Running Runtest.bat"
+         test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        displayName: 'Run End to End Test (C#) .Net Core x86'
+
+  # TODO: Add .Net Framework AnyCPU test task
 
   - script: |
      @echo "Running Runtest.bat"
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x64 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
-    displayName: 'Run End to End Test (C#) .NetFramework'
+    displayName: 'Run End to End Test (C#) .NetFramework x64'
 
-  - script: |
-     @echo "Running Runtest.bat"
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x86 $(NuGetPackageVersionNumber)
-    workingDirectory: '$(Build.SourcesDirectory)\csharp'
-    displayName: 'Run End to End Test (C#) .NetFramework x86'
-    enabled: false
+  - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
+      - script: |
+         @echo "Running Runtest.bat"
+         test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x86 $(NuGetPackageVersionNumber)
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        displayName: 'Run End to End Test (C#) .NetFramework x86'
+        enabled: false
 
   - script: |
      @echo "Running runtest.bat"
@@ -99,8 +119,8 @@ jobs:
     displayName: 'Run End to End Test (C++ API) '
     timeoutInMinutes: 30
 
-  - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-    displayName: 'Component Detection'
-    condition: always()
+  - template: ../../templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'always'
 
   - template: ../../templates/clean-agent-build-directory-step.yml

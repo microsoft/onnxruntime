@@ -3,10 +3,10 @@ from onnx import helper
 from onnx import TensorProto
 
 graph = helper.make_graph(
-    [ # nodes
+    [  # nodes
         # Add node before Gelu
         helper.make_node("Add", ["A", "B"], ["add0_out"], "add0"),
-        
+
         # Gelu subgraph
         helper.make_node("Div", ["add0_out", "div_const"], ["div_out"], "div"),
         helper.make_node("Mul", ["add0_out", "mul_const"], ["mul_out"], "mul0"),
@@ -26,8 +26,7 @@ graph = helper.make_graph(
         helper.make_tensor('div_const', TensorProto.FLOAT, [], [1.4142135381698608]),
         helper.make_tensor('mul_const', TensorProto.FLOAT, [], [0.5]),
         helper.make_tensor('add_const', TensorProto.FLOAT, [], [1]),
-    ]
-)
+    ])
 
 model = helper.make_model(graph)
 onnx.save(model, r'bias_gelu_fusion.onnx')

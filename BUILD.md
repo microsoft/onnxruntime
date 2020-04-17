@@ -31,6 +31,7 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 #### Notes
 
 * Please note that these instructions build the debug build, which may have performance tradeoffs
+* To build the version from each release (which include Windows, Linux, and Mac variants), see these .yml files for reference: [CPU](./tools/ci_build/github/azure-pipelines/nuget/cpu-esrp-pipeline.yml), [GPU](./tools/ci_build/github/azure-pipelines/nuget/gpu-esrp-pipeline.yml)
 * The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
 * If you need to install protobuf 3.6.1 from source code (cmake/external/protobuf), please note:
    * CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
@@ -84,6 +85,7 @@ For other system requirements and other dependencies, please see [this section](
 |**Build Shared Library**|--build_shared_lib||
 |**Build Python wheel**|--build_wheel||
 |**Build C# and C packages**|--build_csharp||
+|**Build WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library.|
 |**Build Java package**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`|
 
 
@@ -115,26 +117,6 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 
 ---
 
-## Build ONNX Runtime Server on Linux
-Read more about ONNX Runtime Server [here](./docs/ONNX_Runtime_Server_Usage.md).
-
-### Pre-Requisites
-* ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL.
-    See https://golang.org/doc/install for installation instructions.
-
-### Build Instructions
-```
-./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel
-```
-
-ONNX Runtime Server supports sending logs to [rsyslog](https://www.rsyslog.com/) daemon. To enable it, please build with an additional parameter: `--cmake_extra_defines onnxruntime_USE_SYSLOG=1`.
-
-Build command:
-```
-./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel --cmake_extra_defines onnxruntime_USE_SYSLOG=1
-```
-
----
 
 
 ## Execution Providers
@@ -170,7 +152,7 @@ A Dockerfile is available [here](./dockerfiles#cuda).
     * To use the 14.11 toolset with a later version of Visual Studio 2017 you have two options:
      1. Setup the Visual Studio environment variables to point to the 14.11 toolset by running vcvarsall.bat, prior to running the build script. e.g. if you have VS2017 Enterprise, an x64 build would use the following command `"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64 -vcvars_ver=14.11` For convenience, .\build.amd64.1411.bat will do this and can be used in the same way as .\build.bat. e.g. ` .\build.amd64.1411.bat --use_cuda`
 
-     2. Alternatively, if you have CMake 3.12 or later you can specify the toolset version via the `--msvc_toolset` build script parameter. e.g. `.\build.bat --msvc_toolset 14.11`
+     2. Alternatively, if you have CMake 3.13 or later you can specify the toolset version via the `--msvc_toolset` build script parameter. e.g. `.\build.bat --msvc_toolset 14.11`
 
 * If you have multiple versions of CUDA installed on a Windows machine and are building with Visual Studio, CMake will use the build files for the highest version of CUDA it finds in the BuildCustomization folder.
 e.g. C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\Common7\IDE\VC\VCTargets\BuildCustomizations\.
@@ -185,15 +167,21 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 
 #### Pre-Requisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 10.1 and cuDNN 7.6.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 10.2 and cuDNN 7.6.5.
    * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`. The CUDA path should contain `bin`, `include` and `lib` directories.
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`.
  * Install [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 6.0.1.5.
+   * The TensorRT execution provider for ONNX Runtime is built on TensorRT 7.x and is tested with TensorRT 7.0.0.11.
    * The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
 
 #### Build Instructions
+##### Windows
+
+```
+.\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home>
+```
+
 ##### Linux
 
 ```
@@ -201,6 +189,10 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 ```
 
 Dockerfile instructions are available [here](./dockerfiles#tensorrt)
+
+#### Jetson (ARM64 Builds)
+
+See [instructions](https://github.com/microsoft/onnxruntime/issues/2684#issuecomment-568548387) for additional information and tips related to building Onnxruntime with TensorRT Execution Provider on Jetson platforms (TX1/TX2, Nano)
 
 ---
 
@@ -289,18 +281,18 @@ To build ONNX Runtime with the NN API EP, first install Android NDK (see [Androi
 
 #### Build Instructions
 
-The basic build commands are below. There are also some other parameters for building the Android version under See [Android Build instructions](#android) for more details.
+The basic build commands are below. There are also some other parameters for building the Android version. See [Android Build instructions](#android) for more details.
 
 ##### Cross compiling on Windows
 
 ```bash
-./build.bat --android --android_ndk_path <android ndk path> --dnnlibrary
+./build.bat --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --dnnlibrary
 ```
 
 ##### Cross compiling on Linux
 
 ```bash
-./build.sh --android --android_ndk_path <android ndk path> --dnnlibrary
+./build.sh --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --dnnlibrary
 ```
 
 ---
@@ -391,7 +383,7 @@ The DirectML execution provider supports building for both x64 and x86 architect
 
 ---
 
-### ARM Compute Library 
+### ARM Compute Library
 See more information on the ACL Execution Provider [here](./docs/execution_providers/ACL-ExecutionProvider.md).
 
 #### Prerequisites
@@ -411,6 +403,8 @@ alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/sh
 ```
 cmake ../onnxruntime-arm-upstream/cmake -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_GENERATE_TEST_REPORTS=ON -Donnxruntime_DEV_MODE=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_SHARED_LIB=ON -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_ACL=ON -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=ON -Donnxruntime_USE_TVM=OFF -Donnxruntime_USE_LLVM=OFF -Donnxruntime_ENABLE_MICROSOFT_INTERNAL=OFF -Donnxruntime_USE_BRAINSLICE=OFF -Donnxruntime_USE_NUPHAR=OFF -Donnxruntime_USE_EIGEN_THREADPOOL=OFF -Donnxruntime_BUILD_UNIT_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
 ```
+The ```-Donnxruntime_USE_ACL=ON``` option will use, by default, the 19.05 version of the Arm Compute Library. To set the right version you can use:
+```-Donnxruntime_USE_ACL_1902=ON```, ```-Donnxruntime_USE_ACL_1905=ON``` or ```-Donnxruntime_USE_ACL_1908=ON```;
 
 2. Build ONNX Runtime library, test and performance application:
 ```
@@ -515,7 +509,7 @@ See the instructions for the the Dockerfile [here](./dockerfiles/README.md#arm-3
     ```
 3. Get a pre-compiled protoc:
 
-   You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip . Please unzip it after downloading.
+   You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.11.2/protoc-3.11.2-linux-x86_64.zip . Please unzip it after downloading.
 4. (optional) Setup sysroot for enabling python extension. (TODO: will add details later)
 5. Save the following content as tool.cmake
     ```
@@ -555,10 +549,10 @@ pip3 install numpy
 # Build the latest cmake
 mkdir /code
 cd /code
-wget https://cmake.org/files/v3.12/cmake-3.12.3.tar.gz;
-tar zxf cmake-3.12.3.tar.gz
+wget https://cmake.org/files/v3.13/cmake-3.13.5.tar.gz;
+tar zxf cmake-3.13.5.tar.gz
 
-cd /code/cmake-3.12.3
+cd /code/cmake-3.13.5
 ./configure --system-curl
 make
 sudo make install
@@ -569,13 +563,13 @@ git clone --recursive https://github.com/Microsoft/onnxruntime
 
 # Start the basic build
 cd /code/onnxruntime
-./build.sh --config MinSizeRel --arm --update --build
+./build.sh --config MinSizeRel --update --build
 
 # Build Shared Library
-./build.sh --config MinSizeRel --arm --build_shared_lib
+./build.sh --config MinSizeRel --build_shared_lib
 
 # Build Python Bindings and Wheel
-./build.sh --config MinSizeRel --arm --enable_pybind --build_wheel
+./build.sh --config MinSizeRel --enable_pybind --build_wheel
 
 # Build Output
 ls -l /code/onnxruntime/build/Linux/MinSizeRel/*.so
@@ -595,21 +589,22 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 
 #### Pre-Requisites
 
-Install Android NDK from https://developer.android.com/ndk/downloads
+Install Android NDK in Android Studio or https://developer.android.com/ndk/downloads
 
 #### Build Instructions
 
 ##### Cross compiling on Windows
 
 ```bash
-./build.bat --android --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
+./build.bat --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
 ```
 
 ##### Cross compiling on Linux
 
 ```bash
-./build.sh --android --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
+./build.sh --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
 ```
 
-If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar.
 
+If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).
