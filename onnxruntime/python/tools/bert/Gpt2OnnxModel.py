@@ -158,7 +158,7 @@ class Gpt2OnnxModel(BertOnnxModel):
                                                                recursive=False)
 
             return_indice = []
-            nodes = self.match_parent_path(gemm_node, ['Reshape', 'Gelu'], [0, 0], output_name_to_node)
+            nodes = self.match_parent_path(gemm_node, ['Reshape', 'FastGelu'], [0, 0], output_name_to_node)
             if nodes is None:
                 nodes = self.match_parent_path(gemm_node, ['Reshape', 'LayerNormalization'], [0, 0],
                                                output_name_to_node)

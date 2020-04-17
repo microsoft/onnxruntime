@@ -204,8 +204,8 @@ class TestBertOptimization(unittest.TestCase):
             'Attention': 12,
             'LayerNormalization': 0,
             'SkipLayerNormalization': 24,
-            'BiasGelu': 0,
-            'Gelu': 12,
+            'BiasGelu': 12,
+            'Gelu': 0,
             'FastGelu': 0
         }
         self.verify_node_count(bert_model, expected_node_count)

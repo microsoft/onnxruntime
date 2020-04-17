@@ -1152,6 +1152,10 @@ class BertOnnxModel(OnnxModel):
         if (options is None) or options.enable_embed_layer_norm:
             self.fuse_embed_layer()
 
+        # Post-processing like removing extra reshape nodes.
+        self.postprocess()
+
+        # Bias fusion is done after postprocess to avoid extra Reshape between bias and Gelu/FastGelu/SkipLayerNormalization
         if (options is None) or options.enable_bias_gelu:
             # Fuse Gelu and Add Bias before it.
             self.fuse_bias_gelu(is_fastgelu=True)
@@ -1160,8 +1164,6 @@ class BertOnnxModel(OnnxModel):
         if (options is None) or options.enable_bias_skip_layer_norm:
             # Fuse SkipLayerNormalization and Add Bias before it.
             self.fuse_add_bias_skip_layer_norm()
-
-        self.postprocess()
 
         if self.float16:
             self.convert_model_float32_to_float16()
