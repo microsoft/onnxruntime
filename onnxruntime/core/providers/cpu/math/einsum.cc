@@ -6,7 +6,7 @@
 
 namespace onnxruntime {
 
-// Creative credit: Implementation heavily influenced by Torch's implementation at the time of writing
+// Credit: Implementation influenced by Torch's implementation at the time of writing
 
 ONNX_CPU_OPERATOR_KERNEL(
     Einsum,

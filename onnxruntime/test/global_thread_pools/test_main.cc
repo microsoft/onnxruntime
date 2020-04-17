@@ -24,6 +24,9 @@
 #pragma warning(disable : 4506) /*no definition for inline function 'function'*/
 #pragma warning(disable : 4800) /*'type' : forcing value to bool 'true' or 'false' (performance warning)*/
 #pragma warning(disable : 4996) /*The compiler encountered a deprecated declaration.*/
+#pragma warning(disable : 6011) /*Dereferencing NULL pointer*/
+#pragma warning(disable : 6387) /*'value' could be '0'*/
+#pragma warning(disable : 26495) /*Variable is uninitialized.*/
 #endif
 #include <google/protobuf/message_lite.h>
 #ifdef __GNUC__
@@ -43,8 +46,12 @@ int main(int argc, char** argv) {
   int status = 0;
   try {
     ::testing::InitGoogleTest(&argc, argv);
-    ThreadingOptions tp_options{0, 0};
+    const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    OrtThreadingOptions* tp_options;
+    OrtStatus* st = g_ort->CreateThreadingOptions(&tp_options);
+    if(st != nullptr) return -1;
     ort_env.reset(new Ort::Env(tp_options, ORT_LOGGING_LEVEL_VERBOSE, "Default"));  // this is the only change from test/providers/test_main.cc
+    g_ort->ReleaseThreadingOptions(tp_options);
     status = RUN_ALL_TESTS();
   } catch (const std::exception& ex) {
     std::cerr << ex.what();

@@ -703,7 +703,7 @@ Graph::Graph(const Model& owning_model,
              const logging::Logger& logger,
              const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
     : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger,
-        model_functions) {}
+            model_functions) {}
 
 Graph::Graph(const Model& owning_model,
              GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
@@ -731,16 +731,9 @@ Graph::Graph(const Model& owning_model,
       continue;
     }
 
-    // Copy constant nodes _value to name_to_initial_tensor_
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
-    const AttributeProto& constant_attribute = node.attribute(0);
-    // TODO: Add support for parsing 'sparse_value' attribute from a 'Constant' node
-    // Discussion surrounding handling the SparseTensorProto must be had.
-    // An easy way is to implement a method that converts a SparseTensorproto into a TensorProto
-    // to use the same downstream flow, but that is going to impact peak memory usage and probably a smarter way is required.
-    ORT_ENFORCE(constant_attribute.has_t(), "Only 'value' attribute is supported within a 'Constant' node in ORT");
-    *tensor = constant_attribute.t();
-    *(tensor->mutable_name()) = node.output(0);
+    auto status = utils::ConstantNodeProtoToTensorProto(node, *tensor);
+    ORT_ENFORCE(status.IsOK(), status.ToString());
   }
 
   // Remove constant nodes as they're replaced with initializers above.
@@ -785,6 +778,13 @@ Graph::Graph(const Model& owning_model,
       if (matching_graph_input == nullptr) {
         name_to_type_map[tensor.name()] = t;
         ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
+      } else {
+        LOGS(logger_, WARNING) << "Initializer " << tensor.name()
+                               << " appears in graph inputs and will not be treated as constant value/weight. "
+                               << "This may fail some of the graph optimizations, like const folding. "
+                               << "Move it out of graph inputs if there is no need to override it, "
+                               << "by either re-generating the model with latest exporter/converter "
+                               << "or with the tool onnxruntime/tools/python/remove_initializer_from_input.py.";
       }
     }
   }
@@ -2537,7 +2537,9 @@ Status Graph::SetGraphInputsOutputs() {
     for (auto& graph_value_info : graph_proto_->value_info()) {
       auto& name = graph_value_info.name();
       const auto* node_arg = GetNodeArg(name);
-      value_info_.push_back(node_arg);
+      if (node_arg != nullptr) {
+        value_info_.push_back(node_arg);
+      }
     }
 
   } else {

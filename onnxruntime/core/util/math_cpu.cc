@@ -26,6 +26,7 @@
 #pragma warning(push)
 #pragma warning(disable : 4267)
 #pragma warning(disable : 4127)
+#pragma warning(disable : 6255)
 #endif
 #include "Eigen/src/Core/arch/Default/Half.h"
 #if defined(__GNUC__)
@@ -83,6 +84,17 @@ void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE
   int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
 }
+
+#if defined(_M_AMD64) || defined(__x86_64__)
+template <>
+void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                              const int64_t N, const int64_t K, double alpha, const double* A, const double* B, double beta,
+                              double* C, ThreadPool* threadpool) {
+  int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
+  int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
+  MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
+}
+#endif
 
 template <>
 void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C, ThreadPool* threadpool) {
@@ -153,6 +165,20 @@ void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE
   int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
   cblas_sgemm(CblasRowMajor, TransA, TransB,
+              gsl::narrow_cast<int>(M),
+              gsl::narrow_cast<int>(N),
+              gsl::narrow_cast<int>(K),
+              alpha, A, lda, B, ldb,
+              beta, C, gsl::narrow_cast<int>(N));
+}
+
+template <>
+void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                              const int64_t N, const int64_t K, double alpha, const double* A, const double* B, double beta,
+                              double* C, ThreadPool* /*context*/) {
+  int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
+  int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
+  cblas_dgemm(CblasRowMajor, TransA, TransB,
               gsl::narrow_cast<int>(M),
               gsl::narrow_cast<int>(N),
               gsl::narrow_cast<int>(K),

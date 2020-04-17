@@ -38,7 +38,9 @@ def augment_graph(model):
         if node.op_type in quantization_candidates:
             input_name = node.output[0]
             # Adding ReduceMin nodes
-            reduce_min_name = node.name + '_ReduceMin'
+            reduce_min_name = ''
+            if node.name != '':
+                reduce_min_name = node.name + '_ReduceMin'
             reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name], [input_name + '_ReduceMin'],
                                                     reduce_min_name,
                                                     keepdims=0)
@@ -46,7 +48,9 @@ def augment_graph(model):
             added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
 
             # Adding ReduceMax nodes
-            reduce_max_name = node.name + '_ReduceMax'
+            reduce_max_name = ''
+            if node.name!='':
+                reduce_max_name = node.name + '_ReduceMax'
             reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name], [input_name + '_ReduceMax'],
                                                     reduce_max_name,
                                                     keepdims=0)

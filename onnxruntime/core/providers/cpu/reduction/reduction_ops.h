@@ -27,10 +27,13 @@ class ReduceKernelBase {
       ORT_ENFORCE(info.GetAttr("keepdims", &keepdims).IsOK());
     }
     keepdims_ = (keepdims == 1);
+    int64_t select_last_index = info.GetAttrOrDefault<int64_t>("select_last_index", 0);
+    select_last_index_ = (select_last_index != 0);
   }
 
   std::vector<int64_t> axes_;
   bool keepdims_;
+  bool select_last_index_;
 };
 
 template <bool allow_multi_axes>
@@ -120,7 +123,8 @@ class ReduceSum final : public ReduceKernel<true> {
   Status Compute(OpKernelContext* context) const override;
 
   // For external calls requiring ReduceSum implementation - will return the reduced output
-  static Tensor Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes, const AllocatorPtr& allocator);
+  static Tensor Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes, 
+                     AllocatorPtr allocator, concurrency::ThreadPool* tp));
 };
 
 template <typename T>

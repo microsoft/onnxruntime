@@ -7,7 +7,7 @@ namespace onnxruntime {
 
 namespace EinsumOp {
 
-Tensor Transpose(const Tensor& input, const std::vector<size_t>& permutation, const AllocatorPtr& allocator) {
+Tensor Transpose(const Tensor& input, const std::vector<size_t>& permutation, AllocatorPtr allocator) {
   const auto& input_dims = input.Shape().GetDims();
   auto input_rank = input_dims.size();
 
@@ -34,7 +34,7 @@ void CreateReshapedView(Tensor& input, const std::vector<int64_t>& new_dims) {
 }
 
 template <typename T>
-Tensor MatMul(const Tensor& input_1, const Tensor& input_2, const AllocatorPtr& allocator, concurrency::ThreadPool* tp) {
+Tensor MatMul(const Tensor& input_1, const Tensor& input_2, AllocatorPtr allocator, concurrency::ThreadPool* tp) {
   const auto& input1_dims = input_1.Shape().GetDims();
   const auto& input2_dims = input_2.Shape().GetDims();
 
@@ -82,14 +82,14 @@ Tensor MatMul(const Tensor& input_1, const Tensor& input_2, const AllocatorPtr& 
 }
 
 template <typename T>
-Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes, const AllocatorPtr& allocator) {
-  return onnxruntime::ReduceSum<T>::Impl(input, reduce_axes, allocator);
+Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp) {
+  return onnxruntime::ReduceSum<T>::Impl(input, reduce_axes, allocator, tp);
 }
 
 template <typename T>
-Tensor ReduceSum(const Tensor& input, int64_t axis, const AllocatorPtr& allocator) {
+Tensor ReduceSum(const Tensor& input, int64_t axis, AllocatorPtr allocator, concurrency::ThreadPool* tp) {
   std::vector<int64_t> reduce_axes(1, axis);
-  return ReduceSum<T>(input, reduce_axes, allocator);
+  return ReduceSum<T>(input, reduce_axes, allocator, tp);
 }
 
 // A specific helper just for the Diagonal op
@@ -110,12 +110,14 @@ static inline bool IsTransposeRequiredForDiagonal(int64_t dim_1, int64_t dim_2, 
 // Parse diagnoal elements along the 2 innermost dimensions
 // eg: input_shape = [1, 2, 3, 3]
 
+// This implementation provides flexibility as to which of the 2 innermost dim values is preserved via `preserve_innermost_dim_val` param
+
 // preserve_innermost_dim_val == true,
-//       output_shape = [1, 2, 1, 3] => the diagonal contains 3 elements and the input rank is preserved in the output by adding an unsqueezed dim to the non-innermost dim
+//       output_shape = [1, 2, 1, 3] => the diagonal contains 3 elements and the dim value of the innermost dim is preserved
 
 // preserve_innermost_dim_val == false,
-//       output_shape = [1, 2, 3, 1] => the diagonal contains 3 elements and the input rank is preserved in the output by adding an unsqueezed dim to the innermost dim
-static Tensor DiagonalInnermostDims(const Tensor& input, bool preserve_innermost_dim_val, const AllocatorPtr& allocator) {
+//       output_shape = [1, 2, 3, 1] => the diagonal contains 3 elements and the dim value of the non-innermost dim is preserved
+static Tensor DiagonalInnermostDims(const Tensor& input, bool preserve_innermost_dim_val, AllocatorPtr allocator) {
   const char* input_data = reinterpret_cast<const char*>(input.DataRaw());
   const auto& input_dims = input.Shape().GetDims();
   auto rank = input_dims.size();
@@ -132,8 +134,11 @@ static Tensor DiagonalInnermostDims(const Tensor& input, bool preserve_innermost
   std::vector<int64_t> output_dims;
   output_dims.reserve(rank);
 
+  int64_t num_iterations = 1;  // Flatten the outermost dims - this will be the number of iterations
   for (size_t i = 0; i < rank - 2; ++i) {
-    output_dims.push_back(input_dims[i]);
+    auto input_dim_value = input_dims[i];
+    num_iterations *= input_dim_value;
+    output_dims.push_back(input_dim_value);
   }
 
   if (preserve_innermost_dim_val) {
@@ -154,10 +159,11 @@ static Tensor DiagonalInnermostDims(const Tensor& input, bool preserve_innermost
 
   int64_t output_iter = 0;
   // TODO: Parallelize this operation
-  for (int64_t i = 0; i < base_stride; ++i) {
+  for (int64_t i = 0; i < num_iterations; ++i) {
+    auto base_offset = i * base_stride;
     for (int64_t j = 0; j < inner_stride; ++j) {
       memcpy(output_data + output_iter * element_size_in_bytes,
-             input_data + (i * base_stride + j * inner_stride + j) * element_size_in_bytes,
+             input_data + (base_offset + j * inner_stride + j) * element_size_in_bytes,
              element_size_in_bytes);
       output_iter++;
     }
@@ -166,7 +172,7 @@ static Tensor DiagonalInnermostDims(const Tensor& input, bool preserve_innermost
   return output;
 }
 
-Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, const AllocatorPtr& allocator) {
+Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator) {
   const auto& dims = input.Shape().GetDims();
   const size_t element_size_in_bytes = input.DataType()->Size();
   auto rank = static_cast<int64_t>(dims.size());
@@ -175,8 +181,8 @@ Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, const Allocat
                   dim_2 < rank && dim_1 != dim_2 && dims[dim_1] == dims[dim_2],
               "Cannot parse the diagonal elements along dims ", dim_1, " and ", dim_2, " for input shape ", input.Shape());
 
-  int64_t first_dim = -1;
-  int64_t second_dim = -1;
+  int64_t first_dim = -1;  // first_dim holds the lesser of dim_1 and dim_2
+  int64_t second_dim = -1; // second_dim holds the greater of dim_1 and dim_2
   if (dim_1 < dim_2) {
     first_dim = dim_1;
     second_dim = dim_2;
@@ -190,24 +196,27 @@ Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, const Allocat
 
   bool is_transpose_required = IsTransposeRequiredForDiagonal(dim_1, dim_2, rank);
   if (is_transpose_required) {
-    std::vector<size_t> permutation(rank, 1000000);  // 1000000 is a reasonable "special "initial value as we are not likely to an input of rank 1000000
+    std::vector<size_t> permutation(rank, 0);
+    int64_t first_dim_axis = -1;  // This is the axis eventually occupied by the first_dim
 
     // If one of the diagonal dimensions is one of the 2 innermost dims, then leave it as such
     // so as to avoid transpose overhead
-    if (first_dim == rank - 2) {
+    if (first_dim == rank - 2) { // If rank - 2 is occupied by first_dim, keep it there
       permutation[rank - 2] = first_dim;
-      preserve_innermost_dim_val = false;  // We want to preserve the dim value corresponding to the axis first_dim
+      first_dim_axis = rank - 2;
     } else {
       if (second_dim != rank - 2) {  // If rank - 2 is not occupied by second_dim, then put first_dim there
         permutation[rank - 2] = first_dim;
+        first_dim_axis = rank - 2;
       } else {  // If rank - 2 is occupied by second_dim, then put first_dim in rank - 1
         permutation[rank - 1] = first_dim;
-        preserve_innermost_dim_val = true;
+        first_dim_axis = rank - 1;
+        preserve_innermost_dim_val = true; // We always want to preserve the dim value of the first_dim
       }
     }
 
     // Put the second_dim in the dim not occupied by the first_dim
-    if (permutation[rank - 1] == 1000000) {
+    if (first_dim_axis != rank - 1) {
       permutation[rank - 1] = second_dim;
     } else {
       permutation[rank - 2] = second_dim;
@@ -227,20 +236,19 @@ Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, const Allocat
     // Parse the diagonal from the innermost dims
     output = DiagonalInnermostDims(transposed, preserve_innermost_dim_val, allocator);
 
-    // Swap back the dimensions to the same axes ordering
+    // Swap back the dimensions to the original axes ordering
 
     // Find the "reverse" permutation
     iter = 0;
-    std::vector<size_t> reverse_permutation(rank, 1000000);
+    std::vector<size_t> reverse_permutation(rank, 0);
     for (const auto& perm : permutation) {
       reverse_permutation[perm] = iter++;
     }
 
-    // Permutate using the reverse permutation
+    // Permutate using the reverse permutation to get back the original axes ordering
     output = Transpose(output, reverse_permutation, allocator);
   } else {
-    // If transposing was never required, the diagonal is in the innermost dim - like it is required
-    // so no transposing is required
+    // No transposing required
     output = DiagonalInnermostDims(input, preserve_innermost_dim_val, allocator);
   }
 
@@ -249,7 +257,6 @@ Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, const Allocat
 
   // Unsqueeze the reduced dim
   auto iter = output_dims.begin() + second_dim;
-  ORT_ENFORCE(*iter == 1);
   output_dims.erase(iter);
 
   // Reshape to output_dims
@@ -259,9 +266,10 @@ Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, const Allocat
 }
 
 // Explicit template instantiation
-template Tensor MatMul<float>(const Tensor& input_1, const Tensor& input_2, const AllocatorPtr& allocator, concurrency::ThreadPool* tp);
-template Tensor ReduceSum<float>(const Tensor& input, const std::vector<int64_t>& reduce_axes, const AllocatorPtr& allocator);
-template Tensor ReduceSum<float>(const Tensor& input, int64_t axis, const AllocatorPtr& allocator);
+template Tensor MatMul<float>(const Tensor& input_1, const Tensor& input_2, 
+    AllocatorPtr allocator, concurrency::ThreadPool* tp);
+template Tensor ReduceSum<float>(const Tensor& input, const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp);
+template Tensor ReduceSum<float>(const Tensor& input, int64_t axis, AllocatorPtr allocator, concurrency::ThreadPool* tp);
 
 }  // namespace EinsumOp
 }  // namespace onnxruntime
