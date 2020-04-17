@@ -439,6 +439,33 @@ namespace OperatorHelper
             args.endPadding[dim] = padding - args.startPadding[dim];
         }
     }
+    
+    void MatMulShapeMapping(
+        std::vector<DimensionType>& inputShape0,
+        std::vector<DimensionType>& inputShape1,
+        std::vector<DimensionType>& outputShape)
+    {
+        // Get the padded input shapes and undo the effect of padding removal from the output shape
+        if (inputShape1.size() == 1)
+        {
+            inputShape1.push_back(1);
+            outputShape.push_back(1);
+        }
+
+        if (inputShape0.size() == 1)
+        {
+            inputShape0.insert(inputShape0.begin(), 1);
+            outputShape.insert(outputShape.end() - 1, 1);
+        }
+
+        // Remove the batch dimensions from each input, then re-add the broadcasted batch dimensions
+        // based on the output shape
+        inputShape0.erase(inputShape0.begin(), inputShape0.end() - 2);
+        inputShape1.erase(inputShape1.begin(), inputShape1.end() - 2);
+
+        inputShape0.insert(inputShape0.begin(), outputShape.begin(), outputShape.end() - 2);
+        inputShape1.insert(inputShape1.begin(), outputShape.begin(), outputShape.end() - 2);
+    }
 
     std::vector<EdgeShapes> GetOutputShapeAsInputShapeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
@@ -800,7 +827,7 @@ namespace OperatorHelper
         }
     }
     
-    std::vector<EdgeShapes> MatMulHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    std::vector<EdgeShapes> MatMulHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 2);
 
@@ -812,8 +839,8 @@ namespace OperatorHelper
         // * If the first argument is 1 - D, it is promoted to a matrix by prepending a 1 to its dimensions. After matrix multiplication the prepended 1 is removed.
         // * If the second argument is 1 - D, it is promoted to a matrix by appending a 1 to its dimensions. After matrix multiplication the appended 1 is removed.
 
-        auto inputShape0 = shapeInfo.GetInputTensorShape(0);
-        auto inputShape1 = shapeInfo.GetInputTensorShape(1);
+        auto inputShape0 = shapeInfo.GetInputTensorShape(m_aTensorIndex);
+        auto inputShape1 = shapeInfo.GetInputTensorShape(m_bTensorIndex);
         ML_CHECK_VALID_ARGUMENT(inputShape0.size() >= 1);
         ML_CHECK_VALID_ARGUMENT(inputShape1.size() >= 1);
 

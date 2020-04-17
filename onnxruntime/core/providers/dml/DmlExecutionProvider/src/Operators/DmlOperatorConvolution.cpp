@@ -18,7 +18,7 @@ public:
         bool hasDynamicPads
         )
     :   DmlOperator(kernelInfo),
-        ConvolutionHelperBase(kernelInfo, kernelInfo.GetTensorShapeDescription(), direction == DML_CONVOLUTION_DIRECTION_BACKWARD, hasDynamicPads)
+        ConvolutionHelperBase(kernelInfo, kernelInfo.GetTensorShapeDescription(), direction == DML_CONVOLUTION_DIRECTION_BACKWARD, hasDynamicPads, 0, 1)
     {
         uint32_t biasIndex = hasDynamicPads ? 3 : 2;
         bool hasBiasInput = kernelInfo.GetInputCount() > biasIndex;
