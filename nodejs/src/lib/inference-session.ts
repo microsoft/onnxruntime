@@ -1,3 +1,4 @@
+import {impl} from './inference-session-impl';
 import {OnnxValue} from './onnx-value';
 
 /**
@@ -11,8 +12,7 @@ export interface InferenceSession {
    * @param feeds Representation of the model input. See type description of `InferenceSession.InputType` for detail.
    * @param options Optional. A set of options that controls the behavior of model inference.
    */
-  run(feeds: InferenceSession.InputType,
-      options?: InferenceSession.RunOptions): Promise<InferenceSession.OnnxValueMapType>;
+  run(feeds: InferenceSession.FeedsType, options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
 
   /**
    * Execute the model asynchronously with the given feeds, fetches and options.
@@ -22,8 +22,8 @@ export interface InferenceSession {
    * @param options Optional. A set of options that controls the behavior of model inference.
    * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding values.
    */
-  run(feeds: InferenceSession.InputType, fetches: InferenceSession.OutputType,
-      options?: InferenceSession.RunOptions): Promise<InferenceSession.OnnxValueMapType>;
+  run(feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
+      options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
 
   //#endregion run()
 
@@ -59,12 +59,12 @@ export declare namespace InferenceSession {
   type NullableOnnxValueMapType = {readonly [name: string]: OnnxValue | null};
 
   /**
-   * A model input is an object that use input names as keys and OnnxValue as corresponding values.
+   * A feeds (model inputs) is an object that use input names as keys and OnnxValue as corresponding values.
    */
-  type InputType = OnnxValueMapType;
+  type FeedsType = OnnxValueMapType;
 
   /**
-   * A model output could be one of the following:
+   * A fetches (model outputs) could be one of the following:
    *
    * - Omitted.
    *     - Use model's output names definition.
@@ -75,9 +75,9 @@ export declare namespace InferenceSession {
    *         used as a pre-allocated value by the inference engine; if omitted, inference engine will allocate buffer
    *         internally.
    */
-  type OutputType = ReadonlyArray<string>|NullableOnnxValueMapType;
+  type FetchesType = ReadonlyArray<string>|NullableOnnxValueMapType;
 
-  type OutputReturnType = {readonly [name: string]: OnnxValue};
+  type ReturnType = {readonly [name: string]: OnnxValue};
 
   //#endregion input/output types
 
@@ -213,11 +213,11 @@ export interface InferenceSessionConstructor {
    * Create a new inference session and load model asynchronously from segment of an array bufer.
    * @param buffer An ArrayBuffer representation of an ONNX model.
    * @param byteOffset The beginning of the specified portion of the array buffer.
-   * @param length The length in bytes of the array buffer.
+   * @param byteLength The length in bytes of the array buffer.
    * @param options specify configuration for creating a new inference session.
    * @returns A promise that resolves to an InferenceSession object.
    */
-  create(buffer: ArrayBufferLike, byteOffset: number, length?: number, options?: InferenceSession.SessionOptions):
+  create(buffer: ArrayBufferLike, byteOffset: number, byteLength?: number, options?: InferenceSession.SessionOptions):
       Promise<InferenceSession>;
 
   /**
@@ -232,4 +232,4 @@ export interface InferenceSessionConstructor {
 }
 
 // TBD: not implemented yet, use trick to make TypeScript compiler happy
-export const InferenceSession: InferenceSessionConstructor = {} as unknown as InferenceSessionConstructor;
+export const InferenceSession: InferenceSessionConstructor = impl;

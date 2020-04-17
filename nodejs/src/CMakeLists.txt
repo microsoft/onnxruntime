@@ -4,21 +4,22 @@ project (onnxruntime-node)
 
 set(CMAKE_CXX_STANDARD 14)
 
+add_compile_definitions(NAPI_VERSION 4)
+add_compile_definitions(NAPI_EXPERIMENTAL)
+
 include_directories(${CMAKE_JS_INC})
 include_directories(${CMAKE_SOURCE_DIR}/../../include/onnxruntime)
-include_directories(${CMAKE_SOURCE_DIR}/../../include/onnxruntime/core/session)
+# include_directories(${CMAKE_SOURCE_DIR}/../../include/onnxruntime/core/session)
 include_directories(${CMAKE_SOURCE_DIR}/node_modules/node-addon-api)
 
 file(GLOB SOURCE_FILES ${CMAKE_SOURCE_DIR}/src/*.cc)
 
-add_compile_definitions(NAPI_EXPERIMENTAL)
-
 # CPU
-add_library(onnxruntime SHARED ${SOURCE_FILES})
-set_target_properties(onnxruntime PROPERTIES PREFIX "" SUFFIX ".node")
-target_link_libraries(onnxruntime ${CMAKE_JS_LIB})
+add_library(onnxruntime_binding SHARED ${SOURCE_FILES})
+set_target_properties(onnxruntime_binding PROPERTIES PREFIX "" SUFFIX ".node")
+target_link_libraries(onnxruntime_binding ${CMAKE_JS_LIB})
 if (WIN32)
-  target_link_libraries(onnxruntime ${CMAKE_SOURCE_DIR}/../../build/Windows/${CMAKE_BUILD_TYPE}/${CMAKE_BUILD_TYPE}/onnxruntime.lib)
+  target_link_libraries(onnxruntime_binding ${CMAKE_SOURCE_DIR}/../../build/Windows/${CMAKE_BUILD_TYPE}/${CMAKE_BUILD_TYPE}/onnxruntime.lib)
 endif()
 
 # # GPU

@@ -6,14 +6,15 @@
   ],
   "compileOnSave": true,
   "compilerOptions": {
-    "module": "commonjs",
+    "module": "CommonJS",
     "moduleResolution": "node",
     "declaration": true,
     "declarationDir": "./types",
     "esModuleInterop": true,
-    "target": "es5",
+    "target": "es2015",
     "lib": [
-      "es2015", "ESNext.BigInt"
+      "es2015",
+      "ESNext.BigInt"
     ],
     "sourceMap": true,
     "noUnusedLocals": true,

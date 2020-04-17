@@ -1,7 +1,9 @@
+import {TensorUtils, TypedTensorUtils} from './tensor-utils';
+
 /**
- * represent a tensor with specified dimensions and data type.
+ * represent a basic tensor with specified dimensions and data type.
  */
-export interface Tensor {
+interface TensorBase {
   /**
    * Get the dimensions of the tensor.
    */
@@ -11,10 +13,6 @@ export interface Tensor {
    */
   readonly type: Tensor.Type;
   /**
-   * Get the number of elements in the tensor.
-   */
-  readonly size: number;
-  /**
    * Get the buffer data of the tensor.
    */
   readonly data: Tensor.DataType;
@@ -23,7 +21,7 @@ export interface Tensor {
 /**
  * represent a tensor with specified dimensions and data type.
  */
-export interface TypedTensor<T extends Tensor.Type> extends Tensor {
+interface TypedTensorBase<T extends Tensor.Type> extends TensorBase {
   /**
    * Get the data type of the tensor.
    */
@@ -33,18 +31,6 @@ export interface TypedTensor<T extends Tensor.Type> extends Tensor {
    * Get the buffer data of the tensor.
    */
   readonly data: Tensor.DataTypeMap[T]
-}
-
-export interface Tensor {
-  // Tensor utility functions
-
-  reshape(dims: ReadonlyArray<number>): Tensor;
-}
-
-export interface TypedTensor<T extends Tensor.Type> {
-  // Tensor utility functions
-
-  reshape(dims: ReadonlyArray<number>): TypedTensor<T>;
 }
 
 export declare namespace Tensor {
@@ -95,8 +81,10 @@ export declare namespace Tensor {
   export type Type = keyof DataTypeMap;
 }
 
+export interface Tensor extends TensorBase, TensorUtils {}
+export interface TypedTensor<T extends Tensor.Type> extends TypedTensorBase<T>, TypedTensorUtils<T> {}
 
-export interface TensorConstructor {
+interface TensorConstructor {
   /**
    * Construct a new tensor object from the given type, data and dims.
    * @type Specify the element type.

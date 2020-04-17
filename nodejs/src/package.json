@@ -3,7 +3,7 @@
   "description": "Node.js binding of ONNXRuntime",
   "version": "0.0.1",
   "main": "./lib/index.js",
-  "types": "./types/index.d.ts",
+  "types": "./types/lib/index.d.ts",
   "scripts": {
     "prepare": "tsc",
     "build": "tsc && node ./scripts/build",
@@ -35,7 +35,6 @@
     "node-addon-api": "^2.0.0",
     "node-pre-gyp-github": "^1.4.3",
     "onnx-proto": "^4.0.4",
-    "rimraf": "^3.0.2",
     "typedoc": "^0.17.3",
     "typescript": "^3.8.3"
   },
