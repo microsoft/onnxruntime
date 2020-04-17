@@ -172,6 +172,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
   if (use_per_session_threads_) {
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
+#ifndef _OPENMP
     {
       OrtThreadPoolParams to = session_options_.intra_op_param;
       if (to.name == nullptr) {
@@ -185,6 +186,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, nullptr);
     }
+#endif
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
       OrtThreadPoolParams to = session_options_.inter_op_param;
       // If the thread pool can use all the processors, then

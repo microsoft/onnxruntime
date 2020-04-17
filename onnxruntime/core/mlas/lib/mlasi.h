@@ -665,7 +665,7 @@ MlasGetMaximumThreadCount(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-#ifdef MLAS_NO_ONNXRUNTIME_THREADPOOL
+#if defined(MLAS_NO_ONNXRUNTIME_THREADPOOL) || defined(_OPENMP)
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
 #else
     if (ThreadPool != nullptr) {

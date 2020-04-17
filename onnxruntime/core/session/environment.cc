@@ -50,11 +50,15 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
   // create thread pools
   if (create_global_thread_pools) {
     create_global_thread_pools_ = true;
+#ifndef _OPENMP
     OrtThreadPoolParams to = tp_options->intra_op_thread_pool_params;
     if (to.name == nullptr) {
       to.name = ORT_TSTR("intra-op");
     }
     intra_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, nullptr);
+#else
+    OrtThreadPoolParams to;
+#endif
     to = tp_options->inter_op_thread_pool_params;
     if (to.name == nullptr) {
       to.name = ORT_TSTR("inter-op");
