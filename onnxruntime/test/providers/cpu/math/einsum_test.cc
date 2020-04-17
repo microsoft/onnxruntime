@@ -387,5 +387,27 @@ TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithAllScalars) {
   test.Run();
 }
 
+// Tensor Contraction
+
+// Explicit
+TEST(Einsum, ExplicitEinsumAsTensorContraction) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "abcd,ea->bcde");
+  test.AddInput<float>("x", {2, 2, 2, 2}, {1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f});
+  test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 1.f, 2.f});
+  test.AddOutput<float>("o", {2, 2, 2, 2}, {3.f, 3.f, 6.f, 6.f, 3.f, 3.f, 6.f, 6.f, 3.f, 3.f, 6.f, 6.f, 3.f, 3.f, 6.f, 6.f});
+  test.Run();
+}
+
+// Implicit
+TEST(Einsum, ImplicitEinsumAsTensorContraction) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "abcd,ea");
+  test.AddInput<float>("x", {2, 2, 2, 2}, {1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f});
+  test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 1.f, 2.f});
+  test.AddOutput<float>("o", {2, 2, 2, 2}, {3.f, 3.f, 6.f, 6.f, 3.f, 3.f, 6.f, 6.f, 3.f, 3.f, 6.f, 6.f, 3.f, 3.f, 6.f, 6.f});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

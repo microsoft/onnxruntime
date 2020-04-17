@@ -53,6 +53,9 @@ struct EinsumEquationPreprocessor {
   }
 
   // Holds the pre-processed equation string
+  // In theory, we could re-write the einsum equation to lower overall cost of intermediate arrays
+  // See numpy.einsum_path for details/examples
+  // These are very advanced optimizations that we don't require for the average use-case
   std::string einsum_preprocessed_equation_;
 
   // In explicit form, holds the left side of the einsum equation
