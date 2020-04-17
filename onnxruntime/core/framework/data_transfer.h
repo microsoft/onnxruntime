@@ -23,6 +23,8 @@ class IDataTransfer {
 class CPUDataTransfer : public IDataTransfer {
  public:
   CPUDataTransfer() = default;
+  // Dampen MSVC warning about not fully overriding CopyTensor
+  using IDataTransfer::CopyTensor;
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
 };
