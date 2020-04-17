@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, typename Tin, bool OUTERAXIS>
+template <typename T, typename Tin, bool OUTERAXIS, typename FuncT>
 __global__ void _ScatterElementsKernel2D(
     const int max_dim,  // max dim on the scattered axis
     const T* input_data,
@@ -16,7 +16,8 @@ __global__ void _ScatterElementsKernel2D(
     const fast_divmod indices_stride_row,
     const T* updates,
     const int64_t output_row_size,
-    T* output_data) {
+    T* output_data,
+    const FuncT& func) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(indices_index, indices_size);
 
   int row, col, data_idx;
@@ -29,12 +30,14 @@ __global__ void _ScatterElementsKernel2D(
     } else {
       data_idx = row * output_row_size + dim;
     }
-    output_data[data_idx] = updates[indices_index];
+
+    func(output_data + data_idx, updates + indices_index);
   }
   // else invalid index
 }
 
-template <typename T, typename Tin>
+
+template <typename T, typename Tin, typename FuncT>
 __global__ void _ScatterElementsKernel(
     const int rank,
     const T* input_data,
@@ -46,7 +49,8 @@ __global__ void _ScatterElementsKernel(
     const TArray<fast_divmod> indices_strides,
     const T* updates,
     const int axis,
-    T* output_data) {
+    T* output_data,
+    const FuncT& func) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(indices_index, indices_size);
   int dim, remain = indices_index;
   size_t data_idx = 0;
@@ -61,7 +65,8 @@ __global__ void _ScatterElementsKernel(
     }
     data_idx += input_strides[i] * dim;
   }
-  output_data[data_idx] = updates[indices_index];
+
+  func(output_data + data_idx, updates + indices_index);
 }
 
 // From the innermost axis (largest) check equality of dim value of input and indices.
@@ -135,7 +140,7 @@ static int CompactInputIndicesDims(
   return new_axis;
 }
 
-template <typename T, typename Tin>
+template <typename T, typename Tin, typename FuncT>
 Status ScatterElementsImpl2D(
     const T* input_data,
     const std::vector<int64_t>& input_dims,
@@ -144,27 +149,28 @@ Status ScatterElementsImpl2D(
     const std::vector<int64_t>& indices_dims,
     const T* updates,
     const int axis,
-    T* output_data) {
+    T* output_data,
+    const FuncT& func) {
   int blocksPerGrid = gsl::narrow_cast<int>(CeilDiv(indices_size, GridDim::maxThreadsPerBlock));
   fast_divmod indices_stride_row(indices_dims[1]);
   if (axis == 0) {
-    _ScatterElementsKernel2D<T, Tin, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _ScatterElementsKernel2D<T, Tin, true, FuncT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         gsl::narrow_cast<int>(input_dims[0]), input_data,
         indices_data, indices_size, indices_stride_row,
-        updates, input_dims[1], output_data);
+        updates, input_dims[1], output_data, func);
   } else {
-    _ScatterElementsKernel2D<T, Tin, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _ScatterElementsKernel2D<T, Tin, false, FuncT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         gsl::narrow_cast<int>(input_dims[1]), input_data,
         indices_data, indices_size, indices_stride_row,
-        updates, input_dims[1], output_data);
+        updates, input_dims[1], output_data, func);
   }
   return Status::OK();
 }
 
-template <typename T, typename Tin>
+template <typename CudaT, typename Tin, typename FuncT>
 Status ScatterElementsImpl(
     const int rank,
-    const T* input_data,
+    const CudaT* input_data,
     const int64_t input_size,
     TArray<int64_t>& buffer_input_dims,
     TArray<int64_t>& buffer_input_strides,
@@ -172,11 +178,12 @@ Status ScatterElementsImpl(
     const int64_t indices_size,
     TArray<int64_t>& buffer_indices_dims,
     TArray<fast_divmod>& fdm_indices_strides,
-    const T* updates,
+    const CudaT* updates,
     const int axis,
-    T* output_data) {
+    CudaT* output_data,
+    const FuncT& func) {
   if (input_data != output_data) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, input_size * sizeof(T), cudaMemcpyDeviceToDevice, 0));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, input_size * sizeof(CudaT), cudaMemcpyDeviceToDevice, 0));
   }
 
   if (indices_size > 0) {
@@ -185,23 +192,24 @@ Status ScatterElementsImpl(
     int new_axis = CompactInputIndicesDims(
         rank, axis, buffer_input_dims.data_, buffer_indices_dims.data_, eff_input_dims, eff_indices_dims);
     if (eff_input_dims.size() == 2) {
-      return ScatterElementsImpl2D(
-          input_data, eff_input_dims, indices_data, indices_size, eff_indices_dims, updates, new_axis, output_data);
+      return ScatterElementsImpl2D<CudaT, Tin, FuncT>(
+          input_data, eff_input_dims, indices_data, indices_size, eff_indices_dims,
+          updates, new_axis, output_data, func);
     }
 
     int blocksPerGrid = gsl::narrow_cast<int>(CeilDiv(indices_size, GridDim::maxThreadsPerBlock));
-    _ScatterElementsKernel<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _ScatterElementsKernel<CudaT, Tin, FuncT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         rank, input_data, buffer_input_dims, buffer_input_strides,
         indices_data, indices_size, buffer_indices_dims, fdm_indices_strides,
-        updates, axis, output_data);
+        updates, axis, output_data, func);
   }
   return Status::OK();
 }
 
-#define SPECIALIZED_TINDEX_IMPL(T, TIndex)                        \
-  template Status ScatterElementsImpl<T, TIndex>(                 \
+#define SPECIALIZED_TINDEX_IMPL(CudaT, TIndex, FuncT)                        \
+  template Status ScatterElementsImpl<CudaT, TIndex, FuncT>(                 \
       const int rank,                                             \
-      const T* input_data,                                        \
+      const CudaT* input_data,                                        \
       const int64_t input_size,                                   \
       TArray<int64_t>& buffer_input_dims,    \
       TArray<int64_t>& buffer_input_strides, \
@@ -209,13 +217,14 @@ Status ScatterElementsImpl(
       const int64_t indices_size,                                 \
       TArray<int64_t>& buffer_indices_dims,  \
       TArray<fast_divmod>& indices_strides,  \
-      const T* updates,                                           \
+      const CudaT* updates,                                           \
       const int axis,                                             \
-      T* output_data)
+      CudaT* output_data,\
+      const FuncT& func);
 
-#define SPECIALIZED_IMPL(T)            \
-  SPECIALIZED_TINDEX_IMPL(T, int32_t); \
-  SPECIALIZED_TINDEX_IMPL(T, int64_t);
+#define SPECIALIZED_IMPL(CudaT)            \
+  SPECIALIZED_TINDEX_IMPL(CudaT, int32_t, Func_Assignment<CudaT>); \
+  SPECIALIZED_TINDEX_IMPL(CudaT, int64_t, Func_Assignment<CudaT>);
 
 SPECIALIZED_IMPL(int8_t)
 SPECIALIZED_IMPL(int16_t)

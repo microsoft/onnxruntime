@@ -9,6 +9,7 @@
 namespace onnxruntime {
 namespace cuda {
 
+template <typename T, typename Tind>
 class ScatterElements final : public CudaKernel {
  public:
   ScatterElements(const OpKernelInfo& info) : CudaKernel(info) {
