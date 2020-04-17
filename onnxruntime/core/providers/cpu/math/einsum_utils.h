@@ -47,7 +47,7 @@ struct EinsumEquationPreprocessor {
     while ((pos = left_equation_.find(delimiter)) != std::string::npos) {
       token = left_equation_.substr(0, pos);
       left_equation_.erase(0, pos + delimiter.length());
-      left_equation_split_.push_back(token); // This copy is done statically at model load, hence should not affect runtime perf
+      left_equation_split_.push_back(token);  // This copy is done statically at model load, hence should not affect runtime perf
     }
     left_equation_split_.push_back(left_equation_);  // This holds the portion of the equation after the last ','
   }
@@ -80,7 +80,7 @@ struct EinsumEquationPreprocessor {
 // This is a pre-processor class that maps subscript labels to a dimension value, etc.
 class EinsumComputePreprocessor final {
  public:
-  explicit EinsumComputePreprocessor(const EinsumEquationPreprocessor& equation_preprocessor,
+  explicit EinsumComputePreprocessor(EinsumEquationPreprocessor& equation_preprocessor,
                                      const std::vector<const Tensor*>& inputs,
                                      const AllocatorPtr& allocator);
 
@@ -100,7 +100,7 @@ class EinsumComputePreprocessor final {
   const int64_t GetNumSubscriptIndices() const;
 
  private:
-  // Process subscripts of each input and collect metadata along the way 
+  // Process subscripts of each input and collect metadata along the way
   void ProcessSubscripts();
 
   // A function to process bradcasted dims (ellipsis) of inputs that they occur in
@@ -118,7 +118,7 @@ class EinsumComputePreprocessor final {
 
   // private members
   // Instance of EinsumEquationPreprocessor
-  const EinsumEquationPreprocessor einsum_equation_preprocessor_;
+  EinsumEquationPreprocessor einsum_equation_preprocessor_;
 
   // Flag indicating if Einsum equation has an ellipsis (requests broadcasting support if so)
   bool has_ellipses_ = false;

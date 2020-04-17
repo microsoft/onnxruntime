@@ -7,9 +7,9 @@ namespace EinsumOp {
 // We have an the result in an output "candidate". Now we have to copy the contents in its buffer
 // into the buffer of the actual output given to us by the execution frame
 // We need to do this because the buffer owned by the output tensor of the op could be user provided buffer
-static void CopyOutputCandidateIntoOpOutout(Tensor& output, Tensor& candidate){
-  ORT_ENFORCE(output.SizeInBytes() == candidate.SizeInBytes(), 
-      "Einsum op: The candidate output does not match the actual output's shape");
+static void CopyOutputCandidateIntoOpOutout(Tensor& output, Tensor& candidate) {
+  ORT_ENFORCE(output.SizeInBytes() == candidate.SizeInBytes(),
+              "Einsum op: The candidate output does not match the actual output's shape");
   // There are no string tensors - so safely use memcpy
   memcpy(output.MutableDataRaw(), candidate.DataRaw(), candidate.SizeInBytes());
 }
@@ -88,7 +88,7 @@ static Tensor PairwiseOperandProcess(Tensor& left, Tensor& right,
 
     if (reduce_dims_iter < reduce_dims_size && reduce_dims[reduce_dims_iter] == i) {  // This dimension is to be reduced after this pair-wise operation
       ++reduce_dims_iter;
-      if (has_left_dim && has_right_dim) { // Both inputs have non-trivial dim values along this dimension
+      if (has_left_dim && has_right_dim) {  // Both inputs have non-trivial dim values along this dimension
         // Both the left and right operands have non-trivial dimension value along this axis
         // They must be equal
         ORT_ENFORCE(left_dim == right_dim, "Einsum op: Input dimensions must be equal along an axis to be reduced across all inputs");
@@ -214,7 +214,7 @@ static Tensor PairwiseOperandProcess(Tensor& left, Tensor& right,
 
 }  // namespace EinsumOp
 
-EinsumComputePreprocessor::EinsumComputePreprocessor(const EinsumEquationPreprocessor& einsum_equation_preprocessor,
+EinsumComputePreprocessor::EinsumComputePreprocessor(EinsumEquationPreprocessor& einsum_equation_preprocessor,
                                                      const std::vector<const Tensor*>& inputs,
                                                      const AllocatorPtr& allocator)
     : einsum_equation_preprocessor_(einsum_equation_preprocessor), inputs_(inputs), allocator_(allocator) {
@@ -381,7 +381,7 @@ void EinsumComputePreprocessor::PostProcessBroadcastedDims() {
     num_subscript_indices_ += num_of_ellipsis_dims_;
 
     // We are going to assign the broadcasted dims outermost subscript indices (i.e.) 0 -> num_of_ellipsis_dims_ - 1
-    // as most likely bradcasted dims will be batch dimensions (i.e.) outermost dimensions and hence we don't have to pay 
+    // as most likely bradcasted dims will be batch dimensions (i.e.) outermost dimensions and hence we don't have to pay
     // transposing while "homogenizing" the input
 
     // Hence offset all subscript indices by num_of_ellipsis_dims_
@@ -459,6 +459,23 @@ void EinsumComputePreprocessor::ParseOrCreateOutputSubscript() {
   }
 
   // Implicit form - construct the output subscript
+  std::stringstream output_equation;
+
+  // If the an ellipsis was seen in the input, add it
+  if (num_of_ellipsis_dims_ > 0) {
+    output_equation << "...";
+  }
+
+  // In sorted order of letters, add those letters that were seen only once in the input
+  size_t iter = 0;
+  for (const auto& count : letter_to_count_) {
+    if (count == 1) {
+      output_equation << (char)('a' + iter);
+    }
+    ++iter;
+  }
+
+  einsum_equation_preprocessor_.right_equation_ = output_equation.str();
 }
 
 void EinsumComputePreprocessor::CalculateOutputShape() {
@@ -518,7 +535,7 @@ void EinsumComputePreprocessor::CalculateOutputShape() {
 
 void EinsumComputePreprocessor::PreprocessInputs() {
   preprocessed_inputs_.reserve(inputs_.size());
-  // As part of input preprocessing we "homogenize" them by 
+  // As part of input preprocessing we "homogenize" them by
   // 1) Making them all of the same rank
   // 2) The axes order in all the inputs are to be made the same
   int64_t input_iter = 0;
