@@ -203,12 +203,12 @@ static bool can_eval_concat(const Node* concat, const InitializedTensorSet& init
   b_found &= (initializers.find(arg_2->Name()) != initializers.end());
   if (b_found)
   {
-    std::vector<graph_utils::EdgeEndToMatch> arg1_path{
+    std::vector<graph_utils::EdgeEndToMatch> parent_path{
         {0, 1, "Unsqueeze", {1, 11}, kOnnxDomain},
         {0, 0, "Gather", {1, 11}, kOnnxDomain},
         {0, 0, "Shape", {1}, kOnnxDomain}};
     std::vector<const Node::EdgeEnd*> edges;
-    b_found = graph_utils::FindPath(*concat, true, arg1_path, edges, logger);
+    b_found = graph_utils::FindPath(*concat, true, parent_path, edges, logger);
     if (b_found)
     {
       const Node& gather = edges[1]->GetNode();
@@ -217,6 +217,43 @@ static bool can_eval_concat(const Node* concat, const InitializedTensorSet& init
       {
         return true;
       }
+    }
+  }
+
+  return false;
+}
+
+static bool can_eval_cast(const Node* cast, const InitializedTensorSet& initializers, const logging::Logger& logger)
+{
+  std::vector<graph_utils::EdgeEndToMatch> parent_path = {
+      {0, 0, "Concat", {1, 4, 11}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1}, kOnnxDomain},
+      {0, 0, "Cast", {1, 6, 9}, kOnnxDomain},
+      {0, 0, "Squeeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Slice", {1, 10, 11}, kOnnxDomain},
+      {0, 0, "Cast", {1, 6, 9}, kOnnxDomain},
+      {0, 0, "Shape", {1}, kOnnxDomain}};
+  std::vector<const Node::EdgeEnd*> edges;
+  if (graph_utils::FindPath(*cast, true, parent_path, edges, logger)) {
+    const Node& concat = edges[1]->GetNode();
+    const Node& slice = edges[5]->GetNode();
+    const auto& concat_args = concat.InputDefs();
+    bool const_flag = true;
+    for (std::size_t i = 1; i < concat_args.size(); i++)
+    {
+      const_flag &= (initializers.find(concat_args[i]->Name()) != initializers.end());
+    }
+    if (const_flag)
+    {
+      const auto& slice_args = slice.InputDefs();
+      for (std::size_t i = 1; i < slice_args.size(); ++i)
+      {
+        const_flag &= (initializers.find(slice_args[i]->Name()) != initializers.end());
+      }
+    }
+    if (const_flag)
+    {
+      return true;
     }
   }
 
@@ -247,23 +284,40 @@ static bool can_eval_reshape_input_shape(const Node* node, const InitializedTens
   }
 
   // scenario 3:
-  std::vector<graph_utils::EdgeEndToMatch> parent_path_3 = {
+  const Node* cast = graph_utils::GetInputNode(*node, 1);
+  if (cast and cast->OpType() == "Cast")
+  {
+    if (can_eval_cast(cast, initializers, logger))
+    {
+      return true;
+    }
+  }
+
+  // scenario 4:
+  std::vector<graph_utils::EdgeEndToMatch> parent_path_4 = {  
       {0, 1, "Cast", {1, 6, 9}, kOnnxDomain},
       {0, 0, "Concat", {1, 4, 11}, kOnnxDomain},
       {0, 0, "Unsqueeze", {1}, kOnnxDomain},
+      {0, 0, "Mul", {1, 6, 7}, kOnnxDomain},
       {0, 0, "Cast", {1, 6, 9}, kOnnxDomain},
       {0, 0, "Squeeze", {1, 11}, kOnnxDomain},
       {0, 0, "Slice", {1, 10, 11}, kOnnxDomain},
       {0, 0, "Cast", {1, 6, 9}, kOnnxDomain},
       {0, 0, "Shape", {1}, kOnnxDomain}};
-  if (graph_utils::FindPath(*node, true, parent_path_3, edges, logger)) {
+  if (graph_utils::FindPath(*node, true, parent_path_4, edges, logger)) {
     const Node& concat = edges[1]->GetNode();
-    const Node& slice = edges[5]->GetNode();
+    const Node& mul = edges[3]->GetNode();
+    const Node& slice = edges[6]->GetNode();
     const auto& concat_args = concat.InputDefs();
     bool const_flag = true;
     for (std::size_t i = 1; i < concat_args.size(); i++)
     {
       const_flag &= (initializers.find(concat_args[i]->Name()) != initializers.end());
+    }
+    if (const_flag)
+    {
+      const auto& mul_args = mul.InputDefs();
+      const_flag &= (initializers.find(mul_args[1]->Name()) != initializers.end());
     }
     if (const_flag)
     {
@@ -414,10 +468,17 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     {
       return false;
     }
-    const Node* p_concat = graph_utils::GetInputNode(*node, 0);
-    if (p_concat != nullptr and p_concat->OpType() == "Concat")
+    const Node* shape_node = graph_utils::GetInputNode(*node, 0);
+    if (shape_node and shape_node->OpType() == "Concat")
     {
-      if (can_eval_concat(p_concat, initializers, logger))
+      if (can_eval_concat(shape_node, initializers, logger))
+      {
+        return false;
+      }
+    }
+    else if (shape_node and shape_node->OpType() == "Cast")
+    {
+      if (can_eval_cast(shape_node, initializers, logger))
       {
         return false;
       }
