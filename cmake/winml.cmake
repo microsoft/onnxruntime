@@ -628,6 +628,8 @@ else()
   target_link_libraries(winml_dll PRIVATE delayimp.lib)
 endif()
 
+target_link_libraries(winml_dll PRIVATE delayimp.lib)
+target_link_libraries(winml_dll PRIVATE RuntimeObject.lib)
 
 # Any project that links in debug_alloc.obj needs this lib.
 # unresolved external symbol __imp_SymSetOptions

@@ -505,6 +505,7 @@ if (onnxruntime_USE_DML)
       target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/DirectML.lib")
 	  target_compile_definitions(${target} PRIVATE DML_TARGET_VERSION_USE_LATEST)
     endif()
+    target_link_options(${target} PUBLIC /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:d3d12.dll)
   endfunction()
 
   target_add_dml(onnxruntime_providers_dml)
