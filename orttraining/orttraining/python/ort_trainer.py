@@ -285,6 +285,15 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
         sample_inputs = [input.to(device=device) for i, input in enumerate(inputs) if i < len(model_desc.inputs_)]
     else:
         raise RuntimeError("Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
+
+    if loss_fn:
+        model = model_loss_cls(model, loss_fn)
+
+    # pytorch onnx exporter/trace does not try to match argument names.
+    # e.g. for models with optional inputs, it requires all inputs be present.
+    # this is a problem because the model graph depends on inputs provided.
+    model = wrap_for_input_match(model, input_names)
+
     model.eval()
     with torch.no_grad():
         sample_outputs = model(*sample_inputs)
@@ -295,14 +304,6 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     model.train()
 
     f = io.BytesIO()
-
-    if loss_fn:
-        model = model_loss_cls(model, loss_fn)
-
-    # pytorch onnx exporter/trace does not try to match argument names.
-    # e.g. for models with optional inputs, it requires all inputs be present.
-    # this is a problem because the model graph depends on inputs provided.
-    model = wrap_for_input_match(model, input_names)
 
     # Other export options to use(this is for backward compatibility).
     other_export_options = {}
