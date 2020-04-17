@@ -3,7 +3,7 @@
 
 #pragma once
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 // We need to define our own type for Half since DirectX::PackedVector::Half resolves to uint16_t per its typedef declaration.
 // Templates require an actual type name to resolve correctly.
@@ -84,4 +84,4 @@ struct TensorFeatureDescriptorFrom {
   }
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

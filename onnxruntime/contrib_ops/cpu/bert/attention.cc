@@ -206,7 +206,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     }
     BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
 
-    if (mask_index != nullptr) {
+    if (mask_index != nullptr && mask_data != nullptr) {
       T* p_mask = reinterpret_cast<T*>(mask_data);
       for (int b_i = 0; b_i < batch_size; b_i++) {
         // TODO: mask_index can be used in softmax to save some calculation.
@@ -243,7 +243,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const std::ptrdiff_t batch_index = i / num_heads_;
 
-        // broadcast mask data: SxS -> BxNxSxS
+        // broadcast mask data: SxS or (Bx)SxS -> (BxNx)SxS
         if (mask_data != nullptr) {
           const T* broadcast_data_src = is_unidirectional_ ? reinterpret_cast<T*>(mask_data) : reinterpret_cast<T*>(mask_data) + batch_index * sequence_length * sequence_length;
           T* broadcast_data_dest = reinterpret_cast<T*>(scratch_data) + sequence_length * sequence_length * i;

@@ -15,22 +15,19 @@ class KernelRegistry {
   KernelRegistry() = default;
 
   // Register a kernel with kernel definition and function to create the kernel.
-  Status Register(KernelDefBuilder& kernel_def_builder,
-                  const KernelCreateFn& kernel_creator);
+  Status Register(KernelDefBuilder& kernel_def_builder, const KernelCreateFn& kernel_creator) ORT_MUST_USE_RESULT;
 
-  Status Register(KernelCreateInfo&& create_info);
+  Status Register(KernelCreateInfo&& create_info) ORT_MUST_USE_RESULT;
 
   // factory functions should always return a unique_ptr for maximum flexibility
   // for its clients unless the factory is managing the lifecycle of the pointer
   // itself.
   // TODO(Task:132) Make usage of unique_ptr/shared_ptr as out param consistent
-  Status TryCreateKernel(const onnxruntime::Node& node,
-                         const IExecutionProvider& execution_provider,
+  Status TryCreateKernel(const onnxruntime::Node& node, const IExecutionProvider& execution_provider,
                          const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
-                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
-                         const FuncManager& funcs_mgr,
+                         const OrtValueNameIdxMap& mlvalue_name_idx_map, const FuncManager& funcs_mgr,
                          const DataTransferManager& data_transfer_mgr,
-                         std::unique_ptr<OpKernel>& op_kernel) const;
+                         std::unique_ptr<OpKernel>& op_kernel) const ORT_MUST_USE_RESULT;
 
   // Check if an execution provider can create kernel for a node and return
   // the kernel if so

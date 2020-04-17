@@ -4,7 +4,7 @@
 #pragma once
 
 // String Helpers
-namespace Windows::AI::MachineLearning::Strings {
+namespace _winml::Strings {
 struct HStringBuilder {
   HStringBuilder(HStringBuilder const&) = delete;
   HStringBuilder& operator=(HStringBuilder const&) = delete;
@@ -89,4 +89,4 @@ static std::wstring WStringFromString(const std::string& string) {
   return woss.str();
 }
 
-}  // namespace Windows::AI::MachineLearning::Strings
+}  // namespace _winml::Strings
