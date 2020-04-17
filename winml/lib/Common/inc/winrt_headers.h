@@ -3,8 +3,6 @@
 
 #pragma once
 
-#define __INTELLISENSE__
-
 #include "common.h"
 
 #include <winrt/windows.media.h>
