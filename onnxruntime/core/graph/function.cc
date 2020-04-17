@@ -226,7 +226,7 @@ static std::unordered_map<std::string, int> GetOpsetVersionMap(const ONNX_NAMESP
 
 FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            const onnxruntime::NodeIndex& node_index,
-                           const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
+                           const ONNX_NAMESPACE::FunctionProto onnx_func_proto,
                            const logging::Logger& logger)
     : parent_graph_(&graph),
       body_(onnx_func_proto.name(), false, onnxruntime::ModelMetaData(),

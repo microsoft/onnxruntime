@@ -1923,8 +1923,17 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         node.op_ = nullptr;
       }
 
-      if (node.op_ && node.op_->HasFunction()) {
-        auto onnx_function_proto = node.op_->GetFunction();
+      if (node.op_ && (node.op_->HasFunction() || node.op_->HasContextDependentFunction())) {
+        const onnx::FunctionProto* onnx_function_proto;
+        onnx::FunctionProto temp;
+        if (node.op_->HasContextDependentFunction()) {
+          onnx::FunctionBodyBuildContextImpl function_body_ctx(node_proto);
+          node.op_->BuildContextDependentFunction(function_body_ctx, temp);
+          onnx_function_proto = &temp;
+        } else {
+          onnx_function_proto = node.op_->GetFunction();
+        }
+
         auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), *onnx_function_proto,
                                                                             logger_);
         function_container_.emplace_back(std::move(func_ptr));
