@@ -7,10 +7,10 @@ o) OPENVINO_VERSION=${OPTARG};;
 esac
 done
 
-OPENVINO_VERSION=${OPENVINO_VERSION:=2019_R3.1}
-git clone https://github.com/opencv/dldt.git /data/dldt/openvino_2019.3.376
+OPENVINO_VERSION=${OPENVINO_VERSION:=2020.2}
+git clone https://github.com/opencv/dldt.git /data/dldt/openvino_2020.2.120
 
-export INTEL_CVSDK_DIR=/data/dldt/openvino_2019.3.376
+export INTEL_CVSDK_DIR=/data/dldt/openvino_2020.2.120
 apt-get update && apt-get -y  install libusb-1.0-0-dev
 
 cd ${INTEL_CVSDK_DIR}/inference-engine
@@ -20,7 +20,8 @@ git submodule update --recursive
 
 mkdir -p build
 cd build
-cmake ..
+#cmake ..
+cmake -DNGRAPH_ONNX_IMPORT_ENABLE=ON -DNGRAPH_JSON_ENABLE=ON DNGRAPH_UNIT_TEST_ENABLE=OFF -DCMAKE_BUILD_TYPE=Release ..
 make -j$(nproc)
 
 cd ${INTEL_CVSDK_DIR}
