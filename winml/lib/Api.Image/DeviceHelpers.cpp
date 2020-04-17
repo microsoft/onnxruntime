@@ -12,9 +12,6 @@
 #include "CommonDeviceHelpers.h"
 #include "LearningModelDevice.h"
 
-namespace DeviceHelpers {
-
-
 HRESULT IsWarpAdapter(IDXGIAdapter1* pAdapter, bool* isWarpAdapter) {
   DXGI_ADAPTER_DESC1 pDesc;
   RETURN_IF_FAILED(pAdapter->GetDesc1(&pDesc));
@@ -28,7 +25,7 @@ HRESULT IsWarpAdapter(IDXGIAdapter1* pAdapter, bool* isWarpAdapter) {
   return S_OK;
 }
 
-HRESULT GetDXGIHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, IDXGIAdapter1** ppAdapter) {
+HRESULT _winml::GetDXGIHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, IDXGIAdapter1** ppAdapter) {
 
   winrt::com_ptr<IDXGIAdapter1> spAdapter;
   UINT i = 0;
@@ -70,7 +67,7 @@ HRESULT GetDXGIHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, IDX
 // Return the first adapter that matches the preference:
 // DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE => DXCoreAdapterProperty::IsDetachable
 // DXGI_GPU_PREFERENCE_MINIMUM_POWER => DXCoreAdapterProperty::IsIntegrated
-HRESULT GetDXCoreHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, IDXCoreAdapter** ppAdapter) {
+HRESULT _winml::GetDXCoreHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, IDXCoreAdapter** ppAdapter) {
   winrt::com_ptr<IDXCoreAdapterFactory> spFactory;
   RETURN_IF_FAILED(DXCoreCreateAdapterFactory(IID_PPV_ARGS(spFactory.put())));
 
@@ -125,7 +122,7 @@ HRESULT GetDXCoreHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, I
 }
 #endif
 
-HRESULT CreateD3D11On12Device(ID3D12Device* device12, ID3D11Device** device11) {
+HRESULT _winml::CreateD3D11On12Device(ID3D12Device* device12, ID3D11Device** device11) {
   return CommonDeviceHelpers::RunDelayLoadedApi(
       D3D11On12CreateDevice,
       device12,                          // pointer to d3d12 device
@@ -140,17 +137,17 @@ HRESULT CreateD3D11On12Device(ID3D12Device* device12, ID3D11Device** device11) {
       nullptr);                          // pointer to the returned feature level (unused)
 }
 
-HRESULT GetGPUPreference(winrt::Windows::AI::MachineLearning::LearningModelDeviceKind deviceKind, DXGI_GPU_PREFERENCE* preference) noexcept {
+HRESULT _winml::GetGPUPreference(winml::LearningModelDeviceKind deviceKind, DXGI_GPU_PREFERENCE* preference) noexcept {
   switch (deviceKind) {
-    case winrt::Windows::AI::MachineLearning::LearningModelDeviceKind::DirectX: {
+    case winml::LearningModelDeviceKind::DirectX: {
       *preference = DXGI_GPU_PREFERENCE_UNSPECIFIED;
       return S_OK;
     }
-    case winrt::Windows::AI::MachineLearning::LearningModelDeviceKind::DirectXHighPerformance: {
+    case winml::LearningModelDeviceKind::DirectXHighPerformance: {
       *preference = DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE;
       return S_OK;
     }
-    case winrt::Windows::AI::MachineLearning::LearningModelDeviceKind::DirectXMinPower: {
+    case winml::LearningModelDeviceKind::DirectXMinPower: {
       *preference = DXGI_GPU_PREFERENCE_MINIMUM_POWER;
       return S_OK;
     }
@@ -159,4 +156,3 @@ HRESULT GetGPUPreference(winrt::Windows::AI::MachineLearning::LearningModelDevic
       return E_INVALIDARG;
   }
 }
-}  // namespace DeviceHelpers

@@ -16,7 +16,7 @@ jobs:
     EnvSetupScript: setup_env.bat
     buildArch: x64
     setVcvars: true    
-  timeoutInMinutes: 90
+  timeoutInMinutes: 120
   workspace:
     clean: all
   steps:    
@@ -90,13 +90,6 @@ jobs:
 
   - template: templates/set-test-data-variables-step.yml
 
-  - task: PythonScript@0
-    displayName: 'Download test data'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-      arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-      workingDirectory: $(Build.BinariesDirectory)
-
   - task: DotNetCoreCLI@2
     displayName: 'Restore nuget packages'
     inputs:
@@ -155,7 +148,7 @@ jobs:
     buildArch: x64
     BuildConfig: 'Debug'
     setVcvars: true
-  timeoutInMinutes: 90
+  timeoutInMinutes: 60
   workspace:
     clean: all
   steps:
@@ -228,7 +221,7 @@ jobs:
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     setVcvars: true    
-  timeoutInMinutes: 90
+  timeoutInMinutes: 120
   workspace:
     clean: all
   steps:    
@@ -293,14 +286,6 @@ jobs:
     inputs:
       versionSpec: 4.9.4  
 
-   
-
-  - task: PythonScript@0
-    displayName: 'Download test data'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-      arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-      workingDirectory: $(Build.BinariesDirectory)
 
   - task: DotNetCoreCLI@2
     displayName: 'Restore nuget packages'
@@ -364,7 +349,7 @@ jobs:
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     setVcvars: true    
-  timeoutInMinutes: 60
+  timeoutInMinutes: 120
   workspace:
     clean: all
   steps:    
@@ -428,16 +413,7 @@ jobs:
     displayName: Use Nuget 4.9
     inputs:
       versionSpec: 4.9.4  
-
    
-
-  - task: PythonScript@0
-    displayName: 'Download test data'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-      arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-      workingDirectory: $(Build.BinariesDirectory)
-
   - task: DotNetCoreCLI@2
     displayName: 'Restore nuget packages'
     inputs:
@@ -490,7 +466,7 @@ jobs:
     EnvSetupScript: setup_env.bat
     buildArch: x64
     setVcvars: true    
-  timeoutInMinutes: 60
+  timeoutInMinutes: 120
   workspace:
     clean: all
   steps:    
@@ -556,14 +532,6 @@ jobs:
       versionSpec: 4.9.4  
 
    
-
-  - task: PythonScript@0
-    displayName: 'Download test data'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-      arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-      workingDirectory: $(Build.BinariesDirectory)
-
   - task: DotNetCoreCLI@2
     displayName: 'Restore nuget packages'
     inputs:
