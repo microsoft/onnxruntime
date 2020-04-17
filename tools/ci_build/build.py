@@ -282,6 +282,9 @@ def parse_arguments():
     parser.add_argument(
         "--use_winml", action='store_true', help="Build with WinML.")
     parser.add_argument(
+        "--winml_root_namespace_override", type=str,
+        help="Specify the namespace that WinML builds into.")
+    parser.add_argument(
         "--use_telemetry", action='store_true',
         help="Only official builds can set this flag to enable telemetry.")
     parser.add_argument(
@@ -549,6 +552,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             "ON" if args.use_telemetry else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
     ]
+
+    if args.winml_root_namespace_override:
+        cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE="
+                       + args.winml_root_namespace_override]
 
     # nGraph and TensorRT providers currently only supports
     # full_protobuf option.

@@ -5,7 +5,7 @@
 
 #include <memory>
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 class OnnxruntimeEngineBuilder;
 class OnnxruntimeEngineFactory;
@@ -29,7 +29,7 @@ class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(IsCpu)
   (bool* out) override;
   STDMETHOD(GetResource)
-  (WinML::Resource& resource) override;
+  (_winml::Resource& resource) override;
   STDMETHOD(IsTensor)
   (bool* out) override;
   STDMETHOD(IsOfTensorType)
@@ -111,7 +111,7 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   (IInspectable* sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue* value) override;
 
   STDMETHOD(GetSequenceOfTensorValues)
-  (WinML::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<WinML::IValue>>& out_values) override;
+  (_winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) override;
 
   OrtSession* UseOrtSession();
   const OrtApi* UseOrtApi();
@@ -152,4 +152,4 @@ class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
   std::mutex mutex_;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml
