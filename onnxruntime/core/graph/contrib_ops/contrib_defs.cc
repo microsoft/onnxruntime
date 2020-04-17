@@ -1248,9 +1248,10 @@ activation and leaky_relu_alpha.)DOC")
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
   static const char* QuantizeLinear_ver1_doc = R"DOC(
-The linear quantization operator. It consumes a full precision data, a scale, a zero point and computes the quantized data.
-The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale), it computes the nearest integer value to arg (in floating-point format),
- rounding halfway cases away from zero. Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
+The linear quantization operator. It consumes a full precision data, a scale, a zero point to compute the low precision / quantized tensor.
+The quantization formula is y = saturate ((x / y_scale) + y_zero_point).For saturation, it saturates to [0, 255] if it's uint8, or [-128, 127] if it's int8.
+For (x / y_scale), it's rounding to nearest ties to even. Refer to https://en.wikipedia.org/wiki/Rounding for details.
+Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QuantizeLinear)
       .SetDomain(kMSDomain)
@@ -1287,7 +1288,7 @@ The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale),
           "T2")
       .TypeConstraint(
           "T1",
-          {"tensor(float)"},
+          {"tensor(float16)", "tensor(float)"},
           "Constrain 'x', 'y_scale' to float tensors.")
       .TypeConstraint(
           "T2",
@@ -1318,35 +1319,36 @@ Scale and zero point must have same shape. They must be either scalar (per tenso
             "If it's specified, it means per 'axis' quantization and input 'x_scale' and 'x_zero_point' must be 1-D tensors.",
             AttributeProto::INT,
             false)
-      .Input(0,
-             "x",
-             "N-D quantized Input tensor to be de-quantized.",
-             "T2")
+      .Input(
+          0,
+          "x",
+          "N-D quantized Input tensor to be de-quantized.",
+          "T1")
       .Input(
           1,
           "x_scale",
           "Scale for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization."
           "If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
-          "T1")
+          "T2")
       .Input(
           2,
           "x_zero_point",
           "Zero point for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization."
           "If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
-          "T2")
+          "T1")
       .Output(
           0,
           "y",
           "N-D full precision output tensor. It has same shape as input 'x'.",
-          "T1")
+          "T2")
       .TypeConstraint(
           "T1",
-          {"tensor(float)"},
-          "Constrain 'y', 'x_scale' to float tensors.")
+          {"tensor(int8)", "tensor(uint8)"},
+          "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors.")
       .TypeConstraint(
           "T2",
-          {"tensor(int8)", "tensor(uint8)"},
-          "Constrain 'x_zero_point' and 'x' to 8-bit integer tensors.")
+          {"tensor(float16)", "tensor(float)"},
+          "Constrain 'y', 'x_scale' to float tensors.")
       .SetDoc(DequantizeLinear_ver1_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto y_type = ctx.getOutputType(0);
