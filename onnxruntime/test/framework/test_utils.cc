@@ -43,6 +43,13 @@ IExecutionProvider* TestNnapiExecutionProvider() {
 }
 #endif
 
+#ifdef USE_RKNPU
+IExecutionProvider* TestRknpuExecutionProvider() {
+  static RknpuExecutionProvider rknpu_provider;
+  return &rknpu_provider;
+}
+#endif
+
 static void CountOpsInGraphImpl(const Graph& graph, std::map<std::string, int>& ops) {
   for (auto& node : graph.Nodes()) {
     auto pos = ops.find(node.OpType());

@@ -104,6 +104,7 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 * [Nuphar Model Compiler](#Nuphar)
 * [DirectML](#DirectML)
 * [ARM Compute Library](#ARM-Compute-Library)
+* [Rockchip RKNPU](#RKNPU)
 
 **Options**
 * [OpenMP](#OpenMP)
@@ -439,6 +440,33 @@ export LD_LIBRARY_PATH=~/ComputeLibrary/build/
 ./build.sh --use_acl
 ```
 
+---
+
+### RKNPU
+See more information on the RKNPU Execution Provider [here](./docs/execution_providers/RKNPU-ExecutionProvider.md).
+
+#### Pre-Requisites
+
+* Supported platform: RK1808 Linux
+* See [Build ARM](#ARM) below for information on building for ARM devices
+* Use gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu instead of gcc-linaro-6.3.1-2017.05-x86_64_arm-linux-gnueabihf, and modify CMAKE_CXX_COMPILER & CMAKE_C_COMPILER in tool.cmake:
+  ```
+  set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
+  set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
+  ```
+
+#### Build Instructions
+##### Linux
+1. Build ONNX Runtime library and test:
+    ```
+    ./build.sh --arm --use_rknpu --parallel --build_shared_lib --build_dir build_arm --config MinSizeRel --cmake_extra_defines CMAKE_TOOLCHAIN_FILE=<Path To tool.cmake> --cmake_extra_defines ONNX_CUSTOM_PROTOC_EXECUTABLE=<Path To protoc>
+    ```
+2. Deploy ONNX runtime and librknpu_ddk.so on the RK1808 board
+    ```
+    libonnxruntime.so.1.2.0
+    onnxruntime_test_all
+    cmake/external/rknpu_ddk/lib64/librknpu_ddk.so
+    ```
 ---
 
 ## Options

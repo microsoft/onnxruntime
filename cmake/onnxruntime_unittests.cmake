@@ -175,6 +175,13 @@ if (onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_nnapi_src})
 endif()
 
+if (onnxruntime_USE_RKNPU)
+  file(GLOB_RECURSE onnxruntime_test_providers_rknpu_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/rknpu/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_rknpu_src})
+endif()
+
 set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/shared_lib")
 set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/global_thread_pools")
 
@@ -257,6 +264,10 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
 
+if(onnxruntime_USE_RKNPU)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
+endif()
+
 if(onnxruntime_USE_FEATURIZERS)
    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers)
    list(APPEND onnxruntime_test_providers_libs onnxruntime_featurizers re2)
@@ -307,6 +318,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     onnxruntime_optimizer
@@ -337,6 +349,13 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nnapi)
+endif()
+
+if(onnxruntime_USE_RKNPU)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/rknpu/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_rknpu)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_rknpu)
 endif()
 
 if(WIN32)
