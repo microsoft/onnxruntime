@@ -73,7 +73,7 @@ TEST(OneHotOpTest, DefaultAxis_int64_MLFloat16_int64 /*indices, output, depth*/)
 
   std::vector<float> values{0.0f, 1.0f};
   std::vector<MLFloat16> fp16_values(values.size());
-  ConvertFloatToMLFloat16(values.data(), fp16_values.data(), values.size());
+  ConvertFloatToMLFloat16(values.data(), fp16_values.data(), static_cast<>(values.size()));
 
   std::vector<float> output{0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                             0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
@@ -82,13 +82,15 @@ TEST(OneHotOpTest, DefaultAxis_int64_MLFloat16_int64 /*indices, output, depth*/)
                             0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                             0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
   std::vector<MLFloat16> fp16_output(output.size());
-  ConvertFloatToMLFloat16(output.data(), fp16_output.data(), output.size());
+  ConvertFloatToMLFloat16(output.data(), fp16_output.data(), static_cast<int>(output.size()));
 
   test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<MLFloat16>("values", {2}, fp16_values);
   test.AddOutput<MLFloat16>("output", {2, 3, 10}, fp16_output);
-  test.Run();
+  
+   // exclude CPU Execution Provider as MLFloat16 is not supported in CPU
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
 }
 
 TEST(OneHotOpTest, DefaultAxis_int32_float_float /*indices, output, depth*/) {
@@ -141,7 +143,9 @@ TEST(OneHotOpTest, DefaultAxis_int32_MLFloat16_int32 /*indices, output, depth*/)
   test.AddInput<int32_t>("depth", {1}, {10});
   test.AddInput<MLFloat16>("values", {2}, fp16_values);
   test.AddOutput<MLFloat16>("output", {2, 3, 10}, fp16_output);
-  test.Run();
+
+  // exclude CPU Execution Provider as MLFloat16 is not supported in CPU
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
 }
 
 TEST(OneHotOpTest, Axis_0) {
