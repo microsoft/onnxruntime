@@ -11,8 +11,7 @@ static void CopyOutputCandidateIntoOpOutout(Tensor& output, Tensor& candidate){
   ORT_ENFORCE(output.SizeInBytes() == candidate.SizeInBytes(), 
       "Einsum op: The candidate output does not match the actual output's shape");
   // There are no string tensors - so safely use memcpy
-  //memcpy(output.MutableDataRaw(), candidate.DataRaw(), candidate.SizeInBytes());
-  output = std::move(candidate);
+  memcpy(output.MutableDataRaw(), candidate.DataRaw(), candidate.SizeInBytes());
 }
 // Here we take a "candidate output"(candidate output is a tensor that is a permutation and / or a reshape away from the final output),
 // and after a few operations to get it to the required output structure, copy it to the op's output
