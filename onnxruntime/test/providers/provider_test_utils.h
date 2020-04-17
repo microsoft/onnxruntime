@@ -429,7 +429,8 @@ class OpTester {
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
            ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL,
-           const CustomOutputVerifierFn& custom_output_verifier = {});
+           const CustomOutputVerifierFn& custom_output_verifier = {},
+           const Graph::ResolveOptions* resolve_options = nullptr);
 
   void Run(SessionOptions session_options,
            ExpectResult expect_result = ExpectResult::kExpectSuccess,
@@ -437,7 +438,8 @@ class OpTester {
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
-           const CustomOutputVerifierFn& custom_output_verifier = {});
+           const CustomOutputVerifierFn& custom_output_verifier = {},
+           const Graph::ResolveOptions* resolve_options = nullptr);
 
   std::vector<MLValue> GetFetches() { return fetches_; }
 
