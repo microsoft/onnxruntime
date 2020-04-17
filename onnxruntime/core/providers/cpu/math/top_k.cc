@@ -15,6 +15,7 @@
  */
 
 #include "core/providers/cpu/math/top_k.h"
+#include "core/providers/cpu/math/top_heap.h"
 #include "core/providers/common.h"
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
@@ -204,22 +205,37 @@ static Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input
     return Status::OK();
   }
 
-  if (sorted && largest) {
-    // extract sorted largest TopK elements
-    extract_top_k_elements<true, true, GreaterValueCmp<T>>(input, input_shape, values, indices, output_shape, k,
-                                                           gsl::narrow_cast<unsigned>(axis_parsed));
-  } else if (sorted && !largest) {
-    // extract sorted smallest TopK elements
-    extract_top_k_elements<false, true, LesserValueCmp<T>>(input, input_shape, values, indices, output_shape, k,
-                                                           gsl::narrow_cast<unsigned>(axis_parsed));
-  } else if (largest) {
-    // extract unsorted (order undefined) largest TopK elements
-    extract_top_k_elements<true, false, GreaterValueCmp<T>>(input, input_shape, values, indices, output_shape, k,
-                                                            gsl::narrow_cast<unsigned>(axis_parsed));
+  if (input_shape.NumDimensions() <= 2 && axis_parsed == 1) {
+    int64_t* p_indices = indices->MutableData<int64_t>();
+    const T* p_input = input->Data<T>();
+    T* p_values = values->MutableData<T>();
+    if (largest) {
+      // extract sorted largest TopK elements
+      topk_element<HeapMax<T>>(p_indices, k, p_input, input_shape, sorted, 10);
+      topk_element_fetch(p_values, p_input, input_shape, p_indices, output_shape);
+    } else {
+      // extract sorted smallest TopK elements
+      topk_element<HeapMin<T>>(p_indices, k, p_input, input_shape, sorted, 10);
+      topk_element_fetch(p_values, p_input, input_shape, p_indices, output_shape);
+    }
   } else {
-    // extract unsorted (order undefined) smallest TopK elements
-    extract_top_k_elements<false, false, LesserValueCmp<T>>(input, input_shape, values, indices, output_shape, k,
-                                                            gsl::narrow_cast<unsigned>(axis_parsed));
+    if (sorted && largest) {
+      // extract sorted largest TopK elements
+      extract_top_k_elements<true, true, GreaterValueCmp<T>>(input, input_shape, values, indices, output_shape, k,
+                                                             gsl::narrow_cast<unsigned>(axis_parsed));
+    } else if (sorted && !largest) {
+      // extract sorted smallest TopK elements
+      extract_top_k_elements<false, true, LesserValueCmp<T>>(input, input_shape, values, indices, output_shape, k,
+                                                             gsl::narrow_cast<unsigned>(axis_parsed));
+    } else if (largest) {
+      // extract unsorted (order undefined) largest TopK elements
+      extract_top_k_elements<true, false, GreaterValueCmp<T>>(input, input_shape, values, indices, output_shape, k,
+                                                              gsl::narrow_cast<unsigned>(axis_parsed));
+    } else {
+      // extract unsorted (order undefined) smallest TopK elements
+      extract_top_k_elements<false, false, LesserValueCmp<T>>(input, input_shape, values, indices, output_shape, k,
+                                                              gsl::narrow_cast<unsigned>(axis_parsed));
+    }
   }
 
   return Status::OK();
