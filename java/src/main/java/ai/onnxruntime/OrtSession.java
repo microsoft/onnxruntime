@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -201,6 +201,21 @@ public class OrtSession implements AutoCloseable {
   }
 
   /**
+   * Scores an input feed dict, returning the map of all inferred outputs.
+   *
+   * <p>The outputs are sorted based on their id number.
+   *
+   * @param inputs The inputs to score.
+   * @param runOptions The RunOptions to control this run.
+   * @return The inferred outputs.
+   * @throws OrtException If there was an error in native code, the input names are invalid, or if
+   *     there are zero or too many inputs.
+   */
+  public Result run(Map<String, OnnxTensor> inputs, RunOptions runOptions) throws OrtException {
+    return run(inputs, outputNames, runOptions);
+  }
+
+  /**
    * Scores an input feed dict, returning the map of requested inferred outputs.
    *
    * <p>The outputs are sorted based on the supplied set traversal order.
@@ -212,6 +227,24 @@ public class OrtSession implements AutoCloseable {
    *     invalid, or if there are zero or too many inputs or outputs.
    */
   public Result run(Map<String, OnnxTensor> inputs, Set<String> requestedOutputs)
+      throws OrtException {
+    return run(inputs, requestedOutputs, null);
+  }
+
+  /**
+   * Scores an input feed dict, returning the map of requested inferred outputs.
+   *
+   * <p>The outputs are sorted based on the supplied set traveral order.
+   *
+   * @param inputs The inputs to score.
+   * @param requestedOutputs The requested outputs.
+   * @param runOptions The RunOptions to control this run.
+   * @return The inferred outputs.
+   * @throws OrtException If there was an error in native code, the input or output names are
+   *     invalid, or if there are zero or too many inputs or outputs.
+   */
+  public Result run(
+      Map<String, OnnxTensor> inputs, Set<String> requestedOutputs, RunOptions runOptions)
       throws OrtException {
     if (!closed) {
       if (inputs.isEmpty() || (inputs.size() > numInputs)) {
@@ -249,6 +282,8 @@ public class OrtSession implements AutoCloseable {
               "Unknown output name " + s + ", expected one of " + outputNames.toString());
         }
       }
+      long runOptionsHandle = runOptions == null ? 0 : runOptions.nativeHandle;
+
       OnnxValue[] outputValues =
           run(
               OnnxRuntime.ortApiHandle,
@@ -258,7 +293,8 @@ public class OrtSession implements AutoCloseable {
               inputHandles,
               inputNamesArray.length,
               outputNamesArray,
-              outputNamesArray.length);
+              outputNamesArray.length,
+              runOptionsHandle);
       return new Result(outputNamesArray, outputValues);
     } else {
       throw new IllegalStateException("Trying to score a closed OrtSession.");
@@ -276,6 +312,19 @@ public class OrtSession implements AutoCloseable {
       metadata = constructMetadata(OnnxRuntime.ortApiHandle, nativeHandle, allocator.handle);
     }
     return metadata;
+  }
+
+  /**
+   * Ends the profiling session and returns the output of the profiler.
+   *
+   * <p>Profiling should be enabled in the {@link SessionOptions} used to construct this {@code
+   * Session}.
+   *
+   * @return The profiling output.
+   * @throws OrtException If the native call failed.
+   */
+  public String endProfiling() throws OrtException {
+    return endProfiling(OnnxRuntime.ortApiHandle, nativeHandle, allocator.handle);
   }
 
   @Override
@@ -336,6 +385,22 @@ public class OrtSession implements AutoCloseable {
   private native NodeInfo[] getOutputInfo(long apiHandle, long nativeHandle, long allocatorHandle)
       throws OrtException;
 
+  /**
+   * The native run call. runOptionsHandle can be zero (i.e. the null pointer), but all other
+   * handles must be valid pointers.
+   *
+   * @param apiHandle The pointer to the api.
+   * @param nativeHandle The pointer to the session.
+   * @param allocatorHandle The pointer to the allocator.
+   * @param inputNamesArray The input names.
+   * @param inputs The input tensors.
+   * @param numInputs The number of inputs.
+   * @param outputNamesArray The requested output names.
+   * @param numOutputs The number of requested outputs.
+   * @param runOptionsHandle The (possibly null) pointer to the run options.
+   * @return The OnnxValues produced by this run.
+   * @throws OrtException If the native call failed in some way.
+   */
   private native OnnxValue[] run(
       long apiHandle,
       long nativeHandle,
@@ -344,7 +409,11 @@ public class OrtSession implements AutoCloseable {
       long[] inputs,
       long numInputs,
       String[] outputNamesArray,
-      long numOutputs)
+      long numOutputs,
+      long runOptionsHandle)
+      throws OrtException;
+
+  private native String endProfiling(long apiHandle, long nativeHandle, long allocatorHandle)
       throws OrtException;
 
   private native void closeSession(long apiHandle, long nativeHandle) throws OrtException;
@@ -426,6 +495,8 @@ public class OrtSession implements AutoCloseable {
 
     private final List<Long> customLibraryHandles;
 
+    private boolean closed = false;
+
     /** Create an empty session options. */
     public SessionOptions() {
       nativeHandle = createOptions(OnnxRuntime.ortApiHandle);
@@ -435,14 +506,26 @@ public class OrtSession implements AutoCloseable {
     /** Closes the session options, releasing any memory acquired. */
     @Override
     public void close() {
-      if (customLibraryHandles.size() > 0) {
-        long[] longArray = new long[customLibraryHandles.size()];
-        for (int i = 0; i < customLibraryHandles.size(); i++) {
-          longArray[i] = customLibraryHandles.get(i);
+      if (!closed) {
+        if (customLibraryHandles.size() > 0) {
+          long[] longArray = new long[customLibraryHandles.size()];
+          for (int i = 0; i < customLibraryHandles.size(); i++) {
+            longArray[i] = customLibraryHandles.get(i);
+          }
+          closeCustomLibraries(longArray);
         }
-        closeCustomLibraries(longArray);
+        closeOptions(OnnxRuntime.ortApiHandle, nativeHandle);
+        closed = true;
+      } else {
+        throw new IllegalStateException("Trying to close a closed SessionOptions.");
       }
-      closeOptions(OnnxRuntime.ortApiHandle, nativeHandle);
+    }
+
+    /** Checks if the SessionOptions is closed, if so throws {@link IllegalStateException}. */
+    private void checkClosed() {
+      if (closed) {
+        throw new IllegalStateException("Trying to use a closed SessionOptions");
+      }
     }
 
     /**
@@ -452,6 +535,7 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void setExecutionMode(ExecutionMode mode) throws OrtException {
+      checkClosed();
       setExecutionMode(OnnxRuntime.ortApiHandle, nativeHandle, mode.getID());
     }
 
@@ -462,6 +546,7 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void setOptimizationLevel(OptLevel level) throws OrtException {
+      checkClosed();
       setOptimizationLevel(OnnxRuntime.ortApiHandle, nativeHandle, level.getID());
     }
 
@@ -473,6 +558,7 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void setInterOpNumThreads(int numThreads) throws OrtException {
+      checkClosed();
       setInterOpNumThreads(OnnxRuntime.ortApiHandle, nativeHandle, numThreads);
     }
 
@@ -484,6 +570,7 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void setIntraOpNumThreads(int numThreads) throws OrtException {
+      checkClosed();
       setIntraOpNumThreads(OnnxRuntime.ortApiHandle, nativeHandle, numThreads);
     }
 
@@ -494,7 +581,75 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void setOptimizedModelFilePath(String outputPath) throws OrtException {
+      checkClosed();
       setOptimizationModelFilePath(OnnxRuntime.ortApiHandle, nativeHandle, outputPath);
+    }
+
+    /**
+     * Sets the logger id to use.
+     *
+     * @param loggerId The logger id string.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void setLoggerId(String loggerId) throws OrtException {
+      checkClosed();
+      setLoggerId(OnnxRuntime.ortApiHandle, nativeHandle, loggerId);
+    }
+
+    /**
+     * Enables profiling in sessions using this SessionOptions.
+     *
+     * @param filePath The file to write profile information to.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void enableProfiling(String filePath) throws OrtException {
+      checkClosed();
+      enableProfiling(OnnxRuntime.ortApiHandle, nativeHandle, filePath);
+    }
+
+    /**
+     * Disables profiling in sessions using this SessionOptions.
+     *
+     * @throws OrtException If there was an error in native code.
+     */
+    public void disableProfiling() throws OrtException {
+      checkClosed();
+      disableProfiling(OnnxRuntime.ortApiHandle, nativeHandle);
+    }
+
+    /**
+     * Turns on memory pattern optimizations, where memory is preallocated if all shapes are known.
+     *
+     * @param memoryPatternOptimization If true enable memory pattern optimizations.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void setMemoryPatternOptimization(boolean memoryPatternOptimization)
+        throws OrtException {
+      checkClosed();
+      setMemoryPatternOptimization(
+          OnnxRuntime.ortApiHandle, nativeHandle, memoryPatternOptimization);
+    }
+
+    /**
+     * Sets the CPU to use an arena memory allocator.
+     *
+     * @param useArena If true use an arena memory allocator for the CPU execution provider.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void setCPUArenaAllocator(boolean useArena) throws OrtException {
+      checkClosed();
+      setCPUArenaAllocator(OnnxRuntime.ortApiHandle, nativeHandle, useArena);
+    }
+
+    /**
+     * Sets the Session's logging level.
+     *
+     * @param logLevel The log level to use.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void setSessionLogLevel(OrtLoggingLevel logLevel) throws OrtException {
+      checkClosed();
+      setSessionLogLevel(OnnxRuntime.ortApiHandle, nativeHandle, logLevel.getValue());
     }
 
     /**
@@ -504,6 +659,7 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error loading the library.
      */
     public void registerCustomOpLibrary(String path) throws OrtException {
+      checkClosed();
       long customHandle = registerCustomOpLibrary(OnnxRuntime.ortApiHandle, nativeHandle, path);
       customLibraryHandles.add(customHandle);
     }
@@ -514,6 +670,7 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void addCUDA() throws OrtException {
+      checkClosed();
       addCUDA(0);
     }
 
@@ -524,6 +681,7 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void addCUDA(int deviceNum) throws OrtException {
+      checkClosed();
       addCUDA(OnnxRuntime.ortApiHandle, nativeHandle, deviceNum);
     }
 
@@ -537,6 +695,7 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void addCPU(boolean useArena) throws OrtException {
+      checkClosed();
       addCPU(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
     }
 
@@ -547,6 +706,7 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void addDnnl(boolean useArena) throws OrtException {
+      checkClosed();
       addDnnl(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
     }
 
@@ -559,6 +719,7 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void addNGraph(String ngBackendType) throws OrtException {
+      checkClosed();
       addNGraph(OnnxRuntime.ortApiHandle, nativeHandle, ngBackendType);
     }
 
@@ -569,6 +730,7 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void addOpenVINO(String deviceId) throws OrtException {
+      checkClosed();
       addOpenVINO(OnnxRuntime.ortApiHandle, nativeHandle, deviceId);
     }
 
@@ -579,6 +741,7 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void addTensorrt(int deviceNum) throws OrtException {
+      checkClosed();
       addTensorrt(OnnxRuntime.ortApiHandle, nativeHandle, deviceNum);
     }
 
@@ -588,6 +751,7 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void addNnapi() throws OrtException {
+      checkClosed();
       addNnapi(OnnxRuntime.ortApiHandle, nativeHandle);
     }
 
@@ -599,6 +763,7 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void addNuphar(boolean allowUnalignedBuffers, String settings) throws OrtException {
+      checkClosed();
       addNuphar(OnnxRuntime.ortApiHandle, nativeHandle, allowUnalignedBuffers ? 1 : 0, settings);
     }
 
@@ -609,6 +774,7 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void addDirectML(int deviceId) throws OrtException {
+      checkClosed();
       addDirectML(OnnxRuntime.ortApiHandle, nativeHandle, deviceId);
     }
 
@@ -619,6 +785,7 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void addACL(boolean useArena) throws OrtException {
+      checkClosed();
       addACL(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
     }
 
@@ -638,6 +805,23 @@ public class OrtSession implements AutoCloseable {
         long apiHandle, long nativeHandle, String modelPath) throws OrtException;
 
     private native long createOptions(long apiHandle);
+
+    private native void setLoggerId(long apiHandle, long nativeHandle, String loggerId)
+        throws OrtException;
+
+    private native void enableProfiling(long apiHandle, long nativeHandle, String filePrefix)
+        throws OrtException;
+
+    private native void disableProfiling(long apiHandle, long nativeHandle) throws OrtException;
+
+    private native void setMemoryPatternOptimization(
+        long apiHandle, long nativeHandle, boolean memoryPatternOptimization) throws OrtException;
+
+    private native void setCPUArenaAllocator(long apiHandle, long nativeHandle, boolean useArena)
+        throws OrtException;
+
+    private native void setSessionLogLevel(long apiHandle, long nativeHandle, int logLevel)
+        throws OrtException;
 
     private native long registerCustomOpLibrary(long apiHandle, long nativeHandle, String path)
         throws OrtException;
@@ -685,6 +869,114 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     private native void addACL(long apiHandle, long nativeHandle, int useArena) throws OrtException;
+  }
+
+  /** Used to control logging and termination of a call to {@link OrtSession#run}. */
+  public static class RunOptions implements AutoCloseable {
+
+    private final long nativeHandle;
+
+    private boolean closed = false;
+
+    /**
+     * Creates a RunOptions.
+     *
+     * @throws OrtException If the construction of the native RunOptions failed.
+     */
+    public RunOptions() throws OrtException {
+      this.nativeHandle = createRunOptions(OnnxRuntime.ortApiHandle);
+    }
+
+    /**
+     * Sets the current logging level on this RunOptions.
+     *
+     * @param level The new logging level.
+     * @throws OrtException If the native call failed.
+     */
+    public void setLogLevel(OrtLoggingLevel level) throws OrtException {
+      checkClosed();
+      setLogLevel(OnnxRuntime.ortApiHandle, nativeHandle, level.getValue());
+    }
+
+    /**
+     * Gets the current logging level set on this RunOptions.
+     *
+     * @return The logging level.
+     * @throws OrtException If the native call failed.
+     */
+    public OrtLoggingLevel getLogLevel() throws OrtException {
+      checkClosed();
+      return OrtLoggingLevel.mapFromInt(getLogLevel(OnnxRuntime.ortApiHandle, nativeHandle));
+    }
+
+    /**
+     * Sets the run tag used in logging.
+     *
+     * @param runTag The run tag in logging output.
+     * @throws OrtException If the native library call failed.
+     */
+    public void setRunTag(String runTag) throws OrtException {
+      checkClosed();
+      setRunTag(OnnxRuntime.ortApiHandle, nativeHandle, runTag);
+    }
+
+    /**
+     * Gets the String used to log information about this run.
+     *
+     * @return The run tag.
+     * @throws OrtException If the native library call failed.
+     */
+    public String getRunTag() throws OrtException {
+      checkClosed();
+      return getRunTag(OnnxRuntime.ortApiHandle, nativeHandle);
+    }
+
+    /**
+     * Sets a flag so that all incomplete {@link OrtSession#run} calls using this instance of {@code
+     * RunOptions} will terminate as soon as possible. If the flag is false, it resets this {@code
+     * RunOptions} so it can be used with other calls to {@link OrtSession#run}.
+     *
+     * @param terminate If true terminate all runs associated with this RunOptions.
+     * @throws OrtException If the native library call failed.
+     */
+    public void setTerminate(boolean terminate) throws OrtException {
+      checkClosed();
+      setTerminate(OnnxRuntime.ortApiHandle, nativeHandle, terminate);
+    }
+
+    /** Checks if the RunOptions is closed, if so throws {@link IllegalStateException}. */
+    private void checkClosed() {
+      if (closed) {
+        throw new IllegalStateException("Trying to use a closed RunOptions");
+      }
+    }
+
+    @Override
+    public void close() {
+      if (!closed) {
+        close(OnnxRuntime.ortApiHandle, nativeHandle);
+        closed = true;
+      } else {
+        throw new IllegalStateException("Trying to close an already closed RunOptions");
+      }
+    }
+
+    private static native long createRunOptions(long apiHandle) throws OrtException;
+
+    private native void setLogLevel(long apiHandle, long nativeHandle, int logLevel)
+        throws OrtException;
+
+    private native int getLogLevel(long apiHandle, long nativeHandle) throws OrtException;
+
+    private native void setRunTag(long apiHandle, long nativeHandle, String runTag)
+        throws OrtException;
+
+    private native String getRunTag(long apiHandle, long nativeHandle) throws OrtException;
+
+    private native void setTerminate(long apiHandle, long nativeHandle, boolean terminate)
+        throws OrtException;
+
+    private static native void close(long apiHandle, long nativeHandle);
   }
 
   /**

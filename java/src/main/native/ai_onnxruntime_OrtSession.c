@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -19,9 +19,8 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_createSession__JJLjava_la
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtSession* session;
 
-    jboolean copy;
 #ifdef _WIN32
-    const jchar* cPath = (*jniEnv)->GetStringChars(jniEnv, modelPath, &copy);
+    const jchar* cPath = (*jniEnv)->GetStringChars(jniEnv, modelPath, NULL);
     size_t stringLength = (*jniEnv)->GetStringLength(jniEnv, modelPath);
     wchar_t* newString = (wchar_t*)calloc(stringLength+1,sizeof(jchar));
     wcsncpy_s(newString, stringLength+1, (const wchar_t*) cPath, stringLength);
@@ -29,7 +28,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_createSession__JJLjava_la
     free(newString);
     (*jniEnv)->ReleaseStringChars(jniEnv,modelPath,cPath);
 #else
-    const char* cPath = (*jniEnv)->GetStringUTFChars(jniEnv, modelPath, &copy);
+    const char* cPath = (*jniEnv)->GetStringUTFChars(jniEnv, modelPath, NULL);
     checkOrtStatus(jniEnv,api,api->CreateSession((OrtEnv*)envHandle, cPath, (OrtSessionOptions*)optsHandle, &session));
     (*jniEnv)->ReleaseStringUTFChars(jniEnv,modelPath,cPath);
 #endif
@@ -236,14 +235,16 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getOutputInfo
 /*
  * Class:     ai_onnxruntime_OrtSession
  * Method:    run
- * Signature: (JJJ[Ljava/lang/String;[JJ[Ljava/lang/String;J)[Lai/onnxruntime/OnnxValue;
+ * Signature: (JJJ[Ljava/lang/String;[JJ[Ljava/lang/String;JJ)[Lai/onnxruntime/OnnxValue;
  * private native OnnxValue[] run(long apiHandle, long nativeHandle, long allocatorHandle, String[] inputNamesArray, long[] inputs, long numInputs, String[] outputNamesArray, long numOutputs)
  */
 JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong allocatorHandle, jobjectArray inputNamesArr, jlongArray tensorArr, jlong numInputs, jobjectArray outputNamesArr, jlong numOutputs) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong allocatorHandle, jobjectArray inputNamesArr, jlongArray tensorArr, jlong numInputs, jobjectArray outputNamesArr, jlong numOutputs, jlong runOptionsHandle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
+    OrtSession* session = (OrtSession*) sessionHandle;
+    OrtRunOptions* runOptions = (OrtRunOptions*) runOptionsHandle;
 
     // Create the buffers for the Java input and output strings
     const char** inputNames;
@@ -276,7 +277,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run
     // Actually score the inputs.
     //printf("inputTensors = %p, first tensor = %p, numInputs = %ld, outputValues = %p, numOutputs = %ld\n",inputTensors,(OrtValue*)inputTensors[0],numInputs,outputValues,numOutputs);
     //ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess, _In_ OrtRunOptions* run_options, _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len, _In_ const char* const* output_names, size_t output_names_len, _Out_ OrtValue** output);
-    checkOrtStatus(jniEnv,api,api->Run((OrtSession*)sessionHandle, NULL, (const char* const*) inputNames, (const OrtValue* const*) inputTensors, numInputs, (const char* const*) outputNames, numOutputs, outputValues));
+    checkOrtStatus(jniEnv,api,api->Run(session, runOptions, (const char* const*) inputNames, (const OrtValue* const*) inputTensors, numInputs, (const char* const*) outputNames, numOutputs, outputValues));
     // Release the C array of pointers to the tensors.
     (*jniEnv)->ReleaseLongArrayElements(jniEnv,tensorArr,inputTensors,JNI_ABORT);
 
@@ -307,6 +308,24 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run
     checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, javaOutputStrings));
 
     return outputArray;
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession
+ * Method:    endProfiling
+ * Signature: (JJJ)Ljava/lang/String;
+ */
+JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_endProfiling
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+  OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
+
+  char* profileStr;
+  checkOrtStatus(jniEnv,api,api->SessionEndProfiling((OrtSession*)handle,allocator,&profileStr));
+  jstring profileOutput = (*jniEnv)->NewStringUTF(jniEnv,profileStr);
+  checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,profileStr));
+  return profileOutput;
 }
 
 /*
