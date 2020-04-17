@@ -42,8 +42,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         // constant folding does not support executing a node that includes subgraphs (control flow operators,
         // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
         // by the Recurse call above
-        node->ContainsSubgraph() ||
-        !graph_utils::AllNodeInputsAreConstant(graph, *node, constant_inputs)) {
+        node->ContainsSubgraph() || !graph_utils::AllNodeInputsAreConstant(graph, *node, constant_inputs)) {
       continue;
     }
 
@@ -68,7 +67,9 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
 
     auto* kernel = info.GetKernel(node->Index());
-    OpKernelContext op_kernel_context(&frame, kernel, nullptr, onnxruntime::logging::LoggingManager::DefaultLogger());
+    if (kernel == nullptr)
+      continue;
+    OpKernelContext op_kernel_context(&frame, kernel, nullptr, logger);
 
     ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
 
@@ -93,8 +94,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       const auto* constant_arg_out = node->OutputDefs()[fetch_idx];
       ORT_ENFORCE(ort_value.IsTensor());
       const Tensor& out_tensor = ort_value.Get<Tensor>();
-      ONNX_NAMESPACE::TensorProto out_tensorproto =
-          utils::TensorToTensorProto(out_tensor, constant_arg_out->Name());
+      ONNX_NAMESPACE::TensorProto out_tensorproto = utils::TensorToTensorProto(out_tensor, constant_arg_out->Name());
 
       graph.AddInitializedTensor(out_tensorproto);
     }
