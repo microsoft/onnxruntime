@@ -17,6 +17,7 @@ limitations under the License.
 #include "core/providers/cpu/tensor/onehot.h"
 #include "core/util/eigen_common_wrapper.h"
 #include "core/platform/env.h"
+#include "core/providers/common.h"
 
 #ifndef EIGEN_USE_THREADS
 #define EIGEN_USE_THREADS
@@ -94,16 +95,8 @@ Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const 
 
   // output rank is always 1 more than the input rank as a new dimension is added to the input shape
   const auto output_rank = static_cast<int64_t>(indices_num_dims + 1);
-  if (axis >= output_rank || axis < -output_rank) {
-    std::ostringstream oss;
-    oss << "'axis' attribute must have a value in the range [" << -output_rank
-        << "," << indices_num_dims << "]";
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, oss.str());
-  }
 
-  auto true_axis = axis;
-  if (true_axis < 0)
-    true_axis += output_rank;
+  auto true_axis = HandleNegativeAxis(axis, output_rank);
 
   output_shape.insert(output_shape.begin() + true_axis, depth_val);
 
