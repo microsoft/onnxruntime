@@ -29,11 +29,12 @@ function(AddTest)
   add_executable(${_UT_TARGET} ${_UT_SOURCES})
 
   source_group(TREE ${REPO_ROOT} FILES ${_UT_SOURCES})
+
   if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     #TODO: fix the warnings, they are dangerous
     target_compile_options(${_UT_TARGET} PRIVATE "/wd4244")
   endif()
-  #source_group(TREE ${TEST_SRC_DIR} FILES ${_UT_SOURCES})
+
   set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest")
 
   if (_UT_DEPENDS)
@@ -46,7 +47,7 @@ function(AddTest)
   else()
     target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
   endif()
-  onnxruntime_add_include_to_target(${_UT_TARGET} date_interface safeint_interface)
+  onnxruntime_add_include_to_target(${_UT_TARGET} date_interface)
   target_include_directories(${_UT_TARGET} PRIVATE ${TEST_INC_DIR})
   if (onnxruntime_USE_CUDA)
     target_include_directories(${_UT_TARGET} PRIVATE ${CUDA_INCLUDE_DIRS} ${onnxruntime_CUDNN_HOME}/include)
@@ -392,7 +393,7 @@ else()
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
           "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 endif()
-onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_framework GTest::gtest onnx onnx_proto safeint_interface)
+onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework GTest::gtest onnx onnx_proto)
 
 if (onnxruntime_USE_DNNL)
   target_compile_definitions(onnxruntime_test_utils PUBLIC USE_DNNL=1)
@@ -583,7 +584,7 @@ if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     target_compile_options(onnx_test_runner_common PRIVATE "/wd4244")
 endif()
 onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_common onnxruntime_framework
-        onnxruntime_test_utils onnx onnx_proto re2::re2 safeint_interface)
+        onnxruntime_test_utils onnx onnx_proto re2::re2)
 
 add_dependencies(onnx_test_runner_common onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS} ${RE2_INCLUDE_DIR}
