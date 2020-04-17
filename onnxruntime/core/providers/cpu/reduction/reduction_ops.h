@@ -124,7 +124,7 @@ class ReduceSum final : public ReduceKernel<true> {
 
   // For external calls requiring ReduceSum implementation - will return the reduced output
   static Tensor Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes, 
-                     AllocatorPtr allocator, concurrency::ThreadPool* tp));
+                     AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims);
 };
 
 template <typename T>

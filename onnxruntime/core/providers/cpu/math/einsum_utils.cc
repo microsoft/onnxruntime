@@ -11,7 +11,8 @@ static void CopyOutputCandidateIntoOpOutout(Tensor& output, Tensor& candidate){
   ORT_ENFORCE(output.SizeInBytes() == candidate.SizeInBytes(), 
       "Einsum op: The candidate output does not match the actual output's shape");
   // There are no string tensors - so safely use memcpy
-  memcpy(output.MutableDataRaw(), candidate.DataRaw(), candidate.SizeInBytes());
+  //memcpy(output.MutableDataRaw(), candidate.DataRaw(), candidate.SizeInBytes());
+  output = std::move(candidate);
 }
 // Here we take a "candidate output"(candidate output is a tensor that is a permutation and / or a reshape away from the final output),
 // and after a few operations to get it to the required output structure, copy it to the op's output
@@ -39,7 +40,7 @@ static void FinalizeOutput(Tensor& candidate_output, const std::vector<int64_t>&
   CreateReshapedView(transposed, output_dims);
 
   // Copy the transposed output candidate into the op's output
-  CopyOutputCandidateIntoOpOutout(transposed, output);
+  CopyOutputCandidateIntoOpOutout(output, transposed);
 }
 
 // Processes Einsum operands in a pair-wise fashion
@@ -452,7 +453,7 @@ void EinsumComputePreprocessor::ParseOrCreateOutputSubscript() {
   if (einsum_equation_preprocessor_.is_explicit_) {
     // Make sure that the given explicit equation contains an ellipsis if the input contains ellipses in them
     if (num_of_ellipsis_dims_ > 0) {
-      ORT_ENFORCE(einsum_equation_preprocessor_.right_equation_.find("->") != std::string::npos,
+      ORT_ENFORCE(einsum_equation_preprocessor_.right_equation_.find("...") != std::string::npos,
                   "Inputs have ellipses in them but the provided output subscript does not contain an ellipsis");
     }
     return;

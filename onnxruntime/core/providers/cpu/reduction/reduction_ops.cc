@@ -599,13 +599,13 @@ static void ReduceSumCore(const T* input_data, T* output_data, bool no_transpose
 
 template <typename T>
 Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
-                          AllocatorPtr allocator, concurrency::ThreadPool* tp) {
+                          AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims) {
   FastAllocVector<T> transposed_input_data(allocator);
   int64_t block_size;
   int64_t blocks;
   std::vector<int64_t> reduced_dims;
 
-  bool no_transpose = PrepareForReduce<T>(&input, transposed_input_data, block_size, blocks, reduce_axes, true, reduced_dims, true);
+  bool no_transpose = PrepareForReduce<T>(&input, transposed_input_data, block_size, blocks, reduce_axes, keep_dims, reduced_dims, true);
 
   Tensor output(input.DataType(), reduced_dims, allocator);
 
@@ -623,7 +623,7 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> reduced_dims;
   const Tensor* input = ctx->Input<Tensor>(0);
 
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, true, reduced_dims, true);
+  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true);
 
   auto* output = ctx->Output(0, reduced_dims);
 

@@ -83,7 +83,7 @@ Tensor MatMul(const Tensor& input_1, const Tensor& input_2, AllocatorPtr allocat
 
 template <typename T>
 Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp) {
-  return onnxruntime::ReduceSum<T>::Impl(input, reduce_axes, allocator, tp);
+  return onnxruntime::ReduceSum<T>::Impl(input, reduce_axes, allocator, tp, true);
 }
 
 template <typename T>
