@@ -49,6 +49,14 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
 
   auto graph_inputs = fused_node->GetFunctionBody()->Body().GetInputs();
   for (auto input : graph_inputs) {
+    if(subgraph_context_.device_id == "MYRIAD"){
+      auto shape = input->Shape();
+      if(shape != nullptr){
+        if(shape->dim_size() != 4){
+          subgraph_context_.set_vpu_config = true;
+        }
+      }
+    }
     auto it = inputdef_index_map.find(input->Name());
     if (it == inputdef_index_map.end()) {
       ORT_THROW("Input not found in the input defs list");

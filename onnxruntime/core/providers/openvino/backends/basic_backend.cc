@@ -34,8 +34,12 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   InferenceEngine::ExecutableNetwork exe_network;
 
   // Loading model to the plugin
+  std::map<std::string, std::string> config;
+  if(subgraph_context_.set_vpu_config){
+    config["VPU_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
+  }
   try {
-    exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, subgraph_context_.device_id);
+    exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, subgraph_context_.device_id, config);
   } catch (InferenceEngine::details::InferenceEngineException e) {
     ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + e.what());
   } catch (...) {
