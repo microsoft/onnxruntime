@@ -27,29 +27,29 @@ jobs:
     parameters:
       BuildArch: 'x86'
 
-- job: WindowsAI_DirectML_ARM64
-  timeoutInMinutes: 120
-  workspace:
-    clean: all
-  pool:
-    name: 'Win-CPU-2019'
-    demands: []
-  steps:
-  - template: ../../templates/windowsai-nuget-build.yml
-    parameters:
-      BuildArch: 'arm64'
-
-- job: WindowsAI_DirectML_ARM
-  timeoutInMinutes: 120
-  workspace:
-    clean: all
-  pool:
-    name: 'Win-CPU-2019'
-    demands: []
-  steps:
-  - template: ../../templates/windowsai-nuget-build.yml
-    parameters:
-      BuildArch: 'arm'
+#- job: WindowsAI_DirectML_ARM64
+#  timeoutInMinutes: 120
+#  workspace:
+#    clean: all
+#  pool:
+#    name: 'Win-CPU-2019'
+#    demands: []
+#  steps:
+#  - template: ../../templates/windowsai-nuget-build.yml
+#    parameters:
+#      BuildArch: 'arm64'
+#
+#- job: WindowsAI_DirectML_ARM
+#  timeoutInMinutes: 120
+#  workspace:
+#    clean: all
+#  pool:
+#    name: 'Win-CPU-2019'
+#    demands: []
+#  steps:
+#  - template: ../../templates/windowsai-nuget-build.yml
+#    parameters:
+#      BuildArch: 'arm'
 
 - job: NuGet_Packaging
   workspace:
@@ -65,25 +65,25 @@ jobs:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet DirectML x64'
     inputs:
-      artifactName: 'drop-nuget-x64'
+      artifactName: 'Microsoft.AI.MachneLearning.x64'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet DirectML x86'
     inputs:
-      artifactName: 'drop-nuget-x86-zip'
+      artifactName: 'Microsoft.AI.MachneLearning.x86'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
 #  - task: DownloadPipelineArtifact@0
 #    displayName: 'Download Pipeline Artifact - NuGet DirectML ARM64'
 #    inputs:
-#      artifactName: 'drop-nuget-arm64-zip'
+#      artifactName: 'Microsoft.AI.MachneLearning.arm64'
 #      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
 #  - task: DownloadPipelineArtifact@0
 #    displayName: 'Download Pipeline Artifact - NuGet DirectML ARM'
 #    inputs:
-#      artifactName: 'drop-nuget-arm-zip'
+#      artifactName: 'Microsoft.AI.MachneLearning.arm'
 #      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: PowerShell@2
