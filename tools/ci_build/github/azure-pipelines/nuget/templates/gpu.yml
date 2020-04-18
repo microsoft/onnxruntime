@@ -1,16 +1,6 @@
-variables:
-  X64_BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto'
-  X86_BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --x86'
-  ARM64_BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm64'
-  ARM_BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm'  # this is available to all jobs
-  X64_EnvironmentSetupBat: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
-  X86_EnvironmentSetupBat: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_x86.bat'
-  ARM64_EnvironmentSetupBat: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
-  ARM_EnvironmentSetupBat: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
-  X64_ScriptArchitecture: 'x64'
-  X86_ScriptArchitecture: 'x86'
-  ARM64_ScriptArchitecture: 'x64'
-  ARM_ScriptArchitecture: 'x64'
+parameters:
+  DoEsrp: 'false'
+  PackageName: 'Microsoft.AI.MachineLearning'
 
 jobs:
 - job: WindowsAI_DirectML_X64
@@ -24,9 +14,6 @@ jobs:
   - template: ../../templates/windowsai-nuget-build.yml
     parameters:
       BuildArch: 'x64'
-      BuildCommand: $(X64_BuildCommand)
-      EnvironmentSetupBat: $(X64_EnvironmentSetupBat)
-      ScriptArchitecture: $(X64_ScriptArchitecture)
 
 - job: WindowsAI_DirectML_X86
   timeoutInMinutes: 120
@@ -39,9 +26,6 @@ jobs:
   - template: ../../templates/windowsai-nuget-build.yml
     parameters:
       BuildArch: 'x86'
-      BuildCommand: $(X86_BuildCommand)
-      EnvironmentSetupBat: $(X86_EnvironmentSetupBat)
-      ScriptArchitecture: $(X86_ScriptArchitecture)
 
 - job: WindowsAI_DirectML_ARM64
   timeoutInMinutes: 120
@@ -54,9 +38,6 @@ jobs:
   - template: ../../templates/windowsai-nuget-build.yml
     parameters:
       BuildArch: 'arm64'
-      BuildCommand: $(ARM64_BuildCommand)
-      EnvironmentSetupBat: $(ARM64_EnvironmentSetupBat)
-      ScriptArchitecture: $(ARM64_ScriptArchitecture)
 
 - job: WindowsAI_DirectML_ARM
   timeoutInMinutes: 120
@@ -69,9 +50,6 @@ jobs:
   - template: ../../templates/windowsai-nuget-build.yml
     parameters:
       BuildArch: 'arm'
-      BuildCommand: $(ARM_BuildCommand)
-      EnvironmentSetupBat: $(ARM_EnvironmentSetupBat)
-      ScriptArchitecture: $(ARM_ScriptArchitecture)
 
 - job: NuGet_Packaging
   workspace:
@@ -184,14 +162,15 @@ jobs:
     parameters:
       DisplayName: 'ESRP - sign NuGet package'
       FolderPath: '$(Build.ArtifactStagingDirectory)/merged'
-      DoEsrp: 'true'
+      DoEsrp: ${{ parameters.DoEsrp }}
 
   - template: ../../templates/validate-nuget.yml
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)\merged'
       NugetPackage: 'Microsoft.AI.MachineLearning*nupkg'
       PlatformsSupported: 'win-x64,win-x86,win-arm64,win-arm'
-      VerifyNugetSigning: 'true'
+      VerifyNugetSigning: ${{ parameters.DoEsrp }}
+
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
