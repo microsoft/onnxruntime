@@ -3,6 +3,51 @@ parameters:
   PackageName: 'Microsoft.AI.MachineLearning'
 
 jobs:
+- job: WindowsAI_DirectML_X64_refactored
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-GPU-2019'
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'x64'
+
+- job: WindowsAI_DirectML_X86_refactored
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-GPU-2019'
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'x86'
+
+- job: WindowsAI_DirectML_ARM64_refactored
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-CPU-2019'
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'arm64'
+
+- job: WindowsAI_DirectML_ARM_refactored
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-CPU-2019'
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'arm'
+
+
 - template: ../../templates/win-ci-2019.yml
   parameters:
     AgentPool : 'Win-GPU-2019'

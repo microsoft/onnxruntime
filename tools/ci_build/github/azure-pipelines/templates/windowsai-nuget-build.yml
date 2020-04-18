@@ -1,0 +1,109 @@
+parameters:
+  BuildArch: 'x64'
+  RunTests : 'true'
+
+steps:
+  - template: enable-telemetry.yml
+  - task: UsePythonVersion@0
+    inputs: 
+      versionSpec: '3.7' 
+      addToPath: true 
+      architecture: ${{ parameters.BuildArch }}
+
+  - task: BatchScript@1
+    displayName: 'Setup Environment'
+    inputs:
+      ${{ if eq(parameters.BuildArch, 'x64') }}:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
+      ${{ if eq(parameters.BuildArch, 'x86') }}:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_x86.bat'
+      ${{ if eq(parameters.BuildArch, 'arm64') }}:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
+      ${{ if eq(parameters.BuildArch, 'arm') }}:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - task: PythonScript@0
+    displayName: 'Generate CMake Configuration'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      ${{ if eq(parameters.BuildArch, 'x64') }}:
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto'
+      ${{ if eq(parameters.BuildArch, 'x86') }}:
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --x86'
+      ${{ if eq(parameters.BuildArch, 'arm64') }}:
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm64'
+      ${{ if eq(parameters.BuildArch, 'arm') }}:
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm'
+      workingDirectory: '$(Build.BinariesDirectory)'
+
+  - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
+    # Use cross-compiled protoc
+    - script: |
+       @echo ##vso[task.setvariable variable=ProtocDirectory]$(Build.BinariesDirectory)\host_protoc\Release
+
+  - task: VSBuild@1
+    displayName: 'Build'
+    inputs:
+      solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+      ${{ if ne(parameters.BuildArch, 'x86') }}:
+        platform: ${{ parameters.BuildArch }}
+      ${{ if eq(parameters.BuildArch, 'x86') }}:
+        platform: 'Win32'
+      configuration: RelWithDebInfo
+      msbuildArchitecture: ${{ parameters.BuildArch }}
+      maximumCpuCount: true
+      logProjectEvents: true
+      workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+      createLogFile: true
+
+  - task: NuGetToolInstaller@0
+    displayName: Use Nuget 4.9
+    inputs:
+      versionSpec: 4.9.4
+
+  - task: BatchScript@1
+    displayName: 'Setup VS2019 env vars'
+    inputs:
+      filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+      arguments: ${{ parameters.BuildArch }}
+      modifyEnvironment: true
+
+  # Esrp signing
+  - template: esrp_dll.yml
+    parameters:
+      FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo'
+      DisplayName: 'ESRP - Sign Native dlls'
+      DoEsrp: 'true'
+
+  - script: |
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.AI.MachineLearning
+     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.AI.MachineLearning\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+    workingDirectory: '$(Build.SourcesDirectory)\csharp'
+    displayName: 'Create NuGet Package'
+
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact: Microsoft.AI.MachineLearning ${{ parameters.BuildArch }}'
+    inputs:
+      artifactName: 'Microsoft.AI.MachneLearning.${{ parameters.ArtifactName }}'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+
+  - task: PublishSymbols@2
+    displayName: 'Publish Build Symbols'
+    condition: eq(variables['IsReleaseBuild'], 'true')
+    inputs:
+      symbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+      searchPattern: '**/*.pdb'
+      symbolServerType: teamServices
+
+  # Compliance tasks require logs from Debug Build
+  - ${{ if eq(parameters['DoCompliance'], 'true') }}:
+    - template: compliance.yml
+
+  - template: component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+
+  - template: clean-agent-build-directory-step.yml
