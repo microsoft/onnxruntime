@@ -920,28 +920,28 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs
 
 <dl>
-<dt><tt>x</tt> : T2</dt>
+<dt><tt>x</tt> : T1</dt>
 <dd>N-D quantized Input tensor to be de-quantized.</dd>
-<dt><tt>x_scale</tt> : T1</dt>
+<dt><tt>x_scale</tt> : T2</dt>
 <dd>Scale for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization.If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.</dd>
-<dt><tt>x_zero_point</tt> : T2</dt>
+<dt><tt>x_zero_point</tt> : T1</dt>
 <dd>Zero point for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization.If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt>y</tt> : T1</dt>
+<dt><tt>y</tt> : T2</dt>
 <dd>N-D full precision output tensor. It has same shape as input 'x'.</dd>
 </dl>
 
 #### Type Constraints
 
 <dl>
-<dt><tt>T1</tt> : tensor(float)</dt>
+<dt><tt>T1</tt> : tensor(int8), tensor(uint8)</dt>
+<dd>Constrain 'x' and 'x_zero_point' to 8-bit integer tensors.</dd>
+<dt><tt>T2</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain 'y', 'x_scale' to float tensors.</dd>
-<dt><tt>T2</tt> : tensor(int8), tensor(uint8)</dt>
-<dd>Constrain 'x_zero_point' and 'x' to 8-bit integer tensors.</dd>
 </dl>
 
 
@@ -1639,9 +1639,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.QuantizeLinear"></a><a name="com.microsoft.quantizelinear">**com.microsoft.QuantizeLinear**</a>
 
-  The linear quantization operator. It consumes a full precision data, a scale, a zero point and computes the quantized data.
-  The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale), it computes the nearest integer value to arg (in floating-point format),
-   rounding halfway cases away from zero. Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').
+  The linear quantization operator. It consumes a full precision data, a scale, a zero point to compute the low precision / quantized tensor.
+  The quantization formula is y = saturate ((x / y_scale) + y_zero_point).For saturation, it saturates to [0, 255] if it's uint8, or [-128, 127] if it's int8.
+  For (x / y_scale), it's rounding to nearest ties to even. Refer to https://en.wikipedia.org/wiki/Rounding for details.
+  Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').
 
 #### Version
 
@@ -1675,7 +1676,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T1</tt> : tensor(float)</dt>
+<dt><tt>T1</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain 'x', 'y_scale' to float tensors.</dd>
 <dt><tt>T2</tt> : tensor(int8), tensor(uint8)</dt>
 <dd>Constrain 'y_zero_point' and 'y' to 8-bit integer tensors.</dd>
@@ -2001,7 +2002,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <sub>experimental</sub> <a name="com.microsoft.Attention"></a><a name="com.microsoft.attention">**com.microsoft.Attention**</a>
 
-  Multi-Head Self Attention
+  Multi-Head Self Attention that can be either unidirectional (like GPT2) or bidirectional (like BERT).
+  The mask_index input is optional. Unidirectional and mask_index input are mutually exclusive. When unidirectional is 1, the
+  mask_index shall not be provided.
 
 #### Version
 
@@ -2011,6 +2014,8 @@ No versioning maintained for experimental ops.
 <dl>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
+<dt><tt>unidirectional</tt> : int</dt>
+<dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
 
 #### Inputs (3 - 4)
