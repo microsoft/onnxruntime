@@ -66,33 +66,63 @@ jobs:
     displayName: 'Download Pipeline Artifact - NuGet DirectML x64'
     inputs:
       artifactName: 'Microsoft.AI.MachneLearning.x64'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x64'
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet DirectML x86'
     inputs:
       artifactName: 'Microsoft.AI.MachneLearning.x86'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x86'
 
 #  - task: DownloadPipelineArtifact@0
 #    displayName: 'Download Pipeline Artifact - NuGet DirectML ARM64'
 #    inputs:
 #      artifactName: 'Microsoft.AI.MachneLearning.arm64'
-#      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+#      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64'
 
 #  - task: DownloadPipelineArtifact@0
 #    displayName: 'Download Pipeline Artifact - NuGet DirectML ARM'
 #    inputs:
 #      artifactName: 'Microsoft.AI.MachneLearning.arm'
-#      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+#      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm'
 
   - task: PowerShell@2
     displayName: 'Bundle NuGet and other binaries (1)'
     inputs:
       targetType: 'inline'
       script: |
-        Get-ChildItem -Filter Microsoft.AI.MachineLearning* -Recurse -ErrorAction SilentlyContinue
-      workingDirectory: $(Build.BinariesDirectory)\nuget-artifact
+        Add-Type -AssemblyName "System.IO.Compression.FileSystem"
+
+        $packages = (Get-ChildItem -Filter Microsoft.AI.MachineLearning* -Recurse)
+        $x64_nuget_package_name = $packages[0].Name
+        $x64_nuget_package = $packages[0].FullName
+        $x64_unzipped_directory_root = $packages[0].Directory
+        $x64_unzipped_directory = $x64_unzipped_directory_root + [System.IO.Path]::GetFileNameWithoutExtension($x64_nuget_package)
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($x64_nuget_package, $x64_unzipped_directory)
+        
+        $packages = (Get-ChildItem ..\nuget-artifact-x86 -Filter Microsoft.AI.MachineLearning* -Recurse)
+        $x86_nuget_package = $packages[0].FullName
+        $x86_unzipped_directory_root = $packages[0].Directory
+        $x86_unzipped_directory = $x86_unzipped_directory_root + [System.IO.Path]::GetFileNameWithoutExtension($x86_nuget_package)
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($x86_nuget_package, $x86_unzipped_directory)
+
+        $x86_runtime_path_old = [System.IO.Path]::Combine($x86_unzipped_directory, 'runtimes', 'win-x86', 'native')
+        $x86_runtime_path_new = [System.IO.Path]::Combine($x64_unzipped_directory, 'runtimes', 'win-x86', 'native')
+        New-Item -Path $x86_runtime_path -ItemType Directory
+
+        Copy-Item [System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.dll') $x86_runtime_path_new
+        Copy-Item [System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.lib') $x86_runtime_path_new
+        Copy-Item [System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.pdb') $x86_runtime_path_new
+        Copy-Item [System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.dll') $x86_runtime_path_new
+        Copy-Item [System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.lib') $x86_runtime_path_new
+        Copy-Item [System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.pdb') $x86_runtime_path_new
+        Copy-Item [System.IO.Path]::Combine($x86_runtime_path_old, 'directml.dll') $x86_runtime_path_new
+
+        Get-ChildItem env:
+        
+        $merged_nuget = [System.IO.Path]::Combine($x64_unzipped_directory_root, 'merged', $x64_nuget_package_name)
+        [System.IO.Compression.ZipFile]::CreateFromDirectory($x64_unzipped_directory, $merged_nuget)
+      workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
 
   - script: |
      pushd $(Build.BinariesDirectory)\nuget-artifact
