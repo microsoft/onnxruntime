@@ -96,14 +96,14 @@ jobs:
         $packages = (Get-ChildItem -Filter Microsoft.AI.MachineLearning* -Recurse)
         $x64_nuget_package_name = $packages[0].Name
         $x64_nuget_package = $packages[0].FullName
-        $x64_unzipped_directory_root = $packages[0].Directory
-        $x64_unzipped_directory = $x64_unzipped_directory_root + [System.IO.Path]::GetFileNameWithoutExtension($x64_nuget_package)
+        $x64_unzipped_directory_root = $packages[0].Directory.FullName
+        $x64_unzipped_directory = [System.IO.Path]::Combine($x64_unzipped_directory_root, [System.IO.Path]::GetFileNameWithoutExtension($x64_nuget_package))
         [System.IO.Compression.ZipFile]::ExtractToDirectory($x64_nuget_package, $x64_unzipped_directory)
         
         $packages = (Get-ChildItem ..\nuget-artifact-x86 -Filter Microsoft.AI.MachineLearning* -Recurse)
         $x86_nuget_package = $packages[0].FullName
-        $x86_unzipped_directory_root = $packages[0].Directory
-        $x86_unzipped_directory = $x86_unzipped_directory_root + [System.IO.Path]::GetFileNameWithoutExtension($x86_nuget_package)
+        $x86_unzipped_directory_root = $packages[0].Directory.FullName
+        $x86_unzipped_directory = [System.IO.Path]::Combine($x86_unzipped_directory_root, [System.IO.Path]::GetFileNameWithoutExtension($x86_nuget_package))
         [System.IO.Compression.ZipFile]::ExtractToDirectory($x86_nuget_package, $x86_unzipped_directory)
 
         $x86_runtime_path_old = [System.IO.Path]::Combine($x86_unzipped_directory, 'runtimes', 'win-x86', 'native')
