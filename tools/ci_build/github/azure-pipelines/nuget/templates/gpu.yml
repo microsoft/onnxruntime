@@ -118,19 +118,22 @@ jobs:
         Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.pdb'))  $x86_runtime_path_new
         Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'directml.dll'))                      $x86_runtime_path_new
 
-        $merged_nuget = [System.IO.Path]::Combine($Env:BUILD_ARTIFACTSTAGINGDIRECTORY, $x64_nuget_package_name)
+        $merged_nuget_path = [System.IO.Path]::Combine($Env:BUILD_ARTIFACTSTAGINGDIRECTORY, 'merged')
+        New-Item -Path $merged_nuget_path -ItemType Directory
+
+        $merged_nuget = [System.IO.Path]::Combine($merged_nuget_path, $x64_nuget_package_name)
         [System.IO.Compression.ZipFile]::CreateFromDirectory($x64_unzipped_directory, $merged_nuget)
       workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
 
   - template: ../../templates/esrp_nuget.yml
     parameters:
       DisplayName: 'ESRP - sign NuGet package'
-      FolderPath: '$(Build.ArtifactStagingDirectory)'
+      FolderPath: '$(Build.ArtifactStagingDirectory)/merged'
       DoEsrp: ${{ parameters.DoEsrp }}
 
   - template: ../../templates/validate-nuget.yml
     parameters:
-      NugetPath: '$(Build.ArtifactStagingDirectory)'
+      NugetPath: '$(Build.ArtifactStagingDirectory)/merged'
       NugetPackage: 'Microsoft.AI.MachineLearning*nupkg'
       PlatformsSupported: 'win-x64,win-x86'
       #,win-arm64,win-arm'
@@ -141,7 +144,7 @@ jobs:
     displayName: 'Publish Pipeline NuGet Artifact'
     inputs:
       artifactName: 'drop-signed-nuget'
-      targetPath: '$(Build.ArtifactStagingDirectory)'
+      targetPath: '$(Build.ArtifactStagingDirectory)/merged'
 
 - template: test_win.yml
   parameters:
