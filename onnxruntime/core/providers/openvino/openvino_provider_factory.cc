@@ -8,7 +8,7 @@
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
   OpenVINOProviderFactory(const char* device) {
-    if(device == nullptr) {
+    if (device == nullptr) {
       device_ = "";
     } else {
       device_ = device;

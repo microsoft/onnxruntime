@@ -27,11 +27,11 @@ namespace backend_utils {
 
 #ifndef NDEBUG
 bool IsDebugEnabled() {
-  #ifdef __linux__
-    return (std::getenv("UEP_ENABLE_DEBUG") != nullptr);
-  #else
-    return false;
-  #endif
+#ifdef __linux__
+  return (std::getenv("UEP_ENABLE_DEBUG") != nullptr);
+#else
+  return false;
+#endif
 }
 
 void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::string file_name) {
@@ -44,7 +44,6 @@ void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::stri
 
 std::shared_ptr<InferenceEngine::CNNNetwork>
 CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto) {
-
   std::istringstream model_stream{model_proto.SerializeAsString()};
   std::shared_ptr<ngraph::Function> ng_function;
   try {
@@ -65,8 +64,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto) {
   }
 }
 
-
-InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO( const ONNX_NAMESPACE::TypeProto& onnx_type) {
+InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type) {
   ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
   if (*type_string == "float" || *type_string == "tensor(float)") {
     return InferenceEngine::Precision::FP32;
@@ -92,12 +90,12 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
   // Configure input & output
   // Prepare input blobs
 
-  #ifndef NDEBUG
+#ifndef NDEBUG
   if (network) {
     if (IsDebugEnabled())
       std::cout << "Network is not NULL" << std::endl;
   }
-  #endif
+#endif
 
   auto inputInfo = network->getInputsInfo();
   int input_idx = 0;
@@ -164,7 +162,6 @@ std::vector<const OrtValue*>
 GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context,
                 std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network,
                 std::vector<int> input_indexes) {
-
   std::vector<const OrtValue*> input_tensors;
 
   size_t input_count = ie_cnn_network->getInputsInfo().size();
@@ -180,7 +177,6 @@ GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_
                  InferenceEngine::InferRequest::Ptr infer_request,
                  std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network,
                  std::unordered_map<std::string, int> output_names) {
-
   std::vector<OrtValue*> output_tensors;
 
   auto graph_output_info = ie_cnn_network->getOutputsInfo();
@@ -202,7 +198,7 @@ GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_
       output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
     }
     auto it = output_names.find(output_info_iter->first);
-    if(it == output_names.end()){
+    if (it == output_names.end()) {
       ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
     }
     int index = it->second;
@@ -213,6 +209,6 @@ GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_
   return output_tensors;
 }
 
-} // namespace backend_utils
-} // namespace openvino_ep
-} // namespace onnxruntime
+}  // namespace backend_utils
+}  // namespace openvino_ep
+}  // namespace onnxruntime

@@ -29,7 +29,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
                                std::string dev_id, std::string prec_str) {
   subgraph_context_.device_id = dev_id;
   subgraph_context_.precision_str = prec_str;
-  if(prec_str == "FP32") {
+  if (prec_str == "FP32") {
     subgraph_context_.precision = InferenceEngine::Precision::FP32;
   } else if (prec_str == "FP16") {
     subgraph_context_.precision = InferenceEngine::Precision::FP16;
@@ -60,32 +60,27 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
 
   auto graph_outputs_defs = fused_node->OutputDefs();
   i = 0;
-  for (auto output_def : graph_outputs_defs){
+  for (auto output_def : graph_outputs_defs) {
     subgraph_context_.output_names.insert({output_def->Name(), i});
     i++;
   }
   subgraph_context_.subgraph_name = fused_node->Name();
   model_proto_ = GetModelProtoFromFusedNode(fused_node, logger);
 
-  if(ModelHasBatchedInputs(model_proto_) &&
-    GetGlobalContext().is_wholly_supported_graph &&
-    subgraph_context_.device_id == "HDDL") {
-
+  if (ModelHasBatchedInputs(model_proto_) &&
+      GetGlobalContext().is_wholly_supported_graph &&
+      subgraph_context_.device_id == "HDDL") {
     subgraph_context_.enable_batching = true;
-    LOGS_DEFAULT(INFO) <<
-      "[OpenVINO-EP] Model can be Batch inferenced \n";
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model can be Batch inferenced \n";
     auto model_copy = ReWriteBatchDimWithOne(model_proto_);
     concrete_backend_ = BackendFactory::MakeBackend(*model_copy, GetGlobalContext(), subgraph_context_);
     subgraph_context_.has_dynamic_input_shape = false;
 
   } else if (ModelHasSymbolicInputDims(fused_node)) {
-    LOGS_DEFAULT(INFO) <<
-      "[OpenVINO-EP] Model has symbolic input dims. Defering backend initialization";
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims. Defering backend initialization";
     subgraph_context_.has_dynamic_input_shape = true;
   } else {
-    LOGS_DEFAULT(INFO) <<
-      "[OpenVINO-EP] Model has concreate input dims. Initializing backend for graph " <<
-      subgraph_context_.subgraph_name;
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has concreate input dims. Initializing backend for graph " << subgraph_context_.subgraph_name;
 
     subgraph_context_.has_dynamic_input_shape = false;
     concrete_backend_ = BackendFactory::MakeBackend(model_proto_, GetGlobalContext(), subgraph_context_);
@@ -94,7 +89,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
 
 bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const {
   bool has_batched_inputs = true;
-  for (int i=0; i < (int)subgraph_context_.input_indexes.size(); i++) {
+  for (int i = 0; i < (int)subgraph_context_.input_indexes.size(); i++) {
     auto input = model_proto.graph().input(subgraph_context_.input_indexes[i]);
     // Batch-process only raw image inputs (NCHW or NHWC layouts)
     auto shape = input.type().tensor_type().shape();
@@ -103,18 +98,18 @@ bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& mod
       break;
     }
 
-    if(shape.dim(0).value_case() == shape.dim(0).kDimValue) {
+    if (shape.dim(0).value_case() == shape.dim(0).kDimValue) {
       has_batched_inputs = false;
       break;
     }
 
-    for(int index = 1; index < 4; index++) {
-      if(shape.dim(index).value_case() != shape.dim(0).kDimValue) {
+    for (int index = 1; index < 4; index++) {
+      if (shape.dim(index).value_case() != shape.dim(0).kDimValue) {
         has_batched_inputs = false;
         break;
       }
     }
-    if(!has_batched_inputs) {
+    if (!has_batched_inputs) {
       break;
     }
   }
@@ -139,8 +134,8 @@ static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto,
 bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::Node* fused_node) const {
   bool has_sym_dims = false;
   auto graph_inputs = fused_node->GetFunctionBody()->Body().GetInputs();
-  for (auto input : graph_inputs){
-    if(input->Shape() == nullptr){
+  for (auto input : graph_inputs) {
+    if (input->Shape() == nullptr) {
       has_sym_dims = true;
       break;
     }
@@ -215,7 +210,7 @@ std::string MakeMapKeyString(std::vector<std::vector<int64_t>>& shapes,
 
 std::shared_ptr<ONNX_NAMESPACE::ModelProto>
 BackendManager::ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto,
-                      std::vector<std::vector<int64_t>> input_shapes) {
+                                      std::vector<std::vector<int64_t>> input_shapes) {
   auto model_copy = std::make_shared<ONNX_NAMESPACE::ModelProto>();
   std::string proto_str;
   model_proto.SerializeToString(&proto_str);
@@ -223,8 +218,7 @@ BackendManager::ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_pr
   auto graph_proto = model_copy->mutable_graph();
 
   for (size_t i = 0; i < input_shapes.size(); i++) {
-    auto g_in_shape = graph_proto->mutable_input((int)i)->
-                        mutable_type()->mutable_tensor_type()->mutable_shape();
+    auto g_in_shape = graph_proto->mutable_input((int)i)->mutable_type()->mutable_tensor_type()->mutable_shape();
     g_in_shape->clear_dim();
     auto shape = input_shapes[i];
     for (size_t dim = 0; dim < shape.size(); dim++) {
@@ -243,8 +237,7 @@ BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_p
   auto graph_proto = model_copy->mutable_graph();
 
   for (int i = 0; i < graph_proto->input_size(); i++) {
-    ONNX_NAMESPACE::TensorShapeProto* g_in_shape = graph_proto->mutable_input((int)i)->
-                        mutable_type()->mutable_tensor_type()->mutable_shape();
+    ONNX_NAMESPACE::TensorShapeProto* g_in_shape = graph_proto->mutable_input((int)i)->mutable_type()->mutable_tensor_type()->mutable_shape();
     g_in_shape->mutable_dim(0)->clear_dim_value();
     g_in_shape->mutable_dim(0)->set_dim_value(1);
   }

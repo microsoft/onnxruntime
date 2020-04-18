@@ -25,9 +25,7 @@ class VADMBackend : public IBackend {
 
   void Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) override;
 
-
  private:
-
   void StartAsyncInference(Ort::CustomOpApi& ort,
                            std::vector<const OrtValue*> input_tensors,
                            size_t batch_slice_idx, size_t infer_req_idx,

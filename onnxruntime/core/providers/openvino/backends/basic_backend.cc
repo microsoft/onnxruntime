@@ -26,10 +26,9 @@ namespace openvino_ep {
 using namespace backend_utils;
 
 BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
-                          GlobalContext& global_context,
-                          const SubGraphContext& subgraph_context)
+                           GlobalContext& global_context,
+                           const SubGraphContext& subgraph_context)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
-
   ie_cnn_network_ = CreateCNNNetwork(model_proto);
   SetIODefs(model_proto, ie_cnn_network_);
   InferenceEngine::ExecutableNetwork exe_network;
@@ -71,13 +70,13 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort,
     try {
       graph_input_blob = infer_request->GetBlob(input_info_iter->first);
     } catch (InferenceEngine::details::InferenceEngineException e) {
-      ORT_THROW(log_tag + " Cannot access IE Blob for input: "  + input_info_iter->first + e.what());
+      ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_info_iter->first + e.what());
     } catch (...) {
-      ORT_THROW( log_tag + " Cannot access IE Blob for input: " + input_info_iter->first);
+      ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_info_iter->first);
     }
 
     auto graph_input_buffer = graph_input_blob->buffer()
-      .as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
+                                  .as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
     size_t input_data_size = graph_input_blob->byteSize();
     const char* tensor_data = ort.GetTensorData<char>(input_tensors[i]);
 
@@ -119,12 +118,12 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort,
     try {
       graph_output_blob = infer_request->GetBlob(output_info_iter->first);
     } catch (InferenceEngine::details::InferenceEngineException e) {
-      ORT_THROW( log_tag + " Cannot access IE Blob for output: " + output_info_iter->first + e.what());
-    } catch(...) {
-      ORT_THROW( log_tag + " Cannot access IE Blob for output: " + output_info_iter->first);
+      ORT_THROW(log_tag + " Cannot access IE Blob for output: " + output_info_iter->first + e.what());
+    } catch (...) {
+      ORT_THROW(log_tag + " Cannot access IE Blob for output: " + output_info_iter->first);
     }
     auto graph_output_buffer = graph_output_blob->buffer()
-      .as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
+                                   .as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
     size_t output_data_size = graph_output_blob->byteSize();
     char* tensor_data = ort.GetTensorMutableData<char>(output_tensors[i]);
 
