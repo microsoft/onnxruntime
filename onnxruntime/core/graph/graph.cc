@@ -808,6 +808,13 @@ Graph::Graph(const Model& owning_model,
       if (matching_graph_input == nullptr) {
         name_to_type_map[tensor.name()] = t;
         ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
+      } else {
+        LOGS(logger_, WARNING) << "Initializer " << tensor.name()
+                               << " appears in graph inputs and will not be treated as constant value/weight. "
+                               << "This may fail some of the graph optimizations, like const folding. "
+                               << "Move it out of graph inputs if there is no need to override it, "
+                               << "by either re-generating the model with latest exporter/converter "
+                               << "or with the tool onnxruntime/tools/python/remove_initializer_from_input.py.";
       }
     }
   }
@@ -912,10 +919,12 @@ void Graph::InitializeStateFromModelFileGraphProto() {
   }
 
   // Set graph value_info_.
-  for (auto& graph_value_info : graph_proto_->value_info()) {
-    auto& name = graph_value_info.name();
+  for (const auto& graph_value_info : graph_proto_->value_info()) {
+    const auto& name = graph_value_info.name();
     const auto* node_arg = GetNodeArg(name);
-    value_info_.push_back(node_arg);
+    if (node_arg != nullptr) {
+      value_info_.push_back(node_arg);
+    }
   }
 
   ComputeOverridableInitializers();

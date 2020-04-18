@@ -857,11 +857,11 @@ common::Status InferenceSession::Initialize() {
 
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL &&
         execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {
-      LOGS(*session_logger_, ERROR) << "Parallel execution is currently not supported "
-                                       "for the registered CUDA Execution Provider.";
+      LOGS(*session_logger_, ERROR) << "Parallel execution mode doesn't support "
+                                       "CUDA Execution Provider currently.";
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                            "Parallel execution is currently not supported "
-                            "for the registered CUDA Execution Provider.");
+                            "Parallel execution mode doesn't support "
+                            "CUDA Execution Provider currently.");
     }
 
     // add predefined transformers
@@ -874,7 +874,7 @@ common::Status InferenceSession::Initialize() {
     // There are 2 kinds of kernel registries with priority from high to low as below,
     // 1. Custom execution provider type specific kernel registries.
     // 2. common execution provider type specific kernel registries.
-    // The 1st and 2nd ones are shared across sessions.
+    // Kernel registries are shared across sessions.
     // The 1st ones should have already been registered via session-level API into KernelRegistryManager.
     //
     // Register 2nd registries into KernelRegistryManager.

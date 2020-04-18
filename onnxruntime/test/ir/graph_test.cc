@@ -246,6 +246,31 @@ TEST_F(GraphTest, SimpleUnique) {
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
 }
+  
+TEST_F(GraphTest, UnusedValueInfoSerializes) {
+  ModelProto m;
+  m.set_ir_version(4);
+  ImportOpset(m, "", 11);
+  GraphProto& g = *m.mutable_graph();   
+  NodeProto* node = g.add_node();
+  *node->add_input() = "x";
+  *node->add_output() = "sum";
+  node->set_op_type("Unique");
+  node->set_domain("");
+  ValueInfoProto* input1 = g.add_input();
+  input1->set_name("x");
+  SetTypeAndShape(input1->mutable_type()->mutable_tensor_type(), 1, {3, 4, 5});
+  ValueInfoProto* output = g.add_output();
+  output->set_name("sum");
+  SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {60});
+  ValueInfoProto* unused = g.add_value_info();
+  unused->set_name("unused");
+  SetTypeAndShape(unused->mutable_type()->mutable_tensor_type(), 1, {123});
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+  model->MainGraph().SetGraphProtoSyncNeeded();
+  EXPECT_TRUE(Model::Save(*model, "graph_with_unused_value_info.onnx").IsOK());
+}
 
 TEST_F(GraphTest, WrongOpset) {
   ModelProto m;
