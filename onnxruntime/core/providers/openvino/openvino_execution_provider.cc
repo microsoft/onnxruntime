@@ -286,12 +286,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     //3D pad with negative padding have computation missmatch
     const auto& attributes = node->GetAttributes();
     const auto pad_attr = attributes.find("pads");
-    // if (pad_attr != attributes.end() && (pad_attr->second.ints().size() > 4 || pad_attr->second.ints().size() == 3)) {
-    //   for (const auto& val : pad_attr->second.ints()) {
-    //     if (val < 0)
-    //       return true;
-    //   }
-    // }
 
     //Negative padding is not supported
     if (pad_attr != attributes.end()) {
@@ -328,8 +322,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT16},
         {onnx_dtype::TensorProto_DataType_UINT16, onnx_dtype::TensorProto_DataType_FLOAT},
         {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT16},
-        // {onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32},
-        // {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT},
         {onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_FLOAT},
         {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT32},
         {onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32}};
@@ -443,15 +435,8 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
     switch (type_proto->tensor_type().elem_type()) {
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL:
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
-        //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE:
-        // case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8:
-        // case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16:
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32:
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64:
-        // case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8:
-        // case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16:
-        //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32:
-        //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64:
         return true;
       default:
 
