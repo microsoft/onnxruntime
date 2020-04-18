@@ -142,7 +142,7 @@ const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info) 
 // Copy MLValue. Uses DataTransferManager for device copy if necessary. If copy_pairs is provided,
 // src/dst pairs that need a device copy are added to copy_pairs so copying can be batches by the DataTransferManager
 // implementation for performance reasons.
-static Status CopyMLValue(
+static Status BatchOrCopyMLValue(
     const DataTransferManager& data_transfer_mgr,
     const MLValueCopyInfo& copy_info,
     const OrtValue& source_mlvalue,
@@ -170,7 +170,7 @@ static Status CopyMLValue(
   Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
 
   if (copy_pairs != nullptr) {
-    copy_pairs->push_back({source_tensor, *p_output_tensor});
+    copy_pairs->push_back(IDataTransfer::SrcDstPair{source_tensor, *p_output_tensor, 0});
   } else {
     ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensor(source_tensor, *p_output_tensor));
   }
@@ -398,8 +398,8 @@ static common::Status CopyInputsAcrossDevices(const std::vector<OrtValue>& orig_
   batched_data_transfers.reserve(num_feeds);
 
   for (size_t idx = 0; idx < num_feeds; ++idx) {
-    ORT_RETURN_IF_ERROR(CopyMLValue(data_transfer_mgr, copy_info[idx], orig_feeds[idx], new_feeds[idx],
-                                    &batched_data_transfers));
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(data_transfer_mgr, copy_info[idx], orig_feeds[idx], new_feeds[idx],
+                                           &batched_data_transfers));
   }
 
   if (!batched_data_transfers.empty()) {
@@ -424,7 +424,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
   ORT_RETURN_IF_ERROR(CalculateStaticCopyInfoForFeed(session_state, input_name, copy_info));
   copy_info.source_device = orig_mlvalue.Get<Tensor>().Location().device;
 
-  return CopyMLValue(session_state.GetDataTransferMgr(), copy_info, orig_mlvalue, new_mlvalue);
+  return BatchOrCopyMLValue(session_state.GetDataTransferMgr(), copy_info, orig_mlvalue, new_mlvalue);
 }
 
 static common::Status CopyOutputsAcrossDevices(const SessionState& session_state,
@@ -439,8 +439,8 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
   batched_data_transfers.reserve(num_outputs);
 
   for (size_t idx = 0; idx < num_outputs; ++idx) {
-    ORT_RETURN_IF_ERROR(CopyMLValue(data_transfer_mgr, copy_info[idx], fetches[idx], user_fetches[idx],
-                                    &batched_data_transfers));
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(data_transfer_mgr, copy_info[idx], fetches[idx], user_fetches[idx],
+                                           &batched_data_transfers));
   }
 
   if (!batched_data_transfers.empty()) {
