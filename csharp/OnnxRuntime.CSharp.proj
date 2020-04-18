@@ -125,6 +125,10 @@ CMake creates a target to this project
   <Target Name="CreateWindowsAIPackage">
     <Message Importance="High" Text="Bundling managed assemblies into a NuGet package ..." />
 
+    <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
+             Targets="CopyMiscFiles"
+             Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);"/>
+
     <Message Importance="High" Text="Generating nuspec for the Microsoft.AI.MachineLearning Nuget package ..." />
     <Exec ContinueOnError="False" Command="python ..\tools\nuget\generate_nuspec_for_native_nuget.py --package_version $(PackageVersion) --package_name Microsoft.AI.MachineLearning --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild)" ConsoleToMSBuild="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
