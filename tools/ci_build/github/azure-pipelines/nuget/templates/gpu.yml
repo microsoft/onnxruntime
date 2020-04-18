@@ -87,7 +87,7 @@ jobs:
 #      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm'
 
   - task: PowerShell@2
-    displayName: 'Bundle NuGet and other binaries (1)'
+    displayName: 'Bundle NuGet and other binaries'
     inputs:
       targetType: 'inline'
       script: |
@@ -118,52 +118,9 @@ jobs:
         Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.pdb'))  $x86_runtime_path_new
         Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'directml.dll'))                      $x86_runtime_path_new
 
-        Get-ChildItem env:
-        
-        $merged_nuget = [System.IO.Path]::Combine($x64_unzipped_directory_root, 'merged', $x64_nuget_package_name)
+        $merged_nuget = [System.IO.Path]::Combine($Env:BUILD_ARTIFACTSTAGINGDIRECTORY, $x64_nuget_package_name)
         [System.IO.Compression.ZipFile]::CreateFromDirectory($x64_unzipped_directory, $merged_nuget)
       workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
-
-  - script: |
-     pushd $(Build.BinariesDirectory)\nuget-artifact
-     dir
-     powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
-     powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
-     set PATH=%CD%;%PATH%
-     FOR /R %%i IN (*.nupkg) do (
-         rename %%~ni.nupkg %%~ni.zip
-         unzip %%~ni.zip -d %%~ni
-         del /Q %%~ni.zip
-
-         unzip Microsoft.AI.MachineLearning.x86.zip -d win-x86
-         unzip Microsoft.AI.MachineLearning.arm64.zip -d win-arm64
-         unzip Microsoft.AI.MachineLearning.arm.zip -d win-arm
-
-         mkdir %%~ni\runtimes\win-x86
-         mkdir %%~ni\runtimes\win-x86\native
-         mkdir %%~ni\runtimes\win-arm64
-         mkdir %%~ni\runtimes\win-arm64\native
-         mkdir %%~ni\runtimes\win-arm
-         mkdir %%~ni\runtimes\win-arm\native
-
-         move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
-         move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
-         move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
-
-         move win-x86\runtimes\win-x86\native\microsoft.ai.machinelearning.dll %%~ni\runtimes\win-x86\native\microsoft.ai.machinelearning.dll
-         move win-x86\runtimes\win-x86\native\microsoft.ai.machinelearning.lib %%~ni\runtimes\win-x86\native\microsoft.ai.machinelearning.lib
-         move win-x86\runtimes\win-x86\native\microsoft.ai.machinelearning.pdb %%~ni\runtimes\win-x86\native\microsoft.ai.machinelearning.pdb
-
-         move win-x86\runtimes\win-x86\native\directml.dll %%~ni\runtimes\win-x86\native\directml.dll
-
-         pushd %%~ni
-         zip -r ..\%%~ni.zip .
-         popd
-         move %%~ni.zip %%~ni.nupkg
-     )
-     popd
-     copy $(Build.BinariesDirectory)\nuget-artifact\Microsoft.AI.MachineLearning*nupkg $(Build.ArtifactStagingDirectory)
-    displayName: 'Bundle NuGet and other binaries'
 
   - template: ../../templates/esrp_nuget.yml
     parameters:
