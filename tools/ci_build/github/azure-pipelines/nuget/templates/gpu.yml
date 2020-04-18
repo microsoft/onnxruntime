@@ -110,13 +110,13 @@ jobs:
         $x86_runtime_path_new = [System.IO.Path]::Combine($x64_unzipped_directory, 'runtimes', 'win-x86', 'native')
         New-Item -Path $x86_runtime_path_new -ItemType Directory
 
-        Copy-Item [System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.dll') $x86_runtime_path_new
-        Copy-Item [System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.lib') $x86_runtime_path_new
-        Copy-Item [System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.pdb') $x86_runtime_path_new
-        Copy-Item [System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.dll') $x86_runtime_path_new
-        Copy-Item [System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.lib') $x86_runtime_path_new
-        Copy-Item [System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.pdb') $x86_runtime_path_new
-        Copy-Item [System.IO.Path]::Combine($x86_runtime_path_old, 'directml.dll') $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.dll'))                   $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.lib'))                   $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.pdb'))                   $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.dll'))  $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.lib'))  $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.pdb'))  $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'directml.dll'))                      $x86_runtime_path_new
 
         Get-ChildItem env:
         
