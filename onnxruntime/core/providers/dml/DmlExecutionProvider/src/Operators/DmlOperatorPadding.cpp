@@ -13,8 +13,9 @@ public:
     :   DmlOperator(kernelInfo),
         PaddingHelper(kernelInfo, kernelInfo.GetTensorShapeDescription(), opsetVersion)
     {
-        ML_CHECK_VALID_ARGUMENT((kernelInfo.GetInputCount() == 1 && (opsetVersion >= 2 && opsetVersion < 11))
-                             || (kernelInfo.GetInputCount() == 3 && (opsetVersion >= 11)));
+        const uint32_t inputCount = kernelInfo.GetInputCount();
+        ML_CHECK_VALID_ARGUMENT((opsetVersion >= 2 && opsetVersion < 11 && inputCount == 1)
+                             || (opsetVersion >= 11 && inputCount >= 2 && inputCount <= 3));
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
 
         std::vector<std::optional<uint32_t>> kernelInputIndices = { 0 }; // Only bind GPU to first 'data' tensor.
@@ -55,11 +56,15 @@ public:
             ML_INVALID_ARGUMENT("Unknown Pad mode attribute.");
         }
 
-        float value;
+        // Read the constant value which can come from an attribute or tensor.
+        float value = 0.0f;
         if (opsetVersion >= 11)
         {
-            auto valueTensor = kernelInfo.GetConstantInputTensor(2);
-            value = static_cast<float>(ReadScalarTensorCastToFloat64(valueTensor));
+            if (kernelInfo.IsInputValid(2))
+            {
+                auto valueTensor = kernelInfo.GetConstantInputTensor(2);
+                value = static_cast<float>(ReadScalarTensorCastToFloat64(valueTensor));
+            }
         }
         else
         {
