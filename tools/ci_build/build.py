@@ -1239,15 +1239,16 @@ def generate_documentation(source_dir, build_dir, configs):
     operator_doc_path = os.path.join(source_dir, 'docs', 'ContribOperators.md')
     opkernel_doc_path = os.path.join(source_dir, 'docs', 'OperatorKernels.md')
     for config in configs:
-        # Copy the gen_doc.py.
-        shutil.copy(os.path.join(source_dir, 'tools', 'python', 'gen_doc.py'),
-                    os.path.join(build_dir, config, config))
+        # Copy the gen_contrib_doc.py.
+        shutil.copy(
+            os.path.join(source_dir, 'tools', 'python', 'gen_contrib_doc.py'),
+            os.path.join(build_dir, config, config))
         shutil.copy(
             os.path.join(source_dir, 'tools', 'python', 'gen_opkernel_doc.py'),
             os.path.join(build_dir, config, config))
         run_subprocess(
             [sys.executable,
-             'gen_doc.py',
+             'gen_contrib_doc.py',
              '--output_path', operator_doc_path],
             cwd=os.path.join(build_dir, config, config))
         run_subprocess(
@@ -1307,7 +1308,7 @@ def main():
     if args.use_tensorrt:
         args.use_cuda = True
 
-    if args.build_wheel:
+    if args.build_wheel or args.gen_doc:
         args.enable_pybind = True
 
     if args.build_csharp or args.build_java:

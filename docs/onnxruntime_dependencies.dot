@@ -1,0 +1,88 @@
+digraph "GG" {
+  compound=true;
+	
+node [
+  fontsize = "12"
+];
+subgraph cluster_0 {
+    label = "onnxruntime.dll";
+    "ort_graph" [ label="onnxruntime_graph\n(schemas)" shape="box"];
+    "ort_common" [ label="onnxruntime_common" shape="box"];
+    "ort_util" [ label="onnxruntime_util" shape="box"];
+    "ort_mlas" [ label="onnxruntime_mlas" shape="box"];
+    "ort_optimizer" [ label="onnxruntime_optimizer" shape="box"];    
+    "ort_session" [ label="onnxruntime_session" shape="box"];
+    "ort_graph" -> "ort_common"
+    "onnx" [ label="onnx" shape="box"];
+    "protobuf" [ label="Google Protobuf" shape="box"];
+    "onnx" -> "protobuf"
+    "ort_graph" -> "protobuf"    
+    "ort_graph" -> "onnx"
+    "ort_optimizer" -> "onnx"        
+    "ort_framework" [ label="onnxruntime_framework" shape="box"];
+    "ort_framework" -> "ort_graph" 
+    "ort_framework" -> "ort_common" 
+    "ort_framework" -> "onnx" 
+    "ort_cpu_provider" [ label="onnxruntime_cpu_provider\n(kernels)" shape="box"];
+    "ort_cpu_provider" -> "ort_common" 
+    "ort_cpu_provider" -> "ort_framework"
+    "ort_cpu_provider" -> "ort_util"
+    "ort_cpu_provider" -> "ort_mlas"
+    "ort_cpu_provider" -> "onnx"
+    "ort_cuda_provider" [ label="onnxruntime_cuda_provider\n(kernels)" shape="box"];
+    "ort_cuda_provider" -> "ort_common" 
+    "ort_cuda_provider" -> "ort_framework"
+    "ort_cuda_provider" -> "ort_util"
+    "ort_cuda_provider" -> "ort_mlas"    
+    "ort_cuda_provider" -> "onnx"    
+    "ort_util" -> "ort_common" 
+    "ort_util" -> "ort_framework" 
+    "ort_util" -> "ort_mlas" 
+    "ort_mlas" -> "ort_common"
+    "ort_session" -> "ort_framework"
+    "ort_session" -> "ort_common"
+    "ort_session" -> "ort_graph"   
+    "ort_session" -> "ort_optimizer"
+    "ort_session" -> "ort_cpu_provider"            
+    "ort_optimizer" -> "ort_cpu_provider"
+    "ort_optimizer" -> "ort_common"
+    "ort_optimizer" -> "ort_framework"
+    "ort_optimizer" -> "ort_graph"
+    "capi" [ label="C API" shape="box"];        
+}
+
+subgraph cluster_1 {
+    label = "Application Interfaces";
+    style=filled;
+    color=lightgrey;
+    node [style=filled,color=white];
+    "javaapi" [ label="Java API" shape="box"];
+    "csharpapi" [ label="C# API" shape="box"];
+    "cppapi" [ label="C++ API\n(header only)" shape="box"];            
+    "javaapi" -> "capi"
+    "cppapi" -> "capi"
+    "csharpapi" -> "capi"    
+    "pythonapi" [ label="Python API" shape="box"];
+     pythonapi -> ort_session [lhead=cluster_0]
+}
+
+"grpc" [ label="gRPC" shape="box"];
+"boost" [ label="Boost" shape="box"];
+"onnx2" [ label="onnx" shape="box"];
+"protobuf2" [ label="Google Protobuf" shape="box"];
+"onnx2" -> "protobuf2"
+"grpc" -> "protobuf2"
+
+subgraph cluster_2 {
+    label = "Applications";
+  "onnxruntime_server" [ label="ONNX Runtime Server" shape="box"];
+  "onnxruntime_server" -> "cppapi"   
+  "app1" [ label="User application" shape="box"];
+  "app2" [ label="User application" shape="box"];
+}
+  "onnxruntime_server" -> "grpc"
+  "onnxruntime_server" -> "boost" 
+  "onnxruntime_server" -> "onnx2"
+}
+
+
