@@ -290,12 +290,21 @@ const char* contrib_ops_auto_pad_doc =
     "beginning for SAME_LOWER. VALID mean no padding.";
 
 void RegisterBertSchemas() {
+  static const char* Attention_ver1_doc = R"DOC(
+Multi-Head Self Attention that can be either unidirectional (like GPT2) or bidirectional (like BERT).
+The mask_index input is optional. Unidirectional and mask_index input are mutually exclusive. When unidirectional is 1, the
+mask_index shall not be provided.)DOC";
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Multi-Head Self Attention")
+      .SetDoc(Attention_ver1_doc)
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Attr("unidirectional",
+            "Whether every token can only attend to previous tokens. Default value is 0.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "T")
       .Input(1, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T")
       .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
