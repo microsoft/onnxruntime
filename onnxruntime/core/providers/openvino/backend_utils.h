@@ -23,8 +23,9 @@ bool IsDebugEnabled();
 void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
                std::shared_ptr<InferenceEngine::CNNNetwork> network);
 
-std::shared_ptr<InferenceEngine::CNNNetwork>
-CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto);
+  std::shared_ptr<InferenceEngine::CNNNetwork>
+  CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto,
+                   InferenceEngine::Precision precision);
 
 InferenceEngine::Precision
 ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type);
