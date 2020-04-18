@@ -92,6 +92,7 @@ jobs:
       targetType: 'inline'
       script: |
         Get-ChildItem -Filter Microsoft.AI.MachineLearning* -Recurse -ErrorAction SilentlyContinue
+      workingDirectory: $(Build.BinariesDirectory)\nuget-artifact
 
   - script: |
      pushd $(Build.BinariesDirectory)\nuget-artifact
