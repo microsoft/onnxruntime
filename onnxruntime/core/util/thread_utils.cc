@@ -42,14 +42,9 @@ struct NumCoresUtil {
   }
 #endif
 };
-#ifdef _OPENMP
-std::unique_ptr<ThreadPool>
-CreateThreadPool(Env*, OrtThreadPoolParams, Eigen::Allocator*) {
-  return nullptr;
-}
-#else
-std::unique_ptr<ThreadPool>
-CreateThreadPool(Env* env, OrtThreadPoolParams options, Eigen::Allocator* allocator) {
+
+static std::unique_ptr<ThreadPool>
+CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options, Eigen::Allocator* allocator) {
   if (options.thread_pool_size == 1)
     return nullptr;
   std::vector<size_t> cpu_list;
@@ -69,7 +64,26 @@ CreateThreadPool(Env* env, OrtThreadPoolParams options, Eigen::Allocator* alloca
   return onnxruntime::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
                                               options.allow_spinning, allocator);
 }
+
+std::unique_ptr<ThreadPool>
+CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_type, Eigen::Allocator* allocator) {
+// If openmp is enabled we don't want to create any additional threadpools for sequential execution.
+// However, parallel execution relies on the existence of a separate threadpool. Hence we allow eigen threadpools
+// to be created for parallel execution.
+#ifdef _OPENMP
+  ORT_UNUSED_PARAMETER(env);
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(allocator);
+  if (tpool_type != ThreadPoolType::INTER_OP) {
+    return nullptr;
+  } else {
+    return CreateThreadPoolHelper(env, options, allocator);
+  }
+#else
+  return CreateThreadPoolHelper(env, options, allocator);
 #endif
+}
+
 }  // namespace concurrency
 }  // namespace onnxruntime
 namespace OrtApis {

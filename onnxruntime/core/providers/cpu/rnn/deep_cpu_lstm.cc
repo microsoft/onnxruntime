@@ -488,8 +488,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
 
   const size_t last_cell_size_per_direction = batch_size * hidden_size_;
   IAllocatorUniquePtr<T> local_last_cell;
-  gsl::span<T> last_cell = Y_c ? Y_c->MutableDataAsSpan<T>() :
-                                 Allocate(alloc, last_cell_size_per_direction * num_directions_, local_last_cell);
+  gsl::span<T> last_cell = Y_c ? Y_c->MutableDataAsSpan<T>() : Allocate(alloc, last_cell_size_per_direction * num_directions_, local_last_cell);
 
   gsl::span<T> last_cell_1 = last_cell.subspan(0, last_cell_size_per_direction);
 
@@ -501,17 +500,12 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
         recurrent_weights.subspan(hidden_weights_size_per_direction, hidden_weights_size_per_direction);
     gsl::span<const T> bias_2 = bias.empty() ? bias : bias.subspan(bias_size_per_direction, bias_size_per_direction);
     gsl::span<const T> peephole_weights_2 =
-        peephole_weights.empty() ?
-            peephole_weights :
-            peephole_weights.subspan(peephole_weights_size_per_direction, peephole_weights_size_per_direction);
+        peephole_weights.empty() ? peephole_weights : peephole_weights.subspan(peephole_weights_size_per_direction, peephole_weights_size_per_direction);
 
     gsl::span<const T> initial_hidden_2 =
-        initial_hidden.empty() ?
-            initial_hidden :
-            initial_hidden.subspan(initial_hidden_size_per_direction, initial_hidden_size_per_direction);
+        initial_hidden.empty() ? initial_hidden : initial_hidden.subspan(initial_hidden_size_per_direction, initial_hidden_size_per_direction);
     gsl::span<const T> initial_cell_2 =
-        initial_cell.empty() ? initial_cell :
-                               initial_cell.subspan(initial_cell_size_per_direction, initial_cell_size_per_direction);
+        initial_cell.empty() ? initial_cell : initial_cell.subspan(initial_cell_size_per_direction, initial_cell_size_per_direction);
     gsl::span<T> output_2 =
         output.empty() ? output : output.subspan(per_direction_offset, output_size - per_direction_offset);
 
@@ -861,7 +855,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
         ComputeGemm(local_fused_hidden_rows, hidden_size_x4, hidden_size_, alpha, previous_state,
                     previous_state_end,                                                  // Ht-1
                     hidden_size_, recurrent_weights.cbegin(), recurrent_weights.cend(),  // R[iofc]
-                    hidden_size_, beta, step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
+                    hidden_size_, beta, step_out_IOFC, output_iofc_.end(),               // input contains Xt*(W[iofc]^T)
                     hidden_size_x4, nullptr);
 
         DumpMatrix("Xt*(W[iofc]^T) + Ht-t*R[iofc]" + row_str, &*step_out_IOFC, local_fused_hidden_rows, hidden_size_x4);
@@ -935,7 +929,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       // calculate Xt*(W[iofc]^T) + Ht-t*R[iofc]
       ComputeGemm(batch_size_, hidden_size_x4, hidden_size_, alpha, previous_state, previous_state_end,  // Ht-1
                   hidden_size_, recurrent_weights.cbegin(), recurrent_weights.cend(),                    // R[iofc]
-                  hidden_size_, beta, step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
+                  hidden_size_, beta, step_out_IOFC, output_iofc_.end(),                                 // input contains Xt*(W[iofc]^T)
                   hidden_size_x4, mlas_tp_);
 
       span_T_iter batched_output;
@@ -1011,7 +1005,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
   if (output_sequence && direction_ == Direction::kReverse)
     ReverseSequence<T>(outputs, original_outputs, sequence_lengths, seq_length_, batch_size_, hidden_size_,
-                       num_directions,mlas_tp_);
+                       num_directions, mlas_tp_);
 }
 
 // #define PREVIOUS_BROKEN_VERSION
@@ -1141,7 +1135,7 @@ void UniDirectionalLstm<T>::GateComputations(
 
 template <typename T>
 void UniDirectionalLstm<T>::SetNumThreads() {
-  int threads = mlas_tp_ == nullptr ? 1 : mlas_tp_->NumThreads();
+  int threads = concurrency::ThreadPool::NumThreads(mlas_tp_);
 
   if (threads < 1)
     threads = 1;

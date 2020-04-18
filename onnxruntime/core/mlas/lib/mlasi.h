@@ -667,16 +667,9 @@ MlasGetMaximumThreadCount(
 {
 #ifdef MLAS_NO_ONNXRUNTIME_THREADPOOL
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+	return onnxruntime::concurrency::ThreadPool::NumThreads(nullptr);
 #else
-    if (ThreadPool != nullptr) {
-        return ThreadPool->NumThreads();
-    }
-#endif
-
-#if defined(_OPENMP)
-    return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
-#else
-    return 1;
+	return onnxruntime::concurrency::ThreadPool::NumThreads(ThreadPool);
 #endif
 }
 

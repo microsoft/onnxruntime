@@ -208,7 +208,11 @@ class ThreadPool {
   }
 #endif
 
-  // Returns the number of threads in the pool.
+  // Prefer using this API to get the number of threads unless you know what you're doing.
+  // This API takes into account if openmp is enabled/disabled and if the thread pool ptr is nullptr.
+  static int NumThreads(const concurrency::ThreadPool* tp);
+
+  // Returns the number of threads in the pool. Preferably use the static version of this API instead.
   int NumThreads() const;
 
   // Returns current thread id between 0 and NumThreads() - 1, if called from a
@@ -325,7 +329,7 @@ class ThreadPool {
       *WorkRemaining = WorkPerThread;
     }
   }
-};  // namespace concurrency
+};
 
 }  // namespace concurrency
 }  // namespace onnxruntime
