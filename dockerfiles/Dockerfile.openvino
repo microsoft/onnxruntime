@@ -39,14 +39,13 @@ RUN tar -xzf l_openvino_toolkit*.tgz && \
     pip install networkx==2.3 test-generator==0.1.1 defusedxml>=0.5.0
 
 ENV LD_LIBRARY_PATH=/opt/miniconda/lib:/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/ngraph:$LD_LIBRARY_PATH
 ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2020.2.120
 ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
 ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64
 ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/inference_engine/external/gna/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:$INTEL_OPENVINO_DIR/deployment_tools/ngraph:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
 ENV OpenCV_DIR=${INTEL_OPENVINO_DIR}/opencv/share/OpenCV
 ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/opencv/lib:${INTEL_OPENVINO_DIR}/opencv/share/OpenCV/3rdparty/lib:${LD_LIBRARY_PATH}
-ENV PATH=${INTEL_OPENVINO_DIR}/deployment_tools/model_optimizer:$PATH
-ENV PYTHONPATH=${INTEL_OPENVINO_DIR}/deployment_tools/model_optimizer:$PYTHONPATH
 ENV HDDL_INSTALL_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl
 ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl/lib:$LD_LIBRARY_PATH
 RUN locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8
