@@ -30,8 +30,8 @@ jobs:
   - script: |
      python -m pip install -q pyopenssl setuptools wheel numpy scipy
      mkdir $(Build.BinariesDirectory)\$(BuildConfig)
-     mklink /D /J C:\local\models $(Build.BinariesDirectory)\$(BuildConfig)\models
-     mklink /D /J C:\local\models $(Build.BinariesDirectory)\models
+     mklink /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models C:\local\models
+     mklink /D /J $(Build.BinariesDirectory)\models C:\local\models
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
