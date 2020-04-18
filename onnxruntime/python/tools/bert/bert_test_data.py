@@ -107,15 +107,22 @@ def fake_test_data(batch_size, sequence_length, test_cases, dictionary_size, ver
     """
     Generate fake input data for test.
     """
+    assert input_ids is not None
+
     np.random.seed(random_seed)
     random.seed(random_seed)
 
     all_inputs = []
     for test_case in range(test_cases):
         input_1 = fake_input_ids_data(input_ids, batch_size, sequence_length, dictionary_size)
-        input_2 = fake_segment_ids_data(segment_ids, batch_size, sequence_length)
-        input_3 = fake_input_mask_data(input_mask, batch_size, sequence_length, random_mask_length)
-        inputs = {input_ids.name: input_1, segment_ids.name: input_2, input_mask.name: input_3}
+        inputs = {input_ids.name: input_1}
+
+        if segment_ids:
+            inputs[segment_ids.name] = fake_segment_ids_data(segment_ids, batch_size, sequence_length)
+
+        if input_mask:
+            inputs[input_mask.name] = fake_input_mask_data(input_mask, batch_size, sequence_length, random_mask_length)
+
         if verbose and len(all_inputs) == 0:
             print("Example inputs", inputs)
         all_inputs.append(inputs)
@@ -144,7 +151,7 @@ def get_graph_input_from_embed_node(onnx_model, embed_node, input_index):
     return graph_input
 
 
-def get_bert_inputs(onnx_file):
+def get_bert_inputs(onnx_file, input_ids_name=None, segment_ids_name=None, input_mask_name=None):
     """
     Get graph inputs for bert model.
     First, we will deduce from EmbedLayerNormalization node. If not found, we will guess based on naming.
@@ -154,8 +161,31 @@ def get_bert_inputs(onnx_file):
         model.ParseFromString(f.read())
 
     onnx_model = OnnxModel(model)
-
     graph_inputs = onnx_model.get_graph_inputs_excluding_initializers()
+
+    if input_ids_name is not None:
+        input_ids = onnx_model.find_graph_input(input_ids_name)
+        if input_ids is None:
+            raise ValueError(f"Graph does not have input named {input_ids_name}")
+
+        segment_ids = None
+        if segment_ids_name:
+            segment_ids = onnx_model.find_graph_input(segment_ids_name)
+            if segment_ids is None:
+                raise ValueError(f"Graph does not have input named {segment_ids_name}")
+
+        input_mask = None
+        if input_mask_name:
+            input_mask = onnx_model.find_graph_input(input_mask_name)
+            if input_mask is None:
+                raise ValueError(f"Graph does not have input named {input_mask_name}")
+
+        expected_inputs = 1 + (1 if segment_ids else 0) + (1 if input_mask else 0)
+        if len(graph_inputs) != expected_inputs:
+            raise ValueError(f"Expect the graph to have {expected_inputs} inputs. Got {len(graph_inputs)}")
+
+        return input_ids, segment_ids, input_mask
+
     if len(graph_inputs) != 3:
         raise ValueError("Expect the graph to have 3 inputs. Got {}".format(len(graph_inputs)))
 
