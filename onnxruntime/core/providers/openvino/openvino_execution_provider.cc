@@ -119,6 +119,7 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       "ReduceL1",
       "ReduceL2",
       "ReduceLogSumExp",
+      "Resize",
       "Round",
       "Scan",
       "Shrink",
@@ -126,6 +127,7 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       "Split",
       "Sqrt",
       "ThresholdedRelu",
+      "Upsample",
       "Xor",
   };
 
