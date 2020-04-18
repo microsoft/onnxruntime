@@ -31,7 +31,7 @@ import argparse
 import numpy as np
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper
-from BertOnnxModel import BertOnnxModel
+from BertOnnxModel import BertOnnxModel, BertOptimizationOptions
 from BertOnnxModelTF import BertOnnxModelTF
 from BertOnnxModelKeras import BertOnnxModelKeras
 from Gpt2OnnxModel import Gpt2OnnxModel
@@ -137,6 +137,33 @@ def parse_arguments():
                         help="whether the target device is gpu or not")
     parser.set_defaults(gpu_only=False)
 
+    parser.add_argument('--disable_attention', required=False, action='store_true', help="disable Attention fusion")
+    parser.set_defaults(disable_attention=False)
+
+    parser.add_argument('--disable_skip_layer_norm',
+                        required=False,
+                        action='store_true',
+                        help="disable SkipLayerNormalization fusion")
+    parser.set_defaults(disable_skip_layer_norm=False)
+
+    parser.add_argument('--disable_embed_layer_norm',
+                        required=False,
+                        action='store_true',
+                        help="disable EmbedLayerNormalization fusion")
+    parser.set_defaults(disable_embed_layer_norm=False)
+
+    parser.add_argument('--disable_bias_skip_layer_norm',
+                        required=False,
+                        action='store_true',
+                        help="disable Add Bias and SkipLayerNormalization fusion")
+    parser.set_defaults(disable_bias_skip_layer_norm=False)
+
+    parser.add_argument('--disable_bias_gelu',
+                        required=False,
+                        action='store_true',
+                        help="disable Add Bias and Gelu/FastGelu fusion")
+    parser.set_defaults(disable_bias_gelu=False)
+
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
@@ -152,6 +179,21 @@ def parse_arguments():
     return args
 
 
+def get_optimization_options(args):
+    optimization_options = BertOptimizationOptions(args.model_type)
+    if args.disable_attention:
+        optimization_options.enable_attention = False
+    if args.disable_skip_layer_norm:
+        optimization_options.enable_skip_layer_norm = False
+    if args.disable_embed_layer_norm:
+        optimization_options.enable_embed_layer_norm = False
+    if args.disable_bias_skip_layer_norm:
+        optimization_options.enable_bias_skip_layer_norm = False
+    if args.disable_bias_gelu:
+        optimization_options.enable_bias_gelu = False
+    return optimization_options
+
+
 def optimize_model(input,
                    model_type,
                    gpu_only,
@@ -160,7 +202,8 @@ def optimize_model(input,
                    sequence_length,
                    input_int32,
                    float16,
-                   opt_level=99):
+                   opt_level=99,
+                   optimization_options=None):
     (optimizer_class, producer, run_onnxruntime) = MODEL_CLASSES[model_type]
 
     input_model_path = input
@@ -177,8 +220,11 @@ def optimize_model(input,
             f"Model producer not matched: Expect {producer},  Got {model.producer_name} {model.producer_version}. Please specify correct --model_type parameter."
         )
 
+    if optimization_options is None:
+        optimization_options = BertOptimizationOptions(model_type)
+
     bert_model = optimizer_class(model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only)
-    bert_model.optimize()
+    bert_model.optimize(optimization_options)
 
     return bert_model
 
@@ -195,8 +241,11 @@ def main():
 
     setup_logger(args.verbose)
 
+    optimization_options = get_optimization_options(args)
+
     bert_model = optimize_model(args.input, args.model_type, args.gpu_only, args.num_heads, args.hidden_size,
-                                args.sequence_length, args.input_int32, args.float16, args.opt_level)
+                                args.sequence_length, args.input_int32, args.float16, args.opt_level,
+                                optimization_options)
 
     bert_model.save_model_to_file(args.output)
 
