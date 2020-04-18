@@ -2,7 +2,7 @@
 
 ONNX Runtime Trainer is a test feature introduced in the ONNX Runtime engine. This trainer can be used to accelerate the computation of the ops used to train transformer class models.
 
-The ONNX Runtime trainer can be used with your existing Pytorch training code to accelerate execution on NVIDIA GPU clusters.
+The ONNX Runtime trainer can be used with your existing PyTorch training code to accelerate execution on NVIDIA GPU clusters.
 
 ## Build on Linux
 
@@ -79,7 +79,6 @@ for t in range(1000):
     # forward + backward + weight update 
     loss, y_pred = trainer.step(x, y)
     ...
-    
 ```
 
 A sample for end-to-end training with ONNX Runtime trainer is *coming soon*.
