@@ -14,7 +14,7 @@ With our new [layered architecture](HighLevelDesign.md#the-onnx-runtime-and-wind
 
 The Microsoft.ML.OnnxRuntime [Nuget package](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/) includes the precompiled binaries for using the ONNX runtime with the WinRT API.   Support is compiled directly into *onnxruntime.dll*
 
-Note: As of the 1.2 release, you can use all of the CPU functionality from these binaries.  In order to get GPU funtionality using DirectML, you will need to build the binary yourself using [these instructions](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#DirectML).
+Note: As of the 1.2 release, you can use all of the CPU functionality from these binaries.  In order to get GPU functionality using DirectML, you will need to build the binary yourself using [these instructions](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#DirectML).
 
 ## Sample Code
 
@@ -32,4 +32,4 @@ If the OS does not have the runtime you need you can switch to use the redist bi
 |Windows OS 1909| 2|
 |ORT release 1.2| 3|
 
-See [here](https://docs.microsoft.com/en-us/windows/ai/windows-ml/onnx-versions) for more about opsets and ONNX version details in Windows OS distributons.
+See [here](https://docs.microsoft.com/en-us/windows/ai/windows-ml/onnx-versions) for more about opsets and ONNX version details in Windows OS distributions.
