@@ -30,7 +30,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                            const SubGraphContext& subgraph_context)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
 
-  ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_.precision);
+  ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_.device_id, subgraph_context_.precision);
   SetIODefs(model_proto, ie_cnn_network_);
   InferenceEngine::ExecutableNetwork exe_network;
 

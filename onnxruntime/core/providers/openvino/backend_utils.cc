@@ -49,7 +49,7 @@ void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::stri
 #endif
 
 std::shared_ptr<InferenceEngine::CNNNetwork>
-CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto,
+CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, std::string device_id,
                  InferenceEngine::Precision precision) {
 
   std::istringstream model_stream{model_proto.SerializeAsString()};
@@ -64,9 +64,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto,
   }
 
 
-  if (precision == InferenceEngine::Precision::FP16) {
-    if (IsDebugEnabled())
-      std::cout << "FP16" << std::endl;
+  if (device_id == "GPU" && precision == InferenceEngine::Precision::FP16) {
     //FP16 transformations
     ngraph::pass::ConvertFP32ToFP16().run_on_function(ng_function);
     ng_function->validate_nodes_and_infer_types();
