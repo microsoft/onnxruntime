@@ -824,7 +824,6 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
 
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
   if (unsupported_nodes.empty()) {
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is fully supported on OpenVINO ";
     std::vector<std::string> inputs;
     std::vector<std::string> outputs;
 
