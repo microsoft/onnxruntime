@@ -133,7 +133,7 @@ jobs:
 
   - template: ../../templates/validate-nuget.yml
     parameters:
-      NugetPath: '$(Build.ArtifactStagingDirectory)/merged'
+      NugetPath: '$(Build.ArtifactStagingDirectory)\merged'
       NugetPackage: 'Microsoft.AI.MachineLearning*nupkg'
       PlatformsSupported: 'win-x64,win-x86'
       #,win-arm64,win-arm'
