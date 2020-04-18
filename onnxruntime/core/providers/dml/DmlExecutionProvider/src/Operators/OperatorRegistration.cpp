@@ -373,7 +373,7 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO_VER( 11,  Scatter,                            typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
     {REG_INFO(     11,  ScatterElements,                    typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
     {REG_INFO(     11,  ScatterND,                          typeNameListScatterGatherND,    supportedTypeListScatterGatherND,   DmGraphSupport::Supported)},
-    {REG_INFO(      9,  EyeLike,                            typeNameListEyeLike,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      9,  EyeLike,                            typeNameListEyeLike,            supportedTypeListScalars8to32,      DmGraphSupport::Supported)},
 
     // Data reorganization that merely changes the dimensions while keeping the data identical.
     {REG_INFO_ID(   7,  Identity,                           typeNameListDefault,            supportedTypeListAllScalars,        DmGraphSupport::Supported)},
