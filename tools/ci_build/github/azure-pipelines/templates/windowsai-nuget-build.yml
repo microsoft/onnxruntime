@@ -66,6 +66,26 @@ steps:
       workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
       createLogFile: true
 
+  - script: |
+      mklink  /D /J $(Build.BinariesDirectory)\RelWithDebInfo\models $(Build.BinariesDirectory)\models
+      DIR dist\ /S /B > wheel_filename_file
+      set /p WHEEL_FILENAME=<wheel_filename_file
+      del wheel_filename_file
+      python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
+      set PATH=%PATH%;$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo
+      @echo %PATH%
+      python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --test --config RelWithDebInfo --enable_lto
+    workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+    displayName: 'Run tests'
+
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**\*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+      testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
+
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 4.9
     inputs:
