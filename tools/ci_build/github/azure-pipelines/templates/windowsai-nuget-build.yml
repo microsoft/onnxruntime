@@ -1,6 +1,23 @@
 parameters:
   BuildArch: 'x64'
-  RunTests : 'true'
+
+variables:
+  ${{ if eq(parameters.BuildArch, 'x64') }}:
+    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto'
+    EnvironmentSetupBat: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
+    ScriptArchitecture: ${{ parameters.BuildArch }}
+  ${{ if eq(parameters.BuildArch, 'x86') }}:
+    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --x86'
+    EnvironmentSetupBat: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_x86.bat'
+    ScriptArchitecture: ${{ parameters.BuildArch }}
+  ${{ if eq(parameters.BuildArch, 'arm64') }}:
+    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm64'
+    EnvironmentSetupBat: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
+    ScriptArchitecture: 'x64'
+  ${{ if eq(parameters.BuildArch, 'arm') }}:
+    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm'  # this is available to all jobs
+    EnvironmentSetupBat: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
+    ScriptArchitecture: 'x64'
 
 steps:
   - template: enable-telemetry.yml
@@ -9,26 +26,12 @@ steps:
     inputs: 
       versionSpec: '3.7' 
       addToPath: true 
-      ${{ if eq(parameters.BuildArch, 'x64') }}:
-        architecture: ${{ parameters.BuildArch }}
-      ${{ if eq(parameters.BuildArch, 'x86') }}:
-        architecture: ${{ parameters.BuildArch }}
-      ${{ if eq(parameters.BuildArch, 'arm64') }}:
-        architecture: 'x64'
-      ${{ if eq(parameters.BuildArch, 'arm') }}:
-        architecture: 'x64'
+      architecture: ${{ variables.ScriptArchitecture }}
 
   - task: BatchScript@1
     displayName: 'Setup Environment'
     inputs:
-      ${{ if eq(parameters.BuildArch, 'x64') }}:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
-      ${{ if eq(parameters.BuildArch, 'x86') }}:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_x86.bat'
-      ${{ if eq(parameters.BuildArch, 'arm64') }}:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
-      ${{ if eq(parameters.BuildArch, 'arm') }}:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
+      filename: ${{ variables.EnvironmentSetupBat }}
       modifyEnvironment: true
       workingFolder: '$(Build.BinariesDirectory)'
 
@@ -36,14 +39,7 @@ steps:
     displayName: 'Generate CMake Configuration'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      ${{ if eq(parameters.BuildArch, 'x64') }}:
-        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto'
-      ${{ if eq(parameters.BuildArch, 'x86') }}:
-        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --x86'
-      ${{ if eq(parameters.BuildArch, 'arm64') }}:
-        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm64'
-      ${{ if eq(parameters.BuildArch, 'arm') }}:
-        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm'
+      arguments: ${{ variables.BuildCommand }}
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
@@ -74,7 +70,7 @@ steps:
       python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
       set PATH=%PATH%;$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo
       @echo %PATH%
-      python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --test --config RelWithDebInfo --enable_lto
+      python $(Build.SourcesDirectory)\tools\ci_build\build.py ${{ variables.BuildCommand }} --test --config RelWithDebInfo --enable_lto
     workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
     displayName: 'Run tests'
 
@@ -95,14 +91,7 @@ steps:
     displayName: 'Setup VS2019 env vars'
     inputs:
       filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
-      ${{ if eq(parameters.BuildArch, 'x64') }}:
-        arguments: 'x64'
-      ${{ if eq(parameters.BuildArch, 'x86') }}:
-        arguments: 'x86'
-      ${{ if eq(parameters.BuildArch, 'arm64') }}:
-        arguments: 'x64'
-      ${{ if eq(parameters.BuildArch, 'arm') }}:
-        arguments: 'x64'
+      arguments: ${{ variables.ScriptArchitecture }}
       modifyEnvironment: true
 
   # Esrp signing
