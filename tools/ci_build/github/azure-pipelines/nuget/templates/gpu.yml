@@ -27,29 +27,29 @@ jobs:
     parameters:
       BuildArch: 'x86'
 
-#- job: WindowsAI_DirectML_ARM64
-#  timeoutInMinutes: 120
-#  workspace:
-#    clean: all
-#  pool:
-#    name: 'Win-CPU-2019'
-#    demands: []
-#  steps:
-#  - template: ../../templates/windowsai-nuget-build.yml
-#    parameters:
-#      BuildArch: 'arm64'
-#
-#- job: WindowsAI_DirectML_ARM
-#  timeoutInMinutes: 120
-#  workspace:
-#    clean: all
-#  pool:
-#    name: 'Win-CPU-2019'
-#    demands: []
-#  steps:
-#  - template: ../../templates/windowsai-nuget-build.yml
-#    parameters:
-#      BuildArch: 'arm'
+- job: WindowsAI_DirectML_ARM64
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-CPU-2019'
+    demands: []
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'arm64'
+
+- job: WindowsAI_DirectML_ARM
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-CPU-2019'
+    demands: []
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'arm'
 
 - job: NuGet_Packaging
   workspace:
@@ -58,8 +58,8 @@ jobs:
   dependsOn:
   - WindowsAI_DirectML_X64
   - WindowsAI_DirectML_X86
-#  - WindowsAI_DirectML_ARM64
-#  - WindowsAI_DirectML_ARM
+  - WindowsAI_DirectML_ARM64
+  - WindowsAI_DirectML_ARM
   condition: succeeded()
   steps:
   - task: DownloadPipelineArtifact@0
@@ -74,17 +74,17 @@ jobs:
       artifactName: 'Microsoft.AI.MachineLearning.x86'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x86'
 
-#  - task: DownloadPipelineArtifact@0
-#    displayName: 'Download Pipeline Artifact - NuGet DirectML ARM64'
-#    inputs:
-#      artifactName: 'Microsoft.AI.MachineLearning.arm64'
-#      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64'
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet DirectML ARM64'
+    inputs:
+      artifactName: 'Microsoft.AI.MachineLearning.arm64'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64'
 
-#  - task: DownloadPipelineArtifact@0
-#    displayName: 'Download Pipeline Artifact - NuGet DirectML ARM'
-#    inputs:
-#      artifactName: 'Microsoft.AI.MachineLearning.arm'
-#      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm'
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet DirectML ARM'
+    inputs:
+      artifactName: 'Microsoft.AI.MachineLearning.arm'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm'
 
   - task: PowerShell@2
     displayName: 'Bundle NuGet and other binaries'
@@ -106,17 +106,50 @@ jobs:
         $x86_unzipped_directory = [System.IO.Path]::Combine($x86_unzipped_directory_root, [System.IO.Path]::GetFileNameWithoutExtension($x86_nuget_package))
         [System.IO.Compression.ZipFile]::ExtractToDirectory($x86_nuget_package, $x86_unzipped_directory)
 
+        $packages = (Get-ChildItem ..\nuget-artifact-arm64 -Filter Microsoft.AI.MachineLearning* -Recurse)
+        $arm64_nuget_package = $packages[0].FullName
+        $arm64_unzipped_directory_root = $packages[0].Directory.FullName
+        $arm64_unzipped_directory = [System.IO.Path]::Combine($arm64_unzipped_directory_root, [System.IO.Path]::GetFileNameWithoutExtension($arm64_nuget_package))
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($arm64_nuget_package, $arm64_unzipped_directory)
+
+        $packages = (Get-ChildItem ..\nuget-artifact-arm -Filter Microsoft.AI.MachineLearning* -Recurse)
+        $arm_nuget_package = $packages[0].FullName
+        $arm_unzipped_directory_root = $packages[0].Directory.FullName
+        $arm_unzipped_directory = [System.IO.Path]::Combine($arm_unzipped_directory_root, [System.IO.Path]::GetFileNameWithoutExtension($arm_nuget_package))
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($arm_nuget_package, $arm_unzipped_directory)
+
         $x86_runtime_path_old = [System.IO.Path]::Combine($x86_unzipped_directory, 'runtimes', 'win-x86', 'native')
         $x86_runtime_path_new = [System.IO.Path]::Combine($x64_unzipped_directory, 'runtimes', 'win-x86', 'native')
-        New-Item -Path $x86_runtime_path_new -ItemType Directory
+        $arm64_runtime_path_old = [System.IO.Path]::Combine($arm64_unzipped_directory, 'runtimes', 'win-arm64', 'native')
+        $arm64_runtime_path_new = [System.IO.Path]::Combine($x64_unzipped_directory, 'runtimes', 'win-arm64', 'native')
+        $arm_runtime_path_old = [System.IO.Path]::Combine($arm_unzipped_directory, 'runtimes', 'win-arm', 'native')
+        $arm_runtime_path_new = [System.IO.Path]::Combine($x64_unzipped_directory, 'runtimes', 'win-arm', 'native')
 
-        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.dll'))                   $x86_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.lib'))                   $x86_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.pdb'))                   $x86_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.dll'))  $x86_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.lib'))  $x86_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.pdb'))  $x86_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'directml.dll'))                      $x86_runtime_path_new
+        New-Item -Path $x86_runtime_path_new -ItemType Directory
+        New-Item -Path $arm64_runtime_path_new -ItemType Directory
+        New-Item -Path $arm_runtime_path_new -ItemType Directory
+
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.dll'))                    $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.lib'))                    $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.pdb'))                    $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.pdb'))   $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'directml.dll'))                       $x86_runtime_path_new
+
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime.dll'))                  $arm64_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime.lib'))                  $arm64_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime.pdb'))                  $arm64_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'microsoft.ai.machinelearning.dll')) $arm64_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'microsoft.ai.machinelearning.lib')) $arm64_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'microsoft.ai.machinelearning.pdb')) $arm64_runtime_path_new
+        
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'onnxruntime.dll'))                    $arm_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'onnxruntime.lib'))                    $arm_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'onnxruntime.pdb'))                    $arm_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   $arm_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   $arm_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'microsoft.ai.machinelearning.pdb'))   $arm_runtime_path_new
 
         $merged_nuget_path = [System.IO.Path]::Combine($Env:BUILD_ARTIFACTSTAGINGDIRECTORY, 'merged')
         New-Item -Path $merged_nuget_path -ItemType Directory
@@ -135,8 +168,7 @@ jobs:
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)\merged'
       NugetPackage: 'Microsoft.AI.MachineLearning*nupkg'
-      PlatformsSupported: 'win-x64,win-x86'
-      #,win-arm64,win-arm'
+      PlatformsSupported: 'win-x64,win-x86,win-arm64,win-arm'
       VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
 

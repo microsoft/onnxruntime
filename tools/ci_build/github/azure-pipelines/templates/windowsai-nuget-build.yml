@@ -9,8 +9,15 @@ steps:
     inputs: 
       versionSpec: '3.7' 
       addToPath: true 
-      architecture: ${{ parameters.BuildArch }}
-        
+      ${{ if eq(parameters.BuildArch, 'x64') }}:
+        architecture: ${{ parameters.BuildArch }}
+      ${{ if eq(parameters.BuildArch, 'x86') }}:
+        architecture: ${{ parameters.BuildArch }}
+      ${{ if eq(parameters.BuildArch, 'arm64') }}:
+        architecture: 'x64'
+      ${{ if eq(parameters.BuildArch, 'arm') }}:
+        architecture: 'x64'
+
   - task: BatchScript@1
     displayName: 'Setup Environment'
     inputs:
