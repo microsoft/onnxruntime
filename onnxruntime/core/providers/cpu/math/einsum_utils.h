@@ -105,7 +105,7 @@ class EinsumComputePreprocessor final {
   const std::vector<int64_t>& GetMappedSubscriptIndicesToOutputindices() const;
 
   // Get the number of subscript indices (subscript labels) in the einsum equation
-  const int64_t GetNumSubscriptIndices() const;
+  int64_t GetNumSubscriptIndices() const;
 
  private:
   // Process subscripts of each input and collect metadata along the way
@@ -127,9 +127,6 @@ class EinsumComputePreprocessor final {
   // private members
   // Instance of EinsumEquationPreprocessor
   EinsumEquationPreprocessor einsum_equation_preprocessor_;
-
-  // Flag indicating if Einsum equation has an ellipsis (requests broadcasting support if so)
-  bool has_ellipses_ = false;
 
   // The number of dims that encompasses an "ellipsis"
   size_t num_of_ellipsis_dims_ = 0;

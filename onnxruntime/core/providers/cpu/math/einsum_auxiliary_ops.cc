@@ -176,7 +176,6 @@ static Tensor DiagonalInnermostDims(const Tensor& input, bool preserve_innermost
 
 Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator) {
   const auto& dims = input.Shape().GetDims();
-  const size_t element_size_in_bytes = input.DataType()->Size();
   auto rank = static_cast<int64_t>(dims.size());
 
   ORT_ENFORCE(rank >= 2 && dim_1 >= 0 && dim_2 >= 0 && dim_1 < rank &&

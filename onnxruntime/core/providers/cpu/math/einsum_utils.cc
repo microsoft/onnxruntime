@@ -249,7 +249,7 @@ const std::vector<int64_t>& EinsumComputePreprocessor::GetMappedSubscriptIndices
   return subscript_indices_to_output_indices_;
 }
 
-const int64_t EinsumComputePreprocessor::GetNumSubscriptIndices() const {
+int64_t EinsumComputePreprocessor::GetNumSubscriptIndices() const {
   return num_subscript_indices_;
 }
 
@@ -592,7 +592,7 @@ void EinsumComputePreprocessor::PreprocessInputs() {
 
 // Templated core Einsum logic
 template <typename T>
-Status EinsumTypedComputeProcessor<T>(OpKernelContext* context,
+Status EinsumTypedComputeProcessor(OpKernelContext* context,
                                       AllocatorPtr allocator,
                                       EinsumComputePreprocessor& einsum_compute_preprocessor) {
   const auto& mapped_indices_to_last_input_index = einsum_compute_preprocessor.GetMappedSubscriptIndicesToLastInputIndex();
