@@ -234,6 +234,9 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   } else if (optype == "Max" || optype == "Min" || optype == "Mean" || optype == "Sum") {
     if (GetInputCount(node, initializers) == 1)
       return true;
+  } else if (optype == "Clip") {
+    //U8 datatype is not supported
+    return node->InputDefs()[0]->Type()->find("uint8") != std::string::npos;
   } else if (optype == "OneHot") {
     //nGraph OneHot op currently requires depth info available in advance.
     const auto& depth_arg = node->InputDefs()[1];

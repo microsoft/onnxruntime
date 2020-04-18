@@ -63,8 +63,8 @@ TEST(MathOpTest, Clip_Default_int8) {
                            -1, 3, 64,
                            -5, 9, 82});
 
-  // TensorRT, nGraph does not support Clip opset 12 yet.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+  // TensorRT, nGraph, OpenVINO does not support Clip opset 12 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(MathOpTest, Clip_Default_uint8) {

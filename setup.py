@@ -236,7 +236,6 @@ setup(
     package_data={
         'onnxruntime': data + examples + extra,
     },
-    py_modules=python_modules_list,
     install_requires=install_requires,
     entry_points= {
         'console_scripts': [
