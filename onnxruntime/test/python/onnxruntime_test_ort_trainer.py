@@ -246,13 +246,13 @@ class TestOrtTrainer(unittest.TestCase):
 
         learningRate = 0.01
         args_epochs = 2
-        expected_losses = [2.345372200012207, 0.8558371067047119, 0.6692017316818237, 0.5240862369537354,
-                        0.4327302575111389, 0.2800341844558716, 0.2419648915529251, 0.263438880443573,
-                        0.3994610905647278, 0.3097628951072693, 0.4905158281326294, 0.374204158782959,
-                        0.19508624076843262, 0.2650184631347656, 0.4114145040512085, 0.24791213870048523,
-                        0.16095051169395447, 0.18530189990997314, 0.1688750684261322, 0.23382069170475006]
-        expected_test_losses = [0.30860821228027346, 0.2554518310546875]
-        expected_test_accuracies = [0.9144, 0.9288]
+        expected_losses = [2.333008289337158, 1.0680292844772339, 0.6300537586212158, 0.5279903411865234,
+                        0.3710068166255951, 0.4044453501701355, 0.30482712388038635, 0.4595026969909668,
+                        0.42305776476860046, 0.4797358512878418, 0.23006735742092133, 0.48427966237068176,
+                        0.30716797709465027, 0.3238796889781952, 0.19543828070163727, 0.3561663031578064,
+                        0.3089643716812134, 0.37738722562789917, 0.24883587658405304, 0.30744990706443787]
+        expected_test_losses = [0.31038025817871095, 0.25183824462890625]
+        expected_test_accuracies = [0.9125, 0.9304]
 
         actual_losses = []
         actual_test_losses, actual_accuracies = [], []
@@ -270,10 +270,9 @@ class TestOrtTrainer(unittest.TestCase):
         # to update expected outcomes, enable pdb and run the test with -s and copy paste outputs
         # import pdb; pdb.set_trace()
         rtol = 1e-03
-        atol = 1e-04
-        assert_allclose(expected_losses, actual_losses, atol=atol, rtol=rtol, err_msg="loss mismatch")
-        assert_allclose(expected_test_losses, actual_test_losses, atol=atol, rtol=rtol, err_msg="test loss mismatch")
-        assert_allclose(expected_test_accuracies, actual_accuracies, atol=atol, rtol=rtol, err_msg="test accuracy mismatch")
+        assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
+        assert_allclose(expected_test_losses, actual_test_losses, rtol=rtol, err_msg="test loss mismatch")
+        assert_allclose(expected_test_accuracies, actual_accuracies, rtol=rtol, err_msg="test accuracy mismatch")
 
     def testBertTrainingBasic(self):
         expected_losses = [
