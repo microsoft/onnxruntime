@@ -12,7 +12,6 @@
 #include "core/framework/ml_value.h"
 #include "core/framework/mem_buffer.h"
 #include "core/framework/tensor_external_data_info.h"
-#include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/env.h"
 
@@ -38,14 +37,11 @@ common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_prot
 /** Creates a TensorProto from a Tensor.
     @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.
     @param[in] tensor_proto_name the name of the TensorProto.
-    @param[in] tensor_proto_type the type of the TensorProto.
     @return the TensorProto. 
     
     Note: Method currently requires that data is in little-endian format.
-    TODO Once the GetTensorProtoType supports all data types, we can remove the tensor_proto_type parameter and 
-    instead get the type from the tensor. */
-ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name,
-                                                const ONNX_NAMESPACE::TypeProto& tensor_proto_type);
+ */
+ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name);
 
 ONNXTensorElementDataType CApiElementTypeFromProtoType(int type);
 ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto& tensor_proto);

@@ -1,4 +1,4 @@
-// Copyright(C) 2020 Intel Corporation
+// Copyright(C) 2019 Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
@@ -16,19 +16,18 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-class IBackend{
-  public:
+class IBackend {
+ public:
   virtual void Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) = 0;
 };
 
 class BackendFactory {
-  public:
-
+ public:
   static std::shared_ptr<IBackend>
   MakeBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
               GlobalContext& global_context,
               const SubGraphContext& subgraph_context);
 };
 
-} // namespace openvino_ep
-} // namespace onnxruntime
+}  // namespace openvino_ep
+}  // namespace onnxruntime

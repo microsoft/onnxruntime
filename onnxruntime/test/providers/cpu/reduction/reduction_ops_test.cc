@@ -1483,6 +1483,22 @@ TEST(ReductionOpTest, ReduceProd_int32) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceProd_int64) {
+  OpTester test("ReduceProd");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {1, 2, 1}, {5400, 88704});
+  test.Run();
+}
+
 #if !(defined USE_TENSORRT) && !(defined USE_TVM)
 TEST(ReductionOpTest, ReduceProd0DTensor) {
   OpTester test("ReduceProd");

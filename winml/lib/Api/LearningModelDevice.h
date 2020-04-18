@@ -84,7 +84,9 @@ struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacomm
   bool m_isCpuDevice;
   bool m_areMetacommandsEnabled = true;
   std::shared_ptr<WinML::ConverterResourceStore> m_detensorizerStore;
+  std::once_flag m_detensorizerStoreInitialized;
   std::shared_ptr<WinML::ConverterResourceStore> m_tensorizerStore;
+  std::once_flag m_tensorizerStoreInitialized;
 
   std::unique_ptr<D3DDeviceCache> m_deviceCache;
 };

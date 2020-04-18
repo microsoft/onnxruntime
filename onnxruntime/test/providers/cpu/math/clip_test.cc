@@ -30,7 +30,7 @@ TEST(MathOpTest, Clip_6) {
 }
 
 TEST(MathOpTest, Clip_Default) {
-  OpTester test("Clip", 11);
+  OpTester test("Clip", -1);
 
   std::vector<int64_t> dims{3, 3};
   test.AddInput<float>("X", dims,
@@ -45,8 +45,78 @@ TEST(MathOpTest, Clip_Default) {
   #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kNGraphExecutionProvider});
   #else
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});// nGraph does not support Clip opset 11 yet.
+  // nGraph does not support Clip opset 12 yet.
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
   #endif
+}
+
+TEST(MathOpTest, Clip_Default_int8) {
+  OpTester test("Clip", -1);
+
+  std::vector<int64_t> dims{3, 3};
+  test.AddInput<int8_t>("X", dims,
+                         {11, 4, 127,
+                          -1, 3, 64,
+                          -5, 9, 82});
+  test.AddOutput<int8_t>("Y", dims,
+                          {11, 4, 127,
+                           -1, 3, 64,
+                           -5, 9, 82});
+
+  // TensorRT, nGraph does not support Clip opset 12 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+}
+
+TEST(MathOpTest, Clip_Default_uint8) {
+  OpTester test("Clip", -1);
+
+  std::vector<int64_t> dims{3, 3};
+  test.AddInput<uint8_t>("X", dims,
+                        {11, 4, 255,
+                         1, 3, 64,
+                         5, 9, 82});
+  test.AddOutput<uint8_t>("Y", dims,
+                         {11, 4, 255,
+                          1, 3, 64,
+                          5, 9, 82});
+
+  // TensorRT, nGraph does not support Clip opset 12 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+}
+
+TEST(MathOpTest, Clip_Default_int64) {
+  OpTester test("Clip", -1);
+
+  std::vector<int64_t> dims{3, 3};
+  test.AddInput<int64_t>("X", dims,
+                        {11, 4, 432,
+                         -1, 3, 64,
+                         -5, 9, 82});
+  test.AddOutput<int64_t>("Y", dims,
+                         {11, 4, 432,
+                          -1, 3, 64,
+                          -5, 9, 82});
+
+  // TensorRT, nGraph does not support Clip opset 12 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+}
+
+
+TEST(MathOpTest, Clip_Default_uint64) {
+  OpTester test("Clip", -1);
+
+  std::vector<int64_t> dims{3, 3};
+  test.AddInput<uint64_t>("X", dims,
+                         {11, 4, 432,
+                          1, 3, 64,
+                          5, 9, 82});
+  test.AddOutput<uint64_t>("Y", dims,
+                          {11, 4, 432,
+                           1, 3, 64,
+                           5, 9, 82});
+
+  // TensorRT, nGraph does not support Clip opset 12 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
 }
 
 TEST(MathOpTest, Clip) {
@@ -64,7 +134,7 @@ TEST(MathOpTest, Clip) {
                          -5.0f, 0.0f, 5.0f,
                          -5.0f, 2.0f, 5.0f});
 
-  // nGraph and Tensorrt does not support Clip opset 11 yet.
+  // TensorRT, nGraph and Tensorrt does not support Clip opset 11 yet.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
 }
 

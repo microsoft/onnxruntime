@@ -1,4 +1,4 @@
-// Copyright(C) 2020 Intel Corporation
+// Copyright(C) 2019 Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
@@ -14,28 +14,31 @@
 namespace onnxruntime {
 namespace openvino_ep {
 namespace backend_utils {
-  const std::string log_tag = "[OpenVINO-EP] ";
-  bool IsDebugEnabled();
+const std::string log_tag = "[OpenVINO-EP] ";
 
-  void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
-                 std::shared_ptr<InferenceEngine::CNNNetwork> network);
+#ifndef NDEBUG
+bool IsDebugEnabled();
+#endif
 
-  std::shared_ptr<InferenceEngine::CNNNetwork>
-  CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto);
+void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
+               std::shared_ptr<InferenceEngine::CNNNetwork> network);
 
-  InferenceEngine::Precision
-  ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type);
+std::shared_ptr<InferenceEngine::CNNNetwork>
+CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto);
 
-  std::vector<const OrtValue*> GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context,
-                                               std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network,
-                                               std::vector<int> input_indexes);
+InferenceEngine::Precision
+ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type);
 
-  std::vector<OrtValue*> GetOutputTensors(Ort::CustomOpApi& ort,
-                                          OrtKernelContext* context, size_t batch_size,
-                                          InferenceEngine::InferRequest::Ptr infer_request,
-                                          std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network,
-                                          std::unordered_map<std::string, int> output_names);
+std::vector<const OrtValue*> GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context,
+                                             std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network,
+                                             std::vector<int> input_indexes);
 
-} // namespace backend_utils
-} // namespace openvino_ep
-} // namespace onnxruntime
+std::vector<OrtValue*> GetOutputTensors(Ort::CustomOpApi& ort,
+                                        OrtKernelContext* context, size_t batch_size,
+                                        InferenceEngine::InferRequest::Ptr infer_request,
+                                        std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network,
+                                        std::unordered_map<std::string, int> output_names);
+
+}  // namespace backend_utils
+}  // namespace openvino_ep
+}  // namespace onnxruntime

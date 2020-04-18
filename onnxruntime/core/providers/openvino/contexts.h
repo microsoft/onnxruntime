@@ -1,4 +1,4 @@
-// Copyright(C) 2020 Intel Corporation
+// Copyright(C) 2019 Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
@@ -22,6 +22,7 @@ struct GlobalContext {
 struct SubGraphContext {
   bool has_dynamic_input_shape = false;
   bool enable_batching = false;
+  bool set_vpu_config = false;
   std::string subgraph_name;
   std::vector<int> input_indexes;
   std::unordered_map<std::string, int> output_names;

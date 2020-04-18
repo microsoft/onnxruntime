@@ -16,7 +16,7 @@ __global__ void QuantizeLinearKernel(const float* input, int8_t* output, const f
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
       int value = __float2int_rn(input[id] / (*scale)) + *zero_point;
-      output[id] = static_cast<int8_t>(max(-127, min(127, value)));
+      output[id] = static_cast<int8_t>(max(-128, min(127, value)));
       id += NumThreadsPerBlock;
     }
   }

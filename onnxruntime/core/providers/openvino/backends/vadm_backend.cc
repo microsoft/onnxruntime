@@ -1,4 +1,4 @@
-// Copyright(C) 2020 Intel Corporation
+// Copyright(C) 2019 Intel Corporation
 // Licensed under the MIT License
 
 #include <map>
@@ -29,8 +29,7 @@ using namespace backend_utils;
 VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                          GlobalContext& global_context,
                          const SubGraphContext& subgraph_context)
-    : global_context_(global_context) , subgraph_context_(subgraph_context) {
-
+    : global_context_(global_context), subgraph_context_(subgraph_context) {
   // Infer Request class represents OpenVINO's logical hardware instance. These logical
   // instances are bound to physical hardware instances at runtime depending
   // on the physical hardware availability. If multiple Infer Requests are mapped to
@@ -79,9 +78,9 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
 void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const OrtValue*> input_tensors,
-                                     size_t batch_slice_idx, size_t infer_req_idx,
-                                     std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
-                                     std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
+                                      size_t batch_slice_idx, size_t infer_req_idx,
+                                      std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
+                                      std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
   auto infer_request = infer_requests[infer_req_idx];
   auto graph_input_info = ie_cnn_network->getInputsInfo();
 
@@ -93,9 +92,9 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const O
     try {
       graph_input_blob = infer_request->GetBlob(input_info_iter->first);
     } catch (InferenceEngine::details::InferenceEngineException e) {
-      ORT_THROW( log_tag + " Cannot access IE Blob for input: " + input_info_iter->first + e.what());
+      ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_info_iter->first + e.what());
     } catch (...) {
-      ORT_THROW( log_tag + " Cannot access IE Blob for input: " + input_info_iter->first);
+      ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_info_iter->first);
     }
 
     auto graph_input_buffer =
@@ -122,9 +121,9 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const O
 // Wait for asynchronous inference completion on an Infer Request object indexed by infer_req_idx
 // and copy the results into a slice location within the batched output buffer indexed by batch_slice_idx
 void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtValue*> output_tensors,
-                                        size_t batch_slice_idx,
-                                        size_t infer_req_idx, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
-                                        std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
+                                         size_t batch_slice_idx,
+                                         size_t infer_req_idx, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
+                                         std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
   auto infer_request = infer_requests[infer_req_idx];
 
   // Wait for Async inference completion
@@ -145,9 +144,9 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtV
     try {
       graph_output_blob = infer_request->GetBlob(output_info_iter->first);
     } catch (InferenceEngine::details::InferenceEngineException e) {
-      ORT_THROW( log_tag + " Cannot access IE Blob for output: " + output_info_iter->first + e.what());
-    } catch(...) {
-      ORT_THROW( log_tag + " Cannot access IE Blob for output: " + output_info_iter->first);
+      ORT_THROW(log_tag + " Cannot access IE Blob for output: " + output_info_iter->first + e.what());
+    } catch (...) {
+      ORT_THROW(log_tag + " Cannot access IE Blob for output: " + output_info_iter->first);
     }
     auto graph_output_buffer =
         graph_output_blob->buffer().as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
@@ -161,7 +160,7 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtV
   }
 }
 size_t DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* input_tensor,
-                                      InferenceEngine::SizeVector graph_dims) {
+                       InferenceEngine::SizeVector graph_dims) {
   size_t batch_size = 1;
 
   // All the inputs and outputs are batched the same way.
@@ -189,10 +188,10 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
 
   size_t batch_size = 1;
 
-  if(subgraph_context_.enable_batching) {
-  // Calculate the batch_size from the input tensor shape.
+  if (subgraph_context_.enable_batching) {
+    // Calculate the batch_size from the input tensor shape.
     batch_size = DeduceBatchSize(ort, input_tensors[0],
-                               ie_cnn_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
+                                 ie_cnn_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
   }
 
   size_t full_parallel_runs = batch_size / num_inf_reqs_;

@@ -1,4 +1,4 @@
-// Copyright(C) 2020 Intel Corporation
+// Copyright(C) 2019 Intel Corporation
 // Licensed under the MIT License
 
 #include "core/providers/openvino/openvino_provider_factory.h"
@@ -8,7 +8,7 @@
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
   OpenVINOProviderFactory(const char* device) {
-    if(device == nullptr) {
+    if (device == nullptr) {
       device_ = "";
     } else {
       device_ = device;

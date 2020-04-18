@@ -48,5 +48,24 @@ class Pool final : public onnxruntime::Pool<T, PoolType> {
   static thread_local std::map<OpKernel*, ACLNEPool> poolLayers;
   ACLExecutionProvider* provider_;
 };
+
+template <typename T>
+class MaxPoolV8 final : public onnxruntime::MaxPoolV8 {
+ public:
+  explicit MaxPoolV8(const OpKernelInfo& info) : onnxruntime::MaxPoolV8(info) {
+    provider_ = (const_cast<ACLExecutionProvider*>(
+        dynamic_cast<const ACLExecutionProvider*>(info.GetExecutionProvider())));
+  }
+
+  ~MaxPoolV8() {
+    maxPoolLayers.erase(this);
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  static thread_local std::map<OpKernel*, ACLNEPool> maxPoolLayers;
+  ACLExecutionProvider* provider_;
+};
 }  // namespace acl
 }
