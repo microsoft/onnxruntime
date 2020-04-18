@@ -125,24 +125,6 @@ jobs:
 
          move win-x86\runtimes\win-x86\native\directml.dll %%~ni\runtimes\win-x86\native\directml.dll
 
-
-
-#         move win-arm64\runtimes\win-arm64\native\onnxruntime.dll %%~ni\runtimes\win-arm64\native\onnxruntime.dll
-#         move win-arm64\runtimes\win-arm64\native\onnxruntime.lib %%~ni\runtimes\win-arm64\native\onnxruntime.lib
-#         move win-arm64\runtimes\win-arm64\native\onnxruntime.pdb %%~ni\runtimes\win-arm64\native\onnxruntime.pdb
-#
-#         move win-arm64\runtimes\win-arm64\native\microsoft.ai.machinelearning.dll %%~ni\runtimes\win-arm64\native\microsoft.ai.machinelearning.dll
-#         move win-arm64\runtimes\win-arm64\native\microsoft.ai.machinelearning.lib %%~ni\runtimes\win-arm64\native\microsoft.ai.machinelearning.lib
-#         move win-arm64\runtimes\win-arm64\native\microsoft.ai.machinelearning.pdb %%~ni\runtimes\win-arm64\native\microsoft.ai.machinelearning.pdb
-#
-#         move win-arm\runtimes\win-arm\native\onnxruntime.dll %%~ni\runtimes\win-arm\native\onnxruntime.dll
-#         move win-arm\runtimes\win-arm\native\onnxruntime.lib %%~ni\runtimes\win-arm\native\onnxruntime.lib
-#         move win-arm\runtimes\win-arm\native\onnxruntime.pdb %%~ni\runtimes\win-arm\native\onnxruntime.pdb
-#
-#         move win-arm\runtimes\win-arm\native\microsoft.ai.machinelearning.dll %%~ni\runtimes\win-arm\native\microsoft.ai.machinelearning.dll
-#         move win-arm\runtimes\win-arm\native\microsoft.ai.machinelearning.lib %%~ni\runtimes\win-arm\native\microsoft.ai.machinelearning.lib
-#         move win-arm\runtimes\win-arm\native\microsoft.ai.machinelearning.pdb %%~ni\runtimes\win-arm\native\microsoft.ai.machinelearning.pdb
-
          pushd %%~ni
          zip -r ..\%%~ni.zip .
          popd
