@@ -217,7 +217,11 @@ def create_backend_test(testname=None):
                 '^test_pow_bcast_array_cpu',
                 '^test_sub_bcast_cpu',
                 '^test_batchnorm_example_cpu',
-                '^test_clip_default_inbounds_cpu'
+                '^test_clip_default_inbounds_cpu',
+                '^test_resize_upsample_sizes_nearest_ceil_half_pixel_cpu',
+                '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu',
+                '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu',
+                '^test_unique_not_sorted_without_axis_cpu'
             ]
 
 
