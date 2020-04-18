@@ -78,7 +78,7 @@ steps:
       DoEsrp: 'true'
 
   - script: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.AI.MachineLearning
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.AI.MachineLearning\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
