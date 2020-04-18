@@ -85,7 +85,7 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 ## Image Classification Networks
 
 | **MODEL NAME** | **CPU** | **GPU** | **VPU** | **FPGA** |
-| --- | --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- |
 | bvlc_alexnet | Yes | Yes | Yes | Yes* |
 | bvlc_googlenet | Yes | Yes | Yes | Yes* |
 | bvlc_reference_caffenet | Yes | Yes | Yes | Yes* |
@@ -114,12 +114,12 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 
 ## Image Recognition Networks
 | **MODEL NAME** | **CPU** | **GPU** | **VPU** | **FPGA** |
-| --- | --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- |
 | mnist | Yes | Yes | Yes | Yes* |
 
 ## Object Detection Networks
 | **MODEL NAME** | **CPU** | **GPU** | **VPU** | **FPGA** |
-| --- | --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- |
 | tiny_yolov2 | Yes | Yes | Yes | Yes* |
 
 *FPGA only runs in HETERO mode wherein the layers that are not supported on FPGA fall back to OpenVINO CPU.
