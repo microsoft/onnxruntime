@@ -627,14 +627,14 @@ void OpTester::Run(
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
     ExecutionMode execution_mode,
     const CustomOutputVerifierFn& custom_output_verifier,
-    const Graph::ResolveOptions* resolve_options) {
+    const Graph::ResolveOptions& options) {
   SessionOptions so;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
   so.execution_mode = execution_mode;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
   Run(so, expect_result, expected_failure_string, excluded_provider_types,
-      run_options, execution_providers, custom_output_verifier, resolve_options);
+      run_options, execution_providers, custom_output_verifier, options);
 }
 
 void OpTester::Run(
@@ -645,7 +645,7 @@ void OpTester::Run(
     const RunOptions* run_options,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
     const CustomOutputVerifierFn& custom_output_verifier,
-    const Graph::ResolveOptions* resolve_options) {
+    const Graph::ResolveOptions& options) {
   std::string cur_provider = "not set";
   try {
 #ifndef NDEBUG
@@ -662,12 +662,12 @@ void OpTester::Run(
           expect_result == ExpectResult::kExpectFailure) {
         // capture possible exceptions from shape inference for invalid testcase
         try {
-          status = resolve_options != nullptr ? graph.Resolve(*resolve_options) : graph.Resolve();
+          status = graph.Resolve(options);
         } catch (const std::exception& ex) {
           status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
         }
       } else {
-        status = resolve_options != nullptr ? graph.Resolve(*resolve_options) : graph.Resolve();
+        status = graph.Resolve(options);
       }
 
       if (!status.IsOK()) {
