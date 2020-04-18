@@ -29,10 +29,6 @@ Tensor Transpose(const Tensor& input, const std::vector<size_t>& permutation, Al
   return output;
 }
 
-inline void CreateReshapedView(Tensor& input, const std::vector<int64_t>& new_dims) {
-  input.Reshape(new_dims);
-}
-
 template <typename T>
 Tensor MatMul(const Tensor& input_1, const Tensor& input_2, AllocatorPtr allocator, concurrency::ThreadPool* tp) {
   const auto& input1_dims = input_1.Shape().GetDims();

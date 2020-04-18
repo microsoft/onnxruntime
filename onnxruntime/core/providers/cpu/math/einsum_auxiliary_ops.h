@@ -23,7 +23,9 @@ Tensor Transpose(const Tensor& input, const std::vector<size_t>& permutation, Al
 
 // Creates a "reshaped view" for the same tensor (i.e.) mutates the shape for the same tensor
 // We will use it to introduce some "unsqueezed" dims (i.e.) extra dims with dim value as 1
-void CreateReshapedView(Tensor& input, const std::vector<int64_t>& new_dims);
+inline void CreateReshapedView(Tensor& input, const std::vector<int64_t>& new_dims) {
+  input.Reshape(new_dims);
+}
 
 // Thin wrapper over the MatMul op
 // Not using the MatMulHelper to compute output dims as it adds a lot of checking overhead involving transposes of the inputs

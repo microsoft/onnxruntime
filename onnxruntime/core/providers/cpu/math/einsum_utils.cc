@@ -295,7 +295,7 @@ void EinsumComputePreprocessor::ProcessSubscripts() {
           // Example for the following line of code
           // Subscript "...ij" for an input of rank 6
           // num_of_ellipsis_dims = 6 - 5 + 3 = 4
-          size_t current_num_of_ellipsis_dims = rank - subscript.length() + 3;
+          int64_t current_num_of_ellipsis_dims = rank - subscript.length() + 3;
           ORT_ENFORCE(current_num_of_ellipsis_dims >= 0,
                       "Einsum subscripts string contains too many subscript labels when compared to the rank of the input ",
                       input_index);
@@ -306,10 +306,10 @@ void EinsumComputePreprocessor::ProcessSubscripts() {
             // We have seen a ellipsis before - make sure ranks align as per the ONNX spec -
             // "Ellipsis must indicate a fixed number of dimensions."
             if (num_of_ellipsis_dims_ != 0) {
-              ORT_ENFORCE(num_of_ellipsis_dims_ == current_num_of_ellipsis_dims,
+              ORT_ENFORCE(num_of_ellipsis_dims_ == static_cast<size_t>(current_num_of_ellipsis_dims),
                           "Ellipsis must indicate a fixed number of dimensions across all inputs");
             } else {
-              num_of_ellipsis_dims_ = current_num_of_ellipsis_dims;
+              num_of_ellipsis_dims_ = static_cast<size_t>(current_num_of_ellipsis_dims);
             }
 
             // We reserve '26' for broadcasted dims as we only allow 'a' - 'z' (0 - 25) for non-broadcasted dims
@@ -325,7 +325,7 @@ void EinsumComputePreprocessor::ProcessSubscripts() {
         ORT_ENFORCE(subscript_label >= 'a' && subscript_label <= 'z',
                     "The only subscript labels allowed are lowercase letters (a-z)");
 
-        auto letter_index = subscript_label - 'a';
+        auto letter_index = static_cast<int64_t>(subscript_label - 'a');
         auto dim_value = dims[dim_counter];
 
         // Subscript label not found in global subscript label array
@@ -470,7 +470,7 @@ void EinsumComputePreprocessor::ParseOrCreateOutputSubscript() {
   size_t iter = 0;
   for (const auto& count : letter_to_count_) {
     if (count == 1) {
-      output_equation << (char)('a' + iter);
+      output_equation << static_cast<char>('a' + iter);
     }
     ++iter;
   }
@@ -512,7 +512,7 @@ void EinsumComputePreprocessor::CalculateOutputShape() {
       ORT_ENFORCE(subscript_label >= 'a' && subscript_label <= 'z',
                   "The only subscript labels allowed are lowercase letters (a-z)");
 
-      auto letter_index = subscript_label - 'a';
+      auto letter_index = static_cast<int64_t>(subscript_label - 'a');
 
       ORT_ENFORCE(output_letter_to_count[letter_index] == 0,
                   "Output subscript contains repeated letters");
@@ -580,7 +580,7 @@ void EinsumComputePreprocessor::PreprocessInputs() {
     }
 
     // TODO: Identify no-op transpose and prevent triggering the transpose
-    preprocessed = EinsumOp::Transpose(preprocessed, permutation, allocator_);
+    preprocessed = EinsumOp::Transpose(preprocessed, permutation, allocator_);    
 
     EinsumOp::CreateReshapedView(preprocessed, homogenized_input_dims);
 

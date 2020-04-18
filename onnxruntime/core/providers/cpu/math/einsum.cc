@@ -32,7 +32,7 @@ Status Einsum::Compute(OpKernelContext* context) const {
   auto status = context->GetTempSpaceAllocator(&allocator);
   if (!status.IsOK()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, 
-                           "There was a problem acquiring temporary space allocator in Einsum op");
+                           "There was a problem acquiring temporary memory allocator in Einsum op");
   }
 
   // Instantiate EinsumComputePreprocessor
