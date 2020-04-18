@@ -29,7 +29,7 @@ Tensor Transpose(const Tensor& input, const std::vector<size_t>& permutation, Al
   return output;
 }
 
-void CreateReshapedView(Tensor& input, const std::vector<int64_t>& new_dims) {
+inline void CreateReshapedView(Tensor& input, const std::vector<int64_t>& new_dims) {
   input.Reshape(new_dims);
 }
 
