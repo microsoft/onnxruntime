@@ -60,18 +60,9 @@ public class OrtSession implements AutoCloseable {
    */
   OrtSession(OrtEnvironment env, String modelPath, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
-    nativeHandle =
-        createSession(OnnxRuntime.ortApiHandle, env.nativeHandle, modelPath, options.nativeHandle);
-    this.allocator = allocator;
-    numInputs = getNumInputs(OnnxRuntime.ortApiHandle, nativeHandle);
-    inputNames =
-        new LinkedHashSet<>(
-            Arrays.asList(getInputNames(OnnxRuntime.ortApiHandle, nativeHandle, allocator.handle)));
-    numOutputs = getNumOutputs(OnnxRuntime.ortApiHandle, nativeHandle);
-    outputNames =
-        new LinkedHashSet<>(
-            Arrays.asList(
-                getOutputNames(OnnxRuntime.ortApiHandle, nativeHandle, allocator.handle)));
+    this(
+        createSession(OnnxRuntime.ortApiHandle, env.nativeHandle, modelPath, options.nativeHandle),
+        allocator);
   }
 
   /**
@@ -81,12 +72,24 @@ public class OrtSession implements AutoCloseable {
    * @param modelArray The model protobuf as a byte array.
    * @param allocator The allocator to use.
    * @param options Session configuration options.
-   * @throws OrtException If the mode was corrupted or some other error occurred in native code.
+   * @throws OrtException If the model was corrupted or some other error occurred in native code.
    */
   OrtSession(OrtEnvironment env, byte[] modelArray, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
-    nativeHandle =
-        createSession(OnnxRuntime.ortApiHandle, env.nativeHandle, modelArray, options.nativeHandle);
+    this(
+        createSession(OnnxRuntime.ortApiHandle, env.nativeHandle, modelArray, options.nativeHandle),
+        allocator);
+  }
+
+  /**
+   * Private constructor to build the Java object wrapped around a native session.
+   *
+   * @param nativeHandle The pointer to the native session.
+   * @param allocator The allocator to use.
+   * @throws OrtException If the model's inputs, outputs or metadata could not be read.
+   */
+  private OrtSession(long nativeHandle, OrtAllocator allocator) throws OrtException {
+    this.nativeHandle = nativeHandle;
     this.allocator = allocator;
     numInputs = getNumInputs(OnnxRuntime.ortApiHandle, nativeHandle);
     inputNames =
@@ -289,17 +292,17 @@ public class OrtSession implements AutoCloseable {
   private static Map<String, NodeInfo> wrapInMap(NodeInfo[] infos) {
     Map<String, NodeInfo> output = new LinkedHashMap<>();
 
-    for (int i = 0; i < infos.length; i++) {
-      output.put(infos[i].getName(), infos[i]);
+    for (NodeInfo info : infos) {
+      output.put(info.getName(), info);
     }
 
     return output;
   }
 
-  private native long createSession(
+  private static native long createSession(
       long apiHandle, long envHandle, String modelPath, long optsHandle) throws OrtException;
 
-  private native long createSession(
+  private static native long createSession(
       long apiHandle, long envHandle, byte[] modelArray, long optsHandle) throws OrtException;
 
   private native long getNumInputs(long apiHandle, long nativeHandle) throws OrtException;
@@ -548,6 +551,26 @@ public class OrtSession implements AutoCloseable {
       addNuphar(OnnxRuntime.ortApiHandle, nativeHandle, allowUnalignedBuffers ? 1 : 0, settings);
     }
 
+    /**
+     * Adds DirectML as an execution backend.
+     *
+     * @param deviceId The id of the DirectML device.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addDirectML(int deviceId) throws OrtException {
+      addDirectML(OnnxRuntime.ortApiHandle, nativeHandle, deviceId);
+    }
+
+    /**
+     * Adds the ARM Compute Library as an execution backend.
+     *
+     * @param useArena If true use the arena memory allocator.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addACL(boolean useArena) throws OrtException {
+      addACL(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
+    }
+
     private native void setExecutionMode(long apiHandle, long nativeHandle, int mode)
         throws OrtException;
 
@@ -601,6 +624,11 @@ public class OrtSession implements AutoCloseable {
     private native void addNuphar(
         long apiHandle, long nativeHandle, int allowUnalignedBuffers, String settings)
         throws OrtException;
+
+    private native void addDirectML(long apiHandle, long nativeHandle, int deviceId)
+        throws OrtException;
+
+    private native void addACL(long apiHandle, long nativeHandle, int useArena) throws OrtException;
   }
 
   /**

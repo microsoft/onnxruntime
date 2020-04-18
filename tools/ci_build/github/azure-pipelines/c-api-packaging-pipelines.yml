@@ -56,13 +56,12 @@ jobs:
   pool: 
     vmImage: 'macOS-10.14'
   steps:
-    - template: templates/mac-set-variables-and-download.yml
     - template: templates/set-version-number-variables-step.yml
 
     - script: |
         sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config RelWithDebInfo --enable_onnx_tests
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config RelWithDebInfo
       displayName: 'Build and Test MacOS'
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -109,20 +108,20 @@ jobs:
         workingFolder: '$(Build.BinariesDirectory)'
 
     - script: |
-       python -m pip install -q pyopenssl setuptools wheel numpy     
+       python -m pip install -q pyopenssl setuptools wheel numpy scipy
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Install python modules' 
-    
+    - powershell: |
+       $Env:USE_MSVC_STATIC_RUNTIME=1
+       $Env:ONNX_ML=1
+       $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
+       python setup.py bdist_wheel
+       Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
+      workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'      
+      displayName: 'Install ONNX'    
+
     - template: templates/set-test-data-variables-step.yml
     - template: templates/set-version-number-variables-step.yml
-    - task: PythonScript@0
-      displayName: 'Download test data'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-        workingDirectory: $(Build.BinariesDirectory) 
-
-
     - task: PythonScript@0
       displayName: 'Generate cmake config'
       inputs:
@@ -186,19 +185,20 @@ jobs:
         workingFolder: '$(Build.BinariesDirectory)'
 
     - script: |
-       python -m pip install -q pyopenssl setuptools wheel numpy     
+       python -m pip install -q pyopenssl setuptools wheel numpy scipy
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Install python modules' 
-    
+    - powershell: |
+       $Env:USE_MSVC_STATIC_RUNTIME=1
+       $Env:ONNX_ML=1
+       $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
+       python setup.py bdist_wheel
+       Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
+      workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+      displayName: 'Install ONNX'
+
     - template: templates/set-test-data-variables-step.yml
     - template: templates/set-version-number-variables-step.yml
-    - task: PythonScript@0
-      displayName: 'Download test data'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-        workingDirectory: $(Build.BinariesDirectory) 
-
 
     - task: PythonScript@0
       displayName: 'Generate cmake config'

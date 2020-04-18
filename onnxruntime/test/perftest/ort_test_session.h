@@ -25,6 +25,8 @@ class OnnxRuntimeTestSession : public TestSession {
     test_inputs_[test_data_id][input_id] = Ort::Value{value};
   }
 
+  bool PopulateGeneratedInputTestData();
+
   ~OnnxRuntimeTestSession() override {
     for (char* p : input_names_) {
       free(p);

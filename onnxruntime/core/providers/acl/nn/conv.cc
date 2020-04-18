@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Copyright (c) 2019, NXP Semiconductor, Inc. All rights reserved.
+// Copyright (c) 2019-2020, NXP Semiconductor, Inc. All rights reserved.
 // Licensed under the MIT License.
 
 #ifdef _WIN32
@@ -26,7 +26,8 @@
 
 #ifdef ACL_1902
 #include "arm_compute/core/NEON/kernels/NEDepthwiseConvolutionLayer3x3Kernel.h"
-#else
+#endif
+#if defined(ACL_1905) || defined(ACL_1908)
 #include "arm_compute/runtime/NEON/functions/assembly/NEDepthwiseConvolutionAssemblyDispatch.h"
 #endif
 
@@ -109,20 +110,20 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   arm_compute::ActivationLayerInfo::ActivationFunction acl_activ_func;
   bool acl_activ_enabled = false;
 
-  if (conv_attrs_.activation == "Relu") {
+  if (activation_type == "Relu") {
     acl_activ_func = arm_compute::ActivationLayerInfo::ActivationFunction::RELU;
     acl_activ_enabled = true;
-  } else if (conv_attrs_.activation == "LeakyRelu") {
+  } else if (activation_type == "LeakyRelu") {
     acl_activ_func = arm_compute::ActivationLayerInfo::ActivationFunction::LEAKY_RELU;
     acl_activ_enabled = true;
-  } else if (conv_attrs_.activation == "Tanh") {
+  } else if (activation_type == "Tanh") {
     acl_activ_func = arm_compute::ActivationLayerInfo::ActivationFunction::TANH;
     acl_activ_enabled = true;
-  } else if (conv_attrs_.activation == "Sigmoid") {
+  } else if (activation_type == "Sigmoid") {
     acl_activ_func = arm_compute::ActivationLayerInfo::ActivationFunction::LOGISTIC;
     acl_activ_enabled = true;
-  } else if (!conv_attrs_.activation.empty()) {
-    ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", conv_attrs_.activation);
+  } else if (!activation_type.empty()) {
+    ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", activation_type);
   }
 
   if (it == Conv::convLayers.end()) {
@@ -195,7 +196,8 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
                                                                                                tconv.in->info()->data_type(),
                                                                                                1 /* depth multiplier */,
                                                                                                tconv.in->info()->data_layout());
-#else
+#endif
+#if defined(ACL_1905) || defined(ACL_1908)
       bool optimizable =
             arm_compute::NEDepthwiseConvolutionAssemblyDispatch::is_optimized_supported(tconv.in->info(),
                                                                                         tconv.k->info(),
@@ -205,12 +207,18 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 #endif
       if(optimizable) {
         //optimized depthwise convolution
+#if defined(ACL_1902) || defined(ACL_1905)
         auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayer3x3>();
+#endif
+#ifdef ACL_1908
+        auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayerOptimized>();
+#endif
 #ifdef ACL_1902
         layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
                          aclPadStride, 1 /* depth multiplier */,
                          acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo());
-#else
+#endif
+#if defined(ACL_1905) || defined(ACL_1908)
         layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
                          aclPadStride, 1 /* depth multiplier */,
                          acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
@@ -225,7 +233,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
         ret = Conv::convLayers.insert(std::pair<OpKernel*, ACLNEConv>((OpKernel*)this, tconv));
         return s;
       }
-#endif
+#endif //DEPTHWISE_CPU
     } else {
       if(tconv.k->info()->tensor_shape()[0] == 1 && tconv.k->info()->tensor_shape()[1] == 1) {
         //pointwise convolution

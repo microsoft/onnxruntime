@@ -28,6 +28,9 @@ function(AddTest)
     #TODO: fix the warnings, they are dangerous
     target_compile_options(${_UT_TARGET} PRIVATE "/wd4244")
   endif()
+  if (MSVC)
+    target_compile_options(${_UT_TARGET} PRIVATE "/wd6330")
+  endif()
   source_group(TREE ${TEST_SRC_DIR} FILES ${_UT_SOURCES})
   set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest")
 
@@ -150,6 +153,13 @@ file(GLOB_RECURSE onnxruntime_test_providers_cpu_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/providers/cpu/*"
   )
 list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cpu_src})
+
+if (onnxruntime_USE_DNNL)
+  file(GLOB_RECURSE onnxruntime_test_providers_dnnl_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/dnnl/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_dnnl_src})
+endif()
 
 if (onnxruntime_USE_NGRAPH)
   file(GLOB_RECURSE onnxruntime_test_providers_ngraph_src CONFIGURE_DEPENDS
@@ -454,7 +464,7 @@ add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if(WIN32)
-  target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100" "/wd4267")
+  target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100" "/wd4267" "/wd6011" "/wd6387" "/wd28182")
 else()
   if(HAS_UNUSED_PARAMETER)
     target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-parameter")
@@ -568,6 +578,8 @@ if(onnxruntime_BUILD_BENCHMARKS)
   if(WIN32)
     target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd4141>"
                       "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4141>")
+    target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
+            "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
   endif()
   target_link_libraries(onnxruntime_benchmark PRIVATE onnx_test_runner_common benchmark ${onnx_test_libs})
   add_dependencies(onnxruntime_benchmark ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -731,7 +743,7 @@ if(UNIX)
   if (APPLE)
     set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker -dead_strip")
   else()
-    set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker --no-undefined -Xlinker --gc-sections")
+    set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.lds -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
   endif()
 else()
   set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-DEF:${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.def")

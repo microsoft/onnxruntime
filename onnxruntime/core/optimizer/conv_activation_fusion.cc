@@ -108,7 +108,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         !graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Tanh", {6})) {
       if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "LeakyRelu", {6})) {
         activation_params.push_back(graph_utils::GetNodeAttribute(next_node, "alpha")->f());
-      } else if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6, 11})) {
+      } else if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6, 11, 12})) {
         float min, max;
         if (GetClipConstantMinMax(graph, next_node, min, max)) {
           activation_params.push_back(min);
