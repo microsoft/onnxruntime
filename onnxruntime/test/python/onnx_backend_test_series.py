@@ -212,11 +212,12 @@ def create_backend_test(testname=None):
                 '^test_operator_repeat_dim_overflow_cpu',
                 '^test_add_bcast_cpu',
                 '^test_batchnorm_epsilon_cpu',
-                '^test_div_bcast_cpu,',
+                '^test_div_bcast_cpu',
                 '^test_mul_bcast_cpu',
                 '^test_pow_bcast_array_cpu',
                 '^test_sub_bcast_cpu',
-                '^test_batchnorm_example_cpu'
+                '^test_batchnorm_example_cpu',
+                '^test_clip_default_inbounds_cpu'
             ]
 
 

@@ -126,6 +126,7 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       "Split",
       "Sqrt",
       "ThresholdedRelu",
+      "Upsample",
       "Xor",
   };
 
