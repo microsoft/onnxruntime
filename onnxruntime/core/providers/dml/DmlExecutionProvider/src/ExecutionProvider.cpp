@@ -562,13 +562,13 @@ namespace Dml
             
             TensorWrapper srcWrapper = TensorWrapper(
                 const_cast<onnxruntime::Tensor*>(&src_dst_pairs[i].src.get()), 
-                false,
+                true,
                 provider,
                 true);
 
             TensorWrapper dstWrapper = TensorWrapper(
                 &src_dst_pairs[i].dst.get(), 
-                true, 
+                false, 
                 provider,
                 true);
 
