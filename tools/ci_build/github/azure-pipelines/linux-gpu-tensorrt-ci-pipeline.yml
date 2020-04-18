@@ -1,6 +1,6 @@
 jobs:
 - job: Linux_CI_GPU_TENSORRT_Dev
-  timeoutInMinutes: 120
+  timeoutInMinutes: 150
   pool: Linux-GPU-CUDA10
   steps:
     - template: templates/set-test-data-variables-step.yml
