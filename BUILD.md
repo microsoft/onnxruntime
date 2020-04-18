@@ -262,8 +262,6 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 ./build.sh --config RelWithDebInfo --use_openvino <hardware_option>
 ```
 
-  <code>--build_server</code>: Using this flag in addition to --use_openvino builds the OpenVINO Execution Provider with ONNX Runtime Server.
-
    <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
 
 * `<hardware_option>`: Specifies the default hardware target for building OpenVINO Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO-ExecutionProvider.md](./docs/execution_providers/OpenVINO-ExecutionProvider.md) for more details on dynamic device selection). Below are the options for different Intel target devices.
