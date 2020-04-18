@@ -181,21 +181,23 @@ class OnnxModelInfo : public TestModelInfo {
       ORT_THROW("Failed to load model because protobuf parsing failed.");
     }
     (void)Env::Default().FileClose(model_fd);
-#ifdef __GNUG__
-    const RE2::Anchor re2_anchor = RE2::UNANCHORED;
-    re2::StringPiece text(model_url);
-    re2::StringPiece submatch;
-    re2::RE2 regex("onnx[0-9a-z]{3}", re2::RE2::Options());  //e.g. onnx141, onnx150, onnxtip
-    if (!regex.ok()) {
-      ORT_THROW("Failed to parse regex: onnx[0-9a-z]{3}");
+    {
+      const RE2::Anchor re2_anchor = RE2::UNANCHORED;
+
+      const std::string model_url_string = ToMBString(model_url);
+      re2::StringPiece text(model_url_string);
+      re2::StringPiece submatch;
+      re2::RE2 regex("onnx[0-9a-z]{3}", re2::RE2::Options());  //e.g. onnx141, onnx150, onnxtip
+      if (!regex.ok()) {
+        ORT_THROW("Failed to parse regex: onnx[0-9a-z]{3}");
+      }
+      bool match = regex.Match(text, 0, text.length(), re2_anchor, &submatch, 1);
+      if (match) {
+        onnx_commit_tag_.assign(submatch.data(), submatch.length());
+      } else {
+        onnx_commit_tag_ = TestModelInfo::unknown_version;
+      }
     }
-    bool match = regex.Match(text, 0, text.length(), re2_anchor, &submatch, 1);
-    if (match) {
-      onnx_commit_tag_.assign(submatch.data(), submatch.length());
-    } else {
-      onnx_commit_tag_ = TestModelInfo::unknown_version;
-    }
-#endif
     const ONNX_NAMESPACE::GraphProto& graph = model_pb.graph();
     if (graph.node().size() == 1) {
       node_name_ = graph.node()[0].op_type();
