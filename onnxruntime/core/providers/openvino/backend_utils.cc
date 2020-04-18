@@ -14,11 +14,6 @@
 #endif
 
 #include <ngraph/frontend/onnx_import/onnx.hpp>
-
-// FIXME: These should not be needed after v1 ops
-// are fully integrated into onnx importer
-#include <ngraph/pass/manager.hpp>
-#include <ngraph/pass/opset1_upgrade.hpp>
 #include <ngraph/pass/convert_fp32_to_fp16.hpp>
 
 #include "core/session/onnxruntime_cxx_api.h"
