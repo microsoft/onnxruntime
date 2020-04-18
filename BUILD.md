@@ -253,16 +253,14 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 #### Build Instructions
 ##### Windows
 ```
-.\build.bat --config RelWithDebInfo --use_openvino <hardware_option> --use_full_protobuf
+.\build.bat --config RelWithDebInfo --use_openvino <hardware_option>
 ```
 *Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`*
 
 ##### Linux
 ```
-./build.sh --config RelWithDebInfo --use_openvino <hardware_option> --use_full_protobuf
+./build.sh --config RelWithDebInfo --use_openvino <hardware_option>
 ```
-
-   <code>--use_full_protobuf</code>: Full protobuf library is required for OpenVINO Execution Provider.
 
   <code>--build_server</code>: Using this flag in addition to --use_openvino builds the OpenVINO Execution Provider with ONNX Runtime Server.
 
