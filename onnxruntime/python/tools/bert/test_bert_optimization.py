@@ -29,7 +29,9 @@ BERT_TEST_MODELS = {
     "bert_keras_0":
         'test_data\\bert_mrpc_tensorflow2.1_opset10\\TFBertForSequenceClassification_1.onnx',
     "bert_keras_squad":
-        'test_data\\bert_squad_tensorflow2.1_keras2onnx_opset11\\TFBertForQuestionAnswering.onnx'
+        'test_data\\bert_squad_tensorflow2.1_keras2onnx_opset11\\TFBertForQuestionAnswering.onnx',
+    "gpt2":
+        'test_data\\gpt2_pytorch1.4_opset11_no_past\\GPT2Model.onnx'
 }
 
 
@@ -202,8 +204,8 @@ class TestBertOptimization(unittest.TestCase):
             'Attention': 12,
             'LayerNormalization': 0,
             'SkipLayerNormalization': 24,
-            'BiasGelu': 0,
-            'Gelu': 12,
+            'BiasGelu': 12,
+            'Gelu': 0,
             'FastGelu': 0
         }
         self.verify_node_count(bert_model, expected_node_count)
@@ -221,6 +223,28 @@ class TestBertOptimization(unittest.TestCase):
                                     float16=False)
 
         self.assertTrue(bert_model.is_fully_optimized())
+
+    def test_gpt2(self):
+        input = BERT_TEST_MODELS['gpt2']
+        bert_model = optimize_model(input,
+                                    'gpt2',
+                                    gpu_only=False,
+                                    num_heads=2,
+                                    hidden_size=4,
+                                    sequence_length=2,
+                                    input_int32=False,
+                                    float16=False)
+
+        expected_node_count = {
+            'EmbedLayerNormalization': 0,
+            'Attention': 12,
+            'Gelu': 0,
+            'FastGelu': 12,
+            'BiasGelu': 0,
+            'LayerNormalization': 25,
+            'SkipLayerNormalization': 0
+        }
+        self.verify_node_count(bert_model, expected_node_count)
 
 
 if __name__ == '__main__':
