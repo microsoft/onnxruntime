@@ -4,12 +4,13 @@ parameters:
 
 steps:
   - template: enable-telemetry.yml
+
   - task: UsePythonVersion@0
     inputs: 
       versionSpec: '3.7' 
       addToPath: true 
       architecture: ${{ parameters.BuildArch }}
-
+        
   - task: BatchScript@1
     displayName: 'Setup Environment'
     inputs:
@@ -113,7 +114,7 @@ steps:
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Artifact: Microsoft.AI.MachineLearning ${{ parameters.BuildArch }}'
     inputs:
-      artifactName: 'Microsoft.AI.MachneLearning.${{ parameters.ArtifactName }}'
+      artifactName: 'Microsoft.AI.MachneLearning.${{ parameters.BuildArch }}'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishSymbols@2

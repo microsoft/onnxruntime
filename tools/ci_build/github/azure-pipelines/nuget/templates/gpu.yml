@@ -9,6 +9,7 @@ jobs:
     clean: all
   pool:
     name: 'Win-GPU-2019'
+    demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
     parameters:
@@ -20,6 +21,7 @@ jobs:
     clean: all
   pool:
     name: 'Win-GPU-2019'
+    demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
     parameters:
@@ -31,6 +33,7 @@ jobs:
     clean: all
   pool:
     name: 'Win-CPU-2019'
+    demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
     parameters:
@@ -42,6 +45,7 @@ jobs:
     clean: all
   pool:
     name: 'Win-CPU-2019'
+    demands: []
   steps:
   - template: ../../templates/windowsai-nuget-build.yml
     parameters:
