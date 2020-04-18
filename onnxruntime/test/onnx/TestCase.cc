@@ -183,7 +183,6 @@ class OnnxModelInfo : public TestModelInfo {
     (void)Env::Default().FileClose(model_fd);
     {
       const RE2::Anchor re2_anchor = RE2::UNANCHORED;
-
       const std::string model_url_string = ToMBString(model_url);
       re2::StringPiece text(model_url_string);
       re2::StringPiece submatch;
