@@ -58,8 +58,8 @@ jobs:
   dependsOn:
   - WindowsAI_DirectML_X64
   - WindowsAI_DirectML_X86
-  - WindowsAI_DirectML_ARM64
-  - WindowsAI_DirectML_ARM
+#  - WindowsAI_DirectML_ARM64
+#  - WindowsAI_DirectML_ARM
   condition: succeeded()
   steps:
   - task: DownloadPipelineArtifact@0
@@ -74,17 +74,24 @@ jobs:
       artifactName: 'drop-nuget-x86-zip'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet DirectML ARM64'
-    inputs:
-      artifactName: 'drop-nuget-arm64-zip'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+#  - task: DownloadPipelineArtifact@0
+#    displayName: 'Download Pipeline Artifact - NuGet DirectML ARM64'
+#    inputs:
+#      artifactName: 'drop-nuget-arm64-zip'
+#      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet DirectML ARM'
+#  - task: DownloadPipelineArtifact@0
+#    displayName: 'Download Pipeline Artifact - NuGet DirectML ARM'
+#    inputs:
+#      artifactName: 'drop-nuget-arm-zip'
+#      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: PowerShell@2
+    displayName: 'Bundle NuGet and other binaries (1)'
     inputs:
-      artifactName: 'drop-nuget-arm-zip'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+      targetType: 'inline'
+      script: |
+        Get-ChildItem -Filter Microsoft.AI.MachineLearning* -Recurse -ErrorAction SilentlyContinue
 
   - script: |
      pushd $(Build.BinariesDirectory)\nuget-artifact
@@ -120,21 +127,21 @@ jobs:
 
 
 
-         move win-arm64\runtimes\win-arm64\native\onnxruntime.dll %%~ni\runtimes\win-arm64\native\onnxruntime.dll
-         move win-arm64\runtimes\win-arm64\native\onnxruntime.lib %%~ni\runtimes\win-arm64\native\onnxruntime.lib
-         move win-arm64\runtimes\win-arm64\native\onnxruntime.pdb %%~ni\runtimes\win-arm64\native\onnxruntime.pdb
-
-         move win-arm64\runtimes\win-arm64\native\microsoft.ai.machinelearning.dll %%~ni\runtimes\win-arm64\native\microsoft.ai.machinelearning.dll
-         move win-arm64\runtimes\win-arm64\native\microsoft.ai.machinelearning.lib %%~ni\runtimes\win-arm64\native\microsoft.ai.machinelearning.lib
-         move win-arm64\runtimes\win-arm64\native\microsoft.ai.machinelearning.pdb %%~ni\runtimes\win-arm64\native\microsoft.ai.machinelearning.pdb
-
-         move win-arm\runtimes\win-arm\native\onnxruntime.dll %%~ni\runtimes\win-arm\native\onnxruntime.dll
-         move win-arm\runtimes\win-arm\native\onnxruntime.lib %%~ni\runtimes\win-arm\native\onnxruntime.lib
-         move win-arm\runtimes\win-arm\native\onnxruntime.pdb %%~ni\runtimes\win-arm\native\onnxruntime.pdb
-
-         move win-arm\runtimes\win-arm\native\microsoft.ai.machinelearning.dll %%~ni\runtimes\win-arm\native\microsoft.ai.machinelearning.dll
-         move win-arm\runtimes\win-arm\native\microsoft.ai.machinelearning.lib %%~ni\runtimes\win-arm\native\microsoft.ai.machinelearning.lib
-         move win-arm\runtimes\win-arm\native\microsoft.ai.machinelearning.pdb %%~ni\runtimes\win-arm\native\microsoft.ai.machinelearning.pdb
+#         move win-arm64\runtimes\win-arm64\native\onnxruntime.dll %%~ni\runtimes\win-arm64\native\onnxruntime.dll
+#         move win-arm64\runtimes\win-arm64\native\onnxruntime.lib %%~ni\runtimes\win-arm64\native\onnxruntime.lib
+#         move win-arm64\runtimes\win-arm64\native\onnxruntime.pdb %%~ni\runtimes\win-arm64\native\onnxruntime.pdb
+#
+#         move win-arm64\runtimes\win-arm64\native\microsoft.ai.machinelearning.dll %%~ni\runtimes\win-arm64\native\microsoft.ai.machinelearning.dll
+#         move win-arm64\runtimes\win-arm64\native\microsoft.ai.machinelearning.lib %%~ni\runtimes\win-arm64\native\microsoft.ai.machinelearning.lib
+#         move win-arm64\runtimes\win-arm64\native\microsoft.ai.machinelearning.pdb %%~ni\runtimes\win-arm64\native\microsoft.ai.machinelearning.pdb
+#
+#         move win-arm\runtimes\win-arm\native\onnxruntime.dll %%~ni\runtimes\win-arm\native\onnxruntime.dll
+#         move win-arm\runtimes\win-arm\native\onnxruntime.lib %%~ni\runtimes\win-arm\native\onnxruntime.lib
+#         move win-arm\runtimes\win-arm\native\onnxruntime.pdb %%~ni\runtimes\win-arm\native\onnxruntime.pdb
+#
+#         move win-arm\runtimes\win-arm\native\microsoft.ai.machinelearning.dll %%~ni\runtimes\win-arm\native\microsoft.ai.machinelearning.dll
+#         move win-arm\runtimes\win-arm\native\microsoft.ai.machinelearning.lib %%~ni\runtimes\win-arm\native\microsoft.ai.machinelearning.lib
+#         move win-arm\runtimes\win-arm\native\microsoft.ai.machinelearning.pdb %%~ni\runtimes\win-arm\native\microsoft.ai.machinelearning.pdb
 
          pushd %%~ni
          zip -r ..\%%~ni.zip .
@@ -155,7 +162,8 @@ jobs:
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)'
       NugetPackage: 'Microsoft.AI.MachineLearning*nupkg'
-      PlatformsSupported: 'win-x64,win-x86,win-arm64,win-arm'
+      PlatformsSupported: 'win-x64,win-x86'
+      #,win-arm64,win-arm'
       VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
 
