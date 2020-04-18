@@ -170,7 +170,7 @@ static Status BatchOrCopyMLValue(
   Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
 
   if (copy_pairs != nullptr) {
-    copy_pairs->push_back(IDataTransfer::SrcDstPair{source_tensor, *p_output_tensor, 0});
+    copy_pairs->push_back({source_tensor, *p_output_tensor, 0});
   } else {
     ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensor(source_tensor, *p_output_tensor));
   }

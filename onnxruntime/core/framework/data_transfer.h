@@ -21,7 +21,7 @@ class IDataTransfer {
   struct SrcDstPair {
     std::reference_wrapper<const Tensor> src;
     std::reference_wrapper<Tensor> dst;
-    int exec_queue_id = 0;
+    int exec_queue_id;
   };
 
   // batched copy. default implementation copies each entry sequentially, and returns on first failure.
