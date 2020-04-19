@@ -76,6 +76,32 @@ namespace OperatorHelper
         }
     }
 
+    void ReadCpuLocalTensorIntoFloat32(
+        const MLOperatorTensor& tensor,
+        std::vector<float>& result
+        )
+    {
+        result.clear();
+        ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be CPU Tensor.");
+
+        const std::vector<uint32_t>& tensorDimensions = tensor.GetShape();
+        const uint32_t elementCount = ComputeElementCountFromDimensions(tensorDimensions);
+
+        switch (tensor.GetTensorDataType())
+        {
+        case MLOperatorTensorDataType::Float:
+            {
+                const float* data = tensor.GetData<float>();
+                result.assign(data, data + elementCount);
+            }
+            break;
+
+        default:
+            ML_INVALID_ARGUMENT("Expecting CPU local tensor of type float32.");
+            break;
+        }
+    }
+
     void DowncastDimensions(gsl::span<const int64_t> inputDimensions, std::vector<DimensionType>& outputDimensions)
     {
         outputDimensions.reserve(inputDimensions.size());
@@ -197,8 +223,12 @@ namespace OperatorHelper
 
             ML_CHECK_VALID_ARGUMENT(kernelLength <= paddedLength, "kernelLength must be < paddedLength.");
             ML_CHECK_VALID_ARGUMENT(args.strides[dim] != 0, "strides must be non-zero.");
+            uint32_t stride = args.strides[dim];
+            uint32_t strideableOutputLength = paddedLength - kernelLength;
+            uint32_t outputLength = 1 + (strideableOutputLength / stride)
+                                      + (args.useCeilingOutputShape && (strideableOutputLength % stride != 0));
 
-            outputDimensions[dimOffset + dim] = (1 + (paddedLength - kernelLength) / args.strides[dim]);
+            outputDimensions[dimOffset + dim] = outputLength;
         }
 
         return outputDimensions;
@@ -355,6 +385,8 @@ namespace OperatorHelper
             std::fill(args.outputPadding, args.outputPadding + spatialDimensionCount, 0);
         }
 
+        args.useCeilingOutputShape = kernelInfo.GetOptionalAttribute<bool>(AttrName::CeilMode, 0);
+
         return args;
     }
 
@@ -406,6 +438,33 @@ namespace OperatorHelper
 
             args.endPadding[dim] = padding - args.startPadding[dim];
         }
+    }
+    
+    void MatMulShapeMapping(
+        std::vector<DimensionType>& inputShape0,
+        std::vector<DimensionType>& inputShape1,
+        std::vector<DimensionType>& outputShape)
+    {
+        // Get the padded input shapes and undo the effect of padding removal from the output shape
+        if (inputShape1.size() == 1)
+        {
+            inputShape1.push_back(1);
+            outputShape.push_back(1);
+        }
+
+        if (inputShape0.size() == 1)
+        {
+            inputShape0.insert(inputShape0.begin(), 1);
+            outputShape.insert(outputShape.end() - 1, 1);
+        }
+
+        // Remove the batch dimensions from each input, then re-add the broadcasted batch dimensions
+        // based on the output shape
+        inputShape0.erase(inputShape0.begin(), inputShape0.end() - 2);
+        inputShape1.erase(inputShape1.begin(), inputShape1.end() - 2);
+
+        inputShape0.insert(inputShape0.begin(), outputShape.begin(), outputShape.end() - 2);
+        inputShape1.insert(inputShape1.begin(), outputShape.begin(), outputShape.end() - 2);
     }
 
     std::vector<EdgeShapes> GetOutputShapeAsInputShapeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -550,15 +609,13 @@ namespace OperatorHelper
         return edgeShapes;
     }
 
-    std::vector<EdgeShapes> SliceHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    std::vector<EdgeShapes> SliceHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         return { m_outputDimensions };
     }
 
-    void PaddingHelper::Initialize(const MLOperatorAttributes& operatorAttributes)
+    void PaddingHelper::Initialize(const MLOperatorAttributes& operatorAttributes, gsl::span<int32_t> padding, uint32_t opsetVersion)
     {
-        // Convert padding.
-        std::vector<int> padding = operatorAttributes.GetOptionalAttributeVectorInt32(AttrName::Pads);
         ML_CHECK_VALID_ARGUMENT(padding.size() % 2 == 0, "Padding must be even count, including begin/end pairs.");
 
         uint32_t dimCount = gsl::narrow_cast<uint32_t>(padding.size() / 2);
@@ -770,7 +827,7 @@ namespace OperatorHelper
         }
     }
     
-    std::vector<EdgeShapes> MatMulHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    std::vector<EdgeShapes> MatMulHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 2);
 
@@ -782,8 +839,8 @@ namespace OperatorHelper
         // * If the first argument is 1 - D, it is promoted to a matrix by prepending a 1 to its dimensions. After matrix multiplication the prepended 1 is removed.
         // * If the second argument is 1 - D, it is promoted to a matrix by appending a 1 to its dimensions. After matrix multiplication the appended 1 is removed.
 
-        auto inputShape0 = shapeInfo.GetInputTensorShape(0);
-        auto inputShape1 = shapeInfo.GetInputTensorShape(1);
+        auto inputShape0 = shapeInfo.GetInputTensorShape(m_aTensorIndex);
+        auto inputShape1 = shapeInfo.GetInputTensorShape(m_bTensorIndex);
         ML_CHECK_VALID_ARGUMENT(inputShape0.size() >= 1);
         ML_CHECK_VALID_ARGUMENT(inputShape1.size() >= 1);
 
@@ -1286,48 +1343,40 @@ namespace OperatorHelper
     }
 
     void ResizeHelper::Initialize(
-        const MLOperatorAttributes& operatorAttributes,
-        gsl::span<const DimensionType> inputDimensions
-        )
-    {
-        m_inputDimensions.assign(inputDimensions.begin(), inputDimensions.end());
-        m_scales = operatorAttributes.GetOptionalAttribute<std::vector<float>>(AttrName::Scales, std::vector<float>());
-        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() == m_scales.size(), "Input dimensions and scales must have same rank.");
-        InitializeOutputDimensions(m_scales, inputDimensions);
-    }
-
-    void ResizeHelper::Initialize(
-        const MLOperatorTensor& scalesTensor,
-        gsl::span<const DimensionType> inputDimensions
-        )
-    {
-        m_inputDimensions.assign(inputDimensions.begin(), inputDimensions.end());
-
-        // Read the input shape and scale factors.
-        const std::vector<uint32_t> scalesTensorDimensions = scalesTensor.GetShape();
-        ML_CHECK_VALID_ARGUMENT(scalesTensorDimensions.size() == 1, "Resize's scales tensor must be 1D.");
-        size_t dimCount = scalesTensorDimensions[0];
-        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() == dimCount, "Input dimensions and scales must have same rank.");
-
-        ML_CHECK_VALID_ARGUMENT(scalesTensor.IsCpuData(), "Resize's scales tensor must be CPU Tensor.");
-        const float* scalesData = scalesTensor.GetData<float>();
-        m_scales.assign(scalesData, scalesData + dimCount);
-
-        InitializeOutputDimensions(m_scales, inputDimensions);
-    }
-
-    void ResizeHelper::InitializeOutputDimensions(
-        gsl::span<const float> scales,
-        gsl::span<const DimensionType> inputDimensions
+        gsl::span<const int32_t> outputSizes
         )
     {
         assert(m_outputDimensions.empty());
+        ML_CHECK_VALID_ARGUMENT(m_scales.empty() || outputSizes.empty(), "scales and roi cannot both be present.");
 
-        for (size_t i = 0, rank = scales.size(); i < rank; ++i)
+        const size_t rank = m_inputDimensions.size();
+
+        if (outputSizes.empty())
         {
-            float scale = m_scales[i];
-            ML_CHECK_VALID_ARGUMENT(scale > FLT_EPSILON, "Scale values should be positive.");
-            m_outputDimensions.push_back(gsl::narrow_cast<uint32_t>(floor(inputDimensions[i] * scale)));
+            // Compute output size from scales and normalized region of interest (each axis 0 to 1).
+            ML_CHECK_VALID_ARGUMENT(m_scales.size() == rank, "The 'scales' parameter must have same rank as input dimensions.");
+            ML_CHECK_VALID_ARGUMENT(m_regionOfInterest.empty() || m_regionOfInterest.size() == rank * 2, "The 'roi' parameter must have two values for each input dimension.");
+
+            for (size_t i = 0; i < rank; ++i)
+            {
+                float scale = m_scales[i];
+                ML_CHECK_VALID_ARGUMENT(scale > FLT_EPSILON, "Scale values should be positive.");
+                float roiRange = m_regionOfInterest.empty() ? 1.0f : m_regionOfInterest[i + rank] - m_regionOfInterest[i];
+                m_outputDimensions.push_back(gsl::narrow_cast<uint32_t>(floor(m_inputDimensions[i] * roiRange * scale)));
+            }
+        }
+        else
+        {
+            // Determine scales from output / input ratio.
+            ML_CHECK_VALID_ARGUMENT(outputSizes.size() == rank, "Input dimensions and 'sizes' must have same rank.");
+
+            m_scales.resize(rank);
+            for (size_t i = 0; i < rank; ++i)
+            {
+                float scale = float(outputSizes[i]) / std::max(m_inputDimensions[i], 1u);
+                m_scales[i] = scale;
+                m_outputDimensions.push_back(gsl::narrow_cast<uint32_t>(outputSizes[i]));
+            }
         }
     }
 
