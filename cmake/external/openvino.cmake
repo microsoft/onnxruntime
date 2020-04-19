@@ -11,7 +11,7 @@ set(ngraph_SRC ${CMAKE_CURRENT_BINARY_DIR}/ngraph/src/project_ngraph)
 set(prebuilt_ONNX_SOURCE_DIR "${PROJECT_SOURCE_DIR}/external/onnx")
 set(prebuilt_ONNX_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 set(ngraph_URL "https://github.com/NervanaSystems/ngraph.git")
-set(ngraph_branch "origin/rov.2020.2")
+set(ngraph_TAG "edc65ca0111f86a7e63a98f62cb17d153cc2535c")
 
 # Libraries for python package.
 if (WIN32)
@@ -68,7 +68,7 @@ else()
     ExternalProject_Add(project_ngraph
             PREFIX ngraph
             GIT_REPOSITORY ${ngraph_URL}
-            GIT_TAG ${ngraph_branch}
+            GIT_TAG ${ngraph_TAG}
             GIT_SHALLOW TRUE
             PATCH_COMMAND ${NGRAPH_CHANGE_DIR_COMMAND}
             # Here we use onnx and protobuf built by onnxruntime to avoid linking with incompatible libraries. This might change in future.
