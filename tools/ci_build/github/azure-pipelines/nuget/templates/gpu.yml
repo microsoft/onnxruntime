@@ -177,9 +177,3 @@ jobs:
     inputs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.ArtifactStagingDirectory)/merged'
-
-- template: test_win.yml
-  parameters:
-    AgentPool : 'Win-GPU-2019'
-    SkipCSharpTests: 'true'
-    SkipCXXTests: 'true'
