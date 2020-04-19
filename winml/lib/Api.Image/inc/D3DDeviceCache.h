@@ -14,7 +14,8 @@
 
 #define VcppException(sev, err) ((sev) | (FACILITY_VISUALCPP << 16) | err)
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace _winml {
+
 enum class PipelineStateCacheType : unsigned char {
   kFloat32 = 0,
   kFloat16 = 1,
@@ -37,8 +38,8 @@ enum class PipelineStateCacheOperation : unsigned char {
 class D3DDeviceCache {
  public:
   ~D3DDeviceCache();
-  D3DDeviceCache(Windows::AI::MachineLearning::LearningModelDeviceKind const& device_kind);
-  D3DDeviceCache(Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice const& device);
+  D3DDeviceCache(winml::LearningModelDeviceKind const& device_kind);
+  D3DDeviceCache(wgdx::Direct3D11::IDirect3DDevice const& device);
   D3DDeviceCache(ID3D12CommandQueue* queue);
 
   ID3D11Device* GetD3D11Device();
@@ -47,7 +48,7 @@ class D3DDeviceCache {
   ID3D12Device1* GetD3D12Device() { return device_.get(); }
   ID3D12CommandQueue* GetCommandQueue() { return command_queue_.get(); }
 
-  Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice GetWinrtDevice();
+  wgdx::Direct3D11::IDirect3DDevice GetWinrtDevice();
 
   ID3D12RootSignature* GetTensorizeRootSignature();
   ID3D12RootSignature* GetDetensorizeRootSignature();
@@ -83,28 +84,28 @@ class D3DDeviceCache {
   ID3D12PipelineState* CreateTensorizePipelineState(PipelineStateCacheType type, PipelineStateCacheFormat format_from, PipelineStateCacheFormat format_to);
   ID3D12PipelineState* CreateDetensorizePipelineState(PipelineStateCacheType type, PipelineStateCacheFormat format_from, PipelineStateCacheFormat format_to);
 
-  com_ptr<ID3D12Device1> device_;
-  com_ptr<ID3D12CommandQueue> command_queue_;
-  com_ptr<ID3D12SharingContract> sharing_contract_;
+  winrt::com_ptr<ID3D12Device1> device_;
+  winrt::com_ptr<ID3D12CommandQueue> command_queue_;
+  winrt::com_ptr<ID3D12SharingContract> sharing_contract_;
 
-  com_ptr<ID3D11Device> device_11_;
-  Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice winrt_device_;
-  com_ptr<ID3D11DeviceContext4> device_context11_;
+  winrt::com_ptr<ID3D11Device> device_11_;
+  wgdx::Direct3D11::IDirect3DDevice winrt_device_;
+  winrt::com_ptr<ID3D11DeviceContext4> device_context11_;
 
-  com_ptr<ID3D12RootSignature> tensorize_root_signature_;
-  com_ptr<ID3D12RootSignature> detensorize_root_signature_;
+  winrt::com_ptr<ID3D12RootSignature> tensorize_root_signature_;
+  winrt::com_ptr<ID3D12RootSignature> detensorize_root_signature_;
 
-  com_ptr<ID3D12PipelineState> cached_pipeline_state[PipelineStateCacheType::kCount][PipelineStateCacheFormat::kCount][PipelineStateCacheFormat::kCount][PipelineStateCacheOperation::kCount];
+  winrt::com_ptr<ID3D12PipelineState> cached_pipeline_state[PipelineStateCacheType::kCount][PipelineStateCacheFormat::kCount][PipelineStateCacheFormat::kCount][PipelineStateCacheOperation::kCount];
 
-  com_ptr<ID3D12Resource> detensorize_vertex_buffer_;
+  winrt::com_ptr<ID3D12Resource> detensorize_vertex_buffer_;
 
-  com_ptr<ID3D11Fence> d3d11_fence_;
-  com_ptr<ID3D12Fence> d3d12_fence_;
+  winrt::com_ptr<ID3D11Fence> d3d11_fence_;
+  winrt::com_ptr<ID3D12Fence> d3d12_fence_;
   std::atomic<UINT64> fence_value_ = 1;
 
   GUID fence_guid_;
 
-  com_ptr<ID3D12Fence> converter_fence_;
+  winrt::com_ptr<ID3D12Fence> converter_fence_;
   wil::unique_handle converter_fence_handle_;
   std::atomic<UINT64> converter_fence_value_ = 1;
 
@@ -115,4 +116,4 @@ class D3DDeviceCache {
   // initialization happen later, we need make it thread safe.
   CWinMLLock lock_;
 };
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace _winml

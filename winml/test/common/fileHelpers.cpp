@@ -9,12 +9,12 @@
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
 using namespace winrt;
-using namespace winrt::Windows::AI::MachineLearning;
-using namespace winrt::Windows::Graphics::Imaging;
-using namespace winrt::Windows::Storage;
+using namespace winml;
+using namespace wgi;
+using namespace ws;
 
 namespace FileHelpers
-{
+{    
     std::wstring GetModulePath()
     {
         std::wstring val;
@@ -44,7 +44,7 @@ namespace FileHelpers
     }
 
 
-    winrt::Windows::Graphics::Imaging::SoftwareBitmap GetSoftwareBitmapFromFile(const std::wstring& filePath)
+    wgi::SoftwareBitmap GetSoftwareBitmapFromFile(const std::wstring& filePath)
     {
         auto storageFile = StorageFile::GetFileFromPathAsync(filePath).get();
         auto stream = storageFile.OpenAsync(FileAccessMode::Read).get();
@@ -61,10 +61,10 @@ namespace FileHelpers
         return softwareBitmap;
     }
 
-    ImageFeatureValue LoadImageFeatureValue(const std::wstring& imagePath)
+    winml::ImageFeatureValue LoadImageFeatureValue(const std::wstring& imagePath)
     {
         auto softwareBitmap = FileHelpers::GetSoftwareBitmapFromFile(FileHelpers::GetModulePath() + imagePath);
-        auto videoFrame = winrt::Windows::Media::VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
+        auto videoFrame = wm::VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
         return ImageFeatureValue::CreateFromVideoFrame(videoFrame);
     }
 }
