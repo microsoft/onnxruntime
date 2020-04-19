@@ -33,13 +33,15 @@ static void FinalizeOutput(Tensor& candidate_output, const std::vector<int64_t>&
 
   // Transpose to the required final output order
   // TODO: Identify no-op transposes and prevent triggering the transpose
-  auto transposed = Transpose(candidate_output, output_permutation, allocator);
+  if (output_permutation.size() != 0) {
+    candidate_output = Transpose(candidate_output, output_permutation, allocator);  
+  }
 
   // Change the shape to the required final output shape
-  CreateReshapedView(transposed, output_dims);
+  CreateReshapedView(candidate_output, output_dims);
 
-  // Copy the transposed output candidate into the op's output
-  CopyOutputCandidateIntoOpOutout(output, transposed);
+  // Copy the output candidate into the op's output
+  CopyOutputCandidateIntoOpOutout(output, candidate_output);
 }
 
 // Processes Einsum operands in a pair-wise fashion
@@ -126,7 +128,9 @@ static Tensor PairwiseOperandProcess(Tensor& left, Tensor& right,
   left_permutation.insert(left_permutation.end(), lo.begin(), lo.end());
   left_permutation.insert(left_permutation.end(), reduce_dims.begin(), reduce_dims.end());
   left_permutation.insert(left_permutation.end(), ro.begin(), ro.end());
-  left = Transpose(left, left_permutation, allocator);
+  if (left_permutation.size() != 0) {
+    left = Transpose(left, left_permutation, allocator);
+  }
   CreateReshapedView(left, {lro_size, lo_size, reduced_size});
 
   // Permutate the right operand so that the axes order go like this: [lro, reduce_dims, ro, lo]
@@ -136,7 +140,9 @@ static Tensor PairwiseOperandProcess(Tensor& left, Tensor& right,
   right_permutation.insert(right_permutation.end(), reduce_dims.begin(), reduce_dims.end());
   right_permutation.insert(right_permutation.end(), ro.begin(), ro.end());
   right_permutation.insert(right_permutation.end(), lo.begin(), lo.end());
-  right = Transpose(right, right_permutation, allocator);
+  if (right_permutation.size() != 0) {
+    right = Transpose(right, right_permutation, allocator);
+  }
   CreateReshapedView(right, {lro_size, reduced_size, ro_size});
 
   // Calculate output size
@@ -202,7 +208,9 @@ static Tensor PairwiseOperandProcess(Tensor& left, Tensor& right,
   CreateReshapedView(output, output_dims);
 
   if (!is_final_pair) {  // This is not the final pair - so bring the axes order to what the inputs conformed to
-    output = Transpose(output, output_permutation, allocator);
+    if (output_permutation.size() != 0) {
+      output = Transpose(output, output_permutation, allocator);
+    }
   } else {  // This is the final pair - Transpose directly to the output ordering required and copy the contents to the op's output
     FinalizeOutput<T>(output, current_subscript_order,
                       einsum_compute_preprocessor.GetMappedSubscriptIndicesToOutputindices(), final_output,
@@ -580,7 +588,9 @@ void EinsumComputePreprocessor::PreprocessInputs() {
     }
 
     // TODO: Identify no-op transpose and prevent triggering the transpose
-    preprocessed = EinsumOp::Transpose(preprocessed, permutation, allocator_);
+    if (permutation.size() != 0) {
+      preprocessed = EinsumOp::Transpose(preprocessed, permutation, allocator_);
+    }
 
     EinsumOp::CreateReshapedView(preprocessed, homogenized_input_dims);
 
@@ -593,8 +603,8 @@ void EinsumComputePreprocessor::PreprocessInputs() {
 // Templated core Einsum logic
 template <typename T>
 Status EinsumTypedComputeProcessor(OpKernelContext* context,
-                                      AllocatorPtr allocator,
-                                      EinsumComputePreprocessor& einsum_compute_preprocessor) {
+                                   AllocatorPtr allocator,
+                                   EinsumComputePreprocessor& einsum_compute_preprocessor) {
   const auto& mapped_indices_to_last_input_index = einsum_compute_preprocessor.GetMappedSubscriptIndicesToLastInputIndex();
 
   auto& preprocessed_inputs = einsum_compute_preprocessor.GetPreprocessedTensors();
