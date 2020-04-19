@@ -41,14 +41,14 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
-  const auto& x_dims = x_shape.GetDims();
+  auto x_dims = x_shape.GetDims();
   auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
 
-  if (X->Shape().NumDimensions() != 4) {
-    // This condition is not true for two tests in ONNX tests series:
-    // test_convtranspose_1d_cpu, test_convtranspose_3d_cpu.
+  auto x_dimensions = X->Shape().NumDimensions();
+  if (x_dimensions != 4 && x_dimensions != 3) {
+    // This condition is not true for test_convtranspose_3d in ONNX tests series.
     // TODO: the error message should tell which operator raises it.
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must be 4-dimensional.",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must be 3- or 4-dimensional.",
                            " X: ", X->Shape().ToString().c_str());
   }
   const Tensor* W = context->Input<Tensor>(1);
@@ -60,6 +60,10 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
 
   CudaT* y_data = nullptr;
+  if (x_dimensions == 3) {
+    x_dims.insert(x_dims.begin() + 2,  1);
+    w_dims.insert(w_dims.begin() + 2,  1);
+  }
 
   {
     std::lock_guard<OrtMutex> lock(s_.mutex);
@@ -78,7 +82,15 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       ConvTransposeAttributes::Prepare p;
       ORT_RETURN_IF_ERROR(conv_transpose_attrs_.PrepareForCompute(context, has_bias, p, dynamic_padding));
 
-      const auto& y_dims = p.Y->Shape().GetDims();
+      auto y_dims = p.Y->Shape().GetDims();
+      if (x_dimensions == 3) {
+        y_dims.insert(y_dims.begin() + 2,  1);
+        p.kernel_shape.insert(p.kernel_shape.begin(),  1);
+        p.pads.insert(p.pads.begin(),  0);
+        p.pads.insert(p.pads.begin() + 2,  0);
+        p.strides.insert(p.strides.begin(), 1);
+        p.dilations.insert(p.dilations.begin(),  1);
+      }
       s_.y_dims = y_dims;
 
       ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims, CudnnTensor::GetDataType<CudaT>()));
@@ -141,7 +153,11 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   }
 
   if (!y_data) {
-    Tensor* Y = context->Output(0, TensorShape(s_.y_dims));
+    auto y_dims = s_.y_dims;
+    if (x_dimensions == 3) {
+      y_dims.erase(y_dims.begin() + 2);
+    }
+    Tensor* Y = context->Output(0, TensorShape(y_dims));
     y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
   }
 

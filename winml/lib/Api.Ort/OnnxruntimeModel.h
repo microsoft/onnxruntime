@@ -5,7 +5,7 @@
 
 #include "iengine.h"
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 class OnnxruntimeEngineFactory;
 
@@ -77,4 +77,4 @@ class OnnruntimeModel : public Microsoft::WRL::RuntimeClass<
   std::optional<std::unordered_map<std::string, std::string>> metadata_cache_;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

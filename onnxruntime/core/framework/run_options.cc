@@ -6,40 +6,40 @@
 #include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
 
-ORT_API_STATUS_IMPL(OrtApis::CreateRunOptions, OrtRunOptions** out) {
+ORT_API_STATUS_IMPL(OrtApis::CreateRunOptions, _Outptr_ OrtRunOptions** out) {
   API_IMPL_BEGIN
   *out = new OrtRunOptions();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::RunOptionsSetRunLogVerbosityLevel, _In_ OrtRunOptions* options, int value) {
+ORT_API_STATUS_IMPL(OrtApis::RunOptionsSetRunLogVerbosityLevel, _Inout_ OrtRunOptions* options, int value) {
   options->run_log_verbosity_level = value;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::RunOptionsSetRunLogSeverityLevel, _In_ OrtRunOptions* options, int value) {
+ORT_API_STATUS_IMPL(OrtApis::RunOptionsSetRunLogSeverityLevel, _Inout_ OrtRunOptions* options, int value) {
   options->run_log_severity_level = value;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::RunOptionsSetRunTag, _In_ OrtRunOptions* options, _In_ const char* run_tag) {
+ORT_API_STATUS_IMPL(OrtApis::RunOptionsSetRunTag, _Inout_ OrtRunOptions* options, _In_ const char* run_tag) {
   if (run_tag)
     options->run_tag = run_tag;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::RunOptionsGetRunLogVerbosityLevel, _In_ const OrtRunOptions* options, int* out) {
+ORT_API_STATUS_IMPL(OrtApis::RunOptionsGetRunLogVerbosityLevel, _In_ const OrtRunOptions* options, _Out_ int* out) {
   *out = options->run_log_verbosity_level;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::RunOptionsGetRunLogSeverityLevel, _In_ const OrtRunOptions* options, int* out) {
+ORT_API_STATUS_IMPL(OrtApis::RunOptionsGetRunLogSeverityLevel, _In_ const OrtRunOptions* options, _Out_ int* out) {
   *out = options->run_log_severity_level;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::RunOptionsGetRunTag, _In_ const OrtRunOptions* options, const char** out) {
+ORT_API_STATUS_IMPL(OrtApis::RunOptionsGetRunTag, _In_ const OrtRunOptions* options, _Out_ const char** out) {
   *out = options->run_tag.c_str();
   return nullptr;
 }

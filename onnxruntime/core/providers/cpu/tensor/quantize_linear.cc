@@ -129,25 +129,11 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   const float* input = x.template Data<float>();
   T* output = y.template MutableData<T>();
 
-  // Schema of QuantizeLinearOp changed when it was promoted to onnx domain. In order to maintain backward compatiblity
-  // both the versions need to be supported.
-  if (ctx->GetOpDomain() != kMSDomain) {
-    MlasQuantizeLinear(input, output, static_cast<size_t>(block_size), *scale, *zero_point);
-  } else {
-    const float qmax = std::numeric_limits<T>::max();
-    const float qmin_default = std::numeric_limits<T>::min();
-    // adjust qmin for int8 inputs. This is required to keep zero point as zero
-    const float qmin = qmin_default == -128 ? -127 : qmin_default;
-
-    for (size_t n = 0; n < static_cast<size_t>(N); n++) {
-      for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {
-        float zp = static_cast<float>(zero_point[bd]);
-        auto sc = scale[bd];
-
-        for (size_t bs = 0; bs < static_cast<size_t>(block_size); bs++) {
-          *output++ = static_cast<T>(clamp(std::round(static_cast<float>(*input++) / sc) + zp, qmin, qmax));
-        }
-      }
+  for (size_t n = 0; n < static_cast<size_t>(N); n++) {
+    for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {
+      MlasQuantizeLinear(input, output, static_cast<size_t>(block_size), scale[bd], zero_point[bd]);
+      input += block_size;
+      output += block_size;
     }
   }
 

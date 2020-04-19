@@ -14,10 +14,10 @@
 #include "Psapi.h"
 
 using namespace winrt;
-using namespace winrt::Windows::AI::MachineLearning;
-using namespace winrt::Windows::Foundation::Collections;
+using namespace winml;
+using namespace wfc;
 
-using winrt::Windows::Foundation::IPropertyValue;
+using wf::IPropertyValue;
 
 static void LearningModelSessionAPITestsClassSetup() {
   init_apartment();
@@ -29,7 +29,7 @@ static void LearningModelSessionAPITestsGpuMethodSetup() {
 
 static void LearningModelSessionAPITestsGpuSkipEdgeCoreMethodSetup() {
   LearningModelSessionAPITestsGpuMethodSetup();
-  SKIP_EDGECORE
+  SKIP_EDGECORE;
 }
 
 static void CreateSessionDeviceDefault()
@@ -63,7 +63,7 @@ static void CreateSessionWithModelLoadedFromStream()
     LearningModel learningModel = nullptr;
     LearningModelDevice learningModelDevice = nullptr;
     std::wstring path = FileHelpers::GetModulePath() + L"model.onnx";
-    auto storageFile = winrt::Windows::Storage::StorageFile::GetFileFromPathAsync(path).get();
+    auto storageFile = ws::StorageFile::GetFileFromPathAsync(path).get();
 
     WINML_EXPECT_NO_THROW(learningModel = LearningModel::LoadFromStream(storageFile));
 
@@ -166,7 +166,7 @@ static void EvaluateFeatures()
 
     auto outputTensor = TensorString::Create();
 
-    std::map<hstring, winrt::Windows::Foundation::IInspectable> featuresstandardmap;
+    std::map<hstring, wf::IInspectable> featuresstandardmap;
     featuresstandardmap[L"X"] = tensor;
     featuresstandardmap[L"Y"] = outputTensor;
     auto featureswinrtmap = winrt::single_threaded_map(std::move(featuresstandardmap));
@@ -200,7 +200,7 @@ static void EvaluateFeaturesAsync()
 
     auto outputTensor = TensorString::Create(shape);
 
-    std::map<hstring, winrt::Windows::Foundation::IInspectable> featuresstandardmap;
+    std::map<hstring, wf::IInspectable> featuresstandardmap;
     featuresstandardmap[L"X"] = tensor;
     featuresstandardmap[L"Y"] = outputTensor;
     auto featureswinrtmap = winrt::single_threaded_map(std::move(featuresstandardmap));
@@ -220,7 +220,7 @@ static void EvaluationProperties()
     LearningModelSession learningModelSession = nullptr;
     learningModelSession = LearningModelSession(learningModel);
     // set a property
-    auto value = winrt::Windows::Foundation::PropertyValue::CreateBoolean(true);
+    auto value = wf::PropertyValue::CreateBoolean(true);
     learningModelSession.EvaluationProperties().Insert(L"propName1", value);
     // get the property and make sure it's there with the right value
     auto value2 = learningModelSession.EvaluationProperties().Lookup(L"propName1");

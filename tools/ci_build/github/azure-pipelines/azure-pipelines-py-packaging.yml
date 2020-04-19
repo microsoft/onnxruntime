@@ -1,11 +1,15 @@
-parameters:
-- name: is_featurizers_build
-  displayName: "Is Featurizers Build"
-  type: boolean
-  default: false
+# Note that any variable set in this file overrides a value set within the Azure pipeline UX.
+# Therefore, do not set default values here, but instead do it within a template script.
+#
+#   parameters:
+#   - name: is_featurizers_build
+#     displayName: "Is Featurizers Build"
+#     type: boolean
+#     default: false
 
 jobs:
 - job: Manylinux2010_py_Wheels
+  timeoutInMinutes: 90
   workspace:
     clean: all
   pool: Linux-CPU
@@ -36,23 +40,8 @@ jobs:
 
     - template: templates/set-featurizer-build-flag-step.yml
       parameters:
-        is_featurizers_build: ${{ parameters.is_featurizers_build }}
-
-    - task: CmdLine@2
-      displayName: 'Download azcopy'
-      inputs:
-        script: |
-          curl -so azcopy.tar.gz -L 'https://aka.ms/downloadazcopy-v10-linux'
-          tar -zxvf azcopy.tar.gz --strip 1
-        workingDirectory: $(Build.BinariesDirectory)
-
-    - task: PythonScript@0
-      displayName: 'Download test data'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
-        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-        pythonInterpreter: '/usr/bin/python3'
-        workingDirectory: $(Build.BinariesDirectory)
+        is_featurizers_build: $(is_featurizers_build)
+   
     - task: CmdLine@2
       inputs:
         script: |
@@ -61,7 +50,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD -e BUILD_BUILDNUMBER onnxruntime-manylinux-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync --parallel  --build_wheel --use_openmp --enable_onnx_tests $(FeaturizerBuildFlag) --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD -e BUILD_BUILDNUMBER onnxruntime-manylinux-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync --parallel  --build_wheel --use_openmp --enable_onnx_tests $(FeaturizerBuildFlag) --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: CopyFiles@2
@@ -81,6 +70,7 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Manylinux2010_py_GPU_Wheels
+  timeoutInMinutes: 90
   workspace:
     clean: all
   pool: Linux-GPU-CUDA10
@@ -111,23 +101,8 @@ jobs:
 
     - template: templates/set-featurizer-build-flag-step.yml
       parameters:
-        is_featurizers_build: ${{ parameters.is_featurizers_build }}
+        is_featurizers_build: $(is_featurizers_build)
 
-    - task: CmdLine@2
-      displayName: 'Download azcopy'
-      inputs:
-        script: |
-          curl -so azcopy.tar.gz -L 'https://aka.ms/downloadazcopy-v10-linux'
-          tar -zxvf azcopy.tar.gz --strip 1
-        workingDirectory: $(Build.BinariesDirectory)
-
-    - task: PythonScript@0
-      displayName: 'Download test data'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
-        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-        pythonInterpreter: '/usr/bin/python3'
-        workingDirectory: $(Build.BinariesDirectory)
     - task: CmdLine@2
       inputs:
         script: |
@@ -136,7 +111,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD -e BUILD_BUILDNUMBER onnxruntime-manylinux-gpu-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel   --build_wheel --use_openmp --enable_onnx_tests $(FeaturizerBuildFlag) --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1  --cudnn_home=/usr/local/cuda-10.1
+          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD -e BUILD_BUILDNUMBER onnxruntime-manylinux-gpu-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel   --build_wheel --use_openmp --enable_onnx_tests $(FeaturizerBuildFlag) --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1  --cudnn_home=/usr/local/cuda-10.1
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: CopyFiles@2
@@ -193,7 +168,7 @@ jobs:
 
   - template: templates/set-featurizer-build-flag-step.yml
     parameters:
-      is_featurizers_build: ${{ parameters.is_featurizers_build }}
+      is_featurizers_build: $(is_featurizers_build)
 
   - task: BatchScript@1
     displayName: 'setup env'
@@ -208,12 +183,14 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
-  - task: PythonScript@0
-    displayName: 'Download test data'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-      arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-      workingDirectory: $(Build.BinariesDirectory)
+  - powershell: |
+     $Env:USE_MSVC_STATIC_RUNTIME=1
+     $Env:ONNX_ML=1
+     $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
+     python setup.py bdist_wheel
+     Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
+    workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+    displayName: 'Install ONNX'
 
   - task: PythonScript@0
     displayName: 'BUILD'
@@ -247,6 +224,7 @@ jobs:
   timeoutInMinutes:  60
   variables:
     CUDA_VERSION: '10.1'
+    buildArch: x64
     EnvSetupScript: setup_env_cuda.bat
   strategy:
     matrix:
@@ -274,30 +252,31 @@ jobs:
         modifyEnvironment: true
         workingFolder: '$(Build.BinariesDirectory)'
 
-
     - script: |
        python -m pip install -q pyopenssl setuptools wheel numpy==1.18
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Install python modules'
 
+    - powershell: |
+       $Env:USE_MSVC_STATIC_RUNTIME=1
+       $Env:ONNX_ML=1
+       $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
+       python setup.py bdist_wheel
+       Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
+      workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+      displayName: 'Install ONNX'
+
     - template: templates/set-test-data-variables-step.yml
 
     - template: templates/set-featurizer-build-flag-step.yml
       parameters:
-        is_featurizers_build: ${{ parameters.is_featurizers_build }}
-
-    - task: PythonScript@0
-      displayName: 'Download test data'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-        workingDirectory: $(Build.BinariesDirectory)
+        is_featurizers_build: $(is_featurizers_build)
 
     - task: PythonScript@0
       displayName: 'build'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: --config RelWithDebInfo --enable_lto --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wheel --use_openmp --enable_onnx_tests $(FeaturizerBuildFlag) --parallel --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v7.6.5.32\cuda"
+        arguments: --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wheel --use_openmp --enable_onnx_tests $(FeaturizerBuildFlag) --parallel --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v7.6.5.32\cuda"
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - task: CopyFiles@2
@@ -336,6 +315,10 @@ jobs:
       clean: true
       submodules: recursive
 
+    - template: templates/set-featurizer-build-flag-step.yml
+      parameters:
+        is_featurizers_build: $(is_featurizers_build)
+
     - task: UsePythonVersion@0
       displayName: 'Use Python'
       inputs:
@@ -344,7 +327,7 @@ jobs:
     - script: |
         sudo python -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        ./build.sh --config Release --skip_submodule_sync --parallel --build_wheel --use_openmp
+        ./build.sh --config Release --skip_submodule_sync --parallel --build_wheel --use_openmp $(FeaturizerBuildFlag)
       displayName: 'Command Line Script'
 
     - task: CopyFiles@2
