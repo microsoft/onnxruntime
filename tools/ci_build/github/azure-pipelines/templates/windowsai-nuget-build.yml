@@ -66,7 +66,7 @@ steps:
       workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
       createLogFile: true
 
-  - ${{ if neq(parameters.BuildArch, 'x86') }}:
+  - ${{ if ne(parameters.BuildArch, 'x86') }}:
     - script: |
         mklink  /D /J $(Build.BinariesDirectory)\RelWithDebInfo\models $(Build.BinariesDirectory)\models
         DIR dist\ /S /B > wheel_filename_file
