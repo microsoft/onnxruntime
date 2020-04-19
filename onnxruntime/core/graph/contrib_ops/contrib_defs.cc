@@ -40,7 +40,7 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   }
 
   // first dim is the batch axis and the next is the number of channels.
-  size_t n_input_dims = static_cast<size_t>(input_shape.dim_size() - 2);
+  size_t n_input_dims = static_cast<size_t>(input_shape.dim_size() - size_t{2});
 
   std::vector<int64_t> dilations;
   if (getRepeatedAttribute(ctx, "dilations", dilations)) {
@@ -2046,7 +2046,7 @@ Example 4:
 
           // fill with zeros if needed to reach appropriate size
           if (pads_data.size() != 2 * static_cast<size_t>(input_rank))
-            pads_data.resize(2 * input_rank, 0);
+            pads_data.resize(size_t{2} * input_rank, 0);
 
           const auto& output_shape =
               ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
