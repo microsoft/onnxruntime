@@ -75,7 +75,7 @@ steps:
         python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
         set PATH=%PATH%;$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo
         @echo %PATH%
-        python $(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --test --config RelWithDebInfo --enable_lto $BUILD_ARCH_SWITCH
+        python $(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --test --config RelWithDebInfo --enable_lto %BUILD_ARCH_SWITCH%
       workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
       displayName: 'Run Unit Tests'
       env:
