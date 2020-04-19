@@ -29,7 +29,7 @@ static void LearningModelSessionAPITestsGpuMethodSetup() {
 
 static void LearningModelSessionAPITestsGpuSkipEdgeCoreMethodSetup() {
   LearningModelSessionAPITestsGpuMethodSetup();
-  SKIP_EDGECORE
+  SKIP_EDGECORE;
 }
 
 static void CreateSessionDeviceDefault()
