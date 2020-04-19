@@ -22,7 +22,9 @@ namespace AttrName
     static constexpr const char* Broadcast = "broadcast";
     static constexpr const char* CeilMode = "ceil_mode";
     static constexpr const char* Clip = "clip";
+    static constexpr const char* CoordinateTransformationMode = "coordinate_transformation_mode";
     static constexpr const char* CountIncludePad = "count_include_pad";
+    static constexpr const char* CubicCoefficientA = "cubic_coeff_a";
     static constexpr const char* DetectPositive = "detect_positive";
     static constexpr const char* DetectNegative = "detect_negative";
     static constexpr const char* Dilations = "dilations";
@@ -30,11 +32,13 @@ namespace AttrName
     static constexpr const char* Dtype = "dtype";
     static constexpr const char* Ends = "ends";
     static constexpr const char* Epsilon = "epsilon";
+    static constexpr const char* ExcludeOutside = "exclude_outside";
+    static constexpr const char* Exclusive = "exclusive";
     static constexpr const char* Exponent = "exponent";
+    static constexpr const char* ExtrapolationValue = "extrapolation_value";
     static constexpr const char* Fmod = "fmod";
     static constexpr const char* Gamma = "gamma";
     static constexpr const char* Group = "group";
-    static constexpr const char* Exclusive = "exclusive";
     static constexpr const char* HeightScale = "height_scale";
     static constexpr const char* HiddenSize = "hidden_size";
     static constexpr const char* High = "high";
@@ -44,11 +48,13 @@ namespace AttrName
     static constexpr const char* KernelShape = "kernel_shape";
     static constexpr const char* LinearBeforeReset = "linear_before_reset";
     static constexpr const char* Lambda = "lambd"; // Deliberate typo to match ONNX spec.
+    static constexpr const char* Largest = "largest";
     static constexpr const char* Low = "low";
     static constexpr const char* Max = "max";
     static constexpr const char* Mean = "mean";
     static constexpr const char* Min = "min";
     static constexpr const char* Mode = "mode";
+    static constexpr const char* NearestMode = "nearest_mode";
     static constexpr const char* NormalizeVariance = "normalize_variance";
     static constexpr const char* P = "p";
     static constexpr const char* OutputShape = "output_shape";
@@ -62,6 +68,7 @@ namespace AttrName
     static constexpr const char* Seed = "seed";
     static constexpr const char* Shape = "shape";
     static constexpr const char* Size = "size";
+    static constexpr const char* Sorted = "sorted";
     static constexpr const char* Spatial = "spatial";
     static constexpr const char* SpatialScale = "spatial_scale";
     static constexpr const char* Split = "split";

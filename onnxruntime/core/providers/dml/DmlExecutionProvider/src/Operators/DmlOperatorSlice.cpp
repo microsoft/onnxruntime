@@ -6,16 +6,16 @@
 namespace Dml
 {
 
-class DmlOperatorSlice : public DmlOperator, public SliceHelperBase
+class DmlOperatorSlice : public DmlOperator, public SliceHelper
 {
 public:
     DmlOperatorSlice(const MLOperatorKernelCreationContext& kernelInfo, uint32_t opsetVersion)
     :   DmlOperator(kernelInfo),
-        SliceHelperBase(kernelInfo, kernelInfo.GetTensorShapeDescription(), opsetVersion)
+        SliceHelper(kernelInfo, kernelInfo.GetTensorShapeDescription(), opsetVersion)
     {
         const uint32_t inputCount = kernelInfo.GetInputCount();
         ML_CHECK_VALID_ARGUMENT((opsetVersion <  10 && inputCount == 1)
-                             || (opsetVersion >= 10 && opsetVersion <= 11 && inputCount >= 3 && inputCount <= 5));
+                             || (opsetVersion >= 10 && inputCount >= 3 && inputCount <= 5));
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
 
         std::vector<std::optional<uint32_t>> kernelInputIndices = { 0 }; // Only bind GPU to first 'data' tensor.
