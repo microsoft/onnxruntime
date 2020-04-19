@@ -40,7 +40,7 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   }
 
   // first dim is the batch axis and the next is the number of channels.
-  size_t n_input_dims = static_cast<size_t>(input_shape.dim_size() - 2);
+  size_t n_input_dims = static_cast<size_t>(input_shape.dim_size() - size_t{2});
 
   std::vector<int64_t> dilations;
   if (getRepeatedAttribute(ctx, "dilations", dilations)) {
@@ -290,12 +290,21 @@ const char* contrib_ops_auto_pad_doc =
     "beginning for SAME_LOWER. VALID mean no padding.";
 
 void RegisterBertSchemas() {
+  static const char* Attention_ver1_doc = R"DOC(
+Multi-Head Self Attention that can be either unidirectional (like GPT2) or bidirectional (like BERT).
+The mask_index input is optional. Unidirectional and mask_index input are mutually exclusive. When unidirectional is 1, the
+mask_index shall not be provided.)DOC";
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Multi-Head Self Attention")
+      .SetDoc(Attention_ver1_doc)
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Attr("unidirectional",
+            "Whether every token can only attend to previous tokens. Default value is 0.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "T")
       .Input(1, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T")
       .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
@@ -2037,7 +2046,7 @@ Example 4:
 
           // fill with zeros if needed to reach appropriate size
           if (pads_data.size() != 2 * static_cast<size_t>(input_rank))
-            pads_data.resize(2 * input_rank, 0);
+            pads_data.resize(size_t{2} * input_rank, 0);
 
           const auto& output_shape =
               ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
@@ -2347,6 +2356,62 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  // Used to be ONNX 1.7 Inverse(12)
+  // Comment out docs not to increase the binary size
+  //
+  //  static const char* Inverse_ver1_doc = R"DOC(
+  //Calculates inverse of a square matrix or batches of square matrices.
+  //Inverse takes one input tensor of shape `[*, M, M]`, where `*` is zero or more batch dimensions,
+  //and the inner-most 2 dimensions form square matrices. These matrices must be invertible (full-rank).
+  //The behavior where one of the matrices is not invertible is undefined. The implementation can choose
+  //to throw an error or output (garbage) results as is. The output is a tensor of shape `[*, M, M]`,
+  //containing the individual inverses of all input submatrices.
+  //)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Inverse)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+        .Input(0, "X", "Input tensor. Every matrix in the batch must be invertible.", "T")
+        .Output(0, "Y", "Output tensor of the same type and shape as the input tensor.", "T")
+        .TypeConstraint(
+            "T",
+            {"tensor(float16)",
+             "tensor(float)",
+             "tensor(double)"},
+            "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+            // Type inference
+            using namespace ONNX_NAMESPACE;
+            propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+            // Shape inference
+            if (hasInputShape(ctx, 0)) {
+              const TensorShapeProto& input_shape =
+                  ctx.getInputType(0)->tensor_type().shape();
+              const int rank = static_cast<int>(input_shape.dim_size());
+
+              if (rank < 2) {
+                fail_shape_inference("Input rank must be >= 2.")
+              }
+
+              const auto mat_w = input_shape.dim(rank - 1);
+              const auto mat_h = input_shape.dim(rank - 2);
+              if (mat_w.has_dim_value() && mat_h.has_dim_value() &&
+                  (mat_w.dim_value() != mat_h.dim_value())) {
+                fail_shape_inference(
+                    "The inner-most 2 dimensions must have the same size (mat_w:",
+                    mat_w.dim_value(),
+                    " != mat_h:",
+                    mat_h.dim_value(),
+                    ").");
+              }
+
+              // Shape inference
+              propagateShapeFromInputToOutput(ctx, 0, 0);
+            }
+        });
 
   RegisterBertSchemas();
 }
