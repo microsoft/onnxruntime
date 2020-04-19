@@ -9,11 +9,11 @@ common::Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
   return CopyTensor(src, dst, 0);
 }
 
-common::Status IDataTransfer::CopyTensors(const Tensor* src, Tensor* dst, int size) const {
-  ORT_ENFORCE(nullptr != src && nullptr != dst);
-  for (int i = 0; i < size; ++i) {
-    ORT_RETURN_IF_ERROR(CopyTensor(src[i], dst[i], 0));
+common::Status IDataTransfer::CopyTensors(const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) const {
+  for (const auto& pair : src_dst_pairs) {
+    ORT_RETURN_IF_ERROR(CopyTensor(pair.src, pair.dst, pair.exec_queue_id));
   }
+
   return Status::OK();
 }
 
