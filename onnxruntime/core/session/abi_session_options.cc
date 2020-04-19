@@ -153,7 +153,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetInterOpNumThreads, _Inout_ OrtSessionOptions* op
 ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverride, _Inout_ OrtSessionOptions* options,
                     _In_ const char* dim_denotation, _In_ int64_t dim_value) {
   options->value.free_dimension_overrides.push_back(
-      onnxruntime::FreeDimensionOverride{dim_denotation, onnxruntime::FreeDimensionOverrideType::Denotation, dim_value}
+      onnxruntime::FreeDimensionOverride{dim_denotation, onnxruntime::FREE_DIMENSION_OVERRIDE_TYPE_DENOTATION, dim_value}
   );
   return nullptr;
 }
@@ -161,7 +161,7 @@ ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverride, _Inout_ OrtSessionOptions
 ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverrideByName, _Inout_ OrtSessionOptions* options,
                     _In_ const char* dim_name, _In_ int64_t dim_value) {
   options->value.free_dimension_overrides.push_back(
-      onnxruntime::FreeDimensionOverride{dim_name, onnxruntime::FreeDimensionOverrideType::Name, dim_value}
+      onnxruntime::FreeDimensionOverride{dim_name, onnxruntime::FREE_DIMENSION_OVERRIDE_TYPE_NAME, dim_value}
   );
   return nullptr;
 }

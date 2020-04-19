@@ -31,7 +31,7 @@ void TestFreeDimensions(FreeDimensionOverrideType overrideType) {
   // dimensions with values of 1 and 42, respectively.
   std::vector<FreeDimensionOverride> overrides(2);
 
-  if (overrideType == FreeDimensionOverrideType::Denotation) {
+  if (overrideType == FREE_DIMENSION_OVERRIDE_TYPE_DENOTATION) {
     overrides[0] = FreeDimensionOverride{onnx::DATA_BATCH, overrideType, 1};
     overrides[1] = FreeDimensionOverride{onnx::DATA_CHANNEL, overrideType, 42};
   } else {
@@ -72,8 +72,8 @@ void TestFreeDimensions(FreeDimensionOverrideType overrideType) {
 
 
 TEST(FreeDimensionOverrideDenotationTransformerTest, Test) {
-  TestFreeDimensions(FreeDimensionOverrideType::Denotation);
-  TestFreeDimensions(FreeDimensionOverrideType::Name);
+  TestFreeDimensions(FREE_DIMENSION_OVERRIDE_TYPE_DENOTATION);
+  TestFreeDimensions(FREE_DIMENSION_OVERRIDE_TYPE_NAME);
 }
   
 }  // namespace test

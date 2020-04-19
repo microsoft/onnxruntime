@@ -22,9 +22,9 @@ FreeDimensionOverrideTransformer::FreeDimensionOverrideTransformer(gsl::span<con
     : GraphTransformer("FreeDimensionOverrideTransformer") {
   for (const auto& o : overrides_to_apply) {
     // Convert to lowercase to perform case-insensitive comparisons later
-    if (o.dim_identifer_type == FreeDimensionOverrideType::Denotation) {
+    if (o.dim_identifer_type == FREE_DIMENSION_OVERRIDE_TYPE_DENOTATION) {
       dimension_override_by_denotation_.emplace(ToLower(o.dim_identifier), o.dim_value);
-    } else if (o.dim_identifer_type == FreeDimensionOverrideType::Name) {
+    } else if (o.dim_identifer_type == FreeDimensionOverrideType::FREE_DIMENSION_OVERRIDE_TYPE_NAME) {
       dimension_override_by_name_.emplace(o.dim_identifier, o.dim_value);
     } else {
       ORT_THROW("Invalid free dimension override.");

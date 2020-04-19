@@ -10,12 +10,12 @@
 #include "core/util/thread_utils.h"
 
 namespace onnxruntime {
-
-enum class FreeDimensionOverrideType {
-  Invalid = 0,
-  Denotation = 1,
-  Name = 2
-};
+        
+typedef enum FreeDimensionOverrideType {
+  FREE_DIMENSION_OVERRIDE_TYPE_INVALID = -1,
+  FREE_DIMENSION_OVERRIDE_TYPE_DENOTATION = 0,
+  FREE_DIMENSION_OVERRIDE_TYPE_NAME = 1
+} FreeDimensionOverrideType;
 
 struct FreeDimensionOverride {
   std::string dim_identifier;
