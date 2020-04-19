@@ -4,7 +4,27 @@ namespace onnxruntime {
 
 namespace EinsumOp {
 
-// We have an the result in an output "candidate". Now we have to copy the contents in its buffer
+// This helps decide if we need to apply (and pay the cost) of a Transpose
+static bool IsTransposeRequired(size_t input_rank, const std::vector<size_t>& permutation) {
+  ORT_ENFORCE(input_rank == permutation.size(), "The rank of the input must match permutation size for Transpose");
+  
+  // No transpose required for scalars
+  if (input_rank == 0) {
+    return false; 
+  }
+
+  // Weeds out cases where permutation is something like [0, 1, 2] for a 3D input and so on
+  bool transpose_required = false;
+  for (size_t i = 0; i < input_rank; ++i) {
+    if (permutation[i] != i) {
+      transpose_required = true;
+      break;
+    }
+  }
+
+  return transpose_required;
+}
+     // We have an the result in an output "candidate". Now we have to copy the contents in its buffer
 // into the buffer of the actual output given to us by the execution frame
 // We need to do this because the buffer owned by the output tensor of the op could be user provided buffer
 static void CopyOutputCandidateIntoOpOutout(Tensor& output, Tensor& candidate) {
@@ -32,8 +52,8 @@ static void FinalizeOutput(Tensor& candidate_output, const std::vector<int64_t>&
   }
 
   // Transpose to the required final output order
-  // TODO: Identify no-op transposes and prevent triggering the transpose
-  if (output_permutation.size() != 0) {
+  // (Identify no-op transposes and prevent triggering the transpose)
+  if (IsTransposeRequired(candidate_output.Shape().GetDims().size(), output_permutation)) {
     candidate_output = Transpose(candidate_output, output_permutation, allocator);  
   }
 
@@ -128,7 +148,7 @@ static Tensor PairwiseOperandProcess(Tensor& left, Tensor& right,
   left_permutation.insert(left_permutation.end(), lo.begin(), lo.end());
   left_permutation.insert(left_permutation.end(), reduce_dims.begin(), reduce_dims.end());
   left_permutation.insert(left_permutation.end(), ro.begin(), ro.end());
-  if (left_permutation.size() != 0) {
+  if (IsTransposeRequired(left.Shape().GetDims().size(), left_permutation)) {
     left = Transpose(left, left_permutation, allocator);
   }
   CreateReshapedView(left, {lro_size, lo_size, reduced_size});
@@ -140,7 +160,7 @@ static Tensor PairwiseOperandProcess(Tensor& left, Tensor& right,
   right_permutation.insert(right_permutation.end(), reduce_dims.begin(), reduce_dims.end());
   right_permutation.insert(right_permutation.end(), ro.begin(), ro.end());
   right_permutation.insert(right_permutation.end(), lo.begin(), lo.end());
-  if (right_permutation.size() != 0) {
+  if (IsTransposeRequired(right.Shape().GetDims().size(), right_permutation)) {
     right = Transpose(right, right_permutation, allocator);
   }
   CreateReshapedView(right, {lro_size, reduced_size, ro_size});
@@ -208,7 +228,7 @@ static Tensor PairwiseOperandProcess(Tensor& left, Tensor& right,
   CreateReshapedView(output, output_dims);
 
   if (!is_final_pair) {  // This is not the final pair - so bring the axes order to what the inputs conformed to
-    if (output_permutation.size() != 0) {
+    if (IsTransposeRequired(output.Shape().GetDims().size(), output_permutation)) {
       output = Transpose(output, output_permutation, allocator);
     }
   } else {  // This is the final pair - Transpose directly to the output ordering required and copy the contents to the op's output
@@ -355,7 +375,9 @@ void EinsumComputePreprocessor::ProcessSubscripts() {
             } else {
               ORT_ENFORCE(dim_value == 1,
                           "Einsum operands could not be broadcast together. "
-                          "Please check input shapes/equation provided.");
+                          "Please check input shapes/equation provided."
+                          "Input shape of operand ",
+                          input_index, " is incompatible. The shape is ", shape);
             }
           }
         }
@@ -587,8 +609,8 @@ void EinsumComputePreprocessor::PreprocessInputs() {
       }
     }
 
-    // TODO: Identify no-op transpose and prevent triggering the transpose
-    if (permutation.size() != 0) {
+    // (Identify no-op transpose and prevent triggering the transpose)
+    if (EinsumOp::IsTransposeRequired(preprocessed.Shape().GetDims().size(), permutation)) {
       preprocessed = EinsumOp::Transpose(preprocessed, permutation, allocator_);
     }
 
