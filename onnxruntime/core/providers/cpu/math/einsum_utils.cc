@@ -341,10 +341,13 @@ void EinsumComputePreprocessor::ProcessSubscripts() {
             }
 
             // We reserve '26' for broadcasted dims as we only allow 'a' - 'z' (0 - 25) for non-broadcasted dims
-            // We will assign an appropriate indices during broadcasting related post-processing
+            // We will assign appropriate indices (based o number of dimensions the ellipsis corresponds to) during broadcasting related post-processing
             for (size_t i = 0; i < num_of_ellipsis_dims_; ++i) {
               current_subscript_indices.push_back(26);
             }
+
+            // Offset 'dim_counter' by number of dimensions the ellipsis corresponds to
+            dim_counter += num_of_ellipsis_dims_;
           }
         }
       } else {  // regular letter based dimension -> 'i', 'j', etc.

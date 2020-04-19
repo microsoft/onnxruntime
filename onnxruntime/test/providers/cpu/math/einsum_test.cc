@@ -285,8 +285,8 @@ TEST(Einsum, ExplicitEinsumAsDiagonalOpWithTranspose) {
 TEST(Einsum, ExplicitEinsumAsBatchedDiagonalOp) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "...ii->...i");
-  test.AddInput<float>("x", {2, 1, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
-  test.AddOutput<float>("o", {2, 1, 2}, {1.f, 4.f, 1.f, 4.f});
+  test.AddInput<float>("x", {3, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
+  test.AddOutput<float>("o", {3, 2}, {1.f, 4.f, 1.f, 4.f, 1.f, 4.f});
   test.Run();
 }
 
