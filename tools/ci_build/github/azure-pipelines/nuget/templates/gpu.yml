@@ -181,4 +181,5 @@ jobs:
 - template: test_win.yml
   parameters:
     AgentPool : 'Win-GPU-2019'
-    Skipx86Tests: 'true'
+    SkipCSharpTests: 'true'
+    SkipCXXTests: 'true'
