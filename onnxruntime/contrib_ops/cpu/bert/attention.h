@@ -15,6 +15,7 @@ class AttentionBase {
   Status CheckInputs(const OpKernelContext* context) const;
 
   int num_heads_;  // number of attention heads
+  bool is_unidirectional_; // whether every token can only attend to previous tokens.
 };
 
 template <typename T>

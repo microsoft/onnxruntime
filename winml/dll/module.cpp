@@ -8,7 +8,7 @@
 #include "LearningModelDevice.h"
 #include "OnnxruntimeProvider.h"
 
-using namespace winrt::Windows::AI::MachineLearning::implementation;
+using namespace winmlp;
 
 void __stdcall OnErrorReported(bool alreadyReported, wil::FailureInfo const& failure) WI_NOEXCEPT {
   if (!alreadyReported) {
@@ -57,7 +57,7 @@ extern "C" BOOL WINAPI DllMain(_In_ HINSTANCE hInstance, DWORD dwReason, _In_ vo
 }
 
 extern "C" HRESULT WINAPI MLCreateOperatorRegistry(_COM_Outptr_ IMLOperatorRegistry** registry) try {
-  winrt::com_ptr<WinML::IEngineFactory> engine_factory;
+  winrt::com_ptr<_winml::IEngineFactory> engine_factory;
   WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory.put()));
   WINML_THROW_IF_FAILED(engine_factory->CreateCustomRegistry(registry));
   return S_OK;
@@ -65,7 +65,7 @@ extern "C" HRESULT WINAPI MLCreateOperatorRegistry(_COM_Outptr_ IMLOperatorRegis
 CATCH_RETURN();
 
 STDAPI DllCanUnloadNow() {
-  // The windows.ai.machinelearning.dll should not be freed by
+  // This dll should not be freed by
   // CoFreeUnusedLibraries since there can be outstanding COM object
   // references to many objects (AbiCustomRegistry, IMLOperatorKernelContext,
   // IMLOperatorTensor, etc) that are not reference counted in this path.
@@ -79,8 +79,7 @@ STDAPI DllCanUnloadNow() {
   // that are shared out as a consequence of the MLCreateOperatorRegistry API
   // will be a complex task to complete in RS5.
   //
-  // As a temporary workaround we simply prevent the windows.ai.machinelearning.dll
-  // from unloading.
+  // As a temporary workaround we simply prevent the dll from unloading.
   //
   // There are no known code paths that rely on opportunistic dll unload.
   return S_FALSE;

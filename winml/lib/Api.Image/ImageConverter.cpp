@@ -7,13 +7,8 @@
 #include "inc/D3DDeviceCache.h"
 
 using namespace Microsoft::WRL;
-using namespace Windows::Graphics::DirectX::Direct3D11;
-using namespace Windows::AI::MachineLearning::Internal;
-using namespace winrt::Windows::AI::MachineLearning::implementation;
-using namespace winrt::Windows::Media;
-using namespace winrt::Windows::Graphics::Imaging;
-using namespace winrt::Windows::Graphics::DirectX;
-using namespace winrt::Windows::Graphics::DirectX::Direct3D11;
+
+using namespace _winml;
 
 void ImageConverter::SyncD3D11ToD3D12(_In_ D3DDeviceCache& device_cache, _In_ ID3D11Texture2D* pD3D11Texture) {
   assert(pD3D11Texture != nullptr);
@@ -90,18 +85,20 @@ void ImageConverter::ResetAllocator() {
 }
 
 ComPtr<ID3D11Texture2D> ImageConverter::CreateTextureFromUnsupportedColorFormat(
-    const IVideoFrame& videoFrame,
-    const BitmapBounds& inputBounds,
-    const BitmapBounds& outputBounds,
-    DirectXPixelFormat newFormat) {
+    const wm::IVideoFrame& videoFrame,
+    const wgi::BitmapBounds& inputBounds,
+    const wgi::BitmapBounds& outputBounds,
+    wgdx::DirectXPixelFormat newFormat) {
   assert(videoFrame != nullptr);
 
   // Make sure we create the new video frame on the same device. We don't want the VideoFrame pipeline to implicitly share the texture between
   // 2 devices since we will need to do it ourselves anyway.
-  IDirect3DDevice device = ImageConversionHelpers::GetDeviceFromDirect3DSurface(videoFrame.Direct3DSurface());
+  auto device = _winmli::GetDeviceFromDirect3DSurface(videoFrame.Direct3DSurface());
 
-  VideoFrame spNewVideoFrame = VideoFrame::CreateAsDirect3D11SurfaceBacked(newFormat, outputBounds.Width, outputBounds.Height, device);
-  videoFrame.as<IVideoFrame2>().CopyToAsync(spNewVideoFrame, inputBounds, outputBounds).get();
+  auto spNewVideoFrame = wm::VideoFrame::CreateAsDirect3D11SurfaceBacked(newFormat, outputBounds.Width, outputBounds.Height, device);
+  videoFrame.as<wm::IVideoFrame2>().CopyToAsync(spNewVideoFrame, inputBounds, outputBounds).get();
+  
+  using namespace Windows::Graphics::DirectX::Direct3D11;
 
   auto spDxgiInterfaceAccess = spNewVideoFrame.Direct3DSurface().as<IDirect3DDxgiInterfaceAccess>();
   ComPtr<ID3D11Texture2D> d3d11Texture;
@@ -110,7 +107,8 @@ ComPtr<ID3D11Texture2D> ImageConverter::CreateTextureFromUnsupportedColorFormat(
   return d3d11Texture;
 }
 
-void ImageConverter::CopyTextureIntoTexture(_In_ ID3D11Texture2D* pTextureFrom, _In_ const BitmapBounds& inputBounds, _Inout_ ID3D11Texture2D* pTextureTo) {
+void ImageConverter::CopyTextureIntoTexture(_In_ ID3D11Texture2D* pTextureFrom,
+    _In_ const wgi::BitmapBounds& inputBounds, _Inout_ ID3D11Texture2D* pTextureTo) {
   assert(pTextureFrom != nullptr);
   assert(pTextureTo != nullptr);
 
