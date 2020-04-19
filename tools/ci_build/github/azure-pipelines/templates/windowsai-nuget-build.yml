@@ -79,7 +79,10 @@ steps:
       workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
       displayName: 'Run Unit Tests'
       env:
-        BUILD_ARCH_SWITCH: '--${{ parameters.BuildArch }}'
+        ${{ if eq(parameters.BuildArch, 'x64') }}:
+          BUILD_ARCH_SWITCH: ''
+        ${{ if ne(parameters.BuildArch, 'x64') }}:
+          BUILD_ARCH_SWITCH: '--${{ parameters.BuildArch }}'
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
