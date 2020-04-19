@@ -59,11 +59,19 @@ jobs:
         workingFolder: '$(Build.BinariesDirectory)'
 
     - script: |
-       python -m pip install -q pyopenssl setuptools wheel numpy     
+       python -m pip install -q pyopenssl setuptools wheel numpy scipy
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Install python modules'
 
-
+    - powershell: |
+       $Env:USE_MSVC_STATIC_RUNTIME=1
+       $Env:ONNX_ML=1
+       $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ parameters.BuildArch }}-windows-static"
+       python setup.py bdist_wheel
+       Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
+      workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+      displayName: 'Install ONNX'
+    
     - task: PythonScript@0
       displayName: 'Generate cmake config'
       inputs:
@@ -117,14 +125,7 @@ jobs:
         arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - ${{ if in(parameters['sln_platform'], 'Win32', 'x64') }}:
-      - task: PythonScript@0
-        displayName: 'Download test data'
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-          arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-          workingDirectory: $(Build.BinariesDirectory)
-
+    - ${{ if in(parameters['sln_platform'], 'Win32', 'x64') }}:      
       - task: DotNetCoreCLI@2
         displayName: 'Test C#'
         inputs:

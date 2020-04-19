@@ -34,7 +34,7 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy     
+     python -m pip install -q pyopenssl setuptools wheel numpy scipy
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
@@ -80,15 +80,7 @@ jobs:
     displayName: Use Nuget 4.9
     inputs:
       versionSpec: 4.9.4  
-
-   
-
-  - task: PythonScript@0
-    displayName: 'Download test data'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-      arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-      workingDirectory: $(Build.BinariesDirectory)
+ 
 
   - task: DotNetCoreCLI@2
     displayName: 'Restore nuget packages'

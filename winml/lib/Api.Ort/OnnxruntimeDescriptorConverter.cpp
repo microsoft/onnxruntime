@@ -18,8 +18,6 @@
 
 #include "OnnxruntimeErrors.h"
 
-using namespace winrt::Windows::AI::MachineLearning;
-
 // BitmapPixelFormat constants
 static const char* c_bitmap_pixel_format_key = "Image.BitmapPixelFormat";
 static const char* c_supported_pixel_formats[] =
@@ -44,7 +42,7 @@ static const char* c_supported_nominal_ranges[] =
     {
         "NominalRange_0_255"};
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 // Forward declare CreateFeatureDescriptor
 static winml::ILearningModelFeatureDescriptor
@@ -53,109 +51,109 @@ CreateFeatureDescriptor(
     const OnnxruntimeValueInfoWrapper* feature_descriptor,
     const std::unordered_map<std::string, std::string>& metadata);
 
-static TensorKind
+static winml::TensorKind
 TensorKindFromONNXTensorElementDataType(ONNXTensorElementDataType dataType) {
   switch (dataType) {
     case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
-      return TensorKind::Boolean;
+      return winml::TensorKind::Boolean;
     }
     case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING: {
-      return TensorKind::String;
+      return winml::TensorKind::String;
     }
     case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
-      return TensorKind::Float16;
+      return winml::TensorKind::Float16;
     }
     case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
-      return TensorKind::Float;
+      return winml::TensorKind::Float;
     }
     case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
-      return TensorKind::Double;
+      return winml::TensorKind::Double;
     }
     case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
-      return TensorKind::Int8;
+      return winml::TensorKind::Int8;
     }
     case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: {
-      return TensorKind::Int16;
+      return winml::TensorKind::Int16;
     }
     case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
-      return TensorKind::Int32;
+      return winml::TensorKind::Int32;
     }
     case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
-      return TensorKind::Int64;
+      return winml::TensorKind::Int64;
     }
     case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
-      return TensorKind::UInt8;
+      return winml::TensorKind::UInt8;
     }
     case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16: {
-      return TensorKind::UInt16;
+      return winml::TensorKind::UInt16;
     }
     case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32: {
-      return TensorKind::UInt32;
+      return winml::TensorKind::UInt32;
     }
     case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64: {
-      return TensorKind::UInt64;
+      return winml::TensorKind::UInt64;
     }
     case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64: {
-      return TensorKind::Complex64;
+      return winml::TensorKind::Complex64;
     }
     case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128: {
-      return TensorKind::Complex128;
+      return winml::TensorKind::Complex128;
     }
     default: {
-      return TensorKind::Undefined;
+      return winml::TensorKind::Undefined;
     }
   }
 }
 
 static std::string
-TensorKindToString(TensorKind tensorKind) {
+TensorKindToString(winml::TensorKind tensorKind) {
   switch (tensorKind) {
-    case TensorKind::Float: {
+    case winml::TensorKind::Float: {
       return "float";
     }
-    case TensorKind::UInt8: {
+    case winml::TensorKind::UInt8: {
       return "uint8";
     }
-    case TensorKind::Int8: {
+    case winml::TensorKind::Int8: {
       return "int8";
     }
-    case TensorKind::UInt16: {
+    case winml::TensorKind::UInt16: {
       return "uint16";
     }
-    case TensorKind::Int16: {
+    case winml::TensorKind::Int16: {
       return "int16";
     }
-    case TensorKind::Int32: {
+    case winml::TensorKind::Int32: {
       return "int32";
     }
-    case TensorKind::Int64: {
+    case winml::TensorKind::Int64: {
       return "int64";
     }
-    case TensorKind::String: {
+    case winml::TensorKind::String: {
       return "string";
     }
-    case TensorKind::Boolean: {
+    case winml::TensorKind::Boolean: {
       return "boolean";
     }
-    case TensorKind::Float16: {
+    case winml::TensorKind::Float16: {
       return "float16";
     }
-    case TensorKind::Double: {
+    case winml::TensorKind::Double: {
       return "double";
     }
-    case TensorKind::UInt32: {
+    case winml::TensorKind::UInt32: {
       return "uint32";
     }
-    case TensorKind::UInt64: {
+    case winml::TensorKind::UInt64: {
       return "uint64";
     }
-    case TensorKind::Complex64: {
+    case winml::TensorKind::Complex64: {
       return "complex64";
     }
-    case TensorKind::Complex128: {
+    case winml::TensorKind::Complex128: {
       return "complex128";
     }
-    case TensorKind::Undefined:
+    case winml::TensorKind::Undefined:
     default: {
       return "undefined";
     }
@@ -264,44 +262,40 @@ CreateBitmapPixelFormatAndAlphaModeInfo(
 
 static winmlp::ImageColorSpaceGamma
 CreateImageColorSpaceGamma(const char* color_space_gamma) {
-  using namespace winmlp;
-
   if (color_space_gamma) {
     auto comparator =
         std::bind(std::strcmp, color_space_gamma, std::placeholders::_1);
 
     if (0 == comparator("Linear")) {
-      return ImageColorSpaceGamma::ImageColorSpaceGamma_Linear;
+      return winmlp::ImageColorSpaceGamma::ImageColorSpaceGamma_Linear;
     } else if (0 == comparator("SRGB")) {
-      return ImageColorSpaceGamma::ImageColorSpaceGamma_SRGB;
+      return winmlp::ImageColorSpaceGamma::ImageColorSpaceGamma_SRGB;
     }
   }
 
   // default value, non conforming values are overridden to SRGB
-  return ImageColorSpaceGamma::ImageColorSpaceGamma_SRGB;
+  return winmlp::ImageColorSpaceGamma::ImageColorSpaceGamma_SRGB;
 }
 
 static winmlp::ImageNominalPixelRange
 CreateImageNominalPixelRange(const char* nominal_range) {
-  using namespace winmlp;
-
   if (nominal_range) {
     auto comparator =
         std::bind(std::strcmp, nominal_range, std::placeholders::_1);
 
     if (0 == comparator("NominalRange_0_255")) {
-      return ImageNominalPixelRange::ImageNominalPixelRange_NominalRange_0_255;
+      return winmlp::ImageNominalPixelRange::ImageNominalPixelRange_NominalRange_0_255;
     } else if (0 == comparator("Normalized_0_1")) {
-      return ImageNominalPixelRange::ImageNominalPixelRange_Normalized_0_1;
+      return winmlp::ImageNominalPixelRange::ImageNominalPixelRange_Normalized_0_1;
     } else if (0 == comparator("Normalized_1_1")) {
-      return ImageNominalPixelRange::ImageNominalPixelRange_Normalized_1_1;
+      return winmlp::ImageNominalPixelRange::ImageNominalPixelRange_Normalized_1_1;
     } else if (0 == comparator("NominalRange_16_235")) {
-      return ImageNominalPixelRange::ImageNominalPixelRange_NominalRange_16_235;
+      return winmlp::ImageNominalPixelRange::ImageNominalPixelRange_NominalRange_16_235;
     }
   }
 
   // default value, non conforming values are overridden to NominalRange_0_255
-  return ImageNominalPixelRange::ImageNominalPixelRange_NominalRange_0_255;
+  return winmlp::ImageNominalPixelRange::ImageNominalPixelRange_NominalRange_0_255;
 }
 
 enum class TensorType { Tensor_Data,
@@ -338,8 +332,8 @@ GetTensorType(
   THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetTensorElementType(tensor_info, &tensor_element_data_type),
                       engine_factory->UseOrtApi());
 
-  auto tensor_kind = WinML::TensorKindFromONNXTensorElementDataType(tensor_element_data_type);
-  auto is_float_tensor = tensor_kind == TensorKind::Float;
+  auto tensor_kind = _winml::TensorKindFromONNXTensorElementDataType(tensor_element_data_type);
+  auto is_float_tensor = tensor_kind == winml::TensorKind::Float;
   if (!is_float_tensor) {
     log_stream << "Unsupported image with " << TensorKindToString(tensor_kind)
                << " found." << std::endl;
@@ -418,7 +412,7 @@ CreateTensorFeatureDescriptor(
   THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetTensorElementType(tensor_info, &tensor_element_data_type),
                       engine_factory->UseOrtApi());
 
-  auto kind = WinML::TensorKindFromONNXTensorElementDataType(tensor_element_data_type);
+  auto kind = _winml::TensorKindFromONNXTensorElementDataType(tensor_element_data_type);
 
   auto descriptor = winrt::make<winmlp::TensorFeatureDescriptor>(
       feature_descriptor->name_,
@@ -453,7 +447,7 @@ CreateImageFeatureDescriptor(
   ONNXTensorElementDataType tensor_element_data_type;
   THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetTensorElementType(tensor_info, &tensor_element_data_type),
                       engine_factory->UseOrtApi());
-  auto kind = WinML::TensorKindFromONNXTensorElementDataType(tensor_element_data_type);
+  auto kind = _winml::TensorKindFromONNXTensorElementDataType(tensor_element_data_type);
 
   // pixel format and alpha
   auto pixel_format_value = FetchMetadataValueOrNull(metadata, c_bitmap_pixel_format_key);
@@ -506,7 +500,7 @@ CreateMapFeatureDescriptor(
   THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetMapKeyType(map_info, &map_key_data_type),
                       engine_factory->UseOrtApi());
 
-  auto key_kind = WinML::TensorKindFromONNXTensorElementDataType(map_key_data_type);
+  auto key_kind = _winml::TensorKindFromONNXTensorElementDataType(map_key_data_type);
 
   OrtTypeInfo* map_value_type_info;
   THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetMapValueType(map_info, &map_value_type_info),
@@ -624,10 +618,10 @@ OnnxruntimeDescriptorConverter::ConvertToLearningModelDescriptors(const std::vec
   auto features = winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>();
 
   for (const auto& descriptor : descriptors) {
-    auto learning_model_descriptor = WinML::CreateFeatureDescriptor(engine_factory_.Get(), &descriptor, metadata_);
+    auto learning_model_descriptor = _winml::CreateFeatureDescriptor(engine_factory_.Get(), &descriptor, metadata_);
     features.Append(learning_model_descriptor);
   }
 
   return features;
 }
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

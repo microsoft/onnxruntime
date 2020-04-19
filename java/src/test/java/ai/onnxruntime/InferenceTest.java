@@ -915,6 +915,12 @@ public class InferenceTest {
       assertTrue(firstOutputInfo.getInfo() instanceof TensorInfo);
       assertTrue(secondOutputInfo.getInfo() instanceof SequenceInfo);
       assertEquals(OnnxJavaType.INT64, ((TensorInfo) firstOutputInfo.getInfo()).type);
+      assertTrue(((SequenceInfo) secondOutputInfo.getInfo()).sequenceOfMaps);
+      assertEquals(OnnxJavaType.UNKNOWN, ((SequenceInfo) secondOutputInfo.getInfo()).sequenceType);
+      MapInfo mapInfo = ((SequenceInfo) secondOutputInfo.getInfo()).mapInfo;
+      assertNotNull(mapInfo);
+      assertEquals(OnnxJavaType.INT64, mapInfo.keyType);
+      assertEquals(OnnxJavaType.FLOAT, mapInfo.valueType);
 
       Map<String, OnnxTensor> container = new HashMap<>();
       long[] shape = new long[] {1, 2};
@@ -975,6 +981,12 @@ public class InferenceTest {
       assertTrue(firstOutputInfo.getInfo() instanceof TensorInfo);
       assertTrue(secondOutputInfo.getInfo() instanceof SequenceInfo);
       assertEquals(OnnxJavaType.STRING, ((TensorInfo) firstOutputInfo.getInfo()).type);
+      assertTrue(((SequenceInfo) secondOutputInfo.getInfo()).sequenceOfMaps);
+      assertEquals(OnnxJavaType.UNKNOWN, ((SequenceInfo) secondOutputInfo.getInfo()).sequenceType);
+      MapInfo mapInfo = ((SequenceInfo) secondOutputInfo.getInfo()).mapInfo;
+      assertNotNull(mapInfo);
+      assertEquals(OnnxJavaType.STRING, mapInfo.keyType);
+      assertEquals(OnnxJavaType.FLOAT, mapInfo.valueType);
 
       Map<String, OnnxTensor> container = new HashMap<>();
       long[] shape = new long[] {1, 2};
