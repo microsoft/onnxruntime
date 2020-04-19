@@ -278,16 +278,6 @@ LearningModelSession::GetResults(
   // Update output providers
   auto outputs = binding_impl->UpdateProviders();
 
-  // Once the first evaluation following initialization is complete, and therefore the
-  // initialization work is also complete, trim the upload heap. This is only done once
-  // to avoid requiring the extra allocation during each evaluation.
-  if (is_first_evaluate_) {
-    if (is_gpu_evaluation) {
-      engine_->TrimUploadHeap();
-    }
-    is_first_evaluate_ = false;
-  }
-
   // Create the return status object
   auto result = winrt::make<LearningModelEvaluationResult>();
   auto result_impl = result.as<winmlp::LearningModelEvaluationResult>();

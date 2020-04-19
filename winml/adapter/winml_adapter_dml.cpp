@@ -96,16 +96,6 @@ ORT_API_STATUS_IMPL(winmla::DmlExecutionProviderFlushContext, _In_ OrtExecutionP
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::DmlExecutionProviderTrimUploadHeap, _In_ OrtExecutionProvider* dml_provider) {
-  API_IMPL_BEGIN
-#ifdef USE_DML
-  auto dml_provider_internal = reinterpret_cast<::onnxruntime::IExecutionProvider*>(dml_provider);
-  Dml::TrimUploadHeap(dml_provider_internal);
-#endif  // USE_DML
-  return nullptr;
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(winmla::DmlExecutionProviderReleaseCompletedReferences, _In_ OrtExecutionProvider* dml_provider) {
   API_IMPL_BEGIN
 #ifdef USE_DML
