@@ -27,7 +27,7 @@ jobs:
     parameters:
       BuildArch: 'x86'
 
-- job: WindowsAI_DirectML_ARM64
+- job: WindowsAI_CPU_ARM64
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -39,7 +39,7 @@ jobs:
     parameters:
       BuildArch: 'arm64'
 
-- job: WindowsAI_DirectML_ARM
+- job: WindowsAI_CPU_ARM
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -58,8 +58,8 @@ jobs:
   dependsOn:
   - WindowsAI_DirectML_X64
   - WindowsAI_DirectML_X86
-  - WindowsAI_DirectML_ARM64
-  - WindowsAI_DirectML_ARM
+  - WindowsAI_CPU_ARM64
+  - WindowsAI_CPU_ARM
   condition: succeeded()
   steps:
   - task: DownloadPipelineArtifact@0
@@ -75,13 +75,13 @@ jobs:
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x86'
 
   - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet DirectML ARM64'
+    displayName: 'Download Pipeline Artifact - NuGet CPU ARM64'
     inputs:
       artifactName: 'Microsoft.AI.MachineLearning.arm64'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64'
 
   - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet DirectML ARM'
+    displayName: 'Download Pipeline Artifact - NuGet CPU ARM'
     inputs:
       artifactName: 'Microsoft.AI.MachineLearning.arm'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm'
