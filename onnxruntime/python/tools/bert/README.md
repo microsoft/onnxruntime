@@ -45,27 +45,23 @@ For tf2onnx, please refer to this notebook: https://github.com/onnx/tensorflow-o
 
 Example of using the script bert_model_optimization.py to convert a BERT-large model to run in V100 GPU:
 ```console
-python bert_model_optimization.py --input original_model.onnx --output optimized_model_gpu.onnx --num_heads 16 --hidden_size 1024 --input_int32 --float16 --gpu_only
+python bert_model_optimization.py --input original_model.onnx --output optimized_model_gpu.onnx --num_heads 16 --hidden_size 1024 --input_int32 --float16
 ```
 
 ### Options
 
-See below for description of all the options of bert_model_optimization.py:
+See below for description of some options of bert_model_optimization.py:
 
 - **input**: input model path
 - **output**: output model path
 - **model_type**: (*defaul: bert*)
-    There are 3 model types: *bert*, *bert_tf* and *bert_keras* for models exported by PyTorch, tf2onnx and keras2onnx respectively.
+    There are 4 model types: *bert* (exported by PyTorch), *bert_tf* (BERT exported by PyTorch), *bert_keras* (BERT exported by keras2onnx) and *gpt2* (exported by PyTorch) respectively.
 - **num_heads**: (*default: 12*)
     Number of attention heads. BERT-base and BERT-large has 12 and 16 respectively.
 - **hidden_size**: (*default: 768*)
     BERT-base and BERT-large has 768 and 1024 hidden nodes respectively.
-- **sequence_length**: (*default: 128*)
-    Maximum sequence length.
 - **input_int32**: (*optional*)
     Exported model ususally uses int64 tensor as input. If this flag is specified, int32 tensors will be used as input, and it could avoid un-necessary Cast nodes and get better performance.
-- **gpu_only**: (*optional*)
-    Specify the option if running on GPU only.
 - **float16**: (*optional*)
     By default, model uses float32 in computation. If this flag is specified, half-precision float will be used. This option is recommended for NVidia GPU with Tensor Core like V100 and T4. For older GPUs, float32 is likely faster.
 - **verbose**: (*optional*)
@@ -82,6 +78,7 @@ Here is list of models that have been tested using this tool:
 - **BertForQuestionAnswering** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_squad.py) exported by PyTorch 1.2-1.4 using opset version 10 or 11.
 - **TFBertForSequenceClassification** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_tf_glue.py) exported by keras2onnx installed from its master source.
 - **TFBertForQuestionAnswering** as in [transformers](https://github.com/huggingface/transformers/) exported by keras2onnx installed from its master source.
+- **GPT2Model** as in [transformers](https://github.com/huggingface/transformers/) exported by PyTorch 1.4 using opset version 10 or 11.
 
 If your model is not in the list, the optimized model might not work. You are welcome to update the scripts to support new models.
 
