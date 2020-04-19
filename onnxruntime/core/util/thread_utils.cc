@@ -80,6 +80,7 @@ CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_typ
     return CreateThreadPoolHelper(env, options, allocator);
   }
 #else
+  ORT_UNUSED_PARAMETER(tpool_type);
   return CreateThreadPoolHelper(env, options, allocator);
 #endif
 }
