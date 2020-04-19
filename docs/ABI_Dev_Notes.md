@@ -15,7 +15,7 @@ In order to simplify things, we require every symbol must get resolved at link t
 ## Default visibility and how to export a symbol
 On Linux, by default, at linker's view, every symbol is global. It's easy to use but it's also much easier to cause conflicts and core dumps. We have encountered too many such problems in ONNX python binding. Indeed, if you have a well design, for each shared lib, you only need to export **one** function. ONNX Runtime python binding is a good example. See [pybind11 FAQ](https://github.com/pybind/pybind11/blob/master/docs/faq.rst#someclass-declared-with-greater-visibility-than-the-type-of-its-field-someclassmember--wattributes) for more info.
 
-For controling the visibility, we use linkder version scripts on Linux and def files on Windows. They work similar. That:
+For controlling the visibility, we use linker version scripts on Linux and def files on Windows. They work similar. That:
 1. Only C functions can be exported. 
 2. All the function names must be explicitly listed in a text file.
 3. Don't export any C++ class/struct, or global variable.

@@ -56,12 +56,12 @@ static void ScenarioCppWinrtTestsGpuMethodSetup() {
 };
 
 static void ScenarioCppWinrtTestsSkipEdgeCoreMethodSetup() {
-  SKIP_EDGECORE
+  SKIP_EDGECORE;
 };
 
 static void ScenarioCppWinrtTestsGpuSkipEdgeCoreMethodSetup() {
   ScenarioCppWinrtTestsGpuMethodSetup();
-  SKIP_EDGECORE
+  SKIP_EDGECORE;
 };
 
 static void Sample1() {

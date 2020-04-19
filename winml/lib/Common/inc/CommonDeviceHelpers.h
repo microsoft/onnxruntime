@@ -7,6 +7,8 @@
 #include <initguid.h>
 #include <d3d11.h>
 
+#include "NamespaceAliases.h"
+
 #if __has_include("dxcore.h")
 #define ENABLE_DXCORE 1
 #endif
