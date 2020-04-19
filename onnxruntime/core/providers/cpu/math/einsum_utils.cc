@@ -580,7 +580,7 @@ void EinsumComputePreprocessor::PreprocessInputs() {
     }
 
     // TODO: Identify no-op transpose and prevent triggering the transpose
-    preprocessed = EinsumOp::Transpose(preprocessed, permutation, allocator_);    
+    preprocessed = EinsumOp::Transpose(preprocessed, permutation, allocator_);
 
     EinsumOp::CreateReshapedView(preprocessed, homogenized_input_dims);
 

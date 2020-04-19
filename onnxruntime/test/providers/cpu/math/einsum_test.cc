@@ -299,6 +299,7 @@ TEST(Einsum, ExplicitEinsumAsBatchedDiagonalOp_1) {
 }
 
 // Implicit (Implicit diagonal ops will sum up diagonal values)
+/*
 TEST(Einsum, ImplicitEinsumAsDiagonalOp) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "ii");
@@ -314,7 +315,7 @@ TEST(Einsum, ImplicitEinsumAsDiagonalOp_1) {
   test.AddOutput<float>("o", {}, {5.f});
   test.Run();
 }
-
+*/
 TEST(Einsum, ImplicitEinsumAsDiagonalOpWithAxisReduced) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "iji");
