@@ -16,9 +16,18 @@ import "windows.graphics.imaging.idl";
 import "windows.storage.idl";
 #endif
 
+#ifndef ROOT_NS
+#define ROOT_NS Windows
+#endif
+
+#define STRINGIFY(x) #x
+#define XSTRINGIFY(x) STRINGIFY(x)
+#define CREATE_OBJECT_TOKEN(root_ns, obj) root_ns##.AI.MachineLearning.##obj
+#define EMBED_IN_NAMESPACE(x) XSTRINGIFY(CREATE_OBJECT_TOKEN(ROOT_NS, x))
+
 #include <sdkddkver.h>
 
-namespace Windows.AI.MachineLearning 
+namespace ROOT_NS.AI.MachineLearning 
 {
     [contractversion(3)]
     apicontract MachineLearningContract{};
@@ -77,8 +86,8 @@ namespace Windows.AI.MachineLearning
     //! one of the Load constructors.  You can then enumerate the InputFeatures and 
     //! OutputFeatures.   To bind and evaluate you create a LearningModelSession.
     [contract(MachineLearningContract, 1)]
-    [static_name("Windows.AI.MachineLearning.ILearningModelStatics", e3b977e8-6952-4e47-8ef4-1f7f07897c6d)]
-    [interface_name("Windows.AI.MachineLearning.ILearningModel", 5b8e4920-489f-4e86-9128-265a327b78fa)]
+    [static_name(EMBED_IN_NAMESPACE(ILearningModelStatics), e3b977e8-6952-4e47-8ef4-1f7f07897c6d)]
+    [interface_name(EMBED_IN_NAMESPACE(ILearningModel), 5b8e4920-489f-4e86-9128-265a327b78fa)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
@@ -144,11 +153,11 @@ namespace Windows.AI.MachineLearning
 
     //! \class LearningModelDevice
     //! \brief Create an instance specific to which device you want to evaluate the machine learning model on. 
-    //! \namespace Windows.AI.MachineLearning
+    //! \namespace *.AI.MachineLearning
     [contract(MachineLearningContract, 1)]
-    [constructor_name("Windows.AI.MachineLearning.ILearningModelDeviceFactory", 9cffd74d-b1e5-4f20-80ad-0a56690db06b)]
-    [static_name("Windows.AI.MachineLearning.ILearningModelDeviceStatics", 49f32107-a8bf-42bb-92c7-10b12dc5d21f)]
-    [interface_name("Windows.AI.MachineLearning.ILearningModelDevice", f5c2c8fe-3f56-4a8c-ac5f-fdb92d8b8252)]
+    [constructor_name(EMBED_IN_NAMESPACE(ILearningModelDeviceFactory), 9cffd74d-b1e5-4f20-80ad-0a56690db06b)]
+    [static_name(EMBED_IN_NAMESPACE(ILearningModelDeviceStatics), 49f32107-a8bf-42bb-92c7-10b12dc5d21f)]
+    [interface_name(EMBED_IN_NAMESPACE(ILearningModelDevice), f5c2c8fe-3f56-4a8c-ac5f-fdb92d8b8252)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
@@ -168,7 +177,7 @@ namespace Windows.AI.MachineLearning
     }
 
     [contract(MachineLearningContract, 1)]
-    [interface_name("Windows.AI.MachineLearning.ILearningModelEvaluationResult", b2f9bfcd-960e-49c0-8593-eb190ae3eee2)]
+    [interface_name(EMBED_IN_NAMESPACE(ILearningModelEvaluationResult), b2f9bfcd-960e-49c0-8593-eb190ae3eee2)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
     runtimeclass LearningModelEvaluationResult
@@ -212,8 +221,8 @@ namespace Windows.AI.MachineLearning
     //! \class LearningModelSession
     //! \brief TODO:Docs
     [contract(MachineLearningContract, 1)]
-    [constructor_name("Windows.AI.MachineLearning.ILearningModelSessionFactory", 0f6b881d-1c9b-47b6-bfe0-f1cf62a67579)]
-    [interface_name("Windows.AI.MachineLearning.ILearningModelSession", 8e58f8f6-b787-4c11-90f0-7129aeca74a9)]
+    [constructor_name(EMBED_IN_NAMESPACE(ILearningModelSessionFactory), 0f6b881d-1c9b-47b6-bfe0-f1cf62a67579)]
+    [interface_name(EMBED_IN_NAMESPACE(ILearningModelSession), 8e58f8f6-b787-4c11-90f0-7129aeca74a9)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
@@ -265,8 +274,8 @@ namespace Windows.AI.MachineLearning
     //! \class LearningModelBinding
     //! \brief Holder for associations between model inputs/outputs and variable instances.
     [contract(MachineLearningContract, 1)]
-    [constructor_name("Windows.AI.MachineLearning.ILearningModelBindingFactory", c95f7a7a-e788-475e-8917-23aa381faf0b)]
-    [interface_name("Windows.AI.MachineLearning.ILearningModelBinding", ea312f20-168f-4f8c-94fe-2e7ac31b4aa8)]
+    [constructor_name(EMBED_IN_NAMESPACE(ILearningModelBindingFactory), c95f7a7a-e788-475e-8917-23aa381faf0b)]
+    [interface_name(EMBED_IN_NAMESPACE(ILearningModelBinding), ea312f20-168f-4f8c-94fe-2e7ac31b4aa8)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
@@ -325,7 +334,7 @@ namespace Windows.AI.MachineLearning
     //! \class MapFeatureDescriptor
     //! \brief TODO:Docs
     [contract(MachineLearningContract, 1)]
-    [interface_name("Windows.AI.MachineLearning.IMapFeatureDescriptor", 530424bd-a257-436d-9e60-c2981f7cc5c4)]
+    [interface_name(EMBED_IN_NAMESPACE(IMapFeatureDescriptor), 530424bd-a257-436d-9e60-c2981f7cc5c4)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
     runtimeclass MapFeatureDescriptor : ILearningModelFeatureDescriptor
@@ -339,7 +348,7 @@ namespace Windows.AI.MachineLearning
     //! \class SequenceFeatureDescriptor
     //! \brief TODO:Docs
     [contract(MachineLearningContract, 1)]
-    [interface_name("Windows.AI.MachineLearning.ISequenceFeatureDescriptor", 84f6945a-562b-4d62-a851-739aced96668)]
+    [interface_name(EMBED_IN_NAMESPACE(ISequenceFeatureDescriptor), 84f6945a-562b-4d62-a851-739aced96668)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
     runtimeclass SequenceFeatureDescriptor : ILearningModelFeatureDescriptor
@@ -351,7 +360,7 @@ namespace Windows.AI.MachineLearning
     //! \class TensorFeatureDescriptor
     //! \brief TODO:Docs
     [contract(MachineLearningContract, 1)]
-    [interface_name("Windows.AI.MachineLearning.ITensorFeatureDescriptor", 74455c80-946a-4310-a19c-ee0af028fce4)]
+    [interface_name(EMBED_IN_NAMESPACE(ITensorFeatureDescriptor), 74455c80-946a-4310-a19c-ee0af028fce4)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
     runtimeclass TensorFeatureDescriptor : ILearningModelFeatureDescriptor
@@ -365,7 +374,7 @@ namespace Windows.AI.MachineLearning
     //! \class ImageFeatureDescriptor
     //! \brief TODO:Docs
     [contract(MachineLearningContract, 1)]
-    [interface_name("Windows.AI.MachineLearning.IImageFeatureDescriptor", 365585a5-171a-4a2a-985f-265159d3895a)]
+    [interface_name(EMBED_IN_NAMESPACE(IImageFeatureDescriptor), 365585a5-171a-4a2a-985f-265159d3895a)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
     runtimeclass ImageFeatureDescriptor : ILearningModelFeatureDescriptor
@@ -395,8 +404,8 @@ namespace Windows.AI.MachineLearning
     //! \class TensorFloat
     //! \brief A 32bit float tensor object.
     [contract(MachineLearningContract, 1)]
-    [static_name("Windows.AI.MachineLearning.ITensorFloatStatics", dbcd395b-3ba3-452f-b10d-3c135e573fa9)]
-    [interface_name("Windows.AI.MachineLearning.ITensorFloat", f2282d82-aa02-42c8-a0c8-df1efc9676e1)]
+    [static_name(EMBED_IN_NAMESPACE(ITensorFloatStatics), dbcd395b-3ba3-452f-b10d-3c135e573fa9)]
+    [interface_name(EMBED_IN_NAMESPACE(ITensorFloat), f2282d82-aa02-42c8-a0c8-df1efc9676e1)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
@@ -425,8 +434,8 @@ namespace Windows.AI.MachineLearning
     }
 
     [contract(MachineLearningContract, 1)]
-    [static_name("Windows.AI.MachineLearning.ITensorFloat16BitStatics", a52db6f5-318a-44d4-820b-0cdc7054a84a)]
-    [interface_name("Windows.AI.MachineLearning.ITensorFloat16Bit", 0ab994fc-5b89-4c3c-b5e4-5282a5316c0a)]
+    [static_name(EMBED_IN_NAMESPACE(ITensorFloat16BitStatics), a52db6f5-318a-44d4-820b-0cdc7054a84a)]
+    [interface_name(EMBED_IN_NAMESPACE(ITensorFloat16Bit), 0ab994fc-5b89-4c3c-b5e4-5282a5316c0a)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
@@ -450,8 +459,8 @@ namespace Windows.AI.MachineLearning
     }
 
     [contract(MachineLearningContract, 1)]
-    [static_name("Windows.AI.MachineLearning.ITensorUInt8BitStatics", 05f67583-bc24-4220-8a41-2dcd8c5ed33c)]
-    [interface_name("Windows.AI.MachineLearning.ITensorUInt8Bit", 58e1ae27-622b-48e3-be22-d867aed1daac)]
+    [static_name(EMBED_IN_NAMESPACE(ITensorUInt8BitStatics), 05f67583-bc24-4220-8a41-2dcd8c5ed33c)]
+    [interface_name(EMBED_IN_NAMESPACE(ITensorUInt8Bit), 58e1ae27-622b-48e3-be22-d867aed1daac)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
@@ -475,8 +484,8 @@ namespace Windows.AI.MachineLearning
     }
 
     [contract(MachineLearningContract, 1)]
-    [static_name("Windows.AI.MachineLearning.ITensorInt8BitStatics", b1a12284-095c-4c76-a661-ac4cee1f3e8b)]
-    [interface_name("Windows.AI.MachineLearning.ITensorInt8Bit", cddd97c5-ffd8-4fef-aefb-30e1a485b2ee)]
+    [static_name(EMBED_IN_NAMESPACE(ITensorInt8BitStatics), b1a12284-095c-4c76-a661-ac4cee1f3e8b)]
+    [interface_name(EMBED_IN_NAMESPACE(ITensorInt8Bit), cddd97c5-ffd8-4fef-aefb-30e1a485b2ee)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
@@ -499,8 +508,8 @@ namespace Windows.AI.MachineLearning
     }
 
     [contract(MachineLearningContract, 1)]
-    [static_name("Windows.AI.MachineLearning.ITensorUInt16BitStatics", 5df745dd-028a-481a-a27c-c7e6435e52dd)]
-    [interface_name("Windows.AI.MachineLearning.ITensorUInt16Bit", 68140f4b-23c0-42f3-81f6-a891c011bc3f)]
+    [static_name(EMBED_IN_NAMESPACE(ITensorUInt16BitStatics), 5df745dd-028a-481a-a27c-c7e6435e52dd)]
+    [interface_name(EMBED_IN_NAMESPACE(ITensorUInt16Bit), 68140f4b-23c0-42f3-81f6-a891c011bc3f)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
@@ -523,8 +532,8 @@ namespace Windows.AI.MachineLearning
     }
 
     [contract(MachineLearningContract, 1)]
-    [static_name("Windows.AI.MachineLearning.ITensorInt16BitStatics", 98646293-266e-4b1a-821f-e60d70898b91)]
-    [interface_name("Windows.AI.MachineLearning.ITensorInt16Bit", 98a32d39-e6d6-44af-8afa-baebc44dc020)]
+    [static_name(EMBED_IN_NAMESPACE(ITensorInt16BitStatics), 98646293-266e-4b1a-821f-e60d70898b91)]
+    [interface_name(EMBED_IN_NAMESPACE(ITensorInt16Bit), 98a32d39-e6d6-44af-8afa-baebc44dc020)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
@@ -547,8 +556,8 @@ namespace Windows.AI.MachineLearning
     }
 
     [contract(MachineLearningContract, 1)]
-    [static_name("Windows.AI.MachineLearning.ITensorUInt32BitStatics", 417c3837-e773-4378-8e7f-0cc33dbea697)]
-    [interface_name("Windows.AI.MachineLearning.ITensorUInt32Bit", d8c9c2ff-7511-45a3-bfac-c38f370d2237)]
+    [static_name(EMBED_IN_NAMESPACE(ITensorUInt32BitStatics), 417c3837-e773-4378-8e7f-0cc33dbea697)]
+    [interface_name(EMBED_IN_NAMESPACE(ITensorUInt32Bit), d8c9c2ff-7511-45a3-bfac-c38f370d2237)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
@@ -571,8 +580,8 @@ namespace Windows.AI.MachineLearning
     }
 
     [contract(MachineLearningContract, 1)]
-    [static_name("Windows.AI.MachineLearning.ITensorInt32BitStatics", 6539864b-52fa-4e35-907c-834cac417b50)]
-    [interface_name("Windows.AI.MachineLearning.ITensorInt32Bit", 2c0c28d3-207c-4486-a7d2-884522c5e589)]
+    [static_name(EMBED_IN_NAMESPACE(ITensorInt32BitStatics), 6539864b-52fa-4e35-907c-834cac417b50)]
+    [interface_name(EMBED_IN_NAMESPACE(ITensorInt32Bit), 2c0c28d3-207c-4486-a7d2-884522c5e589)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
@@ -595,8 +604,8 @@ namespace Windows.AI.MachineLearning
     }
 
     [contract(MachineLearningContract, 1)]
-    [static_name("Windows.AI.MachineLearning.ITensorUInt64BitStatics", 7a7e20eb-242f-47cb-a9c6-f602ecfbfee4)]
-    [interface_name("Windows.AI.MachineLearning.ITensorUInt64Bit", 2e70ffad-04bf-4825-839a-82baef8c7886)]
+    [static_name(EMBED_IN_NAMESPACE(ITensorUInt64BitStatics), 7a7e20eb-242f-47cb-a9c6-f602ecfbfee4)]
+    [interface_name(EMBED_IN_NAMESPACE(ITensorUInt64Bit), 2e70ffad-04bf-4825-839a-82baef8c7886)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
@@ -619,8 +628,8 @@ namespace Windows.AI.MachineLearning
     }
 
     [contract(MachineLearningContract, 1)]
-    [static_name("Windows.AI.MachineLearning.ITensorInt64BitStatics", 9648ad9d-1198-4d74-9517-783ab62b9cc2)]
-    [interface_name("Windows.AI.MachineLearning.ITensorInt64Bit", 499665ba-1fa2-45ad-af25-a0bd9bda4c87)]
+    [static_name(EMBED_IN_NAMESPACE(ITensorInt64BitStatics), 9648ad9d-1198-4d74-9517-783ab62b9cc2)]
+    [interface_name(EMBED_IN_NAMESPACE(ITensorInt64Bit), 499665ba-1fa2-45ad-af25-a0bd9bda4c87)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
@@ -643,8 +652,8 @@ namespace Windows.AI.MachineLearning
     }
 
     [contract(MachineLearningContract, 1)]
-    [static_name("Windows.AI.MachineLearning.ITensorBooleanStatics", 2796862c-2357-49a7-b476-d0aa3dfe6866)]
-    [interface_name("Windows.AI.MachineLearning.ITensorBoolean", 50f311ed-29e9-4a5c-a44d-8fc512584eed)]
+    [static_name(EMBED_IN_NAMESPACE(ITensorBooleanStatics), 2796862c-2357-49a7-b476-d0aa3dfe6866)]
+    [interface_name(EMBED_IN_NAMESPACE(ITensorBoolean), 50f311ed-29e9-4a5c-a44d-8fc512584eed)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
@@ -668,8 +677,8 @@ namespace Windows.AI.MachineLearning
     }
 
     [contract(MachineLearningContract, 1)]
-    [static_name("Windows.AI.MachineLearning.ITensorDoubleStatics", a86693c5-9538-44e7-a3ca-5df374a5a70c)]
-    [interface_name("Windows.AI.MachineLearning.ITensorDouble", 91e41252-7a8f-4f0e-a28f-9637ffc8a3d0)]
+    [static_name(EMBED_IN_NAMESPACE(ITensorDoubleStatics), a86693c5-9538-44e7-a3ca-5df374a5a70c)]
+    [interface_name(EMBED_IN_NAMESPACE(ITensorDouble), 91e41252-7a8f-4f0e-a28f-9637ffc8a3d0)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
@@ -692,8 +701,8 @@ namespace Windows.AI.MachineLearning
     }
 
     [contract(MachineLearningContract, 1)]
-    [static_name("Windows.AI.MachineLearning.ITensorStringStatics", 83623324-cf26-4f17-a2d4-20ef8d097d53)]
-    [interface_name("Windows.AI.MachineLearning.ITensorString", 582335c8-bdb1-4610-bc75-35e9cbf009b7)]
+    [static_name(EMBED_IN_NAMESPACE(ITensorStringStatics), 83623324-cf26-4f17-a2d4-20ef8d097d53)]
+    [interface_name(EMBED_IN_NAMESPACE(ITensorString), 582335c8-bdb1-4610-bc75-35e9cbf009b7)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
@@ -713,8 +722,8 @@ namespace Windows.AI.MachineLearning
     }
 
     [contract(MachineLearningContract, 1)]
-    [static_name("Windows.AI.MachineLearning.IImageFeatureValueStatics", 1bc317fd-23cb-4610-b085-c8e1c87ebaa0)]
-    [interface_name("Windows.AI.MachineLearning.IImageFeatureValue", f0414fd9-c9aa-4405-b7fb-94f87c8a3037)]
+    [static_name(EMBED_IN_NAMESPACE(IImageFeatureValueStatics), 1bc317fd-23cb-4610-b085-c8e1c87ebaa0)]
+    [interface_name(EMBED_IN_NAMESPACE(IImageFeatureValue), f0414fd9-c9aa-4405-b7fb-94f87c8a3037)]
     [threading(both)]
     [marshaling_behavior(agile)]
     [dualapipartition(1)]
