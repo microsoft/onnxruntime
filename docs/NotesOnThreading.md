@@ -11,7 +11,6 @@ When OpenMP is enabled, they resort to using OpenMP. When OpenMP is disabled the
 Examples of these abstractions are: (threadpool.h has more documentation for these)
 * TryBatchParallelFor
 * TryParallelFor
-* SimpleParallelFor
 * static version of NumThreads
 
 **Please do not write #ifdef pragma omp in operator code**.
