@@ -55,23 +55,22 @@ def generate_project_url(list, project_url):
 def generate_repo_url(list, repo_url, commit_id):
     list.append('<repository type="git" url="' + repo_url + '"' + ' commit="' + commit_id + '" />')
     
-def generate_dependencies(list, version):
+def generate_dependencies(list, package_name, version):
     list.append('<dependencies>')
 
-    # Support .Net Core
-    list.append('<group targetFramework="NETCOREAPP">')
-    list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
-    list.append('</group>')
-
-    # Support .Net Standard
-    list.append('<group targetFramework="NETSTANDARD">')
-    list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
-    list.append('</group>')
-
-    # Support .Net Framework
-    list.append('<group targetFramework="NETFRAMEWORK">')
-    list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
-    list.append('</group>')
+    if (args.package_name != 'Microsoft.AI.MachineLearning'):
+        # Support .Net Core
+        list.append('<group targetFramework="NETCOREAPP">')
+        list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        list.append('</group>')
+        # Support .Net Standard
+        list.append('<group targetFramework="NETSTANDARD">')
+        list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        list.append('</group>')
+        # Support .Net Framework
+        list.append('<group targetFramework="NETFRAMEWORK">')
+        list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        list.append('</group>')
 
     list.append('</dependencies>')
 
@@ -106,7 +105,7 @@ def generate_metadata(list, args):
     generate_license(metadata_list)
     generate_project_url(metadata_list, 'https://github.com/Microsoft/onnxruntime')
     generate_repo_url(metadata_list, 'https://github.com/Microsoft/onnxruntime.git', args.commit_id)  
-    generate_dependencies(metadata_list, args.package_version)
+    generate_dependencies(metadata_list, args.package_name, args.package_version)
     generate_release_notes(metadata_list)
     metadata_list.append('</metadata>')
     
