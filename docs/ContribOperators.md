@@ -41,6 +41,7 @@
   * <sub>experimental</sub> <a href="#com.microsoft.EmbedLayerNormalization">com.microsoft.EmbedLayerNormalization</a>
   * <sub>experimental</sub> <a href="#com.microsoft.FastGelu">com.microsoft.FastGelu</a>
   * <sub>experimental</sub> <a href="#com.microsoft.Gelu">com.microsoft.Gelu</a>
+  * <sub>experimental</sub> <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
   * <sub>experimental</sub> <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
 * com.microsoft.nchwc
   * <a href="#com.microsoft.nchwc.AveragePool">com.microsoft.nchwc.AveragePool</a>
@@ -2185,6 +2186,33 @@ No versioning maintained for experimental ops.
 <dl>
 <dt><tt>Y</tt> : T</dt>
 <dd>The output.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <sub>experimental</sub> <a name="com.microsoft.Inverse"></a><a name="com.microsoft.inverse">**com.microsoft.Inverse**</a>
+
+#### Version
+
+No versioning maintained for experimental ops.
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input tensor. Every matrix in the batch must be invertible.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output tensor of the same type and shape as the input tensor.</dd>
 </dl>
 
 #### Type Constraints
