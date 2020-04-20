@@ -245,7 +245,7 @@ typedef struct OrtApiBase OrtApiBase;
 
 ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
 
-struct OrtApi1to2 {
+struct OrtApi {
   // Shipped as version 1 - DO NOT MODIFY
 
   /**
@@ -525,7 +525,7 @@ struct OrtApi1to2 {
  * [2,0,4] -> 0
  * [-1,3,4] -> -1
  */
-  ORT_API2_STATUS(GetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out);
+  ORT_API2_STATUS(GetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* out);
 
   /**
  * \param out Should be freed by OrtReleaseTensorTypeAndShapeInfo after use
@@ -817,8 +817,7 @@ struct OrtApi1to2 {
    * 'keys' will be a nullptr if custom metadata map is empty.
    */
   ORT_API2_STATUS(ModelMetadataGetCustomMetadataMapKeys, _In_ const OrtModelMetadata* model_metadata,
-                                                                  _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*num_keys) char*** keys, _Out_ int64_t* num_keys);
-  // End of Version 2 - DO NOT MODIFY ABOVE
+                  _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*num_keys) char*** keys, _Out_ int64_t* num_keys);
 };
 
 /*

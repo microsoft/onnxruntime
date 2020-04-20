@@ -1421,7 +1421,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-struct OrtApi {
+struct OrtApi1to2 {
   // Shipped as version 1 - DO NOT MODIFY
 
   /**
@@ -1701,7 +1701,7 @@ struct OrtApi {
  * [2,0,4] -> 0
  * [-1,3,4] -> -1
  */
-  ORT_API2_STATUS(GetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* out);
+  ORT_API2_STATUS(GetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out);
 
   /**
  * \param out Should be freed by OrtReleaseTensorTypeAndShapeInfo after use
@@ -1994,6 +1994,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(ModelMetadataGetCustomMetadataMapKeys, _In_ const OrtModelMetadata* model_metadata,
                   _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*num_keys) char*** keys, _Out_ int64_t* num_keys);
+  // End of Version 2 - DO NOT MODIFY ABOVE
 };
 
 static constexpr OrtApi1to2 ort_api_1_to_2 = {
@@ -2290,26 +2291,8 @@ static constexpr OrtApi ort_api_3 = {
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
-
-// Ignore warnings that arise due to casting const OrtApi1to2* to const OrtApi* because
-// OrtApi has more members than OrtApi1to2 and GCC/Clang warn about missing member initializations
-// that we don't need to worry about
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
-#elif defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wmissing-field-initializers"
-#endif
-
   if (version == 1 || version == 2)
     return reinterpret_cast<const OrtApi*> (reinterpret_cast<const void*>(&ort_api_1_to_2));
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#elif defined(__clang__)
-#pragma clang diagnostic pop
-#endif
 
   if (version == 3)
     return &ort_api_3;
