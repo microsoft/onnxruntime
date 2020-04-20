@@ -71,8 +71,15 @@ ORT_API_STATUS_IMPL(OrtApis::GetSymbolicDimensions, _In_ const struct OrtTensorT
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* this_ptr, _Out_ size_t* out) {
+// shape.Size() may return -1 if any of the dims have negative/unknown values - hence return type cannot be size_t
+// Keeping the implementation for backwards compatibility and fixing the bug in V2 version of the method below
+ORT_API_STATUS_IMPL(OrtApis::GetTensorShapeElementCountV1, _In_ const OrtTensorTypeAndShapeInfo* this_ptr, _Out_ size_t* out) {
   *out = static_cast<size_t>(this_ptr->shape.Size());
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetTensorShapeElementCountV2, _In_ const OrtTensorTypeAndShapeInfo* this_ptr, _Out_ int64_t* out) {
+  *out = this_ptr->shape.Size();
   return nullptr;
 }
 

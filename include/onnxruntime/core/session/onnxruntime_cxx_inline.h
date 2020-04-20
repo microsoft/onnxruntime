@@ -360,10 +360,10 @@ inline ONNXTensorElementDataType TensorTypeAndShapeInfo::GetElementType() const 
   return out;
 }
 
-inline size_t TensorTypeAndShapeInfo::GetElementCount() const {
-  size_t out;
+inline int64_t TensorTypeAndShapeInfo::GetElementCount() const {
+  int64_t out;
   ThrowOnError(Global<void>::api_.GetTensorShapeElementCount(p_, &out));
-  return static_cast<size_t>(out);
+  return out;
 }
 
 inline size_t TensorTypeAndShapeInfo::GetDimensionsCount() const {
@@ -539,8 +539,8 @@ inline OrtTensorTypeAndShapeInfo* CustomOpApi::GetTensorTypeAndShape(_In_ const 
   return out;
 }
 
-inline size_t CustomOpApi::GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info) {
-  size_t out;
+inline int64_t CustomOpApi::GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info) {
+  int64_t out;
   ThrowOnError(api_.GetTensorShapeElementCount(info, &out));
   return out;
 }

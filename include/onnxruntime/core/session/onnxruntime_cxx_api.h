@@ -236,7 +236,7 @@ struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
   explicit TensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* p) : Base<OrtTensorTypeAndShapeInfo>{p} {}
 
   ONNXTensorElementDataType GetElementType() const;
-  size_t GetElementCount() const;
+  int64_t GetElementCount() const;
 
   size_t GetDimensionsCount() const;
   void GetDimensions(int64_t* values, size_t values_count) const;
@@ -325,7 +325,7 @@ struct CustomOpApi {
   T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
 
   OrtTensorTypeAndShapeInfo* GetTensorTypeAndShape(_In_ const OrtValue* value);
-  size_t GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info);
+  int64_t GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info);
   ONNXTensorElementDataType GetTensorElementType(const OrtTensorTypeAndShapeInfo* info);
   size_t GetDimensionsCount(_In_ const OrtTensorTypeAndShapeInfo* info);
   void GetDimensions(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);

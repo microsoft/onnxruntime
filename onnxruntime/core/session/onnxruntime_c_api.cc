@@ -1403,25 +1403,25 @@ but isn't visible in public headers.
 
 So for example, if we wanted to just add some new members to the ort_api_1_to_2, we'd take the following steps:
 
-	In include\onnxruntime\core\session\onnxruntime_c_api.h we'd just add the members to the end of the structure
+    In include\onnxruntime\core\session\onnxruntime_c_api.h we'd just add the members to the end of the structure
 
-	In this file, we'd correspondingly add the member values to the end of the ort_api_1_to_2 structure, and also rename
-	it to ort_api_1_to_3.
+    In this file, we'd correspondingly add the member values to the end of the ort_api_1_to_2 structure, and also rename
+    it to ort_api_1_to_3.
 
-	Then in GetApi we'd make it return ort_api_1_to_3 for versions 1 through 3.
+    Then in GetApi we'd make it return ort_api_1_to_3 for versions 1 through 3.
 
 Second example, if we wanted to add and remove some members, we'd do this:
 
-	In include\onnxruntime\core\session\onnxruntime_c_api.h we'd make a copy of the OrtApi structure and name the
-	old one OrtApi1to2. In the new OrtApi we'd add or remove any members that we desire.
+    In include\onnxruntime\core\session\onnxruntime_c_api.h we'd make a copy of the OrtApi structure and name the
+    old one OrtApi1to2. In the new OrtApi we'd add or remove any members that we desire.
 
-	In this file, we'd create a new copy of ort_api_1_to_2 called ort_api_3 and make the corresponding changes that were
-	made to the new OrtApi.
+    In this file, we'd create a new copy of ort_api_1_to_2 called ort_api_3 and make the corresponding changes that were
+    made to the new OrtApi.
 
-	In GetApi we now make it return ort_api_3 for version 3.
+    In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_3 = {
+static constexpr OrtApi1to2 ort_api_1_to_2 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -1499,7 +1499,7 @@ static constexpr OrtApi ort_api_1_to_3 = {
     &OrtApis::GetDimensionsCount,
     &OrtApis::GetDimensions,
     &OrtApis::GetSymbolicDimensions,
-    &OrtApis::GetTensorShapeElementCount,
+    &OrtApis::GetTensorShapeElementCountV1,
     &OrtApis::GetTensorTypeAndShape,
     &OrtApis::GetTypeInfo,
     &OrtApis::GetValueType,
@@ -1541,6 +1541,149 @@ static constexpr OrtApi ort_api_1_to_3 = {
     &OrtApis::ReleaseCustomOpDomain,
     // End of Version 1 - DO NOT MODIFY ABOVE (see above text for more information)
 
+    // Shipped as version 2 - DO NOT MODIFY (see above text for more information)
+    &OrtApis::GetDenotationFromTypeInfo,
+    &OrtApis::CastTypeInfoToMapTypeInfo,
+    &OrtApis::CastTypeInfoToSequenceTypeInfo,
+    &OrtApis::GetMapKeyType,
+    &OrtApis::GetMapValueType,
+    &OrtApis::GetSequenceElementType,
+    &OrtApis::ReleaseMapTypeInfo,
+    &OrtApis::ReleaseSequenceTypeInfo,
+    &OrtApis::SessionEndProfiling,
+    &OrtApis::SessionGetModelMetadata,
+    &OrtApis::ModelMetadataGetProducerName,
+    &OrtApis::ModelMetadataGetGraphName,
+    &OrtApis::ModelMetadataGetDomain,
+    &OrtApis::ModelMetadataGetDescription,
+    &OrtApis::ModelMetadataLookupCustomMetadataMap,
+    &OrtApis::ModelMetadataGetVersion,
+    &OrtApis::ReleaseModelMetadata
+    // End of Version 2 - DO NOT MODIFY ABOVE (see above text for more information)
+
+};
+
+static constexpr OrtApi ort_api_3 = {
+    // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
+
+    // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
+    &OrtApis::CreateStatus,
+    &OrtApis::GetErrorCode,
+    &OrtApis::GetErrorMessage,
+
+    &OrtApis::CreateEnv,
+    &OrtApis::CreateEnvWithCustomLogger,
+    &OrtApis::EnableTelemetryEvents,
+    &OrtApis::DisableTelemetryEvents,
+
+    &OrtApis::CreateSession,
+    &OrtApis::CreateSessionFromArray,
+    &OrtApis::Run,
+
+    &OrtApis::CreateSessionOptions,
+    &OrtApis::SetOptimizedModelFilePath,
+    &OrtApis::CloneSessionOptions,
+    &OrtApis::SetSessionExecutionMode,
+    &OrtApis::EnableProfiling,
+    &OrtApis::DisableProfiling,
+    &OrtApis::EnableMemPattern,
+    &OrtApis::DisableMemPattern,
+    &OrtApis::EnableCpuMemArena,
+    &OrtApis::DisableCpuMemArena,
+    &OrtApis::SetSessionLogId,
+    &OrtApis::SetSessionLogVerbosityLevel,
+    &OrtApis::SetSessionLogSeverityLevel,
+    &OrtApis::SetSessionGraphOptimizationLevel,
+    &OrtApis::SetIntraOpNumThreads,
+    &OrtApis::SetInterOpNumThreads,
+
+    &OrtApis::CreateCustomOpDomain,
+    &OrtApis::CustomOpDomain_Add,
+    &OrtApis::AddCustomOpDomain,
+    &OrtApis::RegisterCustomOpsLibrary,
+
+    &OrtApis::SessionGetInputCount,
+    &OrtApis::SessionGetOutputCount,
+    &OrtApis::SessionGetOverridableInitializerCount,
+    &OrtApis::SessionGetInputTypeInfo,
+    &OrtApis::SessionGetOutputTypeInfo,
+    &OrtApis::SessionGetOverridableInitializerTypeInfo,
+    &OrtApis::SessionGetInputName,
+    &OrtApis::SessionGetOutputName,
+    &OrtApis::SessionGetOverridableInitializerName,
+
+    &OrtApis::CreateRunOptions,
+    &OrtApis::RunOptionsSetRunLogVerbosityLevel,
+    &OrtApis::RunOptionsSetRunLogSeverityLevel,
+    &OrtApis::RunOptionsSetRunTag,
+    &OrtApis::RunOptionsGetRunLogVerbosityLevel,
+    &OrtApis::RunOptionsGetRunLogSeverityLevel,
+    &OrtApis::RunOptionsGetRunTag,
+    &OrtApis::RunOptionsSetTerminate,
+    &OrtApis::RunOptionsUnsetTerminate,
+
+    &OrtApis::CreateTensorAsOrtValue,
+    &OrtApis::CreateTensorWithDataAsOrtValue,
+    &OrtApis::IsTensor,
+    &OrtApis::GetTensorMutableData,
+    &OrtApis::FillStringTensor,
+
+    &OrtApis::GetStringTensorDataLength,
+    &OrtApis::GetStringTensorContent,
+
+    &OrtApis::CastTypeInfoToTensorInfo,
+    &OrtApis::GetOnnxTypeFromTypeInfo,
+    &OrtApis::CreateTensorTypeAndShapeInfo,
+    &OrtApis::SetTensorElementType,
+
+    &OrtApis::SetDimensions,
+    &OrtApis::GetTensorElementType,
+    &OrtApis::GetDimensionsCount,
+    &OrtApis::GetDimensions,
+    &OrtApis::GetSymbolicDimensions,
+    &OrtApis::GetTensorShapeElementCountV2,
+    &OrtApis::GetTensorTypeAndShape,
+    &OrtApis::GetTypeInfo,
+    &OrtApis::GetValueType,
+    &OrtApis::CreateMemoryInfo,
+    &OrtApis::CreateCpuMemoryInfo,
+    &OrtApis::CompareMemoryInfo,
+    &OrtApis::MemoryInfoGetName,
+    &OrtApis::MemoryInfoGetId,
+    &OrtApis::MemoryInfoGetMemType,
+    &OrtApis::MemoryInfoGetType,
+    &OrtApis::AllocatorAlloc,
+    &OrtApis::AllocatorFree,
+    &OrtApis::AllocatorGetInfo,
+    &OrtApis::GetAllocatorWithDefaultOptions,
+    &OrtApis::AddFreeDimensionOverride,
+    &OrtApis::GetValue,
+    &OrtApis::GetValueCount,
+    &OrtApis::CreateValue,
+    &OrtApis::CreateOpaqueValue,
+    &OrtApis::GetOpaqueValue,
+
+    &OrtApis::KernelInfoGetAttribute_float,
+    &OrtApis::KernelInfoGetAttribute_int64,
+    &OrtApis::KernelInfoGetAttribute_string,
+    &OrtApis::KernelContext_GetInputCount,
+    &OrtApis::KernelContext_GetOutputCount,
+    &OrtApis::KernelContext_GetInput,
+    &OrtApis::KernelContext_GetOutput,
+
+    &OrtApis::ReleaseEnv,
+    &OrtApis::ReleaseStatus,
+    &OrtApis::ReleaseMemoryInfo,
+    &OrtApis::ReleaseSession,
+    &OrtApis::ReleaseValue,
+    &OrtApis::ReleaseRunOptions,
+    &OrtApis::ReleaseTypeInfo,
+    &OrtApis::ReleaseTensorTypeAndShapeInfo,
+    &OrtApis::ReleaseSessionOptions,
+    &OrtApis::ReleaseCustomOpDomain,
+    // End of Version 1 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Shipped as version 2 - DO NOT MODIFY (see above text for more information)
     &OrtApis::GetDenotationFromTypeInfo,
     &OrtApis::CastTypeInfoToMapTypeInfo,
     &OrtApis::CastTypeInfoToSequenceTypeInfo,
@@ -1572,8 +1715,11 @@ static constexpr OrtApi ort_api_1_to_3 = {
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
-  if (version >= 1 && version <= 3)
-    return &ort_api_1_to_3;
+  if (version == 1 || version == 2)
+    return reinterpret_cast<const OrtApi*>(&ort_api_1_to_2);
+
+  if (version == 3)
+    return &ort_api_3;
 
   return nullptr;  // Unsupported version
 }
