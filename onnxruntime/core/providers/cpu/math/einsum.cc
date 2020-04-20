@@ -40,7 +40,14 @@ Status Einsum::Compute(OpKernelContext* context) const {
 
   if (inputs[0]->IsDataType<float>()) {
     return EinsumTypedComputeProcessor<float>(context, allocator, einsum_compute_preprocessor);
+  } else if (inputs[0]->IsDataType<int32_t>()) {
+    return EinsumTypedComputeProcessor<int32_t>(context, allocator, einsum_compute_preprocessor);
+  } else if (inputs[0]->IsDataType<double>()) {
+    return EinsumTypedComputeProcessor<double>(context, allocator, einsum_compute_preprocessor);
+  } else if (inputs[0]->IsDataType<int64_t>()) {
+    return EinsumTypedComputeProcessor<int64_t>(context, allocator, einsum_compute_preprocessor);
   }
+
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, 
                          "Einsum op: An implementation for the input type ", 

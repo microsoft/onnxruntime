@@ -263,10 +263,34 @@ Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr 
 }
 
 // Explicit template instantiation
+
+// float
 template Tensor MatMul<float>(const Tensor& input_1, const Tensor& input_2, 
     AllocatorPtr allocator, concurrency::ThreadPool* tp);
-template Tensor ReduceSum<float>(const Tensor& input, const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp);
+template Tensor ReduceSum<float>(const Tensor& input, const std::vector<int64_t>& reduce_axes, 
+    AllocatorPtr allocator, concurrency::ThreadPool* tp);
 template Tensor ReduceSum<float>(const Tensor& input, int64_t axis, AllocatorPtr allocator, concurrency::ThreadPool* tp);
+
+// int32_t
+template Tensor MatMul<int32_t>(const Tensor& input_1, const Tensor& input_2,
+                              AllocatorPtr allocator, concurrency::ThreadPool* tp);
+template Tensor ReduceSum<int32_t>(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+                                 AllocatorPtr allocator, concurrency::ThreadPool* tp);
+template Tensor ReduceSum<int32_t>(const Tensor& input, int64_t axis, AllocatorPtr allocator, concurrency::ThreadPool* tp);
+
+// double
+template Tensor MatMul<double>(const Tensor& input_1, const Tensor& input_2,
+                              AllocatorPtr allocator, concurrency::ThreadPool* tp);
+template Tensor ReduceSum<double>(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+                                 AllocatorPtr allocator, concurrency::ThreadPool* tp);
+template Tensor ReduceSum<double>(const Tensor& input, int64_t axis, AllocatorPtr allocator, concurrency::ThreadPool* tp);
+
+// int64_t
+template Tensor MatMul<int64_t>(const Tensor& input_1, const Tensor& input_2,
+                              AllocatorPtr allocator, concurrency::ThreadPool* tp);
+template Tensor ReduceSum<int64_t>(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+                                 AllocatorPtr allocator, concurrency::ThreadPool* tp);
+template Tensor ReduceSum<int64_t>(const Tensor& input, int64_t axis, AllocatorPtr allocator, concurrency::ThreadPool* tp);
 
 }  // namespace EinsumOp
 }  // namespace onnxruntime

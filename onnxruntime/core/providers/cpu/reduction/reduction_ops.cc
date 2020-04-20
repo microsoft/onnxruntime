@@ -791,5 +791,8 @@ Status ArgMin<T>::Compute(OpKernelContext* ctx) const {
 
 // Explicit template instantiation
 template class ReduceSum<float>;
+template class ReduceSum<int32_t>;
+template class ReduceSum<double>;
+template class ReduceSum<int64_t>;
 
 }  // namespace onnxruntime

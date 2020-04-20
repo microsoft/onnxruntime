@@ -701,13 +701,24 @@ Status EinsumTypedComputeProcessor(OpKernelContext* context,
       if (input == num_inputs - 1) {
         is_final_pair = true;
       }
-      result = EinsumOp::PairwiseOperandProcess<float>(result, preprocessed_inputs[input], reduced_dims, tp, allocator, einsum_compute_preprocessor, is_final_pair, *output);
+      result = EinsumOp::PairwiseOperandProcess<T>(result, preprocessed_inputs[input], reduced_dims, tp, allocator, einsum_compute_preprocessor, is_final_pair, *output);
     }
   }
   return Status::OK();
 }
 
 // Explicit template instantiation
+
+// float
 template Status EinsumTypedComputeProcessor<float>(OpKernelContext* context, AllocatorPtr allocator, EinsumComputePreprocessor& einsum_compute_preprocessor);
+
+// int32_t
+template Status EinsumTypedComputeProcessor<int32_t>(OpKernelContext* context, AllocatorPtr allocator, EinsumComputePreprocessor& einsum_compute_preprocessor);
+
+// double
+template Status EinsumTypedComputeProcessor<double>(OpKernelContext* context, AllocatorPtr allocator, EinsumComputePreprocessor& einsum_compute_preprocessor);
+
+// int64_t
+template Status EinsumTypedComputeProcessor<int64_t>(OpKernelContext* context, AllocatorPtr allocator, EinsumComputePreprocessor& einsum_compute_preprocessor);
 
 }  // namespace onnxruntime
