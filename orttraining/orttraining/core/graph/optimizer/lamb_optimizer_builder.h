@@ -11,7 +11,7 @@ namespace training {
 class LambOptimizerBuilder final : public OptimizerBuilder {
  public:
   LambOptimizerBuilder() :
-    OptimizerBuilder(OpDef{"LambOptimizer"},
+    OptimizerBuilder(OpDef{"LambOptimizer", kMSDomain, 1},
                      {"alpha",
                       "beta",
                       "lambda",

@@ -469,7 +469,7 @@ void run_lamb_test_with_baseline(
     const int64_t step = 0,
     const float ratio_min = -std::numeric_limits<float>::infinity(),
     const float ratio_max = std::numeric_limits<float>::infinity()) {
-  OpTester test("LambOptimizer", 9, onnxruntime::kOnnxDomain, true);
+  OpTester test("LambOptimizer", 1, onnxruntime::kMSDomain, true);
 
   test.AddInput<bool>("update_signal", {1}, {do_update});
   test.AddMissingOptionalInput<T2>();
@@ -547,7 +547,7 @@ void run_multi_tensor_lamb_test_with_baseline(
     const int64_t step = 0,
     const float ratio_min = -std::numeric_limits<float>::infinity(),
     const float ratio_max = std::numeric_limits<float>::infinity()) {
-  OpTester test("LambOptimizer", 9, onnxruntime::kOnnxDomain, true);
+  OpTester test("LambOptimizer", 1, onnxruntime::kMSDomain, true);
 
   ORT_ENFORCE(shapes.size() == ws.size());
   ORT_ENFORCE(shapes.size() == gs.size());

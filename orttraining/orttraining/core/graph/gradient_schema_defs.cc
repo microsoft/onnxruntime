@@ -135,7 +135,8 @@ static void propagateRecvOutputTensorElemTypes(
 // For Brevity documentation was not copied
 OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
   op_schema
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Attr(
           "alpha",
           "Coefficient of previous gradient in running average.",
