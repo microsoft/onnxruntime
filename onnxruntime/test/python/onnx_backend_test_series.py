@@ -89,7 +89,9 @@ def create_backend_test(testname=None):
             '^test_adagrad*', # NOT_IMPLEMENTED : Could not find an implementation for the node Adagrad(1)
             '^test_argmin*', # NOT_IMPLEMENTED : Could not find an implementation for the node ArgMin(12)
             '^test_batchnorm_epsilon_training_mode*', # Training_mode is not a scalar boolean
+            '^test_batchnorm_epsilon_old_cpu', # NOT_IMPLEMENTED : Could not find an implementation for the node BatchNormalization(12)
             '^test_batchnorm_example_training_mode*', # Training_mode is not a scalar boolean
+            '^test_batchnorm_example_old_cpu', # NOT_IMPLEMENTED : Could not find an implementation for the node BatchNormalization(12)
             '^test_celu*', #  Unrecognized attribute: alpha for operator Constant
             '^test_clip_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Clip(12)
             '^test_clip_default_inbounds_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Clip(12)
