@@ -71,78 +71,140 @@ export interface TypedTensor<T extends Tensor.Type> extends TypedTensorBase<T>, 
 export interface Tensor extends TypedTensor<Tensor.Type> {}
 
 export interface TensorConstructor {
+  //#region specify element type
+  /**
+   * Construct a new string tensor object from the given type, data and dims.
+   * @type Specify the element type.
+   * @data Specify the tensor data
+   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new(type: 'string', data: Tensor.DataTypeMap['string']|ReadonlyArray<string>,
+      dims?: ReadonlyArray<number>): TypedTensor<'string'>;
+
+  /**
+   * Construct a new bool tensor object from the given type, data and dims.
+   * @type Specify the element type.
+   * @data Specify the tensor data
+   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new(type: 'bool', data: Tensor.DataTypeMap['bool']|ReadonlyArray<boolean>,
+      dims?: ReadonlyArray<number>): TypedTensor<'bool'>;
+
+  /**
+   * Construct a new numeric tensor object from the given type, data and dims.
+   * @type Specify the element type.
+   * @data Specify the tensor data
+   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new<T extends Exclude<Tensor.Type, 'string'|'bool'>>(
+      type: T, data: Tensor.DataTypeMap[T]|ReadonlyArray<number>, dims?: ReadonlyArray<number>): TypedTensor<T>;
+  //#endregion
+
+  //#region infer element types
+
+  /**
+   * Construct a new float32 tensor object from the given data and dims.
+   * @data Specify the tensor data
+   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new(data: Float32Array, dims?: ReadonlyArray<number>): TypedTensor<'float32'>;
+
+  /**
+   * Construct a new int8 tensor object from the given data and dims.
+   * @data Specify the tensor data
+   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new(data: Int8Array, dims?: ReadonlyArray<number>): TypedTensor<'int8'>;
+
+  /**
+   * Construct a new uint8 tensor object from the given data and dims.
+   * @data Specify the tensor data
+   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new(data: Uint8Array, dims?: ReadonlyArray<number>): TypedTensor<'uint8'>;
+
+  /**
+   * Construct a new uint16 tensor object from the given data and dims.
+   * @data Specify the tensor data
+   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new(data: Uint16Array, dims?: ReadonlyArray<number>): TypedTensor<'uint16'>;
+
+  /**
+   * Construct a new int16 tensor object from the given data and dims.
+   * @data Specify the tensor data
+   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new(data: Int16Array, dims?: ReadonlyArray<number>): TypedTensor<'int16'>;
+
+  /**
+   * Construct a new int32 tensor object from the given data and dims.
+   * @data Specify the tensor data
+   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new(data: Int32Array, dims?: ReadonlyArray<number>): TypedTensor<'int32'>;
+
+  /**
+   * Construct a new int64 tensor object from the given data and dims.
+   * @data Specify the tensor data
+   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new(data: BigInt64Array, dims?: ReadonlyArray<number>): TypedTensor<'int64'>;
+
+  /**
+   * Construct a new string tensor object from the given data and dims.
+   * @data Specify the tensor data
+   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new(data: ReadonlyArray<string>, dims?: ReadonlyArray<number>): TypedTensor<'string'>;
+
+  /**
+   * Construct a new bool tensor object from the given data and dims.
+   * @data Specify the tensor data
+   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new(data: ReadonlyArray<boolean>, dims?: ReadonlyArray<number>): TypedTensor<'bool'>;
+
+  /**
+   * Construct a new float64 tensor object from the given data and dims.
+   * @data Specify the tensor data
+   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new(data: Float64Array, dims?: ReadonlyArray<number>): TypedTensor<'float64'>;
+
+  /**
+   * Construct a new uint32 tensor object from the given data and dims.
+   * @data Specify the tensor data
+   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new(data: Uint32Array, dims?: ReadonlyArray<number>): TypedTensor<'uint32'>;
+
+  /**
+   * Construct a new uint64 tensor object from the given data and dims.
+   * @data Specify the tensor data
+   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new(data: BigUint64Array, dims?: ReadonlyArray<number>): TypedTensor<'uint64'>;
+
+  //#endregion
+
+  //#region fall back to non-generic tensor type declaration
+
   /**
    * Construct a new tensor object from the given type, data and dims.
    * @type Specify the element type.
    * @data Specify the tensor data
    * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new<T extends Tensor.Type>(
-      type: T, data: Tensor.DataTypeMap[T]|ReadonlyArray<Tensor.ElementTypeMap[T]>,
-      dims?: ReadonlyArray<number>): TypedTensor<T>;
-
-  //#region infer element types
+  new(type: Tensor.Type, data: Tensor.DataType|ReadonlyArray<number>|ReadonlyArray<boolean>,
+      dims?: ReadonlyArray<number>): Tensor;
 
   /**
-   * Construct a new float32 tensor object from the given data and dims.
+   * Construct a new tensor object from the given data and dims.
+   * @data Specify the tensor data
+   * @dims Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new(data: Float32Array, dims?: ReadonlyArray<number>): TypedTensor<'float32'>;
-
-  /**
-   * Construct a new int8 tensor object from the given data and dims.
-   */
-  new(data: Int8Array, dims?: ReadonlyArray<number>): TypedTensor<'int8'>;
-
-  /**
-   * Construct a new uint8 tensor object from the given data and dims.
-   */
-  new(data: Uint8Array, dims?: ReadonlyArray<number>): TypedTensor<'uint8'>;
-
-  /**
-   * Construct a new uint16 tensor object from the given data and dims.
-   */
-  new(data: Uint16Array, dims?: ReadonlyArray<number>): TypedTensor<'uint16'>;
-
-  /**
-   * Construct a new int16 tensor object from the given data and dims.
-   */
-  new(data: Int16Array, dims?: ReadonlyArray<number>): TypedTensor<'int16'>;
-
-  /**
-   * Construct a new int32 tensor object from the given data and dims.
-   */
-  new(data: Int32Array, dims?: ReadonlyArray<number>): TypedTensor<'int32'>;
-
-  /**
-   * Construct a new int64 tensor object from the given data and dims.
-   */
-  new(data: BigInt64Array, dims?: ReadonlyArray<number>): TypedTensor<'int64'>;
-
-  /**
-   * Construct a new string tensor object from the given data and dims.
-   */
-  new(data: ReadonlyArray<string>, dims?: ReadonlyArray<number>): TypedTensor<'string'>;
-
-  /**
-   * Construct a new bool tensor object from the given data and dims.
-   */
-  new(data: ReadonlyArray<boolean>, dims?: ReadonlyArray<number>): TypedTensor<'bool'>;
-
-  /**
-   * Construct a new float64 tensor object from the given data and dims.
-   */
-  new(data: Float64Array, dims?: ReadonlyArray<number>): TypedTensor<'float64'>;
-
-  /**
-   * Construct a new uint32 tensor object from the given data and dims.
-   */
-  new(data: Uint32Array, dims?: ReadonlyArray<number>): TypedTensor<'uint32'>;
-
-  /**
-   * Construct a new uint64 tensor object from the given data and dims.
-   */
-  new(data: BigUint64Array, dims?: ReadonlyArray<number>): TypedTensor<'uint64'>;
-
+  new(data: Tensor.DataType, dims?: ReadonlyArray<number>): Tensor;
   //#endregion
 }
 
