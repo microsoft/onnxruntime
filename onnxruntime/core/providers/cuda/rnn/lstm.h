@@ -10,6 +10,7 @@ namespace cuda {
 
 template <typename T>
 class LSTM final : public CudnnRnnBase<T> {
+
  public:
   LSTM(const OpKernelInfo& info) : CudnnRnnBase<T>(info) {
     CudnnRnnBase<T>::SetRNNMode(CUDNN_LSTM);

@@ -7,7 +7,6 @@
 // pybind11/stl.h is needed to support std::unordered_set, etc.
 #include <pybind11/stl.h>
 
-#include "core/framework/random_seed.h"
 #include "core/framework/session_options.h"
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
@@ -51,7 +50,6 @@ struct TrainingParameters {
   int data_parallel_size = 1;
   int horizontal_parallel_size = 1;
   bool partition_optimizer = false;
-  int seed = -1;
   bool enable_grad_norm_clip = true;
 };
 
@@ -150,11 +148,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     config.optimizer_config = opt;
   }
 
-  if (parameters.seed > 0) {
-    utils::SetStaticRandomSeed(static_cast<uint32_t>(parameters.seed));
-    std::cout << "Random seed is set to " << parameters.seed << std::endl;
-  }
-
   training::TrainingSession::TrainingConfigurationResult config_result{};
 
   OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
@@ -187,8 +180,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("world_size", &TrainingParameters::world_size)
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
       .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer)
-      .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
-      .def_readwrite("seed", &TrainingParameters::seed);
+      .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip);
 
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())

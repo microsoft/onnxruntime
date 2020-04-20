@@ -5,23 +5,18 @@
 
 #include <random>
 
+#include "gtest/gtest.h"
+
 #include "core/util/math.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/test_random_seed.h"
 
 namespace onnxruntime {
 namespace test {
 
 class RandomValueGenerator {
  public:
-  enum class RandomSeedType {
-    kStatic,      // static value
-    kPerProcess,  // value that is fixed per process (generated or static)
-    kDynamic,     // dynamic value
-  };
-
-  static constexpr auto k_default_random_seed_type = RandomSeedType::kPerProcess;
-
-  explicit RandomValueGenerator(RandomSeedType random_seed_type = k_default_random_seed_type);
+  RandomValueGenerator();
 
   template <class T>
   inline std::vector<T> Uniform(const std::vector<int64_t>& dims, float min, float max) {
@@ -47,7 +42,10 @@ class RandomValueGenerator {
   }
 
  private:
+  const RandomSeedType random_seed_;
   std::default_random_engine generator_;
+  // while this instance is in scope, output some context information on test failure like the random seed value
+  const ::testing::ScopedTrace output_trace_;
 };
 
 template <class T>

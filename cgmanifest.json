@@ -450,7 +450,7 @@
       {
          "component": {
             "git": {
-               "commitHash": "9dfa77ad5c59abd07b77a4c463315ef8112daefc",
+               "commitHash": "7922489c1e7e7baf20c4b1557743d6c7ea72647d",
                "repositoryUrl": "https://github.com/microsoft/FeaturizersLibrary.git"
             },
             "type": "git"

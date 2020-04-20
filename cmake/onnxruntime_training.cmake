@@ -15,7 +15,7 @@ file(GLOB_RECURSE onnxruntime_training_srcs
 
 add_library(onnxruntime_training ${onnxruntime_training_srcs})
 add_dependencies(onnxruntime_training onnx tensorboard ${onnxruntime_EXTERNAL_DEPENDENCIES})
-onnxruntime_add_include_to_target(onnxruntime_training onnxruntime_common onnx onnx_proto tensorboard protobuf::libprotobuf safeint_interface)
+onnxruntime_add_include_to_target(onnxruntime_training onnxruntime_common onnx onnx_proto tensorboard protobuf::libprotobuf)
 
 # fix event_writer.cc 4100 warning
 if(WIN32)
@@ -44,7 +44,7 @@ file(GLOB_RECURSE onnxruntime_training_runner_srcs
 add_library(onnxruntime_training_runner ${onnxruntime_training_runner_srcs})
 add_dependencies(onnxruntime_training_runner ${onnxruntime_EXTERNAL_DEPENDENCIES} onnx onnxruntime_providers)
 
-onnxruntime_add_include_to_target(onnxruntime_training_runner onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training safeint_interface)
+onnxruntime_add_include_to_target(onnxruntime_training_runner onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
 
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime_training_runner PRIVATE ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header} ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
@@ -65,7 +65,7 @@ file(GLOB_RECURSE training_mnist_src
     "${ORTTRAINING_SOURCE_DIR}/models/mnist/main.cc"
 )
 add_executable(onnxruntime_training_mnist ${training_mnist_src})
-onnxruntime_add_include_to_target(onnxruntime_training_mnist onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training safeint_interface)
+onnxruntime_add_include_to_target(onnxruntime_training_mnist onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
 target_include_directories(onnxruntime_training_mnist PUBLIC ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
 
 set(ONNXRUNTIME_LIBS onnxruntime_session ${onnxruntime_libs} ${PROVIDERS_CUDA} ${PROVIDERS_MKLDNN} onnxruntime_optimizer onnxruntime_providers onnxruntime_util onnxruntime_framework onnxruntime_util onnxruntime_graph onnxruntime_common onnxruntime_mlas)
@@ -104,7 +104,7 @@ if(UNIX AND NOT APPLE)
   target_compile_options(onnxruntime_training_bert PUBLIC "-Wno-maybe-uninitialized")
 endif()
 
-onnxruntime_add_include_to_target(onnxruntime_training_bert onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training safeint_interface)
+onnxruntime_add_include_to_target(onnxruntime_training_bert onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
 target_include_directories(onnxruntime_training_bert PUBLIC ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
 
 if (onnxruntime_USE_HOROVOD)
@@ -125,7 +125,7 @@ if(UNIX AND NOT APPLE)
   target_compile_options(onnxruntime_training_pipeline_poc PUBLIC "-Wno-maybe-uninitialized")
 endif()
 
-onnxruntime_add_include_to_target(onnxruntime_training_pipeline_poc onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training safeint_interface)
+onnxruntime_add_include_to_target(onnxruntime_training_pipeline_poc onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
 target_include_directories(onnxruntime_training_pipeline_poc PUBLIC ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
 
 if (onnxruntime_USE_HOROVOD)
@@ -144,7 +144,7 @@ add_executable(onnxruntime_training_gpt2 ${training_gpt2_src})
 if(UNIX AND NOT APPLE)
   target_compile_options(onnxruntime_training_gpt2 PUBLIC "-Wno-maybe-uninitialized")
 endif()
-onnxruntime_add_include_to_target(onnxruntime_training_gpt2 onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training safeint_interface)
+onnxruntime_add_include_to_target(onnxruntime_training_gpt2 onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
 target_include_directories(onnxruntime_training_gpt2 PUBLIC ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
 if (onnxruntime_USE_HOROVOD)
   target_include_directories(onnxruntime_training_gpt2 PUBLIC ${HOROVOD_INCLUDE_DIRS})

@@ -3,6 +3,7 @@
 
 #include "orttraining/training_ops/cpu/nn/dropout_op.h"
 #include <chrono>
+#include <random>
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
@@ -91,11 +92,12 @@ Status Dropout<T1, T2>::Compute(OpKernelContext* context) const {
 
     // generate mask
     {
+      RandomGenerator& generator = generator_ != nullptr ? *generator_.get() : RandomGenerator::Default();
+      std::default_random_engine rng(generator.NextSeed());
       std::uniform_real_distribution<float> dist{0.0f, 1.0f};
-      std::lock_guard<std::mutex> rng_guard{rng_mutex_};
       mask_arr = Eigen::ArrayX<bool>::NullaryExpr(
           mask_arr.size(),
-          [this, ratio_value, &dist]() { return dist(rng_) >= ratio_value; });
+          [ratio_value, &dist, &rng]() { return dist(rng) >= ratio_value; });
     }
 
     Y_arr = mask_arr.cast<T1>() * X_arr / (1.0f - ratio_value);
