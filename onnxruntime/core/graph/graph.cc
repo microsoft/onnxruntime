@@ -26,6 +26,7 @@
 #include "core/graph/op.h"
 
 #include "onnx/checker.h"
+#include "onnx/shape_inference/implementation.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ONNX_NAMESPACE::Utils;

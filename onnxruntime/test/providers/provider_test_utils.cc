@@ -796,6 +796,26 @@ void OpTester::Run(
               }
             }
 
+            // Review(codemzs): Recurses only one level.
+            if (!kci) {
+              valid = true;
+              auto* node_func = node.GetFunctionBody();
+              if (!node_func) {
+                valid = false;
+              } else {
+                for (auto& sub_node : node_func->Body().Nodes()) {
+                  if (sub_node.OpType() != "Constant") {
+                    auto sub_reg = execution_provider->GetKernelRegistry();
+                    const KernelCreateInfo* sub_kci = sub_reg->TryFindKernel(sub_node, execution_provider->Type());
+                    if (!sub_kci) {
+                      valid = false;
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+
             if (!valid)
               break;
           }
