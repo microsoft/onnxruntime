@@ -7,7 +7,7 @@ import shutil
 import pytest
 import os
 
-from transformers import (BertConfig, BertForPreTraining)
+from transformers import (BertConfig, BertForPreTraining, BertModel)
 
 from orttraining_test_data_loader import ids_tensor, BatchArgsOption
 from orttraining_test_utils import run_test, get_lr
@@ -148,9 +148,6 @@ class BertModelTest(unittest.TestCase):
             model_desc = ModelDescription([self.input_ids_desc, self.attention_mask_desc, self.token_type_ids_desc,
                                            self.masked_lm_labels_desc, self.next_sentence_label_desc],
                                           [self.loss_desc, self.prediction_scores_desc, self.seq_relationship_scores_desc])
-
-            import argparse
-            args_ = argparse.Namespace(fp16=True, amp_opt_level='O1')
 
             from collections import namedtuple
             MyArgs = namedtuple("MyArgs", 
