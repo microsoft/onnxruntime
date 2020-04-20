@@ -58,7 +58,7 @@ def generate_repo_url(list, repo_url, commit_id):
 def generate_dependencies(list, package_name, version):
     list.append('<dependencies>')
 
-    if (args.package_name != 'Microsoft.AI.MachineLearning'):
+    if (package_name != 'Microsoft.AI.MachineLearning'):
         # Support .Net Core
         list.append('<group targetFramework="NETCOREAPP">')
         list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
