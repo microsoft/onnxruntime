@@ -7,7 +7,10 @@ namespace onnxruntime {
 
 class CPUIDInfo {
  public:
-  static const CPUIDInfo& GetCPUIDInfo();
+  static const CPUIDInfo& CPUIDInfo::GetCPUIDInfo() {
+    static CPUIDInfo cpuid_info;
+    return cpuid_info;
+  }
 
   bool HasAVX() const { return has_avx_; }
   bool HasAVX2() const { return has_avx2_; }

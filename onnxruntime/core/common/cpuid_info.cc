@@ -20,11 +20,6 @@
 
 namespace onnxruntime {
 
-const CPUIDInfo& CPUIDInfo::GetCPUIDInfo() {
-  static CPUIDInfo cpuid_info;
-  return cpuid_info;
-}
-
 #if defined(PLATFORM_X86)
 static inline void GetCPUID(int function_id, int data[4]) {  // NOLINT
 #if defined(_MSC_VER)

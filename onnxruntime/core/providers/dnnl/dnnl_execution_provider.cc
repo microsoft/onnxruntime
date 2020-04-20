@@ -72,8 +72,7 @@ std::shared_ptr<Prov_KernelRegistry> GetDnnlKernelRegistry() {
 }  // namespace ort_dnnl
 
 std::shared_ptr<Prov_KernelRegistry> DNNLExecutionProvider::Prov_GetKernelRegistry() const {
-  if (!kernel_registry_)
-    kernel_registry_ = onnxruntime::ort_dnnl::GetDnnlKernelRegistry();
+  static std::shared_ptr<Prov_KernelRegistry> kernel_registry_ = onnxruntime::ort_dnnl::GetDnnlKernelRegistry();
   return kernel_registry_;
 }
 
