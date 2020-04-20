@@ -487,7 +487,7 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
     endif()
   endif()
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute acl arm_compute_graph arm_compute_core)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_graph arm_compute_core)
 endif()
 
 # MKLML
@@ -583,6 +583,8 @@ if (WIN32)
     string(APPEND CMAKE_CXX_FLAGS " /wd4127")
     # class needs to have dll-interface to be used by clients
     string(APPEND CMAKE_CXX_FLAGS " /wd4251")
+    # issued by thrust nonstandard extension used: nameless struct/union
+    string(APPEND CMAKE_CXX_FLAGS " /wd4201")
     if (onnxruntime_ENABLE_STATIC_ANALYSIS)
         string(APPEND CMAKE_CXX_FLAGS
             " /analyze:stacksize 131072"
@@ -795,6 +797,10 @@ if (onnxruntime_USE_CUDA)
   if (NOT WIN32)
     set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --expt-relaxed-constexpr --compiler-options -fPIC")
   endif()
+  # Options passed to cudafe
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=bad_friend_decl\"")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=unsigned_compare_with_zero\"")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=expr_has_no_effect\"")
 endif()
 
 if (onnxruntime_USE_TENSORRT)
@@ -881,7 +887,7 @@ else()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
 endif()
 
-# Default version parts for Windows.AI.MachineLearning.dll and onnxruntime.dll in non-ADO pipeline local builds
+# Default version parts for Microsoft.AI.MachineLearning.dll and onnxruntime.dll in non-ADO pipeline local builds
 set(VERSION_MAJOR_PART   0 CACHE STRING "First part of numeric file/product version.")
 set(VERSION_MINOR_PART   0 CACHE STRING "Second part of numeric file/product version.")
 set(VERSION_BUILD_PART       0 CACHE STRING "Third part of numeric file/product version.")

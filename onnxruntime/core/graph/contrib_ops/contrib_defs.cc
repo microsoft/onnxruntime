@@ -40,7 +40,7 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   }
 
   // first dim is the batch axis and the next is the number of channels.
-  size_t n_input_dims = static_cast<size_t>(input_shape.dim_size() - 2);
+  size_t n_input_dims = static_cast<size_t>(input_shape.dim_size() - size_t{2});
 
   std::vector<int64_t> dilations;
   if (getRepeatedAttribute(ctx, "dilations", dilations)) {
@@ -290,12 +290,21 @@ const char* contrib_ops_auto_pad_doc =
     "beginning for SAME_LOWER. VALID mean no padding.";
 
 void RegisterBertSchemas() {
+  static const char* Attention_ver1_doc = R"DOC(
+Multi-Head Self Attention that can be either unidirectional (like GPT2) or bidirectional (like BERT).
+The mask_index input is optional. Unidirectional and mask_index input are mutually exclusive. When unidirectional is 1, the
+mask_index shall not be provided.)DOC";
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Multi-Head Self Attention")
+      .SetDoc(Attention_ver1_doc)
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Attr("unidirectional",
+            "Whether every token can only attend to previous tokens. Default value is 0.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "T")
       .Input(1, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T")
       .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
@@ -1248,9 +1257,10 @@ activation and leaky_relu_alpha.)DOC")
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
   static const char* QuantizeLinear_ver1_doc = R"DOC(
-The linear quantization operator. It consumes a full precision data, a scale, a zero point and computes the quantized data.
-The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale), it computes the nearest integer value to arg (in floating-point format),
- rounding halfway cases away from zero. Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
+The linear quantization operator. It consumes a full precision data, a scale, a zero point to compute the low precision / quantized tensor.
+The quantization formula is y = saturate ((x / y_scale) + y_zero_point).For saturation, it saturates to [0, 255] if it's uint8, or [-128, 127] if it's int8.
+For (x / y_scale), it's rounding to nearest ties to even. Refer to https://en.wikipedia.org/wiki/Rounding for details.
+Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QuantizeLinear)
       .SetDomain(kMSDomain)
@@ -1287,7 +1297,7 @@ The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale),
           "T2")
       .TypeConstraint(
           "T1",
-          {"tensor(float)"},
+          {"tensor(float16)", "tensor(float)"},
           "Constrain 'x', 'y_scale' to float tensors.")
       .TypeConstraint(
           "T2",
@@ -1318,35 +1328,36 @@ Scale and zero point must have same shape. They must be either scalar (per tenso
             "If it's specified, it means per 'axis' quantization and input 'x_scale' and 'x_zero_point' must be 1-D tensors.",
             AttributeProto::INT,
             false)
-      .Input(0,
-             "x",
-             "N-D quantized Input tensor to be de-quantized.",
-             "T2")
+      .Input(
+          0,
+          "x",
+          "N-D quantized Input tensor to be de-quantized.",
+          "T1")
       .Input(
           1,
           "x_scale",
           "Scale for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization."
           "If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
-          "T1")
+          "T2")
       .Input(
           2,
           "x_zero_point",
           "Zero point for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization."
           "If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
-          "T2")
+          "T1")
       .Output(
           0,
           "y",
           "N-D full precision output tensor. It has same shape as input 'x'.",
-          "T1")
+          "T2")
       .TypeConstraint(
           "T1",
-          {"tensor(float)"},
-          "Constrain 'y', 'x_scale' to float tensors.")
+          {"tensor(int8)", "tensor(uint8)"},
+          "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors.")
       .TypeConstraint(
           "T2",
-          {"tensor(int8)", "tensor(uint8)"},
-          "Constrain 'x_zero_point' and 'x' to 8-bit integer tensors.")
+          {"tensor(float16)", "tensor(float)"},
+          "Constrain 'y', 'x_scale' to float tensors.")
       .SetDoc(DequantizeLinear_ver1_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto y_type = ctx.getOutputType(0);
@@ -2035,7 +2046,7 @@ Example 4:
 
           // fill with zeros if needed to reach appropriate size
           if (pads_data.size() != 2 * static_cast<size_t>(input_rank))
-            pads_data.resize(2 * input_rank, 0);
+            pads_data.resize(size_t{2} * input_rank, 0);
 
           const auto& output_shape =
               ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
@@ -2345,6 +2356,62 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  // Used to be ONNX 1.7 Inverse(12)
+  // Comment out docs not to increase the binary size
+  //
+  //  static const char* Inverse_ver1_doc = R"DOC(
+  //Calculates inverse of a square matrix or batches of square matrices.
+  //Inverse takes one input tensor of shape `[*, M, M]`, where `*` is zero or more batch dimensions,
+  //and the inner-most 2 dimensions form square matrices. These matrices must be invertible (full-rank).
+  //The behavior where one of the matrices is not invertible is undefined. The implementation can choose
+  //to throw an error or output (garbage) results as is. The output is a tensor of shape `[*, M, M]`,
+  //containing the individual inverses of all input submatrices.
+  //)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Inverse)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+        .Input(0, "X", "Input tensor. Every matrix in the batch must be invertible.", "T")
+        .Output(0, "Y", "Output tensor of the same type and shape as the input tensor.", "T")
+        .TypeConstraint(
+            "T",
+            {"tensor(float16)",
+             "tensor(float)",
+             "tensor(double)"},
+            "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+            // Type inference
+            using namespace ONNX_NAMESPACE;
+            propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+            // Shape inference
+            if (hasInputShape(ctx, 0)) {
+              const TensorShapeProto& input_shape =
+                  ctx.getInputType(0)->tensor_type().shape();
+              const int rank = static_cast<int>(input_shape.dim_size());
+
+              if (rank < 2) {
+                fail_shape_inference("Input rank must be >= 2.")
+              }
+
+              const auto mat_w = input_shape.dim(rank - 1);
+              const auto mat_h = input_shape.dim(rank - 2);
+              if (mat_w.has_dim_value() && mat_h.has_dim_value() &&
+                  (mat_w.dim_value() != mat_h.dim_value())) {
+                fail_shape_inference(
+                    "The inner-most 2 dimensions must have the same size (mat_w:",
+                    mat_w.dim_value(),
+                    " != mat_h:",
+                    mat_h.dim_value(),
+                    ").");
+              }
+
+              // Shape inference
+              propagateShapeFromInputToOutput(ctx, 0, 0);
+            }
+        });
 
   RegisterBertSchemas();
 }
