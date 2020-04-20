@@ -237,8 +237,11 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (GetInputCount(node, initializers) == 1)
       return true;
   } else if (optype == "Clip") {
-    //U8 datatype is not supported
-    return node->InputDefs()[0]->Type()->find("uint8") != std::string::npos;
+    //Only float 16, float and double data types are supported
+    const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
+    const bool data_is_float16 = node->InputDefs()[0]->Type()->find("float16") != std::string::npos;
+    const bool data_is_double = node->InputDefs()[0]->Type()->find("double") != std::string::npos;
+    return !(data_is_float || data_is_float16 || data_is_double);
   } else if (optype == "OneHot") {
     //nGraph OneHot op currently requires depth info available in advance.
     const auto& depth_arg = node->InputDefs()[1];
