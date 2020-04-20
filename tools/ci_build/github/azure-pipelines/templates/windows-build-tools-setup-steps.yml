@@ -52,14 +52,6 @@ steps:
         arguments: 'install -q --insecure -y pyopenssl setuptools wheel numpy'
       timeoutInMinutes: 10
 
-    - task: PythonScript@0
-      displayName: 'Download test data'
-      condition: ${{parameters.DoDataDownload}}
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-        pythonInterpreter: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        workingDirectory: $(Build.BinariesDirectory)
 
     - task: CmdLine@1
       continueOnError: true

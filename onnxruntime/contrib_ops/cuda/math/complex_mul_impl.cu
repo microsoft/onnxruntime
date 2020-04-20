@@ -167,7 +167,6 @@ void ComplexMul_Impl(
       bool is_conj);
 
 SPECIALIZE_STACKEDCOMPLEXMUL_IMPL(float)
-SPECIALIZE_STACKEDCOMPLEXMUL_IMPL(double)
 SPECIALIZE_STACKEDCOMPLEXMUL_IMPL(half)
 
 }  // namespace cuda

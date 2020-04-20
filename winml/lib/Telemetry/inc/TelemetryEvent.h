@@ -3,7 +3,7 @@
 
 #pragma once
 
-namespace Windows::AI::MachineLearning::Telemetry {
+namespace _winml::Telemetry {
 
 enum class EventCategory {
   kModelLoad = 0,
@@ -24,4 +24,4 @@ class TelemetryEvent {
   std::optional<int64_t> event_id_;
 };
 
-}  // namespace Windows::AI::MachineLearning::Telemetry
+}  // namespace _winml::Telemetry
