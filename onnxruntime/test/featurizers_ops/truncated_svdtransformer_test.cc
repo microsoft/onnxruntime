@@ -17,7 +17,8 @@ template <typename MatrixT>
 std::vector<uint8_t> GetStream(const MatrixT& training_matrix) {
   using EstimatorT = NS::Featurizers::TruncatedSVDEstimator<MatrixT>;
   NS::AnnotationMapsPtr const pAllColumnAnnotations(NS::CreateTestAnnotationMapsPtr(1));
-  EstimatorT estimator(pAllColumnAnnotations, 0);
+  //Hardcode the seed = 42
+  EstimatorT estimator(pAllColumnAnnotations, 0, static_cast<unsigned int>(42));
 
   std::vector<std::vector<MatrixT>> trainingBatches = NS::TestHelpers::make_vector<std::vector<MatrixT>>(
       NS::TestHelpers::make_vector<MatrixT>(training_matrix));
@@ -56,7 +57,7 @@ void TruncatedSVDTransformerTestRowMajStandard() {
   // platform to platform enough so we choose to check max STD deviation.
   OpTester::CustomOutputVerifierFn ver_fn = [&verify_matrix](const std::vector<OrtValue>& fetches, const std::string& provider) {
     std::cout << "Verifying TruncatedSVDTransformerTestRowMajStandard:" << provider << std::endl;
-    const float eps = (sizeof(size_t) == 8) ? 0.0001f : 0.0003f;
+    const float eps = 0.0001f;
     ASSERT_TRUE(fetches.size() == 1);
     const auto& fetch = fetches.at(0);
     const auto& tensor = fetch.Get<Tensor>();

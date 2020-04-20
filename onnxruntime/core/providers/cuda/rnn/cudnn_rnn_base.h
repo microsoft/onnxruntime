@@ -91,7 +91,7 @@ class CudnnRnnBase : public CudaKernel {
     rnn_mode_ = CUDNN_LSTM;
     weight_cached_ = false;
     w_data_cache_ = nullptr;
-
+    
     size_t state_size;
     cudnn_dropout_desc_.CreateDescriptorIfNeeded();
     cudnn_dropout_desc_.GetCudnnDropoutStatesSize(CudnnHandle(), state_size);

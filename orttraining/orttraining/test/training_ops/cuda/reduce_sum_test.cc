@@ -3,8 +3,6 @@
 
 #include "test/providers/compare_provider_test_utils.h"
 
-using namespace std;
-
 namespace onnxruntime {
 namespace test {
 
@@ -66,7 +64,7 @@ TEST(CudaKernelTest, ReduceSum_LargeTensor) {
   std::vector<int64_t> Y_dims{30528};
   std::vector<int64_t> axes{0, 1};
   bool keepdims = false;
-  double per_sample_tolerance = 1e-4;
+  double per_sample_tolerance = 5e-4;
   double relative_per_sample_tolerance = 5e-2;
   TestReduceSum(X_dims, Y_dims, axes, keepdims, per_sample_tolerance, relative_per_sample_tolerance);
 }

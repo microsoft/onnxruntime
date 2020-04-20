@@ -987,7 +987,8 @@ class Graph {
   // perform type and shape inferencing on the subgraph and Resolve to validate
   static common::Status InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
                                                     const std::vector<const ONNX_NAMESPACE::TypeProto*>& input_types,
-                                                    std::vector<const ONNX_NAMESPACE::TypeProto*>& output_types);
+                                                    std::vector<const ONNX_NAMESPACE::TypeProto*>& output_types,
+                                                    const Graph::ResolveOptions& options);
 
   // Apply type-inference and type-checking to all inputs and initializers:
   common::Status TypeCheckInputsAndInitializers();

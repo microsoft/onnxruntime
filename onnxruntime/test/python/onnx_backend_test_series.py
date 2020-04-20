@@ -190,7 +190,8 @@ def create_backend_test(testname=None):
             '^test_unfoldtodepth_with_padding_stride_cpu*',
             '^test_unfoldtodepth_without_padding_cpu*',
         ]
-
+        if platform.architecture()[0] == '32bit':
+            current_failing_tests += ['^test_vgg19', '^test_zfnet512', '^test_bvlc_alexnet_cpu']
         # Example of how to disable tests for a specific provider.
         # if c2.supports_device('NGRAPH'):
         #    current_failing_tests.append('^test_operator_repeat_dim_overflow_cpu')
