@@ -27,6 +27,7 @@
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/attention_fusion.h"
+#include "core/optimizer/cast_elimination.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
@@ -51,6 +52,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
       rules.push_back(onnxruntime::make_unique<ConvAddFusion>());
       rules.push_back(onnxruntime::make_unique<ConvMulFusion>());
       rules.push_back(onnxruntime::make_unique<ConvBNFusion>());
+      rules.push_back(onnxruntime::make_unique<CastElimination>());
       break;
 
     case TransformerLevel::Level2:
