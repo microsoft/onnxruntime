@@ -1715,8 +1715,26 @@ static constexpr OrtApi ort_api_3 = {
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
+
+// Ignore warnings that arise due to casting const OrtApi1to2* to const OrtApi* because
+// OrtApi has more members than OrtApi1to2 and GCC/Clang warn about missing member initializations
+// that we don't need to worry about
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+#elif defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-field-initializers"
+#endif
+
   if (version == 1 || version == 2)
     return reinterpret_cast<const OrtApi*>(&ort_api_1_to_2);
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#elif defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
   if (version == 3)
     return &ort_api_3;
