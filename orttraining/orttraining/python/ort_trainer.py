@@ -728,8 +728,9 @@ class ORTTrainer():
         # as a result, loss_scale input name is not available when calling train_step. 
         # to work around this problem, we have to use the following pattern matching code to get the loss_scaler argument.
         # this problem can be solved if leter it is decided that loss scaler is always internal.
+        # note: when self.loss_fn_ is present, following pattern is invalid. 
         extra_kargs_keys = [key for key in kwargs.keys() if key not in [desc.name_ for desc in input_desc_with_]]
-        if len(input_desc_with_) > len(input) and len(extra_kargs_keys) == 1 and internal_loss_scale is None:
+        if self.loss_fn_ is None and len(input_desc_with_) > len(input) and len(extra_kargs_keys) == 1 and internal_loss_scale is None:
             print("In mixed precision mode with external loss scaler, loss_scale input name is not available at train_step call. Argument")
             print(extra_kargs_keys[0])
             print(" is used as the loss scale input.")
