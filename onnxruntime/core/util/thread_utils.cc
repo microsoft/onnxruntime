@@ -9,40 +9,6 @@
 
 namespace onnxruntime {
 namespace concurrency {
-static inline std::vector<size_t> GenerateVectorOfN(size_t n) {
-  std::vector<size_t> ret(n);
-  std::iota(ret.begin(), ret.end(), 0);
-  return ret;
-}
-
-struct NumCoresUtil {
-#ifdef _WIN32
-  // This function doesn't support systems with more than 64 logical processors
-  static std::vector<size_t> GetNumCpuCores() {
-    // Indeed 64 should be enough. However, it's harmless to have a little more.
-    SYSTEM_LOGICAL_PROCESSOR_INFORMATION buffer[256];
-    DWORD returnLength = sizeof(buffer);
-    if (GetLogicalProcessorInformation(buffer, &returnLength) == FALSE) {
-      return GenerateVectorOfN(std::thread::hardware_concurrency());
-    }
-    std::vector<size_t> ret;
-    int count = (int)(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
-    for (int i = 0; i != count; ++i) {
-      if (buffer[i].Relationship == RelationProcessorCore) {
-        ret.push_back(buffer[i].ProcessorMask);
-      }
-    }
-    if (ret.empty())
-      return GenerateVectorOfN(std::thread::hardware_concurrency());
-    return ret;
-  }
-#else
-  static std::vector<size_t> GetNumCpuCores() {
-    return GenerateVectorOfN(std::thread::hardware_concurrency() / 2);
-  }
-#endif
-};
-
 static std::unique_ptr<ThreadPool>
 CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options, Eigen::Allocator* allocator) {
   if (options.thread_pool_size == 1)
@@ -53,7 +19,7 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options, Eigen::Allocator* 
     to.affinity.assign(options.affinity_vec, options.affinity_vec + options.affinity_vec_len);
   }
   if (options.thread_pool_size <= 0) {  // default
-    cpu_list = NumCoresUtil::GetNumCpuCores();
+    cpu_list = Env::Default().GetThreadAffinityMasks();
     if (cpu_list.empty() || cpu_list.size() == 1)
       return nullptr;
     options.thread_pool_size = static_cast<int>(cpu_list.size());

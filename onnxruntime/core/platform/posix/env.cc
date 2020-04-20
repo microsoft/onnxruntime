@@ -120,7 +120,7 @@ class PosixThread : public EnvThread {
       if (s != 0)
         ORT_THROW("pthread_setaffinity_np failed");
     }
- #endif
+#endif
   }
 
   ~PosixThread() override {
@@ -176,6 +176,12 @@ class PosixEnv : public Env {
     // /proc/cpuinfo and grep for "cpu cores".
     // However, that information is not always available(output of 'grep -i core /proc/cpuinfo' is empty)
     return std::thread::hardware_concurrency();
+  }
+
+  std::vector<size_t> GetThreadAffinityMasks() const override {
+    std::vector<size_t> ret(std::thread::hardware_concurrency() / 2);
+    std::iota(ret.begin(), ret.end(), 0);
+    return ret;
   }
 
   void SleepForMicroseconds(int64_t micros) const override {

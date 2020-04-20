@@ -144,14 +144,13 @@ ORT_API_STATUS_IMPL(OrtApis::SetIntraOpNumThreads, _Inout_ OrtSessionOptions* op
 #ifdef _OPENMP
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(intra_op_num_threads);
-  return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                               "Since openmp is enabled in this build, this API cannot be used to configure"
-                               " intra op num threads. Please use the openmp environment variables to control"
-                               " the number of threads.");
+  LOGS_DEFAULT(WARNING) << "Since openmp is enabled in this build, this API cannot be used to configure"
+                           " intra op num threads. Please use the openmp environment variables to control"
+                           " the number of threads.";
 #else
   options->value.intra_op_param.thread_pool_size = intra_op_num_threads;
-  return nullptr;
 #endif
+  return nullptr;
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SetInterOpNumThreads, _Inout_ OrtSessionOptions* options, int inter_op_num_threads) {
