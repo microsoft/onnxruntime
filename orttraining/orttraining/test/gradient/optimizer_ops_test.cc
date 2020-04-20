@@ -79,7 +79,7 @@ struct AdamOptimizerInputOutput {
 };
 
 TEST(OptimizerTest, AdamOptimizerTest) {
-  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
   AdamOptimizerInputOutput data;
 
   test.AddInput<float>("ETA", {}, data.eta);
@@ -102,7 +102,7 @@ TEST(OptimizerTest, AdamOptimizerTest) {
 }
 
 TEST(OptimizerTest, AdamOptimizerTest_Gradient) {
-  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
   AdamOptimizerInputOutput data;
 
   test.AddInput<float>("ETA", {}, data.eta);
@@ -126,7 +126,7 @@ TEST(OptimizerTest, AdamOptimizerTest_Gradient) {
 }
 
 TEST(OptimizerTest, AdamBiasCorrection) {
-  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
   AdamOptimizerInputOutput data;
 
   test.AddInput<float>("ETA", {}, {1.f});
@@ -148,7 +148,7 @@ TEST(OptimizerTest, AdamBiasCorrection) {
 }
 
 TEST(OptimizerTest, AdamWeightDecayMode0NoBiasCorrection) {
-  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
   AdamOptimizerInputOutput data;
 
   test.AddInput<float>("ETA", {}, {1.f});
@@ -171,7 +171,7 @@ TEST(OptimizerTest, AdamWeightDecayMode0NoBiasCorrection) {
 }
 
 TEST(OptimizerTest, AdamWeightDecayMode0WithBiasCorrection) {
-  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
   AdamOptimizerInputOutput data;
 
   test.AddInput<float>("ETA", {}, {1.f});
@@ -194,7 +194,7 @@ TEST(OptimizerTest, AdamWeightDecayMode0WithBiasCorrection) {
 }
 
 TEST(OptimizerTest, AdamWeightDecayMode1NoBiasCorrection) {
-  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
   AdamOptimizerInputOutput data;
 
   test.AddInput<float>("ETA", {}, {1.f});
@@ -217,7 +217,7 @@ TEST(OptimizerTest, AdamWeightDecayMode1NoBiasCorrection) {
 }
 
 TEST(OptimizerTest, AdamWeightDecayMode1WithBiasCorrection) {
-  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
   AdamOptimizerInputOutput data;
 
   test.AddInput<float>("ETA", {}, {1.f});
@@ -241,7 +241,7 @@ TEST(OptimizerTest, AdamWeightDecayMode1WithBiasCorrection) {
 
 #ifdef USE_CUDA
 TEST(OptimizerTest, AdamOptimizerMixPrecisionTest) {
-  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
   AdamOptimizerInputOutput data;
 
   test.AddInput<MLFloat16>("ETA", {}, data.eta_half);
@@ -264,7 +264,7 @@ TEST(OptimizerTest, AdamOptimizerMixPrecisionTest) {
 }
 
 TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_Test) {
-  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
   AdamOptimizerInputOutput data;
 
   test.AddInput<MLFloat16>("ETA", {}, data.eta_half);
@@ -290,7 +290,7 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_Test) {
 }
 
 TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_SkipUpdate_Test) {
-  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
   AdamOptimizerInputOutput data;
 
   test.AddInput<MLFloat16>("ETA", {}, data.eta_half);
@@ -320,7 +320,7 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_SkipUpdate_Test) {
 }
 
 TEST(OptimizerTest, AdamOptimizerMixPrecisionTestFloatEta) {
-  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
   AdamOptimizerInputOutput data;
 
   test.AddInput<float>("ETA", {}, data.eta);
@@ -343,7 +343,7 @@ TEST(OptimizerTest, AdamOptimizerMixPrecisionTestFloatEta) {
 }
 
 TEST(OptimizerTest, AdamOptimizerMixPrecisionTest_Gradient) {
-  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
   AdamOptimizerInputOutput data;
 
   test.AddInput<float>("ETA", {}, data.eta);

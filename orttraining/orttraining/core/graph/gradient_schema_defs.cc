@@ -440,7 +440,8 @@ void RegisterGradientSchemas() {
   // TODO: This is copied from onnx schemas. When the change is in and we update this can be removed.
   // For Brevity documentation was not copied
   ONNX_CONTRIB_OPERATOR_SCHEMA(AdamOptimizer)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "R", "The initial learning rate.", "T1")
       .Input(1, "T", "The update count of \"X\". It should be a scalar.", "T2")
       .Input(
