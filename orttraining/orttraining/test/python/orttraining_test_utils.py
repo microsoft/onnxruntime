@@ -64,7 +64,8 @@ def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
         use_mixed_precision=fp16,
         allreduce_post_accumulation=allreduce_post_accumulation,
         get_lr_this_step=get_lr_this_step if use_internal_get_lr_this_step else None,
-        loss_scaler=loss_scaler if use_internal_loss_scaler else None)
+        loss_scaler=loss_scaler if use_internal_loss_scaler else None,
+        _opset_version=12)
 
     # trainig loop
     eval_batch = None

@@ -8,12 +8,12 @@ def postprocess_model(model):
     #replace garther&concat to reshape
     process_concat(model)
 
-    # will be longer needed after Range is supported in ORT.
-    handle_expand_input_is_not_constant_case(model)
+    # # will be longer needed after Range is supported in ORT.
+    # handle_expand_input_is_not_constant_case(model)
     
-    # fix the expand with dynamic shape
-    # will be longer needed after Range is supported in ORT.
-    fix_expand(model)
+    # # fix the expand with dynamic shape
+    # # will be longer needed after Range is supported in ORT.
+    # fix_expand(model)
 
     #use dynamic batch/sequence
     fix_dim(model)
