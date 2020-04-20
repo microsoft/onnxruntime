@@ -77,12 +77,17 @@ struct ForecastingPivotTransformerImpl {
     transformer.flush(callback_fn);
 
     // Prepare the pivoted Output
-    TensorShape output_shape({static_cast<int64_t>(output.size()), 1, static_cast<int64_t>(output[0].size())});
-    Tensor* output_tensor(ctx->Output(0, output_shape));
-    T* output_data = output_tensor->MutableData<T>();
-
-    for (OutputType const & row : output) {
-      output_data = std::copy(row.begin(), row.end(), output_data);
+    int num_pivoted_columns = 0;
+    if (!output.empty() && !output[0].empty()) {
+      num_pivoted_columns = static_cast<int>(output[0].size());
+      for (int i = 0; i < num_pivoted_columns; i++) {
+        TensorShape output_shape({static_cast<int64_t>(output.size()), 1, 1});
+        Tensor* output_tensor(ctx->Output(i, output_shape));
+        T* output_data = output_tensor->MutableData<T>();
+        for (int j = 0; j < output.size(); j++){
+          *output_data++ = output[j][i];
+        }
+      }
     }
 
     // Prepare the imputed Output
@@ -95,7 +100,7 @@ struct ForecastingPivotTransformerImpl {
       const int64_t input_matrix_size = input_dim_1 * input_dim_2;
 
       TensorShape output_shape_imputed({static_cast<int64_t>(row_idx_record.size()), input_dim_1, input_dim_2});
-      Tensor* output_tensor_imputed(ctx->Output(i + 1, output_shape_imputed));
+      Tensor* output_tensor_imputed(ctx->Output(i + num_pivoted_columns, output_shape_imputed));
       T* output_data_imputed = output_tensor_imputed->MutableData<T>();
 
       for (int j = 0; j < static_cast<int>(row_idx_record.size()); j++) {
