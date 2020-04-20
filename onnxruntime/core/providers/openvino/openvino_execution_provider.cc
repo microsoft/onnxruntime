@@ -234,8 +234,18 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         return true;
     }
   } else if (optype == "Max" || optype == "Min" || optype == "Mean" || optype == "Sum") {
+
     if (GetInputCount(node, initializers) == 1)
       return true;
+    if(optype == "Max" || optype == "Min"){
+
+      for (size_t i = 0; i < node->InputDefs().size(); i++){
+        auto dtype = node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type();
+        if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
+            dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
+          return true;
+      }
+    }
   } else if (optype == "Clip") {
     //Only float 16, float and double data types are supported
     const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
@@ -265,6 +275,12 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     const bool B_is_float = node->InputDefs()[1]->Type()->find("float") != std::string::npos;
     return (A_is_float && B_is_float) ? false : true;
 
+  } else if (optype == "Pow") {
+
+    //Only supported if the data type of both inputs is same
+    auto x_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    auto y_data_type = node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
+    return x_data_type != y_data_type;
   } else if (optype == "PRelu") {
     auto slope = node->InputDefs()[1];
 
