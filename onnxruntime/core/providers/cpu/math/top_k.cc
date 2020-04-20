@@ -211,11 +211,11 @@ static Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input
     T* p_values = values->MutableData<T>();
     if (largest) {
       // extract sorted largest TopK elements
-      topk_element<HeapMax<T>>(p_indices, k, p_input, input_shape, sorted, 10);
+      topk_element<HeapMax<T>>(p_op_kernel_context->GetOperatorThreadPool(), p_indices, k, p_input, input_shape, sorted, 10);
       topk_element_fetch(p_values, p_input, input_shape, p_indices, output_shape);
     } else {
       // extract sorted smallest TopK elements
-      topk_element<HeapMin<T>>(p_indices, k, p_input, input_shape, sorted, 10);
+      topk_element<HeapMin<T>>(p_op_kernel_context->GetOperatorThreadPool(), p_indices, k, p_input, input_shape, sorted, 10);
       topk_element_fetch(p_values, p_input, input_shape, p_indices, output_shape);
     }
   } else {

@@ -9,19 +9,9 @@
 #include <queue>
 #include <iostream>
 #include <algorithm>
-
-#if USE_OPENMP
-#include <omp.h>
-#endif
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
-
-int64_t flattened_dimension(const TensorShape& values) {
-  int64_t r = 1;
-  for (auto it = values.GetDims().begin(); it != values.GetDims().end(); ++it)
-    r *= *it;
-  return r;
-}
 
 void shape2strides(const TensorShape& shape, TensorShape& shape_strides) {
   std::vector<int64_t> strides;
@@ -127,7 +117,7 @@ void _topk_element(const typename HeapCmp::DataType* values, size_t k, size_t n,
 }
 
 template <class HeapCmp>
-void topk_element(int64_t* pos, size_t k, const typename HeapCmp::DataType* values, const TensorShape& shape, bool sorted, int64_t th_parallel) {
+void topk_element(concurrency::ThreadPool* thread_pool, int64_t* pos, size_t k, const typename HeapCmp::DataType* values, const TensorShape& shape, bool sorted, int64_t th_parallel) {
   HeapCmp heap_cmp;
   if (shape.NumDimensions() == 1) {
     _topk_element(values, k, shape[0], pos, sorted, heap_cmp);
@@ -136,26 +126,28 @@ void topk_element(int64_t* pos, size_t k, const typename HeapCmp::DataType* valu
     auto ptr = pos;
 
     if (shape[0] <= th_parallel) {
-      auto tdim = flattened_dimension(shape);
+      auto tdim = shape.Size();
       const typename HeapCmp::DataType* data = values;
       const typename HeapCmp::DataType* end = data + tdim;
       for (; data != end; data += vdim, ptr += k)
         _topk_element(data, k, vdim, ptr, sorted, heap_cmp);
     } else {
-// parallelisation
+      // parallelisation
       const typename HeapCmp::DataType* data = values;
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-      for (int64_t nr = 0; nr < shape[0]; ++nr)
-        _topk_element(data + nr * vdim, k, vdim, ptr + nr * k, sorted, heap_cmp);
+      concurrency::ThreadPool::TryBatchParallelFor(
+          thread_pool,
+          static_cast<int32_t>(shape[0]),
+          [&](ptrdiff_t nr) {
+            _topk_element(data + nr * vdim, k, vdim, ptr + nr * k, sorted, heap_cmp);
+          },
+          0);
     }
   }
 }
 
 template <typename NTYPE>
 void topk_element_fetch(NTYPE* ptr, const NTYPE* data_val, const TensorShape& shape_val, const int64_t* data_ind, const TensorShape& shape_ind) {
-  auto tdim = flattened_dimension(shape_ind);
+  auto tdim = shape_ind.Size();
   auto dim_val = shape_val[shape_val.NumDimensions() - 1];
   auto dim_ind = shape_ind[shape_ind.NumDimensions() - 1];
   const int64_t* end_ind = data_ind + tdim;
