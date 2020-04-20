@@ -63,7 +63,7 @@ namespace Dml
             m_readbackHeap = CreateReadbackHeap(m_device.Get(), m_capacity);
         }
 
-        assert(gsl::narrow_cast<ptrdiff_t>(m_readbackHeap->GetDesc().Width) >= totalSize);
+        assert(gsl::narrow_cast<ptrdiff_t>(m_readbackHeap->GetDesc().Width) >= size);
     }
 
     void ReadbackHeap::ReadbackFromGpu(
