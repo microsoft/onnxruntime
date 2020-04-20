@@ -780,6 +780,93 @@ public class InferenceTest {
   }
 
   @Test
+  public void testRunOptions() throws OrtException {
+    // model takes 1x5 input of fixed type, echoes back
+    String modelPath = getResourcePath("/test_types_BOOL.pb").toString();
+
+    try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputBOOL");
+         SessionOptions options = new SessionOptions();
+         OrtSession session = env.createSession(modelPath, options);
+         OrtSession.RunOptions runOptions = new OrtSession.RunOptions()) {
+      runOptions.setRunTag("monkeys");
+      assertEquals("monkeys",runOptions.getRunTag());
+      runOptions.setLogLevel(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL);
+      assertEquals(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL,runOptions.getLogLevel());
+      runOptions.setTerminate(true);
+      String inputName = session.getInputNames().iterator().next();
+      Map<String, OnnxTensor> container = new HashMap<>();
+      boolean[] flatInput = new boolean[] {true, false, true, false, true};
+      Object tensorIn = OrtUtil.reshape(flatInput, new long[] {1, 5});
+      OnnxTensor ov = OnnxTensor.createTensor(env, tensorIn);
+      container.put(inputName, ov);
+      try (OrtSession.Result res = session.run(container,runOptions)) {
+        fail("Should have terminated.");
+      } catch (OrtException e) {
+        assertTrue(e.getMessage().contains("Exiting due to terminate flag being set to true."));
+        assertEquals(OrtException.OrtErrorCode.ORT_FAIL, e.getCode());
+      }
+      OnnxValue.close(container);
+    }
+  }
+
+  @Test
+  public void testExtraSessionOptions() throws OrtException, IOException {
+    // model takes 1x5 input of fixed type, echoes back
+    String modelPath = getResourcePath("/test_types_BOOL.pb").toString();
+    File tmpPath = File.createTempFile("onnx-runtime-profiling","file");
+    tmpPath.deleteOnExit();
+
+    try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputBOOL")) {
+      try (SessionOptions options = new SessionOptions()) {
+        options.setCPUArenaAllocator(true);
+        options.setMemoryPatternOptimization(true);
+        options.enableProfiling(tmpPath.getAbsolutePath());
+        options.setLoggerId("monkeys");
+        options.setSessionLogLevel(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL);
+        try(OrtSession session = env.createSession(modelPath, options)) {
+          String inputName = session.getInputNames().iterator().next();
+          Map<String, OnnxTensor> container = new HashMap<>();
+          boolean[] flatInput = new boolean[] {true, false, true, false, true};
+          Object tensorIn = OrtUtil.reshape(flatInput, new long[] {1, 5});
+          OnnxTensor ov = OnnxTensor.createTensor(env, tensorIn);
+          container.put(inputName, ov);
+          try (OrtSession.Result res = session.run(container)) {
+            boolean[] resultArray = TestHelpers.flattenBoolean(res.get(0).getValue());
+            assertArrayEquals(flatInput, resultArray);
+          }
+          String profilingOutput = session.endProfiling();
+          File profilingOutputFile = new File(profilingOutput);
+          profilingOutputFile.deleteOnExit();
+          try (OrtSession.Result res = session.run(container)) {
+            boolean[] resultArray = TestHelpers.flattenBoolean(res.get(0).getValue());
+            assertArrayEquals(flatInput, resultArray);
+          }
+          OnnxValue.close(container);
+        }
+      }
+      try (SessionOptions options = new SessionOptions()) {
+        options.setCPUArenaAllocator(false);
+        options.setMemoryPatternOptimization(false);
+        options.enableProfiling(tmpPath.getAbsolutePath());
+        options.disableProfiling();
+        try(OrtSession session = env.createSession(modelPath, options)) {
+          String inputName = session.getInputNames().iterator().next();
+          Map<String, OnnxTensor> container = new HashMap<>();
+          boolean[] flatInput = new boolean[] {true, false, true, false, true};
+          Object tensorIn = OrtUtil.reshape(flatInput, new long[] {1, 5});
+          OnnxTensor ov = OnnxTensor.createTensor(env, tensorIn);
+          container.put(inputName, ov);
+          try (OrtSession.Result res = session.run(container)) {
+            boolean[] resultArray = TestHelpers.flattenBoolean(res.get(0).getValue());
+            assertArrayEquals(flatInput, resultArray);
+          }
+          OnnxValue.close(container);
+        }
+      }
+    }
+  }
+
+  @Test
   public void testModelInputBOOL() throws OrtException {
     // model takes 1x5 input of fixed type, echoes back
     String modelPath = getResourcePath("/test_types_BOOL.pb").toString();
