@@ -15,7 +15,7 @@ namespace featurizers {
 
 template <typename T>
 struct ForecastingPivotTransformerImpl {
-  void operator()(OpKernelContext* ctx, int num_pivot_columns) const {
+  void operator()(OpKernelContext* ctx, int64_t num_pivot_columns) const {
     using MatrixT = NS::RowMajMatrix<typename NS::Traits<T>::nullable_type>;
     using InputType = std::vector<Eigen::Map<const MatrixT>>;
     using OutputType = std::vector<T>;
@@ -87,7 +87,7 @@ struct ForecastingPivotTransformerImpl {
 
     // Prepare the imputed Output
     for (int i = 0; i < input_node_1_count - num_pivot_columns; i++) {
-      const auto* input_tensor(ctx->Input<Tensor>(input_node_0_count + num_pivot_columns + i));
+      const auto* input_tensor(ctx->Input<Tensor>(input_node_0_count + static_cast<int>(num_pivot_columns) + i));
       const T* input_data(input_tensor->template Data<T>());
 
       const int64_t input_dim_1 = input_tensor->Shape()[1];
