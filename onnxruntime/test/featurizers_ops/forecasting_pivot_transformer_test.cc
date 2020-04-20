@@ -52,7 +52,7 @@ TEST(FeaturizersTests, ForecastingPivotTransformer_2_Inputs) {
   test.Run();
 }
 
-TEST(FeaturizersTests, ForecastingPivotTransformer_3_Inputs) {
+TEST(FeaturizersTests, ForecastingPivotTransformer_4_Inputs) {
   auto stream = GetStream<float>();
   auto dim = static_cast<int64_t>(stream.size());
   OpTester test("ForecastingPivotTransformer", 1, onnxruntime::kMSFeaturizersDomain);
