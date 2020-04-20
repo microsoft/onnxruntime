@@ -421,7 +421,8 @@ void RegisterGradientSchemas() {
   //TODO: Move this to the right location. Its only here for quick experimentation.
   //TODO: Use the mutli weight / grad version.
   ONNX_CONTRIB_OPERATOR_SCHEMA(SGDOptimizer)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "ETA", "Learning Rate", "L")
       .Input(1, "W", "Original weight(s)", "T")
       .Input(2, "G", "Gradient of Weight(s)", "T")

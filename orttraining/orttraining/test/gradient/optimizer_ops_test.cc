@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace test {
 
 TEST(OptimizerTest, SGDOptimizerTest) {
-  OpTester test("SGDOptimizer", 9, onnxruntime::kOnnxDomain);
+  OpTester test("SGDOptimizer", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("ETA", {}, {0.5f});
   test.AddInput<float>("W", {3}, {1, 2, 3});
   test.AddInput<float>("G", {3}, {4, 5, 6});
@@ -19,7 +19,7 @@ TEST(OptimizerTest, SGDOptimizerTest) {
 }
 
 TEST(OptimizerTest, SGDOptimizerTest_Gradient) {
-  OpTester test("SGDOptimizer", 9, onnxruntime::kOnnxDomain);
+  OpTester test("SGDOptimizer", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("ETA", {}, {0.5f});
   test.AddInput<float>("W", {3}, {1, 2, 3});
   test.AddInput<float>("G", {3}, {4, 5, 6});
