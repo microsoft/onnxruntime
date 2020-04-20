@@ -494,6 +494,7 @@ void RegisterForecastingPivotFeaturizerVer1(){
   MS_FEATURIZERS_OPERATOR_SCHEMA(ForecastingPivotTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
+      .Attr("num_pivot_columns", "The first num_pivot_columns input in Input1 are pivoted", AttributeProto::INT)
       .Input(
           0,
           "State",
@@ -509,7 +510,8 @@ void RegisterForecastingPivotFeaturizerVer1(){
           0,
           "Output",
           "No information is available",
-          "T")
+          "T",
+          ONNX_NAMESPACE::OpSchema::FormalParameterOption::Variadic)
       .TypeConstraint(
           "T0",
           {"tensor(uint8)"},
@@ -533,6 +535,7 @@ void RegisterForecastingPivotFeaturizerVer1(){
               }
             }
             ONNX_NAMESPACE::TensorShapeProto shape;
+            shape.add_dim();
             shape.add_dim();
             shape.add_dim();
             ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape);
