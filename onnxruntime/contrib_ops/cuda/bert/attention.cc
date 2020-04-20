@@ -36,6 +36,7 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionB
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(CheckInputs(context));
+
   // Input and output shapes:
   //   Input 0 - input       : (batch_size, sequence_length, hidden_size)
   //   Input 1 - weights     : (hidden_size, 3 * hidden_size)
@@ -96,7 +97,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
           head_size,
           temp_buffer.get(),
           cublas,
-          element_size)) {
+          element_size,
+          is_unidirectional_)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);

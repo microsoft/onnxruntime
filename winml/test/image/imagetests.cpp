@@ -3,9 +3,6 @@
 #include "filehelpers.h"
 #include "imageTestHelper.h"
 #include "robuffer.h"
-#include "windows.ai.machinelearning.native.internal.h"
-#include "winrt/Windows.Storage.h"
-#include "winrt/Windows.Storage.Streams.h"
 
 #include <d3dx12.h>
 #include <MemoryBuffer.h>
@@ -17,13 +14,13 @@
 #endif
 
 using namespace winrt;
-using namespace winrt::Windows::AI::MachineLearning;
-using namespace winrt::Windows::Foundation::Collections;
-using namespace winrt::Windows::Media;
-using namespace winrt::Windows::Graphics::Imaging;
-using namespace winrt::Windows::Graphics::DirectX;
-using namespace winrt::Windows::Storage;
-using namespace winrt::Windows::Storage::Streams;
+using namespace winml;
+using namespace wfc;
+using namespace wm;
+using namespace wgi;
+using namespace wgdx;
+using namespace ws;
+using namespace wss;
 
 enum BindingLocation {
     CPU,
@@ -32,11 +29,11 @@ enum BindingLocation {
 
 class ImageTests : public ::testing::Test {
 protected:
-    winrt::Windows::AI::MachineLearning::LearningModel m_model = nullptr;
-    winrt::Windows::AI::MachineLearning::LearningModelDevice m_device = nullptr;
-    winrt::Windows::AI::MachineLearning::LearningModelSession m_session = nullptr;
-    winrt::Windows::AI::MachineLearning::LearningModelBinding m_model_binding = nullptr;
-    winrt::Windows::AI::MachineLearning::LearningModelEvaluationResult m_result = nullptr;
+    winml::LearningModel m_model = nullptr;
+    winml::LearningModelDevice m_device = nullptr;
+    winml::LearningModelSession m_session = nullptr;
+    winml::LearningModelBinding m_model_binding = nullptr;
+    winml::LearningModelEvaluationResult m_result = nullptr;
 
     static void SetUpTestSuite() {
       init_apartment();
@@ -690,8 +687,8 @@ static void RunImageBindingInputAndOutput(bool bindInputAsIInspectable) {
 
     BYTE* data = nullptr;
     UINT32 ui_capacity = 0;
-    winrt::Windows::Graphics::Imaging::BitmapBuffer bitmap_buffer(output_image.SoftwareBitmap().LockBuffer(winrt::Windows::Graphics::Imaging::BitmapBufferAccessMode::Read));
-    winrt::Windows::Foundation::IMemoryBufferReference reference = bitmap_buffer.CreateReference();
+    wgi::BitmapBuffer bitmap_buffer(output_image.SoftwareBitmap().LockBuffer(wgi::BitmapBufferAccessMode::Read));
+    wf::IMemoryBufferReference reference = bitmap_buffer.CreateReference();
     auto spByteAccess = reference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
     WINML_EXPECT_HRESULT_SUCCEEDED(spByteAccess->GetBuffer(&data, &ui_capacity));
     WINML_EXPECT_NOT_EQUAL(data[0], 0);

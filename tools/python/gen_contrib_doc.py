@@ -15,7 +15,6 @@ import argparse
 
 import numpy as np  # type: ignore
 
-import onnxruntime as rt
 import onnxruntime.capi.onnxruntime_pybind11_state as rtpy 
 from onnxruntime.capi.onnxruntime_pybind11_state import schemadef 
 from onnxruntime.capi.onnxruntime_pybind11_state.schemadef import OpSchema  #, ONNX_DOMAIN, ONNX_ML_DOMAIN
