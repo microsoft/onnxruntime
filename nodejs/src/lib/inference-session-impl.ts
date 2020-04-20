@@ -1,6 +1,7 @@
 import {binding, Binding} from './binding';
-import {InferenceSession as InferenceSessionInterface, InferenceSessionConstructor} from './inference-session';
+import {InferenceSession as InferenceSessionInterface, InferenceSessionFactory} from './inference-session';
 import {OnnxValue} from './onnx-value';
+import {Tensor} from './tensor';
 
 type SessionOptions = InferenceSessionInterface.SessionOptions;
 type RunOptions = InferenceSessionInterface.RunOptions;
@@ -24,9 +25,12 @@ class InferenceSession implements InferenceSessionInterface {
     if (typeof (feeds) !== 'object') {
       throw new TypeError('feeds must be an object.');
     }
+
+    let isFetchesEmpty = true;
     // determine which override is being used
     if (typeof (arg1) === 'object') {
       if (Array.isArray(arg1)) {
+        isFetchesEmpty = false;
         // output names
         for (const name of arg1) {
           if (typeof (name) !== 'string') {
@@ -44,6 +48,7 @@ class InferenceSession implements InferenceSessionInterface {
             const v = arg1[name];
             if (v === null || v.constructor.name === 'Tensor') {
               isFetches = true;
+              isFetchesEmpty = false;
               fetches[name] = v;
             }
           }
@@ -57,15 +62,17 @@ class InferenceSession implements InferenceSessionInterface {
           }
         } else {
           options = arg1 as RunOptions;
-
-          // if no fetches is specified, we use the full output names list
-          for (const name of this.outputNames) {
-            fetches[name] = null;
-          }
         }
       }
     } else if (typeof (arg1) !== 'undefined') {
       throw new TypeError('unexpected argument. arg1 must be fetches or options');
+    }
+
+    // if no fetches is specified, we use the full output names list
+    if (isFetchesEmpty) {
+      for (const name of this.outputNames) {
+        fetches[name] = null;
+      }
     }
 
     // feeds, fetches and options are prepared
@@ -76,8 +83,12 @@ class InferenceSession implements InferenceSessionInterface {
     return new Promise((resolve, reject) => {
       process.nextTick(() => {
         try {
+          const returnValue: {[name: string]: OnnxValue} = {};
           const results = this.#session.run(feeds, fetches, options);
-          resolve(results);
+          for (const key in results) {
+            returnValue[key] = new Tensor(results[key].type, results[key].data, results[key].dims);
+          }
+          resolve(returnValue);
         } catch (e) {
           // reject if any error is thrown
           reject(e);
@@ -92,7 +103,7 @@ class InferenceSession implements InferenceSessionInterface {
   #session: Binding.InferenceSession;
 }
 
-export const impl: InferenceSessionConstructor = {
+export const impl: InferenceSessionFactory = {
   create: function(
       arg0: string|ArrayBufferLike|Uint8Array, arg1?: SessionOptions|number, arg2?: number,
       arg3?: SessionOptions): Promise<InferenceSession> {

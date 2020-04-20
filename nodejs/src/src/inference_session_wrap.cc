@@ -8,7 +8,6 @@
 Napi::FunctionReference InferenceSessionWrap::constructor;
 Ort::Env *InferenceSessionWrap::ortEnv_;
 
-
 Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
   // initialize ORT
   ortEnv_ = new Ort::Env{ORT_LOGGING_LEVEL_WARNING, "onnxruntime-node"};
@@ -171,30 +170,32 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
   std::vector<const char *> outputNames_cstr;
   std::vector<Ort::Value> outputValues;
   std::vector<bool> reuseOutput;
-
   size_t inputIndex = 0;
-  for (auto &name : inputNames_) {
-    if (feed.Has(name)) {
-      inputIndex++;
-      inputNames_cstr.push_back(name.c_str());
-      auto value = feed.Get(name);
-      inputValues.push_back(NapiValueToOrtValue(env, value));
-    }
-  }
   size_t outputIndex = 0;
-  for (auto &name : outputNames_) {
-    if (fetch.Has(name)) {
-      outputIndex++;
-      outputNames_cstr.push_back(name.c_str());
-      auto value = fetch.Get(name);
-      reuseOutput.push_back(!value.IsNull());
-      outputValues.emplace_back(value.IsNull() ? Ort::Value{nullptr} : NapiValueToOrtValue(env, value));
-    }
-  }
 
   try {
-    session_->Run(*defaultRunOptions_.get(), &inputNames_cstr[0], &inputValues[0], inputValues.size(),
-                  &outputNames_cstr[0], &outputValues[0], outputValues.size());
+    for (auto &name : inputNames_) {
+      if (feed.Has(name)) {
+        inputIndex++;
+        inputNames_cstr.push_back(name.c_str());
+        auto value = feed.Get(name);
+        inputValues.push_back(NapiValueToOrtValue(env, value));
+      }
+    }
+    for (auto &name : outputNames_) {
+      if (fetch.Has(name)) {
+        outputIndex++;
+        outputNames_cstr.push_back(name.c_str());
+        auto value = fetch.Get(name);
+        reuseOutput.push_back(!value.IsNull());
+        outputValues.emplace_back(value.IsNull() ? Ort::Value{nullptr} : NapiValueToOrtValue(env, value));
+      }
+    }
+
+    session_->Run(*defaultRunOptions_.get(), inputIndex == 0 ? nullptr : &inputNames_cstr[0],
+                  inputIndex == 0 ? nullptr : &inputValues[0], inputIndex,
+                  outputIndex == 0 ? nullptr : &outputNames_cstr[0], outputIndex == 0 ? nullptr : &outputValues[0],
+                  outputIndex);
   } catch (std::exception const &e) {
     throw Napi::Error::New(env, e.what());
   }

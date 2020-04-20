@@ -1,9 +1,10 @@
-import {TensorUtils, TypedTensorUtils} from './tensor-utils';
+import {Tensor as impl} from './tensor-impl';
+import {TypedTensorUtils} from './tensor-utils';
 
 /**
  * represent a basic tensor with specified dimensions and data type.
  */
-interface TensorBase {
+interface TypedTensorBase<T extends Tensor.Type> {
   /**
    * Get the dimensions of the tensor.
    */
@@ -11,26 +12,11 @@ interface TensorBase {
   /**
    * Get the data type of the tensor.
    */
-  readonly type: Tensor.Type;
-  /**
-   * Get the buffer data of the tensor.
-   */
-  readonly data: Tensor.DataType;
-}
-
-/**
- * represent a tensor with specified dimensions and data type.
- */
-interface TypedTensorBase<T extends Tensor.Type> extends TensorBase {
-  /**
-   * Get the data type of the tensor.
-   */
   readonly type: T;
-
   /**
    * Get the buffer data of the tensor.
    */
-  readonly data: Tensor.DataTypeMap[T]
+  readonly data: Tensor.DataTypeMap[T];
 }
 
 export declare namespace Tensor {
@@ -81,10 +67,10 @@ export declare namespace Tensor {
   export type Type = keyof DataTypeMap;
 }
 
-export interface Tensor extends TensorBase, TensorUtils {}
 export interface TypedTensor<T extends Tensor.Type> extends TypedTensorBase<T>, TypedTensorUtils<T> {}
+export interface Tensor extends TypedTensor<Tensor.Type> {}
 
-interface TensorConstructor {
+export interface TensorConstructor {
   /**
    * Construct a new tensor object from the given type, data and dims.
    * @type Specify the element type.
@@ -106,6 +92,11 @@ interface TensorConstructor {
    * Construct a new int8 tensor object from the given data and dims.
    */
   new(data: Int8Array, dims?: ReadonlyArray<number>): TypedTensor<'int8'>;
+
+  /**
+   * Construct a new uint8 tensor object from the given data and dims.
+   */
+  new(data: Uint8Array, dims?: ReadonlyArray<number>): TypedTensor<'uint8'>;
 
   /**
    * Construct a new uint16 tensor object from the given data and dims.
@@ -152,8 +143,7 @@ interface TensorConstructor {
    */
   new(data: BigUint64Array, dims?: ReadonlyArray<number>): TypedTensor<'uint64'>;
 
-  //#endregion infer element types
+  //#endregion
 }
 
-// TBD: not implemented yet, use trick to make TypeScript compiler happy
-export const Tensor: TensorConstructor = {} as TensorConstructor;
+export const Tensor = impl as TensorConstructor;

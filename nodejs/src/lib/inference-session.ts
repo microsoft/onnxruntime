@@ -25,7 +25,7 @@ export interface InferenceSession {
   run(feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
       options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
 
-  //#endregion run()
+  //#endregion
 
   //#region metadata
 
@@ -49,7 +49,7 @@ export interface InferenceSession {
   //  */
   // readonly outputMetadata: ReadonlyArray<Readonly<InferenceSession.ValueMetadata>>;
 
-  //#endregion metadata
+  //#endregion
 }
 
 export declare namespace InferenceSession {
@@ -79,7 +79,7 @@ export declare namespace InferenceSession {
 
   type ReturnType = {readonly [name: string]: OnnxValue};
 
-  //#endregion input/output types
+  //#endregion
 
   //#region session options
 
@@ -156,10 +156,10 @@ export declare namespace InferenceSession {
       readonly name: 'cuda';
       deviceId?: number;
     }
-    //#endregion execution providers
+    //#endregion
   }
 
-  //#endregion session options
+  //#endregion
 
   //#region run options
 
@@ -179,7 +179,7 @@ export declare namespace InferenceSession {
     tag?: string;
   }
 
-  //#endregion run options
+  //#endregion
 
   //#region value metadata
 
@@ -187,10 +187,10 @@ export declare namespace InferenceSession {
     // TBD
   }
 
-  //#endregion value metadata
+  //#endregion
 }
 
-export interface InferenceSessionConstructor {
+export interface InferenceSessionFactory {
   //#region create()
 
   /**
@@ -228,8 +228,7 @@ export interface InferenceSessionConstructor {
    */
   create(buffer: Uint8Array, options?: InferenceSession.SessionOptions): Promise<InferenceSession>;
 
-  //#endregion create()
+  //#endregion
 }
 
-// TBD: not implemented yet, use trick to make TypeScript compiler happy
-export const InferenceSession: InferenceSessionConstructor = impl;
+export const InferenceSession: InferenceSessionFactory = impl;

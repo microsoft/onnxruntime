@@ -188,9 +188,12 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value) {
 
     auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
     char *buffer = reinterpret_cast<char *>(tensorDataTypedArray.ArrayBuffer().Data());
-    return Ort::Value::CreateTensor(memory_info, buffer + tensorDataTypedArray.ByteOffset(),
-                                    tensorDataTypedArray.ByteLength(), dims.empty() ? nullptr : &dims[0], dims.size(),
-                                    elemType);
+    size_t bufferByteOffset = tensorDataTypedArray.ByteOffset();
+    // there is a bug in TypedArray::ElementSize(): https://github.com/nodejs/node-addon-api/pull/705
+    // TODO: change to TypedArray::ByteLength() in next node-addon-api release.
+    size_t bufferByteLength = tensorDataTypedArray.ElementLength() * DATA_TYPE_ELEMENT_SIZE_MAP[elemType];
+    return Ort::Value::CreateTensor(memory_info, buffer + bufferByteOffset, bufferByteLength,
+                                    dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
   }
 }
 
@@ -245,8 +248,9 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value &value) {
       value.GetStringTensorContent(tempBuffer.get(), tempBufferLength, &tempOffsets[0], size);
 
       for (uint32_t i = 0; i < size; i++) {
-        stringArray[i] = Napi::String::New(env, tempBuffer.get() + tempOffsets[i],
-                                           i == size - 1 ? size - tempOffsets[i] : tempOffsets[i + 1] - tempOffsets[i]);
+        stringArray[i] =
+            Napi::String::New(env, tempBuffer.get() + tempOffsets[i],
+                              i == size - 1 ? tempBufferLength - tempOffsets[i] : tempOffsets[i + 1] - tempOffsets[i]);
       }
     }
     returnValue.DefineProperty(Napi::PropertyDescriptor::Value("data", Napi::Value(env, stringArray)));
