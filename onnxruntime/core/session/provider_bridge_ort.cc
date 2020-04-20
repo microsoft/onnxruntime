@@ -447,7 +447,11 @@ struct ProviderHostImpl : ProviderHost {
 provider_host_;
 
 struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
-  IExecutionProviderFactory_Translator(std::shared_ptr<Prov_IExecutionProviderFactory> p) : p_(p) {}
+  IExecutionProviderFactory_Translator(std::shared_ptr<Prov_IExecutionProviderFactory> p, void* handle) : p_{p}, handle_{handle} {}
+  ~IExecutionProviderFactory_Translator() override {
+    p_ = nullptr;  // Release before we unload
+    Env::Default().UnloadDynamicLibrary(handle_);
+  }
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     auto provider = p_->CreateProvider();
@@ -455,6 +459,7 @@ struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
   }
 
   std::shared_ptr<Prov_IExecutionProviderFactory> p_;
+  void* handle_;
 };
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int device_id) {
@@ -472,7 +477,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
   Provider* provider = PGetProvider();
   provider->SetProviderHost(provider_host_);
 
-  return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory(device_id));
+  return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory(device_id), handle);
 }
 
 }  // namespace onnxruntime

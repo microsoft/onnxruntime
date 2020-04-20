@@ -2,12 +2,10 @@
 // Licensed under the MIT License
 
 #pragma once
-//#include "core/framework/op_kernel.h"
 #include "core/providers/dnnl/dnnl_fwd.h"
 #include "core/providers/dnnl/dnnl_execution_provider.h"
 #include "core/providers/dnnl/subgraph/dnnl_kernel.h"
 #include "core/providers/dnnl/memcpy_s.h"
-//#include "core/util/math.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {

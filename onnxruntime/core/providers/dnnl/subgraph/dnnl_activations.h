@@ -2,9 +2,6 @@
 // Licensed under the MIT License
 
 #pragma once
-//#include "core/util/math.h"
-//#include "core/util/math_cpuonly.h"
-//#include "core/framework/op_kernel.h"
 #include "core/providers/dnnl/dnnl_fwd.h"
 #include "core/providers/dnnl/dnnl_execution_provider.h"
 #include "core/providers/dnnl/subgraph/dnnl_kernel.h"

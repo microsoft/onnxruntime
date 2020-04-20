@@ -9,9 +9,6 @@
 #include <memory.h>
 
 #include "core/platform/ort_mutex.h"
-//#include "core/graph/constants.h"
-//#include "core/framework/allocatormgr.h"
-//#include "core/framework/execution_provider.h"
 #include "core/providers/dnnl/subgraph/subgraph.h"
 
 namespace dnnl {
@@ -84,6 +81,8 @@ class DNNLExecutionProvider : public Prov_IExecutionProvider {
                               std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
  private:
+  mutable std::shared_ptr<Prov_KernelRegistry> kernel_registry_;
+
   // dnnl weights(filer data) memory blocks from first iteration
   // saved by weights name
   std::unordered_map<std::string, std::shared_ptr<dnnl::memory>> weights_mem_map_;

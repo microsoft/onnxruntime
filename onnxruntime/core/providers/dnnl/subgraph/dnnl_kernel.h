@@ -7,7 +7,6 @@
 #endif
 
 #include "dnnl.hpp"
-//#include "core/common/cpuid_info.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/dnnl/subgraph/subgraph.h"
 #include "core/providers/dnnl/dnnl_execution_provider.h"

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "fake_proto.h"
+#include "core/providers/shared_library/provider_author.h"
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include <atomic>
 #include "dnnl_execution_provider.h"

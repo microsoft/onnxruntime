@@ -256,8 +256,7 @@ Status DnnlFuncKernel<T>::Compute(const OrtCustomOpApi* api, OrtKernelContext* c
     primitive->UpdateProvider(params_);
     status = primitive->Compute(api, context);
   } catch (const dnnl::error& e) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status,
-                           ", message: ", e.what());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, ", message: ", e.what());
   }
   return status;
 }

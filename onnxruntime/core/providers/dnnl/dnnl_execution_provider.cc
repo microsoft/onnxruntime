@@ -5,11 +5,12 @@
 #pragma warning(disable : 4996)
 #endif
 
-#include "fake_proto.h"
+#include "core/providers/shared_library/provider_author.h"
 #include <unordered_set>
 #include "subgraph/dnnl_func_kernel.h"
 #include "dnnl_execution_provider.h"
 #include "dnnl_fwd.h"
+#include <Windows.h>
 
 const OrtApi* ORT_API_CALL GetApi(uint32_t /*version*/) NO_EXCEPTION { return nullptr; }
 const char* ORT_API_CALL GetVersionString() NO_EXCEPTION { return "invalid"; }
@@ -71,8 +72,9 @@ std::shared_ptr<Prov_KernelRegistry> GetDnnlKernelRegistry() {
 }  // namespace ort_dnnl
 
 std::shared_ptr<Prov_KernelRegistry> DNNLExecutionProvider::Prov_GetKernelRegistry() const {
-  static std::shared_ptr<Prov_KernelRegistry> kernel_registry = onnxruntime::ort_dnnl::GetDnnlKernelRegistry();
-  return kernel_registry;
+  if (!kernel_registry_)
+    kernel_registry_ = onnxruntime::ort_dnnl::GetDnnlKernelRegistry();
+  return kernel_registry_;
 }
 
 bool DNNLExecutionProvider::UseSubgraph(const onnxruntime::Prov_GraphViewer& graph_viewer) const {

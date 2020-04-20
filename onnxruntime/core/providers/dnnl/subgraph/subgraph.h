@@ -6,10 +6,6 @@
 #include <vector>
 #include <string>
 #include <map>
-//#include "core/common/common.h"
-//#include "core/common/const_pointer_container.h"
-//#include "core/framework/op_node_proto_helper.h"
-//#include "core/graph/graph.h"
 #include "core/providers/providers.h"
 
 namespace onnxruntime {

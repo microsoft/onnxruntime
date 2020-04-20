@@ -41,6 +41,10 @@ enum OperatorStatus {
 
 namespace onnxruntime {
 
+struct RunOnUnload {
+  RunOnUnload(std::function<void()> run);
+};
+
 constexpr const char* kOnnxDomain = "";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 
