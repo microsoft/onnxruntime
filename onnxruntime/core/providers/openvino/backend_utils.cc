@@ -28,10 +28,12 @@ namespace backend_utils {
 
 #ifndef NDEBUG
 bool IsDebugEnabled() {
-#ifdef __linux__
-  return (std::getenv("UEP_ENABLE_DEBUG") != nullptr);
+#ifdef _WIN32
+  size_t env_name_len = 0;
+  char* env_name = nullptr;
+  return (_dupenv_s(&env_name, &env_name_len, "ORT_OPENVINO_ENABLE_DEBUG") == 0 && env_name != nullptr);
 #else
-  return false;
+  return (std::getenv("ORT_OPENVINO_ENABLE_DEBUG") != nullptr);
 #endif
 }
 
