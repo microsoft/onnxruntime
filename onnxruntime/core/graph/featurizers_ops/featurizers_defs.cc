@@ -522,12 +522,12 @@ void RegisterForecastingPivotFeaturizerVer1(){
           "No information is available")
       .TypeAndShapeInferenceFunction(
           [](ONNX_NAMESPACE::InferenceContext& ctx) {
-            auto input_elem_type = ctx.getInputType(1)->tensor_type().elem_type();
-            if (input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-              propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 0);
-            } else if (input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
-              propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, 0);
-            }
+            // auto input_elem_type = ctx.getInputType(1)->tensor_type().elem_type();
+            // if (input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+            //   propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 0);
+            // } else if (input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
+            //   propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, 0);
+            // }
             if (hasInputShape(ctx, 1)) {
               const auto& input_shape = getInputShape(ctx, 1);
               if (input_shape.dim_size() != 3) {
@@ -535,7 +535,6 @@ void RegisterForecastingPivotFeaturizerVer1(){
               }
             }
             ONNX_NAMESPACE::TensorShapeProto shape;
-            shape.add_dim();
             shape.add_dim();
             shape.add_dim();
             ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape);

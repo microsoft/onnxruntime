@@ -44,11 +44,13 @@ TEST(FeaturizersTests, ForecastingPivotTransformer_2_Inputs) {
                                               2, NS::Traits<float>::CreateNullValue(), 3, 4,
                                               2, NS::Traits<float>::CreateNullValue(), 5, 6,
                                               2, NS::Traits<float>::CreateNullValue(), 3, 4});
-  test.AddOutput<double>("Output_1", {4, 1, 5}, {3, 9, 3, 9});
-  test.AddOutput<double>("Output_2", {4, 1, 5}, {5, 8, 5, 8});
-  test.AddOutput<double>("Output_3", {4, 1, 5}, {7, 10, 7, 10});
-  test.AddOutput<double>("Output_4", {4, 1, 5}, {5, 6, 5, 6});
-  test.AddOutput<double>("Output_5", {4, 1, 5}, {3, 4, 3, 4});
+  test.AddOutput<double>("Output_1", {4, 1}, {3, 9, 3, 9});
+  test.AddOutput<double>("Output_2", {4, 1}, {5, 8, 5, 8});
+  test.AddOutput<double>("Output_3", {4, 1}, {7, 10, 7, 10});
+  test.AddOutput<double>("Output_4", {4, 1}, {5, 6, 5, 6});
+  test.AddOutput<double>("Output_5", {4, 1}, {3, 4, 3, 4});
+  //horizon output
+  test.AddOutput<double>("Output_6", {4, 1}, {2, 1, 2, 1});
 
   test.Run();
 }
@@ -73,20 +75,23 @@ TEST(FeaturizersTests, ForecastingPivotTransformer_4_Inputs) {
                                                9, 9, 9, 9});
   test.AddInput<double>("Input_4", {2, 1, 4}, {-7, -7, -7, -7,
                                                -9, -9, -9, -9});
-
-  test.AddOutput<double>("Output_1", {4, 1, 5}, {3, 9, 3, 9});
-  test.AddOutput<double>("Output_2", {4, 1, 5}, {5, 8, 5, 8});
-  test.AddOutput<double>("Output_3", {4, 1, 5}, {7, 10, 7, 10});
-  test.AddOutput<double>("Output_4", {4, 1, 5}, {5, 6, 5, 6});
-  test.AddOutput<double>("Output_5", {4, 1, 5}, {3, 4, 3, 4});
-  test.AddOutput<double>("Output_6", {4, 1, 4}, {7, 7, 7, 7,
-                                                 7, 7, 7, 7,
-                                                 9, 9, 9, 9,
-                                                 9, 9, 9, 9});
-  test.AddOutput<double>("Output_7", {4, 1, 4}, {-7, -7, -7, -7,
-                                                 -7, -7, -7, -7,
-                                                 -9, -9, -9, -9,
-                                                 -9, -9, -9, -9});
+  //pivot output
+  test.AddOutput<double>("Output_1", {4, 1}, {3, 9, 3, 9});
+  test.AddOutput<double>("Output_2", {4, 1}, {5, 8, 5, 8});
+  test.AddOutput<double>("Output_3", {4, 1}, {7, 10, 7, 10});
+  test.AddOutput<double>("Output_4", {4, 1}, {5, 6, 5, 6});
+  test.AddOutput<double>("Output_5", {4, 1}, {3, 4, 3, 4});
+  //non-pivot output
+  test.AddOutput<double>("Output_6", {4, 4}, {7, 7, 7, 7,
+                                              7, 7, 7, 7,
+                                              9, 9, 9, 9,
+                                              9, 9, 9, 9});
+  test.AddOutput<double>("Output_7", {4, 4}, {-7, -7, -7, -7,
+                                              -7, -7, -7, -7,
+                                              -9, -9, -9, -9,
+                                              -9, -9, -9, -9});
+  //horizon output
+  test.AddOutput<double>("Output_8", {4, 1}, {2, 1, 2, 1});
 
   test.Run();
 }
