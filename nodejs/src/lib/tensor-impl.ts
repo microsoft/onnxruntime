@@ -28,7 +28,6 @@ const NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP = new Map<Function, TensorInterface.
   [Int16Array, 'int16'],
   [Int32Array, 'int32'],
   [BigInt64Array, 'int64'],
-  [Uint8Array, 'bool'],
   [Float64Array, 'float64'],
   [Uint32Array, 'uint32'],
   [BigUint64Array, 'uint64'],

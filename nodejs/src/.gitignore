@@ -3,9 +3,9 @@
 /bin/
 /types/
 
-/lib/*.js
-/lib/*.js.map
-/scripts/*.js
-/scripts/*.js.map
-/test/*.js
-/test/*.js.map
+/lib/**/*.js
+/lib/**/*.js.map
+/scripts/**/*.js
+/scripts/**/*.js.map
+/test/**/*.js
+/test/**/*.js.map

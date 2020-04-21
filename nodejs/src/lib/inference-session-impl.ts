@@ -22,8 +22,9 @@ class InferenceSession implements InferenceSessionInterface {
     let fetches: {[name: string]: OnnxValue|null} = {};
     let options: RunOptions = {};
     // check inputs
-    if (typeof (feeds) !== 'object') {
-      throw new TypeError('feeds must be an object.');
+    if (typeof (feeds) !== 'object' || feeds instanceof Tensor || Array.isArray(feeds)) {
+      throw new TypeError(
+          'feeds must be an object that use input names as keys and OnnxValue as corresponding values.');
     }
 
     let isFetchesEmpty = true;
@@ -66,6 +67,13 @@ class InferenceSession implements InferenceSessionInterface {
       }
     } else if (typeof (arg1) !== 'undefined') {
       throw new TypeError('unexpected argument. arg1 must be fetches or options');
+    }
+
+    // check if all inputs are in feed
+    for (const name of this.inputNames) {
+      if (feeds[name] === undefined) {
+        throw new Error(`input '${name}' is missing in feeds.`)
+      }
     }
 
     // if no fetches is specified, we use the full output names list
