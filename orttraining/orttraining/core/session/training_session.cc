@@ -189,12 +189,30 @@ Status TrainingSession::ConfigureForTraining(
         weight_names_to_train, mixed_precision_config.use_fp16_initializers, fp32_weight_name_to_fp16_node_arg));
   }
 
+  if (config.use_pipeline) {
+    ORT_RETURN_IF_ERROR(InsertPipelineOps());
+  }
+
+  // All non-float tensors are not trainable. Remove those weights.
+  // TODO: this is a temp workaround for removing rank tensor before adding optimizer.
+  // Re-visit after we port logic for model splitting and hence know the rank tensor name.
+  for (auto it = weights_to_train_.begin(); it != weights_to_train_.end();) {
+      const auto* node_arg = model_->MainGraph().GetNodeArg(*it);
+      ORT_RETURN_IF_NOT(node_arg, "Failed to get NodeArg with name ", *it);
+      if (node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        it = weights_to_train_.erase(it);
+      }
+      else{
+          ++it;
+      }
+  }
+
   // add optimizer or gradient accumulation
   if (config.optimizer_config.has_value()) {
     OptimizerGraphConfig opt_graph_config{};
     std::unordered_map<std::string, OptimizerNodeConfig> opt_node_configs{};
     ORT_RETURN_IF_ERROR(SetupOptimizerParams(
-        weight_names_to_train, fp32_weight_name_to_fp16_node_arg,
+        weights_to_train_, fp32_weight_name_to_fp16_node_arg,
         loss_scale_input_name, config, opt_graph_config, opt_node_configs));
 
     TrainingConfigurationResult::OptimizerConfigurationResult optimizer_config_result{};
@@ -205,7 +223,7 @@ Status TrainingSession::ConfigureForTraining(
     config_result.opt_config_result = optimizer_config_result;
   } else {
     if (config.gradient_accumulation_steps > 1) {
-      ORT_RETURN_IF_ERROR(BuildAccumulationNode(weight_names_to_train));
+      ORT_RETURN_IF_ERROR(BuildAccumulationNode(weights_to_train_));
     }
   }
 
@@ -245,10 +263,6 @@ Status TrainingSession::ConfigureForTraining(
   // add GIST encoding
   if (config.gist_config.has_value()) {
     ORT_RETURN_IF_ERROR(AddGistEncoding());
-  }
-
-  if (config.use_pipeline) {
-    ORT_RETURN_IF_ERROR(InsertPipelineOps());
   }
 
   if (IsRootNode(config) && config.model_with_training_graph_path.has_value()) {
