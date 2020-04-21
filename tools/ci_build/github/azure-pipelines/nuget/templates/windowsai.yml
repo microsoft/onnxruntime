@@ -1,3 +1,6 @@
+parameters:
+  DoEsrp: 'false'
+
 jobs:
 - job: WindowsAI_DirectML_X64
   timeoutInMinutes: 120
