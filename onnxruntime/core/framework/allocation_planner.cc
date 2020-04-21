@@ -330,6 +330,7 @@ class PlannerImpl {
     for (auto it = freelist_.begin(); it != freelist_.end(); ++it) {
       size_t reusable = static_cast<size_t>(it->ml_value);
       const onnxruntime::NodeArg* p_node_arg = ort_value_info_.at(reusable).p_def_site;
+      if (!p_node_arg) continue;
       auto& available_memory_info = AllocPlan(p_node_arg->Name()).location;
       if (!(available_memory_info == required_memory_info)) continue;
       auto p_available_buffer_shape = context_.GetShape(*p_node_arg);
