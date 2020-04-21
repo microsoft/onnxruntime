@@ -40,7 +40,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createTensor
     checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(ortValue, &info));
     size_t dimensions;
     checkOrtStatus(jniEnv,api,api->GetDimensionsCount(info,&dimensions));
-    size_t arrSize;
+    int64_t arrSize;
     checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(info,&arrSize));
     ONNXTensorElementDataType onnxTypeEnum;
     checkOrtStatus(jniEnv,api,api->GetTensorElementType(info,&onnxTypeEnum));
@@ -183,7 +183,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxTensor_getBuffer
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtTensorTypeAndShapeInfo* info;
     checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape((OrtValue*) handle, &info));
-    size_t arrSize;
+    int64_t arrSize;
     checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(info,&arrSize));
     ONNXTensorElementDataType onnxTypeEnum;
     checkOrtStatus(jniEnv,api,api->GetTensorElementType(info,&onnxTypeEnum));
@@ -371,7 +371,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OnnxTensor_getArray
     checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape((OrtValue*) handle, &info));
     size_t dimensions;
     checkOrtStatus(jniEnv,api,api->GetDimensionsCount(info,&dimensions));
-    size_t arrSize;
+    int64_t arrSize;
     checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(info,&arrSize));
     ONNXTensorElementDataType onnxTypeEnum;
     checkOrtStatus(jniEnv,api,api->GetTensorElementType(info,&onnxTypeEnum));

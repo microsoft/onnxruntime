@@ -127,54 +127,54 @@ class TensorflowTestSession : public TestSession {
     ORT_THROW_ON_ERROR(OrtGetDimensionsCount(shape, &dim_count));
     dims.resize(dim_count);
     ORT_THROW_ON_ERROR(OrtGetDimensions(shape, dims.data(), dim_count));
-    size_t ele_count;
+    int64_t ele_count;
     ORT_THROW_ON_ERROR(OrtGetTensorShapeElementCount(shape, &ele_count));
     TF_DataType tf_datatype;
     ONNXTensorElementDataType element_type;
     ORT_THROW_ON_ERROR(OrtGetTensorElementType(shape, &element_type));
     switch (element_type) {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:  // maps to c type float
-        buffer_length = ele_count * sizeof(float);
+        buffer_length = static_cast<size_t>(ele_count) * sizeof(float);
         tf_datatype = TF_FLOAT;
         break;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:  // maps to c type uint8_t
-        buffer_length = ele_count * sizeof(uint8_t);
+        buffer_length = static_cast<size_t>(ele_count) * sizeof(uint8_t);
         tf_datatype = TF_UINT8;
         break;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:  // maps to c type int8_t
-        buffer_length = ele_count * sizeof(int8_t);
+        buffer_length = static_cast<size_t>(ele_count) * sizeof(int8_t);
         tf_datatype = TF_INT8;
         break;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:  // maps to c type uint16_t
-        buffer_length = ele_count * sizeof(uint16_t);
+        buffer_length = static_cast<size_t>(ele_count) * sizeof(uint16_t);
         tf_datatype = TF_UINT16;
         break;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:  // maps to c type int16_t
-        buffer_length = ele_count * sizeof(int16_t);
+        buffer_length = static_cast<size_t>(ele_count) * sizeof(int16_t);
         tf_datatype = TF_INT16;
         break;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:  // maps to c type int32_t
-        buffer_length = ele_count * sizeof(int32_t);
+        buffer_length = static_cast<size_t>(ele_count) * sizeof(int32_t);
         tf_datatype = TF_INT32;
         break;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:  // maps to c type int64_t
-        buffer_length = ele_count * sizeof(int64_t);
+        buffer_length = static_cast<size_t>(ele_count) * sizeof(int64_t);
         tf_datatype = TF_INT64;
         break;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-        buffer_length = ele_count * sizeof(bool);
+        buffer_length = static_cast<size_t>(ele_count) * sizeof(bool);
         tf_datatype = TF_BOOL;
         break;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:  // maps to c type double
-        buffer_length = ele_count * sizeof(double);
+        buffer_length = static_cast<size_t>(ele_count) * sizeof(double);
         tf_datatype = TF_DOUBLE;
         break;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:  // maps to c type uint32_t
-        buffer_length = ele_count * sizeof(uint32_t);
+        buffer_length = static_cast<size_t>(ele_count) * sizeof(uint32_t);
         tf_datatype = TF_UINT32;
         break;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:  // maps to c type uint64_t
-        buffer_length = ele_count * sizeof(uint64_t);
+        buffer_length = static_cast<size_t>(ele_count) * sizeof(uint64_t);
         tf_datatype = TF_UINT64;
         break;
       default:
