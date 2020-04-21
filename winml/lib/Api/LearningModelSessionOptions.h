@@ -5,7 +5,7 @@
 
 #include "LearningModelSessionOptions.g.h"
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 
 struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelSessionOptions> {
   LearningModelSessionOptions() = default;
@@ -43,9 +43,9 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   bool close_model_on_session_creation_ = false;
 };
 
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP
 
-namespace winrt::Windows::AI::MachineLearning::factory_implementation {
+namespace WINML::factory_implementation {
 struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelSessionOptions, implementation::LearningModelSessionOptions> {
 };
-}  // namespace winrt::Windows::AI::MachineLearning::factory_implementation
+}  // namespace WINML::factory_implementation

@@ -4,8 +4,8 @@
 #include "winrt/Windows.Storage.h"
 #include "winrt/Windows.Storage.Streams.h"
 
-using namespace winrt::Windows::Storage;
-using namespace winrt::Windows::Storage::Streams;
+using namespace ws;
+using namespace wss;
 
 static void AdapterTestSetup() {
   ort_api = OrtGetApiBase()->GetApi(2);

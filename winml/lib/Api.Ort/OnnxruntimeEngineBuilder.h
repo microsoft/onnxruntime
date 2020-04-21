@@ -3,7 +3,7 @@
 
 #include "iengine.h"
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
                                      Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
@@ -33,4 +33,4 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   std::optional<uint32_t> batch_size_override_;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

@@ -17,18 +17,18 @@ enum VideoFrameSource { FromSoftwareBitmap, FromDirect3DSurface, FromUnsupported
 
 namespace ImageTestHelper
 {
-    winrt::Windows::Graphics::Imaging::BitmapPixelFormat GetPixelFormat(const std::wstring& inputPixelFormat);
+    wgi::BitmapPixelFormat GetPixelFormat(const std::wstring& inputPixelFormat);
 
-    winrt::Windows::AI::MachineLearning::TensorFloat LoadInputImageFromCPU(
-                winrt::Windows::Graphics::Imaging::SoftwareBitmap softwareBitmap,
+    winml::TensorFloat LoadInputImageFromCPU(
+                wgi::SoftwareBitmap softwareBitmap,
                 const std::wstring& modelPixelFormat);
 
-    winrt::Windows::AI::MachineLearning::TensorFloat LoadInputImageFromGPU(
-                winrt::Windows::Graphics::Imaging::SoftwareBitmap softwareBitmap,
+    winml::TensorFloat LoadInputImageFromGPU(
+                wgi::SoftwareBitmap softwareBitmap,
                 const std::wstring& modelPixelFormat);
 
     bool VerifyHelper(
-                winrt::Windows::Media::VideoFrame actual,
-                winrt::Windows::Media::VideoFrame expected);
+                wm::VideoFrame actual,
+                wm::VideoFrame expected);
 
 }
