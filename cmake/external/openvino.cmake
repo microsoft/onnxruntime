@@ -21,7 +21,6 @@ else()
 endif()
 
 # discard prior changes due to unblock incremental builds.
-# set(NGRAPH_PATCH_DISCARD_COMMAND cd ${ngraph_SRC} && git reset HEAD --hard && git clean -fx)
 set(NGRAPH_CHANGE_DIR_COMMAND cd ${ngraph_SRC})
 
 if (MSVC)
@@ -32,7 +31,7 @@ if (MSVC)
             GIT_TAG ${ngraph_TAG}
             GIT_SHALLOW TRUE
             GIT_CONFIG core.autocrlf=input
-            PATCH_COMMAND ${NGRAPH_PATCH_DISCARD_COMMAND}
+            PATCH_COMMAND ${NGRAPH_CHANGE_DIR_COMMAND}
             COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/patches/openvino/ngraph_onnx.cmake ${ngraph_SRC}/cmake/external_onnx.cmake
             COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/openvino/ngraph_protobuf.patch
             COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/openvino/lib_name.patch
