@@ -342,23 +342,6 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_closeSession
 
 /*
  * Class:     ai_onnxruntime_OrtSession
- * Method:    releaseNamesHandle
- * Signature: (JJJ)V
- */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_releaseNamesHandle
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jlong namesHandle, jlong length) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
-    const OrtApi* api = (const OrtApi*) apiHandle;
-    OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
-    char** names = (char**) namesHandle;
-    for (uint32_t i = 0; i < length; i++) {
-        checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,names[i]));
-    }
-    checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,names));
-}
-
-/*
- * Class:     ai_onnxruntime_OrtSession
  * Method:    constructMetadata
  * Signature: (JJJ)Ljava/lang/String;
  */
