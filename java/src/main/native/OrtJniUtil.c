@@ -666,7 +666,7 @@ jobjectArray createStringArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, Ort
     checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor,&tensorInfo));
 
     // Get the element count of this tensor
-    size_t length;
+    int64_t length;
     checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo,&length));
     api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
 
@@ -687,7 +687,7 @@ jlongArray createLongArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValu
     checkOrtStatus(jniEnv,api,api->GetTensorElementType(tensorInfo,&value));
 
     // Get the element count of this tensor
-    size_t length;
+    int64_t length;
     checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo,&length));
     api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
 
@@ -709,7 +709,7 @@ jfloatArray createFloatArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtVa
     checkOrtStatus(jniEnv,api,api->GetTensorElementType(tensorInfo,&value));
 
     // Get the element count of this tensor
-    size_t length;
+    int64_t length;
     checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo,&length));
     api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
 
@@ -731,7 +731,7 @@ jdoubleArray createDoubleArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, Ort
     checkOrtStatus(jniEnv,api,api->GetTensorElementType(tensorInfo,&value));
 
     // Get the element count of this tensor
-    size_t length;
+    int64_t length;
     checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo,&length));
     api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
 
@@ -822,7 +822,7 @@ jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
             checkOrtStatus(jniEnv,api,api->GetTensorElementType(keysInfo,&key));
 
             // Get the element count of this map
-            size_t mapCount;
+            int64_t mapCount;
             checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(keysInfo,&mapCount));
 
             api->ReleaseTensorTypeAndShapeInfo(keysInfo);
@@ -910,7 +910,7 @@ jobject createJavaMapFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* 
     checkOrtStatus(jniEnv,api,api->GetTensorElementType(keysInfo,&key));
 
     // Get the element count of this map
-    size_t mapCount;
+    int64_t mapCount;
     checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(keysInfo,&mapCount));
 
     api->ReleaseTensorTypeAndShapeInfo(keysInfo);
