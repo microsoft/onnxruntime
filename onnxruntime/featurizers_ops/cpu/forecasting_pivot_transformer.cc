@@ -14,8 +14,26 @@ namespace onnxruntime {
 namespace featurizers {
 
 template <typename T>
+struct CopyImputedColumnsImpl {
+  void operator()(const Tensor* input_tensor, Tensor* output_tensor_imputed,
+                  const std::vector<int64_t>& row_idx_record, int64_t input_matrix_size, int num_output_rows) const {
+      const T* input_data(input_tensor->template Data<T>());
+      T* output_data_imputed = output_tensor_imputed->MutableData<T>();
+
+      for (int imputed_output_row_idx = 0; imputed_output_row_idx < num_output_rows; imputed_output_row_idx++) {
+        output_data_imputed = std::copy(input_data + row_idx_record[imputed_output_row_idx] * input_matrix_size,
+                                        input_data + (row_idx_record[imputed_output_row_idx] + 1) * input_matrix_size,
+                                        output_data_imputed);
+      }
+  }
+};
+
+template <typename T>
 struct ForecastingPivotTransformerImpl {
   void operator()(OpKernelContext* ctx, int64_t num_pivot_columns) const {
+
+    ORT_ENFORCE(num_pivot_columns > 0, "num_pivot_columns > 0, otherwise there will be no input to pivot");
+
     using MatrixT = NS::RowMajMatrix<typename NS::Traits<T>::nullable_type>;
     using InputType = std::vector<Eigen::Map<const MatrixT>>;
     using OutputType = std::vector<T>;
@@ -77,56 +95,58 @@ struct ForecastingPivotTransformerImpl {
     transformer.flush(callback_fn);
 
     // Prepare the number of output rows
-    int num_rows = output.size();
-    ORT_ENFORCE(static_cast<int>(row_idx_record.size()) == num_rows, "row_idx_record.size() == num_rows");
+    int num_output_rows = output.size();
+    ORT_ENFORCE(static_cast<int>(row_idx_record.size()) == num_output_rows, "row_idx_record.size() == num_output_rows");
 
     // Prepare the pivoted Output
     int num_pivot_output_columns = 0;
     if (!output.empty() && !output[0].empty()) {
       num_pivot_output_columns = static_cast<int>(output[0].size());
-      for (int i = 0; i < num_pivot_output_columns; i++) {
-        TensorShape output_shape({static_cast<int64_t>(num_rows), 1});
-        Tensor* output_tensor(ctx->Output(i, output_shape));
+
+      for (int pivot_output_tensor_idx = 0; pivot_output_tensor_idx < num_pivot_output_columns; pivot_output_tensor_idx++) {
+        TensorShape output_shape({static_cast<int64_t>(num_output_rows), 1});
+        Tensor* output_tensor(ctx->Output(pivot_output_tensor_idx, output_shape));
         T* output_data = output_tensor->MutableData<T>();
-        for (int j = 0; j < num_rows; j++){
-          *output_data++ = output[j][i];
+
+        for (int pivot_output_row_idx = 0; pivot_output_row_idx < num_output_rows; pivot_output_row_idx++){
+          *output_data++ = output[pivot_output_row_idx][pivot_output_tensor_idx];
         }
       }
     }
 
-    // Prepare the imputed Output
-    for (int i = 0; i < input_node_1_count - num_pivot_columns; i++) {
-      int tensor_id = input_node_0_count + static_cast<int>(num_pivot_columns) + i;
-      //MLDataType NonPivotTensorType = ctx->InputType(tensor_id);
+    // Prepare the non-pivot(imputed) Output
+    for (int imputed_output_count_idx = 0; imputed_output_count_idx < input_node_1_count - num_pivot_columns; imputed_output_count_idx++) {
+
+      int tensor_id = input_node_0_count + static_cast<int>(num_pivot_columns) + imputed_output_count_idx;
       const auto* input_tensor(ctx->Input<Tensor>(tensor_id));
-      const T* input_data(input_tensor->template Data<T>());
 
       const int64_t input_dim_1 = input_tensor->Shape()[1];
       const int64_t input_dim_2 = input_tensor->Shape()[2];
       const int64_t input_matrix_size = input_dim_1 * input_dim_2;
 
-      TensorShape output_shape_imputed({static_cast<int64_t>(num_rows), input_dim_1 * input_dim_2});
-      Tensor* output_tensor_imputed(ctx->Output(i + num_pivot_output_columns, output_shape_imputed));
-      T* output_data_imputed = output_tensor_imputed->MutableData<T>();
+      TensorShape output_shape_imputed({static_cast<int64_t>(num_output_rows), input_dim_1 * input_dim_2});
+      Tensor* output_tensor_imputed(ctx->Output(imputed_output_count_idx + num_pivot_output_columns, output_shape_imputed));
 
-      for (int j = 0; j < num_rows; j++) {
-        output_data_imputed = std::copy(input_data + row_idx_record[j] * input_matrix_size,
-                                        input_data + (row_idx_record[j] + 1) * input_matrix_size,
-                                        output_data_imputed);
-      }
+      const auto elem_type = input_tensor->GetElementType();
+
+      utils::MLTypeCallDispatcher<CopyImputedColumnsImpl,
+                                  int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t,
+                                  float, double, bool, std::string> t_disp(elem_type);
+      t_disp.Invoke(input_tensor, output_tensor_imputed, row_idx_record, input_matrix_size, num_output_rows);
     }
 
     // Prepare the horizon Output
-    std::vector<int> helper(num_rows, 1);
-    for (int i = 1; i < num_rows; i++) {
-      if (row_idx_record[num_rows - 1 - i] == row_idx_record[num_rows - i])
-        helper[num_rows - 1 - i] = helper[num_rows - i] + 1;
+    std::vector<int> horizon_output_helper(num_output_rows, 1);
+    for (int i = 1; i < num_output_rows; i++) {
+      if (row_idx_record[num_output_rows - 1 - i] == row_idx_record[num_output_rows - i]) {
+        horizon_output_helper[num_output_rows - 1 - i] = horizon_output_helper[num_output_rows - i] + 1;
+      }
     }
-    TensorShape output_shape_horizon({static_cast<int64_t>(num_rows), 1});
+    TensorShape output_shape_horizon({static_cast<int64_t>(num_output_rows), 1});
     Tensor* output_tensor_horizon(ctx->Output(input_node_1_count + num_pivot_output_columns - num_pivot_columns, output_shape_horizon));
     T* output_data_horizon = output_tensor_horizon->MutableData<T>();
 
-    std::copy(helper.begin(), helper.end(), output_data_horizon);
+    std::copy(horizon_output_helper.begin(), horizon_output_helper.end(), output_data_horizon);
   }
 };
 

@@ -505,29 +505,27 @@ void RegisterForecastingPivotFeaturizerVer1(){
           "Inputs",
           "Variadic number of Input containing tensors of different size",
           "T",
-          ONNX_NAMESPACE::OpSchema::FormalParameterOption::Variadic)
+          ONNX_NAMESPACE::OpSchema::FormalParameterOption::Variadic,
+          false)
       .Output(
           0,
           "Output",
           "No information is available",
           "T",
-          ONNX_NAMESPACE::OpSchema::FormalParameterOption::Variadic)
+          ONNX_NAMESPACE::OpSchema::FormalParameterOption::Variadic,
+          false)
       .TypeConstraint(
           "T0",
           {"tensor(uint8)"},
           "No information is available")
       .TypeConstraint(
           "T",
-          {"tensor(float)", "tensor(double)"},
+          {"tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)",
+           "tensor(float)", "tensor(double)", "tensor(bool)", "tensor(string)"},
           "No information is available")
       .TypeAndShapeInferenceFunction(
           [](ONNX_NAMESPACE::InferenceContext& ctx) {
-            // auto input_elem_type = ctx.getInputType(1)->tensor_type().elem_type();
-            // if (input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-            //   propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 0);
-            // } else if (input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
-            //   propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, 0);
-            // }
+            //The first num_pivot_columns inputs of Input(1) only support float & double
             if (hasInputShape(ctx, 1)) {
               const auto& input_shape = getInputShape(ctx, 1);
               if (input_shape.dim_size() != 3) {
