@@ -725,10 +725,6 @@ if(onnxruntime_USE_OPENVINO)
     list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
   endif()
 
-	if (onnxruntime_USE_OPENVINO_BINARY)
-	    #TODO: set plugin path var
-	endif()
-
 	if(onnxruntime_USE_OPENVINO_MYRIAD)
 		add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
 	endif()
