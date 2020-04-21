@@ -6,6 +6,7 @@ index 9d5111b78..bd8a1c12e 100644
          message(FATAL_ERROR "System Protobuf is needed while cross-compiling")
      endif()
  else()
+     # This vesion of Probobuf matches the version used by ONNX Runtime
 -    set(PROTOC_VERSION "3.7.1")
 +    set(PROTOC_VERSION "3.11.3")
  endif()
