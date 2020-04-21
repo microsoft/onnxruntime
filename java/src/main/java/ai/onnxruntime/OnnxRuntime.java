@@ -5,175 +5,169 @@
 package ai.onnxruntime;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Properties;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Static loader for the JNI binding.
+ * Static loader for the JNI binding. No public API, but called from various classes in this package
+ * to ensure shared libraries are properly loaded.
  */
 final class OnnxRuntime {
-    private static final Logger logger = Logger.getLogger(OnnxRuntime.class.getName());
+  private static final Logger logger = Logger.getLogger(OnnxRuntime.class.getName());
 
-    // The initial release of the ORT API.
-    private static final int ORT_API_VERSION_1 = 1;
+  // The initial release of the ORT API.
+  private static final int ORT_API_VERSION_1 = 1;
+  // Post 1.0 builds of the ORT API.
+  private static final int ORT_API_VERSION_2 = 2;
 
-    /**
-     * Turns on debug logging during library loading.
-     */
-    public static final String LIBRARY_LOAD_LOGGING = "ORT_LOAD_LOGGING";
+  /** The short name of the ONNX runtime shared library */
+  static final String ONNXRUNTIME_LIBRARY_NAME = "onnxruntime";
+  /** The short name of the ONNX runtime JNI shared library */
+  static final String ONNXRUNTIME_JNI_LIBRARY_NAME = "onnxruntime4j_jni";
 
-    /**
-     * Specifies that the libraries should be loaded from java.library.path rather than unzipped from the jar file.
-     */
-    public static final String LOAD_LIBRARY_PATH = "ORT_LOAD_FROM_LIBRARY_PATH";
+  private static boolean loaded = false;
 
-    private static boolean loaded = false;
+  /** The API handle. */
+  static long ortApiHandle;
 
-    /**
-     * The API handle.
-     */
-    static long ortApiHandle;
+  private OnnxRuntime() {}
 
-    /**
-     * Library names stored in the jar.
-     */
-    private static final List<String> libraryNames = Arrays.asList("onnxruntime","onnxruntime4j_jni");
+  /**
+   * Loads the native C library.
+   *
+   * @throws IOException If it can't write to disk to copy out the library from the jar file.
+   */
+  static synchronized void init() throws IOException {
+    if (loaded) {
+      return;
+    }
+    Path tempDirectory = isAndroid() ? null : Files.createTempDirectory("onnxruntime-java");
+    try {
+      load(tempDirectory, ONNXRUNTIME_LIBRARY_NAME);
+      load(tempDirectory, ONNXRUNTIME_JNI_LIBRARY_NAME);
+      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_2);
+      loaded = true;
+    } finally {
+      if (!isAndroid()) {
+        cleanUp(tempDirectory.toFile());
+      }
+    }
+  }
 
-    private OnnxRuntime() {}
+  /**
+   * Attempt to remove a file and then mark for delete on exit if it cannot be deleted at this point
+   * in time.
+   *
+   * @param file The file to remove.
+   */
+  private static void cleanUp(File file) {
+    if (!file.exists()) {
+      return;
+    }
+    logger.log(Level.FINE, "Deleting " + file);
+    if (!file.delete()) {
+      logger.log(Level.FINE, "Deleting " + file + " on exit");
+      file.deleteOnExit();
+    }
+  }
 
-    /**
-     * Loads the native C library.
-     * @throws IOException If it can't write to disk to copy out the library from the jar file.
-     */
-    static synchronized void init() throws IOException {
-        if (!loaded) {
-            // Check system properties for load time configuration.
-            Properties props = System.getProperties();
-            boolean debug = props.containsKey(LIBRARY_LOAD_LOGGING);
-            boolean loadLibraryPath = props.containsKey(LOAD_LIBRARY_PATH);
-            if (loadLibraryPath) {
-                if (debug) {
-                    logger.info("Loading from java.library.path");
-                }
-                try {
-                    for (String libraryName : libraryNames) {
-                        if (debug) {
-                            logger.info("Loading " + libraryName + " from java.library.path");
-                        }
-                        System.loadLibrary(libraryName);
-                    }
-                } catch (UnsatisfiedLinkError e) {
-                    logger.log(Level.SEVERE, "Failed to load onnx-runtime library from library path.");
-                    throw e;
-                }
-            } else {
-                if (debug) {
-                    logger.info("Loading from classpath resource");
-                }
-                try {
-                    for (String libraryName : libraryNames) {
-                        try {
-                            // This code path is used during testing.
-                            String libraryFromJar = "/" + System.mapLibraryName(libraryName);
-                            if (debug) {
-                                logger.info("Attempting to load library from classpath using " + libraryFromJar);
-                            }
-                            String tempLibraryPath = createTempFileFromResource(libraryFromJar, debug);
-                            if (debug) {
-                                logger.info("Copied resource " + libraryFromJar + " to location " + tempLibraryPath);
-                            }
-                            System.load(tempLibraryPath);
-                        } catch (Exception e) {
-                            if (debug) {
-                                logger.info("Failed to load from testing location, looking for /lib/<library-name>");
-                            }
-                            String libraryFromJar = "/lib/" + System.mapLibraryName(libraryName);
-                            if (debug) {
-                                logger.info("Attempting to load library from classpath using " + libraryFromJar);
-                            }
-                            String tempLibraryPath = createTempFileFromResource(libraryFromJar, debug);
-                            if (debug) {
-                                logger.info("Copied resource " + libraryFromJar + " to location " + tempLibraryPath);
-                            }
-                            System.load(tempLibraryPath);
-                        }
-                    }
-                } catch (IOException e) {
-                    logger.log(Level.SEVERE, "Failed to load onnx-runtime library from jar");
-                    throw e;
-                }
-            }
-            ortApiHandle = initialiseAPIBase(ORT_API_VERSION_1);
-            loaded = true;
-        }
+  private static boolean isAndroid() {
+    try {
+      Class.forName("android.app.Activity");
+      return true;
+    } catch (ClassNotFoundException e) {
+      return false;
+    }
+  }
+
+  /**
+   * Load a shared library by name.
+   *
+   * @param tempDirectory The temp directory to write the library resource to.
+   * @param library The bare name of the library.
+   * @throws IOException If the file failed to read or write.
+   */
+  private static void load(Path tempDirectory, String library) throws IOException {
+    // On Android, we simply use System.loadLibrary
+    if (isAndroid()) {
+      System.loadLibrary("onnxruntime4j_jni");
+      return;
     }
 
-    /**
-     * Copies out the named file from the class path into a temporary directory so it can be loaded
-     * by {@link System#load}.
-     * <p>
-     * The file is marked delete on exit. Throws {@link IllegalArgumentException} if the
-     * supplied path is not absolute.
-     * @param path The path to the file in the classpath.
-     * @param debugLogging If true turn on debug logging.
-     * @return The path to the extracted file on disk.
-     * @throws IOException If the file failed to read or write.
-     */
-    private static String createTempFileFromResource(String path, boolean debugLogging) throws IOException {
-        if (!path.startsWith("/")) {
-            throw new IllegalArgumentException("The path has to be absolute (start with '/').");
-        } else {
-            String[] parts = path.split("/");
-            String filename = parts.length > 1 ? parts[parts.length - 1] : null;
-            String prefix = "";
-            String suffix = null;
-            if (filename != null) {
-                parts = filename.split("\\.", 2);
-                prefix = parts[0];
-                suffix = parts.length > 1 ? "." + parts[parts.length - 1] : null;
-            }
-
-            if (filename != null && prefix.length() >= 3) {
-                File temp = File.createTempFile(prefix, suffix);
-                if (debugLogging) {
-                    logger.info("Writing " + path + " out to " + temp.getAbsolutePath());
-                }
-                temp.deleteOnExit();
-                if (!temp.exists()) {
-                    throw new FileNotFoundException("File " + temp.getAbsolutePath() + " does not exist.");
-                } else {
-                    byte[] buffer = new byte[1024];
-                    try (InputStream is = OnnxRuntime.class.getResourceAsStream(path)) {
-                        if (is == null) {
-                            throw new FileNotFoundException("File " + path + " was not found inside JAR.");
-                        } else {
-                            int readBytes;
-                            try (FileOutputStream os = new FileOutputStream(temp)) {
-                                while ((readBytes = is.read(buffer)) != -1) {
-                                    os.write(buffer, 0, readBytes);
-                                }
-                            }
-                            return temp.getAbsolutePath();
-                        }
-                    }
-                }
-            } else {
-                throw new IllegalArgumentException("The filename has to be at least 3 characters long.");
-            }
-        }
+    // 1) The user may skip loading of this library:
+    String skip = System.getProperty("onnxruntime.native." + library + ".skip");
+    if (Boolean.TRUE.toString().equalsIgnoreCase(skip)) {
+      logger.log(Level.FINE, "Skipping load of native library '" + library + "'");
+      return;
     }
 
-    /**
-     * Get a reference to the API struct.
-     * @param apiVersionNumber The API version to use.
-     * @return A pointer to the API struct.
-     */
-    private static native long initialiseAPIBase(int apiVersionNumber);
+    // 2) The user may explicitly specify the path to their shared library:
+    String libraryPathProperty = System.getProperty("onnxruntime.native." + library + ".path");
+    if (libraryPathProperty != null) {
+      logger.log(
+          Level.FINE,
+          "Attempting to load native library '"
+              + library
+              + "' from specified path: "
+              + libraryPathProperty);
+      File libraryFile = new File(libraryPathProperty);
+      String libraryFilePath = libraryFile.getAbsolutePath();
+      if (!libraryFile.exists()) {
+        throw new IOException("Native library '" + library + "' not found at " + libraryFilePath);
+      }
+      System.load(libraryFilePath);
+      logger.log(Level.FINE, "Loaded native library '" + library + "' from specified path");
+      return;
+    }
+
+    // 3) try loading from resources or library path:
+    // generate a platform specific library name
+    // replace Mac's jnilib extension to dylib
+    String libraryFileName = System.mapLibraryName(library).replace("jnilib", "dylib");
+    String resourcePath = "/ai/onnxruntime/native/" + libraryFileName;
+    File tempFile = tempDirectory.resolve(libraryFileName).toFile();
+    try (InputStream is = OnnxRuntime.class.getResourceAsStream(resourcePath)) {
+      if (is == null) {
+        // 3a) Not found in resources, load from library path
+        logger.log(
+            Level.FINE, "Attempting to load native library '" + library + "' from library path");
+        System.loadLibrary(library);
+        logger.log(Level.FINE, "Loaded native library '" + library + "' from library path");
+      } else {
+        // 3b) Found in resources, load via temporary file
+        logger.log(
+            Level.FINE,
+            "Attempting to load native library '"
+                + library
+                + "' from resource path "
+                + resourcePath
+                + " copying to "
+                + tempFile);
+        byte[] buffer = new byte[1024];
+        int readBytes;
+        try (FileOutputStream os = new FileOutputStream(tempFile)) {
+          while ((readBytes = is.read(buffer)) != -1) {
+            os.write(buffer, 0, readBytes);
+          }
+        }
+        System.load(tempFile.getAbsolutePath());
+        logger.log(Level.FINE, "Loaded native library '" + library + "' from resource path");
+      }
+    } finally {
+      cleanUp(tempFile);
+    }
+  }
+
+  /**
+   * Get a reference to the API struct.
+   *
+   * @param apiVersionNumber The API version to use.
+   * @return A pointer to the API struct.
+   */
+  private static native long initialiseAPIBase(int apiVersionNumber);
 }

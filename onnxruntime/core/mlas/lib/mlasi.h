@@ -21,6 +21,7 @@ Abstract:
 #include <memory.h>
 #include <algorithm>
 #include <limits>
+#include <cmath>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -131,6 +132,7 @@ Abstract:
 
 #define MLAS_SGEMM_STRIDEN_THREAD_ALIGN             16
 #define MLAS_DGEMM_STRIDEN_THREAD_ALIGN             8
+#define MLAS_QGEMM_STRIDEN_THREAD_ALIGN             16
 
 //
 // Define the prototypes of the platform optimized routines.
@@ -335,6 +337,24 @@ typedef MLAS_GEMM_U8U8_KERNEL* PMLAS_GEMM_U8U8_KERNEL;
 
 typedef
 void
+(MLASCALL MLAS_GEMM_X8X8_OPERATION)(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    int16_t offa,
+    const uint8_t* B,
+    size_t ldb,
+    int16_t offb,
+    int32_t* C,
+    size_t ldc
+    );
+
+typedef MLAS_GEMM_X8X8_OPERATION* PMLAS_GEMM_X8X8_OPERATION;
+
+typedef
+void
 (MLASCALL MLAS_CONV_FLOAT_KERNEL)(
     const float* Input,
     const float* Filter,
@@ -474,14 +494,14 @@ extern "C" {
     MLAS_GEMM_U8S8_COPY_PACKB_ROUTINE MlasGemmU8S8CopyPackBAvx2;
     MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx2;
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx2;
-    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512BW;
-    MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512BW;
+    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512Core;
+    MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Core;
     MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512Vnni;
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Vnni;
     MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE MlasGemmU8U8CopyPackAAvx2;
     MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE MlasGemmU8U8CopyPackBAvx2;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx2;
-    MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512BW;
+    MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512Core;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512Vnni;
 #endif
 #endif
@@ -557,6 +577,7 @@ extern "C" {
 
 #define MLAS_SGEMM_THREAD_COMPLEXITY                (64 * 1024)
 #define MLAS_DGEMM_THREAD_COMPLEXITY                (64 * 1024)
+#define MLAS_QGEMM_THREAD_COMPLEXITY                (64 * 1024)
 
 //
 // Single-threaded single precision matrix/matrix multiply operation.
@@ -649,7 +670,7 @@ MlasGetMaximumThreadCount(
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
 #else
     if (ThreadPool != nullptr) {
-        return ThreadPool->NumThreads() + 1;
+        return ThreadPool->NumThreads();
     }
 #endif
 
@@ -658,6 +679,28 @@ MlasGetMaximumThreadCount(
 #else
     return 1;
 #endif
+}
+
+inline
+void
+MlasPartitionWork(
+    int32_t ThreadId,
+    int32_t ThreadCount,
+    size_t TotalWork,
+    size_t* WorkIndex,
+    size_t* WorkRemaining
+    )
+{
+    const size_t WorkPerThread = TotalWork / ThreadCount;
+    const size_t WorkPerThreadExtra = TotalWork % ThreadCount;
+
+    if (uint32_t(ThreadId) < WorkPerThreadExtra) {
+        *WorkIndex = (WorkPerThread + 1) * ThreadId;
+        *WorkRemaining = WorkPerThread + 1;
+    } else {
+        *WorkIndex = WorkPerThread * ThreadId + WorkPerThreadExtra;
+        *WorkRemaining = WorkPerThread;
+    }
 }
 
 //

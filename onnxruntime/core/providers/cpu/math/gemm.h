@@ -8,7 +8,6 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "gemm_helper.h"
-#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 
@@ -27,8 +26,51 @@ class Gemm : public OpKernel {
     ORT_ENFORCE(info.GetAttr<float>("beta", &beta_).IsOK());
   }
 
+  static void ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
+                          int64_t M, int64_t N, int64_t K,
+                          float alpha,
+                          const T* a_data, const T* b_data,
+                          float beta,
+                          const T* c_data, const TensorShape* c_shape,
+                          T* y_data,
+                          concurrency::ThreadPool* thread_pool) {
+    // if input is empty tensor, return directly as nothing need to be calculated.
+    if (M == 0 || N == 0)
+      return;
+
+    // Broadcast the bias as needed if bias is given
+    if (beta != 0 && c_data != nullptr) {
+      ORT_ENFORCE(c_shape != nullptr, "c_shape is required if c_data is provided");
+      auto output_mat = EigenMatrixMapRowMajor<T>(y_data, M, N);
+      if (c_shape->Size() == 1) {
+        // C is (), (1,) or (1, 1), set the scalar
+        output_mat.setConstant(*c_data);
+      } else if (c_shape->NumDimensions() == 1 || (*c_shape)[0] == 1) {
+        // C is (N,) or (1, N)
+        output_mat.rowwise() = ConstEigenVectorMap<T>(c_data, N).transpose();
+      } else if ((*c_shape)[1] == 1) {
+        // C is (M, 1)
+        output_mat.colwise() = ConstEigenVectorMap<T>(c_data, M);
+      } else {
+        // C is (M, N), no broadcast needed.
+        output_mat = ConstEigenMatrixMapRowMajor<T>(c_data, M, N);
+      }
+    }
+
+    math::Gemm<T>(trans_a, trans_b,
+                  M, N, K,
+                  alpha,
+                  a_data,
+                  b_data,
+                  // ideally we need to set the output buffer contents to 0 if bias is missing,
+                  // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
+                  c_data != nullptr ? beta : 0,
+                  y_data,
+                  thread_pool);
+  }
+
   Status Compute(OpKernelContext* context) const override {
-    concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+    concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
     const auto* X = context->Input<Tensor>(0);
     const auto* W = context->Input<Tensor>(1);
@@ -42,47 +84,23 @@ class Gemm : public OpKernel {
 
     int64_t M = helper.M();
     int64_t N = helper.N();
+    int64_t K = helper.K();
+
     auto Y = context->Output(0, {M, N});
-    // if input is empty tensor, return directly as nothing need to be calculated.
+
+    // if input is empty tensor, return as nothing need to be calculated and we've set the shape for the output
     if (M == 0 || N == 0)
       return Status::OK();
-    T* y_data = Y->template MutableData<T>();
 
-    // Broadcast the bias as needed if bias is given
-    if (beta_ != 0 && B != nullptr) {
-      auto output_mat = EigenMatrixMapRowMajor<T>(y_data, M, N);
-      const auto& b_shape = B->Shape();
-      const T* b_data = B->template Data<T>();
-      if (b_shape.Size() == 1) {
-        // B is (), (1,) or (1, 1), set the scalar
-        output_mat.setConstant(*b_data);
-      } else if (b_shape.NumDimensions() == 1 || b_shape[0] == 1) {
-        // B is (N,) or (1, N)
-        output_mat.rowwise() = ConstEigenVectorMap<T>(b_data, N).transpose();
-      } else if (b_shape[1] == 1) {
-        // B is (M, 1)
-        output_mat.colwise() = ConstEigenVectorMap<T>(b_data, M);
-      } else {
-        // B is (M, N), no broadcast needed.
-        output_mat = ConstEigenMatrixMapRowMajor<T>(b_data, M, N);
-      }
-    }
+    const T* b_data = B != nullptr ? B->Data<T>() : nullptr;
+    const TensorShape* b_shape = B != nullptr ? &B->Shape() : nullptr;
 
-    // W * x
-    math::Gemm<T>(
-        trans_A_,
-        trans_B_,
-        M,
-        N,
-        helper.K(),
-        alpha_,
-        X->template Data<T>(),
-        W->template Data<T>(),
-        // ideally we need to set the output buffer contents to 0 if bias is missing,
-        // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
-        B != nullptr ? beta_ : 0,
-        y_data,
-        tp);
+    T* y_data = Y->MutableData<T>();
+
+    ComputeGemm(trans_A_, trans_B_, M, N, K, alpha_, X->Data<T>(), W->Data<T>(), beta_,
+                b_data, b_shape,
+                y_data,
+                thread_pool);
 
     FuseActivation<T>(activation_, y_data, M * N, leaky_relu_alpha_);
 

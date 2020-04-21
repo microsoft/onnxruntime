@@ -15,7 +15,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_featurizers
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD onnxruntime-centos6 /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest
         workingDirectory: $(Build.SourcesDirectory)
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -39,7 +39,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6-gpu /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_featurizers --use_cuda --cuda_version=10.0 --cuda_home=/usr/local/cuda-10.0  --cudnn_home=/usr/local/cuda-10.0
+          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD onnxruntime-centos6-gpu /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1  --cudnn_home=/usr/local/cuda-10.1
         workingDirectory: $(Build.SourcesDirectory)      
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -54,15 +54,14 @@ jobs:
   workspace:
     clean: all
   pool: 
-    vmImage: 'macOS-10.13'
+    vmImage: 'macOS-10.14'
   steps:
-    - template: templates/mac-set-variables-and-download.yml
     - template: templates/set-version-number-variables-step.yml
 
     - script: |
         sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config RelWithDebInfo --enable_onnx_tests
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config RelWithDebInfo
       displayName: 'Build and Test MacOS'
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -109,25 +108,25 @@ jobs:
         workingFolder: '$(Build.BinariesDirectory)'
 
     - script: |
-       python -m pip install -q pyopenssl setuptools wheel numpy     
+       python -m pip install -q pyopenssl setuptools wheel numpy scipy
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Install python modules' 
-    
+    - powershell: |
+       $Env:USE_MSVC_STATIC_RUNTIME=1
+       $Env:ONNX_ML=1
+       $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
+       python setup.py bdist_wheel
+       Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
+      workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'      
+      displayName: 'Install ONNX'    
+
     - template: templates/set-test-data-variables-step.yml
     - template: templates/set-version-number-variables-step.yml
-    - task: PythonScript@0
-      displayName: 'Download test data'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-        workingDirectory: $(Build.BinariesDirectory) 
-
-
     - task: PythonScript@0
       displayName: 'Generate cmake config'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
+        arguments: '--config RelWithDebInfo --enable_lto --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
  
@@ -148,7 +147,7 @@ jobs:
       displayName: 'test'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
+        arguments: '--config RelWithDebInfo --enable_lto --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
@@ -165,12 +164,12 @@ jobs:
   pool: 'Win-GPU-2019'
   timeoutInMinutes:  120
   variables:
-    EnvSetupScript: setup_env.bat
+    EnvSetupScript: setup_env_cuda.bat
     buildArch: x64
     msbuildArch: amd64
     msbuildPlatform: x64
-    CUDA_VERSION: '10.0'
-    buildparameter: --msvc_toolset 14.16 --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v7.3.1.20\cuda"
+    CUDA_VERSION: '10.1'
+    buildparameter: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v7.6.5.32\cuda"
   steps:
     - task: UsePythonVersion@0
       inputs: 
@@ -186,25 +185,26 @@ jobs:
         workingFolder: '$(Build.BinariesDirectory)'
 
     - script: |
-       python -m pip install -q pyopenssl setuptools wheel numpy     
+       python -m pip install -q pyopenssl setuptools wheel numpy scipy
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Install python modules' 
-    
+    - powershell: |
+       $Env:USE_MSVC_STATIC_RUNTIME=1
+       $Env:ONNX_ML=1
+       $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
+       python setup.py bdist_wheel
+       Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
+      workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+      displayName: 'Install ONNX'
+
     - template: templates/set-test-data-variables-step.yml
     - template: templates/set-version-number-variables-step.yml
-    - task: PythonScript@0
-      displayName: 'Download test data'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-        workingDirectory: $(Build.BinariesDirectory) 
-
 
     - task: PythonScript@0
       displayName: 'Generate cmake config'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
+        arguments: '--config RelWithDebInfo --enable_lto --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
  
@@ -224,7 +224,7 @@ jobs:
       displayName: 'test'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
+        arguments: '--config RelWithDebInfo --enable_lto --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml

@@ -12,6 +12,11 @@
 #include "core/framework/data_types.h"
 #include "core/graph/onnx_protobuf.h"
 
+#ifdef _MSC_VER
+#pragma warning(push)
+//TODO: fix the warning in CallableDispatchableRetHelper
+#pragma warning(disable : 4702)
+#endif
 namespace onnxruntime {
 namespace utils {
 
@@ -490,3 +495,7 @@ bool IsOpaqueType(MLDataType ml_type, const char* domain, const char* name);
 
 }  // namespace utils
 }  // namespace onnxruntime
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

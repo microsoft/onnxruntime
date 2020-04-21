@@ -3,7 +3,7 @@ set -e -o -x
 
 SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 SOURCE_ROOT=$(realpath $SCRIPT_DIR/../../../../)
-CUDA_VER=cuda10.0-cudnn7.3
+CUDA_VER=cuda10.1-cudnn7.6
 YOCTO_VERSION="4.19"
 
 while getopts c:o:d:r:p:x:a:v:y: parameter_Option
@@ -69,8 +69,8 @@ else
         fi
         docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
-        # TensorRT container release 19.09
-        IMAGE="$BUILD_OS-cuda10.1-cudnn7.6-tensorrt6.0"
+        # TensorRT container release 20.01
+        IMAGE="$BUILD_OS-cuda10.2-cudnn7.6-tensorrt7.0"
         DOCKER_FILE=Dockerfile.ubuntu_tensorrt
         docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
     elif [ $BUILD_DEVICE = "openvino" ]; then
@@ -105,6 +105,7 @@ fi
 DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \
                       --volume $SOURCE_ROOT:/onnxruntime_src \
                       --volume $BUILD_DIR:/build \
+                      --volume /data/models:/build/models:ro \
                       --volume $HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime \
                       --volume $HOME/.onnx:/home/onnxruntimedev/.onnx"
 if [ $BUILD_DEVICE = "openvino" ] && [[ $BUILD_EXTR_PAR == *"--use_openvino GPU_FP"* ]]; then

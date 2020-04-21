@@ -62,7 +62,7 @@ void DmlCommandRecorder::InitializeOperator(
 
         // Allocate and immediately free a temporary buffer. The buffer resource will still be
         // alive (managed by the pool); freeing allows the resource to be shared with other operators.
-        void* tempResourceHandle = allocator->Alloc(temporaryResourceSize, AllocatorRoundingMode::Enabled);
+        void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize), AllocatorRoundingMode::Enabled);
         if (!tempResourceHandle)
         {
             THROW_HR(E_OUTOFMEMORY);
@@ -137,7 +137,7 @@ void DmlCommandRecorder::ExecuteOperator(
 
         // Allocate and immediately free a temporary buffer. The buffer resource will still be
         // alive (managed by the pool); freeing allows the resource to be shared with other operators.
-        void* tempResourceHandle = allocator->Alloc(temporaryResourceSize, AllocatorRoundingMode::Enabled);
+        void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize), AllocatorRoundingMode::Enabled);
         if (!tempResourceHandle)
         {
             THROW_HR(E_OUTOFMEMORY);
@@ -266,7 +266,7 @@ void DmlCommandRecorder::ExecuteCommandList(
     m_currentDescriptorHeap = nullptr;
     Open();
 
-    // The caller can re-use relevent resources after the next set of work to be
+    // The caller can re-use relevant resources after the next set of work to be
     // flushed has completed.  Its command list hasn't been executed yet, just batched.
     GpuEvent gpuEvent = m_queue->GetNextCompletionEvent();
     gpuEvent.fence.CopyTo(fence);

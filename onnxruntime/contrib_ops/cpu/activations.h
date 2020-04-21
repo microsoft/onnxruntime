@@ -43,13 +43,13 @@ class Gelu : public OpKernel {
     if (nullptr != tp) {
       const T* input = X->template Data<T>();
       T* output = Y->template MutableData<T>();
-      int task_count = tp->NumThreads() + 1;
+      int task_count = tp->NumThreads();
       int64_t elem_count = X->Shape().Size();
       if (elem_count > task_count) {
-        tp->ParallelFor(task_count, [input,
+        tp->SimpleParallelFor(task_count, [input,
                                      output,
                                      elem_count,
-                                     task_count](int32_t i) {
+                                     task_count](std::ptrdiff_t i) {
           int64_t elem_inx_start = i * elem_count / task_count;
           int64_t elem_inx_end = (i + 1) * elem_count / task_count;
           for (int64_t elem_inx = elem_inx_start; elem_inx < elem_inx_end; elem_inx++) {

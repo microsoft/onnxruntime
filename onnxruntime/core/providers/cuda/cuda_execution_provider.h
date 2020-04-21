@@ -17,7 +17,8 @@ const int CPU_ALLOCATOR_DEVICE_ID = 0;
 
 // Information needed to construct CUDA execution providers.
 struct CUDAExecutionProviderInfo {
-  int device_id{0};
+  OrtDevice::DeviceId device_id{0};
+  size_t cuda_mem_limit{std::numeric_limits<size_t>::max()};
 };
 
 // Logical device representation.
@@ -34,12 +35,20 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd() override;
 
+  const void* GetExecutionHandle() const noexcept override {
+    // The CUDA interface does not return anything interesting.
+    return nullptr;
+  }
+
   cublasHandle_t PerThreadCublasHandle() {
     return GetPerThreadContext().CublasHandle();
   }
 
   cudnnHandle_t PerThreadCudnnHandle() {
     return GetPerThreadContext().CudnnHandle();
+  }
+  curandGenerator_t PerThreadCurandGenerator() {
+    return GetPerThreadContext().CurandGenerator();
   }
 
   template <typename T>
@@ -67,7 +76,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   int GetDeviceId() const { return device_id_; }
 
  private:
-  int device_id_;
+  OrtDevice::DeviceId device_id_;
+  size_t cuda_mem_limit_;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
@@ -78,7 +88,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   class PerThreadContext final {
    public:
-    PerThreadContext(int device_id);
+    PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit);
     ~PerThreadContext();
 
     cublasHandle_t CublasHandle() const {
@@ -87,6 +97,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
     cudnnHandle_t CudnnHandle() const {
       return cudnn_handle_;
+    }
+
+    curandGenerator_t CurandGenerator() const {
+      return curand_generator_;
     }
 
     cudaEvent_t& GetCurrentDeferredReleaseEvent() {
@@ -122,6 +136,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
    private:
     cublasHandle_t cublas_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
+    curandGenerator_t curand_generator_ = nullptr;
 
     // deferred release for temporary CPU pinned memory used in cudaMemcpyAsync
     // note that cudaEvent will be assigned at OnRunEnd() when PerThreadContext destory

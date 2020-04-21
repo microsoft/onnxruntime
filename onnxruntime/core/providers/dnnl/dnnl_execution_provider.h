@@ -10,6 +10,7 @@
 
 #include "core/platform/ort_mutex.h"
 #include "core/providers/dnnl/subgraph/subgraph.h"
+#include "core/platform/ort_mutex.h"
 
 namespace dnnl {
 struct memory;

@@ -12,6 +12,13 @@
 #include "dnnl_fwd.h"
 #include <Windows.h>
 
+namespace {
+struct KernelRegistryAndStatus {
+	std::shared_ptr<onnxruntime::Prov_KernelRegistry> kernel_registry{ Prov_KernelRegistry::Create() };
+
+  Status st;
+};
+}  // namespace
 const OrtApi* ORT_API_CALL GetApi(uint32_t /*version*/) NO_EXCEPTION { return nullptr; }
 const char* ORT_API_CALL GetVersionString() NO_EXCEPTION { return "invalid"; }
 
@@ -54,26 +61,29 @@ DNNLExecutionProvider::~DNNLExecutionProvider() {
 namespace ort_dnnl {
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDnnlExecutionProvider, kOnnxDomain, 7, Gemm);
 
-void RegisterDNNLKernels(Prov_KernelRegistry& kernel_registry) {
+Status RegisterDNNLKernels(Prov_KernelRegistry& kernel_registry) {
   static const Prov_BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDnnlExecutionProvider, kOnnxDomain, 7, Gemm)>,
   };
 
   for (auto& function_table_entry : function_table) {
-    kernel_registry.Register(function_table_entry());
+    ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
   }
+  return Status::OK();
 }
 
-std::shared_ptr<Prov_KernelRegistry> GetDnnlKernelRegistry() {
-  std::shared_ptr<Prov_KernelRegistry> kernel_registry = Prov_KernelRegistry::Create();
-  RegisterDNNLKernels(*kernel_registry);
-  return kernel_registry;
+KernelRegistryAndStatus GetDnnlKernelRegistry() {
+  KernelRegistryAndStatus ret;
+  ret.st = RegisterDNNLKernels(*ret.kernel_registry);
+  return ret;
 }
 }  // namespace ort_dnnl
 
 std::shared_ptr<Prov_KernelRegistry> DNNLExecutionProvider::Prov_GetKernelRegistry() const {
-  static std::shared_ptr<Prov_KernelRegistry> kernel_registry_ = onnxruntime::ort_dnnl::GetDnnlKernelRegistry();
-  return kernel_registry_;
+  static KernelRegistryAndStatus k = onnxruntime::ort_dnnl::GetDnnlKernelRegistry();
+  // throw if the registry failed to initialize
+  ORT_THROW_IF_ERROR(k.st);
+  return k.kernel_registry;
 }
 
 bool DNNLExecutionProvider::UseSubgraph(const onnxruntime::Prov_GraphViewer& graph_viewer) const {

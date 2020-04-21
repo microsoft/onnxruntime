@@ -3,6 +3,7 @@
 
 #include <core/common/make_unique.h>
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/graph/constants.h"
 #include "providers.h"
 #include <memory>
 #include <vector>
@@ -16,10 +17,12 @@
 #include "onnx_protobuf.h"
 
 struct Input {
-  const char* name;
+  const char* name = nullptr;
   std::vector<int64_t> dims;
   std::vector<float> values;
 };
+
+extern std::unique_ptr<Ort::Env> ort_env;
 
 template <typename OutT>
 void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
@@ -40,7 +43,7 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
     session_object.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, output_tensor, 1);
   else {
     ort_outputs = session_object.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, 1);
-    ASSERT_EQ(ort_outputs.size(), 1);
+    ASSERT_EQ(ort_outputs.size(), 1u);
     output_tensor = &ort_outputs[0];
   }
 
@@ -63,7 +66,8 @@ void TestInference(Ort::Env& env, T model_uri,
                    const std::vector<OutT>& expected_values_y,
                    int provider_type,
                    OrtCustomOpDomain* custom_op_domain_ptr,
-                   const char* custom_op_library_filename) {
+                   const char* custom_op_library_filename,
+                   bool test_session_creation_only = false) {
   Ort::SessionOptions session_options;
 
   if (provider_type == 1) {
@@ -96,32 +100,38 @@ void TestInference(Ort::Env& env, T model_uri,
 
   if (custom_op_library_filename) {
     void* library_handle = nullptr;  // leak this, no harm.
-    Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle);
+    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle));
   }
 
+  // if session creation passes, model loads fine
   Ort::Session session(env, model_uri, session_options);
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
-  // Now run
-  //without preallocated output tensor
-  RunSession<OutT>(default_allocator.get(),
-                   session,
-                   inputs,
-                   output_name,
-                   expected_dims_y,
-                   expected_values_y,
-                   nullptr);
-  //with preallocated output tensor
-  Ort::Value value_y = Ort::Value::CreateTensor<float>(default_allocator.get(), expected_dims_y.data(), expected_dims_y.size());
 
-  //test it twice
-  for (int i = 0; i != 2; ++i)
+  // caller wants to test running the model (not just loading the model)
+  if (!test_session_creation_only) {
+    // Now run
+    auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+
+    //without preallocated output tensor
     RunSession<OutT>(default_allocator.get(),
                      session,
                      inputs,
                      output_name,
                      expected_dims_y,
                      expected_values_y,
-                     &value_y);
+                     nullptr);
+    //with preallocated output tensor
+    Ort::Value value_y = Ort::Value::CreateTensor<float>(default_allocator.get(), expected_dims_y.data(), expected_dims_y.size());
+
+    //test it twice
+    for (int i = 0; i != 2; ++i)
+      RunSession<OutT>(default_allocator.get(),
+                       session,
+                       inputs,
+                       output_name,
+                       expected_dims_y,
+                       expected_values_y,
+                       &value_y);
+  }
 }
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
@@ -129,16 +139,15 @@ static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
 static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/overridable_initializer.onnx");
 static constexpr PATH_TYPE NAMED_AND_ANON_DIM_PARAM_URI = TSTR("testdata/capi_symbolic_dims.onnx");
+static constexpr PATH_TYPE MODEL_WITH_CUSTOM_MODEL_METADATA = TSTR("testdata/model_with_valid_ort_config_json.onnx");
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 static constexpr PATH_TYPE PYOP_FLOAT_MODEL_URI = TSTR("testdata/pyop_1.onnx");
 #endif
 
-class CApiTestWithProvider : public CApiTest,
-                             public ::testing::WithParamInterface<int> {
+class CApiTestWithProvider : public testing::Test, public ::testing::WithParamInterface<int> {
 };
 
-// Tests that the Foo::Bar() method does Abc.
 TEST_P(CApiTestWithProvider, simple) {
   // simple inference test
   // prepare inputs
@@ -152,18 +161,18 @@ TEST_P(CApiTestWithProvider, simple) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
-  TestInference<PATH_TYPE, float>(env_, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(), nullptr, nullptr);
+  TestInference<PATH_TYPE, float>(*ort_env, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(), nullptr, nullptr);
 }
 
-TEST_F(CApiTest, dim_param) {
+TEST(CApiTest, dim_param) {
   Ort::SessionOptions session_options;
-  Ort::Session session(env_, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
+  Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
 
   auto in0 = session.GetInputTypeInfo(0);
   auto in0_ttsi = in0.GetTensorTypeAndShapeInfo();
 
   auto num_input_dims = in0_ttsi.GetDimensionsCount();
-  ASSERT_GE(num_input_dims, 1);
+  ASSERT_GE(num_input_dims, 1u);
   // reading 1st dimension only so don't need to malloc int64_t* or const char** values for the Get*Dimensions calls
   int64_t dim_value = 0;
   const char* dim_param = nullptr;
@@ -175,7 +184,7 @@ TEST_F(CApiTest, dim_param) {
   auto out0 = session.GetOutputTypeInfo(0);
   auto out0_ttsi = out0.GetTensorTypeAndShapeInfo();
   auto num_output_dims = out0_ttsi.GetDimensionsCount();
-  ASSERT_EQ(num_output_dims, 1);
+  ASSERT_EQ(num_output_dims, 1u);
 
   out0_ttsi.GetDimensions(&dim_value, 1);
   out0_ttsi.GetSymbolicDimensions(&dim_param, 1);
@@ -183,9 +192,9 @@ TEST_F(CApiTest, dim_param) {
   ASSERT_EQ(strcmp(dim_param, ""), 0);
 }
 
-INSTANTIATE_TEST_CASE_P(CApiTestWithProviders,
-                        CApiTestWithProvider,
-                        ::testing::Values(0, 1, 2, 3, 4));
+INSTANTIATE_TEST_SUITE_P(CApiTestWithProviders,
+                         CApiTestWithProvider,
+                         ::testing::Values(0, 1, 2, 3, 4));
 
 struct OrtTensorDimensions : std::vector<int64_t> {
   OrtTensorDimensions(Ort::CustomOpApi ort, const OrtValue* value) {
@@ -230,31 +239,23 @@ struct MyCustomKernel {
 };
 
 struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
+  explicit MyCustomOp(const char* provider) : provider_(provider) {}
   void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) { return new MyCustomKernel(api, info); };
   const char* GetName() const { return "Foo"; };
+
+  const char* GetExecutionProviderType() const { return provider_; };
 
   size_t GetInputTypeCount() const { return 2; };
   ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 
   size_t GetOutputTypeCount() const { return 1; };
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+
+ private:
+  const char* provider_;
 };
 
-Ort::CustomOpDomain custom_op_domain("");
-
-custom_op_domain.Add(Ort::CreateCustomOp("AddNumbers", [](float a, float b) {
-  return a + b; });
-
-custom_op_domain.Add(Ort::CreateCustomOp("MultiplyNumbers", [](float a, float b, float c) {
-  return a * b * c; });
-
-float Function(float a, float b) {
-  return a + 2.0f * b;
-}
-
-custom_op_domain.Add(Ort::CreateCustomOp("OtherFunction", Function);
-
-TEST_F(CApiTest, custom_op_handler) {
+TEST(CApiTest, custom_op_handler) {
   std::cout << "Running custom op inference" << std::endl;
 
   std::vector<Input> inputs(1);
@@ -267,14 +268,61 @@ TEST_F(CApiTest, custom_op_handler) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
-  MyCustomOp custom_op;
+#ifdef USE_CUDA
+  MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider};
+#else
+  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
+#endif
+
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&custom_op);
 
-  TestInference<PATH_TYPE, float>(env_, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
+#ifdef USE_CUDA
+  // The custom op kernel has a Compute() method that doesn't really use CUDA and can't be used as is
+  // because it uses the contents of the inputs and writes to the output of the node
+  // (not possible as is because they are on the device).
+  // For the purpose of this exercise, it is not really needed to have a Compute() method that uses CUDA.
+  // We only need to verify if model load succeeds == session creation succeeds == the node is assigned to the CUDA EP.
+  // It is enough to test for successful session creation because if the custom node wasn't assigned an EP,
+  // the session creation would fail. Since the custom node is only tied to the CUDA EP (in CUDA-enabled builds),
+  // if the session creation succeeds, it is assumed that the node got assigned to the CUDA EP.
+  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, true);
+#else
+  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
+#endif
 }
 
-TEST_F(CApiTest, DISABLED_test_custom_op_library) {
+// Tests registration of a custom op of the same name for both CPU and CUDA EPs
+#ifdef USE_CUDA
+TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
+  std::cout << "Tests registration of a custom op of the same name for both CPU and CUDA EPs" << std::endl;
+
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
+
+  MyCustomOp custom_op_cpu{onnxruntime::kCpuExecutionProvider};
+  MyCustomOp custom_op_cuda{onnxruntime::kCudaExecutionProvider};
+  Ort::CustomOpDomain custom_op_domain("");
+  custom_op_domain.Add(&custom_op_cpu);
+  custom_op_domain.Add(&custom_op_cuda);
+
+  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y,
+                                  expected_values_y, 1, custom_op_domain, nullptr, true);
+}
+#endif
+
+#ifndef __ANDROID__
+TEST(CApiTest, test_custom_op_library) {
+#else
+TEST(CApiTest, DISABLED_test_custom_op_library) {
+#endif
   std::cout << "Running inference using custom op shared library" << std::endl;
 
   std::vector<Input> inputs(2);
@@ -302,14 +350,14 @@ TEST_F(CApiTest, DISABLED_test_custom_op_library) {
 #elif defined(__APPLE__)
   lib_name = "libcustom_op_library.dylib";
 #else
-  lib_name = "libcustom_op_library.so";
+  lib_name = "./libcustom_op_library.so";
 #endif
 
-  TestInference<PATH_TYPE, int32_t>(env_, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
+  TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
 }
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS) && !defined(_WIN32)  // on windows, PYTHONHOME must be set explicitly
-TEST_F(CApiTest, DISABLED_test_pyop) {
+TEST(CApiTest, DISABLED_test_pyop) {
   std::cout << "Test model with pyop" << std::endl;
   std::ofstream module("mymodule.py");
   module << "class MyKernel:" << std::endl;
@@ -329,19 +377,19 @@ TEST_F(CApiTest, DISABLED_test_pyop) {
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f};
-  TestInference<PATH_TYPE, float>(env_, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+  TestInference<PATH_TYPE, float>(*ort_env, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
 #endif
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
-TEST_F(CApiTest, create_session_without_session_option) {
+TEST(CApiTest, create_session_without_session_option) {
   constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
-  Ort::Session ret(env_, model_uri, Ort::SessionOptions{nullptr});
+  Ort::Session ret(*ort_env, model_uri, Ort::SessionOptions{nullptr});
   ASSERT_NE(nullptr, ret);
 }
 #endif
 
-TEST_F(CApiTest, create_tensor) {
+TEST(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
   int64_t expected_len = 2;
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
@@ -361,7 +409,7 @@ TEST_F(CApiTest, create_tensor) {
   tensor.GetStringTensorContent((void*)result.data(), data_len, offsets.data(), offsets.size());
 }
 
-TEST_F(CApiTest, create_tensor_with_data) {
+TEST(CApiTest, create_tensor_with_data) {
   float values[] = {3.0f, 1.0f, 2.f, 0.f};
   constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
 
@@ -377,10 +425,10 @@ TEST_F(CApiTest, create_tensor_with_data) {
   auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
 
   ASSERT_NE(tensor_info, nullptr);
-  ASSERT_EQ(1, tensor_info.GetDimensionsCount());
+  ASSERT_EQ(1u, tensor_info.GetDimensionsCount());
 }
 
-TEST_F(CApiTest, override_initializer) {
+TEST(CApiTest, override_initializer) {
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   // CreateTensor which is not owning this ptr
@@ -396,7 +444,7 @@ TEST_F(CApiTest, override_initializer) {
   Ort::ThrowOnError(Ort::GetApi().FillStringTensor(static_cast<OrtValue*>(f2_input_tensor), input_char_string, 1U));
 
   Ort::SessionOptions session_options;
-  Ort::Session session(env_, OVERRIDABLE_INITIALIZER_MODEL_URI, session_options);
+  Ort::Session session(*ort_env, OVERRIDABLE_INITIALIZER_MODEL_URI, session_options);
 
   // Get Overrideable initializers
   size_t init_count = session.GetOverridableInitializerCount();
@@ -435,12 +483,101 @@ TEST_F(CApiTest, override_initializer) {
   ASSERT_EQ(*output_data, f11_input_data[0]);
 }
 
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  int ret = RUN_ALL_TESTS();
-  //TODO: Linker on Mac OS X is kind of strange. The next line of code will trigger a crash
-#ifndef __APPLE__
-  ::google::protobuf::ShutdownProtobufLibrary();
+TEST(CApiTest, end_profiling) {
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+
+  // Create session with profiling enabled (profiling is automatically turned on)
+  Ort::SessionOptions session_options_1;
+#ifdef _WIN32
+  session_options_1.EnableProfiling(L"profile_prefix");
+#else
+  session_options_1.EnableProfiling("profile_prefix");
 #endif
-  return ret;
+  Ort::Session session_1(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options_1);
+  char* profile_file = session_1.EndProfiling(allocator.get());
+
+  ASSERT_TRUE(std::string(profile_file).find("profile_prefix") != std::string::npos);
+
+  // Create session with profiling disabled
+  Ort::SessionOptions session_options_2;
+#ifdef _WIN32
+  session_options_2.DisableProfiling();
+#else
+  session_options_2.DisableProfiling();
+#endif
+  Ort::Session session_2(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options_2);
+  profile_file = session_2.EndProfiling(allocator.get());
+
+  ASSERT_TRUE(std::string(profile_file) == std::string());
+}
+
+TEST(CApiTest, model_metadata) {
+  auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  // The following all tap into the c++ APIs which internally wrap over C APIs
+
+  // The following section tests a model containing all metadata supported via the APIs
+  {
+    Ort::SessionOptions session_options;
+    Ort::Session session(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options);
+
+    // Fetch model metadata
+    auto model_metadata = session.GetModelMetadata();
+
+    char* producer_name = model_metadata.GetProducerName(allocator.get());
+    ASSERT_TRUE(strcmp("Hari", producer_name) == 0);
+    allocator.get()->Free(producer_name);
+
+    char* graph_name = model_metadata.GetGraphName(allocator.get());
+    ASSERT_TRUE(strcmp("matmul test", graph_name) == 0);
+    allocator.get()->Free(graph_name);
+
+    char* domain = model_metadata.GetDomain(allocator.get());
+    ASSERT_TRUE(strcmp("", domain) == 0);
+    allocator.get()->Free(domain);
+
+    char* description = model_metadata.GetDescription(allocator.get());
+    ASSERT_TRUE(strcmp("This is a test model with a valid ORT config Json", description) == 0);
+    allocator.get()->Free(description);
+
+    int64_t version = model_metadata.GetVersion();
+    ASSERT_TRUE(version == 1);
+
+    int64_t num_keys_in_custom_metadata_map;
+    char** custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeys(allocator.get(), num_keys_in_custom_metadata_map);
+    ASSERT_TRUE(num_keys_in_custom_metadata_map == 1);
+    ASSERT_TRUE(strcmp(custom_metadata_map_keys[0], "ort_config") == 0);
+    allocator.get()->Free(custom_metadata_map_keys[0]);
+    allocator.get()->Free(custom_metadata_map_keys);
+
+    char* lookup_value = model_metadata.LookupCustomMetadataMap("ort_config", allocator.get());
+    ASSERT_TRUE(strcmp(lookup_value,
+                       "{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, \"graph_optimization_level\": 99, \"enable_profiling\": 1}}") == 0);
+    allocator.get()->Free(lookup_value);
+
+    // key doesn't exist in custom metadata map
+    lookup_value = model_metadata.LookupCustomMetadataMap("key_doesnt_exist", allocator.get());
+    ASSERT_TRUE(lookup_value == nullptr);
+  }
+
+  // The following section tests a model with some missing metadata info
+  // Adding this just to make sure the API implementation is able to handle empty/missing info
+  {
+    Ort::SessionOptions session_options;
+    Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+    // Fetch model metadata
+    auto model_metadata = session.GetModelMetadata();
+
+    // Model description is empty
+    char* description = model_metadata.GetDescription(allocator.get());
+    ASSERT_TRUE(strcmp("", description) == 0);
+    allocator.get()->Free(description);
+
+    // Model does not contain custom metadata map
+    int64_t num_keys_in_custom_metadata_map;
+    char** custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeys(allocator.get(), num_keys_in_custom_metadata_map);
+    ASSERT_TRUE(num_keys_in_custom_metadata_map == 0);
+    ASSERT_TRUE(custom_metadata_map_keys == nullptr);
+  }
 }

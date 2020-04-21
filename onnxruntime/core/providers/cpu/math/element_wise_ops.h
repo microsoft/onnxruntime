@@ -165,13 +165,19 @@ class Min_6 final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-template <typename T>
+// Max versions 8 - 12
+// Version 8 added broadcast
+// Version 12 added types support
 class Min_8 final : public OpKernel {
  public:
   Min_8(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
+
+ private:
+  template <typename T>
+  struct ComputeImpl;
 };
 
 template <typename T>
@@ -183,13 +189,20 @@ class Max_6 final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-template <typename T>
+// Max versions 8 - 12
+// Version 8 added broadcast
+// Version 12 added types support
 class Max_8 final : public OpKernel {
  public:
   Max_8(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
+
+private:
+
+ template<typename T>
+ struct ComputeImpl;
 };
 
 class Not final : public OpKernel {
@@ -372,7 +385,7 @@ struct BroadcastIterator {
   std::vector<int64_t> counters_;
   std::vector<ptrdiff_t> deltas_;
   std::vector<int64_t> counts_;
-  size_t count_{1};  // Running total count of entries in tensor, used while building up the entries
+  ptrdiff_t count_{1};  // Running total count of entries in tensor, used while building up the entries
 
  private:
   size_t index_{};

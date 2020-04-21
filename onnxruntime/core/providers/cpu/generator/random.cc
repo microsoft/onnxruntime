@@ -17,17 +17,15 @@ limitations under the License.
 
 #include "core/providers/cpu/generator/random.h"
 
-// build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/Tensor.h(76):
-// warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence
-// build\windows\relwithdebinfo\eigen\src\eigen\eigen-eigen-5a0156e40feb\unsupported\eigen\cxx11\src/Tensor/TensorChipping.h(52)
-// warning C4100: 'dim': unreferenced formal parameter
 #ifdef _WIN32
-#pragma warning(disable : 4554 4100)
+#pragma warning(disable : 28020)
 #endif
 
 #include <algorithm>
 #include <chrono>
 #include <random>
+
+#include "core/common/safeint.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/eigen_common_wrapper.h"
 #include "gsl/gsl"
@@ -169,7 +167,7 @@ static Status MultinomialCompute(OpKernelContext* ctx,
   // BEGIN create temporary tensor
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
-  auto cdf_data = static_cast<double*>(alloc->Alloc(sizeof(double) * num_classes));
+  auto cdf_data = static_cast<double*>(alloc->Alloc(SafeInt<size_t>(sizeof(double)) * num_classes));
   BufferUniquePtr cdf_buffer(cdf_data, BufferDeleter(alloc));
   Eigen::array<int64_t, 1> cdf_dims = {{num_classes}};
   auto cdf = EigenVector<double>(cdf_data, cdf_dims);
@@ -270,7 +268,7 @@ static TensorProto::DataType InferDataType(const Tensor& tensor) {
 
   if (TensorProto_DataType_FLOAT == elem_type || TensorProto_DataType_DOUBLE == elem_type) {
     dtype = elem_type;
-    } else {
+  } else {
     // unsupported. return UNDEFINED
   }
   return static_cast<TensorProto::DataType>(dtype);

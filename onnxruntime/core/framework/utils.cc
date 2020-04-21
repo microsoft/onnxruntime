@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#include "core/graph/onnx_protobuf.h"
 #include "core/framework/utils.h"
 
 #include <iomanip>
@@ -18,7 +18,6 @@
 #include "core/framework/sequential_executor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
-#include "core/graph/onnx_protobuf.h"
 
 namespace ONNX_NAMESPACE {
 std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto) {
@@ -140,10 +139,16 @@ const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info) 
   return required_provider_type;
 }
 
-static Status CopyMLValue(const DataTransferManager& data_transfer_mgr,
-                          const MLValueCopyInfo& copy_info,
-                          const OrtValue& source_mlvalue,
-                          OrtValue& target_mlvalue) {
+// Copy MLValue. Uses DataTransferManager for device copy if necessary. If copy_pairs is provided,
+// src/dst pairs that need a device copy are added to copy_pairs so copying can be batches by the DataTransferManager
+// implementation for performance reasons.
+static Status BatchOrCopyMLValue(
+    const DataTransferManager& data_transfer_mgr,
+    const MLValueCopyInfo& copy_info,
+    const OrtValue& source_mlvalue,
+    OrtValue& target_mlvalue,
+    std::vector<IDataTransfer::SrcDstPair>* copy_pairs = nullptr) {
+  // same device so direct copy
   if (copy_info.source_device == copy_info.target_device) {
     target_mlvalue = source_mlvalue;
     return Status::OK();
@@ -164,7 +169,11 @@ static Status CopyMLValue(const DataTransferManager& data_transfer_mgr,
 
   Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
 
-  ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensor(source_tensor, *p_output_tensor));
+  if (copy_pairs != nullptr) {
+    copy_pairs->push_back({source_tensor, *p_output_tensor, 0});
+  } else {
+    ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensor(source_tensor, *p_output_tensor));
+  }
 
   return Status::OK();
 }
@@ -385,9 +394,16 @@ static common::Status CopyInputsAcrossDevices(const std::vector<OrtValue>& orig_
   ORT_ENFORCE(copy_info.size() == num_feeds);
 
   new_feeds.resize(num_feeds);
+  std::vector<IDataTransfer::SrcDstPair> batched_data_transfers;
+  batched_data_transfers.reserve(num_feeds);
 
   for (size_t idx = 0; idx < num_feeds; ++idx) {
-    ORT_RETURN_IF_ERROR(CopyMLValue(data_transfer_mgr, copy_info[idx], orig_feeds[idx], new_feeds[idx]));
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(data_transfer_mgr, copy_info[idx], orig_feeds[idx], new_feeds[idx],
+                                           &batched_data_transfers));
+  }
+
+  if (!batched_data_transfers.empty()) {
+    ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensors(batched_data_transfers));
   }
 
   return Status::OK();
@@ -408,7 +424,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
   ORT_RETURN_IF_ERROR(CalculateStaticCopyInfoForFeed(session_state, input_name, copy_info));
   copy_info.source_device = orig_mlvalue.Get<Tensor>().Location().device;
 
-  return CopyMLValue(session_state.GetDataTransferMgr(), copy_info, orig_mlvalue, new_mlvalue);
+  return BatchOrCopyMLValue(session_state.GetDataTransferMgr(), copy_info, orig_mlvalue, new_mlvalue);
 }
 
 static common::Status CopyOutputsAcrossDevices(const SessionState& session_state,
@@ -419,9 +435,16 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
   user_fetches.resize(num_outputs);
 
   const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
+  std::vector<IDataTransfer::SrcDstPair> batched_data_transfers;
+  batched_data_transfers.reserve(num_outputs);
 
   for (size_t idx = 0; idx < num_outputs; ++idx) {
-    ORT_RETURN_IF_ERROR(CopyMLValue(data_transfer_mgr, copy_info[idx], fetches[idx], user_fetches[idx]));
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(data_transfer_mgr, copy_info[idx], fetches[idx], user_fetches[idx],
+                                           &batched_data_transfers));
+  }
+
+  if (!batched_data_transfers.empty()) {
+    ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensors(batched_data_transfers));
   }
 
   return Status::OK();

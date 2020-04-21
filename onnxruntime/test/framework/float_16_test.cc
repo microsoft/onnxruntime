@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
 #include <algorithm>
@@ -119,10 +120,11 @@ void RunSession(InferenceSession& session_object,
   common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
   std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
   EXPECT_TRUE(st.IsOK());
-  ASSERT_EQ(1, fetches.size());
+  ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(dims_y);
-  EXPECT_EQ(expected_shape, rtensor.Shape());
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&rtensor.Shape()));
   const std::vector<MLFloat16> found(rtensor.template Data<MLFloat16>(), rtensor.template Data<MLFloat16>() + expected_shape.Size());
   ASSERT_EQ(found.size(), values_y.size());
   for (size_t i = 0; i < found.size(); i++)
@@ -135,7 +137,7 @@ TEST(Float16_Tests, Mul_16_Test) {
   so.session_logid = "InferenceSessionTests.NoTimeout";
 
   std::shared_ptr<CustomRegistry> registry = std::make_shared<CustomRegistry>();
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   EXPECT_TRUE(session_object.RegisterCustomRegistry(registry).IsOK());
   auto mulfp16_schema = GetMulFP16Schema();
   std::vector<OpSchema> schemas = {mulfp16_schema};

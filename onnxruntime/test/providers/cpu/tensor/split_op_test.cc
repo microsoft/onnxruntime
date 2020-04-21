@@ -11,7 +11,6 @@ template <class T>
 using ShapeAndData = std::pair<const std::vector<int64_t>, const std::vector<T>>;
 
 using ShapeAndFloatData = ShapeAndData<float>;
-using ShapeAndInt32Data = ShapeAndData<int32_t>;
 using ShapeAndStringData = ShapeAndData<std::string>;
 using ExpectResult = OpTester::ExpectResult;
 
@@ -65,16 +64,17 @@ TEST(SplitOperatorTest, Axis0EqualSplitFloat) {
   RunTest<float>(axis, {}, input, outputs, false);  //TensorRT parser: Assertion failed: axis != BATCH_DIM
 }
 
-TEST(SplitOperatorTest, Axis0EqualSplitInt32) {
+template <typename T, typename = typename std::enable_if<std::is_integral<T>::value, T>::type>
+static void SplitTestInt() {
   const int64_t axis = 0;
-  std::vector<ShapeAndInt32Data> outputs;
+  std::vector<ShapeAndData<T>> outputs;
 
   // input shape and data
-  ShapeAndInt32Data input = {{4, 2},  // shape
-                             {1, 2,
-                              3, 4,
-                              5, 6,
-                              7, 8}};
+  ShapeAndData<T> input = {{4, 2},  // shape
+                           {1, 2,
+                            3, 4,
+                            5, 6,
+                            7, 8}};
 
   outputs.push_back({{2, 2},
                      {1, 2,
@@ -84,7 +84,15 @@ TEST(SplitOperatorTest, Axis0EqualSplitInt32) {
                      {5, 6,
                       7, 8}});
 
-  RunTest<int32_t>(axis, {}, input, outputs, false);  //TensorRT parser: Assertion failed: axis != BATCH_DIM
+  RunTest<T>(axis, {}, input, outputs, false);  //TensorRT parser: Assertion failed: axis != BATCH_DIM
+}
+
+TEST(SplitOperatorTest, Axis0EqualSplitInt32) {
+  SplitTestInt<int32_t>();
+}
+
+TEST(SplitOperatorTest, Axis0EqualSplitInt64) {
+  SplitTestInt<int64_t>();
 }
 
 TEST(SplitOperatorTest, Axis0EqualSplitString) {
@@ -314,6 +322,15 @@ TEST(SplitOperatorTest, Axis2UnequalSplit) {
   RunTest<float>(axis, splits, input, outputs, false);
 }
 
+TEST(SplitOperatorTest, ZeroSizeInput) {
+  const int64_t axis = -1;
+  std::vector<ShapeAndFloatData> outputs{{{0, 1}, {}}, {{0, 1}, {}}};
+
+  ShapeAndFloatData input = CreateInput({0, 2});
+
+  RunTest<float>(axis, {}, input, outputs, false);
+}
+
 // test a split of a dimension that has leading and trailing dimensions
 TEST(SplitOperatorTest, Axis1SplitMiddleDimensionEqually) {
   const int64_t axis = 1;
@@ -421,7 +438,7 @@ TEST(SplitOperatorTest, SplitAttributeSumTooSmall) {
 }
 
 TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
-  const int64_t axis = 0;
+  const int64_t axis = -1;
   std::vector<ShapeAndFloatData> outputs;
 
   // input shape and data
@@ -435,7 +452,7 @@ TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
   outputs.push_back({{1, 2}, {1.f, 2.f}});
   outputs.push_back({{3, 2}, {3.f, 4.f, 5.f, 6.f, 7.f, 8.f}});
 
-  RunTest<float>(axis, splits, input, outputs, false, true, "Invalid value in 'split' attribute");  //TensorRT parser: Assertion failed: axis != BATCH_DIM
+  RunTest<float>(axis, splits, input, outputs, false, true, "in 'split' attribute");  //TensorRT parser: Assertion failed: axis != BATCH_DIM
 }
 
 /*

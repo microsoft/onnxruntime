@@ -2,57 +2,23 @@
 # Licensed under the MIT License.
 # This source code should not depend on the onnxruntime and may be built independently
 
-set(featurizers_URL "https://github.com/microsoft/FeaturizersLibrary.git")
-set(featurizers_TAG "ebec32ef06859b6399bf8854f18b91158c87760b")
+add_definitions(-DML_FEATURIZERS)
 
 set(featurizers_pref FeaturizersLibrary)
 set(featurizers_ROOT ${PROJECT_SOURCE_DIR}/external/${featurizers_pref})
 set(featurizers_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pref})
 
-# Windows required git config setting
-# and an a switch whether we link to MSVCRT statically or dynamically
-if (WIN32)
-    ExternalProject_Add(featurizers_lib
-            PREFIX ${featurizers_pref}
-            GIT_REPOSITORY ${featurizers_URL}
-            GIT_TAG ${featurizers_TAG}
-            # Need this to properly checkout crlf
-            GIT_CONFIG core.autocrlf=input
-            SOURCE_DIR ${featurizers_ROOT}
-            # Location of CMakeLists.txt
-            SOURCE_SUBDIR src/Featurizers
-            BINARY_DIR ${featurizers_BINARY_DIR}
-            CMAKE_ARGS -Dfeaturizers_MSVC_STATIC_RUNTIME=${onnxruntime_MSVC_STATIC_RUNTIME}
-            INSTALL_COMMAND ""
-            
-        )
-else()
-    ExternalProject_Add(featurizers_lib
-            PREFIX ${featurizers_pref}
-            GIT_REPOSITORY ${featurizers_URL}
-            GIT_TAG ${featurizers_TAG}
-            SOURCE_DIR ${featurizers_ROOT}
-            # Location of CMakeLists.txt
-            SOURCE_SUBDIR src/Featurizers
-            BINARY_DIR ${featurizers_BINARY_DIR}
-            CMAKE_ARGS -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-            INSTALL_COMMAND ""
-        )
-endif()
-
-add_library(onnxruntime_featurizers STATIC IMPORTED)
-add_dependencies(onnxruntime_featurizers featurizers_lib)
-target_include_directories(onnxruntime_featurizers INTERFACE ${featurizers_ROOT}/src)
-
-if(MSVC)
-  set_property(TARGET onnxruntime_featurizers PROPERTY IMPORTED_LOCATION
-    ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pref}/${CMAKE_BUILD_TYPE}/FeaturizersCode.lib)
-else()
-  set_property(TARGET onnxruntime_featurizers PROPERTY IMPORTED_LOCATION
-    ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pref}/libFeaturizersCode.a)
-endif()
+add_subdirectory(external/FeaturizersLibrary/src/Featurizers ${featurizers_BINARY_DIR} EXCLUDE_FROM_ALL)
+set_target_properties(FeaturizersCode PROPERTIES FOLDER "External/FeaturizersLibrary")
+target_include_directories(FeaturizersCode INTERFACE ${featurizers_ROOT}/src)
 
 if (WIN32)
     # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
-    set_target_properties(onnxruntime_featurizers PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/ConfigureVisualStudioCodeAnalysis.props)
+    set_target_properties(FeaturizersCode PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/ConfigureVisualStudioCodeAnalysis.props)
 endif()
+if (WINDOWS_STORE)
+    # Library requires narrow version of APIs
+    target_compile_options(FeaturizersCode PRIVATE "/U UNICODE" "/U _UNICODE")
+endif()
+
+add_library(onnxruntime_featurizers ALIAS FeaturizersCode)
