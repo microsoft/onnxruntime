@@ -452,7 +452,7 @@ if (onnxruntime_USE_DML)
   endfunction()
 
   target_add_dml(onnxruntime_providers_dml)
-  target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib dloadhelper.lib)
+  target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib)
 
   if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
     target_link_libraries(onnxruntime_providers_dml PRIVATE dloadhelper.lib)
