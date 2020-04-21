@@ -164,15 +164,6 @@ class ThreadPool {
   void ParallelFor(std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
                    const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn);
 
-#ifdef _OPENMP
-  static void TryParallelFor(concurrency::ThreadPool*, std::ptrdiff_t total, const TensorOpCost&,
-                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
-#pragma omp parallel for
-    for (std::ptrdiff_t i = 0; i < total; ++i) {
-      fn(i, i + 1);
-    }
-  }
-#else
   static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
                              const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
     if (tp == nullptr) {
@@ -181,7 +172,6 @@ class ThreadPool {
     }
     tp->ParallelFor(total, cost_per_unit, fn);
   }
-#endif
 
   // Similar to ParallelFor above, but takes the specified scheduling strategy
   // into account.
@@ -189,15 +179,6 @@ class ThreadPool {
   ParallelFor(std::ptrdiff_t total, const SchedulingParams& scheduling_params,
               const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
 
-#ifdef _OPENMP
-  static void TryParallelFor(concurrency::ThreadPool*, std::ptrdiff_t total, const SchedulingParams&,
-                             const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
-#pragma omp parallel for
-    for (std::ptrdiff_t i = 0; i < total; ++i) {
-      fn(i, i + 1);
-    }
-  }
-#else
   static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const SchedulingParams& scheduling_params,
                              const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
     if (tp == nullptr) {
@@ -206,7 +187,6 @@ class ThreadPool {
     }
     tp->ParallelFor(total, scheduling_params, fn);
   }
-#endif
 
   // Prefer using this API to get the number of threads unless you know what you're doing.
   // This API takes into account if openmp is enabled/disabled and if the thread pool ptr is nullptr.
