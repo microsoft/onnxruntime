@@ -720,7 +720,7 @@ TEST(BatchNormTest, BatchNorm2d_fp16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-// flacky test - disabled for now
+// TODO fix flaky test (https://msdata.visualstudio.com/Vienna/_workitems/edit/596949)
 TEST(BatchNormTest, DISABLED_ForwardTrainingTest) {
   OpTester test("BatchNormalization");
   float epsilon = 1e-05f;

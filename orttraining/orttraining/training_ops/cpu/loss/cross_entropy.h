@@ -22,6 +22,14 @@ class LossBase : public OpKernel {
 };
 
 template <typename T>
+void ComputeShareSoftmaxCrossEntropyCPU(const int n,
+                                        const int d,
+                                        const int nd,
+                                        const T* logit_data,
+                                        T* shifted_logit,
+                                        T* log_prob_data);
+
+template <typename T>
 class SoftmaxCrossEntropy final : public LossBase {
  public:
   explicit SoftmaxCrossEntropy(const OpKernelInfo& info) : LossBase(info) {}
