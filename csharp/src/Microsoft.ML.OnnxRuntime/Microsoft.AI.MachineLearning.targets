@@ -1,16 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Target Name="Microsoft_ML_OnnxRuntime_CheckPrerequisites" BeforeTargets="BeforeBuild">
-    <!--
-    Special case .NET Core portable applications.  When building a portable .NET Core app,
-    the PlatformTarget is empty, and you don't know until runtime (i.e. which dotnet.exe)
-    what processor architecture will be used.
-  -->
-    <Error Condition="('$(PlatformTarget)' != 'x64' AND '$(PlatformTarget)' != 'x86' AND '$(PlatformTarget)' != 'AnyCPU') AND
-                      ('$(OutputType)' == 'Exe' OR '$(OutputType)'=='WinExe') AND
-                      !('$(TargetFrameworkIdentifier)' == '.NETCoreApp' AND '$(PlatformTarget)' == '') AND
-                      '$(SuppressOnnxRuntimePlatformCompatibilityError)' != 'true'"
-           Text="Microsoft.ML.OnnxRuntime only supports the AnyCPU, x64, and x86 platforms at this time."/>
-  </Target>
+  <PropertyGroup>
+    <WindowsAI-Platform Condition="'$(Platform)' == 'Win32'">x86</WindowsAI-Platform>
+    <WindowsAI-Platform Condition="'$(Platform)' != 'Win32'">$(Platform)</WindowsAI-Platform>
+  </PropertyGroup>
 
+  <PropertyGroup>
+    <WindowsAIBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win10-$(WindowsAI-Platform)\native\Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
+    <OnnxRuntimeBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win10-$(WindowsAI-Platform)\native\onnxruntime.dll</OnnxRuntimeBinary>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="$(MSBuildThisFileDirectory)\..\..\lib\uap10.0\Microsoft.AI.MachineLearning.winmd">
+      <Implementation>$(WindowsAIBinary)</Implementation>
+    </Reference>
+  </ItemGroup>
+  
+  <PropertyGroup>
+    <MLBinaries>$(WindowsAIBinary);$(OnnxRuntimeBinary)</MLBinaries>
+  </PropertyGroup>
+
+  <Target Name="CopyMLBinaries" BeforeTargets="Build">
+    <PropertyGroup>
+      <WindowsAIBinplaceMessage>Binplacing WindowsAI binaries: {0} and {1}.</WindowsAIBinplaceMessage>
+    </PropertyGroup>
+    <Message Text="$([System.String]::Format('$(WindowsAIBinplaceMessage)', '$(WindowsAIBinary)', '$(OnnxRuntimeBinary)'))" />
+    <Copy SkipUnchangedFiles="True" SourceFiles="$(MLBinaries)" DestinationFolder="$(OutDir)" />
+  </Target>
 </Project>

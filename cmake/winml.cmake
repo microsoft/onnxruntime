@@ -614,7 +614,11 @@ target_link_libraries(winml_dll PRIVATE winml_lib_api)
 target_link_libraries(winml_dll PRIVATE winml_lib_image)
 target_link_libraries(winml_dll PRIVATE winml_lib_ort)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
-target_link_libraries(winml_dll PRIVATE delayimp.lib)
+if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
+  target_link_libraries(winml_dll PRIVATE dloadhelper.lib)
+else()
+  target_link_libraries(winml_dll PRIVATE delayimp.lib)
+endif()
 
 # Any project that links in debug_alloc.obj needs this lib.
 # unresolved external symbol __imp_SymSetOptions

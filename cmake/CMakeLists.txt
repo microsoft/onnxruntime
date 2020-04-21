@@ -937,3 +937,16 @@ if (onnxruntime_BUILD_CSHARP)
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
   include(onnxruntime_csharp.cmake)
 endif()
+
+if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
+  set_target_properties(onnxruntime PROPERTIES VS_GLOBAL_AppContainerApplication true)
+  set_target_properties(winml_dll PROPERTIES VS_GLOBAL_AppContainerApplication true)
+
+  target_link_options(onnxruntime PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
+  target_link_options(winml_dll PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
+
+  if (NOT onnxruntime_target_platform STREQUAL "x64")
+    target_link_options(onnxruntime PRIVATE /SAFESEH)
+    target_link_options(winml_dll PRIVATE /SAFESEH)
+  endif()
+endif()
