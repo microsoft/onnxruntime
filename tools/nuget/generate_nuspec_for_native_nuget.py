@@ -144,9 +144,10 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.dll') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
         # Add DirectML
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.pdb') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.0.0.1\\LICENSE.txt') + '" target="DirectML_LICENSE.txt" />')
+        if args.target_architecture == 'x64' or args.target_architecture == 'x86':
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.pdb') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
+            files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.0.0.1\\LICENSE.txt') + '" target="DirectML_LICENSE.txt" />')
         # Process microsoft.ai.machinelearning import lib, dll, and pdb
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.lib') + '" target="runtimes\\win10-' + args.target_architecture + '\\native\\Microsoft.AI.MachineLearning.lib" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.dll') + '" target="runtimes\\win10-' + args.target_architecture + '\\native\\Microsoft.AI.MachineLearning.dll" />')
