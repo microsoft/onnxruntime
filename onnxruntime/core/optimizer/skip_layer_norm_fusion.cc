@@ -224,7 +224,6 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     }
 
     nodes_to_remove.push_back(*p_add1);
-    nodes_to_remove.push_back(ln_node);
 
     Node& skip_layer_norm_node = graph.AddNode(graph.GenerateNodeName("SkipLayerNormalization"),
                                                "SkipLayerNormalization",
@@ -235,10 +234,12 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     // Assign provider to this new node. Provider should be same as the provider for old node.
     skip_layer_norm_node.SetExecutionProviderType(ln_node.GetExecutionProviderType());
 
-    // move input edges to add (first in list) across to the layer_norm_node.
-    // move output definitions and output edges from mul_node (last in list) to layer_norm_node.
-    // remove all the other nodes.
-    graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, skip_layer_norm_node);
+    for (const auto& node : nodes_to_remove) {
+      graph_utils::RemoveNodeOutputEdges(graph, node);
+      graph.RemoveNode(node.get().Index());
+    }
+
+    graph_utils::FinalizeNodeFusion(graph, skip_layer_norm_node, ln_node);
 
     modified = true;
   }
