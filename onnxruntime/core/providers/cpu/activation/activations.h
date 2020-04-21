@@ -14,18 +14,24 @@ namespace onnxruntime {
 #define EIGEN_Y EigenVectorArrayMap<T>(Y->template MutableData<T>(), Y->Shape().Size())
 #define EIGEN_Y_VAR(var) EigenVectorArrayMap<T> var(Y->template MutableData<T>(), Y->Shape().Size())
 
-template <typename T>
 class Elu final : public OpKernel {
  public:
   Elu(const OpKernelInfo& info) : OpKernel(info), alpha_(info.GetAttrOrDefault("alpha", 1.0f)) {}
 
-  Status Compute(OpKernelContext* context) const override {
-    const auto* X = context->Input<Tensor>(0);
-    Tensor* Y = context->Output(0, X->Shape());
-    EIGEN_X_VAR(xm);
-    EIGEN_Y = (xm >= 0).select(xm, (T)alpha_ * (xm.exp() - 1));
-    return Status::OK();
-  }
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  template<typename T>
+  struct EluImpl;
+
+  const float alpha_;
+};
+
+class Celu final : public OpKernel {
+ public:
+  Celu(const OpKernelInfo& info) : OpKernel(info), alpha_(info.GetAttrOrDefault("alpha", 1.0f)) {}
+
+  Status Compute(OpKernelContext* context) const override;
 
  private:
   const float alpha_;

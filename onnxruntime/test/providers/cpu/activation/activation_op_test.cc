@@ -4,6 +4,7 @@
 #include "core/providers/cpu/activation/activations.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include <cmath>
 
 namespace onnxruntime {
 namespace test {
@@ -95,6 +96,47 @@ TEST(ActivationOpTest, Elu) {
                          input_vals,
                          [alpha](float x) { return (x >= 0) ? x : alpha * (exp(x) - 1); },
                          {{"alpha", alpha}});
+}
+
+TEST(ActivationOpTest, Celu_float) {
+  constexpr float alpha = 0.1f;
+  TestUnaryElementwiseOp(
+      "Celu",
+      no_inf_input_vals,
+      [alpha](float x) {
+        return std::max<float>(0, x) +
+               std::min<float>(0, alpha * std::expm1(x / alpha));
+      },
+      {{"alpha", alpha}},
+      false, 12);
+}
+
+TEST(ActivationOpTest, Celu_reference) {
+  constexpr float alpha = 2.f;
+  OpTester test("Celu", 12);
+  test.AddAttribute<float>("alpha", alpha);
+  test.AddInput<float>("Input", {3, 3, 3, 1}, 
+    {0.8439683f, 0.5665144f, 0.05836735f,
+     0.02916367f, 0.12964272f, 0.5060197f,
+     0.79538304f, 0.9411346f, 0.9546573f,
+     0.17730942f, 0.46192095f, 0.26480448f,
+     0.6746842f, 0.01665257f, 0.62473077f,
+     0.9240844f, 0.9722341f, 0.11965699f,
+     0.41356155f, 0.9129373f, 0.59330076f,
+     0.81929934f, 0.7862604f, 0.11799799f,
+     0.69248444f, 0.54119414f, 0.07513223f});
+
+  test.AddOutput<float>("Output", {3, 3, 3, 1}, {
+    0.8439683f, 0.5665144f, 0.05836735f,
+    0.02916367f, 0.12964272f, 0.5060197f,
+    0.79538304f, 0.9411346f, 0.9546573f,
+    0.17730942f, 0.46192095f, 0.26480448f,
+    0.6746842f, 0.01665257f, 0.62473077f,
+    0.9240844f, 0.9722341f, 0.11965699f,
+    0.41356155f, 0.9129373f, 0.59330076f,
+    0.81929934f, 0.7862604f, 0.11799799f,
+    0.69248444f, 0.54119414f, 0.07513223f});
+  test.Run();
 }
 
 TEST(ActivationOpTest, LeakyRelu) {
