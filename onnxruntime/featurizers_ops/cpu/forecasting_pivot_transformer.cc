@@ -95,7 +95,7 @@ struct ForecastingPivotTransformerImpl {
     transformer.flush(callback_fn);
 
     // Prepare the number of output rows
-    int num_output_rows = output.size();
+    int num_output_rows = static_cast<int>(output.size());
     ORT_ENFORCE(static_cast<int>(row_idx_record.size()) == num_output_rows, "row_idx_record.size() == num_output_rows");
 
     // Prepare the pivoted Output
@@ -143,7 +143,7 @@ struct ForecastingPivotTransformerImpl {
       }
     }
     TensorShape output_shape_horizon({static_cast<int64_t>(num_output_rows), 1});
-    Tensor* output_tensor_horizon(ctx->Output(input_node_1_count + num_pivot_output_columns - num_pivot_columns, output_shape_horizon));
+    Tensor* output_tensor_horizon(ctx->Output(input_node_1_count + num_pivot_output_columns - static_cast<int>(num_pivot_columns), output_shape_horizon));
     int32_t* output_data_horizon = output_tensor_horizon->MutableData<int32_t>();
 
     std::copy(horizon_output_helper.begin(), horizon_output_helper.end(), output_data_horizon);
