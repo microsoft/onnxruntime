@@ -3,92 +3,53 @@ parameters:
   PackageName: 'Microsoft.AI.MachineLearning'
 
 jobs:
-- template: ../../templates/win-ci-2019.yml
-  parameters:
-    AgentPool : 'Win-GPU-2019'
-    ArtifactName: 'drop-nuget-x64'
-    JobName: 'WindowsAI_DirectML_X64'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
-    BuildArch: 'x64'
-    msbuildArchitecture: 'amd64'
-    EnvSetupScript: 'setup_env.bat'
-    sln_platform: 'x64'
-    DoDebugBuild: 'false'
-    DoNugetPack : 'true'
-    DoCompliance: 'false'
-    DoEsrp: ${{ parameters.DoEsrp }}
-    OrtPackageId: 'Microsoft.ML.OnnxRuntime.DirectML'
-    NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.AI.MachineLearning
-     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.AI.MachineLearning\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
-     mkdir $(Build.ArtifactStagingDirectory)\testdata
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+- job: WindowsAI_DirectML_X64
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-GPU-2019'
+    demands: []
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'x64'
 
-- template: ../../templates/win-ci-2019.yml
-  parameters:
-    AgentPool : 'Win-GPU-2019'
-    ArtifactName: 'drop-nuget-x86-zip'
-    JobName: 'WindowsAI_DirectML_X86'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --x86 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
-    BuildArch: 'x86'
-    EnvSetupScript: 'setup_env_x86.bat'
-    sln_platform: 'Win32'
-    DoDebugBuild: 'false'
-    DoNugetPack : 'true'
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    RunTests: 'false'
-    NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage /p:OrtPackageId=Microsoft.AI.MachineLearning
-     cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
-     ren Microsoft.AI.MachineLearning.* Microsoft.AI.MachineLearning.x86.zip
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\Microsoft.AI.MachineLearning.x86.zip $(Build.ArtifactStagingDirectory)
-     mkdir $(Build.ArtifactStagingDirectory)\testdata
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+- job: WindowsAI_DirectML_X86
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-GPU-2019'
+    demands: []
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'x86'
 
-- template: ../../templates/win-ci-2019.yml
-  parameters:
-    AgentPool : 'Win-CPU-2019'
-    ArtifactName: 'drop-nuget-arm64-zip'
-    JobName: 'WindowsAI_DirectML_ARM64'
-    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --arm64 --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
-    BuildArch: 'x64'
-    EnvSetupScript: 'setup_env.bat'
-    sln_platform: 'arm64'
-    DoDebugBuild: 'false'
-    DoNugetPack : 'true'
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm64 /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release /t:CreatePackage /p:OrtPackageId=Microsoft.AI.MachineLearning
-     cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
-     ren Microsoft.AI.MachineLearning.* Microsoft.AI.MachineLearning.arm64.zip
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\Microsoft.AI.MachineLearning.arm64.zip $(Build.ArtifactStagingDirectory)
-     mkdir $(Build.ArtifactStagingDirectory)\testdata
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+- job: WindowsAI_CPU_ARM64
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-CPU-2019'
+    demands: []
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'arm64'
 
-- template: ../../templates/win-ci-2019.yml
-  parameters:
-    AgentPool : 'Win-CPU-2019'
-    ArtifactName: 'drop-nuget-arm-zip'
-    JobName: 'WindowsAI_DirectML_ARM'
-    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --arm --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
-    BuildArch: 'x64'
-    EnvSetupScript: 'setup_env.bat'
-    sln_platform: 'arm'
-    DoDebugBuild: 'false'
-    DoNugetPack : 'true'
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release /t:CreatePackage /p:OrtPackageId=Microsoft.AI.MachineLearning
-     cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
-     ren Microsoft.AI.MachineLearning.* Microsoft.AI.MachineLearning.arm.zip
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\Microsoft.AI.MachineLearning.arm.zip $(Build.ArtifactStagingDirectory)
-     mkdir $(Build.ArtifactStagingDirectory)\testdata
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
-
+- job: WindowsAI_CPU_ARM
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-CPU-2019'
+    demands: []
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'arm'
 
 - job: NuGet_Packaging
   workspace:
@@ -97,105 +58,117 @@ jobs:
   dependsOn:
   - WindowsAI_DirectML_X64
   - WindowsAI_DirectML_X86
-  - WindowsAI_DirectML_ARM64
-  - WindowsAI_DirectML_ARM
+  - WindowsAI_CPU_ARM64
+  - WindowsAI_CPU_ARM
   condition: succeeded()
   steps:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet DirectML x64'
     inputs:
-      artifactName: 'drop-nuget-x64'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+      artifactName: 'Microsoft.AI.MachineLearning.x64'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x64'
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet DirectML x86'
     inputs:
-      artifactName: 'drop-nuget-x86-zip'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+      artifactName: 'Microsoft.AI.MachineLearning.x86'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x86'
 
   - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet DirectML ARM64'
+    displayName: 'Download Pipeline Artifact - NuGet CPU ARM64'
     inputs:
-      artifactName: 'drop-nuget-arm64-zip'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+      artifactName: 'Microsoft.AI.MachineLearning.arm64'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64'
 
   - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet DirectML ARM'
+    displayName: 'Download Pipeline Artifact - NuGet CPU ARM'
     inputs:
-      artifactName: 'drop-nuget-arm-zip'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+      artifactName: 'Microsoft.AI.MachineLearning.arm'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm'
 
-  - script: |
-     pushd $(Build.BinariesDirectory)\nuget-artifact
-     dir
-     powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
-     powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
-     set PATH=%CD%;%PATH%
-     FOR /R %%i IN (*.nupkg) do (
-         rename %%~ni.nupkg %%~ni.zip
-         unzip %%~ni.zip -d %%~ni
-         del /Q %%~ni.zip
-
-         unzip Microsoft.AI.MachineLearning.x86.zip -d win-x86
-         unzip Microsoft.AI.MachineLearning.arm64.zip -d win-arm64
-         unzip Microsoft.AI.MachineLearning.arm.zip -d win-arm
-
-         mkdir %%~ni\runtimes\win-x86
-         mkdir %%~ni\runtimes\win-x86\native
-         mkdir %%~ni\runtimes\win-arm64
-         mkdir %%~ni\runtimes\win-arm64\native
-         mkdir %%~ni\runtimes\win-arm
-         mkdir %%~ni\runtimes\win-arm\native
-
-         move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
-         move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
-         move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
-
-         move win-x86\runtimes\win-x86\native\microsoft.ai.machinelearning.dll %%~ni\runtimes\win-x86\native\microsoft.ai.machinelearning.dll
-         move win-x86\runtimes\win-x86\native\microsoft.ai.machinelearning.lib %%~ni\runtimes\win-x86\native\microsoft.ai.machinelearning.lib
-         move win-x86\runtimes\win-x86\native\microsoft.ai.machinelearning.pdb %%~ni\runtimes\win-x86\native\microsoft.ai.machinelearning.pdb
-
-         move win-x86\runtimes\win-x86\native\directml.dll %%~ni\runtimes\win-x86\native\directml.dll
-
-
-
-         move win-arm64\runtimes\win-arm64\native\onnxruntime.dll %%~ni\runtimes\win-arm64\native\onnxruntime.dll
-         move win-arm64\runtimes\win-arm64\native\onnxruntime.lib %%~ni\runtimes\win-arm64\native\onnxruntime.lib
-         move win-arm64\runtimes\win-arm64\native\onnxruntime.pdb %%~ni\runtimes\win-arm64\native\onnxruntime.pdb
-
-         move win-arm64\runtimes\win-arm64\native\microsoft.ai.machinelearning.dll %%~ni\runtimes\win-arm64\native\microsoft.ai.machinelearning.dll
-         move win-arm64\runtimes\win-arm64\native\microsoft.ai.machinelearning.lib %%~ni\runtimes\win-arm64\native\microsoft.ai.machinelearning.lib
-         move win-arm64\runtimes\win-arm64\native\microsoft.ai.machinelearning.pdb %%~ni\runtimes\win-arm64\native\microsoft.ai.machinelearning.pdb
-
-
-         move win-arm\runtimes\win-arm\native\onnxruntime.dll %%~ni\runtimes\win-arm\native\onnxruntime.dll
-         move win-arm\runtimes\win-arm\native\onnxruntime.lib %%~ni\runtimes\win-arm\native\onnxruntime.lib
-         move win-arm\runtimes\win-arm\native\onnxruntime.pdb %%~ni\runtimes\win-arm\native\onnxruntime.pdb
-
-         move win-arm\runtimes\win-arm\native\microsoft.ai.machinelearning.dll %%~ni\runtimes\win-arm\native\microsoft.ai.machinelearning.dll
-         move win-arm\runtimes\win-arm\native\microsoft.ai.machinelearning.lib %%~ni\runtimes\win-arm\native\microsoft.ai.machinelearning.lib
-         move win-arm\runtimes\win-arm\native\microsoft.ai.machinelearning.pdb %%~ni\runtimes\win-arm\native\microsoft.ai.machinelearning.pdb
-
-         pushd %%~ni
-         zip -r ..\%%~ni.zip .
-         popd
-         move %%~ni.zip %%~ni.nupkg
-     )
-     popd
-     copy $(Build.BinariesDirectory)\nuget-artifact\Microsoft.AI.MachineLearning*nupkg $(Build.ArtifactStagingDirectory)
+  - task: PowerShell@2
     displayName: 'Bundle NuGet and other binaries'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Add-Type -AssemblyName "System.IO.Compression.FileSystem"
+
+        $packages = (Get-ChildItem -Filter Microsoft.AI.MachineLearning* -Recurse)
+        $x64_nuget_package_name = $packages[0].Name
+        $x64_nuget_package = $packages[0].FullName
+        $x64_unzipped_directory_root = $packages[0].Directory.FullName
+        $x64_unzipped_directory = [System.IO.Path]::Combine($x64_unzipped_directory_root, [System.IO.Path]::GetFileNameWithoutExtension($x64_nuget_package))
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($x64_nuget_package, $x64_unzipped_directory)
+        
+        $packages = (Get-ChildItem ..\nuget-artifact-x86 -Filter Microsoft.AI.MachineLearning* -Recurse)
+        $x86_nuget_package = $packages[0].FullName
+        $x86_unzipped_directory_root = $packages[0].Directory.FullName
+        $x86_unzipped_directory = [System.IO.Path]::Combine($x86_unzipped_directory_root, [System.IO.Path]::GetFileNameWithoutExtension($x86_nuget_package))
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($x86_nuget_package, $x86_unzipped_directory)
+
+        $packages = (Get-ChildItem ..\nuget-artifact-arm64 -Filter Microsoft.AI.MachineLearning* -Recurse)
+        $arm64_nuget_package = $packages[0].FullName
+        $arm64_unzipped_directory_root = $packages[0].Directory.FullName
+        $arm64_unzipped_directory = [System.IO.Path]::Combine($arm64_unzipped_directory_root, [System.IO.Path]::GetFileNameWithoutExtension($arm64_nuget_package))
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($arm64_nuget_package, $arm64_unzipped_directory)
+
+        $packages = (Get-ChildItem ..\nuget-artifact-arm -Filter Microsoft.AI.MachineLearning* -Recurse)
+        $arm_nuget_package = $packages[0].FullName
+        $arm_unzipped_directory_root = $packages[0].Directory.FullName
+        $arm_unzipped_directory = [System.IO.Path]::Combine($arm_unzipped_directory_root, [System.IO.Path]::GetFileNameWithoutExtension($arm_nuget_package))
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($arm_nuget_package, $arm_unzipped_directory)
+
+        $x86_runtime_path_old = [System.IO.Path]::Combine($x86_unzipped_directory, 'runtimes', 'win10-x86', 'native')
+        $x86_runtime_path_new = [System.IO.Path]::Combine($x64_unzipped_directory, 'runtimes', 'win10-x86', 'native')
+        $arm64_runtime_path_old = [System.IO.Path]::Combine($arm64_unzipped_directory, 'runtimes', 'win10-arm64', 'native')
+        $arm64_runtime_path_new = [System.IO.Path]::Combine($x64_unzipped_directory, 'runtimes', 'win10-arm64', 'native')
+        $arm_runtime_path_old = [System.IO.Path]::Combine($arm_unzipped_directory, 'runtimes', 'win10-arm', 'native')
+        $arm_runtime_path_new = [System.IO.Path]::Combine($x64_unzipped_directory, 'runtimes', 'win10-arm', 'native')
+
+        New-Item -Path $x86_runtime_path_new -ItemType Directory
+        New-Item -Path $arm64_runtime_path_new -ItemType Directory
+        New-Item -Path $arm_runtime_path_new -ItemType Directory
+
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.dll'))                    $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.lib'))                    $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.pdb'))                    $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.pdb'))   $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'directml.dll'))                       $x86_runtime_path_new
+
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime.dll'))                  $arm64_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime.lib'))                  $arm64_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime.pdb'))                  $arm64_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'microsoft.ai.machinelearning.dll')) $arm64_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'microsoft.ai.machinelearning.lib')) $arm64_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'microsoft.ai.machinelearning.pdb')) $arm64_runtime_path_new
+        
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'onnxruntime.dll'))                    $arm_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'onnxruntime.lib'))                    $arm_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'onnxruntime.pdb'))                    $arm_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   $arm_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   $arm_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'microsoft.ai.machinelearning.pdb'))   $arm_runtime_path_new
+
+        $merged_nuget_path = [System.IO.Path]::Combine($Env:BUILD_ARTIFACTSTAGINGDIRECTORY, 'merged')
+        New-Item -Path $merged_nuget_path -ItemType Directory
+
+        $merged_nuget = [System.IO.Path]::Combine($merged_nuget_path, $x64_nuget_package_name)
+        [System.IO.Compression.ZipFile]::CreateFromDirectory($x64_unzipped_directory, $merged_nuget)
+      workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
 
   - template: ../../templates/esrp_nuget.yml
     parameters:
       DisplayName: 'ESRP - sign NuGet package'
-      FolderPath: '$(Build.ArtifactStagingDirectory)'
+      FolderPath: '$(Build.ArtifactStagingDirectory)/merged'
       DoEsrp: ${{ parameters.DoEsrp }}
 
   - template: ../../templates/validate-nuget.yml
     parameters:
-      NugetPath: '$(Build.ArtifactStagingDirectory)'
+      NugetPath: '$(Build.ArtifactStagingDirectory)\merged'
       NugetPackage: 'Microsoft.AI.MachineLearning*nupkg'
-      PlatformsSupported: 'win-x64,win-x86,win-arm64,win-arm'
+      PlatformsSupported: 'win10-x64,win10-x86,win10-arm64,win10-arm'
       VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
 
@@ -203,9 +176,4 @@ jobs:
     displayName: 'Publish Pipeline NuGet Artifact'
     inputs:
       artifactName: 'drop-signed-nuget'
-      targetPath: '$(Build.ArtifactStagingDirectory)'
-
-- template: test_win.yml
-  parameters:
-    AgentPool : 'Win-GPU-2019'
-    Skipx86Tests: 'true'
+      targetPath: '$(Build.ArtifactStagingDirectory)/merged'
