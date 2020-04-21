@@ -421,7 +421,7 @@ struct Provider {
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
 struct ProviderHost {
-  virtual Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, int device_id = 0) = 0;
+  virtual Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, OrtDevice::DeviceId device_id = 0) = 0;
 
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
 

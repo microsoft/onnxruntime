@@ -400,7 +400,7 @@ struct ProviderHostImpl : ProviderHost {
     return std::make_unique<Prov_IndexedSubGraph_Impl>();
   }
 
-  Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, int device_id = 0) override {
+  Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, OrtDevice::DeviceId device_id = 0) override {
     DeviceAllocatorRegistrationInfo info_real;
     info_real.mem_type = info.mem_type;
     info_real.factory = [&info](int value) { return std::move(static_cast<Prov_IDeviceAllocator_Impl*>(&*info.factory(value))->p_); };
