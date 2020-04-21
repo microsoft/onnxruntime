@@ -52,18 +52,6 @@ using namespace onnxruntime;
 #endif
 #endif
 
-// Ignore warnings that arise due to casting const OrtApi1to2* to const OrtApi* because
-// OrtApi has more members than OrtApi1to2 and GCC/Clang warn about missing member initializations
-// that we don't need to worry about
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
-
-#elif defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wmissing-field-initializers"
-#endif
-
 #define ORT_API_RETURN_IF_ERROR(expr) \
   do {                                \
     auto _status = (expr);            \
@@ -2009,6 +1997,18 @@ struct OrtApi1to2 {
   // End of Version 2 - DO NOT MODIFY ABOVE
 };
 
+// Ignore warnings that arise due to casting the pointer to ort_api_1_to_2 to const OrtApi* because
+// OrtApi has more members than OrtApi1to2 and GCC/Clang warn about missing member initializations
+// that we don't need to worry about
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+
+#elif defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-field-initializers"
+#endif
+
 static constexpr OrtApi1to2 ort_api_1_to_2 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
@@ -2150,6 +2150,12 @@ static constexpr OrtApi1to2 ort_api_1_to_2 = {
     // End of Version 2 - DO NOT MODIFY ABOVE (see above text for more information)
 
 };
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#elif defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 static constexpr OrtApi ort_api_3 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
@@ -2333,9 +2339,3 @@ DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(ModelMetadata, ::onnxruntime::ModelMetadata)
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#elif defined(__clang__)
-#pragma clang diagnostic pop
-#endif
