@@ -56,9 +56,8 @@ def generate_repo_url(list, repo_url, commit_id):
     list.append('<repository type="git" url="' + repo_url + '"' + ' commit="' + commit_id + '" />')
     
 def generate_dependencies(list, package_name, version):
-    list.append('<dependencies>')
-
-    if (package_name == 'Microsoft.AI.MachineLearning'):
+    if (package_name != 'Microsoft.AI.MachineLearning'):
+        list.append('<dependencies>')
         # Support .Net Core
         list.append('<group targetFramework="NETCOREAPP">')
         list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
@@ -72,7 +71,7 @@ def generate_dependencies(list, package_name, version):
         list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
         list.append('</group>')
 
-    list.append('</dependencies>')
+        list.append('</dependencies>')
 
 def get_env_var(key):
     return os.environ.get(key)
@@ -172,12 +171,10 @@ def generate_files(list, args):
         # Process props file
         windowsai_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'Microsoft.AI.MachineLearning.props')
         files_list.append('<file src=' + '"' + windowsai_props + '" target="build\\native" />')
-        files_list.append('<file src=' + '"' + windowsai_props + '" target="build\\netstandard1.1" />')
         
         # Process targets file
         windowsai_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'Microsoft.AI.MachineLearning.targets')
         files_list.append('<file src=' + '"' + windowsai_targets + '" target="build\\native" />')
-        files_list.append('<file src=' + '"' + windowsai_targets + '" target="build\\netstandard1.1" />')
     else:
         # Process props file
         source_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'props.xml')
