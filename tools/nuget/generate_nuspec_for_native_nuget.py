@@ -124,10 +124,10 @@ def generate_files(list, args):
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'include\\onnxruntime\\core\\providers\\cpu\\cpu_provider_factory.h') + '" target="build\\native\\include" />')
     
     if is_cuda_gpu_package:
-        files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'include\\onnxruntime\\core\\providers\\dml\\dml_provider_factory.h') + '" target="build\\native\\include" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'include\\onnxruntime\\core\\providers\\cuda\\cuda_provider_factory.h') + '" target="build\\native\\include" />')
     
     if includes_directml:
-        files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'include\\onnxruntime\\core\\providers\\cuda\\cuda_provider_factory.h') + '" target="build\\native\\include" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'include\\onnxruntime\\core\\providers\\dml\\dml_provider_factory.h') + '" target="build\\native\\include" />')
 
     if not is_cuda_gpu_package:
         # Add microsoft.ai.machinelearning headers
