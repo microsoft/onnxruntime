@@ -232,7 +232,7 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
    * [Linux - FPGA](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux-fpga)
    * [Windows - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-windows).
 
-   Follow [documentaion](https://docs.openvinotoolkit.org/2020.2/index.html) for detailed instructions.
+   Follow [documentation](https://docs.openvinotoolkit.org/2020.2/index.html) for detailed instructions.
 2. Configure the target hardware with specific follow on instructions:
    * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
    * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
