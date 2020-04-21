@@ -561,6 +561,7 @@ class ORTTrainer():
             if loss_fn is not None:
                 print("loss_fn is not used when creating ORTTrainer because an ONNX model is provided.")
             # TODO: accept loss_fn as an onnx model. build self.onnx_model_ with model and loss_fn
+            self.loss_fn_ = None
 
         self.model_desc_ = model_desc
         self.input_desc_with_lr = [*self.model_desc_.inputs_, learning_rate_description]
