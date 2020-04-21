@@ -144,6 +144,7 @@ dependencies {
 
 test {
 	useJUnitPlatform()
+	workingDir cmakeBuildDir
 	testLogging {
 		events "passed", "skipped", "failed"
 		showStandardStreams = true
