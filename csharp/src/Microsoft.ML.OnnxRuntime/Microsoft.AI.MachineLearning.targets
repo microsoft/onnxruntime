@@ -8,6 +8,7 @@
   <PropertyGroup>
     <WindowsAIBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win10-$(WindowsAI-Platform)\native\Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
     <OnnxRuntimeBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win10-$(WindowsAI-Platform)\native\onnxruntime.dll</OnnxRuntimeBinary>
+    <DirectMLBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win10-$(WindowsAI-Platform)\native\directml.dll</DirectMLBinary>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,7 +17,10 @@
     </Reference>
   </ItemGroup>
   
-  <PropertyGroup>
+  <PropertyGroup Condition="'$(WindowsAI-Platform)' == x64 OR '$(WindowsAI-Platform)' == x86">
+    <MLBinaries>$(WindowsAIBinary);$(OnnxRuntimeBinary);$(DirectMLBinary)</MLBinaries>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(WindowsAI-Platform)' == arm OR '$(WindowsAI-Platform)' == arm64">
     <MLBinaries>$(WindowsAIBinary);$(OnnxRuntimeBinary)</MLBinaries>
   </PropertyGroup>
 
