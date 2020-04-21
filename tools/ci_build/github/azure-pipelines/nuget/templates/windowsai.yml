@@ -1,6 +1,3 @@
-parameters:
-  DoEsrp: 'false'
-
 jobs:
 - job: WindowsAI_DirectML_X64
   timeoutInMinutes: 120
@@ -161,14 +158,14 @@ jobs:
     parameters:
       DisplayName: 'ESRP - sign NuGet package'
       FolderPath: '$(Build.ArtifactStagingDirectory)/merged'
-      DoEsrp: ${{ parameters.DoEsrp }}
+      DoEsrp: true #${{ parameters.DoEsrp }}
 
   - template: ../../templates/validate-nuget.yml
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)\merged'
       NugetPackage: 'Microsoft.AI.MachineLearning*nupkg'
       PlatformsSupported: 'win10-x64,win10-x86,win10-arm64,win10-arm'
-      VerifyNugetSigning: ${{ parameters.DoEsrp }}
+      VerifyNugetSigning: true #${{ parameters.DoEsrp }}
 
 
   - task: PublishPipelineArtifact@0
