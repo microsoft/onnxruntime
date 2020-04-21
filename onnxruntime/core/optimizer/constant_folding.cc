@@ -17,6 +17,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     bool keep_going = false;
 
     // Resolve graph to force run shape and type inference.
+    // TODO: Resolve() is a heavy call. Better expose PerformTypeAndShapeInferencing() as one of graph APIs and call it here.
     ORT_ENFORCE(graph.Resolve().IsOK());
 
     GraphViewer graph_viewer(graph);
@@ -36,8 +37,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         bool is_concrete_shape = true;
         std::vector<int64_t> dim_values;
         if (shape != nullptr) {
-          for (int i = 0; i < shape->dim_size(); i++) {
-            auto dim = shape->dim(i);
+          for (int dim_index = 0; dim_index < shape->dim_size(); dim_index++) {
+            auto dim = shape->dim(dim_index);
             if (!utils::HasDimValue(dim)) {
               is_concrete_shape = false;
               break;
