@@ -528,8 +528,8 @@ void RegisterForecastingPivotFeaturizerVer1(){
             //The first num_pivot_columns inputs of Input(1) only support float & double
             if (hasInputShape(ctx, 1)) {
               const auto& input_shape = getInputShape(ctx, 1);
-              if (input_shape.dim_size() != 3) {
-                fail_shape_inference("Expecting Inputs to have 3 dimensions");
+              if (input_shape.dim_size() < 2) {
+                fail_shape_inference("Expecting Inputs to have more than 2 dimensions");
               }
             }
             ONNX_NAMESPACE::TensorShapeProto shape;

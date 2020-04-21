@@ -120,11 +120,12 @@ struct ForecastingPivotTransformerImpl {
       int tensor_id = input_node_0_count + static_cast<int>(num_pivot_columns) + imputed_output_count_idx;
       const auto* input_tensor(ctx->Input<Tensor>(tensor_id));
 
-      const int64_t input_dim_1 = input_tensor->Shape()[1];
-      const int64_t input_dim_2 = input_tensor->Shape()[2];
-      const int64_t input_matrix_size = input_dim_1 * input_dim_2;
+      auto input_dims = input_tensor->Shape();
+      int64_t input_matrix_size = 1;
+      for (size_t dim_idx = 1; dim_idx < input_dims.NumDimensions(); dim_idx++)
+        input_matrix_size *= input_dims[dim_idx];
 
-      TensorShape output_shape_imputed({static_cast<int64_t>(num_output_rows), input_dim_1 * input_dim_2});
+      TensorShape output_shape_imputed({static_cast<int64_t>(num_output_rows), input_matrix_size});
       Tensor* output_tensor_imputed(ctx->Output(imputed_output_count_idx + num_pivot_output_columns, output_shape_imputed));
 
       const auto elem_type = input_tensor->GetElementType();
@@ -136,7 +137,7 @@ struct ForecastingPivotTransformerImpl {
     }
 
     // Prepare the horizon Output(int32)
-    std::vector<int32_t> horizon_output_helper(num_output_rows, 1);
+    std::vector<uint32_t> horizon_output_helper(num_output_rows, 1);
     for (int i = 1; i < num_output_rows; i++) {
       if (row_idx_record[num_output_rows - 1 - i] == row_idx_record[num_output_rows - i]) {
         horizon_output_helper[num_output_rows - 1 - i] = horizon_output_helper[num_output_rows - i] + 1;
@@ -144,7 +145,7 @@ struct ForecastingPivotTransformerImpl {
     }
     TensorShape output_shape_horizon({static_cast<int64_t>(num_output_rows), 1});
     Tensor* output_tensor_horizon(ctx->Output(input_node_1_count + num_pivot_output_columns - static_cast<int>(num_pivot_columns), output_shape_horizon));
-    int32_t* output_data_horizon = output_tensor_horizon->MutableData<int32_t>();
+    uint32_t* output_data_horizon = output_tensor_horizon->MutableData<uint32_t>();
 
     std::copy(horizon_output_helper.begin(), horizon_output_helper.end(), output_data_horizon);
   }

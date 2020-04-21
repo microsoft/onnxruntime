@@ -50,7 +50,7 @@ TEST(FeaturizersTests, ForecastingPivotTransformer_2_Inputs) {
   test.AddOutput<double>("Output_4", {4, 1}, {5, 6, 5, 6});
   test.AddOutput<double>("Output_5", {4, 1}, {3, 4, 3, 4});
   //horizon output
-  test.AddOutput<int32_t>("Output_6", {4, 1}, {2, 1, 2, 1});
+  test.AddOutput<uint32_t>("Output_6", {4, 1}, {2, 1, 2, 1});
 
   test.Run();
 }
@@ -74,7 +74,7 @@ TEST(FeaturizersTests, ForecastingPivotTransformer_4_Inputs) {
 
   test.AddInput<std::string>("Input_3", {2, 1, 4}, {"7", "7", "7", "7",
                                                "9", "9", "9", "9"});
-  test.AddInput<double>("Input_4", {2, 1, 4}, {-7, -7, -7, -7,
+  test.AddInput<double>("Input_4", {2, 4}, {-7, -7, -7, -7,
                                                -9, -9, -9, -9});
 
   //pivot output
@@ -94,7 +94,7 @@ TEST(FeaturizersTests, ForecastingPivotTransformer_4_Inputs) {
                                               -9, -9, -9, -9,
                                               -9, -9, -9, -9});
   //horizon output
-  test.AddOutput<int32_t>("Output_8", {4, 1}, {2, 1, 2, 1});
+  test.AddOutput<uint32_t>("Output_8", {4, 1}, {2, 1, 2, 1});
 
   test.Run();
 }
