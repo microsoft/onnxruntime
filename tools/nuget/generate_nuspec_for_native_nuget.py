@@ -172,7 +172,7 @@ def generate_files(list, args):
         windowsai_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'Microsoft.AI.MachineLearning.props')
         files_list.append('<file src=' + '"' + windowsai_props + '" target="build\\native" />')
         
-        # Process targets file
+        # Process targets files
         windowsai_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'Microsoft.AI.MachineLearning.targets')
         files_list.append('<file src=' + '"' + windowsai_targets + '" target="build\\native" />')
     else:
