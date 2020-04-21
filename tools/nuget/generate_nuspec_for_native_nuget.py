@@ -132,9 +132,9 @@ def generate_files(list, args):
 
     if not is_cuda_gpu_package:
         # Add microsoft.ai.machinelearning headers
-        files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'microsoft.ai.machinelearning.h') + '" target="build\\native\\include\\Microsoft.AI.MachineLearning.h" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'microsoft.ai.machinelearning.h') + '" target="build\\native\\include\\abi\\Microsoft.AI.MachineLearning.h" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'winml\\api\\dualapipartitionattribute.h') + '" target="build\\native\\include\\abi\\dualapipartitionattribute.h" />')
         files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'microsoft.ai.machinelearning.native.h') + '" target="build\\native\\include\\Microsoft.AI.MachineLearning.Native.h" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'winml\\api\\dualapipartitionattribute.h') + '" target="build\\native\\include\\dualapipartitionattribute.h" />')
         # Process microsoft.ai.machinelearning.winmd
         files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'microsoft.ai.machinelearning.winmd') + '" target="lib\\uap10.0\\Microsoft.AI.MachineLearning.winmd" />')
 
