@@ -95,6 +95,7 @@ struct ForecastingPivotTransformerImpl {
     transformer.flush(callback_fn);
 
     // Prepare the number of output rows
+    ORT_ENFORCE(!output.empty(), "All rows dropped is an exception");
     int num_output_rows = static_cast<int>(output.size());
     ORT_ENFORCE(static_cast<int>(row_idx_record.size()) == num_output_rows, "row_idx_record.size() == num_output_rows");
 
