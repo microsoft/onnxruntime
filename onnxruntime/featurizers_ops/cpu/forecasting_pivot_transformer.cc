@@ -135,8 +135,8 @@ struct ForecastingPivotTransformerImpl {
       t_disp.Invoke(input_tensor, output_tensor_imputed, row_idx_record, input_matrix_size, num_output_rows);
     }
 
-    // Prepare the horizon Output
-    std::vector<int> horizon_output_helper(num_output_rows, 1);
+    // Prepare the horizon Output(int32)
+    std::vector<int32_t> horizon_output_helper(num_output_rows, 1);
     for (int i = 1; i < num_output_rows; i++) {
       if (row_idx_record[num_output_rows - 1 - i] == row_idx_record[num_output_rows - i]) {
         horizon_output_helper[num_output_rows - 1 - i] = horizon_output_helper[num_output_rows - i] + 1;
@@ -144,7 +144,7 @@ struct ForecastingPivotTransformerImpl {
     }
     TensorShape output_shape_horizon({static_cast<int64_t>(num_output_rows), 1});
     Tensor* output_tensor_horizon(ctx->Output(input_node_1_count + num_pivot_output_columns - num_pivot_columns, output_shape_horizon));
-    T* output_data_horizon = output_tensor_horizon->MutableData<T>();
+    int32_t* output_data_horizon = output_tensor_horizon->MutableData<int32_t>();
 
     std::copy(horizon_output_helper.begin(), horizon_output_helper.end(), output_data_horizon);
   }
