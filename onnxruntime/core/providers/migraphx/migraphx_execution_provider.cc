@@ -196,10 +196,15 @@ static bool get_migraphx_type(ONNXTensorElementDataType type,
 static bool can_eval_concat(const Node* concat, const InitializedTensorSet& initializers, const logging::Logger& logger)
 {
   if (concat == nullptr) return true;
+  const auto concat_args = concat->InputDefs();
+  if (concat_args.size() != 3)
+  {
+    return false;
+  }
 
-  auto arg_0 = concat->InputDefs()[0];
+  auto arg_0 = concat_args[0];
   bool b_found = (initializers.find(arg_0->Name()) != initializers.end());
-  auto arg_2 = concat->InputDefs()[2];
+  auto arg_2 = concat_args[2];
   b_found &= (initializers.find(arg_2->Name()) != initializers.end());
   if (b_found)
   {
@@ -269,7 +274,8 @@ static bool can_eval_input_shape(const Node* node, const InitializedTensorSet& i
       {0, 0, "Shape", {1}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;
-  if (graph_utils::FindPath(*node, true, parent_path, edges, logger)) {
+  if (graph_utils::FindPath(*node, true, parent_path, edges, logger))
+  {
     return true;
   }
 
@@ -566,6 +572,9 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     {
       return true;
     }
+  } else if (optype == "OneHot") {
+    const auto& arg_depth = node->InputDefs()[1];
+    return (initializers.find(arg_depth->Name()) == initializers.end());    
   } else if (optype == "Pad") {
     const auto& args = node->InputDefs();
     if (args.size() == 3)
@@ -591,14 +600,13 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     {
       const auto mode = mode_attr->second.s();
       static const std::set<std::string> allowed_modes = {"constant"};
-
       return allowed_modes.count(mode) == 0;
     }
   } else if (optype == "Reshape") {
     const auto& args = node->InputDefs();
     if (args.size() == 2)
     {
-      const auto& shape_arg = node->InputDefs()[1];
+      const auto& shape_arg = args[1];
       if (initializers.find(shape_arg->Name()) != initializers.end()) {
         return false;
       }
@@ -608,7 +616,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         return false;
       }
     }
-
     return true;
   } else if (optype == "Slice") {
     // MIGraphX does not properly handle the situation where any 
@@ -714,17 +721,16 @@ static std::vector<NodeIndex>
 GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, 
                           /*out*/ std::unordered_set<std::string>& mgx_required_initializers, 
                           const logging::Logger& logger) {
-  // const auto mgx_supported_ops = GetMIGraphXSupportedOps();
   static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Acosh", "Add", "ArgMax", "ArgMin", 
-      "Asin", "Asinh", "Atan", "Atanh",
-      "AveragePool", "BatchNormalization", "Cast", "Ceil", "Clip", "Concat", "Constant", "ConstantFill",
-      "ConstantOfShape", "Conv", "Cos", "Cosh", "Div", "Dropout", "Elu", "Erf", "Exp", "Expand", 
-      "Flatten", "Floor", "GRU", "Gather", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "Identity", "ImageScaler", 
-      "InstanceNormalization", "LRN", "LSTM", "LeakyRelu", "Log", "LogSoftmax", "MatMul", "Max", "MaxPool", "Min", 
-      "Mul", "Pad", "Pow", "PRelu", "RNN", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", 
-      "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", "Round", "Shape", 
-      "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Split", "Sqrt", "Squeeze", "Sub", "Sum", "Tan", "Tanh", 
-      "Transpose", "Unsqueeze"};
+      "Asin", "Asinh", "Atan", "Atanh", "AveragePool", "BatchNormalization", "Cast", "Ceil", "Clip", 
+      "Concat", "Constant", "ConstantFill", "ConstantOfShape", "Conv", "Cos", "Cosh", "Div", "Dropout", 
+      "Elu", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather", "Gemm", "GlobalAveragePool", 
+      "GlobalMaxPool", "Identity", "ImageScaler", "InstanceNormalization", "LRN", "LSTM", "LeakyRelu", 
+      "Log", "LogSoftmax", "MatMul", "Max", "MaxPool", "Min", "Mul", "OneHot", "Pad", "Pow", "PRelu", 
+      "RNN", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", 
+      "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", 
+      "Round", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Split", "Sqrt", "Squeeze", 
+      "Sub", "Sum", "Tan", "Tanh", "Transpose", "Unsqueeze"};
   std::vector<NodeIndex> unsupported_nodes_idx;
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     if (IsNodeSupported(mgx_supported_ops, graph_viewer, node_idx, logger)) {
@@ -911,9 +917,9 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   std::string onnx_string_buffer;
   model_proto.SerializeToString(&onnx_string_buffer);
 
-  std::ofstream ofs("ort_getcapability.onnx", std::ios::binary);
-  ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
-  ofs.close();
+  // std::ofstream ofs("ort_getcapability.onnx", std::ios::binary);
+  // ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
+  // ofs.close();
 
   // This is a list of initializers that migraphx considers as constants. 
   // Example weights, reshape shape etc.
@@ -932,7 +938,7 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   }
 
   // Too many unsupported operators, fallback to run on CPU
-  if (unsupported_nodes.size() > 8)
+  if (unsupported_nodes.size() >= 6)
   {
     return result;
   }
@@ -1077,12 +1083,12 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     no_input_shape |= get_input_output_names(onnx_string_buffer, input_names, output_names);
 
     // dump onnx file
-    std::string name("ort_compile_");
-    name.append(fused_node->Name());
-    name.append(".onnx");
-    std::ofstream ofs(name, std::ios::binary);
-    ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
-    ofs.close();
+    // std::string name("ort_compile_");
+    // name.append(fused_node->Name());
+    // name.append(".onnx");
+    // std::ofstream ofs(name, std::ios::binary);
+    // ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
+    // ofs.close();
 
     // by parsing the model_proto, create a program corresponding to
     // the input fused_node
