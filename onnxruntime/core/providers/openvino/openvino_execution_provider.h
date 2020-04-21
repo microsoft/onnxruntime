@@ -102,7 +102,6 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
   }
-  //const onnxruntime::Node* fused_node_copy;
  private:
   OpenVINOExecutionProviderInfo info_;
 };
