@@ -1,22 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <PropertyGroup Condition="'$(Platform)' == 'Win32'">
-    <WindowsAIBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win10-x86\native\Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
-    <OnnxRuntimeBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win10-x86\native\onnxruntime.dll</OnnxRuntimeBinary>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Platform)' != 'Win32'">
-    <WindowsAIBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win10-$(Platform)\native\Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
-    <OnnxRuntimeBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win10-$(Platform)\native\onnxruntime.dll</OnnxRuntimeBinary>
+  <PropertyGroup>
+    <WindowsAI-Platform Condition="'$(Platform)' == 'Win32'">x86</WindowsAI-Platform>
+    <WindowsAI-Platform Condition="'$(Platform)' != 'Win32'">$(Platform)</WindowsAI-Platform>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(Platform)' == 'Win32'">
-    <Reference Include="$(MSBuildThisFileDirectory)\metadata\Microsoft.AI.MachineLearning.winmd">
-      <Implementation>..\..\..\runtimes\win-x86\native\microsoft.ai.machinelearning.dll</Implementation>
-    </Reference>
-  </ItemGroup>
-  <ItemGroup Condition="'$(Platform)' != 'Win32'">
-    <Reference Include="$(MSBuildThisFileDirectory)\metadata\Microsoft.AI.MachineLearning.winmd">
-      <Implementation>..\..\..\runtimes\win-$(Platform)\native\microsoft.ai.machinelearning.dll</Implementation>
+  <PropertyGroup>
+    <WindowsAIBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win10-$(WindowsAI-Platform)\native\Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
+    <OnnxRuntimeBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win10-$(WindowsAI-Platform)\native\onnxruntime.dll</OnnxRuntimeBinary>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="$(MSBuildThisFileDirectory)\..\..\lib\uap10.0\Microsoft.AI.MachineLearning.winmd">
+      <Implementation>$(WindowsAIBinary)</Implementation>
     </Reference>
   </ItemGroup>
   
