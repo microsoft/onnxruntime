@@ -306,6 +306,7 @@ public class OrtSession implements AutoCloseable {
    *
    * @throws OrtException on failure
    * @return The metadata.
+   * @throws OrtException If the native call failed.
    */
   public OnnxModelMetadata getMetadata() throws OrtException {
     if (metadata == null) {
@@ -653,6 +654,17 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
+     * Sets the Session's logging verbosity level.
+     *
+     * @param logLevel The logging verbosity to use.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void setSessionLogVerbosityLevel(int logLevel) throws OrtException {
+      checkClosed();
+      setSessionLogVerbosityLevel(OnnxRuntime.ortApiHandle, nativeHandle, logLevel);
+    }
+
+    /**
      * Registers a library of custom ops for use with {@link OrtSession}s using this SessionOptions.
      *
      * @param path The path to the library on disk.
@@ -823,6 +835,9 @@ public class OrtSession implements AutoCloseable {
     private native void setSessionLogLevel(long apiHandle, long nativeHandle, int logLevel)
         throws OrtException;
 
+    private native void setSessionLogVerbosityLevel(long apiHandle, long nativeHandle, int logLevel)
+        throws OrtException;
+
     private native long registerCustomOpLibrary(long apiHandle, long nativeHandle, String path)
         throws OrtException;
 
@@ -910,6 +925,28 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
+     * Sets the current logging verbosity level on this RunOptions.
+     *
+     * @param level The new logging verbosity level.
+     * @throws OrtException If the native call failed.
+     */
+    public void setLogVerbosityLevel(int level) throws OrtException {
+      checkClosed();
+      setLogVerbosityLevel(OnnxRuntime.ortApiHandle, nativeHandle, level);
+    }
+
+    /**
+     * Gets the current logging verbosity level set on this RunOptions.
+     *
+     * @return The logging verbosity level.
+     * @throws OrtException If the native call failed.
+     */
+    public int getLogVerbosityLevel() throws OrtException {
+      checkClosed();
+      return getLogVerbosityLevel(OnnxRuntime.ortApiHandle, nativeHandle);
+    }
+
+    /**
      * Sets the run tag used in logging.
      *
      * @param runTag The run tag in logging output.
@@ -967,6 +1004,11 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     private native int getLogLevel(long apiHandle, long nativeHandle) throws OrtException;
+
+    private native void setLogVerbosityLevel(long apiHandle, long nativeHandle, int logLevel)
+        throws OrtException;
+
+    private native int getLogVerbosityLevel(long apiHandle, long nativeHandle) throws OrtException;
 
     private native void setRunTag(long apiHandle, long nativeHandle, String runTag)
         throws OrtException;

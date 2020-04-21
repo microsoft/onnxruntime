@@ -50,6 +50,32 @@ JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_getLogLeve
 
 /*
  * Class:     ai_onnxruntime_OrtSession_RunOptions
+ * Method:    setLogVerbosityLevel
+ * Signature: (JJI)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_setLogVerbosityLevel
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle, jint logLevel) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+  checkOrtStatus(jniEnv,api,api->RunOptionsSetRunLogVerbosityLevel((OrtRunOptions*) nativeHandle,logLevel));
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_RunOptions
+ * Method:    getLogVerbosityLevel
+ * Signature: (JJ)I
+ */
+JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_getLogVerbosityLevel
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+  jint logLevel;
+  checkOrtStatus(jniEnv,api,api->RunOptionsGetRunLogVerbosityLevel((OrtRunOptions*) nativeHandle,&logLevel));
+  return logLevel;
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_RunOptions
  * Method:    setRunTag
  * Signature: (JJLjava/lang/String;)V
  */

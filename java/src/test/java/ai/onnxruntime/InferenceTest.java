@@ -792,6 +792,8 @@ public class InferenceTest {
       assertEquals("monkeys", runOptions.getRunTag());
       runOptions.setLogLevel(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL);
       assertEquals(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL, runOptions.getLogLevel());
+      runOptions.setLogVerbosityLevel(9000);
+      assertEquals(9000, runOptions.getLogVerbosityLevel());
       runOptions.setTerminate(true);
       String inputName = session.getInputNames().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
@@ -823,6 +825,7 @@ public class InferenceTest {
         options.enableProfiling(tmpPath.getAbsolutePath());
         options.setLoggerId("monkeys");
         options.setSessionLogLevel(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL);
+        options.setSessionLogVerbosityLevel(5);
         try (OrtSession session = env.createSession(modelPath, options)) {
           String inputName = session.getInputNames().iterator().next();
           Map<String, OnnxTensor> container = new HashMap<>();
@@ -849,6 +852,7 @@ public class InferenceTest {
         options.setMemoryPatternOptimization(false);
         options.enableProfiling(tmpPath.getAbsolutePath());
         options.disableProfiling();
+        options.setSessionLogVerbosityLevel(0);
         try (OrtSession session = env.createSession(modelPath, options)) {
           String inputName = session.getInputNames().iterator().next();
           Map<String, OnnxTensor> container = new HashMap<>();

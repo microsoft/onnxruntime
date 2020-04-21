@@ -112,7 +112,9 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_creat
     OrtSessionOptions* opts;
     checkOrtStatus(jniEnv,api,api->CreateSessionOptions(&opts));
     checkOrtStatus(jniEnv,api,api->SetInterOpNumThreads(opts, 1));
-    checkOrtStatus(jniEnv,api,api->SetIntraOpNumThreads(opts, 1));
+    // Commented out due to constant OpenMP warning as this API is invalid when running with OpenMP.
+    // Not sure how to detect that from within the C API though.
+    //checkOrtStatus(jniEnv,api,api->SetIntraOpNumThreads(opts, 1));
     return (jlong) opts;
 }
 
@@ -226,6 +228,19 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setSes
   const OrtApi* api = (const OrtApi*)apiHandle;
   OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
   checkOrtStatus(jniEnv,api,api->SetSessionLogSeverityLevel(options,logLevel));
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    setSessionLogVerbosityLevel
+ * Signature: (JJI)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setSessionLogVerbosityLevel
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jint logLevel) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+  checkOrtStatus(jniEnv,api,api->SetSessionLogVerbosityLevel(options,logLevel));
 }
 
 /*
