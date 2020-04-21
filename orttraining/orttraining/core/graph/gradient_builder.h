@@ -55,6 +55,7 @@ DECLARE_GRADIENT_BUILDER(GetFastGeluGradient)
 DECLARE_GRADIENT_BUILDER(GetWhereGradient)
 DECLARE_GRADIENT_BUILDER(GetSendGradient)
 DECLARE_GRADIENT_BUILDER(GetRecvGradient)
+DECLARE_GRADIENT_BUILDER(GetExpandGradient)
 
 }  // namespace training
 }  // namespace onnxruntime

@@ -1059,5 +1059,25 @@ IMPLEMENT_GRADIENT_BUILDER(GetRecvGradient) {
               SrcNodeAttributes())};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetExpandGradient) {
+  ArgDef a = I(0), y = O(0);
+  std::vector<Dimension> a_shape = GetShape(a);
+  std::vector<Dimension> y_shape = GetShape(y);
+  std::vector<int64_t> a_axes;
+  ComputeBroadcastBackwardAxes(a_shape, y_shape, &a_axes, nullptr);
+
+  std::vector<NodeDef> output;
+  if (a_axes.size() > 0) {
+    HandleBroadcasting(GO(0), a, GI(0), a_axes, output);
+  } else {
+    output.push_back(
+        NodeDef("Identity",
+                {GO(0)},
+                {GI(0)}));
+  }
+
+  return output;
+}
+
 }  // namespace training
 }  // namespace onnxruntime
