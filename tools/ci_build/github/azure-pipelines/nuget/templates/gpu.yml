@@ -118,12 +118,12 @@ jobs:
         $arm_unzipped_directory = [System.IO.Path]::Combine($arm_unzipped_directory_root, [System.IO.Path]::GetFileNameWithoutExtension($arm_nuget_package))
         [System.IO.Compression.ZipFile]::ExtractToDirectory($arm_nuget_package, $arm_unzipped_directory)
 
-        $x86_runtime_path_old = [System.IO.Path]::Combine($x86_unzipped_directory, 'runtimes', 'win-x86', 'native')
-        $x86_runtime_path_new = [System.IO.Path]::Combine($x64_unzipped_directory, 'runtimes', 'win-x86', 'native')
-        $arm64_runtime_path_old = [System.IO.Path]::Combine($arm64_unzipped_directory, 'runtimes', 'win-arm64', 'native')
-        $arm64_runtime_path_new = [System.IO.Path]::Combine($x64_unzipped_directory, 'runtimes', 'win-arm64', 'native')
-        $arm_runtime_path_old = [System.IO.Path]::Combine($arm_unzipped_directory, 'runtimes', 'win-arm', 'native')
-        $arm_runtime_path_new = [System.IO.Path]::Combine($x64_unzipped_directory, 'runtimes', 'win-arm', 'native')
+        $x86_runtime_path_old = [System.IO.Path]::Combine($x86_unzipped_directory, 'runtimes', 'win10-x86', 'native')
+        $x86_runtime_path_new = [System.IO.Path]::Combine($x64_unzipped_directory, 'runtimes', 'win10-x86', 'native')
+        $arm64_runtime_path_old = [System.IO.Path]::Combine($arm64_unzipped_directory, 'runtimes', 'win10-arm64', 'native')
+        $arm64_runtime_path_new = [System.IO.Path]::Combine($x64_unzipped_directory, 'runtimes', 'win10-arm64', 'native')
+        $arm_runtime_path_old = [System.IO.Path]::Combine($arm_unzipped_directory, 'runtimes', 'win10-arm', 'native')
+        $arm_runtime_path_new = [System.IO.Path]::Combine($x64_unzipped_directory, 'runtimes', 'win10-arm', 'native')
 
         New-Item -Path $x86_runtime_path_new -ItemType Directory
         New-Item -Path $arm64_runtime_path_new -ItemType Directory
@@ -168,7 +168,7 @@ jobs:
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)\merged'
       NugetPackage: 'Microsoft.AI.MachineLearning*nupkg'
-      PlatformsSupported: 'win-x64,win-x86,win-arm64,win-arm'
+      PlatformsSupported: 'win10-x64,win10-x86,win10-arm64,win10-arm'
       VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
 
