@@ -418,6 +418,27 @@ onnxruntime_perf_test
 onnxruntime_test_all
 ```
 
+#### Build Instructions(Jetson Nano)
+
+1. Build ACL Library (skip if already built)
+```
+cd ~
+git clone https://github.com/Arm-software/ComputeLibrary.git
+cd ComputeLibrary
+sudo apt install scons
+sudo apt install g++-arm-linux-gnueabihf
+scons -j8 arch=arm64-v8a  Werror=1 debug=0 asserts=0 neon=1 opencl=1 examples=1 build=native
+```
+2. Set environment variables to set include directory and shared object library path.
+```
+export CPATH=~/ComputeLibrary/include/:~/ComputeLibrary/
+export LD_LIBRARY_PATH=~/ComputeLibrary/build/
+```
+3. Build onnxruntime with --use_acl flag
+```
+./build.sh --use_acl
+```
+
 ---
 
 ## Options

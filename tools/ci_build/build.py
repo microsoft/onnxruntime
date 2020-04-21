@@ -296,6 +296,10 @@ def parse_arguments():
     parser.add_argument(
         "--enable_lto", action='store_true',
         help="Enable Link Time Optimization")
+    parser.add_argument(
+        "--use_acl", nargs="?", const="ACL_1905",
+        choices=["ACL_1902", "ACL_1905", "ACL_1908"],
+        help="Build with ACL for ARM architectures.")
     return parser.parse_args()
 
 
@@ -482,7 +486,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             "OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         "-Donnxruntime_DEV_MODE=" + (
-            "OFF" if args.android else "ON"),
+            "OFF" if args.android or args.use_acl else "ON"),
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
         "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
@@ -555,6 +559,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_TELEMETRY=" + (
             "ON" if args.use_telemetry else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
+        "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
+        "-Donnxruntime_USE_ACL_1902=" + (
+            "ON" if args.use_acl == "ACL_1902" else "OFF"),
+        "-Donnxruntime_USE_ACL_1905=" + (
+            "ON" if args.use_acl == "ACL_1905" else "OFF"),
+        "-Donnxruntime_USE_ACL_1908=" + (
+            "ON" if args.use_acl == "ACL_1908" else "OFF"),
     ]
 
     if args.winml_root_namespace_override:
@@ -1169,9 +1180,10 @@ def nuphar_run_python_tests(build_dir, configs):
             cwd=cwd, dll_path=dll_path)
 
 
-def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph,
-                       use_dnnl, use_tensorrt, use_openvino, use_nuphar,
-                       wheel_name_suffix, nightly_build=False):
+def build_python_wheel(
+        source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
+        use_tensorrt, use_openvino, use_nuphar, wheel_name_suffix, use_acl,
+        nightly_build=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -1194,6 +1206,8 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph,
             args.append('--use_nuphar')
         if wheel_name_suffix:
             args.append('--wheel_name_suffix={}'.format(wheel_name_suffix))
+        elif use_acl:
+            args.append('--use_acl')
 
         run_subprocess(args, cwd=cwd)
 
@@ -1487,6 +1501,11 @@ def main():
                     build_dir, configs, onnx_test_data_dir, 'dml',
                     args.enable_multi_device_test, False, 1)
 
+            if args.use_acl:
+                run_onnx_tests(
+                    build_dir, configs, onnx_test_data_dir, 'acl',
+                    args.enable_multi_device_test, False, 1, 1)
+
             # Run some models are disabled to keep memory utilization
             # under control.
             if args.use_dnnl:
@@ -1520,6 +1539,7 @@ def main():
                 args.use_openvino,
                 args.use_nuphar,
                 args.wheel_name_suffix,
+                args.use_acl,
                 nightly_build=nightly_build,
             )
 
