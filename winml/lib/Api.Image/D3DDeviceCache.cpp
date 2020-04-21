@@ -38,32 +38,33 @@ namespace float16 {
 
 using namespace Microsoft::WRL;
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
-D3DDeviceCache::D3DDeviceCache(Windows::AI::MachineLearning::LearningModelDeviceKind const& deviceKind) {
+using namespace _winml;
+
+D3DDeviceCache::D3DDeviceCache(winml::LearningModelDeviceKind const& deviceKind) {
   WINML_THROW_IF_FAILED(CoCreateGuid(&fence_guid_));
 
-  if (deviceKind == LearningModelDeviceKind::Cpu || deviceKind == LearningModelDeviceKind::Default) {
+  if (deviceKind == winml::LearningModelDeviceKind::Cpu || deviceKind == winml::LearningModelDeviceKind::Default) {
     // CPU device don't make any GPU devices
     device_luid_.HighPart = device_luid_.LowPart = 0;
     return;
   }
 
   DXGI_GPU_PREFERENCE preference;
-  WINML_THROW_IF_FAILED(DeviceHelpers::GetGPUPreference(deviceKind, &preference));
+  WINML_THROW_IF_FAILED(GetGPUPreference(deviceKind, &preference));
 
   CommonDeviceHelpers::AdapterEnumerationSupport support;
   WINML_THROW_IF_FAILED(CommonDeviceHelpers::GetAdapterEnumerationSupport(&support));
 
   const char errStr[] = "No hardware adapters available";
   if (support.has_dxgi) {
-    com_ptr<IDXGIAdapter1> spAdapter;
-    WINML_THROW_IF_FAILED_MSG(DeviceHelpers::GetDXGIHardwareAdapterWithPreference(preference, spAdapter.put()), errStr);
+    winrt::com_ptr<IDXGIAdapter1> spAdapter;
+    WINML_THROW_IF_FAILED_MSG(GetDXGIHardwareAdapterWithPreference(preference, spAdapter.put()), errStr);
     WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
   }
 #ifdef ENABLE_DXCORE
   if (support.has_dxgi == false) {
-    com_ptr<IDXCoreAdapter> spAdapter;
-    WINML_THROW_IF_FAILED_MSG(DeviceHelpers::GetDXCoreHardwareAdapterWithPreference(preference, spAdapter.put()), errStr);
+    winrt::com_ptr<IDXCoreAdapter> spAdapter;
+    WINML_THROW_IF_FAILED_MSG(GetDXCoreHardwareAdapterWithPreference(preference, spAdapter.put()), errStr);
     WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
   }
 #endif
@@ -72,29 +73,29 @@ D3DDeviceCache::D3DDeviceCache(Windows::AI::MachineLearning::LearningModelDevice
   device_luid_ = device_->GetAdapterLuid();
 }
 
-D3DDeviceCache::D3DDeviceCache(Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice const& device) {
+D3DDeviceCache::D3DDeviceCache(wgdx::Direct3D11::IDirect3DDevice const& device) {
   WINML_THROW_IF_FAILED(CoCreateGuid(&fence_guid_));
 
   // Use the 11 device to initialize 12
   winrt_device_ = device;
 
   // they told us which device to run on, crack the interop wrapper to get the dxgi device
-  com_ptr<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess> dxgi;
+  winrt::com_ptr<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess> dxgi;
   dxgi = device.as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
 
-  com_ptr<IDXGIDevice> dxgiDevice;
+  winrt::com_ptr<IDXGIDevice> dxgiDevice;
   WINML_THROW_IF_FAILED(dxgi->GetInterface(IID_PPV_ARGS(dxgiDevice.put())));
 
   device_11_ = dxgiDevice.as<ID3D11Device>();
 
-  com_ptr<ID3D11DeviceContext> spContext;
+  winrt::com_ptr<ID3D11DeviceContext> spContext;
   device_11_->GetImmediateContext(spContext.put());
   spContext.as(device_context11_);
 
-  com_ptr<IDXGIDevice> pDXGIDevice;
+  winrt::com_ptr<IDXGIDevice> pDXGIDevice;
   WINML_THROW_IF_FAILED(dxgi->GetInterface(IID_PPV_ARGS(pDXGIDevice.put())));
 
-  com_ptr<IDXGIAdapter> adapter;
+  winrt::com_ptr<IDXGIAdapter> adapter;
   WINML_THROW_IF_FAILED(pDXGIDevice->GetAdapter(adapter.put()));
 
   WINML_THROW_IF_FAILED(D3D12CreateDevice(adapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
@@ -151,7 +152,7 @@ ID3D11DeviceContext4* D3DDeviceCache::GetD3D11DeviceContext() {
   return device_context11_.get();
 }
 
-Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice D3DDeviceCache::GetWinrtDevice() {
+wgdx::Direct3D11::IDirect3DDevice D3DDeviceCache::GetWinrtDevice() {
   EnsureD3D11FromD3D12();
   return winrt_device_;
 }
@@ -184,19 +185,19 @@ void D3DDeviceCache::EnsureD3D11FromD3D12() {
   if (winrt_device_ != nullptr)
     return;
 
-  com_ptr<::IInspectable> spInspectable;
-  com_ptr<IDXGIDevice> spDXGIDevice;
+  winrt::com_ptr<::IInspectable> spInspectable;
+  winrt::com_ptr<IDXGIDevice> spDXGIDevice;
 
   // call our SEH version (for delay loading)
-  WINML_THROW_IF_FAILED(DeviceHelpers::CreateD3D11On12Device(device_.get(), device_11_.put()));
-  com_ptr<ID3D11DeviceContext> spContext;
+  WINML_THROW_IF_FAILED(CreateD3D11On12Device(device_.get(), device_11_.put()));
+  winrt::com_ptr<ID3D11DeviceContext> spContext;
   device_11_->GetImmediateContext(spContext.put());
   spContext.as(device_context11_);
 
   WINML_THROW_IF_FAILED(device_11_->QueryInterface(IID_PPV_ARGS(spDXGIDevice.put())));
   // Convert to Winrt wrapper. This doesn't actually make a new device.
   WINML_THROW_IF_FAILED(CreateDirect3D11DeviceFromDXGIDevice(spDXGIDevice.get(), spInspectable.put()));
-  WINML_THROW_IF_FAILED(spInspectable->QueryInterface(winrt::guid_of<Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice>(), reinterpret_cast<void**>(winrt::put_abi(winrt_device_))));
+  WINML_THROW_IF_FAILED(spInspectable->QueryInterface(winrt::guid_of<wgdx::Direct3D11::IDirect3DDevice>(), reinterpret_cast<void**>(winrt::put_abi(winrt_device_))));
 }
 
 void D3DDeviceCache::EnsureD3D12Fence() {
@@ -232,12 +233,12 @@ void D3DDeviceCache::EnsureSharedFences() {
   // ensure the d11 stack is alive, the 11 stack doesn't exist on WCOSHeadless yet, so be resilient
   EnsureD3D11FromD3D12();
 
-  com_ptr<ID3D12DeviceChild> spD3D12DeviceChild;
+  winrt::com_ptr<ID3D12DeviceChild> spD3D12DeviceChild;
   d3d12_fence_.as(spD3D12DeviceChild);
   HANDLE hSharedFence;
   WINML_THROW_IF_FAILED(device_->CreateSharedHandle(spD3D12DeviceChild.get(), NULL, GENERIC_ALL, nullptr, &hSharedFence));
 
-  com_ptr<ID3D11Device5> spD3D11Device5;
+  winrt::com_ptr<ID3D11Device5> spD3D11Device5;
   device_11_.as(spD3D11Device5);
   wil::unique_handle safe(hSharedFence);
   WINML_THROW_IF_FAILED(spD3D11Device5->OpenSharedFence(safe.get(), IID_PPV_ARGS(d3d11_fence_.put())));
@@ -295,7 +296,7 @@ void D3DDeviceCache::WaitForFenceValue(UINT64 fenceValue) {
 
 ID3D12RootSignature* D3DDeviceCache::GetTensorizeRootSignature() {
   if (tensorize_root_signature_ == nullptr) {
-    com_ptr<ID3D12RootSignature> newRootSignature;
+    winrt::com_ptr<ID3D12RootSignature> newRootSignature;
     D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
 
     // This is the highest version the sample supports. If CheckFeatureSupport succeeds, the HighestVersion returned will not be greater than this.
@@ -319,8 +320,8 @@ ID3D12RootSignature* D3DDeviceCache::GetTensorizeRootSignature() {
       CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
       computeRootSignatureDesc.Init_1_1(_countof(rootParameters), rootParameters, 0, nullptr);
 
-      com_ptr<ID3DBlob> signature;
-      com_ptr<ID3DBlob> error;
+      winrt::com_ptr<ID3DBlob> signature;
+      winrt::com_ptr<ID3DBlob> error;
       WINML_THROW_IF_FAILED(D3DX12SerializeVersionedRootSignature(&computeRootSignatureDesc, featureData.HighestVersion, signature.put(), error.put()));
       WINML_THROW_IF_FAILED(device_->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(newRootSignature.put())));
       newRootSignature->SetName(L"Tensorize Rootsignature");
@@ -340,7 +341,7 @@ ID3D12RootSignature* D3DDeviceCache::GetTensorizeRootSignature() {
 
 ID3D12RootSignature* D3DDeviceCache::GetDetensorizeRootSignature() {
   if (detensorize_root_signature_ == nullptr) {
-    com_ptr<ID3D12RootSignature> newRootSignature;
+    winrt::com_ptr<ID3D12RootSignature> newRootSignature;
     D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
 
     // This is the highest version the sample supports. If CheckFeatureSupport succeeds, the HighestVersion returned will not be greater than this.
@@ -364,8 +365,8 @@ ID3D12RootSignature* D3DDeviceCache::GetDetensorizeRootSignature() {
       CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
       rootSignatureDesc.Init_1_1(_countof(rootParameters), rootParameters, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-      com_ptr<ID3DBlob> signature;
-      com_ptr<ID3DBlob> error;
+      winrt::com_ptr<ID3DBlob> signature;
+      winrt::com_ptr<ID3DBlob> error;
       WINML_THROW_IF_FAILED(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, featureData.HighestVersion, signature.put(), error.put()));
       WINML_THROW_IF_FAILED(device_->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(newRootSignature.put())));
       newRootSignature->SetName(L"Detensorize Rootsignature");
@@ -385,7 +386,7 @@ ID3D12RootSignature* D3DDeviceCache::GetDetensorizeRootSignature() {
 
 ID3D12PipelineState* D3DDeviceCache::GetCachedPipelineState(PipelineStateCacheType type, PipelineStateCacheFormat formatFrom, PipelineStateCacheFormat formatTo, PipelineStateCacheOperation operation) {
   if (cached_pipeline_state[static_cast<int>(type)][static_cast<int>(formatFrom)][static_cast<int>(formatTo)][static_cast<int>(operation)] == nullptr) {
-    com_ptr<ID3D12PipelineState> newPSO;
+    winrt::com_ptr<ID3D12PipelineState> newPSO;
     if (operation == PipelineStateCacheOperation::kTensorize) {
       newPSO.attach(CreateTensorizePipelineState(type, formatFrom, formatTo));
     } else {
@@ -475,7 +476,7 @@ ID3D12PipelineState* D3DDeviceCache::CreateTensorizePipelineState(PipelineStateC
   computePsoDesc.pRootSignature = GetTensorizeRootSignature();
   computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(shaderBytecode, static_cast<size_t>(shaderBytecodeSize));
 
-  com_ptr<ID3D12PipelineState> pipelineState;
+  winrt::com_ptr<ID3D12PipelineState> pipelineState;
   WINML_THROW_IF_FAILED(device_->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(pipelineState.put())));
 
   return pipelineState.detach();
@@ -568,7 +569,7 @@ ID3D12PipelineState* D3DDeviceCache::CreateDetensorizePipelineState(PipelineStat
   computePsoDesc.pRootSignature = GetDetensorizeRootSignature();
   computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(shaderBytecode, static_cast<size_t>(shaderBytecodeSize));
 
-  com_ptr<ID3D12PipelineState> pipelineState;
+  winrt::com_ptr<ID3D12PipelineState> pipelineState;
   WINML_THROW_IF_FAILED(device_->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(pipelineState.put())));
 
   return pipelineState.detach();
@@ -576,7 +577,7 @@ ID3D12PipelineState* D3DDeviceCache::CreateDetensorizePipelineState(PipelineStat
 
 ID3D12Resource* D3DDeviceCache::GetDetensorizeVertexBuffer(_Out_ UINT* vertexBufferSize) {
   if (detensorize_vertex_buffer_ == nullptr) {
-    com_ptr<ID3D12Resource> newResource;
+    winrt::com_ptr<ID3D12Resource> newResource;
     // Create the vertex buffer.
     // 2 triangles for full screen
     DirectX::XMFLOAT3 triangleVertices[] =
@@ -672,4 +673,3 @@ void D3DDeviceCache::SyncD3D11DeviceToConverter(_In_ ID3D11Fence* pD3D11Fence) {
 bool D3DDeviceCache::SharedHandleInitialized() {
   return d3d11_fence_ != nullptr;
 }
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
