@@ -361,8 +361,8 @@
 |ConvTransposeWithDynamicPads|(*in* X:**T**, *in* W:**T**, *in* Pads:**tensor(int64)**, *in* B:**T**, *out* Y:**T**)|1+|**T** = tensor(float)|
 |CropAndResize|(*in* X:**T1**, *in* rois:**T1**, *in* batch_indices:**T2**, *in* crop_size:**T2**, *out* Y:**T1**)|1+|**T** = tensor(float)|
 | | ||**T2** = tensor(int32)|
-|DequantizeLinear|(*in* x:**T2**, *in* x_scale:**T1**, *in* x_zero_point:**T2**, *out* y:**T1**)|1+|**T1** = tensor(float)|
-| | ||**T2** = tensor(int8), tensor(uint8)|
+|DequantizeLinear|(*in* x:**T1**, *in* x_scale:**T2**, *in* x_zero_point:**T1**, *out* y:**T2**)|1+|**T1** = tensor(int8), tensor(uint8)|
+| | ||**T2** = tensor(float)|
 |EmbedLayerNormalization|(*in* input_ids:**T1**, *in* segment_ids:**T1**, *in* word_embedding:**T**, *in* position_embedding:**T**, *in* segment_embedding:**T**, *in* gamma:**T**, *in* beta:**T**, *in* mask:**T1**, *out* output:**T**, *out* mask_index:**T1**)|1+|**T** = tensor(float)|
 |ExpandDims|(*in* X:**T**, *in* axis:**tensor(int32)**, *out* Y:**T**)|1+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 | | ||**axis** = tensor(int32)|
@@ -380,7 +380,7 @@
 | | ||**T2** = tensor(int32), tensor(uint32)|
 |Pad|(*in* data:**T**, *in* pads:**tensor(int64)**, *in* value:**T**, *out* output:**T**)|1+|**T** = tensor(float)|
 |QuantizeLinear|(*in* x:**T1**, *in* y_scale:**T1**, *in* y_zero_point:**T2**, *out* y:**T2**)|1+|**T1** = tensor(float)|
-| | ||**T2** = tensor(uint8)|
+| | ||**T2** = tensor(int8), tensor(uint8)|
 |Range|(*in* start:**T**, *in* limit:**T**, *in* delta:**T**, *out* Y:**T**)|1+|**T** = tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64)|
 |SampleOp|(*in* X:**T**, *out* Y:**T**)|1+|**T** = tensor(float)|
 |SkipLayerNormalization|(*in* input:**T**, *in* skip:**T**, *in* gamma:**T**, *in* beta:**T**, *in* bias:**T**, *out* output:**T**, *out* mean:**U**, *out* inv_std_var:**U**)|1+|**T** = tensor(double), tensor(float)|
@@ -422,16 +422,8 @@
 | | ||**T** = tensor(double), tensor(float), tensor(float16)|
 | | |[7, 9]|**I** = tensor(int64)|
 | | ||**T** = tensor(double), tensor(float), tensor(float16)|
-|BatchNormalization|(*in* X:**T**, *in* scale:**T**, *in* B:**T**, *in* mean:**T**, *in* var:**T**, *in* training_mode:**T1**, *out* Y:**T**, *out* output_mean:**T**, *out* output_var:**T**, *out* saved_mean:**T**, *out* saved_var:**T**) or (*in* X:**T**, *in* scale:**T**, *in* B:**T**, *in* mean:**T**, *in* var:**T**, *out* Y:**T**, *out* mean:**T**, *out* var:**T**, *out* saved_mean:**T**, *out* saved_var:**T**)|9+|**B** = tensor(double), tensor(float), tensor(float16)|
-| | ||**X** = tensor(double), tensor(float), tensor(float16)|
-| | ||**mean** = tensor(double), tensor(float), tensor(float16)|
-| | ||**scale** = tensor(double), tensor(float), tensor(float16)|
-| | ||**var** = tensor(double), tensor(float), tensor(float16)|
-| | |[7, 8]|**B** = tensor(double), tensor(float), tensor(float16)|
-| | ||**X** = tensor(double), tensor(float), tensor(float16)|
-| | ||**mean** = tensor(double), tensor(float), tensor(float16)|
-| | ||**scale** = tensor(double), tensor(float), tensor(float16)|
-| | ||**var** = tensor(double), tensor(float), tensor(float16)|
+|BatchNormalization|(*in* X:**T**, *in* scale:**T**, *in* B:**T**, *in* mean:**T**, *in* var:**T**, *in* training_mode:**T1**, *out* Y:**T**, *out* output_mean:**T**, *out* output_var:**T**, *out* saved_mean:**T**, *out* saved_var:**T**) or (*in* X:**T**, *in* scale:**T**, *in* B:**T**, *in* mean:**T**, *in* var:**T**, *out* Y:**T**, *out* mean:**T**, *out* var:**T**, *out* saved_mean:**T**, *out* saved_var:**T**)|9+|**T** = tensor(double), tensor(float), tensor(float16)|
+| | |[7, 8]|**T** = tensor(double), tensor(float), tensor(float16)|
 |Cast|(*in* input:**T1**, *out* output:**T2**)|9+|**T1** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 | | ||**T2** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 | | |[6, 8]|**T1** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -642,10 +634,14 @@
 |Attention|(*in* input:**T**, *in* weight:**T**, *in* bias:**T**, *in* mask_index:**M**, *out* output:**T**)|1+|**T** = tensor(float), tensor(float16)|
 |BiasGelu|(*in* A:**T**, *in* B:**T**, *out* C:**T**)|1+|**T** = tensor(double), tensor(float), tensor(float16)|
 |ConvTransposeWithDynamicPads|(*in* X:**T**, *in* W:**T**, *in* Pads:**tensor(int64)**, *in* B:**T**, *out* Y:**T**)|1+|**T** = tensor(float)|
+|DequantizeLinear|(*in* x:**T1**, *in* x_scale:**T2**, *in* x_zero_point:**T1**, *out* y:**T2**)|1+|**T1** = tensor(int8), tensor(uint8)|
+| | ||**T2** = tensor(float16)|
 |EmbedLayerNormalization|(*in* input_ids:**T1**, *in* segment_ids:**T1**, *in* word_embedding:**T**, *in* position_embedding:**T**, *in* segment_embedding:**T**, *in* gamma:**T**, *in* beta:**T**, *in* mask:**T1**, *out* output:**T**, *out* mask_index:**T1**)|1+|**T** = tensor(float), tensor(float16)|
 |FastGelu|(*in* X:**T**, *in* bias:**T**, *out* Y:**T**)|1+|**T** = tensor(float), tensor(float16)|
 |Gelu|(*in* X:**T**, *out* Y:**T**)|1+|**T** = tensor(double), tensor(float), tensor(float16)|
 |Irfft|(*in* X:**T**, *out* Y:**T**)|1+|**T** = tensor(double), tensor(float), tensor(float16)|
+|QuantizeLinear|(*in* x:**T1**, *in* y_scale:**T1**, *in* y_zero_point:**T2**, *out* y:**T2**)|1+|**T1** = tensor(float16)|
+| | ||**T2** = tensor(int8), tensor(uint8)|
 |Rfft|(*in* X:**T**, *out* Y:**T**)|1+|**T** = tensor(double), tensor(float), tensor(float16)|
 |SkipLayerNormalization|(*in* input:**T**, *in* skip:**T**, *in* gamma:**T**, *in* beta:**T**, *in* bias:**T**, *out* output:**T**, *out* mean:**U**, *out* inv_std_var:**U**)|1+|**T** = tensor(float), tensor(float16)|
 | |

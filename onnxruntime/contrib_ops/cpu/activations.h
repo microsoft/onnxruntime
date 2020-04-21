@@ -40,35 +40,20 @@ class Gelu : public OpKernel {
     const auto* X = context->Input<Tensor>(0);
     Tensor* Y = context->Output(0, X->Shape());
     concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
-    if (nullptr != tp) {
-      const T* input = X->template Data<T>();
-      T* output = Y->template MutableData<T>();
-      int task_count = tp->NumThreads();
-      int64_t elem_count = X->Shape().Size();
-      if (elem_count > task_count) {
-        tp->SimpleParallelFor(task_count, [input,
-                                     output,
-                                     elem_count,
-                                     task_count](std::ptrdiff_t i) {
-          int64_t elem_inx_start = i * elem_count / task_count;
-          int64_t elem_inx_end = (i + 1) * elem_count / task_count;
-          for (int64_t elem_inx = elem_inx_start; elem_inx < elem_inx_end; elem_inx++) {
-            output[elem_inx] = input[elem_inx] * static_cast<float>(M_SQRT1_2);
-          }
-          MlasComputeErf(output + elem_inx_start, output + elem_inx_start, elem_inx_end - elem_inx_start);
-          for (int64_t elem_inx = elem_inx_start; elem_inx < elem_inx_end; elem_inx++) {
-            output[elem_inx] = 0.5f * input[elem_inx] * (output[elem_inx] + 1.0f);
-          }
-        });
-        return Status::OK();
-      }
-    }
-
-    EIGEN_X_VAR(xm);
-    EIGEN_Y_VAR(ym);
-    ym = xm * static_cast<float>(M_SQRT1_2);
-    MlasComputeErf(Y->template MutableData<T>(), Y->template MutableData<T>(), X->Shape().Size());
-    ym = xm * 0.5f * (ym + 1.0f);
+    const int64_t input_size = X->Shape().Size();
+    std::ptrdiff_t batch_size = static_cast<std::ptrdiff_t>(input_size);
+    //The cost comes from microbenchmark(manual tunning).
+    const double cost = 10.0;
+    const T* data = X->template Data<T>();
+    T* output = Y->template MutableData<T>();
+    concurrency::ThreadPool::TryParallelFor(tp, batch_size, cost, [data, output](ptrdiff_t first, ptrdiff_t last) {
+      ptrdiff_t len = last - first;
+      onnxruntime::ConstEigenVectorArrayMap<T> xm(data + first, len);
+      onnxruntime::EigenVectorArrayMap<T> ym(output + first, len);
+      ym = xm * static_cast<float>(M_SQRT1_2);
+      MlasComputeErf(output, output, len);
+      ym = xm * 0.5f * (ym + 1.0f);
+    });
     return Status::OK();
   }
 };

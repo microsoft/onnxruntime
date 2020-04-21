@@ -63,7 +63,7 @@ D3DDeviceCache::D3DDeviceCache(winml::LearningModelDeviceKind const& deviceKind)
   }
 #ifdef ENABLE_DXCORE
   if (support.has_dxgi == false) {
-    com_ptr<IDXCoreAdapter> spAdapter;
+    winrt::com_ptr<IDXCoreAdapter> spAdapter;
     WINML_THROW_IF_FAILED_MSG(GetDXCoreHardwareAdapterWithPreference(preference, spAdapter.put()), errStr);
     WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
   }

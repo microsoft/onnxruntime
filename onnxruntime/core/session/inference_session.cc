@@ -183,7 +183,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                              session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
                              to.affinity_vec_len == 0;
       thread_pool_ =
-          concurrency::CreateThreadPool(&Env::Default(), to, nullptr);
+          concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP, nullptr);
     }
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
       OrtThreadPoolParams to = session_options_.inter_op_param;
@@ -194,7 +194,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       if (to.name == nullptr)
         to.name = ORT_TSTR("intra-op");
       inter_op_thread_pool_ =
-          concurrency::CreateThreadPool(&Env::Default(), to, nullptr);
+          concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP, nullptr);
       if (inter_op_thread_pool_ == nullptr) {
         LOGS(*session_logger_, INFO) << "Failed to create the inter-op thread pool for the parallel executor, setting ExecutionMode to SEQUENTIAL";
         session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
