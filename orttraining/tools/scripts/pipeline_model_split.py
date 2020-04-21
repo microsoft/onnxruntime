@@ -50,13 +50,13 @@ def split_graph(model, split_edge_groups):
                         if info.name == id:
                             output_shapes.append(info.type)
 
-        send_signal = model.graph.input.add()
-        send_signal.CopyFrom(helper.make_tensor_value_info(
-            'send_input_signal' + str(cut_index), onnx.TensorProto.BOOL, None))
+        send_signal = helper.make_tensor(
+            'send_input_signal' + str(cut_index), TensorProto.BOOL, (), (True,))
+        model.graph.initializer.extend([send_signal])
 
-        recv_signal = model.graph.input.add()
-        recv_signal.CopyFrom(helper.make_tensor_value_info(
-            'recv_input_signal' + str(cut_index), onnx.TensorProto.BOOL, None))
+        recv_signal = helper.make_tensor(
+            'recv_input_signal' + str(cut_index), TensorProto.BOOL, (), (True,))
+        model.graph.initializer.extend([recv_signal])
 
         send_dst_rank = helper.make_tensor(
             'send_dst_rank' + str(cut_index), TensorProto.INT64, (), (cut_index + 1,))
