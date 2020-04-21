@@ -73,13 +73,13 @@ Right now, this tool assumes input model has 3 inputs for input IDs, segment IDs
 
 Most optimizations require exact match of a subgraph. That means this tool could only support similar models with such subgraphs. Any layout change in subgraph might cause optimization not working. Note that different training or export tool (including different versions) might get different graph layouts.
 
-Here is list of models that have been tested using this tool:
+Here is list of models from [Huggingface Transformers](https://github.com/huggingface/transformers/) that have been tested using this tool:
 - **BertForSequenceClassification** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_glue.py) exported by PyTorch 1.2-1.4 using opset version 10 or 11.
 - **BertForQuestionAnswering** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_squad.py) exported by PyTorch 1.2-1.4 using opset version 10 or 11.
 - **TFBertForSequenceClassification** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_tf_glue.py) exported by keras2onnx installed from its master source.
-- **TFBertForQuestionAnswering** as in [transformers](https://github.com/huggingface/transformers/) exported by keras2onnx installed from its master source.
-- **GPT2Model** as in [transformers](https://github.com/huggingface/transformers/) exported by PyTorch 1.4 using opset version 10 or 11.
-
+- **TFBertForQuestionAnswering** exported by keras2onnx installed from its master source.
+- **GPT2Model** exported by PyTorch 1.4 using opset version 10 or 11.
+- **GPT2LMHeadModel** exported by PyTorch 1.4 using opset version 10 or 11.
 If your model is not in the list, the optimized model might not work. You are welcome to update the scripts to support new models.
 
 ## Model Verification
@@ -99,11 +99,9 @@ pip install onnxruntime-gpu
 python compare_bert_results.py --baseline_model original_model.onnx --optimized_model optimized_model_gpu.onnx --batch_size 1 --sequence_length 128 --samples 100 --use_gpu
 ```
 
-To use onnxruntime-gpu 1.1.*, it is required to install CUDA and cuDNN and add their bin directories to PATH environment variable.
+To use onnxruntime-gpu, it is required to install CUDA and cuDNN and add their bin directories to PATH environment variable.
 
-## Performance Test
-
-The script for model verification will create a sub-directory like batch_1_seq_128 on the directory of optimized model. You can copy the original or optimized model to the sub-directory, and use onnxruntime_perf_test.exe to test performance of C API.
+## Performance Test (Python)
 
 bert_perf_test.py can be used to check the model inference performance of python API. Below are examples:
 
@@ -118,3 +116,19 @@ python bert_perf_test.py --model optimized_model_gpu.onnx --batch_size 1 --seque
 
 After test is finished, a file like perf_results_CPU_B1_S128_<date_time>.txt or perf_results_GPU_B1_S128_<date_time>.txt will be output to the model directory.
 
+## Performance Test (C API)
+
+First, we need generate some test data. Please make sure there is no sub-directories on the directory of onnx model.
+
+Here is an example:
+```console
+python bert_test_data.py --model bert.onnx --batch_size 1 --sequence_length 32 --samples 100 --output_dir .
+```
+
+You can go to root of this git repository, and build onnxruntime_perf_test.exe from source to test performance of C API. Example commands in Windows:
+```console
+build.bat --config RelWithDebInfo --enable_lto --use_openmp --build_shared_lib --parallel --cmake_generator "Visual Studio 16 2019"
+Set OMP_NUM_THREADS=%NUMBER_OF_PROCESSORS%
+Set OMP_WAIT_POLICY=PASSIVE
+build\Windows\RelWithDebInfo\RelWithDebInfo\onnxruntime_perf_test.exe -e cpu -r 100 -s -o 2 bert.onnx output.txt
+```
