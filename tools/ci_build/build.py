@@ -307,7 +307,6 @@ def parse_arguments():
         "--use_acl", nargs="?", const="ACL_1905",
         choices=["ACL_1902", "ACL_1905", "ACL_1908"],
         help="Build with ACL for ARM architectures.")
->>>>>>> origin/master
     return parser.parse_args()
 
 
