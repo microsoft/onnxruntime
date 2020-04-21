@@ -164,13 +164,6 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
   const int64_t num_blocks = input_shape[axis_parsed];
   const int64_t block_slice = reduced_cols / k;
 
-  // if we don't have enough input we can't produce enough output.
-  // TODO: Is this permissible? If so the output shape must also allow for less than k entries and the
-  // ONNX shape inferencing needs updating.
-  // Both the priority queue and SelectTopK paths below would need updating to handle this scenario unless
-  // we set k to num_blocks and have garbage output for the missing slots.
-  ORT_ENFORCE(num_blocks >= k, "Less than k values in axis. k=", k, " axis=", axis_parsed, " values=", num_blocks);
-
   int64_t tp_threads = threadpool != nullptr ? threadpool->NumThreads() : 1;
   int64_t num_threads = std::min(tp_threads, rows);  // split on rows so can't have more threads than rows
 
