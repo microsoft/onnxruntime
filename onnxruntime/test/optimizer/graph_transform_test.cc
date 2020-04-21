@@ -45,6 +45,7 @@
 #include "core/util/math.h"
 #include "test/capturing_sink.h"
 #include "test/framework/test_utils.h"
+#include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
 #include "asserts.h"
@@ -57,15 +58,6 @@ namespace onnxruntime {
 namespace test {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
-
-class GraphTransformationTests : public ::testing::Test {
- protected:
-  GraphTransformationTests() {
-    logger_ = DefaultLoggingManager().CreateLogger("GraphTransformationTests");
-  }
-
-  std::unique_ptr<logging::Logger> logger_;
-};
 
 TEST_F(GraphTransformationTests, IdentityElimination) {
   auto model_uri = MODEL_FOLDER "abs-id-max.onnx";
