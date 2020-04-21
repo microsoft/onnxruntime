@@ -1,6 +1,5 @@
 parameters:
   DoEsrp: 'false'
-  PackageName: 'Microsoft.AI.MachineLearning'
 
 jobs:
 - job: WindowsAI_DirectML_X64
