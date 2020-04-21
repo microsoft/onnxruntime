@@ -147,12 +147,12 @@ Status TrainingSession::ConfigureForTraining(
     ORT_ENFORCE(
         !loss_scale_input_name.has_value() || !loss_scale_input_name.value().empty(),
         "loss_scale_input_name should not be set to an empty string.");
-  }
 
-  if (is_mixed_precision_enabled_) {
-    TrainingConfigurationResult::MixedPrecisionConfigurationResult mp_result{};
-    mp_result.loss_scale_input_name = loss_scale_input_name.value();
-    config_result.mixed_precision_config_result = mp_result;
+    if (is_mixed_precision_enabled_) {
+      TrainingConfigurationResult::MixedPrecisionConfigurationResult mp_result{};
+      mp_result.loss_scale_input_name = loss_scale_input_name.value();
+      config_result.mixed_precision_config_result = mp_result;
+    }
   }
 
   if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
