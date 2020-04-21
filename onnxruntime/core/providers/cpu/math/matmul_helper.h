@@ -9,7 +9,8 @@ namespace onnxruntime {
 
 class MatMulComputeHelper {
  public:
-  Status Compute(const TensorShape& left_shape, const TensorShape& right_shape) {
+  Status Compute(const TensorShape& left_shape, const TensorShape& right_shape,
+                 bool transa = false, bool transb = false) {
     // Following numpy.matmul for shape inference:
     // https://docs.scipy.org/doc/numpy/reference/generated/numpy.matmul.html
     // The behavior depends on the arguments in the following way.
@@ -22,20 +23,25 @@ class MatMulComputeHelper {
     size_t right_num_dims = right_shape.NumDimensions();
     ORT_RETURN_IF_NOT(left_num_dims >= 1 && right_num_dims >= 1);
 
-    // special case for right_shape being 2D and left_shape > 2D by flattening left_shape to 2D
-    // note that padding 1s in front of the right shape can be flattened too
-    if (left_num_dims >= 2 && right_num_dims >= 2 &&
+    // Special cases below for right_shape being 2D and left_shape > 2D by flattening left_shape to 2D
+    // Note that padding 1s in front of the right_shape can be flattened too
+    // A: [M1, M2, ... K], B: [K, N]
+    // A: [M1, M2, ... K], B: [N, K]^T
+    // A: [M1, M2, ... K], B: [1, ..., 1, K, N]
+    // A: [M1, M2, ... K], B: [1, ..., 1, N, K]^T
+    if (!transa && left_num_dims >= 2 && right_num_dims >= 2 &&
         right_shape.SizeToDimension(right_num_dims - 1) == right_shape[right_num_dims - 2]) {
       M_ = left_shape.SizeToDimension(left_num_dims - 1);
       K_ = left_shape[left_num_dims - 1];
-      N_ = right_shape[right_num_dims - 1];
+      N_ = transb ? right_shape[right_num_dims - 2] : right_shape[right_num_dims - 1];
       output_shape_ = left_shape;
       output_shape_[left_num_dims - 1] = N_;
       output_offsets_ = {0};
       left_offsets_ = {0};
       right_offsets_ = {0};
-      ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2],
-                        "MatMul dimension mismatch, Left:", left_shape, " Right:", right_shape);
+      ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2] ||
+                            transb && K_ == right_shape[right_num_dims - 1],
+                        "MatMul dimension mismatch");
       return Status::OK();
     }
 
@@ -58,8 +64,9 @@ class MatMulComputeHelper {
 
       if (num_input_dims >= 2) {
         // left padded to (...,1,K)
-        left_shape.CopyDims(&left_padded_dims_[0], left_num_dims - 1);
-        left_padded_dims_[num_dims_with_pad - 1] = left_shape[left_num_dims - 1];
+        left_shape.CopyDims(&left_padded_dims_[0], left_num_dims - 2);
+        left_padded_dims_[num_dims_with_pad - 3] = left_shape[transa ? left_num_dims - 1 : left_num_dims - 2];
+        left_padded_dims_[num_dims_with_pad - 1] = left_shape[transa ? left_num_dims - 2 : left_num_dims - 1];
       } else {
         // pad 1 in the front
         left_shape.CopyDims(&left_padded_dims_[num_dims_with_pad - left_num_dims], left_num_dims);
@@ -83,12 +90,22 @@ class MatMulComputeHelper {
         ORT_RETURN_IF_NOT(right_padded_dims_[idx_dim] == 1, "right operand cannot broadcast on dim ", idx_dim);
     }
 
-    M_ = has_1D_input ? 1 : left_shape[left_num_dims - 2];
-    K_ = left_shape[left_num_dims - 1];
-    N_ = (right_num_dims == 1) ? 1 : right_shape[right_num_dims - 1];
+    if (transa) {
+      M_ = has_1D_input ? 1 : left_shape[left_num_dims - 1];
+      K_ = left_shape[left_num_dims - 2];
+    } else {
+      M_ = has_1D_input ? 1 : left_shape[left_num_dims - 2];
+      K_ = left_shape[left_num_dims - 1];
+    }
+
+    if (transb) {
+      N_ = (right_num_dims == 1) ? 1 : right_shape[right_num_dims - 2];
+    } else {
+      N_ = (right_num_dims == 1) ? 1 : right_shape[right_num_dims - 1];
+    }
 
     if (!has_1D_input) {
-      ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2], "MatMul dimension mismatch");
+      ORT_RETURN_IF_NOT(K_ == right_shape[transb ? right_num_dims - 1 : right_num_dims - 2], "MatMul dimension mismatch");
       // left (...M x K), right (...K x N), output (...M x N)
       ORT_RETURN_IF_NOT(num_dims_with_pad == num_output_dims);
       output_dims[num_output_dims - 2] = M_;
@@ -100,7 +117,7 @@ class MatMulComputeHelper {
       } else {
         if (left_num_dims == 1) {
           ORT_RETURN_IF_NOT(num_dims_with_pad - 1 == num_output_dims);
-          ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2], "MatMul dimension mismatch");
+          ORT_RETURN_IF_NOT(K_ == right_shape[transb ? right_num_dims - 1 : right_num_dims - 2], "MatMul dimension mismatch");
           // left (K), right (...K,N), output (...N)
           output_dims[num_output_dims - 1] = N_;
         } else {

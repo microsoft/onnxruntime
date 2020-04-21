@@ -8,8 +8,7 @@
 #include <unordered_map>
 #include <vector>
 #include "gsl/gsl"
-
-#include "core/platform/ort_mutex.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
@@ -26,6 +25,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/platform/threadpool.h"
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 

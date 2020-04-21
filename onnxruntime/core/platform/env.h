@@ -33,7 +33,9 @@ limitations under the License.
 #include <sys/types.h>
 #include <unistd.h>
 #endif
-
+namespace Eigen {
+class ThreadPoolInterface;
+}
 namespace onnxruntime {
 
 #ifdef _WIN32
@@ -44,6 +46,26 @@ using PIDType = pid_t;
 using FileOffsetType = off_t;
 #endif
 
+class EnvThread {
+ public:
+  virtual void OnCancel() = 0;
+  virtual ~EnvThread() = default;
+};
+
+// Parameters that are required to create a set of threads for a thread pool
+struct ThreadOptions {
+  // Stack size for a new thread. If it is 0, the operating system uses the same value as the stack that's specified for
+  // the main thread, which is usually set in the main executable(not controlled by onnxruntime.dll).
+  unsigned int stack_size = 0;
+
+  // Thread affinity means a thread can only run on the logical processors that the thread is allowed to run on.
+  // If the vector is not empty, set the affinity of each thread to just one CPU.
+  // Index is thread index, value is CPU ID, starting from zero. For example, the first thread in the pool will be bound
+  // to the logical processor with id of affinity[0]. If the vector is empty, the thread can run on all the processors
+  // its process can run on. NOTE: When hyperthreading is enabled, for example, on a 4 cores 8 physical threads CPU,
+  // processor group [0,1,2,3] may only contain half of the physical cores.
+  std::vector<size_t> affinity;
+};
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.
 ///
@@ -54,7 +76,31 @@ using FileOffsetType = off_t;
 /// multiple threads without any external synchronization.
 class Env {
  public:
+  struct Task {
+    std::function<void()> f;
+  };
+  using EnvThread = onnxruntime::EnvThread;
   virtual ~Env() = default;
+  // clang-format off
+  /**
+   * Start a new thread for a thread pool
+   * \param name_prefix A human-readable string for debugging purpose, can be NULL
+   * \param index The index value of the thread, for each thread pool instance, the index should start from 0 and be continuous.
+   * \param start_address The entry point of thread
+   * \param threadpool The thread pool that the new thread belongs to
+   * \param thread_options options to create the thread
+   *
+   * Caller is responsible for deleting the returned value
+   */
+  // clang-format on
+  virtual EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
+                                  _In_ unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
+                                  Eigen::ThreadPoolInterface* threadpool, const ThreadOptions& thread_options) = 0;
+  virtual Task CreateTask(std::function<void()> f) = 0;
+  /**
+   * Execute the task 't' in current thread
+   */
+  virtual void ExecuteTask(const Task& t) = 0;
 
   /// \brief Returns a default environment suitable for the current operating
   /// system.
@@ -63,15 +109,19 @@ class Env {
   /// implementation instead of relying on this default environment.
   ///
   /// The result of Default() belongs to this library and must never be deleted.
-  static const Env& Default();
+  static Env& Default();
 
   virtual int GetNumCpuCores() const = 0;
 
   /// \brief Returns the number of micro-seconds since the Unix epoch.
-  virtual uint64_t NowMicros() const { return env_time_->NowMicros(); }
+  virtual uint64_t NowMicros() const {
+    return env_time_->NowMicros();
+  }
 
   /// \brief Returns the number of seconds since the Unix epoch.
-  virtual uint64_t NowSeconds() const { return env_time_->NowSeconds(); }
+  virtual uint64_t NowSeconds() const {
+    return env_time_->NowSeconds();
+  }
 
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
   /// On Windows, it's the min time to sleep, not the actual one.
@@ -80,8 +130,7 @@ class Env {
   /**
    * Gets the length of the specified file.
    */
-  virtual common::Status GetFileLength(
-      const ORTCHAR_T* file_path, size_t& length) const = 0;
+  virtual common::Status GetFileLength(_In_z_ const ORTCHAR_T* file_path, size_t& length) const = 0;
 
   /**
    * Copies the content of the file into the provided buffer.
@@ -90,9 +139,8 @@ class Env {
    * @param length The length in bytes to read.
    * @param buffer The buffer in which to write.
    */
-  virtual common::Status ReadFileIntoBuffer(
-      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
-      gsl::span<char> buffer) const = 0;
+  virtual common::Status ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+                                            gsl::span<char> buffer) const = 0;
 
   using MappedMemoryPtr = std::unique_ptr<char[], OrtCallbackInvoker>;
 
@@ -106,23 +154,22 @@ class Env {
    * @param[out] mapped_memory A smart pointer to the mapped memory which
    *             unmaps the memory (unless release()'d) when destroyed.
    */
-  virtual common::Status MapFileIntoMemory(
-      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
-      MappedMemoryPtr& mapped_memory) const = 0;
+  virtual common::Status MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+                                           MappedMemoryPtr& mapped_memory) const = 0;
 
 #ifdef _WIN32
-  //Mainly for use with protobuf library
+  // Mainly for use with protobuf library
   virtual common::Status FileOpenRd(const std::wstring& path, /*out*/ int& fd) const = 0;
-  //Mainly for use with protobuf library
+  // Mainly for use with protobuf library
   virtual common::Status FileOpenWr(const std::wstring& path, /*out*/ int& fd) const = 0;
 #endif
-  //Mainly for use with protobuf library
+  // Mainly for use with protobuf library
   virtual common::Status FileOpenRd(const std::string& path, /*out*/ int& fd) const = 0;
-  //Mainly for use with protobuf library
+  // Mainly for use with protobuf library
   virtual common::Status FileOpenWr(const std::string& path, /*out*/ int& fd) const = 0;
-  //Mainly for use with protobuf library
+  // Mainly for use with protobuf library
   virtual common::Status FileClose(int fd) const = 0;
-  //This functions is always successful. It can't fail.
+  // This functions is always successful. It can't fail.
   virtual PIDType GetSelfPid() const = 0;
 
   // \brief Load a dynamic library.

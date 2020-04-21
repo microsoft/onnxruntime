@@ -12,8 +12,8 @@
 #include "core/common/common.h"
 #include "core/platform/env.h"
 #include "core/platform/ort_mutex.h"
+#include "core/platform/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/path_lib.h"
 #include "core/framework/allocator.h"
 #include "re2/re2.h"
 #include <sstream>
@@ -394,7 +394,7 @@ class OnnxTestCase : public ITestCase {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTestCase);
 
  public:
-  OnnxTestCase(const std::string& test_case_name, TestModelInfo* model, double default_per_sample_tolerance,
+  OnnxTestCase(const std::string& test_case_name, _In_ TestModelInfo* model, double default_per_sample_tolerance,
                double default_relative_per_sample_tolerance);
   ~OnnxTestCase() override { delete model_info_; }
   Status GetPerSampleTolerance(double* value) override;

@@ -11,10 +11,10 @@
 namespace onnxruntime {
 namespace test {
 TEST(AllocatorTest, CUDAAllocatorTest) {
-  int cuda_device_id = 0;
+  OrtDevice::DeviceId cuda_device_id = 0;
   DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault,
-       [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); },
+       [](OrtDevice::DeviceId id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); },
        std::numeric_limits<size_t>::max()});
 
   auto cuda_arena = CreateAllocator(default_memory_info, cuda_device_id);
@@ -32,7 +32,7 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
 
   DeviceAllocatorRegistrationInfo pinned_memory_info(
       {OrtMemTypeCPUOutput,
-       [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(0, CUDA_PINNED); },
+       [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(static_cast<OrtDevice::DeviceId>(0), CUDA_PINNED); },
        std::numeric_limits<size_t>::max()});
 
   auto pinned_allocator = CreateAllocator(pinned_memory_info);
@@ -75,7 +75,7 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
 
 // test that we fallback to smaller allocations if the growth of the arena exceeds the available memory
 TEST(AllocatorTest, CUDAAllocatorFallbackTest) {
-  int cuda_device_id = 0;
+  OrtDevice::DeviceId cuda_device_id = 0;
 
   size_t free = 0;
   size_t total = 0;
@@ -88,7 +88,7 @@ TEST(AllocatorTest, CUDAAllocatorFallbackTest) {
 
   DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault,
-       [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); },
+       [](OrtDevice::DeviceId id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); },
        std::numeric_limits<size_t>::max()});
 
   auto cuda_arena = CreateAllocator(default_memory_info, cuda_device_id);

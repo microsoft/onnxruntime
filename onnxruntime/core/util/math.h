@@ -88,10 +88,10 @@ void Gemm(
     int64_t M,
     int64_t N,
     int64_t K,
-    float alpha,
+    T alpha,
     const T* A,
     const T* B,
-    float beta,
+    T beta,
     T* C,
     Provider*);
 

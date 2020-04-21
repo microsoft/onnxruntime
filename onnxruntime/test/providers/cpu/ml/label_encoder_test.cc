@@ -168,5 +168,26 @@ TEST(LabelEncoder, Int64ToFloatOpset2) {
   test.Run();
 }
 
+TEST(LabelEncoder, Int64ToInt64Opset2) {
+  std::vector<std::int64_t> dims{5};
+
+  std::vector<std::int64_t> input{3, 5, 9, -8, -8};
+  std::vector<std::int64_t> output{0, 1, -1, 2, 2};
+
+  OpTester test("LabelEncoder", 2, onnxruntime::kMLDomain);
+
+  const std::vector<std::int64_t> keys{3, 5, -8};
+  const std::vector<std::int64_t> values{0, 1, 2};
+
+  test.AddAttribute("keys_int64s", keys);
+  test.AddAttribute("values_int64s", values);
+  test.AddAttribute("default_int64", (std::int64_t)-1);
+
+  test.AddInput<std::int64_t>("X", dims, input);
+  test.AddOutput<std::int64_t>("Y", dims, output);
+
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -12,7 +12,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-using ::ONNX_NAMESPACE::OPTIONAL;
+using ::ONNX_NAMESPACE::OPTIONAL_VALUE;
 using ::ONNX_NAMESPACE::OpSchema;
 using ::ONNX_NAMESPACE::InferenceContext;
 using ::ONNX_NAMESPACE::TensorShapeProto;
@@ -69,10 +69,10 @@ template <typename T>
 static int64_t CalcRangeDim(const TensorProto* startShapeInitializer,
                             const TensorProto* limitShapeInitializer,
                             const TensorProto* deltaShapeInitializer) {
-    T start = GetFirstElement<T>(startShapeInitializer);
-    T limit = GetFirstElement<T>(limitShapeInitializer);
-    T delta = GetFirstElement<T>(deltaShapeInitializer);
-    if (delta == T{0}) {
+    auto start = static_cast<double>(GetFirstElement<T>(startShapeInitializer));
+    auto limit = static_cast<double>(GetFirstElement<T>(limitShapeInitializer));
+    auto delta = static_cast<double>(GetFirstElement<T>(deltaShapeInitializer));
+    if (delta == 0) {
         fail_shape_inference("delta in Range operator can not be zero!");
     }
     return static_cast<int64_t>(ceil((1.0 * (limit - start)) / delta));

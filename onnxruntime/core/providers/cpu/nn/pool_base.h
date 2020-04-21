@@ -101,9 +101,7 @@ class LpPool {
 class PoolBase {
  private:
   static int GetStartVersion(const OpKernelInfo& info) {
-    int start, end;
-    info.GetKernelDef().SinceVersion(&start, &end);
-    return start;
+    return info.node().Op()->since_version();
   }
 
  protected:

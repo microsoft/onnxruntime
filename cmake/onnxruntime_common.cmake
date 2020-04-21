@@ -16,6 +16,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/env.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/path_lib.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/scoped_resource.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
@@ -44,6 +46,22 @@ else()
     endif()
 endif()
 
+if(CMAKE_GENERATOR_PLATFORM)
+    # Multi-platform generator
+    set(onnxruntime_target_platform ${CMAKE_GENERATOR_PLATFORM})
+else()
+    set(onnxruntime_target_platform ${CMAKE_SYSTEM_PROCESSOR})
+endif()
+if(onnxruntime_target_platform STREQUAL "ARM64")
+    set(onnxruntime_target_platform "ARM64")
+elseif(onnxruntime_target_platform STREQUAL "ARM" OR CMAKE_GENERATOR MATCHES "ARM")
+    set(onnxruntime_target_platform "ARM")
+elseif(onnxruntime_target_platform STREQUAL "x64" OR onnxruntime_target_platform STREQUAL "x86_64" OR onnxruntime_target_platform STREQUAL "AMD64" OR CMAKE_GENERATOR MATCHES "Win64")
+    set(onnxruntime_target_platform "x64")
+elseif(onnxruntime_target_platform STREQUAL "Win32" OR onnxruntime_target_platform STREQUAL "x86" OR onnxruntime_target_platform STREQUAL "i386" OR onnxruntime_target_platform STREQUAL "i686")
+    set(onnxruntime_target_platform "x86")
+endif()
+
 file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
     ${onnxruntime_common_src_patterns}
     )
@@ -56,8 +74,8 @@ if (onnxruntime_USE_TELEMETRY)
   set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
 endif()
 
-if (onnxruntime_USE_MIMALLOC)
-    if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO) 
+if (onnxruntime_USE_MIMALLOC_STL_ALLOCATOR OR onnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR)
+    if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO)
         message(WARNING "Ignoring directive to use mimalloc on unimplemented targets")
     elseif (${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
         # Some of the non-windows targets see strange runtime failures
@@ -70,14 +88,13 @@ if (onnxruntime_USE_MIMALLOC)
     endif()
 endif()
 
-onnxruntime_add_include_to_target(onnxruntime_common date_interface)
+onnxruntime_add_include_to_target(onnxruntime_common date_interface safeint_interface wil)
 target_include_directories(onnxruntime_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
-        PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
-if(onnxruntime_USE_NSYNC)
-    target_compile_definitions(onnxruntime_common PUBLIC USE_NSYNC NSYNC_ATOMIC_CPP11)
+        ${eigen_INCLUDE_DIRS})
+if(NOT WIN32)
+  target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 endif()
 
-target_include_directories(onnxruntime_common PUBLIC ${eigen_INCLUDE_DIRS})
 if(NOT onnxruntime_USE_OPENMP)
   target_compile_definitions(onnxruntime_common PUBLIC EIGEN_USE_THREADS)
 endif()
