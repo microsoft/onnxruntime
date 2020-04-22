@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "core/graph/onnx_protobuf.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/graph/constants.h"
