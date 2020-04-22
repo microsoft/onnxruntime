@@ -11,7 +11,7 @@ namespace hip {
 #define REGISTER_ISFINITE_KERNEL_TYPED(T)                             \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
       IsFinite,                                                       \
-      kMSDomain,                                                    \
+      kMSDomain,                                                      \
       1,                                                              \
       T,                                                              \
       kHipExecutionProvider,                                         \
@@ -39,12 +39,12 @@ REGISTER_ISFINITE_KERNEL_TYPED(double)
 #define REGISTER_ISALLFINITE_KERNEL_TYPED(T)                         \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
       IsAllFinite,                                                   \
-      kMSDomain,                                                   \
+      kMSDomain,                                                     \
       1,                                                             \
       T,                                                             \
       kHipExecutionProvider,                                        \
       KernelDefBuilder()                                             \
-          .OutputMemoryType<OrtMemTypeCPUOutput>(0)                   \
+          .OutputMemoryType<OrtMemTypeCPUOutput>(0)                  \
           .TypeConstraint("V", DataTypeImpl::GetTensorType<T>())     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>()), \
       IsAllFiniteOp<T>);
@@ -56,7 +56,7 @@ Status IsAllFiniteOp<TSrc>::ComputeInternal(OpKernelContext* context) const {
   // Get Input tensor count.
   const auto total_tensor_count = context->InputCount();
 
-  // Allocate GPU memory to capture the result computed by GPU kernel. 
+  // Allocate GPU memory to capture the result computed by GPU kernel.
   // The GPU result will be copied later to the output which locates
   // on CPU memory.
   IAllocatorUniquePtr<bool> deviceOutput = GetScratchBuffer<bool>(1);
@@ -77,17 +77,17 @@ Status IsAllFiniteOp<TSrc>::ComputeInternal(OpKernelContext* context) const {
   // Check if all values are finite and write true to deviceOutput.
   // Otherwise, false will be written.
   launch_multi_tensor_functor<1, TFunctor, bool*>(
-    2048 * 32, tensor_sizes, grouped_tensor_pointers, functor, deviceOutput.get());
+      2048 * 32, tensor_sizes, grouped_tensor_pointers, functor, deviceOutput.get());
 
   // Copy GPU result in deviceOutput to CPU memory.
   // Per this operator's schema, it's output is in CPU memory.
   Tensor& output = *context->Output(0, {});
   HIP_RETURN_IF_ERROR(
-    hipMemcpy(
-      output.MutableData<bool>(),
-      deviceOutput.get(),
-      sizeof(bool),
-      hipMemcpyDeviceToHost));
+      hipMemcpy(
+          output.MutableData<bool>(),
+          deviceOutput.get(),
+          sizeof(bool),
+          hipMemcpyDeviceToHost));
 
   return Status::OK();
 }

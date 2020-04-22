@@ -17,7 +17,7 @@
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 
-#include "core/providers/hip/hip_call.h"
+#include "core/providers/hip/shared_inc/hip_call.h"
 
 namespace onnxruntime {
 

@@ -6,11 +6,11 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/hip/hip_common.h"
 
-using namespace onnxruntime::hip;
-
 namespace onnxruntime {
 namespace contrib {
 namespace hip {
+
+using namespace onnxruntime::hip;
 
 template <typename T, typename U>
 class LayerNorm final : public HipKernel {

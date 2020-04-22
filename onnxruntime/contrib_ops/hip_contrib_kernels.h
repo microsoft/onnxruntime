@@ -8,7 +8,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace hip {
 
-void RegisterHipContribKernels(KernelRegistry& kernel_registry);
+Status RegisterHipContribKernels(KernelRegistry& kernel_registry);
 
 }  // namespace hip
 }  // namespace contrib

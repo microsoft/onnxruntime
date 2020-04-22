@@ -3,7 +3,7 @@
 
 #ifdef USE_HIP
 
-#include "core/providers/hip/hip_utils.h"
+#include "core/providers/hip/shared_inc/hip_utils.h"
 
 #include <memory>
 #include <vector>
@@ -11,7 +11,7 @@
 #include "gtest/gtest.h"
 
 #include "core/common/common.h"
-#include "core/providers/hip/hip_call.h"
+#include "core/providers/hip/shared_inc/hip_call.h"
 
 namespace onnxruntime {
 namespace hip {
