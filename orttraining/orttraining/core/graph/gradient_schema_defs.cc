@@ -405,6 +405,43 @@ void RegisterGradientSchemas() {
           {"tensor(int32)", "tensor(int64)"},
           "Constrain indices to integer types");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherElementsGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("GatherElementsGrad")
+      .Attr(
+          "axis",
+          "Which axis to scatter on. Negative value means "
+          "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Input(0, "shape", "Shape of the Gather input X.", "I")
+      .Input(
+          1,
+          "indices",
+          "Tensor of int32/int64 indices, of r >= 1 (same rank as input). All index values are expected to be "
+          "within bounds [-s, s-1] along axis of size s. It is an error if any of the index values are out of bounds.",
+          "Tind")
+      .Input(
+          2,
+          "dY",
+          "Tensor of rank r >=1 (same rank and shape as indices)",
+          "T")
+      .Output(0, "dX", "Tensor of rank r >= 1 (same rank as input).", "T")
+      .TypeConstraint(
+          "I",
+          {"tensor(int64)"},
+          "Constrain input shape to integer tensors.")
+      .TypeConstraint(
+          "T",
+          OpSchema::all_tensor_types(),
+          "Input and output types can be of any tensor type.")
+      .TypeConstraint(
+          "Tind",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain indices to integer types");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(DivGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
