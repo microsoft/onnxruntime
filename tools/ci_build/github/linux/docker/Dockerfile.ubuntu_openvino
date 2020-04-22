@@ -17,7 +17,7 @@ RUN /tmp/scripts/install_openvino.sh -o ${OPENVINO_VERSION} && \
 
 WORKDIR /root
 
-ENV INTEL_OPENVINO_DIR /data/dldt/openvino_${OPENVINO_VERSION}
+ENV INTEL_OPENVINO_DIR /data/dldt/openvino_2020.2.120
 ENV LD_LIBRARY_PATH $INTEL_OPENVINO_DIR/deployment_tools/inference_engine/lib/intel64:$INTEL_OPENVINO_DIR/deployment_tools/:$INTEL_OPENVINO_DIR/deployment_tools/ngraph/lib:$INTEL_OPENVINO_DIR/deployment_tools/inference_engine/external/tbb/lib:/usr/local/openblas/lib:$LD_LIBRARY_PATH
 
 ENV PYTHONPATH $INTEL_OPENVINO_DIR/tools:$PYTHONPATH
