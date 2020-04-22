@@ -27,7 +27,7 @@ class Elu final : public OpKernel {
   const float alpha_;
 };
 
-// Due to the absense of type inference for functions
+// Due to the absence of type inference for functions
 // we only support float for now.
 class Celu final : public OpKernel {
  public:

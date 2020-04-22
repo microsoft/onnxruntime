@@ -58,7 +58,7 @@ typedef CtxAlpha CtxThresholdedRelu;
 UNARY_ACTIVATION_OPS()
 #undef UNARY_ACTIVATION_OP_NAME
 
-// Separtely define a proto for Celu which currently supports only float due to
+// Separately define a proto for Celu which currently supports only float due to
 // As we are unable to run type inference
 void Impl_Celu(
     const float* input_data,
