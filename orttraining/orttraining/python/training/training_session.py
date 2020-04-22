@@ -43,3 +43,6 @@ class TrainingSession(InferenceSession):
 
     def is_output_fp32_node(self, output_name):
         return self._sess.is_output_fp32_node(output_name)
+
+    def get_dropout_eval_feeds(self):
+        return self._sess.get_dropout_eval_feeds()

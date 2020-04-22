@@ -272,6 +272,9 @@ void addObjectMethodsForTraining(py::module& m) {
       })
       .def("is_output_fp32_node", [](onnxruntime::training::TrainingSession* sess, const std::string& output_name) {
         return sess->IsGraphOutputFp32Node(output_name);
+      })
+      .def("get_dropout_eval_feeds", [](onnxruntime::training::TrainingSession* sess) {
+        return sess->GetDropoutEvalFeeds();
       });
 
 }

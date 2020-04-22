@@ -149,6 +149,9 @@ Status TrainingSession::ConfigureForTraining(
     config_result.mixed_precision_config_result = mp_result;
   }
 
+  // Set eval feed names for Dropout ratio.
+  SetDropoutEvalFeedNames();
+
   if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
@@ -203,6 +206,9 @@ Status TrainingSession::ConfigureForTraining(
       ORT_RETURN_IF_ERROR(BuildAccumulationNode(weight_names_to_train));
     }
   }
+
+  // Retrieve Dropout ratio input names
+  SetDropoutEvalFeedNames();
 
   // add Tensorboard
   if (config.tensorboard_config.has_value()) {
@@ -645,6 +651,21 @@ bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) cons
   auto output_producer_node = model_->MainGraph().GetProducerNode(output_name);
   ORT_ENFORCE(output_producer_node != nullptr, "Output: " + output_name + " is not produced by any node.");
   return IsFP32Node(output_producer_node);
+}
+
+static const std::unordered_set<std::string> Dropout_Nodes = {
+    "TrainableDropout",
+    "Dropout",
+};
+// TODO remove this once ONNX properly supports training_mode input.
+void TrainingSession::SetDropoutEvalFeedNames() {
+  const Graph& graph = model_->MainGraph();
+  for (const auto& node : graph.Nodes()) {
+    auto it = Dropout_Nodes.find(node.OpType());
+    if(it != Dropout_Nodes.cend()) {
+      dropout_eval_feeds_.push_back(node.InputDefs()[1]->Name());
+    }
+  }
 }
 
 Status TrainingSession::SetStateTensors(const NameMLValMap& state_tensors, bool strict) {

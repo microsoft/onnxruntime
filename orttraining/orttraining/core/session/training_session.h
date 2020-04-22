@@ -209,8 +209,19 @@ class TrainingSession : public InferenceSession {
   /** Gets the model location. */
   const PathString& GetModelLocation() const { return model_location_; }
 
-  /** Checks to be see if given graph output is produced by an fp32-only node. */
+  /**
+   * Checks to be see if given graph output is produced by an fp32-only node.
+   * @param The name of the output.
+   * @return Whether output is from fp32-only node or not.
+   */
   bool IsGraphOutputFp32Node(const std::string& output_name) const;
+
+  /**
+   * Gets the list of Dropout ratio inputs that will be used as feeds in eval mode,
+   * since each ratio input has its own name.
+   * @return The list of feed names.
+   */
+  std::vector<std::string> GetDropoutEvalFeeds() const { return dropout_eval_feeds_; }
 
  private:
   /** Configures the loss function.
@@ -308,6 +319,8 @@ class TrainingSession : public InferenceSession {
 
   std::unordered_set<std::string> GetStateTensorNames() const;
 
+  void SetDropoutEvalFeedNames();
+
   NameMLValMap GetWeights() const;
 
   static bool IsImmutableWeight(const ImmutableWeights& immutable_weights,
@@ -331,6 +344,7 @@ class TrainingSession : public InferenceSession {
   std::unique_ptr<ILossFunction> loss_graph_builder_;
   optional<LossFunctionInfo> loss_function_info_;
 
+  std::vector<std::string> dropout_eval_feeds_;
   OptimizerGraphConfig opt_graph_config_;
   std::unordered_map<std::string, OptimizerNodeConfig> opt_configs_;
 };
