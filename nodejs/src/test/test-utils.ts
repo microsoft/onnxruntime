@@ -1,6 +1,14 @@
 import assert from 'assert';
+import * as path from 'path';
 
 import {Tensor} from '../lib/tensor';
+
+export const TEST_ROOT = __dirname;
+export const TEST_DATA_ROOT = path.join(TEST_ROOT, 'testdata');
+
+export const SQUEEZENET_INPUT0_DATA: number[] = require(path.join(TEST_DATA_ROOT, 'squeezenet.input0.json'));
+export const SQUEEZENET_OUTPUT0_DATA: number[] = require(path.join(TEST_DATA_ROOT, 'squeezenet.output0.json'));
+
 
 export const NUMERIC_TYPE_MAP = new Map<Tensor.Type, new (len: number) => Tensor.DataType>([
   ['float32', Float32Array],

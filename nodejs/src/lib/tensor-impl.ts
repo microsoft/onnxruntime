@@ -47,7 +47,7 @@ export class Tensor implements TensorInterface {
     let data: TensorInterface.DataType;
     let dims: typeof arg1|typeof arg2;
     // check whether arg0 is type or data
-    if (typeof (arg0) === 'string') {
+    if (typeof arg0 === 'string') {
       //
       // Override: constructor(type, data, ...)
       //
@@ -157,10 +157,10 @@ function calculateSize(dims: ReadonlyArray<any>): number {
   for (let i = 0; i < dims.length; i++) {
     const dim = dims[i];
     if (!Number.isSafeInteger(dim)) {
-      throw new TypeError(`dims[${i}] must be an integer. It's actual value: ${dim}`);
+      throw new TypeError(`dims[${i}] must be an integer, got: ${dim}`);
     }
     if (dim < 0) {
-      throw new RangeError(`dims[${i}] must be an non-negative integer. It's actual value: ${dim}`);
+      throw new RangeError(`dims[${i}] must be a non-negative integer, got: ${dim}`);
     }
     size *= dim;
   }

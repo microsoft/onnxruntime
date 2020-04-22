@@ -63,14 +63,14 @@ describe('UnitTests - tensor', () => {
         assert.throws(() => {
           const badDims = {};
           passtypeParam ? new TensorAny(type, data, badDims) : new TensorAny(data, badDims);
-        }, {name: 'TypeError'});
+        }, {name: 'TypeError', message: /must be a number array/});
       });
   testAllTensortypes(
       'BAD CALL - invalid dims element type', 100, (passtypeParam, type, data) => {  // numeric and string tensors
         assert.throws(() => {
           const badDims = [1, 2, ''];
           passtypeParam ? new TensorAny(type, data, badDims) : new TensorAny(data, badDims);
-        }, {name: 'TypeError'});
+        }, {name: 'TypeError', message: /must be an integer/});
       });
   testAllTensortypes(
       'BAD CALL - invalid dims number type (negative)', 100,
@@ -78,7 +78,7 @@ describe('UnitTests - tensor', () => {
         assert.throws(() => {
           const badDims = [1, 2, -1];
           passtypeParam ? new TensorAny(type, data, badDims) : new TensorAny(data, badDims);
-        }, {name: 'RangeError'});
+        }, {name: 'RangeError', message: /must be a non-negative integer/});
       });
   testAllTensortypes(
       'BAD CALL - invalid dims number type (non-integer)', 100,
@@ -86,7 +86,7 @@ describe('UnitTests - tensor', () => {
         assert.throws(() => {
           const badDims = [1, 2, 1.5];
           passtypeParam ? new TensorAny(type, data, badDims) : new TensorAny(data, badDims);
-        }, {name: 'TypeError'});
+        }, {name: 'TypeError', message: /must be an integer/});
       });
 
   testAllTensortypes(
@@ -94,6 +94,6 @@ describe('UnitTests - tensor', () => {
         assert.throws(() => {
           const badDims = [10, 8];
           passtypeParam ? new TensorAny(type, data, badDims) : new TensorAny(data, badDims);
-        }, {name: 'Error'});
+        }, {name: 'Error', message: /does not match data length/});
       });
 });
