@@ -7,7 +7,7 @@ namespace onnxruntime {
 
 class CPUIDInfo {
  public:
-  static const CPUIDInfo& CPUIDInfo::GetCPUIDInfo() {
+  static const CPUIDInfo& CPUIDInfo() {
     static CPUIDInfo cpuid_info;
     return cpuid_info;
   }
