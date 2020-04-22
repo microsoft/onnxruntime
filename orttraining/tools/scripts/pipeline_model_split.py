@@ -46,9 +46,9 @@ def split_graph(model, split_edge_groups):
                             upstream_nodes_output_index.append(i)
                             # assuming all tensors are of type float
                             element_types.append(1)
-                    for info in model.graph.value_info:
-                        if info.name == id:
-                            output_shapes.append(info.type)
+            for info in model.graph.value_info:
+                if info.name == id:
+                    output_shapes.append(info.type)
 
         send_input_signal_name = 'send_input_signal' + str(cut_index)
         send_signal = model.graph.input.add()
@@ -227,6 +227,7 @@ def insert_identity(model, all_cut_inputs):
                 count += 1
                 split_edges.append(new_edge_name)
                 updated_edges[i.edgeId] = new_edge_name
+                need_shape_inference = True
             else:
                 split_edges.append(i.edgeId)
         split_edge_groups.append(split_edges)
@@ -257,6 +258,14 @@ def get_index(node_list, node):
     found = [i for i, n in enumerate(node_list) if n == node]
     return found[0] if found else None
 
+def get_identity_index_for_deleting(node_list, node):
+    for i, n in enumerate(node_list):
+        # The node's input name has been changed during send/recv insertion,
+        # but it is sufficient to just compare the type and outputs.
+        if (n.op_type == 'Identity' and n.output == node.output):
+            return i
+    return None
+
 # traverse the graph, group connected nodes and generate subgraph
 
 
@@ -269,7 +278,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
     # remove added identity node before copy to subgraph
     identity_node_index = []
     for n in identity_node_list:
-        identity_node_index.append(get_index(main_graph.graph.node, n))
+        identity_node_index.append(get_identity_index_for_deleting(main_graph.graph.node, n))
     identity_node_index.sort(reverse=True)
 
     for i in reversed(range(len(main_graph.graph.node))):

@@ -166,6 +166,7 @@ Status AddOrSkipRecordForwardWaitBackward(Graph& graph, Node* send_fw, Node* rec
 
   // if we have a send forward op followed by a recv backward op, insert WaitEvent and RecordEvent in between.
   Node* record_node = nullptr;
+  Node* wait_node = nullptr;
 
   // Insert RecordEvent
   {
@@ -204,13 +205,15 @@ Status AddOrSkipRecordForwardWaitBackward(Graph& graph, Node* send_fw, Node* rec
     output_args.push_back(&new_output);
     input = &new_output;
 
-    graph.AddNode(graph.GenerateNodeName("WaitEvent"),
+    auto& new_node = graph.AddNode(graph.GenerateNodeName("WaitEvent"),
                   "WaitEvent",
                   "Backward pass",
                   input_args,
                   output_args, /* output */
                   {},          /* attribute */
                   kMSDomain);
+    wait_node = &new_node;
+    ORT_UNUSED_PARAMETER(wait_node);
   }
 
   return Status::OK();
