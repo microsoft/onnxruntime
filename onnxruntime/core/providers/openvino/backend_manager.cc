@@ -2,10 +2,6 @@
 // Licensed under the MIT License
 
 #include <inference_engine.hpp>
-// IE defines a macro 'OPTIONAL' that conflicts the remaining headers using MSVC
-#if defined(_MSC_VER)
-#undef OPTIONAL
-#endif
 
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 

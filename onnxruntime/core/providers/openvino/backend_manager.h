@@ -10,10 +10,6 @@
 #include "core/framework/allocatormgr.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include <inference_engine.hpp>
-// IE defines a macro 'OPTIONAL' that conflicts the remaining headers using MSVC
-#if defined(_MSC_VER)
-#undef OPTIONAL
-#endif
 
 #include "contexts.h"
 #include "ibackend.h"

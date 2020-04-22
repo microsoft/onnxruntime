@@ -8,10 +8,6 @@
 #include <fstream>
 
 #include <inference_engine.hpp>
-// IE defines a macro 'OPTIONAL' that conflicts the remaining headers using MSVC
-#if defined(_MSC_VER)
-#undef OPTIONAL
-#endif
 
 #include <ngraph/frontend/onnx_import/onnx.hpp>
 #include <ngraph/pass/convert_fp32_to_fp16.hpp>

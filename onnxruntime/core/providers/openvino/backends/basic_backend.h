@@ -5,10 +5,6 @@
 
 #include <memory>
 #include <inference_engine.hpp>
-// IE defines a macro 'OPTIONAL' that conflicts the remaining headers using MSVC
-#if defined(_MSC_VER)
-#undef OPTIONAL
-#endif
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/openvino/contexts.h"

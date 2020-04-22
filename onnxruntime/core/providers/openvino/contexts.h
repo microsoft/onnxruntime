@@ -4,10 +4,6 @@
 #pragma once
 
 #include <inference_engine.hpp>
-// IE defines a macro 'OPTIONAL' that conflicts the remaining headers using MSVC
-#if defined(_MSC_VER)
-#undef OPTIONAL
-#endif
 
 namespace onnxruntime {
 namespace openvino_ep {
