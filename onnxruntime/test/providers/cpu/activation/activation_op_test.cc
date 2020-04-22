@@ -99,7 +99,7 @@ TEST(ActivationOpTest, Elu) {
 }
 
 TEST(ActivationOpTest, Celu_float) {
-  constexpr float alpha = 0.1f;
+  float alpha = 0.1f;
   TestUnaryElementwiseOp(
       "Celu",
       no_inf_input_vals,
