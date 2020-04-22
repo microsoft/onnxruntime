@@ -1,5 +1,5 @@
 diff --git a/cmake/external_protobuf.cmake b/cmake/external_protobuf.cmake
-index 9d5111b78..e9c17f07b 100644
+index 9d5111b78..215af9914 100644
 --- a/cmake/external_protobuf.cmake
 +++ b/cmake/external_protobuf.cmake
 @@ -44,7 +44,8 @@ if(CMAKE_CROSSCOMPILING)
@@ -27,7 +27,7 @@ index 9d5111b78..e9c17f07b 100644
 +    if (WIN32)
 +      target_link_libraries(libprotobuf INTERFACE
 +        debug ${Protobuf_INSTALL_PREFIX}/lib/libprotobufd.lib
-+        optimized ${Protobuf_INSTALL_PREFIX}/lib/libprotobufd.lib)
++        optimized ${Protobuf_INSTALL_PREFIX}/lib/libprotobuf.lib)
 +    else()
 +      target_link_libraries(libprotobuf INTERFACE
 +        ${Protobuf_INSTALL_PREFIX}/lib/libprotobuf.a)
