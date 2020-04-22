@@ -194,9 +194,18 @@ ONNX_OPERATOR_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T0", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()
-                              }),
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<int8_t>(),
+                              DataTypeImpl::GetTensorType<uint8_t>(),
+                              DataTypeImpl::GetTensorType<int16_t>(),
+                              DataTypeImpl::GetTensorType<uint16_t>(),
+                              DataTypeImpl::GetTensorType<int32_t>(),
+                              DataTypeImpl::GetTensorType<uint32_t>(),
+                              DataTypeImpl::GetTensorType<int64_t>(),
+                              DataTypeImpl::GetTensorType<uint64_t>(),
+                              DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<bool>(),
+                              DataTypeImpl::GetTensorType<std::string>()}),
     ForecastingPivotTransformer);
 
 }  // namespace featurizers
