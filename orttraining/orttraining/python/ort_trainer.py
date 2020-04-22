@@ -316,7 +316,8 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs):
                        training=True,
                        _retain_param_name=True,
                        example_outputs=tuple(sample_outputs),
-                       do_constant_folding=False)
+                       do_constant_folding=False,
+                       **other_export_options)
 
     model = onnx.load_model_from_string(f.getvalue())
 

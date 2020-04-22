@@ -128,7 +128,7 @@ def main():
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=2, metavar='N',
+    parser.add_argument('--epochs', type=int, default=10, metavar='N',
                         help='number of epochs to train (default: 10)')
     parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
                         help='learning rate (default: 0.01)')
@@ -144,10 +144,10 @@ def main():
     parser.add_argument('--save-model', action='store_true', default=False,
                         help='For Saving the current Model')
 
-    parser.add_argument('--use-ort', action='store_true', default=True,
+    parser.add_argument('--use-ort', action='store_true', default=False,
                         help='to use onnxruntime as training backend')
 
-    parser.add_argument('--use-ort-trainer', action='store_true', default=True,
+    parser.add_argument('--use-ort-trainer', action='store_true', default=False,
                         help='to use onnxruntime as training backend')
 
     args = parser.parse_args()
@@ -189,13 +189,11 @@ def main():
     model_desc = mnist_model_description()
     if args.use_ort_trainer:
         # use log_interval as gradient accumulate steps
-        print(f'world_rank = {args.world_rank}')
         trainer = ORTTrainer(model, my_loss, model_desc, "LambOptimizer", None, IODescription('Learning_Rate', [1,], torch.float32), device, 1, None,
         args.world_rank, args.world_size, use_mixed_precision=False, allreduce_post_accumulation = True)
         print('\nBuild ort model done.')
 
         for epoch in range(1, args.epochs + 1):
-            print("training now\n\n")
             train_with_trainer(args, trainer, device, train_loader, epoch)
             import pdb
             test_with_trainer(args, trainer, device, test_loader)
