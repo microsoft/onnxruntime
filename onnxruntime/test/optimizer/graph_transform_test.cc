@@ -1045,7 +1045,7 @@ TEST(GraphTransformationTests, ExpandElimination) {
   ASSERT_TRUE(Model::Load(model_uri, model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Expand"] == 4);
+  ASSERT_TRUE(op_to_count["Expand"] == 6);
 
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   rule_transformer_L1->Register(onnxruntime::make_unique<ExpandElimination>());
@@ -1054,7 +1054,7 @@ TEST(GraphTransformationTests, ExpandElimination) {
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Expand"] == 2);
+  ASSERT_TRUE(op_to_count["Expand"] == 3);
 }
 
 #ifndef DISABLE_CONTRIB_OPS

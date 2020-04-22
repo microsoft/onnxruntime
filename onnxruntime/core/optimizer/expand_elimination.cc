@@ -20,19 +20,10 @@ Status ExpandElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rul
 }
 
 bool ExpandElimination::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
-  // 1. Get input shape.
+  // 1. Check if has input shape.
   const auto* input_shape = node.InputDefs()[0]->Shape();
   if (input_shape == nullptr) {
     return false;
-  }
-
-  std::vector<int64_t> dim_values;
-  for (int i = 0; i < input_shape->dim_size(); i++) {
-    auto dim = input_shape->dim(i);
-    if (!utils::HasDimValue(dim)) {
-      return false;
-    }
-    dim_values.push_back(dim.dim_value());
   }
 
   // 2. Get target shape if it's constant.
@@ -49,10 +40,16 @@ bool ExpandElimination::SatisfyCondition(const Graph& graph, const Node& node, c
   const int64_t* target_shapes = initializer->data<int64_t>();
 
   // Check the dimensions starting at the trailing dimension.
-  int i = int(dim_values.size() - 1);
-  int j = int(tensor_proto->dims(0) - 1);
+  int i = input_shape->dim_size() - 1;
+  int j = static_cast<int>(tensor_proto->dims(0) - 1);
   while (i >= 0 && j >= 0) {
-    if (dim_values[i] != target_shapes[j] && target_shapes[j] > 1) {
+    auto dim = input_shape->dim(i);
+    if (utils::HasDimValue(dim)) {
+      auto dim_value = dim.dim_value();
+      if (dim_value != target_shapes[j] && target_shapes[j] > 1) {
+        return false;
+      }
+    } else if (target_shapes[j] > 1) {
       return false;
     }
 
@@ -60,7 +57,7 @@ bool ExpandElimination::SatisfyCondition(const Graph& graph, const Node& node, c
     --j;
   }
 
-  // The Expand is useless only when target dimension size is not greater than input's.
+  // The Expand produces same input tensor only when target dimension size is not greater than input's.
   return j < 0;
 }
 
