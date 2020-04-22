@@ -62,12 +62,12 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     if (to.name == nullptr) {
       to.name = ORT_TSTR("intra-op");
     }
-    intra_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, nullptr);
+    intra_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP, nullptr);
     to = tp_options->inter_op_thread_pool_params;
     if (to.name == nullptr) {
       to.name = ORT_TSTR("inter-op");
     }
-    inter_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, nullptr);
+    inter_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP, nullptr);
   }
 
   try {

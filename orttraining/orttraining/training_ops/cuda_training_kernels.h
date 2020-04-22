@@ -2,12 +2,14 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#include "core/common/common.h"
 #include "core/framework/kernel_registry.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-void RegisterCudaTrainingKernels(KernelRegistry& kernel_registry);
+Status RegisterCudaTrainingKernels(KernelRegistry& kernel_registry);
 
 }  // namespace cuda
 }  // namespace onnxruntime

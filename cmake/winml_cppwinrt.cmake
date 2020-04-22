@@ -20,9 +20,12 @@
 function(target_midl
     target_name
     idl_file
-    sdk_folder            # sdk kit directory
-    sdk_version           # sdk version
-    folder_name)
+    output_name       # output name of the generated headers, winmd and tlb
+    sdk_folder        # sdk kit directory
+    sdk_version       # sdk version
+    folder_name
+    midl_options      # defines for the midl compiler
+    )
     if (MSVC)
         # get sdk include paths for midl
         get_sdk_include_folder(${sdk_folder} ${sdk_version} sdk_include_folder)
@@ -38,9 +41,7 @@ function(target_midl
         get_sdk_midl_exe(${sdk_folder} ${sdk_version} midl_exe)
 
         # Filename variables
-        get_filename_component(file_name_with_extension ${idl_file} NAME)
-        string(REGEX REPLACE "\\.[^.]*$" "" file_name ${file_name_with_extension})
-        set(header_filename ${file_name}.h)
+        set(header_filename ${output_name}.h)
         convert_forward_slashes_to_back(${idl_file} idl_file_forward_slash)
 
         # using add_custom_command trick to prevent rerunning script unless ${file} is changed
@@ -55,6 +56,7 @@ function(target_midl
                 /I ${winrt_sdk_directory}
                 /I ${CMAKE_CURRENT_SOURCE_DIR}
                 /h ${header_filename}
+                ${midl_options}
                 ${idl_file_forward_slash}
             DEPENDS ${idl_file}
         )
@@ -70,12 +72,15 @@ function(target_midl
 endfunction()
 
 function(target_cppwinrt
-    target_name           # the name of the target to add
-    file                  # name of the idl file to compile
-    out_sources_folder    # path where generated sources will be placed
-    sdk_folder            # sdk kit directory
-    sdk_version           # sdk version
-    folder_name           # folder this target will be placed
+    target_name          # the name of the target to add
+    file                 # name of the idl file to compile
+    output_name          # output name of the generated headers, winmd and tlb
+    out_sources_folder   # path where generated sources will be placed
+    sdk_folder           # sdk kit directory
+    sdk_version          # sdk version
+    folder_name          # folder this target will be placed
+    midl_options         # defines for the midl compiler
+    set_ns_prefix        # set ns_prefix option
 )
     if (MSVC)
         # get sdk include paths for midl
@@ -95,12 +100,9 @@ function(target_cppwinrt
         get_sdk_cppwinrt_exe(${sdk_folder} ${sdk_version} cppwinrt_exe)
 
         # Filename variables
-        convert_forward_slashes_to_back(${file} idl_file_forward_slash)
-        get_filename_component(file_name_with_extension ${file} NAME)
-        string(REGEX REPLACE "\\.[^.]*$" "" fileName ${file_name_with_extension})
-        set(header_filename ${fileName}.h)
-        set(winmd_filename ${fileName}.winmd)
-        set(tlb_filename ${fileName}.tlb)
+        set(header_filename ${output_name}.h)
+        set(winmd_filename ${output_name}.winmd)
+        set(tlb_filename ${output_name}.tlb)
 
         # Get directory
         get_filename_component(idl_source_directory ${file} DIRECTORY)
@@ -111,6 +113,24 @@ function(target_cppwinrt
         convert_forward_slashes_to_back(${target_outputs}/comp_generated generated_dir_back_slash)
         convert_forward_slashes_to_back(${generated_dir_back_slash}/module.g.cpp module_g_cpp_back_slash)
         convert_forward_slashes_to_back(${generated_dir_back_slash}/module.g.excl.cpp module_g_ecxl_cpp_back_slash)
+  
+        if (set_ns_prefix)
+          set(ns_prefix "/ns_prefix")
+        else()
+          set(ns_prefix "")
+        endif()
+
+        # Get name
+        set(renamed_idl_filename ${output_name}.idl)
+        set(renamed_idl_fullpath ${target_outputs}/${renamed_idl_filename})
+
+        get_filename_component(idl_source_filename ${file} NAME)
+        set(copied_idl_fullpath ${target_outputs}/${idl_source_filename})
+
+        file(COPY ${file} DESTINATION ${target_outputs})
+        file(RENAME ${copied_idl_fullpath} ${renamed_idl_fullpath})
+
+        convert_forward_slashes_to_back(${renamed_idl_fullpath} renamed_idl_fullpath_back_slash)
 
         # using add_custom_command trick to prevent rerunning script unless ${file} is changed
         add_custom_command(
@@ -125,9 +145,11 @@ function(target_cppwinrt
                 /I ${winrt_sdk_directory}
                 /I ${idl_source_directory}
                 /winmd ${winmd_filename}
+                ${ns_prefix}
                 /h ${header_filename}
                 /tlb ${tlb_filename}
-                ${idl_file_forward_slash}
+                ${midl_options}
+                ${renamed_idl_fullpath_back_slash}
             COMMAND
                     ${cppwinrt_exe} -in ${winmd_filename} -comp ${output_dir_back_slash} -ref ${sdk_metadata_directory} -out ${generated_dir_back_slash} -verbose
             COMMAND
