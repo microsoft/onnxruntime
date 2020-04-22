@@ -35,88 +35,24 @@ steps:
 
   - task: PythonScript@0
     displayName: 'Generate CMake Configuration'
-    condition: and(eq('${{parameters.BuildArch}}', 'x64'), eq('${{parameters.BuildForStore}}', 'false')) 
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto'
-      workingDirectory: '$(Build.BinariesDirectory)'
-
-  - task: PythonScript@0
-    displayName: 'Generate CMake Configuration'
-    condition: and(eq('${{parameters.BuildArch}}', 'x64'), eq('${{parameters.BuildForStore}}', 'true')) 
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto' --enable_windows_store 
-      workingDirectory: '$(Build.BinariesDirectory)'
-      
-  - task: PythonScript@0
-    displayName: 'Generate CMake Configuration'
-    condition: and(eq('${{parameters.BuildArch}}', 'x86'), eq('${{parameters.BuildForStore}}', 'false')) 
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --x86'
-      workingDirectory: '$(Build.BinariesDirectory)'
-      
-  - task: PythonScript@0
-    displayName: 'Generate CMake Configuration'
-    condition: and(eq('${{parameters.BuildArch}}', 'x86'), eq('${{parameters.BuildForStore}}', 'true')) 
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --x86' --enable_windows_store
-      workingDirectory: '$(Build.BinariesDirectory)'
-      
-  - task: PythonScript@0
-    displayName: 'Generate CMake Configuration'
-    condition: and(eq('${{parameters.BuildArch}}', 'arm64'), eq('${{parameters.BuildForStore}}', 'false')) 
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm64'
-      workingDirectory: '$(Build.BinariesDirectory)'
-      
-  - task: PythonScript@0
-    displayName: 'Generate CMake Configuration'
-    condition: and(eq('${{parameters.BuildArch}}', 'arm64'), eq('${{parameters.BuildForStore}}', 'true')) 
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm64' --enable_windows_store
-      workingDirectory: '$(Build.BinariesDirectory)'
-      
-  - task: PythonScript@0
-    displayName: 'Generate CMake Configuration'
-    condition: and(eq('${{parameters.BuildArch}}', 'arm'), eq('${{parameters.BuildForStore}}', 'false')) 
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm'
-      workingDirectory: '$(Build.BinariesDirectory)'
-      
-  - task: PythonScript@0
-    displayName: 'Generate CMake Configuration'
-    condition: and(eq('${{parameters.BuildArch}}', 'arm'), eq('${{parameters.BuildForStore}}', 'true')) 
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm' --enable_windows_store
-      workingDirectory: '$(Build.BinariesDirectory)'
-      
-  - task: PythonScript@0
-    displayName: 'Generate CMake Configuration'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
       ${{ if and(eq(parameters.BuildArch, 'x64'), eq(parameters.BuildForStore, 'false')) }}:
         arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto'
       ${{ if and(eq(parameters.BuildArch, 'x64'), eq(parameters.BuildForStore, 'true')) }}:
-        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto' --enable_windows_store 
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --enable_windows_store'
       ${{ if and(eq(parameters.BuildArch, 'x86'), eq(parameters.BuildForStore, 'false')) }}:
         arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --x86'
       ${{ if and(eq(parameters.BuildArch, 'x86'), eq(parameters.BuildForStore, 'true')) }}:
-        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --x86' --enable_windows_store
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --x86 --enable_windows_store'
       ${{ if and(eq(parameters.BuildArch, 'arm64'), eq(parameters.BuildForStore, 'false')) }}:
         arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm64'
       ${{ if and(eq(parameters.BuildArch, 'arm64'), eq(parameters.BuildForStore, 'true')) }}:
-        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm64' --enable_windows_store
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm64 --enable_windows_store'
       ${{ if and(eq(parameters.BuildArch, 'arm'), eq(parameters.BuildForStore, 'false')) }}:
         arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm'
       ${{ if and(eq(parameters.BuildArch, 'arm'), eq(parameters.BuildForStore, 'true')) }}:
-        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm' --enable_windows_store
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm --enable_windows_store'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
@@ -224,19 +160,11 @@ steps:
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
       displayName: 'Create NuGet Package'
 
-  - ${{ if eq(parameters.BuildForStore, 'false') }}:
-    - task: PublishPipelineArtifact@0
-      displayName: 'Publish Pipeline Artifact: Microsoft.AI.MachineLearning ${{ parameters.BuildArch }}'
-      inputs:
-        artifactName: 'Microsoft.AI.MachineLearning.${{ parameters.BuildArch }}'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-
-  - ${{ if eq(parameters.BuildForStore, 'true') }}:
-    - task: PublishPipelineArtifact@0
-      displayName: 'Publish Pipeline Artifact: Microsoft.AI.MachineLearning ${{ parameters.BuildArch }} for Store Apps'
-      inputs:
-        artifactName: 'Microsoft.AI.MachineLearning.App.${{ parameters.BuildArch }}'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact: Microsoft.AI.MachineLearning ${{ parameters.BuildArch }}'
+    inputs:
+      artifactName: 'Microsoft.AI.MachineLearning.${{ parameters.BuildArch }}'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishSymbols@2
     displayName: 'Publish Build Symbols'
