@@ -625,6 +625,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 #endif
 
   // Do partitioning based on execution providers' capability.
+  srand(time(NULL));
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR_SESSIONID_(
       partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr()));

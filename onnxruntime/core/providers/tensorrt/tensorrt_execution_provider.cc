@@ -335,7 +335,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 
   // Assign inputs and outputs to subgraph's meta_def
   auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-  meta_def->name = "TRTKernel_" + std::to_string(kernels_index++);
+  meta_def->name = "TRTKernel_" + std::to_string(kernels_index+std::rand());
   meta_def->domain = kMSDomain;
 
   for (const auto& input : inputs) {
@@ -454,6 +454,12 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         std::string string_buf;
         model_proto.SerializeToString(&string_buf);
 
+		if (dump_subgraphs_) {
+		  // Dump the TensorRT subgraph if enabled via ORT_TENSORRT_DUMP_SUBGRAPHS env variable.
+		  std::fstream dump("trt_model_getcapability.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+		  model_proto.SerializeToOstream(&dump);
+		}
+	
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
         TensorrtLogger& trt_logger = GetTensorrtLogger();
