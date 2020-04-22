@@ -143,6 +143,30 @@ class WindowsEnv : public Env {
     return processorCoreCount;
   }
 
+  std::vector<size_t> GetThreadAffinityMasks() const override {
+    auto generate_vector_of_n = [](int n) {
+      std::vector<size_t> ret(n);
+      std::iota(ret.begin(), ret.end(), 0);
+      return ret;
+    };
+    // Indeed 64 should be enough. However, it's harmless to have a little more.
+    SYSTEM_LOGICAL_PROCESSOR_INFORMATION buffer[256];
+    DWORD returnLength = sizeof(buffer);
+    if (GetLogicalProcessorInformation(buffer, &returnLength) == FALSE) {
+      return generate_vector_of_n(std::thread::hardware_concurrency());
+    }
+    std::vector<size_t> ret;
+    int count = (int)(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+    for (int i = 0; i != count; ++i) {
+      if (buffer[i].Relationship == RelationProcessorCore) {
+        ret.push_back(buffer[i].ProcessorMask);
+      }
+    }
+    if (ret.empty())
+      return generate_vector_of_n(std::thread::hardware_concurrency());
+    return ret;
+  }
+
   static WindowsEnv& Instance() {
     static WindowsEnv default_env;
     return default_env;
