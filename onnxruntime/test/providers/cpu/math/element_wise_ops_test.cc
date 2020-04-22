@@ -700,7 +700,7 @@ TEST(MathOpTest, Sum_8_Test1) {
   //This test runs fine on CPU and GPU Plugins
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                    //TensorRT: Expected output shape [{3,3,3}] did not match run output shape [{3,1,1}] for sum
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Expected output shape [{3,3,3}] did not match run output shape [{3,1,1}] for sum
 #endif
 }
 
@@ -783,6 +783,108 @@ TEST(MathOpTest, Min_8) {
   test.Run();
 }
 
+TEST(MathOpTest, Min_12_Float) {
+  OpTester test("Min", 12);
+  test.AddInput<float>("data_0", {1, 3},
+                       {1.0f, 2.0f, 3.0f});
+  test.AddInput<float>("data_2", {3, 3},
+                       {10.0f, 20.0f, 30.0f,
+                        40.0f, 50.0f, 60.0f,
+                        -70.0f, -80.0f, -90.0f});
+  test.AddInput<float>("data_1", {3, 1},
+                       {-1.0f, 20.0f, 300.0f});
+  test.AddOutput<float>("min", {3, 3},
+                        {-1.0f, -1.0f, -1.0f,
+                         1.0f, 2.0f, 3.0f,
+                         -70.0f, -80.0f, -90.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Min_12_Double) {
+  OpTester test("Min", 12);
+  test.AddInput<double>("data_0", {1, 3},
+                        {1.0f, 2.0f, 3.0f});
+  test.AddInput<double>("data_2", {3, 3},
+                        {10.0f, 20.0f, 30.0f,
+                         40.0f, 50.0f, 60.0f,
+                         -70.0f, -80.0f, -90.0f});
+  test.AddInput<double>("data_1", {3, 1},
+                        {-1.0f, 20.0f, 300.0f});
+  test.AddOutput<double>("min", {3, 3},
+                         {-1.0f, -1.0f, -1.0f,
+                          1.0f, 2.0f, 3.0f,
+                          -70.0f, -80.0f, -90.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Min_12_Int32) {
+  OpTester test("Min", 12);
+  test.AddInput<int32_t>("data_0", {1, 3},
+                         {1, 2, 3});
+  test.AddInput<int32_t>("data_2", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          -70, -80, -90});
+  test.AddInput<int32_t>("data_1", {3, 1},
+                         {-1, 20, 300});
+  test.AddOutput<int32_t>("min", {3, 3},
+                          {-1, -1, -1,
+                           1, 2, 3,
+                           -70, -80, -90});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Min_12_Int64) {
+  OpTester test("Min", 12);
+  test.AddInput<int64_t>("data_0", {1, 3},
+                         {1, 2, 3});
+  test.AddInput<int64_t>("data_2", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          -70, -80, -90});
+  test.AddInput<int64_t>("data_1", {3, 1},
+                         {-1, 20, 300});
+  test.AddOutput<int64_t>("min", {3, 3},
+                          {-1, -1, -1,
+                           1, 2, 3,
+                           -70, -80, -90});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Min_12_UInt32) {
+  OpTester test("Min", 12);
+  test.AddInput<uint32_t>("data_0", {1, 3},
+                          {1, 20, 30});
+  test.AddInput<uint32_t>("data_2", {3, 3},
+                          {10, 20, 30,
+                           40, 50, 60,
+                           70, 80, 90});
+  test.AddInput<uint32_t>("data_1", {3, 1},
+                          {1, 20, 30});
+  test.AddOutput<uint32_t>("min", {3, 3},
+                           {1, 1, 1,
+                            1, 20, 20,
+                            1, 20, 30});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Min_12_UInt64) {
+  OpTester test("Min", 12);
+  test.AddInput<uint64_t>("data_0", {1, 3},
+                          {1, 20, 30});
+  test.AddInput<uint64_t>("data_2", {3, 3},
+                          {10, 20, 30,
+                           40, 50, 60,
+                           70, 80, 90});
+  test.AddInput<uint64_t>("data_1", {3, 1},
+                          {1, 20, 30});
+  test.AddOutput<uint64_t>("min", {3, 3},
+                           {1, 1, 1,
+                            1, 20, 20,
+                            1, 20, 30});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
+
 TEST(MathOpTest, Max_6) {
   OpTester test("Max", 6);
   std::vector<int64_t> dims{3, 3};
@@ -851,6 +953,108 @@ TEST(MathOpTest, Max_8_2inputbroadcast) {
                         {10.0f, 20.0f, 30.0f,
                          40.0f, 50.0f, 60.0f,
                          70.0f, 80.0f, 90.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Max_12_Float) {
+  OpTester test("Max", 12);
+  test.AddInput<float>("data_0", {1, 3},
+                       {1.0f, 2.0f, 3.0f});
+  test.AddInput<float>("data_2", {3, 3},
+                       {10.0f, 20.0f, 30.0f,
+                        40.0f, 50.0f, 60.0f,
+                        70.0f, 80.0f, 90.0f});
+  test.AddInput<float>("data_1", {3, 1},
+                       {-1.0f, -2.0f, 300.0f});
+  test.AddOutput<float>("max", {3, 3},
+                        {10.0f, 20.0f, 30.0f,
+                         40.0f, 50.0f, 60.0f,
+                         300.0f, 300.0f, 300.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Max_12_Double) {
+  OpTester test("Max", 12);
+  test.AddInput<double>("data_0", {1, 3},
+                        {1.0, 2.0, 3.0});
+  test.AddInput<double>("data_2", {3, 3},
+                        {10.0, 20.0, 30.0,
+                         40.0, 50.0, 60.0,
+                         70.0, 80.0, 90.0});
+  test.AddInput<double>("data_1", {3, 1},
+                        {-1.0, -2.0, 300.0});
+  test.AddOutput<double>("max", {3, 3},
+                         {10.0, 20.0, 30.0,
+                          40.0, 50.0, 60.0,
+                          300.0, 300.0, 300.0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Max_12_Int32) {
+  OpTester test("Max", 12);
+  test.AddInput<int32_t>("data_0", {1, 3},
+                         {1, 2, 3});
+  test.AddInput<int32_t>("data_2", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          70, 80, 90});
+  test.AddInput<int32_t>("data_1", {3, 1},
+                         {-1, -2, 300});
+  test.AddOutput<int32_t>("max", {3, 3},
+                          {10, 20, 30,
+                           40, 50, 60,
+                           300, 300, 300});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Max_12_Int64) {
+  OpTester test("Max", 12);
+  test.AddInput<int64_t>("data_0", {1, 3},
+                         {1, 2, 3});
+  test.AddInput<int64_t>("data_2", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          70, 80, 90});
+  test.AddInput<int64_t>("data_1", {3, 1},
+                         {-1, -2, 300});
+  test.AddOutput<int64_t>("max", {3, 3},
+                          {10, 20, 30,
+                           40, 50, 60,
+                           300, 300, 300});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Max_12_UInt32) {
+  OpTester test("Max", 12);
+  test.AddInput<uint32_t>("data_0", {1, 3},
+                          {1, 2, 3});
+  test.AddInput<uint32_t>("data_2", {3, 3},
+                          {10, 20, 30,
+                           40, 50, 60,
+                           70, 80, 90});
+  test.AddInput<uint32_t>("data_1", {3, 1},
+                          {1, 2, 300});
+  test.AddOutput<uint32_t>("max", {3, 3},
+                           {10, 20, 30,
+                            40, 50, 60,
+                            300, 300, 300});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Max_12_UInt64) {
+  OpTester test("Max", 12);
+  test.AddInput<uint64_t>("data_0", {1, 3},
+                          {1, 2, 3});
+  test.AddInput<uint64_t>("data_2", {3, 3},
+                          {10, 20, 30,
+                           40, 50, 60,
+                           70, 80, 90});
+  test.AddInput<uint64_t>("data_1", {3, 1},
+                          {1, 2, 300});
+  test.AddOutput<uint64_t>("max", {3, 3},
+                           {10, 20, 30,
+                            40, 50, 60,
+                            300, 300, 300});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
 }
 

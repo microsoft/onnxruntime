@@ -52,7 +52,7 @@ void NupharKernelState::Compile(const NupharSubgraphUnit& subgraph) {
   auto tvm_target = provider_.GetTVMTarget();
 
   NupharCompiler tvm_compiler(subgraph,
-                              generated_initailizers_,
+                              generated_initializers_,
                               provider_.GetNupharCodeGenHandle());
 
   codegen_status_ = tvm_compiler.Build(subgraph);

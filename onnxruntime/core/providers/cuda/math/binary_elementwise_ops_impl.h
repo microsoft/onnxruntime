@@ -37,12 +37,12 @@ namespace cuda {
 #define BINARY_ELEMENTWISE_IMPL_DECLARATION(name) \
   template <typename T>                           \
   void Impl_##name(                               \
-      size_t output_rank_or_simple_broadcast,     \
-      const int64_t* lhs_padded_strides,          \
+      int32_t output_rank_or_simple_broadcast,    \
+      const TArray<int64_t>* lhs_padded_strides,  \
       const T* lhs_data,                          \
-      const int64_t* rhs_padded_strides,          \
+      const TArray<int64_t>* rhs_padded_strides,  \
       const T* rhs_data,                          \
-      const fast_divmod* fdm_output_strides,      \
+      const TArray<fast_divmod>* fdm_output_strides, \
       const fast_divmod& fdm_H,                   \
       const fast_divmod& fdm_C,                   \
       T* output_data,                             \

@@ -4,8 +4,9 @@
 #include "iengine.h"
 
 #include <memory>
+#include <mutex>
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 class OnnxruntimeEngineBuilder;
 class OnnxruntimeEngineFactory;
@@ -29,7 +30,7 @@ class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(IsCpu)
   (bool* out) override;
   STDMETHOD(GetResource)
-  (WinML::Resource& resource) override;
+  (_winml::Resource& resource) override;
   STDMETHOD(IsTensor)
   (bool* out) override;
   STDMETHOD(IsOfTensorType)
@@ -40,6 +41,8 @@ class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
   (winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) override;
   STDMETHOD(IsOfVectorMapType)
   (winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) override;
+  STDMETHOD(IsOfVectorTensorType)
+  (winml::TensorKind kind, bool* out) override;
 
   HRESULT(SetParameter)
   (IUnknown* param);
@@ -74,8 +77,6 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   () override;
   STDMETHOD(FlushContext)
   () override;
-  STDMETHOD(TrimUploadHeap)
-  () override;
   STDMETHOD(ReleaseCompletedReferences)
   () override;
   STDMETHOD(Sync)
@@ -94,6 +95,9 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   (IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue** out) override;
   STDMETHOD(CreateSequenceOfMapsValue)
   (IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue** out) override;
+  STDMETHOD(CreateSequenceOfValuesValue)
+  (IValue ** values, size_t size, IValue * *out) override;
+
   STDMETHOD(CreateOneInputAcrossDevices)
   (const char* name, IValue* src, IValue** dest) override;
   STDMETHOD(CopyValueAcrossDevices)
@@ -104,6 +108,9 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   (IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue* value) override;
   STDMETHOD(FillSequenceOfMapsValue)
   (IInspectable* sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue* value) override;
+
+  STDMETHOD(GetSequenceOfTensorValues)
+  (_winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) override;
 
   OrtSession* UseOrtSession();
   const OrtApi* UseOrtApi();
@@ -144,4 +151,4 @@ class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
   std::mutex mutex_;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

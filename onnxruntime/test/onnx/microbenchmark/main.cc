@@ -5,6 +5,7 @@
 #include <core/graph/onnx_protobuf.h>
 #include <core/common/logging/logging.h>
 #include <core/platform/env.h>
+#include <core/platform/threadpool.h>
 #include <core/providers/cpu/cpu_execution_provider.h>
 #include "core/session/environment.h"
 #include <core/common/logging/sinks/clog_sink.h>
@@ -12,7 +13,13 @@
 #include <core/graph/graph.h>
 #include <core/framework/kernel_def_builder.h>
 #include <core/session/onnxruntime_c_api.h>
+#include <core/session/onnxruntime_cxx_api.h>
+#include <core/session/ort_env.h>
+
 #include <unordered_map>
+
+const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+OrtEnv* env = nullptr;
 
 using namespace onnxruntime;
 
@@ -28,7 +35,9 @@ BENCHMARK(BM_CPUAllocator)->Arg(4)->Arg(sizeof(Tensor));
 
 static void BM_ResolveGraph(benchmark::State& state) {
   std::shared_ptr<onnxruntime::Model> model_copy;
-  auto st = onnxruntime::Model::Load(ORT_TSTR("../models/opset8/test_tiny_yolov2/model.onnx"), model_copy);
+  auto logger = env->GetLoggingManager()->CreateLogger("test");
+  auto st =
+      onnxruntime::Model::Load(ORT_TSTR("../models/opset8/test_tiny_yolov2/model.onnx"), model_copy, nullptr, *logger);
   if (!st.IsOK()) {
     printf("Parse model failed: %s", st.ErrorMessage().c_str());
     abort();
@@ -37,7 +46,7 @@ static void BM_ResolveGraph(benchmark::State& state) {
   model_copy.reset();
   for (auto _ : state) {
     state.PauseTiming();
-    std::shared_ptr<onnxruntime::Model> model = std::make_shared<onnxruntime::Model>(proto);
+    std::shared_ptr<onnxruntime::Model> model = std::make_shared<onnxruntime::Model>(proto, nullptr, *logger);
     onnxruntime::Graph& graph = model->MainGraph();
     state.ResumeTiming();
     st = graph.Resolve();
@@ -49,24 +58,30 @@ static void BM_ResolveGraph(benchmark::State& state) {
 }
 
 BENCHMARK(BM_ResolveGraph);
-#define ORT_ABORT_ON_ERROR(expr)                         \
-  do {                                                   \
-    OrtStatus* onnx_status = (expr);                     \
-    if (onnx_status != NULL) {                           \
-      const char* msg = OrtGetErrorMessage(onnx_status); \
-      fprintf(stderr, "%s\n", msg);                      \
-      OrtReleaseStatus(onnx_status);                     \
-      abort();                                           \
-    }                                                    \
+#define ORT_ABORT_ON_ERROR(expr)                             \
+  do {                                                       \
+    OrtStatus* onnx_status = (expr);                         \
+    if (onnx_status != NULL) {                               \
+      const char* msg = g_ort->GetErrorMessage(onnx_status); \
+      fprintf(stderr, "%s\n", msg);                          \
+      g_ort->ReleaseStatus(onnx_status);                     \
+      abort();                                               \
+    }                                                        \
   } while (0);
 
-OrtEnv* env = nullptr;
+static void BM_CreateThreadPool(benchmark::State& state) {
+  for (auto _ : state) {
+    onnxruntime::concurrency::ThreadPool tp(&onnxruntime::Env::Default(), ThreadOptions(), ORT_TSTR(""), 48, true);
+  }
+}
+BENCHMARK(BM_CreateThreadPool)->UseRealTime()->Unit(benchmark::TimeUnit::kMillisecond);
 
 int main(int argc, char** argv) {
   ::benchmark::Initialize(&argc, argv);
-  if (::benchmark::ReportUnrecognizedArguments(argc, argv)) return -1;
-  ORT_ABORT_ON_ERROR(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
+  if (::benchmark::ReportUnrecognizedArguments(argc, argv))
+    return -1;
+  ORT_ABORT_ON_ERROR(g_ort->CreateEnv(ORT_LOGGING_LEVEL_ERROR, "test", &env));
   ::benchmark::RunSpecifiedBenchmarks();
-  OrtReleaseEnv(env);
+  g_ort->ReleaseEnv(env);
   return 0;
 }

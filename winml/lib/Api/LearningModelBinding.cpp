@@ -8,20 +8,22 @@
 #include "LearningModelBinding.h"
 #include "LearningModelSession.h"
 #include "TelemetryEvent.h"
-#include <onnxruntime_c_api.h>
 #include "LearningModel.h"
 
-using namespace WinML;
+namespace WINMLP {
+LearningModelBinding::~LearningModelBinding()
+{
+  Clear();
+}
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
 LearningModelBinding::LearningModelBinding(
-    Windows::AI::MachineLearning::LearningModelSession const& session) try : m_session(session) {
+    winml::LearningModelSession const& session) try : m_session(session) {
   session.as<winmlp::LearningModelSession>()->CheckClosed();
 }
 WINML_CATCH_ALL
 
-static Windows::AI::MachineLearning::ILearningModelFeatureDescriptor FindValidBinding(
-    winrt::Windows::Foundation::Collections::IIterable<ILearningModelFeatureDescriptor> descriptors,
+static winml::ILearningModelFeatureDescriptor FindValidBinding(
+    wfc::IIterable<ILearningModelFeatureDescriptor> descriptors,
     const std::wstring& name) {
   for (auto descriptor : descriptors) {
     auto descriptor_native = descriptor.as<ILearningModelFeatureDescriptorNative>();
@@ -38,15 +40,15 @@ static Windows::AI::MachineLearning::ILearningModelFeatureDescriptor FindValidBi
   return nullptr;
 }
 
-using NullableBindingPort = std::optional<std::pair<Windows::AI::MachineLearning::ILearningModelFeatureDescriptor, BindingType>>;
+using NullableBindingPort = std::optional<std::pair<winml::ILearningModelFeatureDescriptor, _winml::BindingType>>;
 
 static NullableBindingPort FindValidBinding(
     winml::LearningModel model,
     const std::wstring& name) {
   if (auto descriptor = FindValidBinding(model.InputFeatures(), name)) {
-    return std::make_pair(descriptor, BindingType::kInput);
+    return std::make_pair(descriptor, _winml::BindingType::kInput);
   } else if (auto output_descriptor = FindValidBinding(model.OutputFeatures(), name)) {
-    return std::make_pair(output_descriptor, BindingType::kOutput);
+    return std::make_pair(output_descriptor, _winml::BindingType::kOutput);
   }
 
   return {};
@@ -58,13 +60,13 @@ void LearningModelBinding::CacheProvider(
   m_providers[name] = providerInfo;
 }
 
-std::tuple<std::string, winrt::com_ptr<WinML::IValue>, BindingType> LearningModelBinding::CreateBinding(
+std::tuple<std::string, winrt::com_ptr<_winml::IValue>, _winml::BindingType> LearningModelBinding::CreateBinding(
     const std::string& name,
-    const Windows::Foundation::IInspectable& inspectable,
-    Windows::Foundation::Collections::IPropertySet const& properties) {
+    const wf::IInspectable& inspectable,
+    wfc::IPropertySet const& properties) {
   // Given a known type, validate against the model
   auto model = m_session.Model();
-  auto bindingPort = FindValidBinding(model, WinML::Strings::WStringFromString(name));
+  auto bindingPort = FindValidBinding(model, _winml::Strings::WStringFromString(name));
 
   WINML_THROW_HR_IF_FALSE_MSG(
       WINML_ERR_INVALID_BINDING,
@@ -77,7 +79,7 @@ std::tuple<std::string, winrt::com_ptr<WinML::IValue>, BindingType> LearningMode
   auto bindingType = bindingPort->second;
 
   // Create a feature value from the iinspectable input
-  auto featureValue = WinML::CreateFeatureValueFromInspectable(bindingType, inspectable, descriptor);
+  auto featureValue = _winml::CreateFeatureValueFromInspectable(bindingType, inspectable, descriptor);
   WINML_THROW_HR_IF_NULL_MSG(
       WINML_ERR_INVALID_BINDING,
       featureValue,
@@ -85,10 +87,10 @@ std::tuple<std::string, winrt::com_ptr<WinML::IValue>, BindingType> LearningMode
       name.c_str());
 
   // Validate that the feature value is compatible with the descriptor
-  WinML::VerifyFeatureValueCompatibleWithDescriptor(featureValue, descriptor);
+  _winml::VerifyFeatureValueCompatibleWithDescriptor(featureValue, descriptor);
 
   // Create the Binding Context to pass to the feature value
-  BindingContext context{
+  _winml::BindingContext context{
       bindingType,
       m_session,
       descriptor,
@@ -97,10 +99,10 @@ std::tuple<std::string, winrt::com_ptr<WinML::IValue>, BindingType> LearningMode
   };
 
   // Get the bound tensor
-  winrt::com_ptr<IValue> value;
+  winrt::com_ptr<_winml::IValue> value;
 
   // Get the native interface for the given bind value
-  auto spLotusValueProvider = featureValue.as<WinML::ILotusValueProviderPrivate>();
+  auto spLotusValueProvider = featureValue.as<_winml::ILotusValueProviderPrivate>();
 
   auto spSession = m_session.as<LearningModelSession>();
 
@@ -113,7 +115,7 @@ std::tuple<std::string, winrt::com_ptr<WinML::IValue>, BindingType> LearningMode
   // This enables the chaining scenario.
   auto spDevice = m_session.Device().as<LearningModelDevice>();
   auto isGpuSession = !spDevice->IsCpuDevice();
-  auto spTensor = featureValue.try_as<ITensor>();
+  auto spTensor = featureValue.try_as<winml::ITensor>();
   auto isTensorWithShape = spTensor != nullptr && spTensor.Shape().Size() != 0;
   auto shouldAlwaysTensorize = isTensorWithShape && isGpuSession;
 
@@ -126,7 +128,7 @@ std::tuple<std::string, winrt::com_ptr<WinML::IValue>, BindingType> LearningMode
   } else {
     WINML_THROW_HR_IF_TRUE_MSG(
         WINML_ERR_INVALID_BINDING,
-        isPlaceHolder && bindingType == BindingType::kInput,
+        isPlaceHolder && bindingType == _winml::BindingType::kInput,
         "The model variable %s is an input, but has no associated resources to bind.",
         name.c_str());
 
@@ -142,27 +144,34 @@ std::tuple<std::string, winrt::com_ptr<WinML::IValue>, BindingType> LearningMode
 
 void LearningModelBinding::Bind(
     hstring const& name,
-    Windows::Foundation::IInspectable const& value) try {
+    wf::IInspectable const& value) try {
   return Bind(name, value, nullptr /* no properties */);
 }
 WINML_CATCH_ALL
 
 void LearningModelBinding::Bind(
     hstring const& name,
-    Windows::Foundation::IInspectable const& value,
-    Windows::Foundation::Collections::IPropertySet const& properties) try {
+    wf::IInspectable const& value,
+    wfc::IPropertySet const& properties) try {
+
+  // if this is being called on the GPU, grab the DML lock
+  // the DML EP is not thread safe.
+  auto session = m_session.as<winmlp::LearningModelSession>();
+  auto device = m_session.Device().as<winmlp::LearningModelDevice>();
+  CWinMLAutoLock lock(!device->IsCpuDevice() ? session->GetDMLEPLock() : nullptr);
+
   _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding);
 
-  BindingType binding_type;
+  _winml::BindingType binding_type;
   std::string binding_name;
-  winrt::com_ptr<WinML::IValue> binding_value = nullptr;
-  auto featureName = WinML::Strings::UTF8FromHString(name);
+  winrt::com_ptr<_winml::IValue> binding_value = nullptr;
+  auto featureName = _winml::Strings::UTF8FromHString(name);
   std::tie(binding_name, binding_value, binding_type) = CreateBinding(featureName, value, properties);
   switch (binding_type) {
-    case BindingType::kInput:
+    case _winml::BindingType::kInput:
       WINML_THROW_IF_FAILED(BindInput(binding_name, binding_value));
       break;
-    case BindingType::kOutput:
+    case _winml::BindingType::kOutput:
       WINML_THROW_IF_FAILED(BindOutput(binding_name, binding_value));
       break;
     default:
@@ -172,6 +181,12 @@ void LearningModelBinding::Bind(
 WINML_CATCH_ALL
 
 void LearningModelBinding::Clear() try {
+  // if this is being called on the GPU, grab the DML lock
+  // the DML EP is not thread safe.
+  auto session = m_session.as<winmlp::LearningModelSession>();
+  auto device = m_session.Device().as<winmlp::LearningModelDevice>();
+  CWinMLAutoLock lock(!device->IsCpuDevice() ? session->GetDMLEPLock() : nullptr);
+
   m_session.as<winmlp::LearningModelSession>()->CheckClosed();
   inputs_.clear();
   input_names_.clear();
@@ -181,19 +196,19 @@ void LearningModelBinding::Clear() try {
 }
 WINML_CATCH_ALL
 
-Windows::Foundation::Collections::IIterator<LearningModelBinding::KeyValuePair> LearningModelBinding::First() {
-  std::unordered_map<hstring, Windows::Foundation::IInspectable> bindingsMap;
+wfc::IIterator<LearningModelBinding::KeyValuePair> LearningModelBinding::First() {
+  std::unordered_map<hstring, wf::IInspectable> bindingsMap;
 
   for (auto mergedBindings : m_providers) {
-    auto name = WinML::Strings::HStringFromUTF8(mergedBindings.first);
+    auto name = _winml::Strings::HStringFromUTF8(mergedBindings.first);
     bindingsMap[name] = mergedBindings.second.CallerSpecifiedFeatureValue;
   }
 
   return winrt::single_threaded_map(std::move(bindingsMap)).First();
 }
 
-Windows::Foundation::IInspectable LearningModelBinding::Lookup(hstring const& key) {
-  auto utf8_name = WinML::Strings::UTF8FromHString(key);
+wf::IInspectable LearningModelBinding::Lookup(hstring const& key) {
+  auto utf8_name = _winml::Strings::UTF8FromHString(key);
 
   auto foundIt = m_providers.find(utf8_name);
   WINML_THROW_HR_IF_FALSE_MSG(
@@ -211,13 +226,13 @@ uint32_t LearningModelBinding::Size() {
 }
 
 bool LearningModelBinding::HasKey(hstring const& key) {
-  auto utf8_name = WinML::Strings::UTF8FromHString(key);
+  auto utf8_name = _winml::Strings::UTF8FromHString(key);
   return m_providers.find(utf8_name) != m_providers.end();
 }
 
 void LearningModelBinding::Split(
-    Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& first,
-    Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& second) {
+    wfc::IMapView<hstring, wf::IInspectable>& first,
+    wfc::IMapView<hstring, wf::IInspectable>& second) {
   // the winrt api guide states:
   // If the IMapView instance cannot be split, then both the first and second parameters are null when the method returns.
   first = nullptr;
@@ -225,97 +240,135 @@ void LearningModelBinding::Split(
 }
 
 ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
-    const winrt::com_ptr<IValue> value,
+    const winrt::com_ptr<_winml::IValue> value,
     ILearningModelFeatureDescriptor& descriptor) {
   bool out;
   if (SUCCEEDED(value->IsTensor(&out)) && out) {
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::Float, &out)) && out) {
       if (descriptor.Kind() == LearningModelFeatureKind::Image) {
-        using namespace Windows::Graphics::Imaging;
         // TODO: this format for unbound output needs more discussion
-        BitmapPixelFormat format = descriptor.as<ImageFeatureDescriptor>()->BitmapPixelFormat();
+        wgi::BitmapPixelFormat format = descriptor.as<ImageFeatureDescriptor>()->BitmapPixelFormat();
         std::vector<int64_t> shape;
         value->GetTensorShape(shape);
         uint32_t width = static_cast<uint32_t>(shape[3]);
         uint32_t height = static_cast<uint32_t>(shape[2]);
         uint32_t batchSize = static_cast<uint32_t>(shape[0]);
-        return implementation::ImageFeatureValue::Create(batchSize, format, width, height);
+        return winmlp::ImageFeatureValue::Create(batchSize, format, width, height);
       } else {
-        return implementation::TensorFloat::Create();
+        return winmlp::TensorFloat::Create();
       }
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::Double, &out)) && out) {
-      return implementation::TensorDouble::Create();
+      return winmlp::TensorDouble::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::String, &out)) && out) {
-      return implementation::TensorString::Create();
+      return winmlp::TensorString::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::UInt8, &out)) && out) {
-      return implementation::TensorUInt8Bit::Create();
+      return winmlp::TensorUInt8Bit::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::Int8, &out)) && out) {
-      return implementation::TensorInt8Bit::Create();
+      return winmlp::TensorInt8Bit::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::UInt16, &out)) && out) {
-      return implementation::TensorUInt16Bit::Create();
+      return winmlp::TensorUInt16Bit::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::Int16, &out)) && out) {
-      return implementation::TensorInt16Bit::Create();
+      return winmlp::TensorInt16Bit::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::UInt32, &out)) && out) {
-      return implementation::TensorUInt32Bit::Create();
+      return winmlp::TensorUInt32Bit::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::Int32, &out)) && out) {
-      return implementation::TensorInt32Bit::Create();
+      return winmlp::TensorInt32Bit::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::UInt64, &out)) && out) {
-      return implementation::TensorUInt64Bit::Create();
+      return winmlp::TensorUInt64Bit::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::Int64, &out)) && out) {
-      return implementation::TensorInt64Bit::Create();
+      return winmlp::TensorInt64Bit::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::Boolean, &out)) && out) {
-      return implementation::TensorBoolean::Create();
+      return winmlp::TensorBoolean::Create();
     }
     if (SUCCEEDED(value->IsOfTensorType(TensorKind::Float16, &out)) && out) {
-      return implementation::TensorFloat16Bit::Create();
+      return winmlp::TensorFloat16Bit::Create();
     }
   }
 
   // Maps
   if (SUCCEEDED(value->IsOfMapType(TensorKind::String, TensorKind::String, &out)) && out) {
-    return implementation::MapStringToString::Create();
+    return winmlp::MapStringToString::Create();
   }
   if (SUCCEEDED(value->IsOfMapType(TensorKind::String, TensorKind::Int64, &out)) && out) {
-    return implementation::MapStringToInt64Bit::Create();
+    return winmlp::MapStringToInt64Bit::Create();
   }
   if (SUCCEEDED(value->IsOfMapType(TensorKind::String, TensorKind::Float, &out)) && out) {
-    return implementation::MapStringToFloat::Create();
+    return winmlp::MapStringToFloat::Create();
   }
   if (SUCCEEDED(value->IsOfMapType(TensorKind::String, TensorKind::Double, &out)) && out) {
-    return implementation::MapStringToDouble::Create();
+    return winmlp::MapStringToDouble::Create();
   }
   if (SUCCEEDED(value->IsOfMapType(TensorKind::Int64, TensorKind::String, &out)) && out) {
-    return implementation::MapInt64BitToString::Create();
+    return winmlp::MapInt64BitToString::Create();
   }
   if (SUCCEEDED(value->IsOfMapType(TensorKind::Int64, TensorKind::Int64, &out)) && out) {
-    return implementation::MapInt64BitToInt64Bit::Create();
+    return winmlp::MapInt64BitToInt64Bit::Create();
   }
   if (SUCCEEDED(value->IsOfMapType(TensorKind::Int64, TensorKind::Float, &out)) && out) {
-    return implementation::MapInt64BitToFloat::Create();
+    return winmlp::MapInt64BitToFloat::Create();
   }
   if (SUCCEEDED(value->IsOfMapType(TensorKind::Int64, TensorKind::Double, &out)) && out) {
-    return implementation::MapInt64BitToDouble::Create();
+    return winmlp::MapInt64BitToDouble::Create();
   }
   // Sequences
   if (SUCCEEDED(value->IsOfVectorMapType(TensorKind::String, TensorKind::Float, &out)) && out) {
-    return implementation::SequenceMapStringFloat::Create();
+    return winmlp::SequenceMapStringFloat::Create();
   }
   if (SUCCEEDED(value->IsOfVectorMapType(TensorKind::Int64, TensorKind::Float, &out)) && out) {
-    return implementation::SequenceMapInt64BitFloat::Create();
+    return winmlp::SequenceMapInt64BitFloat::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::Float, &out)) && out) {
+    return winmlp::SequenceTensorFloat::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::Double, &out)) && out) {
+    return winmlp::SequenceTensorDouble::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::String, &out)) && out) {
+    return winmlp::SequenceTensorString::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::UInt8, &out)) && out) {
+    return winmlp::SequenceTensorUInt8Bit::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::Int8, &out)) && out) {
+    return winmlp::SequenceTensorInt8Bit::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::UInt16, &out)) && out) {
+    return winmlp::SequenceTensorUInt16Bit::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::Int16, &out)) && out) {
+    return winmlp::SequenceTensorInt16Bit::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::UInt32, &out)) && out) {
+    return winmlp::SequenceTensorUInt32Bit::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::Int32, &out)) && out) {
+    return winmlp::SequenceTensorInt32Bit::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::UInt64, &out)) && out) {
+    return winmlp::SequenceTensorUInt64Bit::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::Int64, &out)) && out) {
+    return winmlp::SequenceTensorInt64Bit::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::Boolean, &out)) && out) {
+    return winmlp::SequenceTensorBoolean::Create();
+  }
+  if (SUCCEEDED(value->IsOfVectorTensorType(TensorKind::Float16, &out)) && out) {
+    return winmlp::SequenceTensorFloat16Bit::Create();
   }
 
-  auto utf8_name = WinML::Strings::UTF8FromHString(descriptor.Name());
+  auto utf8_name = _winml::Strings::UTF8FromHString(descriptor.Name());
   WINML_THROW_HR_IF_TRUE_MSG(
       E_UNEXPECTED,
       true,
@@ -325,13 +378,13 @@ ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
   return nullptr;
 }
 
-Windows::Foundation::IInspectable LearningModelBinding::CreateUnboundOutput(
+wf::IInspectable LearningModelBinding::CreateUnboundOutput(
     const std::string& name,
-    winrt::com_ptr<WinML::IValue> value) {
+    winrt::com_ptr<_winml::IValue> value) {
   // Find valid binding port
   auto bindingPort = FindValidBinding(
       m_session.Model(),
-      WinML::Strings::WStringFromString(name));
+      _winml::Strings::WStringFromString(name));
 
   WINML_THROW_HR_IF_FALSE_MSG(
       E_UNEXPECTED,
@@ -344,12 +397,12 @@ Windows::Foundation::IInspectable LearningModelBinding::CreateUnboundOutput(
   auto bindingType = bindingPort->second;
   WINML_THROW_HR_IF_FALSE_MSG(
       E_UNEXPECTED,
-      bindingType == BindingType::kOutput,
+      bindingType == _winml::BindingType::kOutput,
       "The engine produced an unexpected evaluation output %s, that is not a model variable output.",
       name.c_str());
 
   // Create a binding context
-  BindingContext context{
+  _winml::BindingContext context{
       bindingType,
       m_session,
       descriptor,
@@ -361,14 +414,14 @@ Windows::Foundation::IInspectable LearningModelBinding::CreateUnboundOutput(
   auto featureValue = CreateUnboundOuputFeatureValue(value, descriptor);
 
   // Update feature value
-  auto spLotusValueProvider = featureValue.as<WinML::ILotusValueProviderPrivate>();
+  auto spLotusValueProvider = featureValue.as<_winml::ILotusValueProviderPrivate>();
   WINML_THROW_IF_FAILED_MSG(
       spLotusValueProvider->UpdateSourceResourceData(context, value.get()),
       "Failed to update bound object for model variable output %s",
       name.c_str());
 
   // Get abi representation
-  winrt::Windows::Foundation::IInspectable inspectable;
+  wf::IInspectable inspectable;
   WINML_THROW_IF_FAILED_MSG(
       spLotusValueProvider->AbiRepresentation(inspectable),
       "Failed to return bound object for model variable output %s",
@@ -377,8 +430,8 @@ Windows::Foundation::IInspectable LearningModelBinding::CreateUnboundOutput(
   return inspectable;
 }
 
-std::unordered_map<std::string, Windows::Foundation::IInspectable> LearningModelBinding::UpdateProviders() {
-  std::unordered_map<std::string, Windows::Foundation::IInspectable> outputs;
+std::unordered_map<std::string, wf::IInspectable> LearningModelBinding::UpdateProviders() {
+  std::unordered_map<std::string, wf::IInspectable> outputs;
 
   auto& output_names = GetOutputNames();
   auto& output_values = GetOutputs();
@@ -423,23 +476,29 @@ STDMETHODIMP LearningModelBinding::Bind(
     UINT32 cchName,
     IUnknown* value) {
   try {
+    // if this is being called on the GPU, grab the DML lock
+    // the DML EP is not thread safe.
+    auto session = m_session.as<winmlp::LearningModelSession>();
+    auto device = m_session.Device().as<winmlp::LearningModelDevice>();
+    CWinMLAutoLock lock(!device->IsCpuDevice() ? session->GetDMLEPLock() : nullptr);
+    
     _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding);
-    BindingType binding_type;
+    _winml::BindingType binding_type;
     std::string binding_name;
-    winrt::com_ptr<WinML::IValue> binding_value;
+    winrt::com_ptr<_winml::IValue> binding_value;
 
-    winrt::Windows::Foundation::IInspectable to;
+    wf::IInspectable to;
     RETURN_IF_FAILED(value->QueryInterface(
-        winrt::guid_of<winrt::Windows::Foundation::IInspectable>(),
+        winrt::guid_of<wf::IInspectable>(),
         reinterpret_cast<void**>(winrt::put_abi(to))));
 
-    auto featureName = WinML::Strings::UTF8FromUnicode(name, cchName);
+    auto featureName = _winml::Strings::UTF8FromUnicode(name, cchName);
     std::tie(binding_name, binding_value, binding_type) = CreateBinding(featureName, to, nullptr);
     switch (binding_type) {
-      case BindingType::kInput:
+      case _winml::BindingType::kInput:
         WINML_THROW_IF_FAILED(BindInput(binding_name, binding_value));
         break;
-      case BindingType::kOutput:
+      case _winml::BindingType::kOutput:
         WINML_THROW_IF_FAILED(BindOutput(binding_name, binding_value));
         break;
       default:
@@ -459,13 +518,13 @@ static std::pair<bool, size_t> Contains(const std::vector<std::string>& names, c
 }
 
 // This method releases control of memory of ml_value from caller of BindInput
-HRESULT LearningModelBinding::BindInput(const std::string& name, winrt::com_ptr<WinML::IValue> value) {
+HRESULT LearningModelBinding::BindInput(const std::string& name, winrt::com_ptr<_winml::IValue> value) {
   bool exists;
   size_t index;
   std::tie(exists, index) = Contains(input_names_, name);
 
   auto engine = m_session.as<LearningModelSession>()->GetEngine();
-  winrt::com_ptr<WinML::IValue> device_value;
+  winrt::com_ptr<_winml::IValue> device_value;
   WINML_THROW_IF_FAILED(engine->CreateOneInputAcrossDevices(name.c_str(), value.get(), device_value.put()));  // an input will always be copied on device mismatch
 
   if (exists) {
@@ -478,7 +537,7 @@ HRESULT LearningModelBinding::BindInput(const std::string& name, winrt::com_ptr<
   return S_OK;
 }
 
-HRESULT LearningModelBinding::BindOutput(const std::string& name, winrt::com_ptr<WinML::IValue> value) {
+HRESULT LearningModelBinding::BindOutput(const std::string& name, winrt::com_ptr<_winml::IValue> value) {
   bool exists;
   size_t index;
   std::tie(exists, index) = Contains(output_names_, name);
@@ -501,11 +560,11 @@ const std::vector<std::string>& LearningModelBinding::GetInputNames() const {
   return input_names_;
 }
 
-std::vector<winrt::com_ptr<WinML::IValue>>& LearningModelBinding::GetOutputs() {
+std::vector<winrt::com_ptr<_winml::IValue>>& LearningModelBinding::GetOutputs() {
   return outputs_;
 }
 
-const std::vector<winrt::com_ptr<WinML::IValue>>& LearningModelBinding::GetInputs() const {
+const std::vector<winrt::com_ptr<_winml::IValue>>& LearningModelBinding::GetInputs() const {
   return inputs_;
 }
 
@@ -533,7 +592,7 @@ void LearningModelBinding::BindUnboundOutputs() {
         const wchar_t* p_name;
         uint32_t size;
         WINML_THROW_IF_FAILED(descriptor_native->GetName(&p_name, &size));
-        return WinML::Strings::UTF8FromUnicode(p_name, size);
+        return _winml::Strings::UTF8FromUnicode(p_name, size);
       });
 
   // Find the set difference to determine if there are any unbound output features
@@ -549,10 +608,10 @@ void LearningModelBinding::BindUnboundOutputs() {
   for (const auto& unbound_output : unbound_output_names) {
     auto engine = m_session.as<LearningModelSession>()->GetEngine();
 
-    winrt::com_ptr<IValue> value;
+    winrt::com_ptr<_winml::IValue> value;
     WINML_THROW_IF_FAILED(engine->CreateNullValue(value.put()));
     WINML_THROW_IF_FAILED(BindOutput(unbound_output, value));
   }
 }
 
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP

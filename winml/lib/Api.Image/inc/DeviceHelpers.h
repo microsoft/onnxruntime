@@ -14,11 +14,16 @@
 #include <dxcore.h>
 #endif
 
-namespace DeviceHelpers {
+namespace _winml {
+
 HRESULT CreateD3D11On12Device(ID3D12Device* device12, ID3D11Device** device11);
+
 #ifdef ENABLE_DXCORE
 HRESULT GetDXCoreHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, _COM_Outptr_ IDXCoreAdapter** ppAdapter);
 #endif
+
 HRESULT GetDXGIHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, _COM_Outptr_ IDXGIAdapter1** adapter);
-HRESULT GetGPUPreference(winrt::Windows::AI::MachineLearning::LearningModelDeviceKind deviceKind, DXGI_GPU_PREFERENCE* preference) noexcept;
-}  // namespace DeviceHelpers
+
+HRESULT GetGPUPreference(winml::LearningModelDeviceKind deviceKind, DXGI_GPU_PREFERENCE* preference) noexcept;
+
+}  // namespace _winml

@@ -304,14 +304,6 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderFlushContext)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
 
   /**
-    * DmlExecutionProviderTrimUploadHeap
-	 * This api is used to trim the upload heap in the DML EP.
-    * 
-    * WinML communicates directly with DML to perform this as an optimization.
-    */
-  OrtStatus*(ORT_API_CALL* DmlExecutionProviderTrimUploadHeap)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
-
-  /**
     * DmlExecutionProviderReleaseCompletedReferences
 	 * This api is used to release completed references after first run the DML EP.
     * 

@@ -9,9 +9,9 @@ namespace cuda {
 
 template <typename T>
 __global__ void _UpampleNearestKernel(const size_t rank,
-                                      const int64_t* input_pitches,
-                                      const fast_divmod* output_div_pitches,
-                                      const fast_divmod* scales_div,
+                                      const TArray<int64_t> input_pitches,
+                                      const TArray<fast_divmod> output_div_pitches,
+                                      const TArray<fast_divmod> scales_div,
                                       const T* input_data,
                                       T* output_data,
                                       const size_t N) {
@@ -38,9 +38,9 @@ __global__ void _UpampleNearestKernel(const size_t rank,
 // is usually of shape [N, C, H, W] and the scales are [1.0, 1.0, height_scale, width_scale]
 template <typename T>
 __global__ void _UpampleBilinear4DInputKernel(const int64_t input_dim2,
-                                       const int64_t* input_pitches,
-                                       const fast_divmod* output_div_pitches,
-                                       const fast_divmod* scales_div,
+                                       const TArray<int64_t> input_pitches,
+                                       const TArray<fast_divmod> output_div_pitches,
+                                       const TArray<fast_divmod> scales_div,
                                        const T* input_data,
                                        T* output_data,
                                        const size_t N) {
@@ -98,9 +98,9 @@ __global__ void _UpampleBilinear4DInputKernel(const int64_t input_dim2,
 // The following method supports a 2-D input in 'Linear mode'
 template <typename T>
 __global__ void _UpampleBilinear2DInputKernel(const int64_t input_dim0,
-                                              const int64_t* input_pitches,
-                                              const fast_divmod* output_div_pitches,
-                                              const fast_divmod* scales_div,
+                                              const TArray<int64_t> input_pitches,
+                                              const TArray<fast_divmod> output_div_pitches,
+                                              const TArray<fast_divmod> scales_div,
                                               const T* input_data,
                                               T* output_data,
                                               const size_t N) {
@@ -152,9 +152,9 @@ template <typename T>
 void UpampleImpl(const onnxruntime::UpsampleMode upsample_mode,
                  const size_t rank,
                  const int64_t input_dim2,
-                 const int64_t* input_pitches,
-                 const fast_divmod* output_div_pitches,
-                 const fast_divmod* scales_div,
+                 const TArray<int64_t>& input_pitches,
+                 const TArray<fast_divmod>& output_div_pitches,
+                 const TArray<fast_divmod>& scales_div,
                  const T* input_data,
                  T* output_data,
                  const size_t N) {
@@ -178,9 +178,9 @@ void UpampleImpl(const onnxruntime::UpsampleMode upsample_mode,
   template void UpampleImpl<T>(const onnxruntime::UpsampleMode upsample_mode,   \
                                const size_t rank,                               \
                                const int64_t input_dim2,                        \
-                               const int64_t* input_pitches,                    \
-                               const fast_divmod* output_div_pitches,           \
-                               const fast_divmod* scales_div,                   \
+                               const TArray<int64_t>& input_pitches,                    \
+                               const TArray<fast_divmod>& output_div_pitches,           \
+                               const TArray<fast_divmod>& scales_div,                   \
                                const T* input_data,                             \
                                T* output_data,                                  \
                                const size_t N);

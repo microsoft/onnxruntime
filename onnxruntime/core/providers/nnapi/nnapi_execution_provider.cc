@@ -34,7 +34,11 @@ NnapiExecutionProvider::~NnapiExecutionProvider() {}
 
 std::vector<std::vector<int>> NnapiExecutionProvider::GetSupportedNodes(const ONNX_NAMESPACE::ModelProto& model_proto) const {
   dnn::OnnxConverter converter;
-  return converter.GetSupportedNodes(model_proto);
+  const auto nodes = converter.GetSupportedNodes(model_proto);
+  if (!nodes) {
+      return {{}};
+  }
+  return nodes.value();
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -42,8 +46,8 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                       const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   // This method is based on that of TRT EP
   // Construct modelproto from graph
-  onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap(),
-                           std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+  onnxruntime::Model model(graph.Name(), true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                           graph.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
   onnxruntime::Graph& graph_build = model.MainGraph();
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   std::set<NodeArg*> all_node_inputs;
@@ -202,7 +206,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
     const Graph& graph_body = func_body->Body();
-    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(),
+    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), PathString(),
                              IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap(),
                              std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
