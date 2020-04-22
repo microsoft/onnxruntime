@@ -16,6 +16,14 @@ struct OP_Elu : public CtxElu {
   }
 };
 
+// Currently only instantiated for float
+template<typename T>
+struct OP_Celu : public CtxCelu {
+  __device__ __inline__ T operator()(const T& a) const {
+    return a > (T)0 ? a : (T)alpha * (_Exp(a/T(alpha)) - (T)1);
+  }
+};
+
 template <typename T>
 struct OP_HardSigmoid : public CtxHardSigmoid {
   __device__ __inline__ T operator()(const T& a) const {
@@ -104,6 +112,15 @@ struct OP_ThresholdedRelu : public CtxThresholdedRelu {
 
 UNARY_ACTIVATION_OPS()
 #undef UNARY_ACTIVATION_OP_NAME
+
+// Standalone float only Celu
+void Impl_Celu(const float* input_data, float* output_data, const CtxCelu* func_ctx, size_t count) {
+  UnaryElementWiseImpl(input_data,
+                       output_data,
+                       *reinterpret_cast<const OP_Celu<float>*>(func_ctx),
+                       count);
+}
+
 
 }  // namespace cuda
 }  // namespace onnxruntime

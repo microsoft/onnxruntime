@@ -23,6 +23,7 @@ struct CtxNull {
 };
 
 typedef CtxAlpha CtxElu;
+typedef CtxAlpha CtxCelu;
 typedef CtxAlphaBeta CtxHardSigmoid;
 typedef CtxAlpha CtxLeakyRelu;
 typedef CtxNull CtxRelu;
@@ -56,6 +57,15 @@ typedef CtxAlpha CtxThresholdedRelu;
 #define UNARY_ACTIVATION_OP_NAME(name) UNARY_ACTIVATION_IMPL_DECLARATION(name);
 UNARY_ACTIVATION_OPS()
 #undef UNARY_ACTIVATION_OP_NAME
+
+// Separtely define a proto for Celu which currently supports only float due to
+// As we are unable to run type inference
+void Impl_Celu(
+    const float* input_data,
+    float* output_data,
+    const CtxCelu* func_ctx,
+    size_t count);
+
 
 }  // namespace cuda
 }  // namespace onnxruntime

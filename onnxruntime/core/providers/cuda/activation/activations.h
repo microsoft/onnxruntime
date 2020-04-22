@@ -55,6 +55,21 @@ class Elu final : public UnaryElementwise {
   float alpha_;
 };
 
+class Celu final : public UnaryElementwise {
+ public:
+  explicit Celu(const OpKernelInfo& info) : UnaryElementwise(info) {
+    ORT_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
+  }
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  MAKE_FUNC_CTX_ALPHA()
+
+  float alpha_;
+};
+
+
 template <typename T>
 class HardSigmoid final : public UnaryElementwise {
  public:
