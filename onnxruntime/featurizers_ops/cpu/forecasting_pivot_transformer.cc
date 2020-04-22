@@ -109,7 +109,7 @@ struct ForecastingPivotTransformerImpl {
             break;
         }
         if (!has_nan) {
-          horizon_output_helper.push_back(matrix_cols_num - col_idx);
+          horizon_output_helper.push_back(static_cast<uint32_t>(matrix_cols_num - col_idx));
         }
       }
 
@@ -161,13 +161,7 @@ struct ForecastingPivotTransformerImpl {
       t_disp.Invoke(input_tensor, output_tensor_imputed, row_idx_record, input_matrix_size, num_output_rows);
     }
 
-    // Prepare the horizon Output(int32)
-    // std::vector<uint32_t> horizon_output_helper(num_output_rows, 1);
-    // for (int i = 1; i < num_output_rows; i++) {
-    //   if (row_idx_record[num_output_rows - 1 - i] == row_idx_record[num_output_rows - i]) {
-    //     horizon_output_helper[num_output_rows - 1 - i] = horizon_output_helper[num_output_rows - i] + 1;
-    //   }
-    // }
+    // Prepare the horizon Output(uint32)
     TensorShape output_shape_horizon({static_cast<int64_t>(num_output_rows), 1});
     Tensor* output_tensor_horizon(ctx->Output(input_node_1_count + num_pivot_output_columns - static_cast<int>(num_pivot_columns), output_shape_horizon));
     uint32_t* output_data_horizon = output_tensor_horizon->MutableData<uint32_t>();
