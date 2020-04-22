@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -30,7 +31,7 @@ void SoftMaxCrossEntropyImpl(
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   HIP_LONG N = static_cast<HIP_LONG>(count);
   HIP_LONG NORMALIZE_FACTOR = static_cast<HIP_LONG>(normalize_factor);
-  hipLaunchKernelGGL(_SoftMaxCrossEntropy<T>, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0,
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(_SoftMaxCrossEntropy<T>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
       log_prob,
       label,
       NORMALIZE_FACTOR,
@@ -71,7 +72,7 @@ void SoftMaxCrossEntropyGradImpl(
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   HIP_LONG N = static_cast<HIP_LONG>(count);
   HIP_LONG NORMALIZE_FACTOR = static_cast<HIP_LONG>(normalize_factor);
-  hipLaunchKernelGGL(_SoftMaxCrossEntropyGrad<T>, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0,
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(_SoftMaxCrossEntropyGrad<T>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
       dY,
       log_prob,
       label,
@@ -131,7 +132,7 @@ void SparseSoftmaxCrossEntropyImpl(
   HIP_LONG N = static_cast<HIP_LONG>(count);
   HIP_LONG D = static_cast<HIP_LONG>(label_depth);
   if (weight) {
-    hipLaunchKernelGGL(_WeightedSparseSoftmaxCrossEntropy<T, Tin>, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0,
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(_WeightedSparseSoftmaxCrossEntropy<T, Tin>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
       log_prob,
       label,
       weight,
@@ -140,7 +141,7 @@ void SparseSoftmaxCrossEntropyImpl(
       N,
       D);
   } else {
-    hipLaunchKernelGGL(_SparseSoftmaxCrossEntropy<T, Tin>, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0,
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(_SparseSoftmaxCrossEntropy<T, Tin>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
         log_prob,
         label,
         normalize_factor,
@@ -208,7 +209,7 @@ void SparseSoftmaxCrossEntropyGradImpl(
   HIP_LONG D = static_cast<HIP_LONG>(label_depth);
   int blocksPerGrid = (int)(ceil(static_cast<float>(N * D) / GridDim::maxThreadsPerBlock));
   if (weight) {
-    hipLaunchKernelGGL(_WeightedSparseSoftmaxCrossEntropyGrad<T, Tin>, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0,
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(_WeightedSparseSoftmaxCrossEntropyGrad<T, Tin>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
       dY,
       log_prob,
       label,
@@ -218,7 +219,7 @@ void SparseSoftmaxCrossEntropyGradImpl(
       N,
       D);
   } else {
-    hipLaunchKernelGGL(_SparseSoftmaxCrossEntropyGrad<T, Tin>, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0,
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(_SparseSoftmaxCrossEntropyGrad<T, Tin>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
         dY,
         log_prob,
         label,

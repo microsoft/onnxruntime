@@ -2,17 +2,15 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/controlflow/group.h"
+#include "core/providers/hip/hip_fwd.h"
 
 namespace onnxruntime {
 namespace hip {
 
-template <typename T>
-KernelCreateInfo BuildKernelCreateInfo();
-
 ONNX_OPERATOR_KERNEL_EX(
     Group,
-    kOnnxDomain,
-    9,
+    kMSDomain,
+    1,
     kHipExecutionProvider,
     KernelDefBuilder()
         .OutputMemoryType<OrtMemTypeCPUOutput>(0)

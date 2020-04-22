@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "gsl/gsl"
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/hip/hip_common.h"
+#include "gsl/gsl"
 #include "core/providers/cpu/tensor/reshape_helper.h"
 
 namespace onnxruntime {

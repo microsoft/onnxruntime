@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
 * Copyright (c) 2016-present, Facebook, Inc.
 *
@@ -30,20 +31,6 @@ namespace hip {
 
 using namespace onnxruntime::hip;
 
-template <typename T>
-
-__device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width, unsigned int mask = 0xffffffff)
-{
-  return __shfl(value, srcLane, width);
-}
-
-template <typename T>
-
-__device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = warpSize, unsigned int mask = 0xffffffff)
-{
-  return __shfl_xor(value, laneMask, width);
-}
-
 template <typename U>
 __device__ void cuWelfordOnlineSum(
     const U curr,
@@ -65,8 +52,7 @@ __device__ void cuChanOnlineSum(
     const U countB,
     U& mu,
     U& sigma2,
-    U& count,
-    const int& warp_size) {
+    U& count) {
   U delta = muB - mu;
   U nA = count;
   U nB = countB;
@@ -91,10 +77,9 @@ __device__ void cuWelfordMuSigma2(
     const int i1,
     U& mu,
     U& sigma2,
-    U* buf,
-    const int warp_size) {
+    U* buf) {
   // Assumptions:
-  // 1) blockDim.x == warpSize
+  // 1) blockDim.x == GPU_WARP_SIZE
   // 2) Tensor is contiguous
   // 3) 2*blockDim.y*sizeof(U)+blockDim.y*sizeof(int) shared memory available.
   //
@@ -120,16 +105,14 @@ __device__ void cuWelfordMuSigma2(
       U curr = static_cast<U>(lvals[l]);
       cuWelfordOnlineSum<U>(curr, mu, sigma2, count);
     }
-
     // intra-warp reductions
-    #pragma unroll
-    for (int stride = warp_size / 2; stride > 0; stride /= 2) {
-      U muB = __shfl_down(mu, stride);
-      U countB = __shfl_down(count, stride);
-      U sigma2B = __shfl_down(sigma2, stride);
-      cuChanOnlineSum<U>(muB, sigma2B, countB, mu, sigma2, count, warp_size);
+    for (int l = 0; l <= 4; ++l) {
+      int srcLaneB = (threadIdx.x + (1 << l)) & 31;
+      U muB = WARP_SHFL(mu, srcLaneB);
+      U countB = WARP_SHFL(count, srcLaneB);
+      U sigma2B = WARP_SHFL(sigma2, srcLaneB);
+      cuChanOnlineSum<U>(muB, sigma2B, countB, mu, sigma2, count);
     }
-
     // threadIdx.x == 0 has correct values for each warp
     // inter-warp reductions
     if (blockDim.y > 1) {
@@ -149,7 +132,7 @@ __device__ void cuWelfordMuSigma2(
           U muB = ubuf[2 * threadIdx.y];
           U sigma2B = ubuf[2 * threadIdx.y + 1];
           U countB = ibuf[threadIdx.y];
-          cuChanOnlineSum<U>(muB, sigma2B, countB, mu, sigma2, count, warp_size);
+          cuChanOnlineSum<U>(muB, sigma2B, countB, mu, sigma2, count);
         }
         __syncthreads();
       }
@@ -163,8 +146,8 @@ __device__ void cuWelfordMuSigma2(
       sigma2 = ubuf[1] / U(n2);
       // don't care about final value of count, we know count == n2
     } else {
-      mu = WARP_SHFL(mu, 0, warp_size);
-      sigma2 = WARP_SHFL(sigma2 / U(n2), 0, warp_size);
+      mu = WARP_SHFL(mu, 0);
+      sigma2 = WARP_SHFL(sigma2 / U(n2), 0);
     }
   }
 }
@@ -177,10 +160,9 @@ __device__ void cuWelfordMuSigma2(
     const int i1,
     float& mu,
     float& sigma2,
-    float* buf,
-    const int warp_size) {
+    float* buf) {
   // Assumptions:
-  // 1) blockDim.x == warpSize
+  // 1) blockDim.x == GPU_WARP_SIZE
   // 2) Tensor is contiguous
   // 3) 2*blockDim.y*sizeof(U)+blockDim.y*sizeof(int) shared memory available.
   //
@@ -218,12 +200,12 @@ __device__ void cuWelfordMuSigma2(
       cuWelfordOnlineSum(curr, mu, sigma2, count);
     }
     // intra-warp reductions
-    #pragma unroll
-    for (int stride = warp_size / 2; stride > 0; stride /= 2) {
-      float muB = __shfl_down(mu, stride);
-      float countB = __shfl_down(count, stride);
-      float sigma2B = __shfl_down(sigma2, stride);
-      cuChanOnlineSum(muB, sigma2B, countB, mu, sigma2, count, warp_size);
+    for (int l = 0; l <= 4; ++l) {
+      int srcLaneB = (threadIdx.x + (1 << l)) & 31;
+      float muB = WARP_SHFL(mu, srcLaneB);
+      float countB = WARP_SHFL(count, srcLaneB);
+      float sigma2B = WARP_SHFL(sigma2, srcLaneB);
+      cuChanOnlineSum(muB, sigma2B, countB, mu, sigma2, count);
     }
     // threadIdx.x == 0 has correct values for each warp
     // inter-warp reductions
@@ -244,7 +226,7 @@ __device__ void cuWelfordMuSigma2(
           float muB = ubuf[2 * threadIdx.y];
           float sigma2B = ubuf[2 * threadIdx.y + 1];
           float countB = ibuf[threadIdx.y];
-          cuChanOnlineSum(muB, sigma2B, countB, mu, sigma2, count, warp_size);
+          cuChanOnlineSum(muB, sigma2B, countB, mu, sigma2, count);
         }
         __syncthreads();
       }
@@ -258,8 +240,8 @@ __device__ void cuWelfordMuSigma2(
       sigma2 = ubuf[1] / float(n2);
       // don't care about final value of count, we know count == n2
     } else {
-      mu = WARP_SHFL(mu, 0, warp_size);
-      sigma2 = WARP_SHFL(sigma2 / float(n2), 0, warp_size);
+      mu = WARP_SHFL(mu, 0);
+      sigma2 = WARP_SHFL(sigma2 / float(n2), 0);
     }
   }
 }
@@ -322,17 +304,16 @@ __global__ void cuApplyLayerNorm(
     const int n2,
     const U epsilon,
     const T* __restrict__ gamma,
-    const T* __restrict__ beta,
-    int warp_size) {
+    const T* __restrict__ beta) {
   // Assumptions:
-  // 1) blockDim.x == warpSize
+  // 1) blockDim.x == GPU_WARP_SIZE
   // 2) Tensors are contiguous
   //
   for (int i1 = blockIdx.y; i1 < n1; i1 += gridDim.y) {
     SharedMemory<U> shared;
     U* buf = shared.getPointer();
     U mu, sigma2;
-    cuWelfordMuSigma2(vals, n1, n2, i1, mu, sigma2, buf, warp_size);
+    cuWelfordMuSigma2(vals, n1, n2, i1, mu, sigma2, buf);
     const T* lvals = vals + i1 * n2;
     T* ovals = output_vals + i1 * n2;
     U c_invvar = rsqrt(sigma2 + epsilon);
@@ -370,9 +351,12 @@ void HostApplyLayerNorm(
     const T* beta) {
   const uint64_t maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
+  ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
+
   const dim3 threads(warp_size, 4, 1);
   const dim3 blocks(1, std::min((uint64_t)n1, maxGridY), 1);
-  int nshared = threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
+  int nshared =
+      threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
   hipLaunchKernelGGL(cuApplyLayerNorm, dim3(blocks), dim3(threads), nshared, 0, 
       output,
       mean,
@@ -380,7 +364,7 @@ void HostApplyLayerNorm(
       input,
       n1, n2,
       U(epsilon),
-      gamma, beta, warp_size);
+      gamma, beta);
 }
 
 #define LAYERNORM_LINEAR_IMPL(T, U)                                                                       \
@@ -608,15 +592,15 @@ __global__ void cuComputeGradInput(
         for (int k = 0; k < 4; ++k) {
           const U c_h = static_cast<U>(k_input[l + k]);
           const U c_loss = static_cast<U>(k_dout[l + k]);
-          sum_loss1 += U(T(c_loss) * gamma[l + k]);
-          sum_loss2 += U(T(c_loss) * gamma[l + k] * T(c_h - c_mean) * T(c_invvar));
+          sum_loss1 += c_loss * U(gamma[l + k]);
+          sum_loss2 += c_loss * U(gamma[l + k]) * (c_h - c_mean) * c_invvar;
         }
       }
       for (; l < n2; ++l) {
         const U c_h = static_cast<U>(k_input[l]);
         const U c_loss = static_cast<U>(k_dout[l]);
-        sum_loss1 += U(T(c_loss) * gamma[l]);
-        sum_loss2 += U(T(c_loss) * gamma[l] * T(c_h - c_mean) * T(c_invvar));
+        sum_loss1 += c_loss * U(gamma[l]);
+        sum_loss2 += c_loss * U(gamma[l]) * (c_h - c_mean) * c_invvar;
       }
     } else {
       int l = 4 * thrx;
@@ -678,7 +662,7 @@ __global__ void cuComputeGradInput(
       for (int l = thrx; l < n2; l += numx) {
         const U c_h = static_cast<U>(k_input[l]);
         const U c_loss = static_cast<U>(k_dout[l]);
-        U f_grad_input = U(T(fH) * T(c_loss) * T(gamma[l]));
+        U f_grad_input = fH * c_loss * U(gamma[l]);
         f_grad_input -= sum_loss1;
         f_grad_input -= (c_h - c_mean) * c_invvar * sum_loss2;
         f_grad_input *= term1;
@@ -715,6 +699,8 @@ void HostLayerNormGradient(
     U* part_grad_beta,
     const int part_size) {
   const int warp_size = prop.warpSize;
+  ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
+
   const dim3 threads2(warp_size, 4, 1);
   const dim3 blocks2((n2 + threads2.x - 1) / threads2.x, part_size, 1);
   const int nshared2_a = 2 * sizeof(U) * threads2.y * threads2.y * (threads2.x + 1);

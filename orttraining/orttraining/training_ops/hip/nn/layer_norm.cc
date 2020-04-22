@@ -12,7 +12,7 @@ namespace hip {
 #define REGISTER_GRADIENT_KERNEL_TYPED(T, U)                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       LayerNormalizationGrad,                                     \
-      kMSDomain,                                                \
+      kMSDomain,                                                  \
       1,                                                          \
       T##_##U,                                                    \
       kHipExecutionProvider,                                     \

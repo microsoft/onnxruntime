@@ -4,6 +4,7 @@
 #include "core/providers/hip/math/matmul.h"
 
 namespace onnxruntime {
+namespace contrib {
 namespace hip {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
@@ -15,11 +16,12 @@ namespace hip {
       kHipExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      MatMul<T>);
+      onnxruntime::hip::MatMul<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 }  // namespace hip
+}  // namespace contrib
 }  // namespace onnxruntime

@@ -9,7 +9,7 @@ namespace hip {
 #define REGISTER_ALL_KERNEL_TYPED(T)                                            \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       All,                                                                      \
-      kMSDomain,                                                              \
+      kMSDomain,                                                                \
       1,                                                                        \
       T,                                                                        \
       kHipExecutionProvider,                                                   \

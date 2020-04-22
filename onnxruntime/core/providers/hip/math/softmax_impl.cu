@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
 * Copyright (c) 2016-present, Facebook, Inc.
 *
@@ -13,6 +14,8 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
+
+/* Modifications Copyright (c) Microsoft. */
 
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
 
@@ -30,7 +33,7 @@ namespace hip {
 // The template arguments have the following meaning:
 // One "WARP" works on one "BATCH". One "BATCH" contains "WARP_BATCH" samples.
 // WARP_BATCH is equal to 1 when element_count is large, and > 1 when element_count is small.
-// A "WARP" contains "HIP_WARP_SIZE" threads, these treads are guaranteed to belong to the same warp.
+// A "WARP" contains "GPU_WARP_SIZE" threads, these treads are guaranteed to belong to the same warp.
 // This is important because it means only __shfl_ instructions are required for reductions.
 // Note that this means WARP_SIZE must be a power of two and <= architecture warp size.
 // HIP warp size is 32 for all existing GPU architecures, but there is no guarantee this will not change for future arch.
@@ -42,12 +45,11 @@ namespace hip {
 // input_t=half,  acc_t=float, output_t=float => read half tensor, float accumulators, write float tensor.
 // input_t_float, acc_t=float, output_t=half  => read float tensor, float accumulators, write half tensor.
 
-const int WARP_BATCH = 1;
 template <typename input_t, typename output_t, typename acc_t, int log2_elements, bool is_log_softmax>
 __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batch_size, int stride, int element_count) {
   // WARP_SIZE and WARP_BATCH must match the return values batches_per_warp and warp_size of method warp_softmax_forward_kernel.
   constexpr int next_power_of_two = 1 << log2_elements;
-  constexpr int WARP_SIZE = (next_power_of_two < HIP_WARP_SIZE) ? next_power_of_two : HIP_WARP_SIZE;
+  constexpr int WARP_SIZE = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
   constexpr int WARP_ITERATIONS = next_power_of_two / WARP_SIZE;
   constexpr int WARP_BATCH = (next_power_of_two <= 128) ? 2 : 1;
 
@@ -142,7 +144,7 @@ void dispatch_softmax_forward(output_t* dst, const input_t* src, int softmax_ele
     const int next_power_of_two = 1 << log2_elements;
 
     // This value must match the WARP_SIZE constexpr value computed inside softmax_warp_forward.
-    int warp_size = (next_power_of_two < HIP_WARP_SIZE) ? next_power_of_two : HIP_WARP_SIZE;
+    int warp_size = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
 
     // This value must match the WARP_BATCH constexpr value computed inside softmax_warp_forward.
     int batches_per_warp = (next_power_of_two <= 128) ? 2 : 1;
@@ -157,37 +159,37 @@ void dispatch_softmax_forward(output_t* dst, const input_t* src, int softmax_ele
     // Launch code would be more elegant if C++ supported FOR CONSTEXPR
     switch (log2_elements) {
       case 0:  // 1
-        hipLaunchKernelGGL(softmax_warp_forward<input_t, output_t, acc_t, 0, is_log_softmax>, dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 0, is_log_softmax>), dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 1:  // 2
-        hipLaunchKernelGGL(softmax_warp_forward<input_t, output_t, acc_t, 1, is_log_softmax>, dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 1, is_log_softmax>), dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 2:  // 4
-        hipLaunchKernelGGL(softmax_warp_forward<input_t, output_t, acc_t, 2, is_log_softmax>, dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 2, is_log_softmax>), dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 3:  // 8
-        hipLaunchKernelGGL(softmax_warp_forward<input_t, output_t, acc_t, 3, is_log_softmax>, dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 3, is_log_softmax>), dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 4:  // 16
-        hipLaunchKernelGGL(softmax_warp_forward<input_t, output_t, acc_t, 4, is_log_softmax>, dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 4, is_log_softmax>), dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 5:  // 32
-        hipLaunchKernelGGL(softmax_warp_forward<input_t, output_t, acc_t, 5, is_log_softmax>, dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 5, is_log_softmax>), dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 6:  // 64
-        hipLaunchKernelGGL(softmax_warp_forward<input_t, output_t, acc_t, 6, is_log_softmax>, dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 6, is_log_softmax>), dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 7:  // 128
-        hipLaunchKernelGGL(softmax_warp_forward<input_t, output_t, acc_t, 7, is_log_softmax>, dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 7, is_log_softmax>), dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 8:  // 256
-        hipLaunchKernelGGL(softmax_warp_forward<input_t, output_t, acc_t, 8, is_log_softmax>, dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 8, is_log_softmax>), dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 9:  // 512
-        hipLaunchKernelGGL(softmax_warp_forward<input_t, output_t, acc_t, 9, is_log_softmax>, dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 9, is_log_softmax>), dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       case 10:  // 1024
-        hipLaunchKernelGGL(softmax_warp_forward<input_t, output_t, acc_t, 10, is_log_softmax>, dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(softmax_warp_forward<input_t, output_t, acc_t, 10, is_log_softmax>), dim3(blocks), dim3(threads), 0, 0, dst, src, batch_count, softmax_elements_stride, softmax_elements);
         break;
       default:
         break;
@@ -198,7 +200,6 @@ void dispatch_softmax_forward(output_t* dst, const input_t* src, int softmax_ele
 #define SPECIALIZED_SOFTMAX_IMPL(input_t, output_t, acc_t) \
 template void dispatch_softmax_forward<input_t, output_t, acc_t, false>(output_t * dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count); \
 template void dispatch_softmax_forward<input_t, output_t, acc_t, true>(output_t * dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count);
-
 
 SPECIALIZED_SOFTMAX_IMPL(float, float, float)
 SPECIALIZED_SOFTMAX_IMPL(half, half, float)

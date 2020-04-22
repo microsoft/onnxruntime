@@ -3,37 +3,17 @@
 
 #pragma once
 
-#include <atomic>
+#include "core/framework/random_generator.h"
 
 namespace onnxruntime {
 namespace hip {
-
-class DropoutGenerator {
- public:
-  DropoutGenerator() : seed_(0), offset_(0) {}
-
-  DropoutGenerator(uint64_t seed) : seed_(seed), offset_(0) {}
-
-  void SetSeed(uint64_t seed) {
-    seed_ = seed;
-  }
-
-  std::pair<uint64_t, uint64_t> GetPhiloxSeeds(uint64_t count) {
-    uint64_t offset = offset_.fetch_add(count);
-    return std::pair<uint64_t, uint64_t>(seed_, offset);
-  }
-
- private:
-  uint64_t seed_;
-  std::atomic<uint64_t> offset_;
-};
 
 template <typename T>
 void DropoutKernelImpl(
   const hipDeviceProp_t& prop,
   const int64_t N,
   const float ratio,
-  DropoutGenerator& generator,
+  PhiloxGenerator& generator,
   const T* X_data,
   T* Y_data,
   bool* mask_data);

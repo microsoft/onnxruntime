@@ -23,27 +23,20 @@ namespace hip {
           .InputMemoryType<OrtMemTypeCPUInput>(MemIndex),             \
       OpName<T1, T2>);
 
-// REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, MLFloat16, 1)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, MLFloat16, 1)
 REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, float, 1)
 REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, double, 1)
-// REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, MLFloat16, 1)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, MLFloat16, 1)
 REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, float, 1)
 REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, double, 1)
-// REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, MLFloat16, 1)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, MLFloat16, 1)
 REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, float, 1)
 REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, double, 1)
 
 
-static DropoutGenerator& GetGenerator() {
-  // This generator is shared by all Dropouts.
-  static DropoutGenerator generator(static_cast<uint64_t>(utils::GetStaticRandomSeed()));
-  return generator;
-}
-
 template <typename T1, typename T2>
 Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToHipType<T1>::MappedType HipT;
-  typedef typename ToHipType<T2>::MappedType HipT2;
 
   //Get X_data
   const Tensor* X = context->Input<Tensor>(0);
@@ -74,24 +67,25 @@ Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
                 "T2 must be float16 or float or double");
 
   if (ratio) {
-    ratio_data = static_cast<float>(*reinterpret_cast<const HipT2*>(ratio->template Data<T2>()));
+    ratio_data = static_cast<float>(*reinterpret_cast<const T2*>(ratio->template Data<T2>()));
   } else {
     ratio_data = default_ratio_;
   }
   ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
 
-  DropoutKernelImpl(GetDeviceProp(), N, ratio_data, generator_ != nullptr ? *generator_.get() : GetGenerator(), X_data, Y_data, mask_data);
+  PhiloxGenerator& generator = generator_ != nullptr ? *generator_.get() : PhiloxGenerator::Default();
+  DropoutKernelImpl(GetDeviceProp(), N, ratio_data, generator, X_data, Y_data, mask_data);
 
   return Status::OK();
 }
 
-// REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, MLFloat16, 2)
+REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, MLFloat16, 2)
 REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, float, 2)
 REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, double, 2)
-// REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, MLFloat16, 2)
+REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, MLFloat16, 2)
 REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, float, 2)
 REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, double, 2)
-// REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, double, MLFloat16, 2)
+REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, double, MLFloat16, 2)
 REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, double, float, 2)
 REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, double, double, 2)
 
