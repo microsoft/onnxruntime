@@ -19,11 +19,9 @@ class ScatterElements final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  template <typename T>
-  struct ComputeImpl;
-
   int64_t axis_;
 };
 
 }  // namespace cuda
 }  // namespace onnxruntime
+
