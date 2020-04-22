@@ -413,7 +413,7 @@ def install_ubuntu_deps(args):
 def install_python_deps(numpy_version=""):
     dep_packages = ['setuptools', 'wheel', 'pytest']
     dep_packages.append('numpy=={}'.format(numpy_version) if numpy_version
-                        else 'numpy>=1.18.0')
+                        else 'numpy>=1.16.6')
     dep_packages.append('sympy>=1.1')
     dep_packages.append('packaging')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
