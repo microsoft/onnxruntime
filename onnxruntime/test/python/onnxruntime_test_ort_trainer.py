@@ -279,7 +279,7 @@ class TestOrtTrainer(unittest.TestCase):
             # args_checkpoint_epoch = 1
             # if epoch == args_checkpoint_epoch:
                 # state = {'rng_state': torch.get_rng_state(), 'model': trainer.state_dict()}
-                # torch.save(state, "../testdata/ckpt_mnist.pt")
+                # torch.save(state, get_name("ckpt_mnist.pt"))
 
 
         print("actual_losses=", actual_losses)
@@ -316,7 +316,7 @@ class TestOrtTrainer(unittest.TestCase):
 
         # restore from checkpoint
         resume_trainer = mnist.get_trainer(model, model_desc, device)
-        checkpoint = torch.load("../testdata/ckpt_mnist.pt", map_location="cpu")
+        checkpoint = torch.load(get_name("ckpt_mnist.pt"), map_location="cpu")
         torch.set_rng_state(checkpoint['rng_state'])
         resume_trainer.load_state_dict(checkpoint['model'], strict=True)
 
