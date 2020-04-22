@@ -8,16 +8,16 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace hip {
 
-#define REGISTER_MIXEDPRECISIONSCALE_KERNEL_TYPED(SrcT)                         \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      MixedPrecisionScale,                                                      \
-      kMSDomain,                                                              \
-      1,                                                                        \
-      SrcT,                                                                     \
-      kHipExecutionProvider,                                                   \
-      KernelDefBuilder()                                                        \
-          .TypeConstraint("SrcT", DataTypeImpl::GetTensorType<SrcT>())          \
-          .TypeConstraint("ScaleT", DataTypeImpl::GetTensorType<float>())       \
+#define REGISTER_MIXEDPRECISIONSCALE_KERNEL_TYPED(SrcT)                     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
+      MixedPrecisionScale,                                                  \
+      kMSDomain,                                                            \
+      1,                                                                    \
+      SrcT,                                                                 \
+      kHipExecutionProvider,                                               \
+      KernelDefBuilder()                                                    \
+          .TypeConstraint("SrcT", DataTypeImpl::GetTensorType<SrcT>())      \
+          .TypeConstraint("ScaleT", DataTypeImpl::GetTensorType<float>())   \
           .TypeConstraint("DstT", DataTypeImpl::AllIEEEFloatTensorTypes()), \
       MixedPrecisionScale<SrcT>);
 

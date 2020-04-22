@@ -17,23 +17,15 @@
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
 
 #pragma once
-
 #include "core/providers/hip/cu_inc/common.cuh"
 
 namespace onnxruntime {
 namespace hip {
 
-constexpr int HIP_WARP_SIZE = 64;
-
 inline int log2_ceil(int value) {
   int log2_value = 0;
   while ((1 << log2_value) < value) ++log2_value;
   return log2_value;
-}
-
-template <typename T>
-__device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = warpSize, unsigned int mask = 0xffffffff) {
-  return __shfl_xor(value, laneMask, width);
 }
 
 template <typename T>

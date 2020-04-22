@@ -5,6 +5,7 @@
 #include "layer_norm_impl.h"
 
 #include "core/providers/common.h"
+#include "core/providers/hip/hip_common.h"
 
 namespace onnxruntime {
 namespace contrib {

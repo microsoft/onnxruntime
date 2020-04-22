@@ -4,8 +4,8 @@
 #include "core/providers/hip/hip_allocator.h"
 #include "core/providers/hip/reduction/reduction_functions.h"
 #include "core/providers/hip/math/binary_elementwise_ops.h"
-#include "common.h"
-#include "adam.h"
+#include "orttraining/training_ops/hip/optimizer/common.h"
+#include "orttraining/training_ops/hip/optimizer/adam.h"
 
 namespace onnxruntime {
 namespace hip {
@@ -14,8 +14,8 @@ namespace hip {
 #define REGISTER_ADAM_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD, T_GRAD_NORM)               \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                      \
       AdamOptimizer,                                                                  \
-      kOnnxDomain,                                                                    \
-      9,                                                                              \
+      kMSDomain,                                                                      \
+      1,                                                                              \
       T1##_##T2##_##T3##_##T4##_##T_GRAD##_##T_GRAD_NORM,                             \
       kHipExecutionProvider,                                                         \
       KernelDefBuilder()                                                              \
@@ -136,6 +136,7 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>::ComputeInternal(OpKer
       ToHipType<T4>::FromFloat(lambda_),
       ToHipType<T4>::FromFloat(epsilon_),
       do_bias_correction_,
+      weight_decay_mode_,
       reinterpret_cast<HipT4*>(NM1.template MutableData<T4>()),
       reinterpret_cast<HipT4*>(NM2.template MutableData<T4>()),
       NW != nullptr ? reinterpret_cast<HipT3*>(NW->template MutableData<T3>()) : nullptr,

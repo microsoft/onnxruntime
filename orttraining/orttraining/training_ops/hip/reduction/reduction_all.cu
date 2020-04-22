@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -46,16 +47,15 @@ __global__ void _MultiTensorReduceImpl(ChunkGroup<1> chunk_group, TOut* output) 
     }
   }
 
-  // Thread count in a block must be a multiple of 32.
-  constexpr int warp_size = 32;
+  // Thread count in a block must be a multiple of GPU_WARP_SIZE.
 #pragma unroll
-  for (int stride = warp_size / 2; stride > 0; stride /= 2) {
-    w_sum += __shfl_down(0xFFFFFFFF, w_sum, stride);
+  for (int stride = GPU_WARP_SIZE / 2; stride > 0; stride /= 2) {
+    w_sum += WARP_SHFL_DOWN(w_sum, stride);
   }
 
-  const int warp_count_in_block = blockDim.x / warp_size;
-  const int lid = threadIdx.x % warp_size;
-  const int wid = threadIdx.x / warp_size;
+  const int warp_count_in_block = blockDim.x / GPU_WARP_SIZE;
+  const int lid = threadIdx.x % GPU_WARP_SIZE;
+  const int wid = threadIdx.x / GPU_WARP_SIZE;
 
   // Shape is 2 x warp_count_in_block.
   HIP_DYNAMIC_SHARED( unsigned char, shared_memory_)
@@ -84,16 +84,14 @@ template <typename TIn, typename TOut, typename TBuf, typename TInOp, typename T
 void MultiTensorReduce(ChunkGroup<1> chunk_group, TOut* output) {
   // thread count per block.
   constexpr int thread_count = ChunkGroup<1>::thread_count_per_block;
-  // warp size of GPU.
-  constexpr int warp_size = 32;
   // shared memory's size per block.
-  const int shared_memory_size = thread_count / warp_size * sizeof(TBuf);
+  const int shared_memory_size = thread_count / GPU_WARP_SIZE * sizeof(TBuf);
 
   // Enforce assumptions used inside this reduction HIP kernel.
-  ORT_ENFORCE(thread_count % warp_size == 0);
+  ORT_ENFORCE(thread_count % GPU_WARP_SIZE == 0);
   ORT_ENFORCE((thread_count & (thread_count - 1)) == 0);
 
-  hipLaunchKernelGGL(_MultiTensorReduceImpl<TIn, TOut, TBuf, TInOp, TOutOp>, dim3(chunk_group.chunk_count), dim3(thread_count), shared_memory_size, 0, chunk_group, output);
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(_MultiTensorReduceImpl<TIn, TOut, TBuf, TInOp, TOutOp>), dim3(chunk_group.chunk_count), dim3(thread_count), shared_memory_size, 0, chunk_group, output);
 }
 
 template <typename TIn, typename TOut>
