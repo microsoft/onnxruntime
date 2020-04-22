@@ -7,6 +7,9 @@
 /src/
 /test/
 
+/types/**/*.d.ts
+!/types/lib/**/*.d.ts
+
 /lib/**/*.ts
 /lib/**/*.js.map
 

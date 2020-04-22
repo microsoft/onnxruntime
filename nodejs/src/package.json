@@ -19,9 +19,12 @@
     "type": "git",
     "url": "https://github.com/fs-eire/onnxruntime-node.git"
   },
-  "keywords": [
-    "ONNX Runtime"
-  ],
+  "keywords": ["ONNX Runtime"],
+  "os": ["win32", "darwin", "linux"],
+  "binary": {
+    "module_path": "./bin",
+    "napi_versions": [4]
+  },
   "author": "fs-eire",
   "license": "MIT",
   "devDependencies": {
@@ -43,6 +46,7 @@
     "node-addon-api": "^2.0.0",
     "node-pre-gyp-github": "^1.4.3",
     "onnx-proto": "^4.0.4",
+    "prebuild": "^10.0.0",
     "typedoc": "^0.17.3",
     "typescript": "^3.8.3"
   },
