@@ -88,6 +88,7 @@ struct ForecastingPivotTransformerImpl {
         input.push_back(typename InputType::value_type(input_data, input_dim_1, input_dim_2));
         //Increment data pointer
         input_data += input_dim_1 * input_dim_2;
+        std::get<0>(inputTuple) = input_data;
       }
       //Execute
       transformer.execute(std::make_tuple(input.begin(), input.end()), callback_fn);

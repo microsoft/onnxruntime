@@ -37,16 +37,16 @@ TEST(FeaturizersTests, ForecastingPivotTransformer_2_Inputs) {
   test.AddInput<double>("Input_1", {2, 3, 4}, {1, 6, 3, 9,
                                               2, 4, 5, 8,
                                               NS::Traits<float>::CreateNullValue(), NS::Traits<float>::CreateNullValue(), 7, 10,
-                                              1, 6, 3, 9,
-                                              2, 4, 5, 8,
-                                              NS::Traits<float>::CreateNullValue(), NS::Traits<float>::CreateNullValue(), 7, 10});
+                                              1, 6, 9, 3,
+                                              2, 4, 8, 5,
+                                              NS::Traits<float>::CreateNullValue(), NS::Traits<float>::CreateNullValue(), 10, 7});
   test.AddInput<double>("Input_2", {2, 2, 4}, {2, NS::Traits<float>::CreateNullValue(), 5, 6,
                                               2, NS::Traits<float>::CreateNullValue(), 3, 4,
                                               2, NS::Traits<float>::CreateNullValue(), 5, 6,
                                               2, NS::Traits<float>::CreateNullValue(), 3, 4});
-  test.AddOutput<double>("Output_1", {4, 1}, {3, 9, 3, 9});
-  test.AddOutput<double>("Output_2", {4, 1}, {5, 8, 5, 8});
-  test.AddOutput<double>("Output_3", {4, 1}, {7, 10, 7, 10});
+  test.AddOutput<double>("Output_1", {4, 1}, {3, 9, 9, 3});
+  test.AddOutput<double>("Output_2", {4, 1}, {5, 8, 8, 5});
+  test.AddOutput<double>("Output_3", {4, 1}, {7, 10, 10, 7});
   test.AddOutput<double>("Output_4", {4, 1}, {5, 6, 5, 6});
   test.AddOutput<double>("Output_5", {4, 1}, {3, 4, 3, 4});
   //horizon output
@@ -96,6 +96,34 @@ TEST(FeaturizersTests, ForecastingPivotTransformer_4_Inputs) {
   //horizon output
   test.AddOutput<uint32_t>("Output_8", {4, 1}, {2, 1, 2, 1});
 
+  test.Run();
+}
+
+TEST(FeaturizersTests, ForecastingPivotTransformer_1_Input_1) {
+  auto stream = GetStream<float>();
+  auto dim = static_cast<int64_t>(stream.size());
+  OpTester test("ForecastingPivotTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+  test.AddAttribute<int64_t>("num_pivot_columns", static_cast<int64_t>(1));
+  test.AddInput<uint8_t>("State", {dim}, stream);
+  test.AddInput<double>("Input_1", {2, 1, 2}, {1, 6, 3, 9});
+  test.AddOutput<double>("Output_1", {4, 1}, {1, 6, 3, 9});
+
+  //horizon output
+  test.AddOutput<uint32_t>("Output_2", {4, 1}, {2, 1, 2, 1});
+  test.Run();
+}
+
+TEST(FeaturizersTests, ForecastingPivotTransformer_1_Input_2) {
+  auto stream = GetStream<float>();
+  auto dim = static_cast<int64_t>(stream.size());
+  OpTester test("ForecastingPivotTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+  test.AddAttribute<int64_t>("num_pivot_columns", static_cast<int64_t>(1));
+  test.AddInput<uint8_t>("State", {dim}, stream);
+  test.AddInput<double>("Input_1", {2, 1, 2}, {1, NS::Traits<float>::CreateNullValue(), 3, 9});
+  test.AddOutput<double>("Output_1", {3, 1}, {1, 3, 9});
+
+  //horizon output
+  test.AddOutput<uint32_t>("Output_2", {3, 1}, {1, 2, 1});
   test.Run();
 }
 
