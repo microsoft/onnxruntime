@@ -595,7 +595,7 @@ TEST(ReductionOpTest, ReduceMax_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {3, 1, 1}, {4, 8, 12});
-  
+
 
   #if defined (OPENVINO_CONFIG_GPU_FP32)
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
@@ -771,12 +771,7 @@ TEST(ReductionOpTest, ReduceMean_int32) {
                           90, 100,
                           110, 120});
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {55, 75});
-  //Disbaled temporarily for OpenVINO
-#if defined(OPENVINO_CONFIG_CPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP32)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
-#else
   test.Run();
-#endif
 }
 
 #if !(defined USE_TENSORRT) && !(defined USE_TVM)
@@ -1122,7 +1117,7 @@ TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_128) {
 }
 
 #ifdef USE_CUDA
-TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_30528) {  
+TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_30528) {
   test_apex_reduce_sum(4 * 128, 30528);
   test_apex_reduce_sum(4 * 512, 30528);
 }

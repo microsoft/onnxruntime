@@ -322,7 +322,7 @@ TEST(GatherOpTest, Gather_axis1_neg_indices2d_int8) {
                          {1, 0, 2, 1,
                           11, 10, 12, 11,
                           21, 20, 22, 21});
-  // OpenVINO EP: Disabled temporarily
+  // OpenVINO EP: Disabled due to accuracy issues
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //TensorRT: Assertion `regionRanges != nullptr' failed
 
 }
