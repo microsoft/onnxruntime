@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/session/environment.h"
-#include "core/graph/onnx_protobuf.h"
 #include "core/framework/allocatormgr.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
