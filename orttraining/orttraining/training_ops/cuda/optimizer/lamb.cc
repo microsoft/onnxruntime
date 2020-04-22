@@ -49,8 +49,8 @@ std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
 #define REGISTER_LAMB_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD_NORM)                       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                      \
       LambOptimizer,                                                                  \
-      kOnnxDomain,                                                                    \
-      9,                                                                              \
+      kMSDomain,                                                                    \
+      1,                                                                              \
       T1##_##T2##_##T3##_##T4##_##T_GRAD_NORM,                                        \
       kCudaExecutionProvider,                                                         \
       KernelDefBuilder()                                                              \

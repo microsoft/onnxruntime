@@ -32,9 +32,11 @@ Status SGDOptimizer<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     SGDOptimizer,
-    9,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
     KernelDefBuilder()
         .Alias(1, 0)  // Update weights in-place
         .Alias(2, 1)  // Update gradients in-place
@@ -120,9 +122,11 @@ Status AdamOptimizer<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     AdamOptimizer,
-    9,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
     KernelDefBuilder()
         .Alias(1, 0)  // Update step count in-place
         .Alias(2, 3)  // Update weights in-place
