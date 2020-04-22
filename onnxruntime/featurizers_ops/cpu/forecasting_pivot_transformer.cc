@@ -66,6 +66,7 @@ struct ForecastingPivotTransformerImpl {
     InputType input;
     input.reserve(num_pivot_columns);
     std::unordered_map<int, std::tuple<const T*,int64_t, int64_t>> dataPtrMap;
+    std::vector<uint32_t> horizon_output_helper;
     for (row_idx = 0; row_idx < row_num; ++row_idx) {
       //Prepare Input and Output
       input.clear();
@@ -90,6 +91,28 @@ struct ForecastingPivotTransformerImpl {
         input_data += input_dim_1 * input_dim_2;
         std::get<0>(inputTuple) = input_data;
       }
+
+      // Get the horizon vector from input, since num_pivot_columns > 0. So input is not null
+      const size_t matrix_cols_num = input[0].cols();
+      for (size_t col_idx = 0; col_idx < matrix_cols_num; col_idx++) {
+        bool has_nan = false;
+        for (int input_matrix_id = 0; input_matrix_id < num_pivot_columns; input_matrix_id++) {
+          const size_t matrix_rows_num = input[input_matrix_id].rows();
+          auto matrix = input[input_matrix_id];
+          for (int row_id = 0; row_id < static_cast<int>(matrix_rows_num); row_id++) {
+            if (std::isnan(matrix(row_id, col_idx))) {
+              has_nan = true;
+              break;
+            }
+          }
+          if (has_nan)
+            break;
+        }
+        if (!has_nan) {
+          horizon_output_helper.push_back(matrix_cols_num - col_idx);
+        }
+      }
+
       //Execute
       transformer.execute(std::make_tuple(input.begin(), input.end()), callback_fn);
     }
@@ -139,12 +162,12 @@ struct ForecastingPivotTransformerImpl {
     }
 
     // Prepare the horizon Output(int32)
-    std::vector<uint32_t> horizon_output_helper(num_output_rows, 1);
-    for (int i = 1; i < num_output_rows; i++) {
-      if (row_idx_record[num_output_rows - 1 - i] == row_idx_record[num_output_rows - i]) {
-        horizon_output_helper[num_output_rows - 1 - i] = horizon_output_helper[num_output_rows - i] + 1;
-      }
-    }
+    // std::vector<uint32_t> horizon_output_helper(num_output_rows, 1);
+    // for (int i = 1; i < num_output_rows; i++) {
+    //   if (row_idx_record[num_output_rows - 1 - i] == row_idx_record[num_output_rows - i]) {
+    //     horizon_output_helper[num_output_rows - 1 - i] = horizon_output_helper[num_output_rows - i] + 1;
+    //   }
+    // }
     TensorShape output_shape_horizon({static_cast<int64_t>(num_output_rows), 1});
     Tensor* output_tensor_horizon(ctx->Output(input_node_1_count + num_pivot_output_columns - static_cast<int>(num_pivot_columns), output_shape_horizon));
     uint32_t* output_data_horizon = output_tensor_horizon->MutableData<uint32_t>();
