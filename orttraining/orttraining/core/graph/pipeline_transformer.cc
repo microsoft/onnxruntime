@@ -102,7 +102,7 @@ Status AddRecordBackward(Graph& graph,
   return Status::OK();
 }
 
-Status AddWaitForward(Graph& graph, Node* recv_fw, std::vector<std::string>& new_input_names) {
+Status AddWaitForward(Graph& graph, Node* /* recv_fw */, std::vector<std::string>& new_input_names) {
   // Append old_input to input_args and return its pass-through value. Note that
   // input_args and output_args are Wait's inputs and outputs, respectively.
   auto update_wait_input_output = [&](NodeArg* old_input,
@@ -119,56 +119,36 @@ Status AddWaitForward(Graph& graph, Node* recv_fw, std::vector<std::string>& new
     return wait_output;
   };
 
-  if (recv_fw) {
-    // if we have recv op in forward pass (at the begining of the graph), add the WaitEvent op before that.
-    std::vector<NodeArg*> input_args;
-    std::vector<NodeArg*> output_args;
-    AddInputEvent(graph, "WaitEvent", true /* is_forward */, input_args, new_input_names);
+  std::vector<NodeArg*> input_args;
+  std::vector<NodeArg*> output_args;
+  AddInputEvent(graph, "WaitEvent", true /* is_forward */, input_args, new_input_names);
+  const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
 
-    // recv's first input is the signal input. Re-direct it to WaitEvent's input.
-    auto& input_signal = recv_fw->MutableInputDefs()[0];
-    auto& wait_output = update_wait_input_output(input_signal, input_args, output_args);
-    input_signal = &wait_output;
+  if (graph_inputs.size() == 0){
+    ORT_THROW("Graph ", graph.Name(), " doesn't have any inputs.");
+  }
 
-    graph.AddNode(graph.GenerateNodeName("WaitEvent"),
-                  "WaitEvent",
-                  "",
-                  input_args,
-                  output_args,
-                  nullptr,
-                  kMSDomain);
-  } else {
-    // the first stage doesn't have recv_fw. Add Wait for all inputs.
-    std::vector<NodeArg*> input_args;
-    std::vector<NodeArg*> output_args;
-    AddInputEvent(graph, "WaitEvent", true /* is_forward */, input_args, new_input_names);
-    const std::vector<const NodeArg*>& graph_inputs = graph.GetInputs();
-
-    if (graph_inputs.size() == 0){
-      ORT_THROW("Graph ", graph.Name(), " doesn't have any inputs.");
-    }
-
-    for (auto& input_arg : graph_inputs) {
-      NodeArg* mutable_input = graph.GetNodeArg(input_arg->Name());
-      auto& wait_output = update_wait_input_output(mutable_input, input_args, output_args);
-      std::vector<Node*> nodes = graph.GetMutableConsumerNodes(input_arg->Name());
-      for (auto& consumer_node : nodes) {
-        for (auto& i : consumer_node->MutableInputDefs()) {
-          if (i->Name() == input_arg->Name()) {
-            // if the node is fed by input, re-direct it to be fed by WaitEvent's output.
-            i = &wait_output;
-          }
+  for (auto& input_arg : graph_inputs) {
+    NodeArg* mutable_input = graph.GetNodeArg(input_arg->Name());
+    auto& wait_output = update_wait_input_output(mutable_input, input_args, output_args);
+    std::vector<Node*> nodes = graph.GetMutableConsumerNodes(input_arg->Name());
+    for (auto& consumer_node : nodes) {
+      for (auto& i : consumer_node->MutableInputDefs()) {
+        if (i->Name() == input_arg->Name()) {
+          // if the node is fed by input, re-direct it to be fed by WaitEvent's output.
+          i = &wait_output;
         }
       }
     }
-    graph.AddNode(graph.GenerateNodeName("WaitEvent"),
-                  "WaitEvent",
-                  "",
-                  input_args,
-                  output_args,
-                  nullptr,
-                  kMSDomain);
   }
+  graph.AddNode(graph.GenerateNodeName("WaitEvent"),
+                "WaitEvent",
+                "",
+                input_args,
+                output_args,
+                nullptr,
+                kMSDomain);
+
   return Status::OK();
 }
 

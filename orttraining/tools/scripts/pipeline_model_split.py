@@ -50,20 +50,36 @@ def split_graph(model, split_edge_groups):
                         if info.name == id:
                             output_shapes.append(info.type)
 
+        send_input_signal_name = 'send_input_signal' + str(cut_index)
+        send_signal = model.graph.input.add()
+        send_signal.CopyFrom(helper.make_tensor_value_info(
+            send_input_signal_name, onnx.TensorProto.BOOL, None))
         send_signal = helper.make_tensor(
-            'send_input_signal' + str(cut_index), TensorProto.BOOL, (), (True,))
+            send_input_signal_name, TensorProto.BOOL, (), (True,))
         model.graph.initializer.extend([send_signal])
 
+        recv_input_signal_name = 'recv_input_signal' + str(cut_index)
+        recv_signal = model.graph.input.add()
+        recv_signal.CopyFrom(helper.make_tensor_value_info(
+            recv_input_signal_name, onnx.TensorProto.BOOL, None))
         recv_signal = helper.make_tensor(
-            'recv_input_signal' + str(cut_index), TensorProto.BOOL, (), (True,))
+            recv_input_signal_name, TensorProto.BOOL, (), (True,))
         model.graph.initializer.extend([recv_signal])
 
+        send_dst_rank_name = 'send_dst_rank' + str(cut_index)
+        send_dst_rank = model.graph.input.add()
+        send_dst_rank.CopyFrom(helper.make_tensor_value_info(
+            send_dst_rank_name, onnx.TensorProto.INT64, None))
         send_dst_rank = helper.make_tensor(
-            'send_dst_rank' + str(cut_index), TensorProto.INT64, (), (cut_index + 1,))
+            send_dst_rank_name, TensorProto.INT64, (), (cut_index + 1,))
         model.graph.initializer.extend([send_dst_rank])
 
+        recv_src_rank_name = 'recv_src_rank' + str(cut_index)
+        recv_src_rank = model.graph.input.add()
+        recv_src_rank.CopyFrom(helper.make_tensor_value_info(
+            recv_src_rank_name, onnx.TensorProto.INT64, None))
         recv_src_rank = helper.make_tensor(
-            'recv_src_rank' + str(cut_index), TensorProto.INT64, (), (cut_index,))
+            recv_src_rank_name, TensorProto.INT64, (), (cut_index,))
         model.graph.initializer.extend([recv_src_rank])
 
         # output signal from send after cut
@@ -79,8 +95,7 @@ def split_graph(model, split_edge_groups):
         new_send = model.graph.node.add()
         new_send.CopyFrom(helper.make_node(
             'Send',
-            inputs=['send_input_signal' +
-                    str(cut_index), 'send_dst_rank' + str(cut_index)],
+            inputs=[send_input_signal_name, send_dst_rank_name],
             outputs=['send_output_signal' + str(cut_index)],
             tag=0,
             domain=ms_domain,
@@ -90,8 +105,7 @@ def split_graph(model, split_edge_groups):
         new_receive = model.graph.node.add()
         new_receive.CopyFrom(helper.make_node(
             'Recv',
-            inputs=['recv_input_signal' +
-                    str(cut_index), 'recv_src_rank' + str(cut_index)],
+            inputs=[recv_input_signal_name, recv_src_rank_name],
             outputs=['receive_output_signal' + str(cut_index)],
             tag=0,
             domain=ms_domain,
