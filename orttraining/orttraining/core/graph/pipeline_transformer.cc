@@ -38,7 +38,7 @@ void AddInputEvent(Graph& graph, const std::string& op_name,
 
 // gradient graph can contain some dangling leaf nodes. Add them all to WaitEvent
 // backward node's input.
-void FindLeafNode(Graph& graph, std::vector<NodeArg*>& input_args) {
+void FindLeafNodes(Graph& graph, std::vector<NodeArg*>& input_args) {
   for (auto& node : graph.Nodes()) {
     if (!IsBackward(node)) {
       // only check backward node
@@ -83,7 +83,7 @@ Status AddRecordBackward(Graph& graph,
                       std::begin(send_bw->MutableOutputDefs()),
                       std::end(send_bw->MutableOutputDefs()));
   }
-  FindLeafNode(graph, input_args);
+  FindLeafNodes(graph, input_args);
 
   // Optimizer will be added after applying pipeline transformer. To support partial graph evaluation,
   // the added Record backward op will have its first passthrough input as output.
@@ -172,63 +172,67 @@ Status AddWaitForward(Graph& graph, Node* recv_fw, std::vector<std::string>& new
   return Status::OK();
 }
 
-Status AddRecordForwardWaitBackward(Graph& graph, Node* send_fw, Node* recv_bw, std::vector<std::string>& new_input_names) {
+Status AddOrSkipRecordForwardWaitBackward(Graph& graph, Node* send_fw, Node* recv_bw, std::vector<std::string>& new_input_names) {
   if (!send_fw != !recv_bw){
     ORT_THROW("Graph requires either having both send forward node "
       "and recv backword node, or none of them. Currently the graph "
       "has send forward: ", send_fw, " and recv backward: ", recv_bw);
   }
 
-  if (send_fw && recv_bw) {
-    // if we have a send forward op followed by a recv backward op, insert WaitEvent and RecordEvent in between.
-    Node* record_node = nullptr;
-
-    // Insert RecordEvent
-    {
-      std::vector<NodeArg*> input_args;
-      std::vector<NodeArg*> output_args;
-      AddInputEvent(graph, "RecordEvent", true /* is_forward */, input_args, new_input_names);
-
-      // Add send forward op's output as record op's input and output
-      for (auto& output : send_fw->MutableOutputDefs()) {
-        auto& new_output = CreateNodeArg(graph, output);
-        output_args.push_back(&new_output);
-        input_args.push_back(output);
-      }
-
-      auto& new_node = graph.AddNode(graph.GenerateNodeName("RecordEvent"),
-                                     "RecordEvent",
-                                     "",
-                                     input_args,
-                                     output_args, /* output */
-                                     {},          /* attribute */
-                                     kMSDomain);
-      record_node = &new_node;
-    }
-    // Insert WaitEvent
-    {
-      std::vector<NodeArg*> input_args;
-      std::vector<NodeArg*> output_args;
-      AddInputEvent(graph, "WaitEvent", false /* is_forward */, input_args, new_input_names);
-
-      input_args.insert(std::end(input_args),
-                        std::begin(record_node->MutableOutputDefs()),
-                        std::end(record_node->MutableOutputDefs()));
-
-      auto& input = recv_bw->MutableInputDefs()[0];
-      auto& new_output = CreateNodeArg(graph, input);
-      output_args.push_back(&new_output);
-      input = &new_output;
-
-      graph.AddNode(graph.GenerateNodeName("WaitEvent"),
-                    "WaitEvent",
-                    "Backward pass",
-                    input_args,
-                    output_args, /* output */
-                    {},          /* attribute */
-                    kMSDomain);
-    }
+  if (!send_fw && !recv_bw){
+    // Last partition doesn't have send forwrad and recv backward. No insert needed.
+    return Status::OK();
   }
+
+  // if we have a send forward op followed by a recv backward op, insert WaitEvent and RecordEvent in between.
+  Node* record_node = nullptr;
+
+  // Insert RecordEvent
+  {
+    std::vector<NodeArg*> input_args;
+    std::vector<NodeArg*> output_args;
+    AddInputEvent(graph, "RecordEvent", true /* is_forward */, input_args, new_input_names);
+
+    // Add send forward op's output as record op's input and output
+    for (auto& output : send_fw->MutableOutputDefs()) {
+      auto& new_output = CreateNodeArg(graph, output);
+      output_args.push_back(&new_output);
+      input_args.push_back(output);
+    }
+
+    auto& new_node = graph.AddNode(graph.GenerateNodeName("RecordEvent"),
+                                    "RecordEvent",
+                                    "",
+                                    input_args,
+                                    output_args, /* output */
+                                    {},          /* attribute */
+                                    kMSDomain);
+    record_node = &new_node;
+  }
+  // Insert WaitEvent
+  {
+    std::vector<NodeArg*> input_args;
+    std::vector<NodeArg*> output_args;
+    AddInputEvent(graph, "WaitEvent", false /* is_forward */, input_args, new_input_names);
+
+    input_args.insert(std::end(input_args),
+                      std::begin(record_node->MutableOutputDefs()),
+                      std::end(record_node->MutableOutputDefs()));
+
+    auto& input = recv_bw->MutableInputDefs()[0];
+    auto& new_output = CreateNodeArg(graph, input);
+    output_args.push_back(&new_output);
+    input = &new_output;
+
+    graph.AddNode(graph.GenerateNodeName("WaitEvent"),
+                  "WaitEvent",
+                  "Backward pass",
+                  input_args,
+                  output_args, /* output */
+                  {},          /* attribute */
+                  kMSDomain);
+  }
+
   return Status::OK();
 }
 
@@ -259,7 +263,7 @@ Status TransformGraphForPipeline(Graph& graph) {
 
   ORT_RETURN_IF_ERROR(AddRecordBackward(graph, send_bw, new_input_names, new_output_names));
   ORT_RETURN_IF_ERROR(AddWaitForward(graph, recv_fw, new_input_names));
-  ORT_RETURN_IF_ERROR(AddRecordForwardWaitBackward(graph, send_fw, recv_bw, new_input_names));
+  ORT_RETURN_IF_ERROR(AddOrSkipRecordForwardWaitBackward(graph, send_fw, recv_bw, new_input_names));
 
   auto fill_node_args = [&](const Graph& graph,
                             const std::vector<const NodeArg*>& existed_node_args,

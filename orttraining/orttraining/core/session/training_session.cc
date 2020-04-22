@@ -129,6 +129,8 @@ Status TrainingSession::ConfigureForTraining(
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
 
   std::string loss_name{};
+  optional<std::string> loss_scale_input_name =
+        is_mixed_precision_enabled_ ? optional<std::string>{""} : optional<std::string>{};
   if (config.use_pipeline) {
     // if use pipeline, first check if model contains send op. If it does, set the
     // send node's output as the start tensor to build gradient graph
@@ -139,20 +141,19 @@ Status TrainingSession::ConfigureForTraining(
         config.loss_function_config.has_value()
             ? config.loss_function_config.value().loss_function_info
             : optional<LossFunctionInfo>{};
-    optional<std::string> loss_scale_input_name =
-        is_mixed_precision_enabled_ ? optional<std::string>{""} : optional<std::string>{};
     ORT_RETURN_IF_ERROR(ConfigureLossFunction(
         config.loss_name, loss_function_info,
         loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
-    ORT_ENFORCE(
-        !loss_scale_input_name.has_value() || !loss_scale_input_name.value().empty(),
-        "loss_scale_input_name should not be set to an empty string.");
+  }
 
-    if (is_mixed_precision_enabled_) {
-      TrainingConfigurationResult::MixedPrecisionConfigurationResult mp_result{};
-      mp_result.loss_scale_input_name = loss_scale_input_name.value();
-      config_result.mixed_precision_config_result = mp_result;
-    }
+  ORT_ENFORCE(
+      !loss_scale_input_name.has_value() || !loss_scale_input_name.value().empty(),
+      "loss_scale_input_name should not be set to an empty string.");
+
+  if (is_mixed_precision_enabled_) {
+    TrainingConfigurationResult::MixedPrecisionConfigurationResult mp_result{};
+    mp_result.loss_scale_input_name = loss_scale_input_name.value();
+    config_result.mixed_precision_config_result = mp_result;
   }
 
   if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
