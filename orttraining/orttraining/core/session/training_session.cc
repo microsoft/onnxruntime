@@ -655,7 +655,6 @@ bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) cons
 
 static const std::unordered_set<std::string> Dropout_Nodes = {
     "TrainableDropout",
-    "Dropout",
 };
 // TODO remove this once ONNX properly supports training_mode input.
 void TrainingSession::SetDropoutEvalFeedNames() {

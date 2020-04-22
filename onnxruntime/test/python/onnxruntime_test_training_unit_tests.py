@@ -12,46 +12,53 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .onnxruntime_test_ort_trainer import map_optimizer_attributes, ort_trainer_learning_rate_description
+from onnxruntime_test_ort_trainer import map_optimizer_attributes, ort_trainer_learning_rate_description
 from helper import get_name
 import onnxruntime
+from onnxruntime_test_training_unittest_utils import process_dropout
 from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample
 
 class TestTrainingDropout(unittest.TestCase):
-    def TestTrainingAndEvalDropout(self):
+    def testTrainingAndEvalDropout(self):
         class TwoDropoutNet(nn.Module):
-            def __init__(self, drop_prb_1, drop_prb_2):
+            def __init__(self, drop_prb_1, drop_prb_2, dim_size):
                 super(TwoDropoutNet, self).__init__()
                 self.drop_1 = nn.Dropout(drop_prb_1)
                 self.drop_2 = nn.Dropout(drop_prb_2)
+                self.weight_1 = torch.nn.Parameter(torch.zeros(dim_size, dtype=torch.float32))
+                self.weight_2 = torch.nn.Parameter(torch.zeros(dim_size, dtype=torch.float32))
             def forward(self, x):
-                output = self.drop_1(x)
-                output = self.drop_2(output)
-                return output
-        
-        model = TwoDropoutNet(1, 1)
-        input_desc = IODescription('input', ['dim_1', 'dim_2', 'dim_3'], torch.float32)
-        output_desc = IODescription('output', ['dim_1', 'dim_2', 'dim_3'], torch.float32)
-        model_desc = ModelDescription([input_desc], [output_desc])
+                x = x + self.weight_1
+                x = self.drop_1(x)
+                x = self.drop_2(x)
+                output = x + self.weight_2
+                return output[0]
+        dim_size = 3
         device = torch.device("cuda", 0)
+        model = TwoDropoutNet(0.999, 0.999, dim_size)
+        input_desc = IODescription('input', [dim_size], torch.float32)
+        output_desc = IODescription('output', [], torch.float32)
+        model_desc = ModelDescription([input_desc], [output_desc])
         lr_desc = ort_trainer_learning_rate_description()
         model = ORTTrainer(model, None, model_desc, "LambOptimizer",
                         map_optimizer_attributes,
                         lr_desc,
                         device,
+                        postprocess_model=process_dropout,
                         world_rank=0, world_size=1)
-        input = torch.ones(3, dtype=torch.float32)
-        expected_training_output = [1, 1, 1]
-        expected_eval_output = [0, 0, 0]
+        input = torch.ones(dim_size, dtype=torch.float32).to(device)
+        expected_training_output = [0.0]
+        expected_eval_output = [1.0]
         learning_rate = torch.tensor([1.0000000e+00]).to(device)
-        train_output = model.train_step(input, learning_rate = learning_rate)
+        input_args=[input, learning_rate]
+        train_output = model.train_step(*input_args)
 
         rtol = 1e-03
-        assert_allclose(expected_training_output, train_output, rtol=rtol, err_msg="dropout training loss mismatch")
+        assert_allclose(expected_training_output, train_output.item(), rtol=rtol, err_msg="dropout training loss mismatch")
 
         eval_output = model.eval_step(input)
-        assert_allclose(expected_eval_output, eval_output, rtol=rtol, err_msg="dropout eval loss mismatch")
+        assert_allclose(expected_eval_output, eval_output.item(), rtol=rtol, err_msg="dropout eval loss mismatch")
 
-
-
+if __name__ == '__main__':
+    unittest.main(module=__name__, buffer=True)
 

@@ -89,7 +89,7 @@ def ort_training_session_run_helper(session, iobinding, inputs, input_descs, out
         iobinding.bind_input(input_desc.name_, input.device.type, device_index, dtype_torch_to_numpy(input.dtype),
                              list(input.size()), input.data_ptr())
 
-    if not additional_feeds:
+    if additional_feeds:
         for name, value in additional_feeds:
             device_index = input_get_device_index(value)
             iobinding.bind_input(name, value.device.type, device_index, dtype_torch_to_numpy(value.dtype),
