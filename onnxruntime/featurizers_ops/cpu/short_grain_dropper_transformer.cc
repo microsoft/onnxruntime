@@ -14,9 +14,9 @@ namespace featurizers {
 
 template <typename T>
 struct CopyNonDroppedColumnsImpl {
-  void operator()(const Tensor* input_tensor, Tensor* output_after_drop_tensor,
+  void operator()(const Tensor* variadic_input_tensor, Tensor* output_after_drop_tensor,
                   const std::vector<bool>& rows_to_drop, int64_t input_row_size) const {
-      const T* input_data(input_tensor->template Data<T>());
+      const T* input_data(variadic_input_tensor->template Data<T>());
       T* output_after_drop_data = output_after_drop_tensor->MutableData<T>();
 
       for (int row_idx = 0; row_idx < static_cast<int>(rows_to_drop.size()); ++row_idx) {
@@ -60,7 +60,7 @@ void ShortGrainDropperTransformerImpl(OpKernelContext* ctx) {
   }
 
   // Calculate number of remaining rows
-  int remaining_rows_num = std::count(rows_to_drop.begin(), rows_to_drop.end(), false);
+  int remaining_rows_num = static_cast<int>(std::count(rows_to_drop.begin(), rows_to_drop.end(), false));
 
   ORT_ENFORCE(remaining_rows_num > 0, "remaining_rows_num > 0");
 
@@ -81,18 +81,18 @@ void ShortGrainDropperTransformerImpl(OpKernelContext* ctx) {
   const int variadic_input_end_id = variadic_input_start_id + ctx->NumVariadicInputs(2);
   for (int input_id = variadic_input_start_id; input_id < variadic_input_end_id; ++input_id) {
 
-    const auto* input_tensor(ctx->Input<Tensor>(input_id)); //2-d tensor
-    const int64_t input_row_size = input_tensor->Shape()[1];
+    const auto* variadic_input_tensor(ctx->Input<Tensor>(input_id)); //2-d tensor
+    const int64_t input_row_size = variadic_input_tensor->Shape()[1];
 
     TensorShape output_after_drop_shape({static_cast<int64_t>(remaining_rows_num), input_row_size});
     Tensor* output_after_drop_tensor(ctx->Output(input_id - 1, output_after_drop_shape));
 
-    const auto elem_type = input_tensor->GetElementType();
+    const auto elem_type = variadic_input_tensor->GetElementType();
 
     utils::MLTypeCallDispatcher<CopyNonDroppedColumnsImpl,
                                 int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t,
                                 float, double, bool, std::string> t_disp(elem_type);
-    t_disp.Invoke(input_tensor, output_after_drop_tensor, rows_to_drop, input_row_size);
+    t_disp.Invoke(variadic_input_tensor, output_after_drop_tensor, rows_to_drop, input_row_size);
   }
 };
 
