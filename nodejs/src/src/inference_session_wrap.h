@@ -8,14 +8,13 @@
 #include <memory>
 #include <napi.h>
 
+// class InferenceSessionWrap is a N-API object wrapper for native InferenceSession.
 class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
 public:
   static Napi::Object Init(Napi::Env env, Napi::Object exports);
   InferenceSessionWrap(const Napi::CallbackInfo &info);
 
 private:
-  static Napi::FunctionReference constructor;
-
   /**
    * [sync] create the session.
    * @param arg0 either a string (file path) or a Uint8Array
@@ -52,9 +51,11 @@ private:
 
   // private members
 
+  static Napi::FunctionReference constructor;
+
   // global env
-  static Ort::Env *ortEnv_;
-  static Ort::Env &OrtEnv() { return *ortEnv_; }
+  static Ort::Env *ortEnv;
+  static Ort::Env &OrtEnv() { return *ortEnv; }
 
   // session objects
   bool initialized_;
