@@ -1,4 +1,5 @@
 import io
+import os
 import numpy as np
 import onnx
 from onnx import numpy_helper
@@ -8,7 +9,7 @@ import torch.nn
 import torch.onnx
 import onnxruntime as ort
 from distutils.version import LooseVersion
-from checkpointing_utils import list_checkpoint_files, Combine_Zero_Checkpoint
+from .checkpointing_utils import list_checkpoint_files, Combine_Zero_Checkpoint
 
 DEFAULT_OPSET_VERSION = 10
 

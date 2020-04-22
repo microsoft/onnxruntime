@@ -58,22 +58,18 @@ def generate_sample_batch(desc, batch_size, device):
     sample = generate_sample(desc_, device)
     return sample
 
-def runBertTrainingTest(gradient_accumulation_steps,
+def create_ort_trainer(gradient_accumulation_steps,
                         use_mixed_precision,
                         allreduce_post_accumulation,
                         use_simple_model_desc=True,
-                        use_internel_loss_scale=False):
+                        loss_scaler=None,
+                        partition_optimizer=False):
     model_desc = bert_model_description()
     simple_model_desc = remove_extra_info(model_desc) if use_simple_model_desc else model_desc
     learning_rate_description = ort_trainer_learning_rate_description()
     device = torch.device("cuda", 0)
 
-    torch.manual_seed(1)
-    onnxruntime.set_seed(1)
-
     onnx_model = onnx.load(get_name("bert_toy_postprocessed.onnx"))
-
-    loss_scaler = LossScaler("ort_test_input_loss_scalar", True) if use_internel_loss_scale else None
 
     model = ORTTrainer(onnx_model, None, simple_model_desc, "LambOptimizer",
                        map_optimizer_attributes,
@@ -83,7 +79,26 @@ def runBertTrainingTest(gradient_accumulation_steps,
                        world_rank=0, world_size=1,
                        loss_scaler=loss_scaler,
                        use_mixed_precision=use_mixed_precision,
-                       allreduce_post_accumulation=allreduce_post_accumulation)
+                       allreduce_post_accumulation=allreduce_post_accumulation,
+                       partition_optimizer = partition_optimizer)
+    
+    return model, model_desc, device
+
+def runBertTrainingTest(gradient_accumulation_steps,
+                        use_mixed_precision,
+                        allreduce_post_accumulation,
+                        use_simple_model_desc=True,
+                        use_internel_loss_scale=False):
+    torch.manual_seed(1)
+    onnxruntime.set_seed(1)
+  
+    loss_scaler = LossScaler("ort_test_input_loss_scalar", True) if use_internel_loss_scale else None
+
+    model, model_desc, device = create_ort_trainer(gradient_accumulation_steps,
+                        use_mixed_precision,
+                        allreduce_post_accumulation,
+                        use_simple_model_desc,
+                        loss_scaler)
 
     if loss_scaler is None:
         loss_scaler = LossScaler(model.loss_scale_input_name, True)
@@ -377,6 +392,34 @@ class TestOrtTrainer(unittest.TestCase):
         rtol = 1e-03
         assert_allclose(expected_losses, actual_losses, err_msg="loss mismatch")
         assert_allclose(expected_eval_loss, actual_eval_loss, err_msg="evaluation loss mismatch")
+
+    def testBertCheckpointingBasic(self):
+        model,_,_ = create_ort_trainer(gradient_accumulation_steps=1,
+                        use_mixed_precision=False,
+                        allreduce_post_accumulation=True,
+                        use_simple_model_desc=True,
+                        loss_scaler=None)
+        sd = model.state_dict()
+
+        # modify one of the default values
+        sd['bert.encoder.layer.0.attention.output.LayerNorm.weight'] +=1
+        model.load_state_dict(sd)
+        model.save_checkpoint('./', 'bert_toy_save')
+        del model
+
+        # create new model
+        model2,_,_ = create_ort_trainer(gradient_accumulation_steps=1,
+                        use_mixed_precision=False,
+                        allreduce_post_accumulation=True,
+                        use_simple_model_desc=True,
+                        loss_scaler=None)
+
+        # load changed checkpoint
+        model2.load_checkpoint('./', 'bert_toy_save')
+        loaded_sd = model2.state_dict()
+
+        for k,v in loaded_sd.items():
+            assert torch.all(torch.eq(v, sd[k]))
 
 if __name__ == '__main__':
     unittest.main(module=__name__, buffer=True)
