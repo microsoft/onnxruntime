@@ -2,12 +2,10 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/shape_op.h"
+#include "core/providers/hip/hip_fwd.h"
 
 namespace onnxruntime {
 namespace hip {
-
-template <typename T>
-KernelCreateInfo BuildKernelCreateInfo();
 
 ONNX_OPERATOR_KERNEL_EX(
     Shape,

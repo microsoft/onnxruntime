@@ -22,6 +22,13 @@
 
 using namespace onnxruntime::common;
 
+namespace {
+struct KernelRegistryAndStatus {
+  std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
+  Status st;
+};
+}  // namespace
+
 namespace onnxruntime {
 namespace hip {
 
@@ -515,7 +522,7 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 11, Un
 // class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 11, MLFloat16, Round);
 // class ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 11, CumSum);
 
-static void RegisterHIPKernels(KernelRegistry& kernel_registry) {
+static Status RegisterHipKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
@@ -983,29 +990,33 @@ static void RegisterHIPKernels(KernelRegistry& kernel_registry) {
   };
 
   for (auto& function_table_entry : function_table) {
-    kernel_registry.Register(function_table_entry());
+    ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
   }
-}
-
-std::shared_ptr<KernelRegistry> GetHIPKernelRegistry() {
-  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  RegisterHIPKernels(*kernel_registry);
 
 #ifndef DISABLE_CONTRIB_OPS
-  ::onnxruntime::contrib::hip::RegisterHipContribKernels(*kernel_registry);
+  ORT_RETURN_IF_ERROR(::onnxruntime::contrib::hip::RegisterHipContribKernels(kernel_registry));
 #endif
 
 #ifdef ENABLE_TRAINING
-  ::onnxruntime::hip::RegisterHipTrainingKernels(*kernel_registry);
+  ORT_RETURN_IF_ERROR(::onnxruntime::hip::RegisterHipTrainingKernels(kernel_registry));
 #endif
-  return kernel_registry;
+
+  return Status::OK();
+}
+
+KernelRegistryAndStatus GetHipKernelRegistry() {
+  KernelRegistryAndStatus ret;
+  ret.st = RegisterHipKernels(*ret.kernel_registry);
+  return ret;
 }
 
 } // namespace hip
 
 std::shared_ptr<KernelRegistry> HIPExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::hip::GetHIPKernelRegistry();
-  return kernel_registry;
+  static KernelRegistryAndStatus k = onnxruntime::hip::GetHipKernelRegistry();
+  // throw if the registry failed to initialize
+  ORT_THROW_IF_ERROR(k.st);
+  return k.kernel_registry;
 }
 
 HIPExecutionProvider::HIPExecutionProvider(const HIPExecutionProviderInfo& info)

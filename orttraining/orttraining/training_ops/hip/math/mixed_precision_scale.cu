@@ -1,4 +1,5 @@
-
+#include "hip/hip_runtime.h"
+#include <hip/hip_fp16.h>
 #include "core/providers/hip/cu_inc/common.cuh"
 #include "mixed_precision_scale.h"
 
@@ -23,7 +24,7 @@ void Impl_MixedPrecisionScale(
     size_t count){
   int blocksPerGrid = CeilDiv(count, GridDim::maxThreadsPerBlock);
   HIP_LONG N = static_cast<HIP_LONG>(count);
-  hipLaunchKernelGGL(_MixedPrecisionScale<SrcT, DstT>, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(_MixedPrecisionScale<SrcT, DstT>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
       input_data,
       scale_data,
       output_data,

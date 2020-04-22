@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <hip/hip_runtime.h>
-#include "core/providers/hip/hip_common.h"
 #include "activations_impl.h"
 #include "core/providers/hip/cu_inc/common.cuh"
 #include "core/providers/hip/cu_inc/unary_elementwise_impl.cuh"

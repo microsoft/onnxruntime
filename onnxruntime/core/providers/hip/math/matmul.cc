@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/hip/hip_allocator.h"
-#include "core/providers/hip/fpgeneric.h"
+#include "core/providers/hip/shared_inc/fpgeneric.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/hip/math/matmul.h"
 

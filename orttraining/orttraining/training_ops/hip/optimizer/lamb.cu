@@ -165,10 +165,10 @@ void LambComputeDirection(
 
 SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, float, float, float)
 SPECIALIZED_LAMB_COMPUTE_DIRECTION(double, double, double, double)
-// SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, half)
-// SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, float)
-// SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, half)
-// SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, float)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, half)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, float)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, half)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, float)
 
 template <typename T1, typename T2, typename T3>
 __device__ __forceinline__ void _LambUpdateRule(
@@ -287,8 +287,8 @@ void LambUpdate(
 
 INSTANTIATE_LAMB_UPDATE(float, float, float)
 INSTANTIATE_LAMB_UPDATE(double, double, double)
-// INSTANTIATE_LAMB_UPDATE(half, float, half)
-// INSTANTIATE_LAMB_UPDATE(float, float, half)
+INSTANTIATE_LAMB_UPDATE(half, float, half)
+INSTANTIATE_LAMB_UPDATE(float, float, half)
 
 template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
 __global__ void LambMultiTensorComputeDirectionImpl(
@@ -373,10 +373,10 @@ void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()
 
 INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, float, float, float)
 INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(double, double, double, double)
-// INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, half)
-// INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, float)
-// INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, half)
-// INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, float)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, half)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, float)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, half)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, float)
 
 template <typename T1, typename T2, typename T3>
 __global__ void LambMultiTensorUpdateImpl(
@@ -437,8 +437,8 @@ void LambMultiTensorUpdateFunctor<T1, T2, T3>::operator()(
 
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(double, double, double)
-// INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(half, float, half)
-// INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, half)
+INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(half, float, half)
+INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, half)
 
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
 __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group) {
@@ -468,17 +468,16 @@ __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group) {
     }
   }
 
-  // Thread count in a block must be a multiple of 32.
-  constexpr int warp_size = 32;
+  // Thread count in a block must be a multiple of GPU_WARP_SIZE.
 #pragma unroll
-  for (int stride = warp_size / 2; stride > 0; stride /= 2) {
-    w_sum += __shfl_down(w_sum, stride);
-    d_sum += __shfl_down(d_sum, stride);
+  for (int stride = GPU_WARP_SIZE / 2; stride > 0; stride /= 2) {
+    w_sum += WARP_SHFL_DOWN(w_sum, stride);
+    d_sum += WARP_SHFL_DOWN(d_sum, stride);
   }
 
-  const int warp_count_in_block = blockDim.x / warp_size;
-  const int lid = threadIdx.x % warp_size;
-  const int wid = threadIdx.x / warp_size;
+  const int warp_count_in_block = blockDim.x / GPU_WARP_SIZE;
+  const int lid = threadIdx.x % GPU_WARP_SIZE;
+  const int wid = threadIdx.x / GPU_WARP_SIZE;
 
   // Shape is 2 x warp_count_in_block.
   HIP_DYNAMIC_SHARED( unsigned char, shared_memory_)
@@ -512,13 +511,11 @@ template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename
 void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group) {
   // thread count per block.
   constexpr int thread_count = ChunkGroup<4>::thread_count_per_block;
-  // warp size of GPU.
-  constexpr int warp_size = 32;
   // shared memory's size per block.
-  const int shared_memory_size = thread_count / warp_size * 2 * sizeof(TBuf);
+  const int shared_memory_size = thread_count / GPU_WARP_SIZE * 2 * sizeof(TBuf);
 
   // Enforce assumptions used inside this reduction HIP kernel.
-  ORT_ENFORCE(thread_count % warp_size == 0);
+  ORT_ENFORCE(thread_count % GPU_WARP_SIZE == 0);
   ORT_ENFORCE((thread_count & (thread_count - 1)) == 0);
 
   hipLaunchKernelGGL(HIP_KERNEL_NAME(LambMultiTensorReductionImpl<TIn1, TIn2, TOut1, TOut2, TBuf>), dim3(chunk_group.chunk_count), dim3(thread_count), shared_memory_size, 0, chunk_group);
@@ -529,9 +526,9 @@ void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()
 
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, float, float, float, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(double, double, double, double, double)
-// INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, half, float)
-// INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, float, float)
-// INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(half, half, half, half, float)
+INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, half, float)
+INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, float, float)
+INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(half, half, half, half, float)
 
 }  // namespace hip
 }  // namespace onnxruntime

@@ -5,7 +5,7 @@
 
 #include "core/providers/hip/math/clip.h"
 #include "core/providers/hip/hip_common.h"
-#include "core/providers/hip/hip_utils.h"
+#include "core/providers/hip/shared_inc/hip_utils.h"
 
 namespace onnxruntime {
 namespace hip {

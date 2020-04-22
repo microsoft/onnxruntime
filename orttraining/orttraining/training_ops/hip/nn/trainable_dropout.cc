@@ -22,23 +22,23 @@ namespace hip {
           .InputMemoryType<OrtMemTypeCPUInput>(MemIndex),                        \
       ClassName<T1, T2>);
 
-// REGISTER_KERNEL_TYPED(TrainableDropout, kOnnxDomain, 9, MLFloat16, MLFloat16, 1, Dropout)
+REGISTER_KERNEL_TYPED(TrainableDropout, kOnnxDomain, 9, MLFloat16, MLFloat16, 1, Dropout)
 REGISTER_KERNEL_TYPED(TrainableDropout, kOnnxDomain, 9, MLFloat16, float, 1, Dropout)
 REGISTER_KERNEL_TYPED(TrainableDropout, kOnnxDomain, 9, MLFloat16, double, 1, Dropout)
-// REGISTER_KERNEL_TYPED(TrainableDropout, kOnnxDomain, 9, float, MLFloat16, 1, Dropout)
+REGISTER_KERNEL_TYPED(TrainableDropout, kOnnxDomain, 9, float, MLFloat16, 1, Dropout)
 REGISTER_KERNEL_TYPED(TrainableDropout, kOnnxDomain, 9, float, float, 1, Dropout)
 REGISTER_KERNEL_TYPED(TrainableDropout, kOnnxDomain, 9, float, double, 1, Dropout)
-// REGISTER_KERNEL_TYPED(TrainableDropout, kOnnxDomain, 9, double, MLFloat16, 1, Dropout)
+REGISTER_KERNEL_TYPED(TrainableDropout, kOnnxDomain, 9, double, MLFloat16, 1, Dropout)
 REGISTER_KERNEL_TYPED(TrainableDropout, kOnnxDomain, 9, double, float, 1, Dropout)
 REGISTER_KERNEL_TYPED(TrainableDropout, kOnnxDomain, 9, double, double, 1, Dropout)
 
-// REGISTER_KERNEL_TYPED(TrainableDropoutGrad, kMSDomain, 1, MLFloat16, MLFloat16, 2, DropoutGrad)
+REGISTER_KERNEL_TYPED(TrainableDropoutGrad, kMSDomain, 1, MLFloat16, MLFloat16, 2, DropoutGrad)
 REGISTER_KERNEL_TYPED(TrainableDropoutGrad, kMSDomain, 1, MLFloat16, float, 2, DropoutGrad)
 REGISTER_KERNEL_TYPED(TrainableDropoutGrad, kMSDomain, 1, MLFloat16, double, 2, DropoutGrad)
-// REGISTER_KERNEL_TYPED(TrainableDropoutGrad, kMSDomain, 1, float, MLFloat16, 2, DropoutGrad)
+REGISTER_KERNEL_TYPED(TrainableDropoutGrad, kMSDomain, 1, float, MLFloat16, 2, DropoutGrad)
 REGISTER_KERNEL_TYPED(TrainableDropoutGrad, kMSDomain, 1, float, float, 2, DropoutGrad)
 REGISTER_KERNEL_TYPED(TrainableDropoutGrad, kMSDomain, 1, float, double, 2, DropoutGrad)
-// REGISTER_KERNEL_TYPED(TrainableDropoutGrad, kMSDomain, 1, double, MLFloat16, 2, DropoutGrad)
+REGISTER_KERNEL_TYPED(TrainableDropoutGrad, kMSDomain, 1, double, MLFloat16, 2, DropoutGrad)
 REGISTER_KERNEL_TYPED(TrainableDropoutGrad, kMSDomain, 1, double, float, 2, DropoutGrad)
 REGISTER_KERNEL_TYPED(TrainableDropoutGrad, kMSDomain, 1, double, double, 2, DropoutGrad)
 

@@ -73,9 +73,13 @@ Status View::ComputeInternal(OpKernelContext* context) const {
     Tensor* Y = context->Output(i, y_shapes[i]);
     if (Y != nullptr) {
       if (X_data != Y->MutableDataRaw()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "View output is not sharing the underlaying buffer of input");
+        // View output is not sharing the underlaying buffer of input, copy instead
+        const void* source = static_cast<const char*>(X_data) + y_byte_offsets[i];
+        void* target = Y->MutableDataRaw();
+        HIP_RETURN_IF_ERROR(hipMemcpyAsync(target, source, Y->SizeInBytes(), hipMemcpyDeviceToDevice));
+      } else {
+        Y->SetByteOffset(y_byte_offsets[i]);
       }
-      Y->SetByteOffset(y_byte_offsets[i]);
     }
   }
 

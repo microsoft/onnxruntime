@@ -14,15 +14,15 @@ class Dropout final : public HipKernel {
  public:
   Dropout(const OpKernelInfo& info) : HipKernel(info), default_ratio_(0.5) {
     int64_t seed = 0;
-    if (info.GetAttr<int64_t>("seed", &seed).IsOK() && seed > 0) {
-      generator_ = onnxruntime::make_unique<DropoutGenerator>(static_cast<uint64_t>(seed));
+    if (info.GetAttr<int64_t>("seed", &seed).IsOK()) {
+      generator_ = onnxruntime::make_unique<PhiloxGenerator>(static_cast<uint64_t>(seed));
     }
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  mutable std::unique_ptr<DropoutGenerator> generator_;
+  mutable std::unique_ptr<PhiloxGenerator> generator_;
   const float default_ratio_;
 };
 

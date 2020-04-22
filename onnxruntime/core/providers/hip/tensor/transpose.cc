@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/hip/fpgeneric.h"
+#include "core/providers/hip/shared_inc/fpgeneric.h"
 #include "core/providers/hip/tensor/transpose.h"
 #include "core/providers/hip/tensor/transpose_impl.h"
 

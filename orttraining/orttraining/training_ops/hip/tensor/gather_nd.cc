@@ -3,7 +3,7 @@
 
 #include "orttraining/training_ops/hip/tensor/gather_nd.h"
 #include "orttraining/training_ops/hip/tensor/gather_nd_impl.h"
-#include "core/providers/hip/hip_utils.h"
+#include "core/providers/hip/shared_inc/hip_utils.h"
 
 namespace onnxruntime {
 namespace hip {
@@ -106,12 +106,12 @@ Status GatherNDBase::CommonComputeKernel(
   if (fwd) {
     MLDataType T_type = kernel_input_tensor->DataType();
     TYPED_FUNCTION_CALL_FWD(float);
-    //TYPED_FUNCTION_CALL_FWD(MLFloat16);
+    TYPED_FUNCTION_CALL_FWD(MLFloat16);
     TYPED_FUNCTION_CALL_FWD(double);
   } else {
     MLDataType T_type = kernel_input_tensor->DataType();
     TYPED_FUNCTION_CALL_BWD(float);
-    //TYPED_FUNCTION_CALL_BWD(MLFloat16);
+    TYPED_FUNCTION_CALL_BWD(MLFloat16);
     TYPED_FUNCTION_CALL_BWD(double);
   }
 

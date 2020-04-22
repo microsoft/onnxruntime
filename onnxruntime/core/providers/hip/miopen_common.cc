@@ -3,7 +3,7 @@
 
 #include "miopen_common.h"
 #include "gsl/gsl"
-#include "hip_call.h"
+#include "shared_inc/hip_call.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {

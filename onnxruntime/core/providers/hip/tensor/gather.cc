@@ -42,8 +42,8 @@ ONNX_OPERATOR_KERNEL_EX(
         GatherImpl(                                                             \
             input_block_size,                                                   \
             indices_max,                                                        \
-            &divmod_output_block_size,                                          \
-            &divmod_block_size,                                                 \
+            divmod_output_block_size,                                           \
+            divmod_block_size,                                                  \
             p.indices_tensor->template Data<int32_t>(),                         \
             reinterpret_cast<const ToHipType<T>::MappedType*>(input_data),     \
             reinterpret_cast<typename ToHipType<T>::MappedType*>(output_data), \
@@ -56,8 +56,8 @@ ONNX_OPERATOR_KERNEL_EX(
         GatherImpl(                                                             \
             input_block_size,                                                   \
             indices_max,                                                        \
-            &divmod_output_block_size,                                          \
-            &divmod_block_size,                                                 \
+            divmod_output_block_size,                                           \
+            divmod_block_size,                                                  \
             p.indices_tensor->template Data<int64_t>(),                         \
             reinterpret_cast<const ToHipType<T>::MappedType*>(input_data),     \
             reinterpret_cast<typename ToHipType<T>::MappedType*>(output_data), \

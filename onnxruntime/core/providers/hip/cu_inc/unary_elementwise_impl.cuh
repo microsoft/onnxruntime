@@ -1,9 +1,10 @@
+#include "hip/hip_runtime.h"
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #pragma once
 #include <stdint.h>
-#include "core/providers/hip/hip_utils.h"
+#include "core/providers/hip/shared_inc/hip_utils.h"
 #include "common.cuh"
 
 namespace onnxruntime {
@@ -13,7 +14,7 @@ template <typename InT, typename OutT, typename FuncT, int NumThreadsPerBlock, i
 __global__ void _UnaryElementWise(
     const InT* input_data,
     OutT* output_data,
-    const FuncT func,
+    const FuncT functor,
     HIP_LONG N) {
   HIP_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   InT value[NumElementsPerThread];
@@ -31,7 +32,7 @@ __global__ void _UnaryElementWise(
   #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      output_data[id] = func(value[i]);
+      output_data[id] = functor(value[i]);
       id += NumThreadsPerBlock;
     }
   }
@@ -48,7 +49,7 @@ void UnaryElementWiseImpl(
 
   int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   HIP_LONG N = static_cast<HIP_LONG>(count);
-  hipLaunchKernelGGL(_UnaryElementWise<InT, OutT, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(_UnaryElementWise<InT, OutT, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
           input_data,
           output_data,
           func,

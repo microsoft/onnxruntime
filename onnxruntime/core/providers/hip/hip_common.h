@@ -15,10 +15,10 @@
 #include "core/graph/graph_viewer.h"
 #include "core/util/math.h"
 
-#include "core/providers/hip/fast_divmod.h"
-#include "core/providers/hip/hip_call.h"
+#include "core/providers/hip/shared_inc/fast_divmod.h"
+#include "core/providers/hip/shared_inc/hip_call.h"
 #include "core/providers/hip/hip_execution_provider.h"
-
+#include "core/providers/hip/hip_fwd.h"
 
 namespace onnxruntime {
 namespace hip {
