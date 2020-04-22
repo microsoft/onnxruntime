@@ -10,7 +10,7 @@ const TensorAny = Tensor as any;
 function testAllTensortypes(
     title: string, length: number,
     funcNumerictypes: (passtypeParam: boolean, type: Tensor.Type, data: Tensor.DataType) => void,
-    funcStringtype?: (passtypeParam: boolean, data: string[]) => void) {
+    funcStringtype?: (passtypeParam: boolean, data: string[]) => void): void {
   NUMERIC_TYPE_MAP.forEach((ctor, type) => {
     it(`${title} - (${type}, ${ctor.name})`, () => {
       funcNumerictypes(true, type, createTestData(type, length));
@@ -20,7 +20,7 @@ function testAllTensortypes(
         funcNumerictypes(false, type, createTestData(type, length));
       });
     }
-  })
+  });
   if (!funcStringtype) {
     it(`${title} - (string, ${Array.name})`, () => {
       funcNumerictypes(true, 'string', createTestData('string', length));
@@ -28,8 +28,7 @@ function testAllTensortypes(
     it(`${title} - (${Array.name})`, () => {
       funcNumerictypes(false, 'string', createTestData('string', length));
     });
-  }
-  else {
+  } else {
     it(`${title} - (string, string[])`, () => {
       funcStringtype(true, createTestData('string', length) as string[]);
     });

@@ -7,7 +7,7 @@ import {assertDataEqual, TEST_DATA_ROOT} from '../test-utils';
 
 
 const MODEL_TEST_TYPES_CASES:
-    {model: string, type: Tensor.Type, input0: Tensor.DataType, expectedOutput0: Tensor.DataType}[] = [
+    Array<{model: string; type: Tensor.Type; input0: Tensor.DataType; expectedOutput0: Tensor.DataType}> = [
       {
         model: path.join(TEST_DATA_ROOT, 'test_types_BOOL.pb'),
         type: 'bool',
@@ -87,16 +87,16 @@ describe('E2E Tests - simple E2E tests', () => {
     it(`${testCase.model}`, async () => {
       const session = await InferenceSession.create(testCase.model);
       const output = await session.run({'input': new Tensor(testCase.type, testCase.input0, [1, 5])});
-      assert(output.hasOwnProperty('output'), `'output' should be in the result object.`);
-      assert(output['output'] instanceof Tensor, `result[output] should be a Tensor object.`);
-      assert.strictEqual(output['output'].size, 5, `output size expected 5, got ${output['output'].size}.`);
+      assert(Object.prototype.hasOwnProperty.call(output, 'output'), '\'output\' should be in the result object.');
+      assert(output.output instanceof Tensor, 'result[output] should be a Tensor object.');
+      assert.strictEqual(output.output.size, 5, `output size expected 5, got ${output.output.size}.`);
       assert.strictEqual(
-          output['output'].type, testCase.type, `tensor type expected ${testCase.type}, got ${output['output'].type}.`);
+          output.output.type, testCase.type, `tensor type expected ${testCase.type}, got ${output.output.type}.`);
       assert.strictEqual(
-          Object.getPrototypeOf(output['output'].data), Object.getPrototypeOf(testCase.expectedOutput0),
+          Object.getPrototypeOf(output.output.data), Object.getPrototypeOf(testCase.expectedOutput0),
           `tensor data expected ${Object.getPrototypeOf(testCase.expectedOutput0).constructor.name}, got ${
-              Object.getPrototypeOf(output['output'].data).constructor.name}`);
-      assertDataEqual(testCase.type, output['output'].data, testCase.expectedOutput0);
+              Object.getPrototypeOf(output.output.data).constructor.name}`);
+      assertDataEqual(testCase.type, output.output.data, testCase.expectedOutput0);
     });
   });
 });

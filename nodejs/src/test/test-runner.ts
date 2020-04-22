@@ -5,14 +5,14 @@ import * as path from 'path';
 import {InferenceSession, Tensor} from '../lib';
 import {assertTensorEqual} from './test-utils';
 
-export function run(testDataFolder: string) {
+export function run(testDataFolder: string): void {
   const models = fs.readdirSync(testDataFolder);
 
   for (const model of models) {
     // read each model folders
     const modelFolder = path.join(testDataFolder, model);
     let modelPath: string;
-    const modelTestCases: Array<[(Tensor | undefined)[], (Tensor | undefined)[]]> = [];
+    const modelTestCases: Array<[Array<Tensor|undefined>, Array<Tensor|undefined>]> = [];
     for (const currentFile of fs.readdirSync(modelFolder)) {
       const currentPath = path.join(modelFolder, currentFile);
       const stat = fs.lstatSync(currentPath);
@@ -22,14 +22,14 @@ export function run(testDataFolder: string) {
           modelPath = currentPath;
         }
       } else if (stat.isDirectory()) {
-        const inputs: (Tensor|undefined)[] = [];
-        const outputs: (Tensor|undefined)[] = [];
+        const inputs: Array<Tensor|undefined> = [];
+        const outputs: Array<Tensor|undefined> = [];
         for (const dataFile of fs.readdirSync(currentPath)) {
           const dataFileFullPath = path.join(currentPath, dataFile);
           const ext = path.extname(dataFile);
 
           if (ext.toLowerCase() === '.pb') {
-            let tensor: Tensor|undefined = undefined;
+            let tensor: Tensor|undefined;
             try {
               tensor = loadTensorFromFile(dataFileFullPath);
             } catch (e) {
@@ -56,8 +56,8 @@ export function run(testDataFolder: string) {
         // failed tests
         'test_unique_not_sorted_without_axis',  // bad expected data. enable after
                                                 // https://github.com/onnx/onnx/pull/2381 is picked up
-        'test_mod_float_mixed_sign_example',  // onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be true
-                                              // for float, float16 and double types
+        'test_mod_float_mixed_sign_example',    // onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be
+                                                // true for float, float16 and double types
         'test_resize_downsample_scales_cubic_align_corners',                // results mismatch with onnx tests
         'test_resize_downsample_scales_linear_align_corners',               // results mismatch with onnx tests
         'test_resize_tf_crop_and_resize',                                   // bad expected data, needs test fix

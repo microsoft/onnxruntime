@@ -10,9 +10,10 @@ interface Properties {
 export interface TypedShapeUtils<T extends Tensor.Type> {
   /**
    * Create a new tensor with the same data buffer and specified dims.
+   *
    * @param dims New dimensions. Size should match the old one.
    */
-  reshape(dims: ReadonlyArray<number>): TypedTensor<T>;
+  reshape(dims: readonly number[]): TypedTensor<T>;
 }
 
 // TODO: add more tensor utilities

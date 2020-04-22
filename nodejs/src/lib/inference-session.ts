@@ -9,6 +9,7 @@ export interface InferenceSession {
 
   /**
    * Execute the model asynchronously with the given feeds and options.
+   *
    * @param feeds Representation of the model input. See type description of `InferenceSession.InputType` for detail.
    * @param options Optional. A set of options that controls the behavior of model inference.
    */
@@ -16,9 +17,10 @@ export interface InferenceSession {
 
   /**
    * Execute the model asynchronously with the given feeds, fetches and options.
+   *
    * @param feeds Representation of the model input. See type description of `InferenceSession.InputType` for detail.
    * @param fetches Representation of the model output. See type description of `InferenceSession.OutputType` for
-   *     detail.
+   * detail.
    * @param options Optional. A set of options that controls the behavior of model inference.
    * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding values.
    */
@@ -32,12 +34,12 @@ export interface InferenceSession {
   /**
    * Get input names of the loaded model.
    */
-  readonly inputNames: ReadonlyArray<string>;
+  readonly inputNames: readonly string[];
 
   /**
    * Get output names of the loaded model.
    */
-  readonly outputNames: ReadonlyArray<string>;
+  readonly outputNames: readonly string[];
 
   // /**
   //  * Get input metadata of the loaded model.
@@ -66,16 +68,15 @@ export declare namespace InferenceSession {
   /**
    * A fetches (model outputs) could be one of the following:
    *
-   * - Omitted.
-   *     - Use model's output names definition.
+   * - Omitted. Use model's output names definition.
    * - An array of string indicating the output names.
    * - An object that use output names as keys and OnnxValue or null as corresponding values.
    *
    * REMARK: different from input argument, in output, OnnxValue is optional. If an OnnxValue is present it will be
-   *         used as a pre-allocated value by the inference engine; if omitted, inference engine will allocate buffer
-   *         internally.
+   * used as a pre-allocated value by the inference engine; if omitted, inference engine will allocate buffer
+   * internally.
    */
-  type FetchesType = ReadonlyArray<string>|NullableOnnxValueMapType;
+  type FetchesType = readonly string[]|NullableOnnxValueMapType;
 
   type ReturnType = {readonly [name: string]: OnnxValue};
 
@@ -93,7 +94,7 @@ export declare namespace InferenceSession {
      * An execution provider option can be a string indicating the name of the execution provider,
      * or an object of corresponding type.
      */
-    executionProviders?: ReadonlyArray<SessionOptions.ExecutionProviderConfig>;
+    executionProviders?: readonly SessionOptions.ExecutionProviderConfig[];
 
     /**
      * The intra OP threads number.
@@ -142,7 +143,8 @@ export declare namespace InferenceSession {
 
     // currently we only have CPU, DNNL and CUDA EP. in future to support more.
     interface ExecutionProviderOptionMap {
-      cpu: CpuExecutionProviderOption, cuda: CudaExecutionProviderOption
+      cpu: CpuExecutionProviderOption;
+      cuda: CudaExecutionProviderOption;
     }
 
     type ExecutionProviderName = keyof ExecutionProviderOptionMap;
@@ -183,6 +185,7 @@ export declare namespace InferenceSession {
 
   //#region value metadata
 
+  // eslint-disable-next-line @typescript-eslint/no-empty-interface
   interface ValueMetadata {
     // TBD
   }
@@ -195,6 +198,7 @@ export interface InferenceSessionFactory {
 
   /**
    * Create a new inference session and load model asynchronously from an ONNX model file.
+   *
    * @param path The file path of the model to load.
    * @param options specify configuration for creating a new inference session.
    * @returns A promise that resolves to an InferenceSession object.
@@ -203,6 +207,7 @@ export interface InferenceSessionFactory {
 
   /**
    * Create a new inference session and load model asynchronously from an array bufer.
+   *
    * @param buffer An ArrayBuffer representation of an ONNX model.
    * @param options specify configuration for creating a new inference session.
    * @returns A promise that resolves to an InferenceSession object.
@@ -211,6 +216,7 @@ export interface InferenceSessionFactory {
 
   /**
    * Create a new inference session and load model asynchronously from segment of an array bufer.
+   *
    * @param buffer An ArrayBuffer representation of an ONNX model.
    * @param byteOffset The beginning of the specified portion of the array buffer.
    * @param byteLength The length in bytes of the array buffer.
@@ -222,6 +228,7 @@ export interface InferenceSessionFactory {
 
   /**
    * Create a new inference session and load model asynchronously from a Uint8Array.
+   *
    * @param buffer A Uint8Array representation of an ONNX model.
    * @param options specify configuration for creating a new inference session.
    * @returns A promise that resolves to an InferenceSession object.
@@ -231,4 +238,5 @@ export interface InferenceSessionFactory {
   //#endregion
 }
 
+// eslint-disable-next-line no-redeclare
 export const InferenceSession: InferenceSessionFactory = impl;

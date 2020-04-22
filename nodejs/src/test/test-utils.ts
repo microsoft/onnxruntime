@@ -1,5 +1,6 @@
 import assert from 'assert';
 import * as path from 'path';
+import {binding} from '../lib/binding';
 
 import {Tensor} from '../lib/tensor';
 
@@ -57,9 +58,18 @@ export function createTestTensor(type: Tensor.Type, lengthOrDims?: number|number
   return new Tensor(type, createTestData(type, length), dims);
 }
 
+export function warmup(): void {
+  // we have test cases to verify correctness in other place, so do no check here.
+  try {
+    const session = new binding.InferenceSession({});
+    session.loadModel(path.join(TEST_DATA_ROOT, 'test_types_INT32.pb'));
+    session.run({input: new Tensor(new Float32Array(5), [1, 5])}, {output: null}, {});
+  } catch (e) {
+  }
+}
 
 // This function check whether 2 tensors should be considered as 'match' or not
-export function assertTensorEqual(actual: Tensor, expected: Tensor) {
+export function assertTensorEqual(actual: Tensor, expected: Tensor): void {
   assert(typeof actual === 'object');
   assert(typeof expected === 'object');
 
@@ -77,7 +87,7 @@ export function assertTensorEqual(actual: Tensor, expected: Tensor) {
   assertDataEqual(actualType, actual.data, expected.data);
 }
 
-export function assertDataEqual(type: Tensor.Type, actual: Tensor.DataType, expected: Tensor.DataType) {
+export function assertDataEqual(type: Tensor.Type, actual: Tensor.DataType, expected: Tensor.DataType): void {
   switch (type) {
     case 'float32':
     case 'float64':
@@ -104,7 +114,7 @@ export function assertDataEqual(type: Tensor.Type, actual: Tensor.DataType, expe
 }
 
 export function assertFloatEqual(
-    actual: number[]|Float32Array|Float64Array, expected: number[]|Float32Array|Float64Array) {
+    actual: number[]|Float32Array|Float64Array, expected: number[]|Float32Array|Float64Array): void {
   const THRESHOLD_ABSOLUTE_ERROR = 1.0e-4;
   const THRESHOLD_RELATIVE_ERROR = 1.000001;
 
@@ -123,7 +133,8 @@ export function assertFloatEqual(
       continue;  // 2 numbers are NaN, treat as equal
     }
     if (Number.isNaN(a) || Number.isNaN(b)) {
-      return false;  // one is NaN and the other is not
+      // one is NaN and the other is not
+      assert.fail(`actual[${i}]=${a}, expected[${i}]=${b}`);
     }
 
     // Comparing 2 float numbers: (Suppose a >= b)
@@ -144,6 +155,4 @@ export function assertFloatEqual(
     // if code goes here, it means both (abs/rel) check failed.
     assert.fail(`actual[${i}]=${a}, expected[${i}]=${b}`);
   }
-
-  return true;
 }

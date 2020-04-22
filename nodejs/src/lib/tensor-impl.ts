@@ -19,6 +19,7 @@ const NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP = new Map<string, SupportedTypedArra
   ['uint32', Uint32Array],
   ['uint64', BigUint64Array],
 ]);
+
 // a runtime map that maps type string to TypedArray constructor. Should match Tensor.DataTypeMap.
 const NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP = new Map<Function, TensorInterface.Type>([
   [Float32Array, 'float32'],
@@ -34,15 +35,35 @@ const NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP = new Map<Function, TensorInterface.
 ]);
 
 
+/**
+ * calculate size from dims.
+ *
+ * @param dims the dims array. May be an illegal input.
+ */
+const calculateSize = (dims: readonly unknown[]): number => {
+  let size = 1;
+  for (let i = 0; i < dims.length; i++) {
+    const dim = dims[i];
+    if (typeof dim !== 'number' || !Number.isSafeInteger(dim)) {
+      throw new TypeError(`dims[${i}] must be an integer, got: ${dim}`);
+    }
+    if (dim < 0) {
+      throw new RangeError(`dims[${i}] must be a non-negative integer, got: ${dim}`);
+    }
+    size *= dim;
+  }
+  return size;
+};
+
 export class Tensor implements TensorInterface {
   //#region constructors
   constructor(
-      type: TensorInterface.Type, data: TensorInterface.DataType|ReadonlyArray<number>|ReadonlyArray<boolean>,
-      dims?: ReadonlyArray<number>);
-  constructor(data: TensorInterface.DataType|ReadonlyArray<boolean>, dims?: ReadonlyArray<number>);
+      type: TensorInterface.Type, data: TensorInterface.DataType|readonly number[]|readonly boolean[],
+      dims?: readonly number[]);
+  constructor(data: TensorInterface.DataType|readonly boolean[], dims?: readonly number[]);
   constructor(
-      arg0: TensorInterface.Type|TensorInterface.DataType|ReadonlyArray<boolean>,
-      arg1?: TensorInterface.DataType|ReadonlyArray<number>|ReadonlyArray<boolean>, arg2?: ReadonlyArray<number>) {
+      arg0: TensorInterface.Type|TensorInterface.DataType|readonly boolean[],
+      arg1?: TensorInterface.DataType|readonly number[]|readonly boolean[], arg2?: readonly number[]) {
     let type: TensorInterface.Type;
     let data: TensorInterface.DataType;
     let dims: typeof arg1|typeof arg2;
@@ -65,17 +86,18 @@ export class Tensor implements TensorInterface {
         // numeric tensor
         const constructor = NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP.get(arg0);
         if (constructor === undefined) {
-          throw new TypeError(`Unknown tensor type: ${arg0}.`)
+          throw new TypeError(`Unknown tensor type: ${arg0}.`);
         }
         if (Array.isArray(arg1)) {
           // use 'as any' here because TypeScript's check on type of 'SupportedTypedArrayConstructors.from()' produces
           // incorrect results.
           // 'constructor' should be one of the typed array prototype objects.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           data = (constructor as any).from(arg1);
         } else if (arg1 instanceof constructor) {
           data = arg1;
         } else {
-          throw new TypeError(`A ${type} tensor\'s data must be type of ${constructor}`);
+          throw new TypeError(`A ${type} tensor's data must be type of ${constructor}`);
         }
       }
     } else {
@@ -94,6 +116,9 @@ export class Tensor implements TensorInterface {
           data = arg0;
         } else if (firstElementType === 'boolean') {
           type = 'bool';
+          // 'arg0' is of type 'boolean[]'. Uint8Array.from(boolean[]) actually works, but typescript thinks this is
+          // wrong type. We use 'as any' to make it happy.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           data = Uint8Array.from(arg0 as any[]);
         } else {
           throw new TypeError(`Invalid element type of data array: ${firstElementType}.`);
@@ -102,7 +127,7 @@ export class Tensor implements TensorInterface {
         // get tensor type from TypedArray
         const mappedType = NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP.get(arg0.constructor);
         if (mappedType === undefined) {
-          throw new TypeError(`Unsupported type for tensor data: ${arg0.constructor}.`)
+          throw new TypeError(`Unsupported type for tensor data: ${arg0.constructor}.`);
         }
         type = mappedType;
         data = arg0 as SupportedTypedArray;
@@ -114,16 +139,16 @@ export class Tensor implements TensorInterface {
       // assume 1-D tensor if dims omitted
       dims = [data.length];
     } else if (!Array.isArray(dims)) {
-      throw new TypeError(`A tensor\'s dims must be a number array`);
+      throw new TypeError('A tensor\'s dims must be a number array');
     }
 
     // perform check
     const size = calculateSize(dims);
     if (size !== data.length) {
-      throw new Error(`Tensor\'s size(${size}) does not match data length(${data.length}).`);
+      throw new Error(`Tensor's size(${size}) does not match data length(${data.length}).`);
     }
 
-    this.dims = dims as ReadonlyArray<number>;
+    this.dims = dims as readonly number[];
     this.type = type;
     this.data = data;
     this.size = size;
@@ -131,7 +156,7 @@ export class Tensor implements TensorInterface {
   //#endregion
 
   //#region fields
-  readonly dims: ReadonlyArray<number>;
+  readonly dims: readonly number[];
   readonly type: TensorInterface.Type;
   readonly data: TensorInterface.DataType;
   readonly size: number;
@@ -142,27 +167,4 @@ export class Tensor implements TensorInterface {
     return new Tensor(this.type, this.data, dims);
   }
   //#endregion
-}
-
-///
-/// helper functions
-///
-
-/**
- * calculate size from dims.
- * @param dims the dims array. May be an illegal input.
- */
-function calculateSize(dims: ReadonlyArray<any>): number {
-  let size = 1;
-  for (let i = 0; i < dims.length; i++) {
-    const dim = dims[i];
-    if (!Number.isSafeInteger(dim)) {
-      throw new TypeError(`dims[${i}] must be an integer, got: ${dim}`);
-    }
-    if (dim < 0) {
-      throw new RangeError(`dims[${i}] must be a non-negative integer, got: ${dim}`);
-    }
-    size *= dim;
-  }
-  return size;
 }

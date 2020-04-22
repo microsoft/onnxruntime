@@ -1,4 +1,10 @@
-import {NODE_TESTS_ROOT} from './test-utils';
+import {NODE_TESTS_ROOT, warmup} from './test-utils';
+
+// warmup
+//
+// for unknown reason, the first call to native InferenceSession::Run() is very slow.
+// we need this warmup call so that coming test cases will not fail because of timeout.
+warmup();
 
 // unittests
 require('./unittests/lib/index');

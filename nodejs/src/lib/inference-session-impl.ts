@@ -19,33 +19,33 @@ class InferenceSession implements InferenceSessionInterface {
   run(feeds: FeedsType, options?: RunOptions): Promise<ReturnType>;
   run(feeds: FeedsType, fetches: FetchesType, options?: RunOptions): Promise<ReturnType>;
   run(feeds: FeedsType, arg1?: FetchesType|RunOptions, arg2?: RunOptions): Promise<ReturnType> {
-    let fetches: {[name: string]: OnnxValue|null} = {};
+    const fetches: {[name: string]: OnnxValue|null} = {};
     let options: RunOptions = {};
     // check inputs
     if (typeof feeds !== 'object' || feeds === null || feeds instanceof Tensor || Array.isArray(feeds)) {
       throw new TypeError(
-          `'feeds' must be an object that use input names as keys and OnnxValue as corresponding values.`);
+          '\'feeds\' must be an object that use input names as keys and OnnxValue as corresponding values.');
     }
 
     let isFetchesEmpty = true;
     // determine which override is being used
     if (typeof arg1 === 'object') {
       if (arg1 === null) {
-        throw new TypeError(`Unexpected argument[1]: cannot be null.`);
+        throw new TypeError('Unexpected argument[1]: cannot be null.');
       }
       if (arg1 instanceof Tensor) {
-        throw new TypeError(`'fetches' cannot be a Tensor`);
+        throw new TypeError('\'fetches\' cannot be a Tensor');
       }
 
       if (Array.isArray(arg1)) {
         if (arg1.length === 0) {
-          throw new TypeError(`'fetches' cannot be an empty array.`)
+          throw new TypeError('\'fetches\' cannot be an empty array.');
         }
         isFetchesEmpty = false;
         // output names
         for (const name of arg1) {
           if (typeof name !== 'string') {
-            throw new TypeError(`'fetches' must be a string array or an object.`);
+            throw new TypeError('\'fetches\' must be a string array or an object.');
           }
           if (this.outputNames.indexOf(name) === -1) {
             throw new RangeError(`'fetches' contains invalid output name: ${name}.`);
@@ -56,7 +56,7 @@ class InferenceSession implements InferenceSessionInterface {
         if (typeof arg2 === 'object') {
           options = arg2;
         } else if (typeof arg2 !== 'undefined') {
-          throw new TypeError(`'options' must be an object.`);
+          throw new TypeError('\'options\' must be an object.');
         }
       } else {
         // decide whether arg1 is fetches or options
@@ -78,20 +78,20 @@ class InferenceSession implements InferenceSessionInterface {
           if (typeof arg2 === 'object') {
             options = arg2;
           } else if (typeof arg2 !== 'undefined') {
-            throw new TypeError(`'options' must be an object.`);
+            throw new TypeError('\'options\' must be an object.');
           }
         } else {
           options = arg1 as RunOptions;
         }
       }
     } else if (typeof arg1 !== 'undefined') {
-      throw new TypeError(`Unexpected argument[1]: must be 'fetches' or 'options'.`);
+      throw new TypeError('Unexpected argument[1]: must be \'fetches\' or \'options\'.');
     }
 
     // check if all inputs are in feed
     for (const name of this.inputNames) {
-      if (feeds[name] === undefined) {
-        throw new Error(`input '${name}' is missing in 'feeds'.`)
+      if (typeof feeds[name] === 'undefined') {
+        throw new Error(`input '${name}' is missing in 'feeds'.`);
       }
     }
 
@@ -131,15 +131,14 @@ class InferenceSession implements InferenceSessionInterface {
 }
 
 export const impl: InferenceSessionFactory = {
-  create: function(
-      arg0: string|ArrayBufferLike|Uint8Array, arg1?: SessionOptions|number, arg2?: number, arg3?: SessionOptions):
-      Promise<InferenceSession> {
+  create: (arg0: string|ArrayBufferLike|Uint8Array, arg1?: SessionOptions|number, arg2?: number, arg3?: SessionOptions):
+      Promise<InferenceSession> => {
         // either load from a file or buffer
         let loadFromFilePath = false;
         let filePath: string;
         let buffer: ArrayBufferLike;
-        let byteOffset: number = -1;
-        let byteLength: number = -1;
+        let byteOffset = -1;
+        let byteLength = -1;
         let options: SessionOptions = {};
 
         if (typeof arg0 === 'string') {
@@ -148,7 +147,7 @@ export const impl: InferenceSessionFactory = {
           if (typeof arg1 === 'object') {
             options = arg1;
           } else if (typeof arg1 !== 'undefined') {
-            throw new TypeError(`'options' must be an object.`);
+            throw new TypeError('\'options\' must be an object.');
           }
         } else if (arg0 instanceof Uint8Array) {
           buffer = arg0.buffer;
@@ -157,7 +156,7 @@ export const impl: InferenceSessionFactory = {
           if (typeof arg1 === 'object') {
             options = arg1;
           } else if (typeof arg1 !== 'undefined') {
-            throw new TypeError(`'options' must be an object.`);
+            throw new TypeError('\'options\' must be an object.');
           }
         } else if (arg0 instanceof ArrayBuffer || arg0 instanceof SharedArrayBuffer) {
           buffer = arg0;
@@ -168,7 +167,7 @@ export const impl: InferenceSessionFactory = {
           } else if (typeof arg1 === 'number') {
             byteOffset = arg1;
             if (!Number.isSafeInteger(byteOffset)) {
-              throw new RangeError(`'byteOffset' must be an integer.`);
+              throw new RangeError('\'byteOffset\' must be an integer.');
             }
             if (byteOffset < 0 || byteOffset >= buffer.byteLength) {
               throw new RangeError(`'byteOffset' is out of range [0, ${buffer.byteLength}).`);
@@ -177,7 +176,7 @@ export const impl: InferenceSessionFactory = {
             if (typeof arg2 === 'number') {
               byteLength = arg2;
               if (!Number.isSafeInteger(byteLength)) {
-                throw new RangeError(`'byteLength' must be an integer.`);
+                throw new RangeError('\'byteLength\' must be an integer.');
               }
               if (byteLength <= 0 || byteOffset + byteLength > buffer.byteLength) {
                 throw new RangeError(`'byteLength' is out of range (0, ${buffer.byteLength - byteOffset}].`);
@@ -185,16 +184,16 @@ export const impl: InferenceSessionFactory = {
               if (typeof arg3 === 'object') {
                 options = arg3;
               } else if (typeof arg3 !== 'undefined') {
-                throw new TypeError(`'options' must be an object.`);
+                throw new TypeError('\'options\' must be an object.');
               }
             } else if (typeof arg2 !== 'undefined') {
-              throw new TypeError(`'byteLength' must be a number.`);
+              throw new TypeError('\'byteLength\' must be a number.');
             }
           } else if (typeof arg1 !== 'undefined') {
-            throw new TypeError(`'options' must be an object.`);
+            throw new TypeError('\'options\' must be an object.');
           }
         } else {
-          throw new TypeError(`Unexpected argument[0]: must be 'path' or 'buffer'.`);
+          throw new TypeError('Unexpected argument[0]: must be \'path\' or \'buffer\'.');
         }
 
         // promise start here

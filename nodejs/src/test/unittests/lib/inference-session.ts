@@ -120,25 +120,25 @@ describe('UnitTests - InferenceSession.run()', async () => {
   //#region test fetches overrides
   it('run() - no fetches', async () => {
     const result = await session!.run({'data_0': input0});
-    assertTensorEqual(result['softmaxout_1'], expectedOutput0);
+    assertTensorEqual(result.softmaxout_1, expectedOutput0);
   });
   it('run() - fetches names', async () => {
     const result = await session!.run({'data_0': input0}, ['softmaxout_1']);
-    assertTensorEqual(result['softmaxout_1'], expectedOutput0);
+    assertTensorEqual(result.softmaxout_1, expectedOutput0);
   });
   it('run() - fetches object', async () => {
     const result = await session!.run({'data_0': input0}, {'softmaxout_1': null});
-    assertTensorEqual(result['softmaxout_1'], expectedOutput0);
+    assertTensorEqual(result.softmaxout_1, expectedOutput0);
   });
   // TODO: enable after buffer reuse is implemented
   it.skip('run() - fetches object (pre-allocated)', async () => {
     const preAllocatedOutputBuffer = new Float32Array(expectedOutput0.size);
     const result = await session!.run(
         {'data_0': input0}, {'softmaxout_1': new Tensor(preAllocatedOutputBuffer, expectedOutput0.dims)});
-    const softmaxout_1 = result['softmaxout_1'] as TypedTensor<'float32'>;
-    assert.strictEqual(softmaxout_1.data.buffer, preAllocatedOutputBuffer.buffer)
-    assert.strictEqual(softmaxout_1.data.byteOffset, preAllocatedOutputBuffer.byteOffset)
-    assertTensorEqual(result['softmaxout_1'], expectedOutput0);
+    const softmaxout_1 = result.softmaxout_1 as TypedTensor<'float32'>;
+    assert.strictEqual(softmaxout_1.data.buffer, preAllocatedOutputBuffer.buffer);
+    assert.strictEqual(softmaxout_1.data.byteOffset, preAllocatedOutputBuffer.byteOffset);
+    assertTensorEqual(result.softmaxout_1, expectedOutput0);
   });
   //#endregion
 

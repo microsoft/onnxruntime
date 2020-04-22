@@ -3,7 +3,7 @@
 /build/
 /deps/
 /onnxruntime/
-/scripts/
+/script/
 /src/
 /test/
 

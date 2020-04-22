@@ -64,8 +64,10 @@ for (const file of ONNXRUNTIME_DIST_FILES) {
 
 console.log('BUILD [2/3] build node binding ...');
 
-const cmakejsArgs = [(REBUILD ? 'rebuild' : 'compile'), '-G"Visual Studio 15 2017 Win64"'];
-if (DEBUG) cmakejsArgs.push('-D');
+const cmakejsArgs = [(REBUILD ? 'rebuild' : 'compile')];
+if (DEBUG) {
+  cmakejsArgs.push('-D');
+}
 
 const cmakejs = spawnSync(CMAKE_JS_FULL_PATH, cmakejsArgs, {shell: true, stdio: 'inherit'});
 if (cmakejs.status !== 0) {
