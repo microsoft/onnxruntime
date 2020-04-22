@@ -11,7 +11,7 @@ endif()
 
 # Support OS X versions 10.6+
 # This variable is ignored on non Apple platforms and needs to be set prior to the first project(...) invocation
-set(CMAKE_OSX_DEPLOYMENT_TARGET "10.6" CACHE STRING "Minimum OS X deployment version for ORT")
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.9" CACHE STRING "Minimum OS X deployment version for ORT")
 
 # Project
 project(onnxruntime C CXX)
