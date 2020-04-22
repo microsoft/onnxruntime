@@ -598,6 +598,7 @@ class ORTTrainer():
         self.frozen_weights_ = frozen_weights
         self.opset_version_ = _opset_version
         self.loss_scale_input_name = ''
+        self.state_dict_ = None
 
         self._init_session()
 
@@ -645,6 +646,10 @@ class ORTTrainer():
                 *self.model_desc_.outputs_,
                 IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool)]
 
+        if self.state_dict_:
+            self.load_state_dict(self.state_dict_, self.strict_) 
+        self.state_dict_ = None
+
     def _init_onnx_model(self, inputs):
         if self.onnx_model_ is not None:
             return
@@ -672,6 +677,14 @@ class ORTTrainer():
         return torch_state
 
     def load_state_dict(self, state_dict, strict=False):
+        # Note: It may happen ONNX model has not yet been initialized
+        # In this case we cache a reference to desired state and delay the restore until after initialization
+        # Unexpected behavior will result if the user changes the reference before initialization
+        if not self.session:
+            self.state_dict_ = state_dict
+            self.strict_ = strict
+            return
+
         session_state = {}
         for name in state_dict:
             session_state[name] = state_dict[name].numpy()
