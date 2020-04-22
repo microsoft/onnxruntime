@@ -50,7 +50,7 @@ std::unique_ptr<ONNX_NAMESPACE::Prov_AttributeProto> Prov_AttributeProto::Create
 
 namespace onnxruntime {
 
-Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, int device_id) {
+Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, int16_t device_id) {
   return g_host->CreateAllocator(info, device_id);
 }
 
@@ -293,7 +293,7 @@ bool CPUIDInfo::HasAVX512f() const {
   return g_host->CPU_HasAVX512f();
 }
 
-Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo info, int device_id) {
+Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo info, int16_t device_id) {
   return g_host->CreateAllocator(info, device_id);
 }
 

@@ -12,13 +12,6 @@
 #include "dnnl_fwd.h"
 #include <Windows.h>
 
-namespace {
-struct KernelRegistryAndStatus {
-	std::shared_ptr<onnxruntime::Prov_KernelRegistry> kernel_registry{ Prov_KernelRegistry::Create() };
-
-  Status st;
-};
-}  // namespace
 const OrtApi* ORT_API_CALL GetApi(uint32_t /*version*/) NO_EXCEPTION { return nullptr; }
 const char* ORT_API_CALL GetVersionString() NO_EXCEPTION { return "invalid"; }
 
@@ -32,6 +25,12 @@ const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION {
 }
 
 namespace onnxruntime {
+
+struct KernelRegistryAndStatus {
+  std::shared_ptr<onnxruntime::Prov_KernelRegistry> kernel_registry{Prov_KernelRegistry::Create()};
+
+  Status st;
+};
 
 constexpr const char* DNNL = "Dnnl";
 constexpr const char* DNNL_CPU = "DnnlCpu";
