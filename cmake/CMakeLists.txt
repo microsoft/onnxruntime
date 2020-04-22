@@ -11,7 +11,7 @@ endif()
 
 # Support OS X versions 10.6+
 # This variable is ignored on non Apple platforms and needs to be set prior to the first project(...) invocation
-set(CMAKE_OSX_DEPLOYMENT_TARGET "10.9" CACHE STRING "Minimum OS X deployment version for ORT")
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.6" CACHE STRING "Minimum OS X deployment version for ORT")
 
 # Project
 project(onnxruntime C CXX)
@@ -25,7 +25,7 @@ include(CheckLanguage)
 # So we cant' regulate simply with the standard.
 set(CMAKE_CXX_STANDARD 14)
 
-# General C# prperties
+# General C# properties
 if (onnxruntime_BUILD_CSHARP)
   check_language(CSharp)
   if (CMAKE_CSharp_COMPILER)
@@ -273,7 +273,7 @@ endif()
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     #For Mac compliance
     message("Adding flags for Mac builds")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong -stdlib=libc++")
 endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
