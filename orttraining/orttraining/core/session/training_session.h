@@ -174,7 +174,7 @@ class TrainingSession : public InferenceSession {
       std::string backward_recorded_event_name;
     };
 
-    optional<PipelineConfigurationResult> pipelin_config_result;
+    optional<PipelineConfigurationResult> pipeline_config_result;
   };
 
   /**

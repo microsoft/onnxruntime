@@ -82,11 +82,21 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
 }
 
 Status TrainingRunner::Initialize() {
+  if (pipeline_context_.pipeline_stage_id == 0) {
+    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/wechi/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_0_back.onnx"));
+  } else if (pipeline_context_.pipeline_stage_id == 1) {
+    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/wechi/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_1_back.onnx"));
+  } else if (pipeline_context_.pipeline_stage_id == 2) {
+    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/wechi/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_2_back.onnx"));
+  }
+  /*
   ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
+  */
 
   // Information needed to configurate a training session.
   TrainingSession::TrainingConfiguration config{};
 
+  /*
   config.model_with_loss_function_path = params_.model_with_loss_func_path;
   config.model_with_training_graph_path = params_.model_with_training_graph_path;
 
@@ -161,22 +171,66 @@ Status TrainingRunner::Initialize() {
 
     config.pipeline_config = pipe;
   }
+  */
 
   // Object to carry output information of configurating training session.
   TrainingSession::TrainingConfigurationResult config_result{};
 
+  /*
   ORT_RETURN_IF_ERROR(session_.ConfigureForTraining(config, config_result));
+  */
+
+  if (pipeline_context_.pipeline_stage_id == 0) {
+    config_result.pipeline_config_result = TrainingSession::TrainingConfigurationResult::PipelineConfigurationResult{
+      "WaitEvent_fw_event_id_9",
+      "RecordEvent_fw_event_id_15",
+      "WaitEvent_bw_event_id_18",
+      "RecordEvent_bw_event_id_6"
+    };
+    /*
+    config_result.pipeline_config_result.forward_waited_event_name = "WaitEvent_fw_event_id_8";
+    config_result.pipeline_config_result.value.forward_recorded_event_name = "RecordEvent_fw_event_id_14";
+    config_result.pipeline_config_result.value.backward_waited_event_name = "WaitEvent_bw_event_id_17";
+    config_result.pipeline_config_result.value.backward_recorded_event_name = "RecordEvent_bw_event_id_6";
+    */
+  } else if (pipeline_context_.pipeline_stage_id == 1) {
+    config_result.pipeline_config_result = TrainingSession::TrainingConfigurationResult::PipelineConfigurationResult{
+      "WaitEvent_fw_event_id_10",
+      "RecordEvent_fw_event_id_13",
+      "WaitEvent_bw_event_id_16",
+      "RecordEvent_bw_event_id_7"
+    };
+    /*
+    config_result.pipeline_config_result.value.forward_waited_event_name = "WaitEvent_fw_event_id_9";
+    config_result.pipeline_config_result.value.forward_recorded_event_name = "RecordEvent_fw_event_id_12";
+    config_result.pipeline_config_result.value.backward_waited_event_name = "WaitEvent_bw_event_id_15";
+    config_result.pipeline_config_result.value.backward_recorded_event_name = "RecordEvent_bw_event_id_7";
+    */
+  } else if (pipeline_context_.pipeline_stage_id == 2) {
+    config_result.pipeline_config_result = TrainingSession::TrainingConfigurationResult::PipelineConfigurationResult{
+    "WaitEvent_fw_event_id_18",
+    "",
+    "",
+    "RecordEvent_bw_event_id_15"
+    };
+    /*
+    config_result.pipeline_config_result.value.forward_waited_event_name = "WaitEvent_fw_event_id_17";
+    config_result.pipeline_config_result.value.forward_recorded_event_name = "";
+    config_result.pipeline_config_result.value.backward_waited_event_name = "";
+    config_result.pipeline_config_result.value.backward_recorded_event_name = "RecordEvent_bw_event_id_15";
+    */
+  }
 
   // Some pipeline options are determined by graph transformer.
   // Those options may be stored in config_result, so we can access them here.
   if (do_pipeline_) {
-    ORT_ENFORCE(config_result.pipelin_config_result.has_value());
-    pipeline_context_.forward_recorded_event_name = config_result.pipelin_config_result.value().forward_recorded_event_name;
-    pipeline_context_.forward_waited_event_name = config_result.pipelin_config_result.value().forward_waited_event_name;
-    pipeline_context_.backward_recorded_event_name = config_result.pipelin_config_result.value().backward_recorded_event_name;
-    pipeline_context_.backward_waited_event_name = config_result.pipelin_config_result.value().backward_waited_event_name;
+    pipeline_context_.forward_waited_event_name = config_result.pipeline_config_result.value().forward_waited_event_name;
+    pipeline_context_.forward_recorded_event_name = config_result.pipeline_config_result.value().forward_recorded_event_name;
+    pipeline_context_.backward_waited_event_name = config_result.pipeline_config_result.value().backward_waited_event_name;
+    pipeline_context_.backward_recorded_event_name = config_result.pipeline_config_result.value().backward_recorded_event_name;
   }
 
+  /*
   if (config_result.mixed_precision_config_result.has_value()) {
     const std::string& loss_scale_input_name =
         config_result.mixed_precision_config_result.value().loss_scale_input_name;
@@ -197,6 +251,7 @@ Status TrainingRunner::Initialize() {
     fetch_names.push_back(it.second);
   }
   ORT_RETURN_IF_ERROR(session_.OverrideGraphOutputs(fetch_names));
+  */
 
   for (const auto& factory : params_.providers) {
     auto provider = factory.second->CreateProvider();
@@ -204,13 +259,16 @@ Status TrainingRunner::Initialize() {
     ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::move(provider)));
   }
 
+  /*
   if (params_.use_profiler && !session_options_.enable_profiling) {
     // Profiling has not already been enabled, so override from command line options.
     session_.StartProfiling(session_options_.profile_file_prefix);
   }
+  */
 
   ORT_RETURN_IF_ERROR(session_.Initialize());
 
+  /*
   // Checkpointing initialization
   // session_.Initialize() must be called prior to LoadCheckpoint()
   if (!params_.checkpoints_dir.empty()) {
@@ -224,6 +282,7 @@ Status TrainingRunner::Initialize() {
       ORT_RETURN_IF_ERROR(LoadCheckpoint(checkpoint_to_load_path));
     }
   }
+  */
 
   return Status::OK();
 }
@@ -253,10 +312,47 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       params_.mpi_context.world_rank == 0 &&
       checkpoint_registry_ && params_.checkpoint_period > 0;
 
-  VectorString feed_names = training_data_loader.DataSetTensorNames();
+  VectorString feed_names; // = training_data_loader.DataSetTensorNames();
+  if (pipeline_context_.pipeline_stage_id == 0) {
+    feed_names.push_back("input3");
+    feed_names.push_back("input1");
+    feed_names.push_back("input2");
+    feed_names.push_back("send_input_signal0");
+    /*
+    feed_names.push_back("RecordEvent_bw_event_id_6");
+    feed_names.push_back("WaitEvent_fw_event_id_8");
+    feed_names.push_back("RecordEvent_fw_event_id_14");
+    feed_names.push_back("WaitEvent_bw_event_id_17");
+    feed_names.push_back("Learning_Rate");
+    */
+  } else if (pipeline_context_.pipeline_stage_id == 1) {
+    feed_names.push_back("recv_input_signal0");
+    feed_names.push_back("send_input_signal1");
+    /*
+    feed_names.push_back("RecordEvent_bw_event_id_7");
+    feed_names.push_back("WaitEvent_fw_event_id_9");
+    feed_names.push_back("RecordEvent_fw_event_id_12");
+    feed_names.push_back("WaitEvent_bw_event_id_15");
+    feed_names.push_back("Learning_Rate");
+    */
+  } else if (pipeline_context_.pipeline_stage_id == 2) {
+    feed_names.push_back("recv_input_signal1");
+    feed_names.push_back("masked_lm_positions");
+    feed_names.push_back("masked_lm_ids");
+    feed_names.push_back("masked_lm_weights");
+    feed_names.push_back("next_sentence_labels");
+    /*
+    feed_names.push_back("RecordEvent_bw_event_id_15");
+    feed_names.push_back("WaitEvent_fw_event_id_17");
+    feed_names.push_back("Learning_Rate");
+    */
+  }
+
+  /*
   if (loss_scaler_) {
     feed_names.push_back(loss_scaler_->GetLossScaleInputName());
   }
+  */
 
   feed_names.push_back(params_.lr_params.feed_name);
 
@@ -278,7 +374,15 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   OrtValue loss_scale_val;
   OrtValue lr_ort_val;
 
-  VectorString fetch_names = params_.fetch_names;
+  VectorString fetch_names; // = params_.fetch_names;
+  if (pipeline_context_.pipeline_stage_id == 0) {
+    fetch_names.push_back("send_output_signal0");
+  } else if (pipeline_context_.pipeline_stage_id == 1) {
+    fetch_names.push_back("recv_input_signal0_grad_8");
+  } else if (pipeline_context_.pipeline_stage_id == 2) {
+    fetch_names.push_back("total_loss");
+  }
+  /*
   if (params_.use_mixed_precision) {
     auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAllIsFinite);
     ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient norm's IsFinite output is missing in the optimizer output");
@@ -289,12 +393,22 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       fetch_names.push_back(it->second);
     }
   }
+  */
 
   VectorString fetch_grad_accumulator_output;
   if (params_.gradient_accumulation_steps > 1) {
+    /*
     auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAccumulation);
     ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient accumulation output is missing in the optimizer output");
     fetch_grad_accumulator_output.push_back(it->second);
+    */
+    if (pipeline_context_.pipeline_stage_id == 0) {
+      fetch_grad_accumulator_output.push_back("bert.encoder.layer.0.attention.self.query.bias_grad_7");
+    } else if (pipeline_context_.pipeline_stage_id == 1) {
+      fetch_grad_accumulator_output.push_back("recv_input_signal0_grad_8");
+    } else if (pipeline_context_.pipeline_stage_id == 2) {
+      fetch_grad_accumulator_output.push_back("recv_input_signal1_grad_16");
+    }
   }
 
   if (test_data_loader) {
@@ -310,8 +424,6 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   size_t gradient_accumulation_step_count = 0;
   const auto step_start = step_;
   const auto weight_update_step_count_start = weight_update_step_count_;
-
-  std::ofstream log_file(std::to_string(params_.mpi_context.world_rank));
 
   while (step_ < params_.num_train_steps) {
     for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
@@ -333,11 +445,87 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       // loop through the data
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
-        std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch, input_allocator_);
-        if (loss_scaler_) {
-          float loss_scale = loss_scaler_->GetLossScale();
-          TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val, input_allocator_);
-          feeds.push_back(loss_scale_val);
+        std::vector<MLValue> feeds;
+        if (pipeline_context_.pipeline_stage_id == 0) {
+          std::vector<MLValue> data_feeds = training_data->GetKthBatch(params_.batch_size, batch, input_allocator_);
+          /*
+          if (loss_scaler_) {
+            float loss_scale = loss_scaler_->GetLossScale();
+            TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val, input_allocator_);
+            feeds.push_back(loss_scale_val);
+          }
+          */
+          VectorString data_feed_names = training_data_loader.DataSetTensorNames();
+
+          for (size_t i_name = 0; i_name < feed_names.size(); ++i_name) {
+            auto targeted_name = feed_names[i_name];
+            for(size_t j_name = 0; j_name < data_feed_names.size(); ++j_name) {
+              if (data_feed_names[j_name] != targeted_name) {
+                continue;
+              }
+              feeds.push_back(data_feeds[j_name]);
+              break;
+            }
+          }
+
+          MLValue forward_send_signal;
+          TrainingUtil::CreateCpuMLScalar(
+            true,
+            &forward_send_signal,
+            input_allocator_);
+          feeds.push_back(forward_send_signal);
+        } else if (pipeline_context_.pipeline_stage_id == 1) {
+          std::vector<MLValue> data_feeds = training_data->GetKthBatch(params_.batch_size, batch, input_allocator_);
+          VectorString data_feed_names = training_data_loader.DataSetTensorNames();
+
+          for (size_t i_name = 0; i_name < feed_names.size(); ++i_name) {
+            auto targeted_name = feed_names[i_name];
+            for(size_t j_name = 0; j_name < data_feed_names.size(); ++j_name) {
+              if (data_feed_names[j_name] != targeted_name) {
+                continue;
+              }
+              feeds.push_back(data_feeds[j_name]);
+              break;
+            }
+          }
+
+          MLValue forward_recv_signal;
+          TrainingUtil::CreateCpuMLScalar(
+            true,
+            &forward_recv_signal,
+            input_allocator_
+          );
+          feeds.push_back(forward_recv_signal);
+
+          MLValue forward_send_signal;
+          TrainingUtil::CreateCpuMLScalar(
+            true,
+            &forward_send_signal,
+            input_allocator_
+          );
+          feeds.push_back(forward_send_signal);
+        } else if (pipeline_context_.pipeline_stage_id == 2) {
+          std::vector<MLValue> data_feeds = training_data->GetKthBatch(params_.batch_size, batch, input_allocator_);
+          VectorString data_feed_names = training_data_loader.DataSetTensorNames();
+
+          MLValue forward_recv_signal;
+          TrainingUtil::CreateCpuMLScalar(
+            true,
+            &forward_recv_signal,
+            input_allocator_
+          );
+          feeds.push_back(forward_recv_signal);
+
+          for (size_t i_name = 0; i_name < feed_names.size(); ++i_name) {
+            auto targeted_name = feed_names[i_name];
+            for(size_t j_name = 0; j_name < data_feed_names.size(); ++j_name) {
+              if (data_feed_names[j_name] != targeted_name) {
+                continue;
+              }
+              feeds.push_back(data_feeds[j_name]);
+              break;
+            }
+          }
         }
 
         {
@@ -345,7 +533,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{learning_rate}, &lr_ort_val, input_allocator_);
           feeds.push_back(lr_ort_val);
         }
-        
+
         if (do_pipeline_ && pipeline_context_.forward_waited_event_name != "") {
           OrtValue event_id;
           int64_t id = pipeline_schedule_.get_forward_waited_event_id(
@@ -398,6 +586,14 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
         auto start = std::chrono::high_resolution_clock::now();
 
+        /*
+        std::cout << "(training_runner.cc) pid: " << getpid() << ", tid: " << std::this_thread::get_id() << std::endl;	
+        bool gdb_flag = true;
+        while (gdb_flag) {
+          gdb_flag = gdb_flag;
+        }
+        */
+
         if (is_weight_update_step) {
           pipeline_worker_pool_.join_all();
 
@@ -408,6 +604,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             fetch_names,
             &fetches));
 
+          /*
           if (loss_scaler_) {
             auto it = std::find(fetch_names.begin(), fetch_names.end(), opt_graph_outputs_[OptimizerOutputKey::GradientAllIsFinite]);
             if (it != fetch_names.end()) {
@@ -426,13 +623,14 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
               params_.post_evaluation_callback(params_.batch_size, weight_update_step_count_, "train");
             }
           }
+          */
 
           weight_update_step_count_++;
         } else if (do_pipeline_) {
           // Gradient accumulation with pipeline.
           const size_t worker_id = step_ % pipeline_context_.num_pipeline_stages;
           pipeline_worker_pool_.join(worker_id);
-
+          pipeline_worker_pool_.worker_states[worker_id].feeds = feeds;
           pipeline_worker_pool_.worker_states[worker_id].feed_names = feed_names;
           pipeline_worker_pool_.worker_states[worker_id].fetch_names = fetch_grad_accumulator_output;
           pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();

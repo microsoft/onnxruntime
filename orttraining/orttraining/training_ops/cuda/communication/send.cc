@@ -7,6 +7,9 @@
 #include "orttraining/training_ops/cuda/communication/common.h"
 #include <mpi.h>
 #include <limits>
+#include <unistd.h>
+#include <sys/types.h>
+#include <thread>
 
 namespace onnxruntime {
 namespace cuda {
@@ -54,6 +57,19 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   // tensor_sizes_in_bytes[i] = (# of elements in the i-th tensor) * sizeof(the i-th tensor's element type)
   std::vector<size_t> tensor_sizes_in_bytes;
 
+  // Start communication
+  int world_rank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+  ORT_ENFORCE(world_rank != dst, "Sending data to rank ", dst, " on the rank ", world_rank, ".");
+
+  if (world_rank == 1) {
+    std::cout << "(send.cc) pid: " << getpid() << ", tid: " << std::this_thread::get_id() << std::endl;	
+    bool gdb_flag = true;
+    while (gdb_flag) {
+      gdb_flag = gdb_flag;
+    }
+  }
+
   // Compute tensor shapes and sizes
   size_t prefix_tensor_shape_size_sum = 0;
   for (int i = 0; i < tensor_num; ++i) {
@@ -70,11 +86,6 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
     aggregated_aligned_tensor_bytes += x_tensor->SizeInBytes();
     tensor_sizes_in_bytes.push_back(x_tensor->SizeInBytes());
   }
-
-  // Start communication
-  int world_rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-  ORT_ENFORCE(world_rank != dst, "Sending data to rank ", dst, " on the rank ", world_rank, ".");
 
   IAllocatorUniquePtr<char> buffer = AllocateBufferOnCPUPinned<char>(
       static_cast<size_t>(aggregated_aligned_tensor_bytes));

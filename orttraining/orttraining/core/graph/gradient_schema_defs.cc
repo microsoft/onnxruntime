@@ -205,7 +205,32 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
       .TypeConstraint(
           "TInt64",
           {"tensor(int64)"},
-          "Constrain update count to 64-bit integer");
+          "Constrain update count to 64-bit integer")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Handle update count.
+        const size_t step_input_index = 4;
+        const size_t step_output_index = 0;
+        auto input_type = ctx.getInputType(step_input_index);
+        if (input_type != nullptr) {
+            propagateElemTypeFromInputToOutput(ctx, step_input_index, step_output_index);
+            if (hasInputShape(ctx, step_input_index)){
+                propagateShapeFromInputToOutput(ctx, step_input_index, step_output_index);
+            }
+        }
+
+        // Handle other tensors.
+        for (size_t i = 0; i < ctx.getNumInputs() - 5; ++i) {
+            const size_t input_index = 5 + i;
+            const size_t output_index = 1 + i;
+            input_type = ctx.getInputType(input_index);
+            if (input_type != nullptr) {
+                propagateElemTypeFromInputToOutput(ctx, input_index, output_index);
+                if (hasInputShape(ctx, input_index)) {
+                    propagateShapeFromInputToOutput(ctx, input_index, output_index);
+                }
+            }
+        }
+      });
 
   op_schema
       .Input(

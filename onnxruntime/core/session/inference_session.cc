@@ -10,6 +10,9 @@
 #include <list>
 #include <string>
 #include <thread>
+#include <unistd.h>	
+#include <sys/types.h>	
+#include <thread>	
 
 #include "core/common/logging/logging.h"
 #include "core/platform/threadpool.h"
@@ -1007,6 +1010,13 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
 
     auto iter = input_def_map_.find(feed_name);
     if (input_def_map_.end() == iter) {
+      /*
+      std::cout << "(inference_session.cc) pid: " << getpid() << ", tid: " << std::this_thread::get_id() << std::endl;	
+      bool gdb_flag = true;
+      while (true) {
+        gdb_flag = gdb_flag;
+      }
+      */
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid Feed Input Name:", feed_name);
     }
 
@@ -1356,6 +1366,13 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   for (auto input : graph.GetInputs()) {
     required_inputs_.insert(input->Name());
   }
+
+  /*
+  bool gdb_flag = true;
+  while(gdb_flag) {
+    gdb_flag = gdb_flag;
+  }
+  */
 
   auto add_inputs = [this](const InputDefList& inputs) {
     input_def_map_.reserve(inputs.size());

@@ -6,6 +6,9 @@
 #include "orttraining/training_ops/cuda/communication/recv.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
 #include <mpi.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <thread>
 
 namespace onnxruntime {
 namespace cuda {
@@ -53,6 +56,14 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   int world_rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
   ORT_ENFORCE(world_rank != src, "Receive data from rank ", src, " on the rank ", world_rank, ".");
+
+  if (world_rank == 2) {
+    std::cout << "(recv.cc) pid: " << getpid() << ", tid: " << std::this_thread::get_id() << std::endl;	
+    bool gdb_flag = true;
+    while (gdb_flag) {
+      gdb_flag = gdb_flag;
+    }
+  }
 
   // Enqueue communication functions to a GPU stream.
   // Keep the local stream in the previous design

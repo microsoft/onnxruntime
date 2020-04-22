@@ -4,6 +4,9 @@
 #include "core/framework/execution_frame.h"
 
 #include <sstream>
+#include <unistd.h>
+#include <sys/types.h>
+#include <thread>
 
 #include "core/framework/mem_pattern_planner.h"
 #include "core/framework/execution_plan_base.h"
@@ -335,6 +338,11 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
   if (buffer_num_elements != required_num_elements) {
     // could be an allocation planner bug (less likely) or the model incorrectly uses something like 'None'
     // as a dim_param, or -1 in dim_value in multiple places making the planner think those shapes are equal.
+    std::cout << "(execution_frame.cc) pid: " << getpid() << ", tid: " << std::this_thread::get_id() << std::endl;	
+    bool gdb_flag = true;
+    while (gdb_flag) {
+      gdb_flag = gdb_flag;
+    }
     auto message = onnxruntime::MakeString(
         "Shape mismatch attempting to re-use buffer. ",
         reuse_tensor->Shape(), " != ", shape,
