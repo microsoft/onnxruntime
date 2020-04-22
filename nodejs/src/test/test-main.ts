@@ -1,4 +1,4 @@
-import * as path from 'path';
+import {NODE_TESTS_ROOT} from './test-utils';
 
 // unittests
 require('./unittests/lib/index');
@@ -11,7 +11,6 @@ require('./e2e/inference-session-run');
 
 // Test ONNX spec tests
 import {run as runTestRunner} from './test-runner';
-const NODE_TESTS_ROOT = path.join(__dirname, '../../../cmake/external/onnx/onnx/backend/test/data/node');
 describe('ONNX spec tests', () => {
   runTestRunner(NODE_TESTS_ROOT);
 });

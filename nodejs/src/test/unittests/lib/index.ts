@@ -1,1 +1,1 @@
-//import * as OnnxRuntime from '../../../lib/index';
+// import * as OnnxRuntime from '../../../lib/index';
