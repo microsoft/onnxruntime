@@ -15,15 +15,15 @@ cast1 = helper.make_node('Cast', ['less1'], ['cast1'], name='cast1', to=9)
 and_node = helper.make_node('And', ['cast1', 'less2'], ['and_node'], name='and_node')
 cast2 = helper.make_node('Cast', ['and_node'], ['cast2'], name='cast2', to=9)
 cast3 = helper.make_node('Cast', ['cast2'], ['cast3'], name='cast3', to=1)
-cast4 = helper.make_node('Cast', ['x1'], ['cast4'], name='cast4', to=1)
-matmul = helper.make_node('MatMul', ['cast3', 'cast4'], ['matmul'], name='matmul')
-cast5 = helper.make_node('Cast', ['matmul'], ['cast5'], name='cast5', to=7)
-cast6 = helper.make_node('Cast', ['cast5'], ['cast6'], name='cast6', to=7)
-identity = helper.make_node('Identity', ['cast6'], ['output'], name='identity')
+cast4 = helper.make_node('Cast', ['x1'], ['cast4'], name='cast4', to=7)
+cast5 = helper.make_node('Cast', ['cast4'], ['cast5'], name='cast5', to=1)
+matmul = helper.make_node('MatMul', ['cast3', 'cast5'], ['matmul'], name='matmul')
+cast6 = helper.make_node('Cast', ['matmul'], ['cast6'], name='cast6', to=7)
+cast7 = helper.make_node('Cast', ['cast6'], ['output'], name='cast7', to=7)
 
 # Create the graph (GraphProto)
 graph_def = helper.make_graph(
-    [less1, less2, cast1, and_node, cast2, cast3, cast4, matmul, cast5, cast6, identity],
+    [less1, less2, cast1, and_node, cast2, cast3, cast4, cast5, matmul, cast6, cast7],
     'cast_elimination_model',
     [X1, X2, X3],
     [Y]
