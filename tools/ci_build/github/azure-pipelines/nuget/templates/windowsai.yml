@@ -47,57 +47,58 @@ jobs:
     parameters:
       BuildArch: 'arm'
 
-- job: WindowsAI_DirectML_X64_Store
-  timeoutInMinutes: 120
-  workspace:
-    clean: all
-  pool:
-    name: 'Win-GPU-2019'
-    demands: []
-  steps:
-  - template: ../../templates/windowsai-nuget-build.yml
-    parameters:
-      BuildArch: 'x64'
-      BuildForStore: 'true'
-
-- job: WindowsAI_DirectML_X86_Store
-  timeoutInMinutes: 120
-  workspace:
-    clean: all
-  pool:
-    name: 'Win-GPU-2019'
-    demands: []
-  steps:
-  - template: ../../templates/windowsai-nuget-build.yml
-    parameters:
-      BuildArch: 'x86'
-      BuildForStore: 'true'
-
-- job: WindowsAI_CPU_ARM64_Store
-  timeoutInMinutes: 120
-  workspace:
-    clean: all
-  pool:
-    name: 'Win-CPU-2019'
-    demands: []
-  steps:
-  - template: ../../templates/windowsai-nuget-build.yml
-    parameters:
-      BuildArch: 'arm64'
-      BuildForStore: 'true'
-
-- job: WindowsAI_CPU_ARM_Store
-  timeoutInMinutes: 120
-  workspace:
-    clean: all
-  pool:
-    name: 'Win-CPU-2019'
-    demands: []
-  steps:
-  - template: ../../templates/windowsai-nuget-build.yml
-    parameters:
-      BuildArch: 'arm'
-      BuildForStore: 'true'
+- ${{ if eq('false', 'true') }}:
+  - job: WindowsAI_DirectML_X64_Store
+    timeoutInMinutes: 120
+    workspace:
+      clean: all
+    pool:
+      name: 'Win-GPU-2019'
+      demands: []
+    steps:
+    - template: ../../templates/windowsai-nuget-build.yml
+      parameters:
+        BuildArch: 'x64'
+        BuildForStore: 'true'
+  
+  - job: WindowsAI_DirectML_X86_Store
+    timeoutInMinutes: 120
+    workspace:
+      clean: all
+    pool:
+      name: 'Win-GPU-2019'
+      demands: []
+    steps:
+    - template: ../../templates/windowsai-nuget-build.yml
+      parameters:
+        BuildArch: 'x86'
+        BuildForStore: 'true'
+  
+  - job: WindowsAI_CPU_ARM64_Store
+    timeoutInMinutes: 120
+    workspace:
+      clean: all
+    pool:
+      name: 'Win-CPU-2019'
+      demands: []
+    steps:
+    - template: ../../templates/windowsai-nuget-build.yml
+      parameters:
+        BuildArch: 'arm64'
+        BuildForStore: 'true'
+  
+  - job: WindowsAI_CPU_ARM_Store
+    timeoutInMinutes: 120
+    workspace:
+      clean: all
+    pool:
+      name: 'Win-CPU-2019'
+      demands: []
+    steps:
+    - template: ../../templates/windowsai-nuget-build.yml
+      parameters:
+        BuildArch: 'arm'
+        BuildForStore: 'true'
 
 - job: NuGet_Packaging
   workspace:
@@ -113,7 +114,7 @@ jobs:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet DirectML x64'
     inputs:
-      artifactName: 'Microsoft.AI.MachineLearning.x64'
+      artifactName: '.x64'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x64'
 
   - task: DownloadPipelineArtifact@0
