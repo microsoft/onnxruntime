@@ -3,7 +3,6 @@ import shutil
 import onnx
 from onnx import numpy_helper
 import onnxruntime as ort
-import numpy
 
 
 def _get_numpy_type(model_info, name):

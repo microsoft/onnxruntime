@@ -6,11 +6,9 @@ input combinations.
 import onnx
 from onnx import helper
 from onnx import TensorProto
-from onnx import shape_inference
 import numpy as np
 import time
 import timeit
-import sys
 import onnxruntime as rt
 
 # if you copy this script elsewhere you may need to add the tools\python dir to the sys.path for this
@@ -27,20 +25,22 @@ np.random.seed(123)
 #
 def create_model(model_name):
     graph_def = helper.make_graph(
-        nodes = [
-            helper.make_node(op_type = "TopK", inputs = ['X', 'K'], outputs = ['Values', 'Indices'], name = 'topk'),
+        nodes=[
+            helper.make_node(op_type="TopK", inputs=['X', 'K'], outputs=['Values', 'Indices'], name='topk',
+                             # attributes are also key-value pairs using the attribute name and appropriate type
+                             largest=1),
         ],
-        name = 'test-model',
-        inputs = [
+        name='test-model',
+        inputs=[
             # create inputs with symbolic dims so we can use any input sizes
             helper.make_tensor_value_info("X", TensorProto.FLOAT, ['batch', 'items']),
             helper.make_tensor_value_info("K", TensorProto.INT64, [1]),
         ],
-        outputs = [
+        outputs=[
             helper.make_tensor_value_info("Values", TensorProto.FLOAT, ['batch', 'k']),
             helper.make_tensor_value_info("Indices", TensorProto.INT64, ['batch', 'k']),
         ],
-        initializer = [
+        initializer=[
         ]
     )
 
@@ -127,7 +127,7 @@ def run_perf_tests(model_path, num_threads=1):
 
                     # use timeit to disable gc etc. but let each test measure total time and average time
                     # as multiple iterations may be required between each measurement
-                    t = timeit.timeit(lambda: run_test(), number=1)
+                    timeit.timeit(lambda: run_test(), number=1)
 
 
 # this will create the model file in the current directory
