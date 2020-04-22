@@ -47,7 +47,7 @@ jobs:
     parameters:
       BuildArch: 'arm'
 
-- job: WindowsAI_DirectML_X64
+- job: WindowsAI_DirectML_X64_Store
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -60,7 +60,7 @@ jobs:
       BuildArch: 'x64'
       BuildForStore: 'true'
 
-- job: WindowsAI_DirectML_X86
+- job: WindowsAI_DirectML_X86_Store
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -73,7 +73,7 @@ jobs:
       BuildArch: 'x86'
       BuildForStore: 'true'
 
-- job: WindowsAI_CPU_ARM64
+- job: WindowsAI_CPU_ARM64_Store
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -86,7 +86,7 @@ jobs:
       BuildArch: 'arm64'
       BuildForStore: 'true'
 
-- job: WindowsAI_CPU_ARM
+- job: WindowsAI_CPU_ARM_Store
   timeoutInMinutes: 120
   workspace:
     clean: all
