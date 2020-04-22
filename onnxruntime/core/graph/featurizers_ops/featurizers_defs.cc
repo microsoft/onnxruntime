@@ -1748,14 +1748,28 @@ void RegisterShortGrainDropperFeaturizerVer1() {
           "T0")
       .Input(
           1,
-          "Input",
-          "String tensor of shape [R][K].",
+          "GrainInput",
+          "String tensor of shape [R][K]. Grain-related tensor",
           "T1")
+      .Input(
+          2,
+          "Input",
+          "Variadic number of Input containing tensors of different size. Non-Grain-related tensors.",
+          "T",
+          ONNX_NAMESPACE::OpSchema::FormalParameterOption::Variadic,
+          false)
       .Output(
           0,
+          "GrainOutput",
+          "String tensor of shape [P][K], P <= R. Grain-related tensor after imputed(dropped)",
+          "T1")
+      .Output(
+          1,
           "Output",
-          "Bool tensor of shape [R]",
-          "T2")
+          "Variadic number of Input containing tensors of different size. Non-Grain-related tensors after imputed(dropped).",
+          "T",
+          ONNX_NAMESPACE::OpSchema::FormalParameterOption::Variadic,
+          false)
       .TypeConstraint(
           "T0",
           {"tensor(uint8)"},
@@ -1765,20 +1779,28 @@ void RegisterShortGrainDropperFeaturizerVer1() {
           {"tensor(string)"},
           "No information is available")
       .TypeConstraint(
-          "T2",
-          {"tensor(bool)"},
+          "T",
+          {"tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)",
+           "tensor(float)", "tensor(double)", "tensor(bool)", "tensor(string)"},
           "No information is available")
       .TypeAndShapeInferenceFunction(
           [](ONNX_NAMESPACE::InferenceContext& ctx) {
-            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_BOOL, 0);
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_STRING, 0);
             if (hasInputShape(ctx, 1)) {
               const auto& input_shape = getInputShape(ctx, 1);
               if (input_shape.dim_size() != 2) {
                 fail_shape_inference("Expecting Input1 to have 2 dimensions");
               }
               ONNX_NAMESPACE::TensorShapeProto shape;
-              *shape.add_dim() = input_shape.dim(0);
+              shape.add_dim();
+              *shape.add_dim() = input_shape.dim(1);
               ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape);
+            }
+            if (hasInputShape(ctx, 2)) {
+              const auto& input_shape = getInputShape(ctx, 2);
+              if (input_shape.dim_size() != 2) {
+                fail_shape_inference("Expecting Input2 to have 2 dimensions");
+              }
             }
           });
 }
