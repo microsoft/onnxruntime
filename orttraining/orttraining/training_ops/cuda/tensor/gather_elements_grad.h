@@ -12,15 +12,14 @@ namespace cuda {
 class GatherElementsGrad final : public CudaKernel {
  public:
   GatherElementsGrad(const OpKernelInfo& info) : CudaKernel(info) {
-    ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK(),
-                "Missing/Invalid 'axis' attribute value");
+    info.GetAttrOrDefault("axis", &axis_, static_cast<int64_t>(0));
   }
   ~GatherElementsGrad() = default;
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
   template <typename T>
-  struct ScatterAddComputeImpl;
+  struct ComputeImpl;
 
   int64_t axis_;
 };

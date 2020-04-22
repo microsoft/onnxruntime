@@ -4,23 +4,12 @@
 #include "core/providers/cuda/atomic/common.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "scatter_elements_impl.h"
+#ifdef ENABLE_TRAINING
+#include "orttraining/training_ops/cuda/tensor/gather_elements_grad_impl.h"
+#endif
 
 namespace onnxruntime {
 namespace cuda {
-
-template <class T>
-struct Func_Assignment {
-  __host__ __device__ __inline__ void operator()(T* a, const T* b) const {
-    *a = *b;
-  }
-};
-
-template <class T>
-struct Func_AtomicAdd {
-  __host__ __device__ __inline__ void operator()(T* a, const T* b) const {
-    atomic_add(a, *b);
-  }
-};
 
 template <typename T, typename Tin, bool OUTERAXIS, typename FuncT>
 __global__ void _ScatterElementsKernel2D(
@@ -219,6 +208,13 @@ Status ScatterElementsImplInternal(
   return Status::OK();
 }
 
+template <class T>
+struct Func_Assignment {
+  __device__ __inline__ void operator()(T* a, const T* b) const {
+    *a = *b;
+  }
+};
+
 template <typename T, typename Tin>
 Status ScatterElementsImpl(
     const int rank,
@@ -236,26 +232,6 @@ Status ScatterElementsImpl(
   return ScatterElementsImplInternal(rank, input_data, input_size, buffer_input_dims,
                                      buffer_input_strides, indices_data, indices_size, buffer_indices_dims, fdm_indices_strides,
                                      updates, axis, output_data, Func_Assignment<T>());
-}
-
-template <typename T, typename Tin>
-Status GatherElementsGradImpl(
-    const int rank,
-    TArray<int64_t>& buffer_input_dims,
-    TArray<int64_t>& buffer_input_strides,
-    const Tin* indices_data,
-    const int64_t indices_size,
-    TArray<int64_t>& buffer_indices_dims,
-    TArray<fast_divmod>& fdm_indices_strides,
-    const T* updates,
-    const int axis,
-    T* output_data) {
-  // Give output_data as the input_data parameter by intention,
-  // to skip input_data copy, which is not applicable for GatherElementsGrad.
-  return ScatterElementsImplInternal(rank, output_data, 0,
-                                     buffer_input_dims, buffer_input_strides, indices_data,
-                                     indices_size, buffer_indices_dims, fdm_indices_strides,
-                                     updates, axis, output_data, Func_AtomicAdd<T>());
 }
 
 #define SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, TIndex) \
@@ -290,6 +266,35 @@ SCATTER_ELEMENTS_SPECIALIZED_IMPL(float)
 SCATTER_ELEMENTS_SPECIALIZED_IMPL(double)
 SCATTER_ELEMENTS_SPECIALIZED_IMPL(bool)
 
+#ifdef ENABLE_TRAINING
+
+template <class T>
+struct Func_AtomicAdd {
+  __device__ __inline__ void operator()(T* a, const T* b) const {
+    atomic_add(a, *b);
+  }
+};
+
+template <typename T, typename Tin>
+Status GatherElementsGradImpl(
+    const int rank,
+    TArray<int64_t>& buffer_input_dims,
+    TArray<int64_t>& buffer_input_strides,
+    const Tin* indices_data,
+    const int64_t indices_size,
+    TArray<int64_t>& buffer_indices_dims,
+    TArray<fast_divmod>& fdm_indices_strides,
+    const T* updates,
+    const int axis,
+    T* output_data) {
+  // Give output_data as the input_data parameter by intention,
+  // to skip input_data copy, which is not applicable for GatherElementsGrad.
+  return ScatterElementsImplInternal(rank, output_data, 0,
+                                     buffer_input_dims, buffer_input_strides, indices_data,
+                                     indices_size, buffer_indices_dims, fdm_indices_strides,
+                                     updates, axis, output_data, Func_AtomicAdd<T>());
+}
+
 #define GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL(T, TIndex) \
   template Status GatherElementsGradImpl<T, TIndex>(            \
       const int rank,                                           \
@@ -309,6 +314,9 @@ SCATTER_ELEMENTS_SPECIALIZED_IMPL(bool)
 
 GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(half)
 GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(float)
+GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(double)
+
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

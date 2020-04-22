@@ -10,10 +10,8 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T, typename Tin>
-Status ScatterElementsImpl(
+Status GatherElementsGradImpl(
     const int rank,
-    const T* input_data,
-    const int64_t input_size,
     TArray<int64_t>& buffer_input_dims,
     TArray<int64_t>& buffer_input_strides,
     const Tin* indices_data,

@@ -1599,7 +1599,7 @@ TEST(GradientCheckerTest, GatherNDGrad_int32_indice_unique_float_data_axis_2) {
   EXPECT_IS_TINY(max_error);
 }
 
-TEST(GradientCheckerTest, GatherElementsGrad) {
+TEST(GradientCheckerTest, GatherElementsGradWithDuplicateUpdate) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"GatherElements", kOnnxDomain, 11};
@@ -1611,7 +1611,42 @@ TEST(GradientCheckerTest, GatherElementsGrad) {
   TensorInfo y_info({2, 3}, true);
   int64_t axis = 0;
 
-  gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error, x_datas, {MakeAttribute("axis", axis)});
+  gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error, x_datas,
+                                        {MakeAttribute("axis", axis)});
+  EXPECT_IS_TINY(max_error);
+}
+
+TEST(GradientCheckerTest, GatherElementsGradWithoutDuplicateUpdate) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"GatherElements", kOnnxDomain, 11};
+
+  TensorInfo data_info({3, 3}, true);
+  TensorInfo indice_info({2, 3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+  std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8, 9}, {1, 1, 1, 2, 2, 2}};
+
+  TensorInfo y_info({2, 3}, true);
+  int64_t axis = 0;
+
+  gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error, x_datas,
+                                        {MakeAttribute("axis", axis)});
+  EXPECT_IS_TINY(max_error);
+}
+
+TEST(GradientCheckerTest, GatherElementsGradAxisWithDuplicateUpdate) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"GatherElements", kOnnxDomain, 11};
+
+  TensorInfo data_info({3, 3}, true);
+  TensorInfo indice_info({2, 3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+  std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8, 9}, {1, 1, 1, 1, 1, 1}};
+
+  TensorInfo y_info({2, 3}, true);
+  int64_t axis = 1;
+
+  gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error, x_datas,
+                                        {MakeAttribute("axis", axis)});
   EXPECT_IS_TINY(max_error);
 }
 
