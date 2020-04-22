@@ -46,6 +46,12 @@ bool ExpandElimination::SatisfyCondition(const Graph& graph, const Node& node, c
   // Check the dimensions starting at the trailing dimension.
   int i = input_shape->dim_size() - 1;
   int j = static_cast<int>(tensor_proto->dims(0) - 1);
+
+  // The Expand produces same input tensor only when target dimension size is not greater than input's.
+  if (i < j) {
+    return false;
+  }
+
   while (i >= 0 && j >= 0) {
     auto dim = input_shape->dim(i);
     if (utils::HasDimValue(dim)) {
@@ -61,8 +67,8 @@ bool ExpandElimination::SatisfyCondition(const Graph& graph, const Node& node, c
     --j;
   }
 
-  // The Expand produces same input tensor only when target dimension size is not greater than input's.
-  return j < 0;
+  
+  return true;
 }
 
 }  // namespace onnxruntime
