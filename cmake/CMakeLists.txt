@@ -270,8 +270,11 @@ else()
   endif()
 endif()
 
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong -stdlib=libc++")
+set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -stdlib=libc++")
+
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    #For Mac compliance
+   #For Mac compliance
     message("Adding flags for Mac builds")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong -stdlib=libc++")
 endif()
