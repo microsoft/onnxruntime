@@ -5,9 +5,9 @@
 
 #include "core/providers/cpu/tensor/utils.h"
 
-#include "core/providers/hip/fast_divmod.h"
+#include "core/providers/hip/shared_inc/fast_divmod.h"
 #include "core/providers/hip/hip_common.h"
-#include "core/providers/hip/hip_utils.h"
+#include "core/providers/hip/shared_inc/hip_utils.h"
 
 
 namespace onnxruntime {

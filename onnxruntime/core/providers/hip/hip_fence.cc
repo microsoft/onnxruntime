@@ -5,7 +5,7 @@
 
 #include "core/graph/constants.h"
 
-#include "core/providers/hip/hip_call.h"
+#include "core/providers/hip/shared_inc/hip_call.h"
 #include "core/providers/hip/hip_fence.h"
 #include "core/providers/hip/gpu_data_transfer.h"
 

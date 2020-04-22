@@ -6,11 +6,70 @@
 #include <vector>
 #include <mutex>
 #include <assert.h>
-
+#include <hip/hip_runtime.h>
+#include <hip/hip_fp16.h>
 #include "core/providers/hip/hip_common.h"
+#include "core/providers/hip/shared_inc/hip_call.h"
 
 namespace onnxruntime {
 namespace hip {
+
+// float16 arithmetic is supported after sm5.3 with intrinsics, and hip does not provide fallback for lower versions
+#if defined(__HIP_ARCH__) && __HIP_ARCH__ < 530
+__device__ __forceinline__ half operator+(const half& lh, const half& rh) { return half((float)lh + (float)rh); }
+__device__ __forceinline__ half operator-(const half& lh, const half& rh) { return half((float)lh - (float)rh); }
+__device__ __forceinline__ half operator*(const half& lh, const half& rh) { return half((float)lh * (float)rh); }
+__device__ __forceinline__ half operator/(const half& lh, const half& rh) { return half((float)lh / (float)rh); }
+
+__device__ __forceinline__ half& operator+=(half& lh, const half& rh) {
+  lh = half((float)lh + (float)rh);
+  return lh;
+}
+__device__ __forceinline__ half& operator-=(half& lh, const half& rh) {
+  lh = half((float)lh - (float)rh);
+  return lh;
+}
+__device__ __forceinline__ half& operator*=(half& lh, const half& rh) {
+  lh = half((float)lh * (float)rh);
+  return lh;
+}
+__device__ __forceinline__ half& operator/=(half& lh, const half& rh) {
+  lh = half((float)lh / (float)rh);
+  return lh;
+}
+
+/* Note for increment and decrement we use the raw value 0x3C00 equating to half(1.0f), to avoid the extra conversion */
+__device__ __forceinline__ __half& operator++(__half& h) {
+  h = half((float)h + 1.0f);
+  return h;
+}
+__device__ __forceinline__ __half& operator--(__half& h) {
+  h = half((float)h - 1.0f);
+  return h;
+}
+__device__ __forceinline__ __half operator++(__half& h, int) {
+  half ret = h;
+  h = half((float)h + 1);
+  return ret;
+}
+__device__ __forceinline__ __half operator--(__half& h, int) {
+  half ret = h;
+  h = half((float)h - 1);
+  return ret;
+}
+
+/* Unary plus and inverse operators */
+__device__ __forceinline__ half operator+(const half& h) { return h; }
+__device__ __forceinline__ half operator-(const half& h) { return half(-(float)h); }
+
+/* Some basic comparison operations to make it look like a builtin */
+__device__ __forceinline__ bool operator==(const half& lh, const half& rh) { return (float)lh == (float)rh; }
+__device__ __forceinline__ bool operator!=(const half& lh, const half& rh) { return (float)lh != (float)rh; }
+__device__ __forceinline__ bool operator>(const half& lh, const half& rh) { return (float)lh > (float)rh; }
+__device__ __forceinline__ bool operator<(const half& lh, const half& rh) { return (float)lh < (float)rh; }
+__device__ __forceinline__ bool operator>=(const half& lh, const half& rh) { return (float)lh >= (float)rh; }
+__device__ __forceinline__ bool operator<=(const half& lh, const half& rh) { return (float)lh <= (float)rh; }
+#endif
 
 template <typename T>
 __device__ __inline__ T _Ceil(T a);
@@ -71,7 +130,11 @@ __device__ __inline__ double _Round(double a) { return rint(a); }
 
 template <>
 __device__ __inline__ half _Round(half a) { 
+#if __HIP_ARCH__ < 530
+  return half(rintf((float)a));
+#else
   return hrint(a);
+#endif
 }
 
 template <typename T>
@@ -110,13 +173,13 @@ __device__ __inline__ double _Tanh(double a) { return tanh(a); }
 template <>
 __device__ __inline__ half _Tanh(half a) { return half(tanhf((float)a)); }
 
-// template <>
-// __device__ __inline__ half2 _Tanh(half2 a) {
-//   float2 tmp = (__half22float2(a));
-//   tmp.x = tanhf(tmp.x);
-//   tmp.y = tanhf(tmp.y);
-//   return __float22half2_rn(tmp);
-// }
+template <>
+__device__ __inline__ half2 _Tanh(half2 a) {
+  float2 tmp = (__half22float2(a));
+  tmp.x = tanhf(tmp.x);
+  tmp.y = tanhf(tmp.y);
+  return __float22half2_rn(tmp);
+}
 
 template <typename T>
 __device__ __inline__ T _Pow(T a, T b);
@@ -156,18 +219,12 @@ __device__ __inline__ T _Gelu(T a) {
   return a * _Normcdf(a);
 }
 
+
 // We would like to use 64-bit integer to support large matrices. However, HIP seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.
-
 #ifndef HIP_LONG
 #define HIP_LONG int32_t
 #endif
-
-#define IDX2C(i, j, ld) (((j) * (ld)) + (i))  // 0 based indexing
-
-// ---------------------------------------------------------------------------
-// GridDim -- helper to choose the HIP grid dimensions
-// ---------------------------------------------------------------------------
 
 template <class INT, class INT2>
 static INT CeilDiv(INT a, INT2 b)  // ceil(a/b)
@@ -178,54 +235,14 @@ static INT CeilDiv(INT a, INT2 b)  // ceil(a/b)
 struct GridDim {
   enum : HIP_LONG {
     maxThreadsPerBlock = 256,  // max threads per block
-    maxWarpsPerBlock = 32,     // max warps per block
     maxElementsPerThread = 4,  // max element processed per thread
   };
-
-  // use these for launching
-  //   GridDim grid(NN);
-  //   hipLaunchKernelGGL(kernel, dim3(grid.m_blocksPerGrid), dim3(grid.m_threadsPerBlock), ..., 0, ...)
-  int blocks_per_grid_, threads_per_block_;  // (these may in the future be extended to multi-dimensional ones)
-  HIP_LONG N_;
-
-  GridDim(HIP_LONG N)  // linear grid
-  {
-    N_ = N;
-    if (N == 0)  // HIP will fail to launch with 0 blocks
-      N = 1;
-
-    // get device information
-    const auto& props = DeviceProp::GetDeviceProps();
-    HIP_LONG numProcs = props.multiProcessorCount;
-    HIP_LONG warpSize = props.warpSize;
-
-    // distribute warps evenly over processors
-    HIP_LONG warpsPerProc = CeilDiv(N, numProcs * warpSize);
-
-    // if too many warps per block then reduce #warps
-    // This limits the number of threads to 512.
-    if (warpsPerProc > maxWarpsPerBlock) {
-      HIP_LONG overBy = CeilDiv(warpsPerProc, maxWarpsPerBlock);  // we are over by this factor
-      warpsPerProc = CeilDiv(warpsPerProc, overBy);
-    }
-
-    // put it back together
-    threads_per_block_ = warpsPerProc * warpSize;  // =a multiple of 32 that is as close to 1024 as makes sense given NN
-    blocks_per_grid_ = CeilDiv(N, threads_per_block_);
-    if (blocks_per_grid_ == 1)
-      threads_per_block_ = N;  // don't launch more than necessary
-    assert(blocks_per_grid_ * threads_per_block_ >= N);
-  }
-
-  // compute our location on the grid
-  static __device__ HIP_LONG GetLinearThreadId() {
-    return blockDim.x * blockIdx.x + threadIdx.x;
-  }
 };
 
-#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N) \
-  HIP_LONG id = GridDim::GetLinearThreadId();     \
-  if (id >= N)                                     \
+
+#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N)          \
+  HIP_LONG id = blockDim.x * blockIdx.x + threadIdx.x;     \
+  if (id >= N)                                              \
     return;
 
 // HIP_KERNEL_ASSERT is a macro that wraps an assert() call inside hip kernels.
@@ -236,6 +253,49 @@ struct GridDim {
 #else // __APPLE__
 #define HIP_KERNEL_ASSERT(...) assert(__VA_ARGS__)
 #endif // __APPLE__
+
+// WARP related definitions and functions
+constexpr int GPU_WARP_SIZE = 64;
+
+template <typename T>
+__device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
+{
+#if HIP_VERSION >= 9000
+  return __shfl_sync(mask, value, srcLane, width);
+#else
+  return __shfl(value, srcLane, width);
+#endif
+}
+
+template <typename T>
+__device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
+{
+#if HIP_VERSION >= 9000
+  return __shfl_xor_sync(mask, value, laneMask, width);
+#else
+  return __shfl_xor(value, laneMask, width);
+#endif
+}
+
+template <typename T>
+__device__ __forceinline__ T WARP_SHFL_UP(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
+{
+#if HIP_VERSION >= 9000
+  return __shfl_up_sync(mask, value, delta, width);
+#else
+  return __shfl_up(value, delta, width);
+#endif
+}
+
+template <typename T>
+__device__ __forceinline__ T WARP_SHFL_DOWN(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
+{
+#if HIP_VERSION >= 9000
+  return __shfl_down_sync(mask, value, delta, width);
+#else
+  return __shfl_down(value, delta, width);
+#endif
+}
 
 }  // namespace hip
 }  // namespace onnxruntime

@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -38,23 +39,23 @@ template <typename T, typename Tin>
 void GatherImpl(
     const int64_t input_block_size,
     const int64_t indices_max,
-    const fast_divmod* output_block_size,
-    const fast_divmod* block_size,
+    const fast_divmod& output_block_size,
+    const fast_divmod& block_size,
     const Tin* indices_data,
     const T* input_data,
     T* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  hipLaunchKernelGGL(_GatherKernel<T, Tin>, dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
-      input_block_size, indices_max, *output_block_size, *block_size, indices_data, input_data, output_data, (HIP_LONG)N);
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(_GatherKernel<T, Tin>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+      input_block_size, indices_max, output_block_size, block_size, indices_data, input_data, output_data, (HIP_LONG)N);
 }
 
 #define SPECIALIZED_IMPL(T)                                                                                               \
   template void GatherImpl<T, int32_t>(const int64_t input_block_size, const int64_t indices_max,                         \
-                                       const fast_divmod* output_block_size, const fast_divmod* block_size,               \
+                                       const fast_divmod& output_block_size, const fast_divmod& block_size,               \
                                        const int32_t* indices_data, const T* input_data, T* output_data, const size_t N); \
   template void GatherImpl<T, int64_t>(const int64_t input_block_size, const int64_t indices_max,                         \
-                                       const fast_divmod* output_block_size, const fast_divmod* block_size,               \
+                                       const fast_divmod& output_block_size, const fast_divmod& block_size,               \
                                        const int64_t* indices_data, const T* input_data, T* output_data, const size_t N);
 
 SPECIALIZED_IMPL(int8_t)

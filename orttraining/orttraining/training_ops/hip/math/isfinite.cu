@@ -1,6 +1,8 @@
+#include "hip/hip_runtime.h"
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <hip/hip_fp16.h>
 #include "core/providers/hip/cu_inc/common.cuh"
 #include "isfinite.cuh"
 
@@ -56,7 +58,7 @@ void IsAllFiniteFunctor<T>::operator()(ChunkGroup<1> chunks, bool* output) {
   // One thread loads PARALLEL_LOADS elements.
   const int block_count = chunks.chunk_count;
   const int thread_count = ChunkGroup<1>::thread_count_per_block;
-  hipLaunchKernelGGL(IsAllFiniteMultiTensorImpl<T>, dim3(block_count), dim3(thread_count), 0, 0, chunks, output);
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(IsAllFiniteMultiTensorImpl<T>), dim3(block_count), dim3(thread_count), 0, 0, chunks, output);
 }
 
 #define INSTANTIATE_ISALLFINITE_FUNCTOR(T) \
