@@ -442,7 +442,10 @@ float CubicInterpolation1D(const T* Xdata,
 
   return result;
 }
-
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 6001)
+#endif
 template <typename T>
 void ResizeBiCubic(
     int64_t batch_size,
@@ -580,6 +583,9 @@ void ResizeBiCubic(
     }
   }
 }
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 template <typename T>
 Status Upsample<T>::BaseCompute(OpKernelContext* context,

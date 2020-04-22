@@ -158,14 +158,12 @@ class ThreadPool {
                    const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn);
   static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, double cost_per_unit,
                              const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
-    if (tp == nullptr) {
-      fn(0, total);
-      return;
-    }
-    tp->ParallelFor(total, cost_per_unit, fn);
+    TryParallelFor(tp, total, TensorOpCost{0, 0, static_cast<double>(cost_per_unit)}, fn);
   }
+
   void ParallelFor(std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
                    const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn);
+
   static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
                              const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
     if (tp == nullptr) {
@@ -174,10 +172,12 @@ class ThreadPool {
     }
     tp->ParallelFor(total, cost_per_unit, fn);
   }
+
   // Similar to ParallelFor above, but takes the specified scheduling strategy
   // into account.
-  void ParallelFor(std::ptrdiff_t total, const SchedulingParams& scheduling_params,
-                   const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
+  void
+  ParallelFor(std::ptrdiff_t total, const SchedulingParams& scheduling_params,
+              const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
 
   static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const SchedulingParams& scheduling_params,
                              const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
@@ -187,7 +187,12 @@ class ThreadPool {
     }
     tp->ParallelFor(total, scheduling_params, fn);
   }
-  // Returns the number of threads in the pool.
+
+  // Prefer using this API to get the number of threads unless you know what you're doing.
+  // This API takes into account if openmp is enabled/disabled and if the thread pool ptr is nullptr.
+  static int NumThreads(const concurrency::ThreadPool* tp);
+
+  // Returns the number of threads in the pool. Preferably use the static version of this API instead.
   int NumThreads() const;
 
   // Returns current thread id between 0 and NumThreads() - 1, if called from a

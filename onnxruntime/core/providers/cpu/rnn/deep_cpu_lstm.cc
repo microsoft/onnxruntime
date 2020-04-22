@@ -163,7 +163,7 @@ Equations (Default: f=Sigmoid, g=Tanh, h=Tanh):
 namespace onnxruntime {
 
 template <typename TLambda>
-static inline void ExecuteLambdaInParallel(TLambda lambda, int max, int step,
+static inline void ExecuteLambdaInParallel(TLambda lambda, int max, int step, double cost,
                                            onnxruntime::concurrency::ThreadPool* ttp) {
   // #define NOTHREADS to execute the lambdas directly and in order if you need to do that to debug
 
@@ -174,67 +174,12 @@ static inline void ExecuteLambdaInParallel(TLambda lambda, int max, int step,
     std::bind(lambda, i)();
   }
 #else
-
-  // ORT_ENFORCE may and does throw at times from within the tasks that run
-  // on a thread-pool. Without propagating exceptions the process exits silently
-  // which will make diagnosing bugs more difficult.
-
-  // \! UGLY
-  // We have a problem here with the current thread-pool is that it takes std::function
-  // by value and copies it more than once (even though it is movable).
-  //
-  // To report status and exceptions properly it's better to use
-  // futures and promises but they are not copyable, so we can't come up with a functor
-  // with a promise member and we are downgrading to C++11 where we can't have captures that moved in.
-  //
-  // At the same time promises MUST live in the child thread so if we throw from the main thread
-  // we don't destroy any promises that are on the main thread stack which children threads may still be using.
-  //
-  // The only solution with the current Eigen that comes to mind is to have shared_ptr to with std::promise.
-  //
   const int total_tasks = max / (step > 0 ? step : 1) + (max % step > 0 ? 1 : 0);
-  std::vector<std::future<void> > futures;
-  futures.reserve(total_tasks);
-
-  if (ttp != nullptr) {
-    for (int i = 0, t = 0; i < max; i += step, ++t) {
-      auto p_ptr = std::make_shared<std::promise<void> >();
-      futures.push_back(p_ptr->get_future());
-      ttp->Schedule([p_ptr, lambda, i]() {
-        try {
-          lambda(i);
-          p_ptr->set_value();
-        } catch (...) {
-          p_ptr->set_exception(std::current_exception());
-        }
-      });
+  concurrency::ThreadPool::TryParallelFor(ttp, total_tasks, cost, [lambda, step](ptrdiff_t first, ptrdiff_t last) {
+    for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
+      lambda(i * step);
     }
-
-    // We'd like to wait until all of the tasks have finished
-    // even though one or more have already thrown. We will store
-    // the first exception and then will re-throw at the end.
-    std::exception_ptr pending_exception;
-    for (auto& fut : futures) {
-      try {
-        // get() will re-throw any exceptions
-        // the running task may throw
-        fut.get();
-      } catch (...) {
-        if (!pending_exception) {
-          pending_exception = std::current_exception();
-        }
-      }
-    }
-
-    if (pending_exception) {
-      std::rethrow_exception(pending_exception);
-    }
-  } else {
-    for (int i = 0; i < max; i += step) {
-      std::bind(lambda, i)();
-    }
-  }
-
+  });
 #endif
 }
 
@@ -488,8 +433,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
 
   const size_t last_cell_size_per_direction = batch_size * hidden_size_;
   IAllocatorUniquePtr<T> local_last_cell;
-  gsl::span<T> last_cell = Y_c ? Y_c->MutableDataAsSpan<T>() :
-                                 Allocate(alloc, last_cell_size_per_direction * num_directions_, local_last_cell);
+  gsl::span<T> last_cell = Y_c ? Y_c->MutableDataAsSpan<T>() : Allocate(alloc, last_cell_size_per_direction * num_directions_, local_last_cell);
 
   gsl::span<T> last_cell_1 = last_cell.subspan(0, last_cell_size_per_direction);
 
@@ -501,17 +445,12 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
         recurrent_weights.subspan(hidden_weights_size_per_direction, hidden_weights_size_per_direction);
     gsl::span<const T> bias_2 = bias.empty() ? bias : bias.subspan(bias_size_per_direction, bias_size_per_direction);
     gsl::span<const T> peephole_weights_2 =
-        peephole_weights.empty() ?
-            peephole_weights :
-            peephole_weights.subspan(peephole_weights_size_per_direction, peephole_weights_size_per_direction);
+        peephole_weights.empty() ? peephole_weights : peephole_weights.subspan(peephole_weights_size_per_direction, peephole_weights_size_per_direction);
 
     gsl::span<const T> initial_hidden_2 =
-        initial_hidden.empty() ?
-            initial_hidden :
-            initial_hidden.subspan(initial_hidden_size_per_direction, initial_hidden_size_per_direction);
+        initial_hidden.empty() ? initial_hidden : initial_hidden.subspan(initial_hidden_size_per_direction, initial_hidden_size_per_direction);
     gsl::span<const T> initial_cell_2 =
-        initial_cell.empty() ? initial_cell :
-                               initial_cell.subspan(initial_cell_size_per_direction, initial_cell_size_per_direction);
+        initial_cell.empty() ? initial_cell : initial_cell.subspan(initial_cell_size_per_direction, initial_cell_size_per_direction);
     gsl::span<T> output_2 =
         output.empty() ? output : output.subspan(per_direction_offset, output_size - per_direction_offset);
 
@@ -861,7 +800,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
         ComputeGemm(local_fused_hidden_rows, hidden_size_x4, hidden_size_, alpha, previous_state,
                     previous_state_end,                                                  // Ht-1
                     hidden_size_, recurrent_weights.cbegin(), recurrent_weights.cend(),  // R[iofc]
-                    hidden_size_, beta, step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
+                    hidden_size_, beta, step_out_IOFC, output_iofc_.end(),               // input contains Xt*(W[iofc]^T)
                     hidden_size_x4, nullptr);
 
         DumpMatrix("Xt*(W[iofc]^T) + Ht-t*R[iofc]" + row_str, &*step_out_IOFC, local_fused_hidden_rows, hidden_size_x4);
@@ -910,7 +849,8 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       }
     };
 
-    ExecuteLambdaInParallel(hidden_gemm_and_activations, batch_size_, fused_hidden_rows, mlas_tp_);
+    double cost = max_sequence_length * fused_hidden_rows;  // TODO: approximate cost, needs more tuning.
+    ExecuteLambdaInParallel(hidden_gemm_and_activations, batch_size_, fused_hidden_rows, cost, mlas_tp_);
 
   } else {
     span_T_const_iter previous_state_end = batched_hidden_state_one_step.cend();
@@ -935,7 +875,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       // calculate Xt*(W[iofc]^T) + Ht-t*R[iofc]
       ComputeGemm(batch_size_, hidden_size_x4, hidden_size_, alpha, previous_state, previous_state_end,  // Ht-1
                   hidden_size_, recurrent_weights.cbegin(), recurrent_weights.cend(),                    // R[iofc]
-                  hidden_size_, beta, step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
+                  hidden_size_, beta, step_out_IOFC, output_iofc_.end(),                                 // input contains Xt*(W[iofc]^T)
                   hidden_size_x4, mlas_tp_);
 
       span_T_iter batched_output;
@@ -1011,7 +951,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
   if (output_sequence && direction_ == Direction::kReverse)
     ReverseSequence<T>(outputs, original_outputs, sequence_lengths, seq_length_, batch_size_, hidden_size_,
-                       num_directions,mlas_tp_);
+                       num_directions, mlas_tp_);
 }
 
 // #define PREVIOUS_BROKEN_VERSION
@@ -1141,7 +1081,7 @@ void UniDirectionalLstm<T>::GateComputations(
 
 template <typename T>
 void UniDirectionalLstm<T>::SetNumThreads() {
-  int threads = mlas_tp_ == nullptr ? 1 : mlas_tp_->NumThreads();
+  int threads = concurrency::ThreadPool::NumThreads(mlas_tp_);
 
   if (threads < 1)
     threads = 1;
