@@ -647,6 +647,7 @@ else()
   check_cxx_compiler_flag(-Wdeprecated-declarations HAS_DEPRECATED_DECLARATIONS)
   check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
   check_cxx_compiler_flag(-Wmaybe-uninitialized HAS_MAYBE_UNINITIALIZED)
+  check_cxx_compiler_flag(-Wtype-limits HAS_TYPE_LIMITS)
 
   if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
