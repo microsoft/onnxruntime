@@ -142,7 +142,7 @@ def setup_logger(verbose=True):
     logger.setLevel(logging_level)
 
 
-def remove_past_outputs(export_model_path):
+def remove_past_outputs(export_model_path, output_model_path):
     from onnx import ModelProto
     from OnnxModel import OnnxModel
 
@@ -155,9 +155,8 @@ def remove_past_outputs(export_model_path):
     keep_output_names = [bert_model.model.graph.output[0].name]
     logger.info(f"Prune graph to keep the first output and drop past state outputs:{keep_output_names}")
     bert_model.prune_graph(keep_output_names)
-    onnx_model_path = os.path.join(output_dir, 'gpt2_past{}_out1.onnx'.format(int(enable_past_input)))
-    bert_model.save_model_to_file(onnx_model_path)
-    return onnx_model_path
+
+    bert_model.save_model_to_file(output_model_path)
 
 
 def main():
@@ -226,19 +225,20 @@ def main():
     setup_environment(args.use_openmp)
     import onnxruntime
 
-    onnx_model_path = export_model_path if enable_past_input else remove_past_outputs(export_model_path)
+    if enable_past_input:
+        onnx_model_path = export_model_path
+    else:
+        onnx_model_path = os.path.join(output_dir, 'gpt2_past{}_out1.onnx'.format(int(enable_past_input)))
+        remove_past_outputs(export_model_path, onnx_model_path)
 
     if args.enable_optimization:
         from bert_model_optimization import optimize_model
         m = optimize_model(onnx_model_path,
                            model_type='gpt2',
-                           gpu_only=False,
                            num_heads=12,
                            hidden_size=768,
-                           sequence_length=64,
-                           input_int32=False,
-                           float16=False,
-                           opt_level=0)
+                           opt_level=0,
+                           optimization_options=None)
         onnx_model_path = os.path.join(output_dir, 'gpt2_past{}_optimized.onnx'.format(int(enable_past_input)))
         m.save_model_to_file(onnx_model_path)
 
