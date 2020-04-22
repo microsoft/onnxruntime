@@ -58,7 +58,13 @@ endif()
 if (onnxruntime_USE_DNNL)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE USE_DNNL=1)
 endif()
+if(HAS_TYPE_LIMITS)
+  #Need by manylinux2014+gcc7.5.0
+  #/usr/include/wchar.h:395:47: error: comparison of unsigned expression >= 0 is always true [-Werror=type-limits]
+  # { return (__builtin_constant_p (__wc) && __wc >= L'\0' && __wc <= L'\x7f'
 
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-type-limits")
+endif()
 if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     #TODO: fix the warnings
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4244")
@@ -207,6 +213,12 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${test_data_target}>
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${REPO_ROOT}/requirements.txt
+      $<TARGET_FILE_DIR:${test_data_target}>
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+      ${REPO_ROOT}/docs
+      $<TARGET_FILE_DIR:${test_data_target}>/docs
 )
 
 if (onnxruntime_USE_DNNL)
