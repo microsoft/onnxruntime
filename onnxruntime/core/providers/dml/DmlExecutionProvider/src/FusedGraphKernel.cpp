@@ -289,7 +289,7 @@ namespace Dml
             if (persistentResourceSize > 0)
             {
                 THROW_IF_FAILED(m_provider->AllocatePooledResource(
-                    persistentResourceSize,
+                    static_cast<size_t>(persistentResourceSize),
                     AllocatorRoundingMode::Disabled,
                     m_persistentResource.GetAddressOf(),
                     m_persistentResourceAllocatorUnk.GetAddressOf()));
@@ -589,7 +589,7 @@ namespace Dml
                 // which is scheduled up to the point that this method returns has completed.
                 ComPtr<IUnknown> tempAlloc;
                 uint64_t tempAllocId = 0;
-                THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(execBindingProps.TemporaryResourceSize, tempAlloc.GetAddressOf(), &tempAllocId));
+                THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(static_cast<size_t>(execBindingProps.TemporaryResourceSize), tempAlloc.GetAddressOf(), &tempAllocId));
 
                 ComPtr<IUnknown> tempResourceUnk;
                 m_winmlProvider->GetABIDataInterface(false, tempAlloc.Get(), &tempResourceUnk);

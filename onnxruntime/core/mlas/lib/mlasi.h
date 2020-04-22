@@ -21,6 +21,7 @@ Abstract:
 #include <memory.h>
 #include <algorithm>
 #include <limits>
+#include <cmath>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -493,14 +494,14 @@ extern "C" {
     MLAS_GEMM_U8S8_COPY_PACKB_ROUTINE MlasGemmU8S8CopyPackBAvx2;
     MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx2;
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx2;
-    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512BW;
-    MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512BW;
+    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512Core;
+    MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Core;
     MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512Vnni;
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Vnni;
     MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE MlasGemmU8U8CopyPackAAvx2;
     MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE MlasGemmU8U8CopyPackBAvx2;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx2;
-    MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512BW;
+    MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512Core;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512Vnni;
 #endif
 #endif
@@ -669,7 +670,7 @@ MlasGetMaximumThreadCount(
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
 #else
     if (ThreadPool != nullptr) {
-        return ThreadPool->NumThreads() + 1;
+        return ThreadPool->NumThreads();
     }
 #endif
 

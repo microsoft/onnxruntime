@@ -10,13 +10,13 @@
 #include <winrt/Windows.Storage.h>
 #include <winrt/Windows.Storage.Streams.h>
 #include <iostream>
-// using namespace winrt::Windows::Foundation;
-using namespace winrt::Windows::AI::MachineLearning;
-using namespace winrt::Windows::Foundation::Collections;
-using namespace winrt::Windows::Graphics::Imaging;
-using namespace winrt::Windows::Media;
-using namespace winrt::Windows::Storage;
-using namespace winrt::Windows::Storage::Streams;
+
+using namespace wfc;
+using namespace wgi;
+using namespace wm;
+using namespace ws;
+using namespace wss;
+using namespace winml;
 
 namespace WinML::Engine::Test{
 
@@ -121,7 +121,7 @@ ImageFeatureValue BindImageOutput(
 
 
 void ModelValidator::FnsCandy16(
-    std::string instance,
+    const std::string& instance,
     LearningModelDeviceKind deviceKind,
     OutputBindingStrategy outputBindingStrategy,
     bool bindInputsAsIInspectable,
@@ -193,7 +193,7 @@ void ModelValidator::FnsCandy16(
 }
 
 void ModelValidator::SqueezeNet(
-    std::string instance,
+    const std::string& instance,
     LearningModelDeviceKind deviceKind,
     float dataTolerance,
     bool bindAsImage,
@@ -251,7 +251,7 @@ void ModelValidator::SqueezeNet(
         outputBindingStrategy, modelBinding, outputDataBindingName, expectedResultsTensor.Shape());
 
     // Evaluate the model
-    std::cout << "Calling EvaluateSync on instance" << instance << "\n";
+    std::cout << "Calling EvaluateSync on instance " << instance << "\n";
     LearningModelEvaluationResult result = nullptr;
     result = modelSession.Evaluate(modelBinding, {});
 

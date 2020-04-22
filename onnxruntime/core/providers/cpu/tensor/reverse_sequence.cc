@@ -121,7 +121,7 @@ static void ReverseSequenceImpl(const Tensor& X,
     if (seq_len == 0)
       continue;
 
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 // Parallel execute the loop.
 #pragma omp parallel for
 #endif
@@ -134,7 +134,7 @@ static void ReverseSequenceImpl(const Tensor& X,
       gsl::copy(src, dest);
     }
 
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 // Parallel execute the loop.
 #pragma omp parallel for
 #endif

@@ -18,6 +18,7 @@ jobs:
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.MKLML
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
@@ -36,7 +37,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_featurizers --use_mklml --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD onnxruntime-centos6 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_mklml --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
         workingDirectory: $(Build.SourcesDirectory)
     - script: |
        set -e -x
@@ -65,7 +66,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolMacOS)
     JobName: 'MacOS_CI_Dev'
-    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --use_mklml --enable_onnx_tests --config RelWithDebInfo'
+    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --use_mklml --config RelWithDebInfo'
     DoNugetPack : 'true'
     NuPackScript: |
      set -e -x
@@ -127,32 +128,36 @@ jobs:
      powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
      powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
      set PATH=%CD%;%PATH%
-     FOR /R %%i IN (*.nupkg) do ( 
-         rename %%~ni.nupkg %%~ni.zip
-         unzip %%~ni.zip -d %%~ni
-         del /Q %%~ni.zip
-         unzip linux-x64.zip -d linux-x64
-         mkdir %%~ni\runtimes\linux-x64
-         mkdir %%~ni\runtimes\linux-x64\native
-         move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
-         move linux-x64\linux-x64\libiomp5.so %%~ni\runtimes\linux-x64\native\libiomp5.so
-         move linux-x64\linux-x64\libmklml_intel.so %%~ni\runtimes\linux-x64\native\libmklml_intel.so
-         unzip osx-x64.zip -d osx-x64
-         dir osx-x64 /s
-         mkdir %%~ni\runtimes\osx-x64
-         mkdir %%~ni\runtimes\osx-x64\native
-         move osx-x64\osx-x64\libonnxruntime.dylib %%~ni\runtimes\osx-x64\native\libonnxruntime.dylib
-         move osx-x64\osx-x64\libonnxruntime.dylib.dSYM %%~ni\runtimes\osx-x64\native\libonnxruntime.dylib.dSYM
-         move osx-x64\osx-x64\libmklml.dylib %%~ni\runtimes\osx-x64\native\libmklml.dylib
-         move osx-x64\osx-x64\libiomp5.dylib %%~ni\runtimes\osx-x64\native\libiomp5.dylib
-         pushd %%~ni
-         zip -r ..\%%~ni.zip .
-         popd
-         move %%~ni.zip %%~ni.nupkg
+     SETLOCAL EnableDelayedExpansion   
+     FOR /R %%i IN (*.nupkg) do (
+         set filename=%%~ni
+         IF NOT "!filename:~25,7!"=="Managed" (     
+             rename %%~ni.nupkg %%~ni.zip
+             unzip %%~ni.zip -d %%~ni
+             del /Q %%~ni.zip
+             unzip linux-x64.zip -d linux-x64
+             mkdir %%~ni\runtimes\linux-x64
+             mkdir %%~ni\runtimes\linux-x64\native
+             move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
+             move linux-x64\linux-x64\libiomp5.so %%~ni\runtimes\linux-x64\native\libiomp5.so
+             move linux-x64\linux-x64\libmklml_intel.so %%~ni\runtimes\linux-x64\native\libmklml_intel.so
+             unzip osx-x64.zip -d osx-x64
+             dir osx-x64 /s
+             mkdir %%~ni\runtimes\osx-x64
+             mkdir %%~ni\runtimes\osx-x64\native
+             move osx-x64\osx-x64\libonnxruntime.dylib %%~ni\runtimes\osx-x64\native\libonnxruntime.dylib
+             move osx-x64\osx-x64\libonnxruntime.dylib.dSYM %%~ni\runtimes\osx-x64\native\libonnxruntime.dylib.dSYM
+             move osx-x64\osx-x64\libmklml.dylib %%~ni\runtimes\osx-x64\native\libmklml.dylib
+             move osx-x64\osx-x64\libiomp5.dylib %%~ni\runtimes\osx-x64\native\libiomp5.dylib
+             pushd %%~ni
+             zip -r ..\%%~ni.zip .
+             popd
+             move %%~ni.zip %%~ni.nupkg
+         )
      )
      popd
      copy $(Build.BinariesDirectory)\nuget-artifact\*.nupkg $(Build.ArtifactStagingDirectory)
-    displayName: 'Bundle NuGet and other binaries'
+    displayName: 'Bundle Native NuGet and other binaries'
 
   - template: ../../templates/esrp_nuget.yml
     parameters:
@@ -163,6 +168,7 @@ jobs:
   - template: ../../templates/validate-nuget.yml
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)'
+      NugetPackage: 'Microsoft.ML.OnnxRuntime.MKLML*nupkg'
       PlatformsSupported: 'win-x64,linux-x64,osx-x64'
       VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
@@ -173,3 +179,5 @@ jobs:
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
 - template: test_all_os.yml
+  parameters:
+    Skipx86Tests: 'true'

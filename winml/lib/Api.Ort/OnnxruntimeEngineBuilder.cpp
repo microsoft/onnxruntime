@@ -12,14 +12,14 @@
 #endif
 
 #include "OnnxruntimeErrors.h"
-using namespace WinML;
+using namespace _winml;
 
 HRESULT OnnxruntimeEngineBuilder::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory) {
   engine_factory_ = engine_factory;
   return S_OK;
 }
 
-STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(Windows::AI::MachineLearning::IEngine** out) {
+STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_winml::IEngine** out) {
   auto ort_api = engine_factory_->UseOrtApi();
 
   Microsoft::WRL::ComPtr<IOrtSessionBuilder> onnxruntime_session_builder;

@@ -21,7 +21,7 @@ namespace onnxruntime {
 namespace dml {
 using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::OpSchema;
-using ONNX_NAMESPACE::OPTIONAL;
+using ONNX_NAMESPACE::OPTIONAL_VALUE;
 
 void RegisterDmlSchemas() {
 
@@ -34,11 +34,11 @@ void RegisterDmlSchemas() {
     .Input(2, "B", "", "T", OpSchema::Optional)
     .Output(0, "Y", "", "T")
     .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "")
-    .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL)
-    .Attr("dilations", "", AttributeProto::INTS, OPTIONAL)
-    .Attr("strides", "", AttributeProto::INTS, OPTIONAL)
+    .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
+    .Attr("dilations", "", AttributeProto::INTS, OPTIONAL_VALUE)
+    .Attr("strides", "", AttributeProto::INTS, OPTIONAL_VALUE)
     .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
-    .Attr("pads", "", AttributeProto::INTS, OPTIONAL)
+    .Attr("pads", "", AttributeProto::INTS, OPTIONAL_VALUE)
     .Attr("group", "", AttributeProto::INT, static_cast<int64_t>(1))
     .Attr(AttrName::FusedActivation, "", onnx::AttributeProto::STRING)
     .Attr(AttrName::FusedActivationDomain, "", onnx::AttributeProto::STRING)
@@ -61,13 +61,13 @@ void RegisterDmlSchemas() {
     .Input(2, "B", "", "T", OpSchema::Optional)
     .Output(0, "Y", "", "T")
     .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "")
-    .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL)
-    .Attr("output_shape", "", AttributeProto::INTS, OPTIONAL)
-    .Attr("output_padding", "", AttributeProto::INTS, OPTIONAL)
-    .Attr("dilations", "", AttributeProto::INTS, OPTIONAL)
-    .Attr("strides", "", AttributeProto::INTS, OPTIONAL)
+    .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
+    .Attr("output_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
+    .Attr("output_padding", "", AttributeProto::INTS, OPTIONAL_VALUE)
+    .Attr("dilations", "", AttributeProto::INTS, OPTIONAL_VALUE)
+    .Attr("strides", "", AttributeProto::INTS, OPTIONAL_VALUE)
     .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
-    .Attr("pads", "", AttributeProto::INTS, OPTIONAL)
+    .Attr("pads", "", AttributeProto::INTS, OPTIONAL_VALUE)
     .Attr("group", "", AttributeProto::INT, static_cast<int64_t>(1))
     .Attr(AttrName::FusedActivation, "", onnx::AttributeProto::STRING)
     .Attr(AttrName::FusedActivationDomain, "", onnx::AttributeProto::STRING)

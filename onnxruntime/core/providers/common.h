@@ -18,7 +18,7 @@ inline int64_t HandleNegativeAxis(int64_t axis, int64_t tensor_rank) {
   ORT_ENFORCE(axis >= -tensor_rank && axis <= tensor_rank - 1, "axis ", axis,
               " is not in valid range [-", tensor_rank, ",", tensor_rank - 1, "]");
   // Handle negative axis
-  return axis = axis < 0 ? axis + tensor_rank : axis;
+  return axis < 0 ? axis + tensor_rank : axis;
 }
 
 /**

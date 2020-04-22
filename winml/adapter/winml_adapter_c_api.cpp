@@ -59,7 +59,6 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     // Dml methods (TODO need to figure out how these need to move to session somehow...)
     &winmla::DmlExecutionProviderSetDefaultRoundingMode,
     &winmla::DmlExecutionProviderFlushContext,
-    &winmla::DmlExecutionProviderTrimUploadHeap,
     &winmla::DmlExecutionProviderReleaseCompletedReferences,
     &winmla::DmlCreateGPUAllocationFromD3DResource,
     &winmla::DmlFreeGPUAllocation,
@@ -83,7 +82,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
 };
 
 const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(const OrtApi* ort_api) NO_EXCEPTION {
-  if (OrtApis::GetApi(1) == ort_api) {
+  if (OrtApis::GetApi(2) == ort_api) {
     return &winml_adapter_api_1;
   }
 

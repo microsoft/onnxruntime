@@ -446,11 +446,10 @@ public:
         float maxValue = FLT_MAX;
         if (kernelInfo.IsInputValid(1))
         {
-            minValue = ReadScalarTensorCastToFloat64(kernelInfo.GetConstantInputTensor(1));
+          minValue = static_cast<float>(ReadScalarTensorCastToFloat64(kernelInfo.GetConstantInputTensor(1)));
         }
-        if (kernelInfo.IsInputValid(2))
-        {
-            maxValue = ReadScalarTensorCastToFloat64(kernelInfo.GetConstantInputTensor(2));
+        if (kernelInfo.IsInputValid(2)) {
+          maxValue = static_cast<float>(ReadScalarTensorCastToFloat64(kernelInfo.GetConstantInputTensor(2)));
         }
 
         DML_ELEMENT_WISE_CLIP_OPERATOR_DESC opDesc = {};

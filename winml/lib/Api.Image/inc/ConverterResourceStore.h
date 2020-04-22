@@ -3,11 +3,12 @@
 
 #pragma once
 
+#include <mutex>
 #include <winrt/windows.media.h>
 #include "VideoFrameToTensorConverter.h"
 #include "TensorToVideoFrameConverter.h"
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 // Forward Declare
 class ConverterResourceStore;
@@ -51,8 +52,8 @@ class ConverterResources : public std::enable_shared_from_this<ConverterResource
  public:
   ConverterResourceDescription Descriptor;
 
-  std::unique_ptr<Windows::AI::MachineLearning::Internal::VideoFrameToTensorConverter> Tensorizer;
-  std::unique_ptr<Windows::AI::MachineLearning::Internal::TensorToVideoFrameConverter> Detensorizer;
+  std::unique_ptr<_winml::VideoFrameToTensorConverter> Tensorizer;
+  std::unique_ptr<_winml::TensorToVideoFrameConverter> Detensorizer;
 
  private:
   Pool m_pool;
@@ -115,4 +116,5 @@ class PoolObjectWrapper {
   std::shared_ptr<ConverterResources> m_resources;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml
+

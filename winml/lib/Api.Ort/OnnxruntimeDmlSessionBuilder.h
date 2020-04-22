@@ -5,7 +5,7 @@
 
 #include "OnnxruntimeSessionBuilder.h"
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 class OnnxruntimeEngineFactory;
 
@@ -32,4 +32,4 @@ class OnnxruntimeDmlSessionBuilder : public Microsoft::WRL::RuntimeClass<
   bool metacommands_enabled_ = true;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

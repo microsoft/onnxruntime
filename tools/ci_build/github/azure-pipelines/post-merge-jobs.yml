@@ -9,15 +9,15 @@ jobs:
     EnvSetupScript: setup_env.bat
     buildArch: x64
     BuildConfig: 'Debug'
-    setVcvars: true    
+    setVcvars: true
   timeoutInMinutes: 90
   workspace:
     clean: all
-  steps:    
+  steps:
   - task: UsePythonVersion@0
-    inputs: 
-      versionSpec: '3.7' 
-      addToPath: true 
+    inputs:
+      versionSpec: '3.7'
+      addToPath: true
       architecture: $(buildArch)
 
   - task: BatchScript@1
@@ -28,8 +28,10 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy
-     mkdir $(Build.SourcesDirectory)\$(BuildConfig)
+     python -m pip install -q pyopenssl setuptools wheel numpy scipy
+     mkdir $(Build.BinariesDirectory)\$(BuildConfig)
+     mklink /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models C:\local\models
+     mklink /D /J $(Build.BinariesDirectory)\models C:\local\models
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
@@ -47,12 +49,10 @@ jobs:
       nugetConfigPath: '$(Build.SourcesDirectory)\NuGet.config'
       restoreDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
 
-
-
   - task: CMake@1
     inputs:
       workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
-      cmakeArgs: $(Build.SourcesDirectory)\cmake -Donnxruntime_RUN_ONNX_TESTS=ON -Donnxruntime_DEV_MODE=ON -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_FEATURIZERS=OFF -Donnxruntime_CUDA_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_USE_MIMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_JAVA=OFF -Donnxruntime_BUILD_SHARED_LIB=OFF -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_GEMMLOWP=OFF -Donnxruntime_USE_OPENMP=OFF', -Donnxruntime_USE_FULL_PROTOBUF=OFF -Donnxruntime_DISABLE_CONTRIB_OPS=OFF -Donnxruntime_MSVC_STATIC_RUNTIME=OFF -Donnxruntime_USE_DML=OFF -Donnxruntime_USE_TELEMETRY=OFF -A x64 -T host=x64 -G "Visual Studio 16 2019" -DCMAKE_BUILD_TYPE=$(BuildConfig)
+      cmakeArgs: $(Build.SourcesDirectory)\cmake -Donnxruntime_RUN_ONNX_TESTS=ON -Donnxruntime_DEV_MODE=ON -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_FEATURIZERS=OFF -Donnxruntime_CUDA_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_USE_MIMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_JAVA=OFF -Donnxruntime_BUILD_SHARED_LIB=OFF -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=OFF', -Donnxruntime_USE_FULL_PROTOBUF=OFF -Donnxruntime_DISABLE_CONTRIB_OPS=OFF -Donnxruntime_MSVC_STATIC_RUNTIME=OFF -Donnxruntime_USE_DML=OFF -Donnxruntime_USE_TELEMETRY=OFF -A x64 -T host=x64 -G "Visual Studio 16 2019" -DCMAKE_BUILD_TYPE=$(BuildConfig)
 
   - task: VSBuild@1
     displayName: 'Build'
@@ -69,13 +69,7 @@ jobs:
 
   - template: templates/set-test-data-variables-step.yml
 
-  - task: PythonScript@0
-    displayName: 'Download test data'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-      arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-      workingDirectory: $(Build.BinariesDirectory)
- 
+
   - task: BatchScript@1
     displayName: 'Setup VS2019 env vars'
     inputs:
@@ -95,10 +89,10 @@ jobs:
       runSettingsFile: 'cmake\\codeconv.runsettings'
       pathtoCustomTestAdapters: '$(Build.BinariesDirectory)\Debug\googletestadapter.0.17.1\build\_common'
       codeCoverageEnabled: true
-      platform: x64 
+      platform: x64
 
   - task: PublishTestResults@2
-    inputs:  
+    inputs:
       searchFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\TestResults'
       testResultsFormat: 'VSTest'
       testResultsFiles: '**'
@@ -109,4 +103,4 @@ jobs:
       condition : 'succeeded'
 
   - template: templates/clean-agent-build-directory-step.yml
-   
+
