@@ -139,7 +139,7 @@ Status AdamOptimizerBuilder::Build(
         input_args.push_back(ArgDef());
       }
 
-      graph_defs.AddNodeDefs({NodeDef(OpType(),
+      graph_defs.AddNodeDefs({NodeDef(OpDefinition(),
                                       input_args,
                                       output_args,
                                       BuildAttributeProto(opt_configs[i]),
