@@ -11,7 +11,7 @@ endif()
 
 # Support OS X versions 10.6+
 # This variable is ignored on non Apple platforms and needs to be set prior to the first project(...) invocation
-set(CMAKE_OSX_DEPLOYMENT_TARGET "10.6" CACHE STRING "Minimum OS X deployment version for ORT")
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.9" CACHE STRING "Minimum OS X deployment version for ORT")
 
 # Project
 project(onnxruntime C CXX)
@@ -270,13 +270,10 @@ else()
   endif()
 endif()
 
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong -stdlib=libc++")
-set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -stdlib=libc++")
-
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-   #For Mac compliance
+    #For Mac compliance
     message("Adding flags for Mac builds")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong -stdlib=libc++")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
 endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
