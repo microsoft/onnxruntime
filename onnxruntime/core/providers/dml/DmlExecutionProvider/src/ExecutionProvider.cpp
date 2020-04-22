@@ -571,6 +571,14 @@ namespace Dml
                 provider,
                 true);
 
+            const size_t dataSizeInBytes = ComputeByteSizeFromTensor(dstWrapper);
+            THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != ComputeByteSizeFromTensor(srcWrapper)); // Tensors must be the same size
+
+            if (dataSizeInBytes == 0)
+            {
+                return onnxruntime::common::Status::OK();
+            }
+
             dataSizesInBytes.push_back(static_cast<uint32_t>(ComputeByteSizeFromTensor(dstWrapper)));
             THROW_HR_IF(E_INVALIDARG, dataSizesInBytes[i] != ComputeByteSizeFromTensor(srcWrapper)); // Tensors must be the same size
 
