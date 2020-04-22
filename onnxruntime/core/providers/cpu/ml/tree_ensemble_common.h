@@ -58,7 +58,7 @@ class TreeEnsembleCommon {
       TreeNodeElement<OTYPE>* root, const ITYPE* x_data) const;
 
   template <typename AGG>
-  void compute_agg(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Z, Tensor* label, const AGG& agg) const;
+  void ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Z, Tensor* label, const AGG& agg) const;
 };
 
 template <typename ITYPE, typename OTYPE>
@@ -218,28 +218,28 @@ template <typename ITYPE, typename OTYPE>
 void TreeEnsembleCommon<ITYPE, OTYPE>::compute(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Z, Tensor* label) const {
   switch (aggregate_function_) {
     case AGGREGATE_FUNCTION::AVERAGE:
-      compute_agg(
+      ComputeAgg(
           ttp, X, Z, label,
           TreeAggregatorAverage<ITYPE, OTYPE>(
               roots_.size(), n_targets_or_classes_,
               post_transform_, base_values_));
       return;
     case AGGREGATE_FUNCTION::SUM:
-      compute_agg(
+      ComputeAgg(
           ttp, X, Z, label,
           TreeAggregatorSum<ITYPE, OTYPE>(
               roots_.size(), n_targets_or_classes_,
               post_transform_, base_values_));
       return;
     case AGGREGATE_FUNCTION::MIN:
-      compute_agg(
+      ComputeAgg(
           ttp, X, Z, label,
           TreeAggregatorMin<ITYPE, OTYPE>(
               roots_.size(), n_targets_or_classes_,
               post_transform_, base_values_));
       return;
     case AGGREGATE_FUNCTION::MAX:
-      compute_agg(
+      ComputeAgg(
           ttp, X, Z, label,
           TreeAggregatorMax<ITYPE, OTYPE>(
               roots_.size(), n_targets_or_classes_,
@@ -252,7 +252,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute(concurrency::ThreadPool* ttp, con
 
 template <typename ITYPE, typename OTYPE>
 template <typename AGG>
-void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Z, Tensor* label, const AGG& agg) const {
+void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Z, Tensor* label, const AGG& agg) const {
   int64_t stride = X->Shape().NumDimensions() == 1 ? X->Shape()[0] : X->Shape()[1];
   int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
 
@@ -315,7 +315,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(concurrency::ThreadPool* ttp,
           agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data));
         agg.FinalizeScores(scores, z_data, -1, label_data);
       } else {
-        auto nth = n_trees_ * 2 / ttp->NumThreads();
+        auto nth = n_trees_ * 2 / concurrency::ThreadPool::NumThreads(ttp);
         if (n_trees_ % nth != 0)
           ++nth;
         concurrency::ThreadPool::TryBatchParallelFor(
@@ -348,7 +348,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute_agg(concurrency::ThreadPool* ttp,
           ORT_ENFORCE((int64_t)scores.size() == n_targets_or_classes_);
         }
       } else {
-        auto nth = N * 2 / ttp->NumThreads();
+        auto nth = N * 2 / concurrency::ThreadPool::NumThreads(ttp);
         if (N % nth != 0)
           ++nth;
         concurrency::ThreadPool::TryBatchParallelFor(
@@ -577,7 +577,7 @@ TreeEnsembleCommonClassifier<ITYPE, OTYPE>::TreeEnsembleCommonClassifier(
 template <typename ITYPE, typename OTYPE>
 void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::compute(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Z, Tensor* label) const {
   if (classlabels_strings_.size() == 0) {
-    this->compute_agg(
+    this->ComputeAgg(
         ttp, X, Z, label,
         TreeAggregatorClassifier<ITYPE, OTYPE>(
             this->roots_.size(), this->n_targets_or_classes_,
@@ -588,7 +588,7 @@ void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::compute(concurrency::ThreadPool
     int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
     std::shared_ptr<IAllocator> allocator = std::make_shared<CPUAllocator>();
     Tensor label_int64(DataTypeImpl::GetType<int64_t>(), TensorShape({N}), allocator);
-    this->compute_agg(
+    this->ComputeAgg(
         ttp, X, Z, &label_int64,
         TreeAggregatorClassifier<ITYPE, OTYPE>(
             this->roots_.size(), this->n_targets_or_classes_,
