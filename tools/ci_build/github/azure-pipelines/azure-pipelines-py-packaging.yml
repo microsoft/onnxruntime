@@ -327,6 +327,7 @@ jobs:
     - script: |
         sudo python -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
+        export MACOSX_DEPLOYMENT_TARGET=10.9
         ./build.sh --config Release --skip_submodule_sync --parallel --build_wheel --use_openmp $(FeaturizerBuildFlag)
       displayName: 'Command Line Script'
 
