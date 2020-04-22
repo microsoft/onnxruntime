@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import os
 import unittest
 import pytest
 import sys
@@ -404,7 +405,9 @@ class TestOrtTrainer(unittest.TestCase):
         # modify one of the default values
         sd['bert.encoder.layer.0.attention.output.LayerNorm.weight'] +=1
         model.load_state_dict(sd)
-        model.save_checkpoint('./', 'bert_toy_save')
+
+        ckpt_dir = get_name("ort_ckpt")
+        model.save_checkpoint(ckpt_dir, 'bert_toy_save')
         del model
 
         # create new model
@@ -420,6 +423,34 @@ class TestOrtTrainer(unittest.TestCase):
 
         for k,v in loaded_sd.items():
             assert torch.all(torch.eq(v, sd[k]))
+
+    def testBertCheckpointingLoadZero(self):
+        torch.manual_seed(1)
+        onnxruntime.set_seed(1)
+        model,_,device = create_ort_trainer(gradient_accumulation_steps=1,
+                        use_mixed_precision=False,
+                        allreduce_post_accumulation=True,
+                        use_simple_model_desc=True,
+                        loss_scaler=None)
+
+        ckpt_dir = get_name("ort_ckpt")
+        model.load_checkpoint(ckpt_dir, 'bert_toy_lamb_', is_partitioned=True)
+                
+        expected_eval_loss = [10.997552871]
+
+        input_ids = torch.tensor([[26598],[21379],[19922],[ 5219],[ 5644],[20559],[23777],[25672],[22969],[16824],[16822],[  635],[27399],[20647],[18519],[15546]], device=device)
+        segment_ids = torch.tensor([[0],[1],[0],[1],[0],[0],[1],[0],[0],[1],[1],[0],[0],[1],[1],[1]], device=device)
+        input_mask = torch.tensor([[0],[0],[0],[0],[1],[1],[1],[0],[1],[1],[0],[0],[0],[1],[0],[0]], device=device)
+        masked_lm_labels = torch.tensor([[25496],[16184],[11005],[16228],[14884],[21660],[ 8678],[23083],[ 4027],[ 8397],[11921],[ 1333],[26482],[ 1666],[17925],[27978]], device=device)
+        next_sentence_labels = torch.tensor([0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0], device=device)
+
+        actual_eval_loss = model.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels, fetches=['loss'])
+        actual_eval_loss = actual_eval_loss.cpu().numpy().item(0)
+        # import pdb; pdb.set_trace()
+        print(actual_eval_loss)
+
+        rtol = 1e-03
+        assert_allclose(expected_eval_loss, actual_eval_loss, err_msg="evaluation loss mismatch")
 
 if __name__ == '__main__':
     unittest.main(module=__name__, buffer=True)

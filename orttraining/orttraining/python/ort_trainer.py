@@ -740,7 +740,7 @@ class ORTTrainer():
         assert len(checkpoint_files) > 0, "No checkpoint files found with prefix \"{}\" in directory {}.".format(checkpoint_prefix, checkpoint_dir)
         print("Loading checkpoint files: {}".format(checkpoint_files))
 
-        ckpt_agg = Combine_Zero_Checkpoint(checkpoint_files, clean_state_dict=cleanStateDict)
+        ckpt_agg = Combine_Zero_Checkpoint(checkpoint_files)
         aggregate_state_dict = ckpt_agg.aggregate_checkpoints()
 
         self.load_state_dict(aggregate_state_dict, strict=strict)
