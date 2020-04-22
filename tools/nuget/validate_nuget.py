@@ -13,7 +13,7 @@ def parse_arguments():
     # Main arguments
     parser.add_argument("--nuget_package", required=True, help="Nuget package name to be validated.")
     parser.add_argument("--nuget_path", required=True, help="Path containing the Nuget to be validated. Must only contain only one Nuget within this.")
-    parser.add_argument("--platforms_supported", required=True, help="Comma separated list (no space). Ex: linux-x64,win-x86,osx-x64")
+    parser.add_argument("--platforms_supported", required=True, help="Comma separated list (no space). Ex: linux-x64,win10-x86,osx-x64")
     parser.add_argument("--verify_nuget_signing", required=True, help="Flag inidicating if Nuget package signing is to be verified. Only accepets 'true' or 'false'")
     
     return parser.parse_args()

@@ -115,22 +115,24 @@ def generate_files(list, args):
     
     is_cpu_package = args.package_name == 'Microsoft.ML.OnnxRuntime'
     is_cuda_gpu_package = args.package_name == 'Microsoft.ML.OnnxRuntime.Gpu'
-    is_dml_package = args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML';
-    is_windowsai_package = args.package_name == 'Microsoft.AI.MachineLearning';
-    includes_directml = is_dml_package or is_windowsai_package
+    is_dml_package = args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML'
+    is_windowsai_package = args.package_name == 'Microsoft.AI.MachineLearning'
+
+    includes_cuda = is_cuda_gpu_package
+    includes_winml = is_windowsai_package
+    includes_directml = (is_dml_package or is_windowsai_package) and args.target_architecture == 'x64' or args.target_architecture == 'x86'
 
     # Process headers
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'include\\onnxruntime\\core\\session\\onnxruntime_*.h') + '" target="build\\native\\include" />')
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'include\\onnxruntime\\core\\providers\\cpu\\cpu_provider_factory.h') + '" target="build\\native\\include" />')
     
-    if is_cuda_gpu_package:
+    if includes_cuda:
         files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'include\\onnxruntime\\core\\providers\\cuda\\cuda_provider_factory.h') + '" target="build\\native\\include" />')
     
     if includes_directml:
-        if args.target_architecture == 'x64' or args.target_architecture == 'x86':
-            files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'include\\onnxruntime\\core\\providers\\dml\\dml_provider_factory.h') + '" target="build\\native\\include" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'include\\onnxruntime\\core\\providers\\dml\\dml_provider_factory.h') + '" target="build\\native\\include" />')
 
-    if not is_cuda_gpu_package:
+    if includes_winml:
         # Add microsoft.ai.machinelearning headers
         files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'microsoft.ai.machinelearning.h') + '" target="build\\native\\include\\abi\\Microsoft.AI.MachineLearning.h" />')
         files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'winml\\api\\dualapipartitionattribute.h') + '" target="build\\native\\include\\abi\\dualapipartitionattribute.h" />')
@@ -139,89 +141,77 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'microsoft.ai.machinelearning.winmd') + '" target="lib\\uap10.0\\Microsoft.AI.MachineLearning.winmd" />')
 
     # Process runtimes
-    if is_windowsai_package:
-        # Process onnxruntime import lib, dll, and pdb
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.lib') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.dll') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
-        # Add DirectML
-        if args.target_architecture == 'x64' or args.target_architecture == 'x86':
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.pdb') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
-            files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.0.0.1\\LICENSE.txt') + '" target="DirectML_LICENSE.txt" />')
+    # Process onnxruntime import lib, dll, and pdb
+    files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.lib') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
+    files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.dll') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
+    files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
+
+    if includes_directml:
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.pdb') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.0.0.1\\LICENSE.txt') + '" target="DirectML_LICENSE.txt" />')
+
+    if includes_winml:
         # Process microsoft.ai.machinelearning import lib, dll, and pdb
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.lib') + '" target="runtimes\\win10-' + args.target_architecture + '\\native\\Microsoft.AI.MachineLearning.lib" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.dll') + '" target="runtimes\\win10-' + args.target_architecture + '\\native\\Microsoft.AI.MachineLearning.dll" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.pdb') + '" target="runtimes\\win10-' + args.target_architecture + '\\native\\Microsoft.AI.MachineLearning.pdb" />')
-    else:
-        # Process onnxruntime import lib, dll, and pdb
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.lib') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
 
-        if is_dml_package:
-            # Add DirectML
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.pdb') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-            files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.0.0.1\\LICENSE.txt') + '" target="DirectML_LICENSE.txt" />')
-
-        if not is_cuda_gpu_package:
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.lib') + '" target="runtimes\\win-' + args.target_architecture + '\\native\\Microsoft.AI.MachineLearning.lib" />')
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native\\Microsoft.AI.MachineLearning.dll" />')
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.pdb') + '" target="runtimes\\win-' + args.target_architecture + '\\native\\Microsoft.AI.MachineLearning.pdb" />')
-
+    if is_cpu_package or is_cuda_gpu_package or is_dml_package:
         # Process dnll.dll    
         if os.path.exists(os.path.join(args.native_build_path, 'dnnl.dll')):
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'dnnl.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'dnnl.dll') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
         
         # Process mklml.dll
         if os.path.exists(os.path.join(args.native_build_path, 'mklml.dll')):
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'mklml.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'mklml.dll') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
     
         # Process libiomp5md.dll
         if os.path.exists(os.path.join(args.native_build_path, 'libiomp5md.dll')):
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libiomp5md.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libiomp5md.dll') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
     
         # Process tvm.dll
         if os.path.exists(os.path.join(args.native_build_path, 'tvm.dll')):
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'tvm.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'tvm.dll') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
+
+        # Some tools to be packaged in nightly build only, should not be released 
+        # These are copied to the runtimes folder for convenience of loading with the dlls    
+        if args.is_release_build.lower() != 'true' and args.target_architecture == 'x64' and os.path.exists(os.path.join(args.native_build_path, 'onnxruntime_perf_test.exe')):
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime_perf_test.exe') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
     
-    # Process License, ThirdPartyNotices, Privacy, README
-    files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'LICENSE.txt') + '" target="LICENSE.txt" />')    
-    files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'ThirdPartyNotices.txt') + '" target="ThirdPartyNotices.txt" />')    
-    files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'docs', 'Privacy.md') + '" target="Privacy.md" />')
-    files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'docs', 'C_API.md') + '" target="README.md" />')
-    
+        if args.is_release_build.lower() != 'true' and args.target_architecture == 'x64' and os.path.exists(os.path.join(args.native_build_path, 'onnx_test_runner.exe')):
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnx_test_runner.exe') + '" target="runtimes\\win10-' + args.target_architecture + '\\native" />')
+
+    # Process props and targets files
     if is_windowsai_package:
         # Process props file
         windowsai_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'Microsoft.AI.MachineLearning.props')
         files_list.append('<file src=' + '"' + windowsai_props + '" target="build\\native" />')
-        
         # Process targets files
         windowsai_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'Microsoft.AI.MachineLearning.targets')
         files_list.append('<file src=' + '"' + windowsai_targets + '" target="build\\native" />')
-    else:
+
+    if is_cpu_package or is_cuda_gpu_package or is_dml_package:
         # Process props file
         source_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'props.xml')
         target_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', args.package_name + '.props')    
         os.system('copy ' + source_props + ' ' + target_props)
         files_list.append('<file src=' + '"' + target_props + '" target="build\\native" />')
         files_list.append('<file src=' + '"' + target_props + '" target="build\\netstandard1.1" />')
-        
+
         # Process targets file
         source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets.xml')
         target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', args.package_name + '.targets')    
         os.system('copy ' + source_targets + ' ' + target_targets)
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\native" />')
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\netstandard1.1" />')
-    
-    # Some tools to be packaged in nightly build only, should not be released 
-    # These are copied to the runtimes folder for convenience of loading with the dlls    
-    if args.is_release_build.lower() != 'true' and args.target_architecture == 'x64' and os.path.exists(os.path.join(args.native_build_path, 'onnxruntime_perf_test.exe')):
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime_perf_test.exe') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
 
-    if args.is_release_build.lower() != 'true' and args.target_architecture == 'x64' and os.path.exists(os.path.join(args.native_build_path, 'onnx_test_runner.exe')):
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnx_test_runner.exe') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+
+    # Process License, ThirdPartyNotices, Privacy, README
+    files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'LICENSE.txt') + '" target="LICENSE.txt" />')    
+    files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'ThirdPartyNotices.txt') + '" target="ThirdPartyNotices.txt" />')    
+    files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'docs', 'Privacy.md') + '" target="Privacy.md" />')
+    files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'docs', 'C_API.md') + '" target="README.md" />')
         
     files_list.append('</files>')
     

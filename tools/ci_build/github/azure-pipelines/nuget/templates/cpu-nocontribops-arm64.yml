@@ -186,15 +186,15 @@ jobs:
              unzip win-x86.zip -d win-x86
              unzip win10-arm.zip -d win10-arm
              unzip linux-x64.zip -d linux-x64
-             mkdir %%~ni\runtimes\win-x86
+             mkdir %%~ni\runtimes\win10-x86
              mkdir %%~ni\runtimes\win10-arm
              mkdir %%~ni\runtimes\linux-x64
-             mkdir %%~ni\runtimes\win-x86\native
+             mkdir %%~ni\runtimes\win10-x86\native
              mkdir %%~ni\runtimes\win10-arm\native
              mkdir %%~ni\runtimes\linux-x64\native
-             move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
-             move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
-             move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
+             move win-x86\runtimes\win10-x86\native\onnxruntime.dll %%~ni\runtimes\win10-x86\native\onnxruntime.dll
+             move win-x86\runtimes\win10-x86\native\onnxruntime.lib %%~ni\runtimes\win10-x86\native\onnxruntime.lib
+             move win-x86\runtimes\win10-x86\native\onnxruntime.pdb %%~ni\runtimes\win10-x86\native\onnxruntime.pdb
              move win10-arm\runtimes\win10-arm\native\onnxruntime.lib %%~ni\runtimes\win10-arm\native\onnxruntime.lib
              move win10-arm\runtimes\win10-arm\native\onnxruntime.dll %%~ni\runtimes\win10-arm\native\onnxruntime.dll
              move win10-arm\runtimes\win10-arm\native\onnxruntime.pdb %%~ni\runtimes\win10-arm\native\onnxruntime.pdb
@@ -225,7 +225,7 @@ jobs:
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)'
       NugetPackage: 'Microsoft.ML.OnnxRuntime.*nupkg'
-      PlatformsSupported: 'win-x64,win-x86,win10-arm,linux-x64,osx-x64'
+      PlatformsSupported: 'win10-x64,win10-x86,win10-arm,linux-x64,osx-x64'
       VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
   - task: PublishPipelineArtifact@0

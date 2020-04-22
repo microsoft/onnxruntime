@@ -75,128 +75,56 @@
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.lib"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          PackagePath="\runtimes\win10-$(TargetArchitecture)\native"
           Pack="false"
           CopyToOutputDirectory="Never"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.dll"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          PackagePath="\runtimes\win10-$(TargetArchitecture)\native"
           Pack="false"
           CopyToOutputDirectory="Always"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb"
           Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          PackagePath="\runtimes\win10-$(TargetArchitecture)\native"
           Pack="false"
           CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(NativeBuildOutputDir)\Microsoft.AI.MachineLearning.dll"
-          Condition="Exists('$(NativeBuildOutputDir)\Microsoft.AI.MachineLearning.dll')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
-                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="false"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(NativeBuildOutputDir)\Microsoft.AI.MachineLearning.lib"
-          Condition="Exists('$(NativeBuildOutputDir)\Microsoft.AI.MachineLearning.lib')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
-                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="false"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
-    <None Include="$(NativeBuildOutputDir)\Microsoft.AI.MachineLearning.pdb"
-          Condition="Exists('$(NativeBuildOutputDir)\Microsoft.AI.MachineLearning.pdb')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
-                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="false"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\Microsoft.AI.MachineLearning.winmd"
-          Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\Microsoft.AI.MachineLearning.winmd')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
-                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
-          PackagePath="\build\native\metadata"
-          Pack="false"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\Microsoft.AI.MachineLearning.h"
-          Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\Microsoft.AI.MachineLearning.h')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
-                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
-          PackagePath="\build\native\include"
-          Pack="false"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\Microsoft.AI.MachineLearning.Native.h"
-          Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\Microsoft.AI.MachineLearning.Native.h')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
-                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
-          PackagePath="\build\native\include"
-          Pack="false"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeRoot)\winml\api\dualapipartitionattribute.h"
-          Condition="Exists('$(OnnxRuntimeRoot)\winml\api\dualapipartitionattribute.h')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
-                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
-          PackagePath="\build\native\include"
-          Pack="false"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeRoot)\winml\api\dualapipartitionattribute.h"
-          Condition="Exists('$(OnnxRuntimeRoot)\winml\api\dualapipartitionattribute.h')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
-                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
-          PackagePath="\build\native\include"
-          Pack="false"
-          CopyToOutputDirectory="Never"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\DirectML.dll"
           Condition="Exists('$(NativeBuildOutputDir)\DirectML.dll')
                      And '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          PackagePath="\runtimes\win10-$(TargetArchitecture)\native"
           Pack="false"
           CopyToOutputDirectory="Always"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\dnnl.dll"
           Condition="Exists('$(NativeBuildOutputDir)\dnnl.dll')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          PackagePath="\runtimes\win10-$(TargetArchitecture)\native"
           Pack="false"
           CopyToOutputDirectory="Always"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\mklml.dll"
           Condition="Exists('$(NativeBuildOutputDir)\mklml.dll')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          PackagePath="\runtimes\win10-$(TargetArchitecture)\native"
           Pack="false"
           CopyToOutputDirectory="Always"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\libiomp5md.dll"
           Condition="Exists('$(NativeBuildOutputDir)\libiomp5md.dll')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          PackagePath="\runtimes\win10-$(TargetArchitecture)\native"
           Pack="false"
           CopyToOutputDirectory="Always"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\tvm.dll"
           Condition="Exists('$(NativeBuildOutputDir)\tvm.dll')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          PackagePath="\runtimes\win10-$(TargetArchitecture)\native"
           Pack="false"
           CopyToOutputDirectory="Always"
           Visible="false"
@@ -221,13 +149,13 @@
     <!-- These are copied to the runtimes folder for convenience of loading with the dlls -->
     <None Include="$(NativeBuildOutputDir)\onnxruntime_perf_test.exe"
           Condition="('$(IsReleaseBuild)' != 'true') And ($(TargetArchitecture)=='x64') And Exists('$(NativeBuildOutputDir)\onnxruntime_perf_test.exe')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          PackagePath="\runtimes\win10-$(TargetArchitecture)\native"
           Pack="false"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\onnx_test_runner.exe"
           Condition="('$(IsReleaseBuild)' != 'true') And ($(TargetArchitecture)=='x64') And Exists('$(NativeBuildOutputDir)\onnx_test_runner.exe')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          PackagePath="\runtimes\win10-$(TargetArchitecture)\native"
           Pack="false"
           Visible="false"
     />
