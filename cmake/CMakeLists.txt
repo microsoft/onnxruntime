@@ -945,7 +945,7 @@ if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
   target_link_options(onnxruntime PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
   target_link_options(winml_dll PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
 
-  if (NOT onnxruntime_target_platform STREQUAL "x64")
+  if (onnxruntime_target_platform STREQUAL "x86")
     target_link_options(onnxruntime PRIVATE /SAFESEH)
     target_link_options(winml_dll PRIVATE /SAFESEH)
   endif()
