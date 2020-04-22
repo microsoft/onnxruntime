@@ -19,7 +19,11 @@ Status ExpandElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rul
   return Status::OK();
 }
 
-bool ExpandElimination::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
+bool ExpandElimination::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
+  if (!graph_utils::CanRemoveNode(graph, node, logger)) {
+    return false;
+  }
+
   // 1. Check if has input shape.
   const auto* input_shape = node.InputDefs()[0]->Shape();
   if (input_shape == nullptr) {
