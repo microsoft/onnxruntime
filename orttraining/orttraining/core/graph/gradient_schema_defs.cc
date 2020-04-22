@@ -135,7 +135,8 @@ static void propagateRecvOutputTensorElemTypes(
 // For Brevity documentation was not copied
 OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
   op_schema
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Attr(
           "alpha",
           "Coefficient of previous gradient in running average.",
@@ -458,7 +459,8 @@ void RegisterGradientSchemas() {
   //TODO: Move this to the right location. Its only here for quick experimentation.
   //TODO: Use the mutli weight / grad version.
   ONNX_CONTRIB_OPERATOR_SCHEMA(SGDOptimizer)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "ETA", "Learning Rate", "L")
       .Input(1, "W", "Original weight(s)", "T")
       .Input(2, "G", "Gradient of Weight(s)", "T")
@@ -476,7 +478,8 @@ void RegisterGradientSchemas() {
   // TODO: This is copied from onnx schemas. When the change is in and we update this can be removed.
   // For Brevity documentation was not copied
   ONNX_CONTRIB_OPERATOR_SCHEMA(AdamOptimizer)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "R", "The initial learning rate.", "T1")
       .Input(1, "T", "The update count of \"X\". It should be a scalar.", "T2")
       .Input(
