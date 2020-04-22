@@ -164,6 +164,22 @@ class ThreadPool {
   void ParallelFor(std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
                    const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn);
 
+#ifdef _OPENMP
+  static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost&,
+                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
+    std::ptrdiff_t num_threads = concurrency::ThreadPool::NumThreads(tp);
+    if (total < num_threads) {
+      num_threads = total;
+    }
+#pragma omp parallel for
+    for (std::ptrdiff_t i = 0; i < num_threads; i++) {
+      std::ptrdiff_t start, work_remaining;
+      PartitionWork(i, num_threads, total, &start, &work_remaining);
+      std::ptrdiff_t end = start + work_remaining;
+      fn(start, end);
+    }
+  }
+#else
   static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
                              const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
     if (tp == nullptr) {
@@ -172,6 +188,7 @@ class ThreadPool {
     }
     tp->ParallelFor(total, cost_per_unit, fn);
   }
+#endif
 
   // Similar to ParallelFor above, but takes the specified scheduling strategy
   // into account.
@@ -179,6 +196,22 @@ class ThreadPool {
   ParallelFor(std::ptrdiff_t total, const SchedulingParams& scheduling_params,
               const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
 
+#ifdef _OPENMP
+  static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const SchedulingParams&,
+                             const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
+    std::ptrdiff_t num_threads = concurrency::ThreadPool::NumThreads(tp);
+    if (total < num_threads) {
+      num_threads = total;
+    }
+#pragma omp parallel for
+    for (std::ptrdiff_t i = 0; i < num_threads; i++) {
+      std::ptrdiff_t start, work_remaining;
+      PartitionWork(i, num_threads, total, &start, &work_remaining);
+      std::ptrdiff_t end = start + work_remaining;
+      fn(start, end);
+    }
+  }
+#else
   static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const SchedulingParams& scheduling_params,
                              const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
     if (tp == nullptr) {
@@ -187,6 +220,7 @@ class ThreadPool {
     }
     tp->ParallelFor(total, scheduling_params, fn);
   }
+#endif
 
   // Prefer using this API to get the number of threads unless you know what you're doing.
   // This API takes into account if openmp is enabled/disabled and if the thread pool ptr is nullptr.
