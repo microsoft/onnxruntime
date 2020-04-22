@@ -4,7 +4,6 @@
 #include "core/providers/cpu/activation/activations.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/data_types_internal.h"
-#include "core/util/math.h"
 #include <cmath>
 
 namespace onnxruntime {
@@ -46,21 +45,6 @@ struct Elu::EluImpl {
   void operator()(const Tensor*X, Tensor* Y, float alpha) const {
     EIGEN_X_VAR(xm);
     EIGEN_Y = (xm >= 0).select(xm, static_cast<T>(alpha) * (xm.exp() - 1));
-  }
-};
-
-template<>
-struct Elu::EluImpl<MLFloat16> {
-  void operator()(const Tensor* X, Tensor* Y, float alpha) const {
-    Eigen::half alpha_T(alpha);
-    Eigen::half zero_T(0.f);
-    Eigen::half one_T(1.f);
-
-    ConstEigenVectorArrayMap<Eigen::half> xm(
-      reinterpret_cast<const Eigen::half*>(X->template Data<MLFloat16>()), X->Shape().Size());
-    EigenVectorArrayMap<Eigen::half>(
-      reinterpret_cast<Eigen::half*>(Y->template MutableData<MLFloat16>()), Y->Shape().Size()) =
-          (xm >= zero_T).select(xm, alpha_T * (xm.exp() - one_T));
   }
 };
 
