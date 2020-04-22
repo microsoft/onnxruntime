@@ -52,20 +52,47 @@ export function run(testDataFolder: string): void {
       let session: InferenceSession;
       const skipModel = [
         // skip list
+        //
+        // TBD: should be consistent with onnxruntime/test/python/onnx_backend_test_series.py
 
         // failed tests
-        'test_unique_not_sorted_without_axis',  // bad expected data. enable after
-                                                // https://github.com/onnx/onnx/pull/2381 is picked up
-        'test_mod_float_mixed_sign_example',    // onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be
-                                                // true for float, float16 and double types
-        'test_resize_downsample_scales_cubic_align_corners',                // results mismatch with onnx tests
-        'test_resize_downsample_scales_linear_align_corners',               // results mismatch with onnx tests
-        'test_resize_tf_crop_and_resize',                                   // bad expected data, needs test fix
-        'test_resize_upsample_sizes_nearest_ceil_half_pixel',               // bad expected data, needs test fix
-        'test_resize_upsample_sizes_nearest_floor_align_corners',           // bad expected data, needs test fix
-        'test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric',  // bad expected data, needs test fix
-        'test_maxunpool_export_with_output_shape',                          // Invalid output in ONNX test. See
-                                                                            // https://github.com/onnx/onnx/issues/2398'
+        'test_adagrad', 'test_adagrad_multiple', 'test_batchnorm_epsilon_old', 'test_batchnorm_epsilon_training_mode',
+        'test_batchnorm_example_old', 'test_batchnorm_example_training_mode', 'test_celu', 'test_dropout_default',
+        'test_dropout_random', 'test_einsum_batch_diagonal', 'test_einsum_batch_matmul', 'test_einsum_inner_prod',
+        'test_einsum_sum', 'test_einsum_transpose', 'test_gathernd_example_int32_batch_dim1', 'test_inverse_batched',
+        'test_inverse', 'test_max_int16', 'test_max_int8', 'test_max_uint16', 'test_max_uint8',
+        'test_mean_square_distance_mean_3d', 'test_mean_square_distance_mean_3d_expanded',
+        'test_mean_square_distance_mean_4d', 'test_mean_square_distance_mean_4d_expanded',
+        'test_mean_square_distance_mean', 'test_mean_square_distance_mean_expanded', 'test_mean_square_distance_none',
+        'test_mean_square_distance_none_expanded', 'test_mean_square_distance_none_weights',
+        'test_mean_square_distance_none_weights_expanded', 'test_mean_square_distance_sum',
+        'test_mean_square_distance_sum_expanded', 'test_min_int16', 'test_min_int8', 'test_min_uint16',
+        'test_min_uint8', 'test_momentum', 'test_momentum_multiple',
+        'test_negative_log_likelihood_loss_input_shape_is_NC',
+        'test_negative_log_likelihood_loss_input_shape_is_NCd1d2',
+        'test_negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_mean',
+        'test_negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_sum',
+        'test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight',
+        'test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_mean',
+        'test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum',
+        'test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_ignore_index',
+        'test_nesterov_momentum', 'test_pow_bcast_array', 'test_pow_bcast_scalar', 'test_pow', 'test_pow_example',
+        'test_pow_types_float32_int32', 'test_pow_types_float32_int64', 'test_pow_types_float32_uint32',
+        'test_pow_types_float32_uint64', 'test_pow_types_float', 'test_pow_types_int32_float32',
+        'test_pow_types_int32_int32', 'test_pow_types_int64_float32', 'test_pow_types_int64_int64',
+        'test_pow_types_int', 'test_softmax_cross_entropy_mean_3d', 'test_softmax_cross_entropy_mean_3d_expanded',
+        'test_softmax_cross_entropy_mean', 'test_softmax_cross_entropy_mean_expanded',
+        'test_softmax_cross_entropy_mean_weight', 'test_softmax_cross_entropy_mean_weight_expanded',
+        'test_softmax_cross_entropy_mean_weight_ignore_index',
+        'test_softmax_cross_entropy_mean_weight_ignore_index_expanded', 'test_softmax_cross_entropy_none',
+        'test_softmax_cross_entropy_none_expanded', 'test_softmax_cross_entropy_none_weights',
+        'test_softmax_cross_entropy_none_weights_expanded', 'test_softmax_cross_entropy_sum',
+        'test_softmax_cross_entropy_sum_expanded', 'test_unfoldtodepth_with_padding',
+        'test_unfoldtodepth_with_padding_stride', 'test_unfoldtodepth_without_padding', 'test_gradient_of_add_and_mul',
+        'test_gradient_of_add', 'test_batchnorm_example_training_mode', 'test_batchnorm_epsilon_training_mode',
+        'test_maxunpool_export_with_output_shape',             // result mismatch
+        'test_resize_downsample_scales_cubic_align_corners',   // results mismatch with onnx tests
+        'test_resize_downsample_scales_linear_align_corners',  // results mismatch with onnx tests
 
         // pre opset7
         'test_AvgPool1d', 'test_AvgPool1d_stride', 'test_AvgPool2d', 'test_AvgPool2d_stride', 'test_AvgPool3d',

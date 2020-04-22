@@ -22,7 +22,7 @@ set_target_properties(onnxruntime_binding PROPERTIES
     PREFIX "" SUFFIX ".node"
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH_USE_LINK_PATH FALSE)
-target_link_libraries(onnxruntime_binding ${CMAKE_JS_LIB})
+target_link_libraries(onnxruntime_binding PRIVATE ${CMAKE_JS_LIB})
 
 if (WIN32)
     target_link_libraries(onnxruntime_binding PRIVATE
