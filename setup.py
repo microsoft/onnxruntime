@@ -62,9 +62,23 @@ for arg in sys.argv[1:]:
         break
 
 is_manylinux1 = False
-if environ.get('AUDITWHEEL_PLAT', None) == 'manylinux1_x86_64' or environ.get('AUDITWHEEL_PLAT', None) == 'manylinux2010_x86_64' :
+#PEP 513 defined manylinux1_x86_64 and manylinux1_i686
+#PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
+#PEP 599 defines the following platform tags:
+# manylinux2014_x86_64
+# manylinux2014_i686
+# manylinux2014_aarch64
+# manylinux2014_armv7l
+# manylinux2014_ppc64
+# manylinux2014_ppc64le
+# manylinux2014_s390x
+
+manylinux_tags = ['manylinux1_x86_64', 'manylinux1_i686', 'manylinux2010_x86_64', 'manylinux2010_i686', 'manylinux2014_x86_64', 'manylinux2014_i686', 'manylinux2014_aarch64', 'manylinux2014_armv7l', 'manylinux2014_ppc64', 'manylinux2014_ppc64le', 'manylinux2014_s390x']
+ENV_AUDITWHEEL_PLAT = environ.get('AUDITWHEEL_PLAT', None)
+if ENV_AUDITWHEEL_PLAT in manylinux_tags:
     is_manylinux1 = True
 
+print("is_manylinux1=%s" % is_manylinux1)
 
 class build_ext(_build_ext):
     def build_extension(self, ext):
@@ -116,6 +130,7 @@ try:
                 self._rewrite_ld_preload(to_preload)
             _bdist_wheel.run(self)
             if is_manylinux1:
+                #The following part doesn't work in cross-compiling
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
                 logger.info('repairing %s for manylinux1', file)
                 try:

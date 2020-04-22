@@ -28,6 +28,8 @@
 #pragma warning(disable : 4996) /*The compiler encountered a deprecated declaration.*/
 #endif
 #include <google/protobuf/message_lite.h>
+#include "Eigen/Core"
+#include "Eigen/src/Core/arch/Default/Half.h"
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #else
@@ -38,8 +40,6 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
-#include "Eigen/Core"
-#include "Eigen/src/Core/arch/Default/Half.h"
 
 using namespace onnxruntime;
 

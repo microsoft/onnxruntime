@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 include(pybind11)
-FIND_PACKAGE(NumPy)
+
 
 if(NOT PYTHON_INCLUDE_DIR)
   set(PYTHON_NOT_FOUND false)
@@ -18,15 +18,18 @@ endif(NOT PYTHON_INCLUDE_DIR)
 
 # 2. Resolve the installed version of NumPy (for numpy/arrayobject.h).
 if(NOT NUMPY_INCLUDE_DIR)
-  set(NUMPY_NOT_FOUND false)
-  exec_program("${PYTHON_EXECUTABLE}"
-    ARGS "-c \"import numpy; print(numpy.get_include())\""
-    OUTPUT_VARIABLE NUMPY_INCLUDE_DIR
-    RETURN_VALUE NUMPY_NOT_FOUND)
-  if(${NUMPY_NOT_FOUND})
-    message(FATAL_ERROR
-            "Cannot get NumPy include directory: Is NumPy installed?")
-  endif(${NUMPY_NOT_FOUND})
+  FIND_PACKAGE(NumPy)
+  if(NOT NUMPY_INCLUDE_DIR)
+    set(NUMPY_NOT_FOUND false)
+    exec_program("${PYTHON_EXECUTABLE}"
+      ARGS "-c \"import numpy; print(numpy.get_include())\""
+      OUTPUT_VARIABLE NUMPY_INCLUDE_DIR
+      RETURN_VALUE NUMPY_NOT_FOUND)
+    if(${NUMPY_NOT_FOUND})
+      message(FATAL_ERROR
+              "Cannot get NumPy include directory: Is NumPy installed?")
+    endif(${NUMPY_NOT_FOUND})
+  endif(NOT NUMPY_INCLUDE_DIR)
 endif(NOT NUMPY_INCLUDE_DIR)
 
 
