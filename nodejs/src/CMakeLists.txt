@@ -14,13 +14,29 @@ include_directories(${CMAKE_SOURCE_DIR}/node_modules/node-addon-api)
 
 file(GLOB SOURCE_FILES ${CMAKE_SOURCE_DIR}/src/*.cc)
 
+#
 # CPU
+#
 add_library(onnxruntime_binding SHARED ${SOURCE_FILES})
-set_target_properties(onnxruntime_binding PROPERTIES PREFIX "" SUFFIX ".node")
+set_target_properties(onnxruntime_binding PROPERTIES
+    PREFIX "" SUFFIX ".node"
+    BUILD_WITH_INSTALL_RPATH TRUE
+    INSTALL_RPATH_USE_LINK_PATH FALSE)
 target_link_libraries(onnxruntime_binding ${CMAKE_JS_LIB})
+
 if (WIN32)
-  target_link_libraries(onnxruntime_binding ${CMAKE_SOURCE_DIR}/../../build/Windows/${CMAKE_BUILD_TYPE}/${CMAKE_BUILD_TYPE}/onnxruntime.lib)
+    target_link_libraries(onnxruntime_binding PRIVATE
+        ${CMAKE_SOURCE_DIR}/../../build/Windows/${CMAKE_BUILD_TYPE}/${CMAKE_BUILD_TYPE}/onnxruntime.lib)
+elseif (APPLE)
+    target_link_libraries(onnxruntime_binding PRIVATE
+        ${CMAKE_SOURCE_DIR}/../../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.1.2.0.dylib)
+    set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "@loader_path")
+else()
+    target_link_libraries(onnxruntime_binding PRIVATE
+        ${CMAKE_SOURCE_DIR}/../../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.so.1.2.0)
+    set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "$ORIGIN/")
 endif()
+
 
 # # GPU
 # add_library(onnxruntime_gpu SHARED ${SOURCE_FILES})
@@ -52,4 +68,20 @@ if (WIN32)
       COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE_DIR:onnxruntime_binding>/onnxruntime_binding.pdb ${CMAKE_SOURCE_DIR}/bin/
     )
   endif()
+elseif (APPLE)
+  add_custom_command(
+    TARGET onnxruntime_binding POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+      ${CMAKE_SOURCE_DIR}/../../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.1.2.0.dylib
+      ${CMAKE_SOURCE_DIR}/bin/
+  )
+elseif (UNIX)
+  add_custom_command(
+    TARGET onnxruntime_binding POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+      ${CMAKE_SOURCE_DIR}/../../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.so.1.2.0
+      ${CMAKE_SOURCE_DIR}/bin/
+  )
+else()
+  message(FATAL_ERROR "Platform not supported.")
 endif()

@@ -1,6 +1,7 @@
 #include <memory>
 #include <sstream>
 #include <unordered_map>
+#include <cmath>
 
 #include "common.h"
 #include "tensor_helper.h"
@@ -120,7 +121,7 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value) {
       ORT_NAPI_THROW_TYPEERROR_IF(!dimValue.IsNumber(), env, "Tensor.dims[", i, "] is not a number.");
       auto dimNumber = dimValue.As<Napi::Number>();
       double dimDouble = dimNumber.DoubleValue();
-      ORT_NAPI_THROW_TYPEERROR_IF(floor(dimDouble) != dimDouble || dimDouble < 0 || dimDouble > 4294967295, env,
+      ORT_NAPI_THROW_TYPEERROR_IF(std::floor(dimDouble) != dimDouble || dimDouble < 0 || dimDouble > 4294967295, env,
                                   "Tensor.dims[", i, "] is invalid: ", dimDouble);
       int64_t dim = static_cast<int64_t>(dimDouble);
       dims.push_back(dim);
@@ -161,7 +162,7 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value) {
     return tensor;
   } else {
     // lookup numeric tensor types
-    auto &v = DATA_TYPE_NAME_TO_ID_MAP.find(tensorTypeString);
+    auto v = DATA_TYPE_NAME_TO_ID_MAP.find(tensorTypeString);
     ORT_NAPI_THROW_TYPEERROR_IF(v == DATA_TYPE_NAME_TO_ID_MAP.end(), env,
                                 "Tensor.type is not supported: ", tensorTypeString);
 

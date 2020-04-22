@@ -19,11 +19,19 @@
     "type": "git",
     "url": "https://github.com/fs-eire/onnxruntime-node.git"
   },
-  "keywords": ["ONNX Runtime"],
-  "os": ["win32", "darwin", "linux"],
+  "keywords": [
+    "ONNX Runtime"
+  ],
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
   "binary": {
     "module_path": "./bin",
-    "napi_versions": [4]
+    "napi_versions": [
+      3
+    ]
   },
   "author": "fs-eire",
   "license": "MIT",
