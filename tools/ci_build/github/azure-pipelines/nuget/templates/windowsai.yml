@@ -47,6 +47,58 @@ jobs:
     parameters:
       BuildArch: 'arm'
 
+- job: WindowsAI_DirectML_X64
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-GPU-2019'
+    demands: []
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'x64'
+      BuildForStore: 'true'
+
+- job: WindowsAI_DirectML_X86
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-GPU-2019'
+    demands: []
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'x86'
+      BuildForStore: 'true'
+
+- job: WindowsAI_CPU_ARM64
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-CPU-2019'
+    demands: []
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'arm64'
+      BuildForStore: 'true'
+
+- job: WindowsAI_CPU_ARM
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-CPU-2019'
+    demands: []
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'arm'
+      BuildForStore: 'true'
+
 - job: NuGet_Packaging
   workspace:
     clean: all
