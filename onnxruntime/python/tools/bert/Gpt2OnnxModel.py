@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 class Gpt2OnnxModel(BertOnnxModel):
 
-    def __init(self, model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only):
-        super().__init__(model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only)
+    def __init(self, model, num_heads, hidden_size):
+        super().__init__(model, num_heads, hidden_size)
 
     def fuse_attention(self):
         """

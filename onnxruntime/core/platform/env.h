@@ -113,6 +113,9 @@ class Env {
 
   virtual int GetNumCpuCores() const = 0;
 
+  // This function doesn't support systems with more than 64 logical processors
+  virtual std::vector<size_t> GetThreadAffinityMasks() const = 0;
+
   /// \brief Returns the number of micro-seconds since the Unix epoch.
   virtual uint64_t NowMicros() const {
     return env_time_->NowMicros();
