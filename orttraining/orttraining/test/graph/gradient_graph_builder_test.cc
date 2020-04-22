@@ -26,7 +26,6 @@ namespace test {
 namespace {
 constexpr auto ORIGINAL_MODEL_PATH = ORT_TSTR("testdata/test_training_model.onnx");
 constexpr auto BACKWARD_MODEL_PATH = ORT_TSTR("testdata/temp_backward_model.onnx");
-constexpr auto PIPELINE_MODEL_BASE = ORT_TSTR("testdata/test_training_model_");
 
 std::unordered_set<std::string> GetModelOutputNames(const InferenceSession& session) {
   const auto outputs_result = session.GetModelOutputs();
@@ -1000,7 +999,7 @@ class PipelineBatchPlanner {
 
 // verify pipeline config can load and gradient graph can construct.
 TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
-  PathString filename_base = PIPELINE_MODEL_BASE;
+  std::string filename_base{"testdata/test_training_model_"};
 
   auto load_gradient_graph = [](int stageIdx, std::string& filename) {
     auto config = MakeBasicTrainingConfig();
@@ -1087,7 +1086,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
   };
 
   for (int i = 0; i < 3; ++i) {
-    PathString name = filename_base + ORT_TSTR(std::to_string(i));
+    std::string name = filename_base + std::to_string(i);
     load_gradient_graph(i, name);
   }
 }
