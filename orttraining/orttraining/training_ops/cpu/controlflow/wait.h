@@ -9,6 +9,9 @@
 namespace onnxruntime {
 namespace contrib {
 
+// Wait for the event ID stored in the input tensor.
+void wait_event_in_tensor(const Tensor* event_id_tensor);
+
 class WaitEvent final : public OpKernel {
 public:
   WaitEvent(const OpKernelInfo& info) : OpKernel(info) { }
