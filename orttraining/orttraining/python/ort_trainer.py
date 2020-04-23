@@ -510,6 +510,7 @@ def create_ort_training_session_bind_parameters(model, device, world_rank=-1, wo
                                    dtype_torch_to_numpy(torch_params[param].dtype), list(torch_tensor.size()),
                                    torch_tensor.data_ptr())
 
+        device_index = get_device_index(device)
         create_and_bind_grad_or_grad_accumulate_buffer(train_io_binding, torch_tensor, param, enable_grad_accumulation, device, device_index)
 
     return session, train_io_binding, eval_io_binding, output_name, torch_params, output_types
