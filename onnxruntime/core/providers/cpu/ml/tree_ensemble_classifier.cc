@@ -174,7 +174,7 @@ common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) cons
   Tensor* Y = context->Output(0, TensorShape({N}));
   Tensor* Z = context->Output(1, TensorShape({N, tree_ensemble_.get_class_count()}));
 
-  tree_ensemble_.compute(&X, Z, Y);
+  tree_ensemble_.compute(context->GetOperatorThreadPool(), &X, Z, Y);
   return Status::OK();
 }
 
