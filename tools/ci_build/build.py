@@ -423,7 +423,7 @@ def install_ubuntu_deps(args):
 def install_python_deps(numpy_version=""):
     dep_packages = ['setuptools', 'wheel', 'pytest']
     dep_packages.append('numpy=={}'.format(numpy_version) if numpy_version
-                        else 'numpy>=1.18.0')
+                        else 'numpy>=1.16.6')
     dep_packages.append('sympy>=1.1')
     dep_packages.append('packaging')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
@@ -535,7 +535,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_NNAPI=" + ("ON" if args.use_dnnlibrary else "OFF"),
         "-Donnxruntime_USE_OPENMP=" + (
             "ON" if args.use_openmp and not args.use_dnnlibrary and
-            not args.use_mklml and not args.use_ngraph else "OFF"),
+            not args.use_mklml and not args.use_ngraph and not args.android else "OFF"),
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + (
@@ -1216,7 +1216,8 @@ def nuphar_run_python_tests(build_dir, configs):
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, wheel_name_suffix, use_acl,
-        nightly_build=False):
+        nightly_build=False,
+        featurizers_build=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -1241,6 +1242,8 @@ def build_python_wheel(
             args.append('--wheel_name_suffix={}'.format(wheel_name_suffix))
         elif use_acl:
             args.append('--use_acl')
+        elif featurizers_build:
+            args.append("--use_featurizers")
 
         run_subprocess(args, cwd=cwd)
 
@@ -1573,6 +1576,7 @@ def main():
                 args.wheel_name_suffix,
                 args.use_acl,
                 nightly_build=nightly_build,
+                featurizers_build=args.use_featurizers,
             )
 
     if args.gen_doc and (args.build or args.test):
