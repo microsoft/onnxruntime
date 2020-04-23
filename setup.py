@@ -66,6 +66,8 @@ if environ.get('AUDITWHEEL_PLAT', None) == 'manylinux1_x86_64' or environ.get('A
     is_manylinux1 = True
 
 
+environ['MACOSX_DEPLOYMENT_TARGET'] = '10.9'
+
 class build_ext(_build_ext):
     def build_extension(self, ext):
         dest_file = self.get_ext_fullpath(ext.name)
