@@ -221,7 +221,7 @@ class TrainingSession : public InferenceSession {
    * since each ratio input has its own name.
    * @return The list of feed names.
    */
-  std::vector<std::string> GetDropoutEvalFeeds() const { return dropout_eval_feeds_; }
+  std::unordered_set<std::string> GetDropoutEvalFeeds() const { return dropout_eval_feeds_; }
 
  private:
   /** Configures the loss function.
@@ -319,7 +319,7 @@ class TrainingSession : public InferenceSession {
 
   std::unordered_set<std::string> GetStateTensorNames() const;
 
-  void SetDropoutEvalFeedNames();
+  common::Status SetDropoutEvalFeedNames();
 
   NameMLValMap GetWeights() const;
 
@@ -344,7 +344,7 @@ class TrainingSession : public InferenceSession {
   std::unique_ptr<ILossFunction> loss_graph_builder_;
   optional<LossFunctionInfo> loss_function_info_;
 
-  std::vector<std::string> dropout_eval_feeds_;
+  std::unordered_set<std::string> dropout_eval_feeds_;
   OptimizerGraphConfig opt_graph_config_;
   std::unordered_map<std::string, OptimizerNodeConfig> opt_configs_;
 };

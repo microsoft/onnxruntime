@@ -18,6 +18,9 @@ import onnxruntime
 from onnxruntime_test_training_unittest_utils import process_dropout
 from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample
 
+torch.manual_seed(1)
+onnxruntime.set_seed(1)
+
 class TestTrainingDropout(unittest.TestCase):
     def testTrainingAndEvalDropout(self):
         class TwoDropoutNet(nn.Module):
@@ -26,12 +29,11 @@ class TestTrainingDropout(unittest.TestCase):
                 self.drop_1 = nn.Dropout(drop_prb_1)
                 self.drop_2 = nn.Dropout(drop_prb_2)
                 self.weight_1 = torch.nn.Parameter(torch.zeros(dim_size, dtype=torch.float32))
-                self.weight_2 = torch.nn.Parameter(torch.zeros(dim_size, dtype=torch.float32))
             def forward(self, x):
                 x = x + self.weight_1
                 x = self.drop_1(x)
                 x = self.drop_2(x)
-                output = x + self.weight_2
+                output = x
                 return output[0]
         dim_size = 3
         device = torch.device("cuda", 0)
@@ -53,7 +55,7 @@ class TestTrainingDropout(unittest.TestCase):
         input_args=[input, learning_rate]
         train_output = model.train_step(*input_args)
 
-        rtol = 1e-03
+        rtol = 1e-04
         assert_allclose(expected_training_output, train_output.item(), rtol=rtol, err_msg="dropout training loss mismatch")
 
         eval_output = model.eval_step(input)

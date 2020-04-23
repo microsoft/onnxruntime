@@ -682,6 +682,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
             if args.enable_training and args.use_cuda:
                 # run basic frontend tests
                 run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd, dll_path=dll_path)
+                run_subprocess([sys.executable, 'onnxruntime_test_training_unit_tests.py'], cwd=cwd, dll_path=dll_path)
 
                 # run additional frontend tests for orttraining-linux-gpu-frontend_test_ci-pipeline
                 if args.enable_training_python_frontend_e2e_tests:

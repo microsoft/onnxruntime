@@ -149,9 +149,6 @@ Status TrainingSession::ConfigureForTraining(
     config_result.mixed_precision_config_result = mp_result;
   }
 
-  // Set eval feed names for Dropout ratio.
-  SetDropoutEvalFeedNames();
-
   if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
@@ -207,8 +204,8 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
-  // Retrieve Dropout ratio input names
-  SetDropoutEvalFeedNames();
+  // Set eval feed names for Dropout ratio.
+  ORT_RETURN_IF_ERROR(SetDropoutEvalFeedNames());
 
   // add Tensorboard
   if (config.tensorboard_config.has_value()) {
@@ -657,14 +654,22 @@ static const std::unordered_set<std::string> Dropout_Nodes = {
     "TrainableDropout",
 };
 // TODO remove this once ONNX properly supports training_mode input.
-void TrainingSession::SetDropoutEvalFeedNames() {
-  const Graph& graph = model_->MainGraph();
+Status TrainingSession::SetDropoutEvalFeedNames() {
+  Graph& graph = model_->MainGraph();
+
+  // add ratio node to graph input for overriding.
+  GraphAugmenter::GraphDefs defs{};
+
   for (const auto& node : graph.Nodes()) {
     auto it = Dropout_Nodes.find(node.OpType());
     if(it != Dropout_Nodes.cend()) {
-      dropout_eval_feeds_.push_back(node.InputDefs()[1]->Name());
+      auto& ratio_name = node.InputDefs()[1]->Name();
+      dropout_eval_feeds_.insert(ratio_name);
+      defs.AddGraphInputs({ratio_name});
     }
   }
+  ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, defs));
+  return DoPostLoadProcessing(*model_);
 }
 
 Status TrainingSession::SetStateTensors(const NameMLValMap& state_tensors, bool strict) {

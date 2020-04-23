@@ -90,7 +90,8 @@ def ort_training_session_run_helper(session, iobinding, inputs, input_descs, out
                              list(input.size()), input.data_ptr())
 
     if additional_feeds:
-        for name, value in additional_feeds:
+        for name in additional_feeds:
+            value = additional_feeds[name]
             device_index = input_get_device_index(value)
             iobinding.bind_input(name, value.device.type, device_index, dtype_torch_to_numpy(value.dtype),
                                  list(value.size()), value.data_ptr())
@@ -600,7 +601,7 @@ class ORTTrainer():
         self.enable_grad_norm_clip_ = enable_grad_norm_clip
         self.frozen_weights_ = frozen_weights
         self.loss_scale_input_name = ''
-        self.eval_feed_names_ = []
+        self.eval_feed_names_ = set()
         self._init_session()
             
     def _init_session(self):
@@ -619,7 +620,7 @@ class ORTTrainer():
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
                 frozen_weights=self.frozen_weights_)
 
-        self.eval_feed_names_ = self.eval_feed_names_ + self.session.get_dropout_eval_feeds()
+        self.eval_feed_names_ |= self.session.get_dropout_eval_feeds()
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
@@ -855,17 +856,17 @@ class ORTTrainer():
         run_options.only_execute_path_to_fetches = True
 
         eval_feeds = {}
-        if not self.eval_feed_names_:
+        if self.eval_feed_names_:
             for eval_feed_name in self.eval_feed_names_:
                 # Dropout ratio input name starts with 'dropout_node_ratio'
                 if eval_feed_name.find('dropout_node_ratio') == 0:
-                    eval_feeds[eval_feed_name] = torch.tensor(0, dtype=torch.float32)
+                    eval_feeds[eval_feed_name] = torch.tensor([0], dtype=torch.float32)
 
         session_run_results = ort_training_session_run_helper(self.session, self.eval_io_binding, input,
                                                               input_desc,
                                                               output_desc,
                                                               self.device_,
-                                                              run_options)
+                                                              run_options, additional_feeds=eval_feeds)
 
         if len(session_run_results) == 1:
             return session_run_results[list(session_run_results.keys())[0]]

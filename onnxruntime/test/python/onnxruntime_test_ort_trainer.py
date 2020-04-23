@@ -156,7 +156,7 @@ class TestOrtTrainer(unittest.TestCase):
         expected_losses = [
             11.02906322479248, 11.094074249267578, 11.00899887084961, 11.06129264831543,
             11.029067039489746, 11.040265083312988, 11.046793937683105, 10.993699073791504]
-        expected_eval_loss = [10.9691801071167]
+        expected_eval_loss = [10.95898914]
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=1, use_mixed_precision=False, allreduce_post_accumulation=False)
 
@@ -167,7 +167,7 @@ class TestOrtTrainer(unittest.TestCase):
         # print('eval_loss actual:   ', actual_eval_loss)
         # import pdb; pdb.set_trace()
 
-        rtol = 1e-03
+        rtol = 1e-04
         assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
 
@@ -175,7 +175,7 @@ class TestOrtTrainer(unittest.TestCase):
         expected_losses = [
             11.02906322479248, 11.094074249267578, 11.008995056152344, 11.061283111572266,
             11.029059410095215, 11.04024887084961, 11.04680347442627, 10.993708610534668]
-        expected_eval_loss = [10.969207763671875]
+        expected_eval_loss = [10.959011]
         
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=4, use_mixed_precision=False, allreduce_post_accumulation=False)
@@ -187,7 +187,7 @@ class TestOrtTrainer(unittest.TestCase):
         # print('eval_loss actual:   ', actual_eval_loss)
         # import pdb; pdb.set_trace()
 
-        rtol = 1e-03
+        rtol = 1e-04
         assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
 
