@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <thread>
-#include <chrono>
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "event_pool.h"

@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <thread>
-#include <chrono>
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cudnn_common.h"

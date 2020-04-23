@@ -38,6 +38,7 @@ Status WaitEvent::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
+    // This iteration copies (i-1)-th input to i-th output.
     const Tensor* X = ctx->Input<Tensor>(i_out + 1);
     const TensorShape& data_shape = X->Shape();
     Tensor* Y = ctx->Output(i_out, data_shape);
