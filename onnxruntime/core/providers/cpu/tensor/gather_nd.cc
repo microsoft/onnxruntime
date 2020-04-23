@@ -107,11 +107,16 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
       reminder -= (idx * element_counts[last_indices_dimension + j]);
     }
     for (int64_t j = batch_dims_; j < last_indices_dimension; ++j) {
-      auto indice = *(indice_offset + i * (last_indices_dimension - batch_dims_) + (j - batch_dims_));
-      if (indice < 0 || indice >= input_shape[j]) {
-        err_index = indice;
+      auto index = *(indice_offset + i * (last_indices_dimension - batch_dims_) + (j - batch_dims_));
+      auto upper_limit = input_shape[j];
+      auto lower_limit = -upper_limit;
+      if (index < lower_limit || index >= input_shape[j]) {
+        err_index = index ;
       }
-      p.element_offsets[i] += indice * element_counts[j];
+      if (index  < 0) {
+        index += static_cast<Tind>(upper_limit);
+      }
+      p.element_offsets[i] += index * element_counts[j];
     }
   }
 
