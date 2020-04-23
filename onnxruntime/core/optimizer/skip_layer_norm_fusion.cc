@@ -136,7 +136,6 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   std::vector<std::reference_wrapper<Node>> nodes_to_remove;
   for (auto node_index : node_topology_list) {
-    nodes_to_remove.clear();
     Node* p_layernorm = graph.GetNode(node_index);
     if (p_layernorm == nullptr)
       continue;  // node was removed in an earlier fusion.
@@ -235,7 +234,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
                                                "SkipLayerNormalization",
                                                "fused SkipLayerNorm subgraphs ",
                                                skip_layer_norm_input_defs,
-                                               {}, {}, kMSDomain);
+                                               ln_node.MutableOutputDefs(), {}, kMSDomain);
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     skip_layer_norm_node.SetExecutionProviderType(ln_node.GetExecutionProviderType());
