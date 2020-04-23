@@ -40,7 +40,7 @@ TEST(FeaturizersTests, RollingWindow_Transformer_Grained_Mean_1_grain_window_siz
   test.AddInput<uint8_t>("State", {dim}, stream);
   test.AddInput<std::string>("Grains", {3, 1}, {"one", "one", "one"});
   test.AddInput<int32_t>("Target", {3}, {1, 2, 3});
-  test.AddOutput<double>("Output", {3, 1}, {NS::Traits<double>::CreateNullValue(), 1.0, 2.0});
+  test.AddOutput<double>("Output", {3, 1, 1}, {NS::Traits<double>::CreateNullValue(), 1.0, 2.0});
 
   test.Run();
 }
@@ -60,7 +60,7 @@ TEST(FeaturizersTests, RollingWindow_Transformer_Grained_Mean_1_grain_window_siz
   test.AddInput<uint8_t>("State", {dim}, stream);
   test.AddInput<std::string>("Grains", {4, 1}, {"one", "one", "one", "one"});
   test.AddInput<int32_t>("Target", {4}, {1, 2, 3, 4});
-  test.AddOutput<double>("Output", {4, 2}, {NS::Traits<double>::CreateNullValue(),
+  test.AddOutput<double>("Output", {4, 1, 2}, {NS::Traits<double>::CreateNullValue(),
                                             NS::Traits<double>::CreateNullValue(),
                                             NS::Traits<double>::CreateNullValue(),
                                             NS::Traits<double>::CreateNullValue(),
@@ -90,7 +90,7 @@ TEST(FeaturizersTests, RollingWindow_Transformer_Grained_Mean_2_grain_window_siz
   test.AddInput<uint8_t>("State", {dim}, stream);
   test.AddInput<std::string>("Grains", {4, 1}, {"one", "two", "one", "two"});
   test.AddInput<int32_t>("Target", {4}, {1, 1, 2, 2});
-  test.AddOutput<double>("Output", {4, 2}, {NS::Traits<double>::CreateNullValue(),
+  test.AddOutput<double>("Output", {4, 1, 2}, {NS::Traits<double>::CreateNullValue(),
                                             NS::Traits<double>::CreateNullValue(),
                                             NS::Traits<double>::CreateNullValue(),
                                             NS::Traits<double>::CreateNullValue(),
