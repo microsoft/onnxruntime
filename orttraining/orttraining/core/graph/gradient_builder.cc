@@ -438,16 +438,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetConcatGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetGatherNDGradient) {
   auto attributes = SrcNodeAttributes();
-  ORT_ENFORCE(attributes.at("axis").has_i());
-  auto axis = attributes.at("axis").i();
+  ORT_ENFORCE(attributes.at("batch_dims").has_i());
+  auto batch_dims = attributes.at("batch_dims").i();
   return std::vector<NodeDef>{
       NodeDef("Shape",
               {I(0)},
               {IA("x_shape")}),
-      NodeDef("GatherNDGrad",
+      NodeDef(OpDef{"GatherNDGrad", kMSDomain, 1},
               {IA("x_shape"), I(1), GO(0)},
               {GI(0)},
-              {MakeAttribute("axis", axis)})};
+              {MakeAttribute("batch_dims", batch_dims)})};
 };
 
 IMPLEMENT_GRADIENT_BUILDER(GetReshapeGradient) {

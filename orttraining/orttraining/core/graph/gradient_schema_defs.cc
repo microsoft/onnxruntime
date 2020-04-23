@@ -662,11 +662,11 @@ void RegisterGradientSchemas() {
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherNDGrad)
-      .SetDomain(kOnnxDomain)
+      .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Attr(
-          "axis",
-          "The number of batch dims. The gather of indexing starts from dimension of data[axis+1:]",
+          "batch_dims",
+          "The number of batch dims. The gather of indexing starts from dimension of data[batch_dims+1:]",
           AttributeProto::INT,
           static_cast<int64_t>(0))
       .Input(0, "shape", "The shape of source data input of GatherND.", "T1")
@@ -679,7 +679,7 @@ void RegisterGradientSchemas() {
           "Constrain input and output types to any tensor type.")
       .TypeConstraint(
           "Tind",
-          {"tensor(int32)", "tensor(int64)"},
+          {"tensor(int64)"},
           "Constrain indice type to int32 or int64")
       .TypeConstraint(
           "T1",

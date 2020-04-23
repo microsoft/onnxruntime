@@ -9,7 +9,7 @@ namespace contrib {
 ONNX_OPERATOR_KERNEL_EX(
     GatherND,
     kOnnxDomain,
-    1,
+    12,
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
@@ -30,7 +30,7 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
                            "indices tensor must has rank larger than 0");
   }
 
-  auto last_indice_dimension = indice_shape[indice_shape.NumDimensions() - 1] + axis_;
+  auto last_indice_dimension = indice_shape[indice_shape.NumDimensions() - 1] + batch_dims_;
   if (last_indice_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "last dimension of indices must not be larger than rank of input tensor");
@@ -42,7 +42,7 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
                input_shape.GetDims().begin() + last_indice_dimension,
                input_shape.GetDims().end());
   auto output_tensor = context->Output(0, TensorShape(shape));
-  std::vector<int64_t> element_counts(last_indice_dimension + axis_, 0LL);  // Number of elements for each input dimension
+  std::vector<int64_t> element_counts(last_indice_dimension + batch_dims_, 0LL);  // Number of elements for each input dimension
 
 #ifdef USE_OPENMP
 #pragma omp parallel for
@@ -55,7 +55,7 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
 #ifdef USE_OPENMP
 #pragma omp parallel for
 #endif
-  for (int64_t i = axis_ - 1; i >= 0; --i) {
+  for (int64_t i = batch_dims_ - 1; i >= 0; --i) {
     element_counts[last_indice_dimension + i] = indice_shape.SizeFromDimension(i + 1) / last_dim_size;
   }
 
@@ -64,7 +64,7 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
   p.element_to_copy = input_shape.SizeFromDimension(last_indice_dimension);
   p.bytes_to_copy = p.element_bytes * p.element_to_copy;
   auto indice_offset = indice_tensor->Data<Tind>();
-  auto offset_count = indice_shape.Size() / (last_indice_dimension - axis_);  // Times to copy
+  auto offset_count = indice_shape.Size() / (last_indice_dimension - batch_dims_);  // Times to copy
   p.element_offsets.assign(offset_count, 0LL);
 
   if (input_tensor->DataType() == DataTypeImpl::GetType<std::string>()) {
@@ -81,13 +81,13 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
 #endif
   for (int64_t i = 0; i < offset_count; ++i) {
     int64_t reminder = i;
-    for (int64_t j = 0; j < axis_; ++j) {
+    for (int64_t j = 0; j < batch_dims_; ++j) {
       int64_t idx = reminder / element_counts[last_indice_dimension + j];
       p.element_offsets[i] += idx * element_counts[j];
       reminder -= (idx * element_counts[last_indice_dimension + j]);
     }
-    for (int64_t j = axis_; j < last_indice_dimension; ++j) {
-      auto indice = *(indice_offset + i * (last_indice_dimension - axis_) + (j - axis_));
+    for (int64_t j = batch_dims_; j < last_indice_dimension; ++j) {
+      auto indice = *(indice_offset + i * (last_indice_dimension - batch_dims_) + (j - batch_dims_));
       if (indice < 0 || indice >= input_shape[j]) {
         err_indice = indice;
       }

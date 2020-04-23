@@ -52,7 +52,7 @@ Status CheckBatchDimensionsMatch(
 
 template <typename TIndex>
 Status GatherNDBase::CommonComputeKernel(
-    const int64_t axis,
+    const int64_t batch_dims,
     const TensorShape& input_shape,
     const Tensor* kernel_input_tensor,
     Tensor* kernel_output_tensor,
@@ -65,9 +65,9 @@ Status GatherNDBase::CommonComputeKernel(
 
   const auto num_slice_dims = indices_shape[indices_shape.NumDimensions() - 1];
   const auto num_slices = indices_shape.SizeToDimension(indices_shape.NumDimensions() - 1);
-  const auto slice_size = input_shape.SizeFromDimension(axis + num_slice_dims);
-  const auto num_batches = input_shape.SizeToDimension(axis);
-  const auto input_batch_stride = input_shape.SizeFromDimension(axis);
+  const auto slice_size = input_shape.SizeFromDimension(batch_dims + num_slice_dims);
+  const auto num_batches = input_shape.SizeToDimension(batch_dims);
+  const auto input_batch_stride = input_shape.SizeFromDimension(batch_dims);
   const auto num_slices_per_batch = num_slices / num_batches;
 
   const TIndex* const indices_data = indices_tensor->Data<TIndex>();
@@ -79,7 +79,7 @@ Status GatherNDBase::CommonComputeKernel(
     auto running_product = slice_size;
     for (int64_t i = 0; i < num_slice_dims; ++i) {
       sizes_from_slice_dims[num_slice_dims - 1 - i] = running_product;
-      running_product *= input_shape[axis + num_slice_dims - 1 - i];
+      running_product *= input_shape[batch_dims + num_slice_dims - 1 - i];
     }
   }
 
@@ -125,7 +125,7 @@ Status GatherNDBase::CommonComputeKernel(
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                            \
       GatherND,                                                                                                             \
       kOnnxDomain,                                                                                                          \
-      1,                                                                                                                    \
+      12,                                                                                                                    \
       TIndex,                                                                                                               \
       kCudaExecutionProvider,                                                                                               \
       KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),                                     \
@@ -134,7 +134,6 @@ Status GatherNDBase::CommonComputeKernel(
       GatherND<TIndex>);
 
 REGISTER_KERNEL_TYPED_GATHER_ND(int64_t)
-REGISTER_KERNEL_TYPED_GATHER_ND(int32_t)
 
 template <typename TIndex>
 Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
@@ -151,14 +150,14 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
                            "indices tensor must has rank larger than 0");
   }
 
-  auto last_indices_dimension = axis_ + indices_shape[indices_shape.NumDimensions() - 1];
+  auto last_indices_dimension = batch_dims_ + indices_shape[indices_shape.NumDimensions() - 1];
   if (last_indices_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "last dimension of indices must not be larger than rank of input tensor");
   }
 
   ORT_RETURN_IF_ERROR(CheckBatchDimensionsMatch(
-      static_cast<size_t>(axis_), {input_shape, indices_shape}));
+      static_cast<size_t>(batch_dims_), {input_shape, indices_shape}));
 
   //Output shape
   std::vector<int64_t> shape(indices_shape.GetDims().begin(), indices_shape.GetDims().end() - 1);
@@ -167,7 +166,7 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
   auto output_tensor = context->Output(0, TensorShape(shape));
 
   //Compute
-  auto status = CommonComputeKernel<TIndex>(axis_, input_shape, input_tensor, output_tensor, indices_shape, indices_tensor, true);
+  auto status = CommonComputeKernel<TIndex>(batch_dims_, input_shape, input_tensor, output_tensor, indices_shape, indices_tensor, true);
 
   return status;
 }
@@ -175,7 +174,7 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
 #define REGISTER_KERNEL_TYPED_GATHER_ND_GRAD(TIndex)                                                                        \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                            \
       GatherNDGrad,                                                                                                         \
-      kOnnxDomain,                                                                                                          \
+      kMSDomain,                                                                                                            \
       1,                                                                                                                    \
       TIndex,                                                                                                               \
       kCudaExecutionProvider,                                                                                               \
@@ -187,7 +186,6 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
       GatherNDGrad<TIndex>);
 
 REGISTER_KERNEL_TYPED_GATHER_ND_GRAD(int64_t)
-REGISTER_KERNEL_TYPED_GATHER_ND_GRAD(int32_t)
 
 template <typename TIndex>
 Status GatherNDGrad<TIndex>::ComputeInternal(OpKernelContext* context) const {
@@ -206,7 +204,7 @@ Status GatherNDGrad<TIndex>::ComputeInternal(OpKernelContext* context) const {
                            "indices tensor must has rank larger than 0");
   }
 
-  auto last_indices_dimension = axis_ + indices_shape[indices_shape.NumDimensions() - 1];
+  auto last_indices_dimension = batch_dims_ + indices_shape[indices_shape.NumDimensions() - 1];
 
   //Output
   auto shape_data = shape_tensor->Data<int64_t>();
@@ -218,14 +216,14 @@ Status GatherNDGrad<TIndex>::ComputeInternal(OpKernelContext* context) const {
   }
 
   ORT_RETURN_IF_ERROR(CheckBatchDimensionsMatch(
-      static_cast<size_t>(axis_), {input_shape, indices_shape, update_shape}));
+      static_cast<size_t>(batch_dims_), {input_shape, indices_shape, update_shape}));
 
   auto output_tensor = context->Output(0, input_shape);
 
   // TODO this memset can be expensive, a sparse tensor representation would help here
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output_tensor->MutableDataRaw(), 0, output_tensor->SizeInBytes()));
 
-  auto status = CommonComputeKernel<TIndex>(axis_, input_shape, update_tensor, output_tensor, indices_shape, indices_tensor, false);
+  auto status = CommonComputeKernel<TIndex>(batch_dims_, input_shape, update_tensor, output_tensor, indices_shape, indices_tensor, false);
   return status;
 }
 
