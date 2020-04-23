@@ -5,6 +5,15 @@ OpenVINO Execution Provider enables deep learning inference on Intel CPUs, Intel
 ## Build
 For build instructions, please see the [BUILD page](../../BUILD.md#openvino).
 
+## Onnxruntime Graph Optimization level
+OpenVINO backend performs both hardware dependent as well as independent optimizations to the graph to infer it with on the target hardware with best possible performance. In most of the cases it has been observed that passing in the graph from the input model as is would lead to best possible optimizations by OpenVINO. For this reason, it is advised to turn off high level optimizations performed by ONNX Runtime before handing the graph over to OpenVINO backend. This can be done using Session options as shown in the Python API snippet below:-
+
+```
+options = onnxruntime.SessionOptions()
+options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+sess = onnxruntime.InferenceSession(<path_to_model_file>, options)
+```
+
 ## Dynamic device selection
 When ONNX Runtime is built with OpenVINO Execution Provider, a target hardware option needs to be provided. This build time option becomes the default target harware the EP schedules inference on. However, this target may be overriden at runtime to schedule inference on a different hardware as shown below.
 
