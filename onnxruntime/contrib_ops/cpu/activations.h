@@ -37,23 +37,36 @@ class Gelu : public OpKernel {
   Gelu(const OpKernelInfo& info) : OpKernel(info) {}
 
   Status Compute(OpKernelContext* context) const override {
-    const auto* X = context->Input<Tensor>(0);
-    Tensor* Y = context->Output(0, X->Shape());
+    const Tensor* input = context->Input<Tensor>(0);
+    const T* input_data = input->template Data<T>();
+
+    Tensor* output = context->Output(0, input->Shape());
+    T* output_data = output->template MutableData<T>();
+
     concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
-    const int64_t input_size = X->Shape().Size();
-    std::ptrdiff_t batch_size = static_cast<std::ptrdiff_t>(input_size);
-    //The cost comes from microbenchmark(manual tunning).
-    const double cost = 10.0;
-    const T* data = X->template Data<T>();
-    T* output = Y->template MutableData<T>();
-    concurrency::ThreadPool::TryParallelFor(tp, batch_size, cost, [data, output](ptrdiff_t first, ptrdiff_t last) {
-      ptrdiff_t len = last - first;
-      onnxruntime::ConstEigenVectorArrayMap<T> xm(data + first, len);
-      onnxruntime::EigenVectorArrayMap<T> ym(output + first, len);
-      ym = xm * static_cast<float>(M_SQRT1_2);
-      MlasComputeErf(output, output, len);
-      ym = xm * 0.5f * (ym + 1.0f);
-    });
+    int64_t elem_count = input->Shape().Size();
+    static const int64_t length_per_task = 4096;  // this number comes from FastGelu.
+    int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
+    concurrency::ThreadPool::TryBatchParallelFor(
+        tp, static_cast<int32_t>(task_count),
+        [&](ptrdiff_t task_idx) {
+          const auto start = task_idx * length_per_task;
+          const T* p_input = input_data + start;
+          T* p_output = output_data + start;
+          int64_t count = std::min(length_per_task, elem_count - start);
+
+          for (int64_t i = 0; i < count; i++) {
+            T value = p_input[i];
+            p_output[i] = value * static_cast<float>(M_SQRT1_2);
+          }
+
+          MlasComputeErf(p_output, p_output, count);
+
+          for (int64_t i = 0; i < count; i++) {
+            p_output[i] = 0.5f * p_input[i] * (p_output[i] + 1.0f);
+          }
+        },
+        0);
     return Status::OK();
   }
 };
