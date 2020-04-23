@@ -25,12 +25,14 @@ ONNX_OPERATOR_KERNEL_EX(GatherND, kMSDomain, 1, kCpuExecutionProvider,
 
 #endif
 
-ONNX_CPU_OPERATOR_KERNEL(GatherND, 11,
-                         KernelDefBuilder()
-                             .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-                             // official ONNX spec only supports `int64_t` for indices
-                             .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
-                         GatherND);
+ONNX_CPU_OPERATOR_KERNEL(
+    GatherND, 
+    11,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        // official ONNX spec only supports `int64_t` for indices
+        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
+    GatherND);
 
 ONNX_CPU_OPERATOR_KERNEL(
     GatherND,

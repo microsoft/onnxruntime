@@ -121,11 +121,11 @@ Status GatherNDBase::CommonComputeKernel(
 #undef TYPED_FUNCTION_CALL_FWD
 #undef TYPED_FUNCTION_CALL_BWD
 
-#define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex)                                                                             \
+#define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex, ver)                                                                             \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                            \
       GatherND,                                                                                                             \
       kOnnxDomain,                                                                                                          \
-      12,                                                                                                                    \
+      ver,                                                                                                                   \
       TIndex,                                                                                                               \
       kCudaExecutionProvider,                                                                                               \
       KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),                                     \
@@ -133,7 +133,11 @@ Status GatherNDBase::CommonComputeKernel(
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()),                                                   \
       GatherND<TIndex>);
 
-REGISTER_KERNEL_TYPED_GATHER_ND(int64_t)
+// TODO: decprecate GatherND-1 after updating training models to opset-12
+#ifdef ENABLE_TRAINING
+REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 1)
+#endif
+REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 12)
 
 template <typename TIndex>
 Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
