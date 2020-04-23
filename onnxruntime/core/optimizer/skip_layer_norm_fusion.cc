@@ -245,8 +245,6 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       graph.RemoveNode(node.get().Index());
     }
 
-    graph.SetGraphResolveNeeded();
-
     modified = true;
   }
   return Status::OK();
