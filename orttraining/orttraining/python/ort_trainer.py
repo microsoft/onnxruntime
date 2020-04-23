@@ -9,6 +9,8 @@ import torch.onnx
 import onnxruntime as ort
 from distutils.version import LooseVersion
 
+DEFAULT_OPSET_VERSION = 10
+
 class IODescription():
     def __init__(self, name, shape, dtype=None, num_classes=None):
         self.name_ = name
@@ -132,7 +134,7 @@ def FuseSofmaxNLLToSoftmaxCE(onnx_model):
         nll_loss_node = None
         nll_loss_node_index = 0
         for nll_loss_node_index, node in enumerate(onnx_model.graph.node):
-            if node.op_type == "nll_loss":
+            if node.op_type == "nll_loss" or node.op_type == "NegativeLogLikelihoodLoss":
                 nll_loss_node = node
                 break
 
@@ -260,7 +262,7 @@ def wrap_for_input_match(model, input_names):
     model = WrapModel(model, input_names)
     return model
 
-def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs):
+def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, opset_version=DEFAULT_OPSET_VERSION):
     # example: {input0:{0:'batch'}, input1:{0:'batch'}}
     dynamic_axes = {}
     for input in model_desc.inputs_:
@@ -290,6 +292,15 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs):
         sample_inputs = [input.to(device=device) for i, input in enumerate(inputs) if i < len(model_desc.inputs_)]
     else:
         raise RuntimeError("Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
+
+    if loss_fn:
+        model = model_loss_cls(model, loss_fn)
+
+    # pytorch onnx exporter/trace does not try to match argument names.
+    # e.g. for models with optional inputs, it requires all inputs be present.
+    # this is a problem because the model graph depends on inputs provided.
+    model = wrap_for_input_match(model, input_names)
+
     model.eval()
     with torch.no_grad():
         sample_outputs = model(*sample_inputs)
@@ -301,14 +312,6 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs):
 
     f = io.BytesIO()
 
-    if loss_fn:
-        model = model_loss_cls(model, loss_fn)
-
-    # pytorch onnx exporter/trace does not try to match argument names.
-    # e.g. for models with optional inputs, it requires all inputs be present.
-    # this is a problem because the model graph depends on inputs provided.
-    model = wrap_for_input_match(model, input_names)
-
     # Other export options to use(this is for backward compatibility).
     other_export_options = {}
     # This option was added after 1.4 release.
@@ -318,7 +321,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs):
     torch.onnx._export(model, tuple(sample_inputs), f,
                        input_names=input_names,
                        output_names=output_names,
-                       opset_version=10,
+                       opset_version=opset_version,
                        dynamic_axes=dynamic_axes,
                        training=True,
                        _retain_param_name=True,
@@ -393,7 +396,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                use_mixed_precision=False, allreduce_post_accumulation=False,
                                                partition_optimizer=False,
                                                enable_grad_norm_clip=True,
-                                               frozen_weights=[]):
+                                               frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -524,7 +527,7 @@ class ORTTrainer():
                  learning_rate_description, device, gradient_accumulation_steps=1, postprocess_model=None,
                  world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
                  global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False,
-                 enable_grad_norm_clip=True, frozen_weights=[]):
+                 enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION):
         super(ORTTrainer, self).__init__()
         """
         Initializes ORTTrainer.
@@ -600,8 +603,11 @@ class ORTTrainer():
         self.partition_optimizer_ = partition_optimizer
         self.enable_grad_norm_clip_ = enable_grad_norm_clip
         self.frozen_weights_ = frozen_weights
+        self.opset_version_ = _opset_version
         self.loss_scale_input_name = ''
         self.eval_feed_names_ = set()
+        self.state_dict_ = None
+
         self._init_session()
             
     def _init_session(self):
@@ -616,9 +622,9 @@ class ORTTrainer():
                 self.world_rank, self.world_size,
                 self.gradient_accumulation_steps, bind_parameters=False,
                 use_mixed_precision=self.use_mixed_precision, allreduce_post_accumulation=self.allreduce_post_accumulation_,
-                partition_optimizer=self.partition_optimizer_, 
+                partition_optimizer=self.partition_optimizer_,
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
-                frozen_weights=self.frozen_weights_)
+                frozen_weights=self.frozen_weights_, opset_version=self.opset_version_)
 
         self.eval_feed_names_ |= self.session.get_dropout_eval_feeds()
 
@@ -650,12 +656,17 @@ class ORTTrainer():
                 *self.model_desc_.outputs_,
                 IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool)]
 
+        if self.state_dict_:
+            self.load_state_dict(self.state_dict_, self.strict_) 
+        self.state_dict_ = None
+
     def _init_onnx_model(self, inputs):
         if self.onnx_model_ is not None:
             return
 
         if self.torch_model_ is not None:
-            self.onnx_model_ = convert_model_loss_fn_to_onnx(self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs)
+            self.onnx_model_ = convert_model_loss_fn_to_onnx(
+                self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_)
 
             if self.post_process_model_fn_:
                 self.post_process_model_fn_(self.onnx_model_)
@@ -676,6 +687,14 @@ class ORTTrainer():
         return torch_state
 
     def load_state_dict(self, state_dict, strict=False):
+        # Note: It may happen ONNX model has not yet been initialized
+        # In this case we cache a reference to desired state and delay the restore until after initialization
+        # Unexpected behavior will result if the user changes the reference before initialization
+        if not self.session:
+            self.state_dict_ = state_dict
+            self.strict_ = strict
+            return
+
         session_state = {}
         for name in state_dict:
             session_state[name] = state_dict[name].numpy()
@@ -888,7 +907,7 @@ class ORTTrainer():
 
 class ORTModel():
     def __init__(self, model, loss_fn, model_desc, device, postprocess_model=None, world_rank=-1, world_size=1,
-                 gradient_accumulation_steps=1):
+                 gradient_accumulation_steps=1, _opset_version=DEFAULT_OPSET_VERSION):
         super(ORTModel, self).__init__()
         self.model_ = model
         self.loss_fn_ = loss_fn
@@ -897,8 +916,10 @@ class ORTModel():
         self.world_rank = world_rank
         self.world_size = world_size
         self.gradient_accumulation_steps = gradient_accumulation_steps
+        self.opset_version = _opset_version
 
-        model = convert_model_loss_fn_to_onnx(self.model_, self.loss_fn_, self.model_desc_, torch.device('cpu'))
+        model = convert_model_loss_fn_to_onnx(self.model_, self.loss_fn_, self.model_desc_, torch.device(
+            'cpu'), opset_version=self.opset_version)
         if postprocess_model:
             postprocess_model(model)
 

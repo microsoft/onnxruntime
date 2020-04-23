@@ -4,7 +4,6 @@ import onnx
 from onnx import helper
 from onnx import TensorProto
 from onnx import OperatorSetIdProto
-
 # Edge that needs to be cut for the split.
 # If the edge is feeding into more than one nodes, and not all the nodes belong to the same cut,
 # specify those consuming nodes that need to be cut
@@ -29,31 +28,6 @@ def split_graph(model, split_edge_groups):
 
     new_send_nodes = []
     new_recv_nodes = []
-    # Add wait for initial inputs. This needs to be done first before new inputs
-    # are introduced from split
-    initializer_lists = [a.name for a in model.graph.initializer]
-    input_tensors = [
-        value.name for value in model.graph.input if value.name not in initializer_lists]
-
-    input_wait_signal = model.graph.input.add()
-    input_wait_signal.CopyFrom(helper.make_tensor_value_info(
-        'input_wait_signal', onnx.TensorProto.INT64, None))
-
-    input_wait = model.graph.node.add()
-    input_wait.CopyFrom(helper.make_node(
-        'WaitEvent',
-        inputs=['input_wait_signal'],
-        outputs=[],
-        domain=ms_domain))
-
-    for i in input_tensors:
-        for node in model.graph.node:
-            for j in range(len(node.input)):
-                if node.input[j] == i:
-                    node.input[j] = i + '_sync'
-
-    input_wait.input.extend(input_tensors)
-    input_wait.output.extend([i + '_sync' for i in input_tensors])
 
     for cut_index in range(len(split_edge_groups)):
         edgeIds = split_edge_groups[cut_index]
@@ -62,7 +36,7 @@ def split_graph(model, split_edge_groups):
         upstream_nodes = []
         upstream_nodes_output_index = []
         output_shapes = []
-
+        element_types = []
         for id in edgeIds:
             for node in model.graph.node:
                 if len(node.output) >= 1:
@@ -70,25 +44,43 @@ def split_graph(model, split_edge_groups):
                         if j == id:
                             upstream_nodes.append(node)
                             upstream_nodes_output_index.append(i)
-                    for info in model.graph.value_info:
-                        if info.name == id:
-                            output_shapes.append(info.type)
+                            # assuming all tensors are of type float
+                            element_types.append(1)
+            for info in model.graph.value_info:
+                if info.name == id:
+                    output_shapes.append(info.type)
 
-        record_signal = model.graph.input.add()
-        record_signal.CopyFrom(helper.make_tensor_value_info(
-            'record_input_signal' + str(cut_index), onnx.TensorProto.INT64, None))
-
-        wait_signal = model.graph.input.add()
-        wait_signal.CopyFrom(helper.make_tensor_value_info(
-            'wait_input_signal' + str(cut_index), onnx.TensorProto.INT64, None))
-
+        send_input_signal_name = 'send_input_signal' + str(cut_index)
         send_signal = model.graph.input.add()
         send_signal.CopyFrom(helper.make_tensor_value_info(
-            'send_input_signal' + str(cut_index), onnx.TensorProto.BOOL, None))
+            send_input_signal_name, onnx.TensorProto.BOOL, None))
+        send_signal = helper.make_tensor(
+            send_input_signal_name, TensorProto.BOOL, (), (True,))
+        model.graph.initializer.extend([send_signal])
 
+        recv_input_signal_name = 'recv_input_signal' + str(cut_index)
         recv_signal = model.graph.input.add()
         recv_signal.CopyFrom(helper.make_tensor_value_info(
-            'recv_input_signal' + str(cut_index), onnx.TensorProto.BOOL, None))
+            recv_input_signal_name, onnx.TensorProto.BOOL, None))
+        recv_signal = helper.make_tensor(
+            recv_input_signal_name, TensorProto.BOOL, (), (True,))
+        model.graph.initializer.extend([recv_signal])
+
+        send_dst_rank_name = 'send_dst_rank' + str(cut_index)
+        send_dst_rank = model.graph.input.add()
+        send_dst_rank.CopyFrom(helper.make_tensor_value_info(
+            send_dst_rank_name, onnx.TensorProto.INT64, None))
+        send_dst_rank = helper.make_tensor(
+            send_dst_rank_name, TensorProto.INT64, (), (cut_index + 1,))
+        model.graph.initializer.extend([send_dst_rank])
+
+        recv_src_rank_name = 'recv_src_rank' + str(cut_index)
+        recv_src_rank = model.graph.input.add()
+        recv_src_rank.CopyFrom(helper.make_tensor_value_info(
+            recv_src_rank_name, onnx.TensorProto.INT64, None))
+        recv_src_rank = helper.make_tensor(
+            recv_src_rank_name, TensorProto.INT64, (), (cut_index,))
+        model.graph.initializer.extend([recv_src_rank])
 
         # output signal from send after cut
         send_output_signal = model.graph.output.add()
@@ -103,40 +95,22 @@ def split_graph(model, split_edge_groups):
         new_send = model.graph.node.add()
         new_send.CopyFrom(helper.make_node(
             'Send',
-            inputs=['send_input_signal' + str(cut_index)],
+            inputs=[send_input_signal_name, send_dst_rank_name],
             outputs=['send_output_signal' + str(cut_index)],
             tag=0,
-            src=cut_index,
-            dst=cut_index + 1,
             domain=ms_domain,
-            element_type=7,  # assuming all tensors are of type float
+            element_types=element_types,
             name='send'))
 
         new_receive = model.graph.node.add()
         new_receive.CopyFrom(helper.make_node(
             'Recv',
-            inputs=['recv_input_signal' + str(cut_index)],
+            inputs=[recv_input_signal_name, recv_src_rank_name],
             outputs=['receive_output_signal' + str(cut_index)],
-            tag=1,
-            src=cut_index,
-            dst=cut_index + 1,
+            tag=0,
             domain=ms_domain,
-            element_type=7,  # assuming all tensors are of type float
+            element_types=element_types,
             name='receive'))
-
-        new_wait = model.graph.node.add()
-        new_wait.CopyFrom(helper.make_node(
-            'WaitEvent',
-            inputs=['wait_input_signal' + str(cut_index)],
-            outputs=[],
-            domain=ms_domain))
-
-        new_record = model.graph.node.add()
-        new_record.CopyFrom(helper.make_node(
-            'RecordEvent',
-            inputs=['record_input_signal' + str(cut_index)],
-            outputs=[],
-            domain=ms_domain))
 
         for i in range(len(upstream_nodes)):
             n = upstream_nodes[i]
@@ -155,24 +129,16 @@ def split_graph(model, split_edge_groups):
                 '_recv' + str(cut_index)
             add_expand_type(model, new_receive_output_name, output_type)
 
-            new_wait_output_name = output_edge_name + '_wait' + str(cut_index)
-            add_expand_type(model, new_wait_output_name, output_type)
-
             # the order of data flow is: node-output -> record -> send -> recv -> wait -> node-input
-            new_record.input.extend([output_edge_name])
-            new_record.output.extend([new_send_input_name])
 
-            new_send.input.extend([new_send_input_name])
+            new_send.input.extend([output_edge_name])
             new_receive.output.extend([new_receive_output_name])
-
-            new_wait.input.extend([new_receive_output_name])
-            new_wait.output.extend([new_wait_output_name])
 
             for output_node in output_nodes:
                 for i in range(len(output_node.input)):
                     for edgeId in edgeIds:
                         if output_node.input[i] == edgeId:
-                            output_node.input[i] = new_wait_output_name
+                            output_node.input[i] = new_receive_output_name
 
         new_send_nodes.append(new_send)
         new_recv_nodes.append(new_receive)
@@ -236,8 +202,49 @@ def add_identity(model, cuttingEdge, newEdgeIdName):
                     if output_nodes[i].input[j] == edgeId:
                         output_nodes[i].input[j] = newEdgeIdName
 
-    return newEdgeIdName
+    return new_identity
 
+
+def insert_identity(model, all_cut_inputs):
+    count = 0
+    updated_edges = {}
+    new_added_identity = []
+    split_edge_groups = []
+    need_shape_inference = False
+    # Sweep the cut edge to see if there are edges feeding into nodes from two sub-graphs. If so,
+    # insert identity node after those edges with a new ID to distinguish the rest.
+    for cut_input in all_cut_inputs:
+        split_edges = []
+        for i in cut_input:
+            if i.consumingNodes:
+                # if this edge has previously been modified, update its edgeId before inserting new identity
+                if i.edgeId in updated_edges:
+                    i.edgeId = updated_edges[i.edgeId]
+
+                new_edge_name = 'identity_output_' + str(count)
+                new_added_identity.append(
+                    add_identity(model, i, new_edge_name))
+                count += 1
+                split_edges.append(new_edge_name)
+                updated_edges[i.edgeId] = new_edge_name
+                need_shape_inference = True
+            else:
+                split_edges.append(i.edgeId)
+        split_edge_groups.append(split_edges)
+    return split_edge_groups, new_added_identity, need_shape_inference
+
+# after the graph is split, remove the added identity node because identity op is not registered in gradient builder.
+
+
+def remove_identity(model, new_added_identity):
+    for node in new_added_identity:
+        assert node.op_type == 'Identity'
+        output_nodes = [
+            n for n in model.graph.node if node.output[0] in n.input]
+        for output_node in output_nodes:
+            for i in range(len(output_node.input)):
+                if output_node.input[i] == node.output[0]:
+                    output_node.input[i] = node.input[0]
 
 def find_all_connected_nodes(model, node):
     nodes0, inputs = find_all_input_nodes(model, node)
@@ -251,14 +258,35 @@ def get_index(node_list, node):
     found = [i for i, n in enumerate(node_list) if n == node]
     return found[0] if found else None
 
+def get_identity_index_for_deleting(node_list, node):
+    for i, n in enumerate(node_list):
+        # The node's input name has been changed during send/recv insertion,
+        # but it is sufficient to just compare the type and outputs.
+        if (n.op_type == 'Identity' and n.output == node.output):
+            return i
+    return None
+
 # traverse the graph, group connected nodes and generate subgraph
 
 
-def generate_subgraph(model, start_nodes):
+def generate_subgraph(model, start_nodes, identity_node_list):
     subgraphs = []
 
     main_graph = onnx.ModelProto()
     main_graph.CopyFrom(model)
+
+    # remove added identity node before copy to subgraph
+    identity_node_index = []
+    for n in identity_node_list:
+        identity_node_index.append(get_identity_index_for_deleting(main_graph.graph.node, n))
+    identity_node_index.sort(reverse=True)
+
+    for i in reversed(range(len(main_graph.graph.node))):
+        try:
+            if i in identity_node_index:
+                del main_graph.graph.node[i]
+        except:
+            print("error deleting identity node", i)
 
     all_visited_nodes = []
     model_count = len(start_nodes)
@@ -362,29 +390,8 @@ def main():
     output_model_names = [os.path.splitext(input_model_name)[0] + '_' +
                           str(i) + '.onnx' for i in range(stage_count)]
 
-    split_edge_groups = []
-    count = 0
-    updated_edges = {}
-    need_shape_inference = False
-    # Sweep the cut edge to see if there are edges feeding into nodes from two sub-graphs. If so,
-    # insert identity node after those edges with a new ID to distinguish the rest.
-    for cut_input in all_cut_inputs:
-        split_edges = []
-        for i in cut_input:
-            if i.consumingNodes:
-                # if this edge has previously been modified, update its edgeId before inserting new identity
-                if i.edgeId in updated_edges:
-                    i.edgeId = updated_edges[i.edgeId]
+    split_edge_groups, new_identity, need_shape_inference = insert_identity(model, all_cut_inputs)
 
-                new_edge_name = 'identity_output_' + str(count)
-                add_identity(model, i, new_edge_name)
-                count += 1
-                split_edges.append(new_edge_name)
-                updated_edges[i.edgeId] = new_edge_name
-                need_shape_inference = True
-            else:
-                split_edges.append(i.edgeId)
-        split_edge_groups.append(split_edges)
 
     # new edge is being added, need to re-inference shape
     if need_shape_inference:
@@ -392,11 +399,13 @@ def main():
 
     # after all need-to-be-cut edges identified, split the graph
     new_sends, new_receives = split_graph(model, split_edge_groups)
-    sub_graphs = generate_subgraph(model, new_receives)
+    remove_identity(model, new_identity)
+    sub_graphs = generate_subgraph(model, new_receives, new_identity)
 
     for i in range(stage_count):
         sub_graphs[i] = onnx.shape_inference.infer_shapes(sub_graphs[i])
         onnx.save(sub_graphs[i], output_model_names[i])
+        print("save to file: ", output_model_names[i])
 
 
 if __name__ == "__main__":

@@ -208,7 +208,8 @@ void NodeArg::ClearShape() {
   }
 }
 
-common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict, const logging::Logger& logger) {
+common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict, bool override_types,
+                                           const logging::Logger& logger) {
   if (!utils::HasType(node_arg_info_)) {
     *node_arg_info_.mutable_type() = input_type;
     type_ = DataTypeUtils::ToType(node_arg_info_.type());
@@ -229,10 +230,24 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       const auto& input_tensor_elem_type = input_tensor_type.elem_type();
       const auto& current_tensor_elem_type = current_type.tensor_type().elem_type();
 
-      if (input_tensor_elem_type != current_tensor_elem_type)
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Tensor element type mismatch. ",
-                               static_cast<TensorProto_DataType>(input_tensor_elem_type), " != ",
-                               static_cast<TensorProto_DataType>(current_tensor_elem_type));
+      if (input_tensor_elem_type != current_tensor_elem_type) {
+        if (override_types) {
+          DataType inferred_type = DataTypeUtils::ToType(input_type);
+          // The "SetType" call will override the shape information to empty.
+          // If the original tensor has shape information, need to set it back.
+          if (Shape()) {
+            auto old_shape = *Shape();
+            SetType(inferred_type);
+            SetShape(old_shape);
+          } else {
+            SetType(inferred_type);
+          }
+        } else {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Tensor element type mismatch. ",
+                                 static_cast<TensorProto_DataType>(input_tensor_elem_type), " != ",
+                                 static_cast<TensorProto_DataType>(current_tensor_elem_type));
+        }
+      }
 
       if (utils::HasShape(input_tensor_type)) {
         auto& current_tensor_type = *current_type.mutable_tensor_type();
@@ -249,11 +264,24 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       const auto& input_tensor_type = input_type.sparse_tensor_type();
       const auto input_tensor_elem_type = input_tensor_type.elem_type();
       const auto current_tensor_elem_type = current_type.sparse_tensor_type().elem_type();
+
       if (input_tensor_elem_type != current_tensor_elem_type) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SparseTensor element type mismatch. ",
-                               static_cast<TensorProto_DataType>(input_tensor_elem_type), " != ",
-                               static_cast<TensorProto_DataType>(current_tensor_elem_type));
+        if (override_types) {
+          DataType inferred_type = DataTypeUtils::ToType(input_type);
+          if (Shape()) {
+            auto old_shape = *Shape();
+            SetType(inferred_type);
+            SetShape(old_shape);
+          } else {
+            SetType(inferred_type);
+          }
+        } else {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SparseTensor element type mismatch. ",
+                                 static_cast<TensorProto_DataType>(input_tensor_elem_type), " != ",
+                                 static_cast<TensorProto_DataType>(current_tensor_elem_type));
+        }
       }
+
       if (utils::HasShape(input_tensor_type)) {
         auto& current_tensor_type = *current_type.mutable_sparse_tensor_type();
         if (utils::HasShape(current_tensor_type)) {
@@ -275,11 +303,12 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
   return Status::OK();
 }
 
-common::Status NodeArg::UpdateTypeAndShape(const NodeArg& node_arg, bool strict, const logging::Logger& logger) {
+common::Status NodeArg::UpdateTypeAndShape(const NodeArg& node_arg, bool strict, bool override_types,
+                                           const logging::Logger& logger) {
   auto status = Status::OK();
 
   if (utils::HasType(node_arg.node_arg_info_))
-    status = UpdateTypeAndShape(node_arg.node_arg_info_.type(), strict, logger);
+    status = UpdateTypeAndShape(node_arg.node_arg_info_.type(), strict, override_types, logger);
 
   return status;
 }
@@ -771,7 +800,7 @@ Graph::Graph(const Model& owning_model,
       // so we prefer the shape from the initializer
       name_to_type_map[tensor.name()] = t;
       if (matching_graph_input != nullptr) {
-        ORT_THROW_IF_ERROR(matching_graph_input->UpdateTypeAndShape(t, true, logger));
+        ORT_THROW_IF_ERROR(matching_graph_input->UpdateTypeAndShape(t, true, false, logger));
       }
     } else {
       // v4 and later allows a constant initializer with no matching graph input. create a NodeArg for these.
@@ -779,6 +808,13 @@ Graph::Graph(const Model& owning_model,
       if (matching_graph_input == nullptr) {
         name_to_type_map[tensor.name()] = t;
         ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
+      } else {
+        LOGS(logger_, WARNING) << "Initializer " << tensor.name()
+                               << " appears in graph inputs and will not be treated as constant value/weight. "
+                               << "This may fail some of the graph optimizations, like const folding. "
+                               << "Move it out of graph inputs if there is no need to override it, "
+                               << "by either re-generating the model with latest exporter/converter "
+                               << "or with the tool onnxruntime/tools/python/remove_initializer_from_input.py.";
       }
     }
   }
@@ -883,10 +919,12 @@ void Graph::InitializeStateFromModelFileGraphProto() {
   }
 
   // Set graph value_info_.
-  for (auto& graph_value_info : graph_proto_->value_info()) {
-    auto& name = graph_value_info.name();
+  for (const auto& graph_value_info : graph_proto_->value_info()) {
+    const auto& name = graph_value_info.name();
     const auto* node_arg = GetNodeArg(name);
-    value_info_.push_back(node_arg);
+    if (node_arg != nullptr) {
+      value_info_.push_back(node_arg);
+    }
   }
 
   ComputeOverridableInitializers();
@@ -1398,12 +1436,12 @@ bool FullyDefinedType(const TypeProto& type_proto) {
 // parameters are the Graph instance for the subgraph, the input types from the control flow node that contains
 // the subgraph, and the vector to write the output from the inferencing.
 using SubgraphInferencingFunc =
-    std::function<Status(const Node&, Graph&, const std::vector<const TypeProto*>&, std::vector<const TypeProto*>&)>;
+    std::function<Status(const Node&, Graph&, const std::vector<const TypeProto*>&, std::vector<const TypeProto*>&, const Graph::ResolveOptions&)>;
 
 class GraphInferencerImpl : public ONNX_NAMESPACE::GraphInferencer {
  public:
-  GraphInferencerImpl(const Node& node, Graph& graph, SubgraphInferencingFunc& inferencing_func)
-      : node_(node), graph_(graph), inferencing_func_(inferencing_func) {
+  GraphInferencerImpl(const Node& node, Graph& graph, SubgraphInferencingFunc& inferencing_func, const Graph::ResolveOptions& options)
+      : node_(node), graph_(graph), inferencing_func_(inferencing_func), options_(options) {
   }
 
   // Perform inferencing on the graph contained in GraphInferencer.
@@ -1413,7 +1451,7 @@ class GraphInferencerImpl : public ONNX_NAMESPACE::GraphInferencer {
                                               const std::vector<const TensorProto*>& /*input_data*/) override {
     std::vector<const TypeProto*> output_types;
 
-    auto status = inferencing_func_(node_, graph_, input_types, output_types);
+    auto status = inferencing_func_(node_, graph_, input_types, output_types, options_);
 
     if (status != Status::OK()) {
       fail_type_inference("Graph attribute inferencing failed: ", status.ErrorMessage());
@@ -1426,6 +1464,7 @@ class GraphInferencerImpl : public ONNX_NAMESPACE::GraphInferencer {
   const Node& node_;
   Graph& graph_;
   SubgraphInferencingFunc& inferencing_func_;
+  const Graph::ResolveOptions& options_;
 };
 
 // An implementation of the InferenceContext interface required by operator-specific
@@ -1436,10 +1475,12 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
  public:
   InferenceContextImpl(Node& node,
                        SubgraphInferencingFunc subgraph_inferencing_func,
-                       const Graph& graph) noexcept
+                       const Graph& graph,
+                       const Graph::ResolveOptions& options) noexcept
       : node_(node),
         subgraph_inferencing_func_(subgraph_inferencing_func),
-        graph_(graph) {
+        graph_(graph),
+        options_(options) {
     node_output_types_.resize(node.OutputDefs().size());
   }
 
@@ -1500,7 +1541,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     auto* subgraph = node_.GetMutableGraphAttribute(attribute_name);
 
     if (subgraph) {
-      auto inferencer = onnxruntime::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_);
+      auto inferencer = onnxruntime::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_, options_);
       graph_inferencer = inferencer.get();
       graph_inferencers_.push_back(std::move(inferencer));
     } else {
@@ -1518,11 +1559,13 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   SubgraphInferencingFunc subgraph_inferencing_func_;
   std::vector<std::unique_ptr<GraphInferencerImpl>> graph_inferencers_;
   const Graph& graph_;
+  const Graph::ResolveOptions& options_;
 };
 
 Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
                                           const std::vector<const TypeProto*>& input_types,
-                                          std::vector<const TypeProto*>& output_types) {
+                                          std::vector<const TypeProto*>& output_types,
+                                          const Graph::ResolveOptions& options) {
   auto status = Status::OK();
 
   output_types.clear();
@@ -1555,7 +1598,7 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
     const auto& subgraph_input = *subgraph_inputs->at(i);
 
     NodeArg* mutable_nodearg = subgraph.GetNodeArg(subgraph_input.Name());
-    status = mutable_nodearg->UpdateTypeAndShape(input_type, true, subgraph.logger_);
+    status = mutable_nodearg->UpdateTypeAndShape(input_type, true, options.override_types, subgraph.logger_);
     if (!status.IsOK()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node.Name(), " ", status.ErrorMessage());
     }
@@ -1576,7 +1619,7 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
     if (!subgraph_nodearg)
       continue;
 
-    status = subgraph_nodearg->UpdateTypeAndShape(*implicit_node_arg, true, subgraph.logger_);
+    status = subgraph_nodearg->UpdateTypeAndShape(*implicit_node_arg, true, options.override_types, subgraph.logger_);
     if (!status.IsOK()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node.Name(), " ", status.ErrorMessage());
     }
@@ -1588,8 +1631,6 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
 
   // now that we have handled the input types, do the type/shape inferencing for the subgraph
   // to flow the type/shape info through it
-  // TODO: Handle override-type option correctly for subgraphs.
-  Graph::ResolveOptions options;
   status = subgraph.PerformTypeAndShapeInferencing(options);
   ORT_RETURN_IF_ERROR(status);
 
@@ -1695,7 +1736,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
   // Once that completes, the outputs from the node containing the subgraph will be updated, and the final values
   // returned here.
   SubgraphInferencingFunc func(Graph::InferAndVerifySubgraphTypes);
-  InferenceContextImpl context(node, func, *this);
+  InferenceContextImpl context(node, func, *this, options);
 
   try {
     context.RunInferencing();
@@ -2335,16 +2376,47 @@ Node& Graph::AddNode(const NodeProto& node_proto,
 }
 
 std::string Graph::GenerateNodeArgName(const std::string& base_name) {
+  // Check if base_name has been used in as any of node_args_' names.
+  bool found = node_args_.find(base_name) != node_args_.end();
+  // Check if base_name has been generated by this function.
+  // If not, add base_name into name set and return the base_name
+  // as the generated name.
+  found |= generated_node_arg_names_.find(base_name) != generated_node_arg_names_.end();
+  if (!found) {
+    generated_node_arg_names_.insert(base_name);
+    return base_name;
+  }
+
+  // base_name has been used by another node. Because two node_arg's cannot have
+  // the sam name, we are going to generate another string.
   std::string new_name;
   do {
     std::ostringstream str;
     str << base_name << "_" << name_generator_++;
     new_name = str.str();
-  } while (node_args_.find(new_name) != node_args_.end());
+    // If node_args_ or generated_node_arg_names_ contains new_name, we go to the next iteration.
+  } while (node_args_.find(new_name) != node_args_.end() ||
+    generated_node_arg_names_.find(new_name) != generated_node_arg_names_.end());
+
+  // Now new_name is different than any of existing node_arg names.
+  // Register new_name so that it won't be used again.
+  generated_node_arg_names_.insert(new_name);
+
   return new_name;
 }
 
 std::string Graph::GenerateNodeName(const std::string& base_name) {
+  // Check if base_name has been used in as any of nodes_' names.
+  bool found = std::find_if(nodes_.cbegin(), nodes_.cend(), [&base_name](const std::unique_ptr<Node>& n) {
+                  return (n != nullptr) && (n->Name() == base_name);}) != nodes_.end();
+  // Check if base_name has been generated by this function.
+  found |= generated_node_names_.find(base_name) != generated_node_names_.end();
+  if (!found) {
+    // Register base_name so that it won't be used again.
+    generated_node_names_.insert(base_name);
+    return base_name;
+  }
+
   std::string new_name;
   bool keep_going = true;
 
@@ -2353,10 +2425,17 @@ std::string Graph::GenerateNodeName(const std::string& base_name) {
     str << base_name << "_" << name_generator_++;
     new_name = str.str();
 
+    // Check if new_name has been used in as any of nodes_' names.
     keep_going = std::find_if(nodes_.cbegin(), nodes_.cend(), [&new_name](const std::unique_ptr<Node>& n) {
                    return (n != nullptr) && (n->Name() == new_name);
                  }) != nodes_.end();
+    // Check if new_name has been generated by this function.
+    keep_going |= generated_node_names_.find(new_name) != generated_node_names_.end();
   } while (keep_going);
+
+  // Now new_name is different than any of existing node names.
+  // Register new_name so that it won't be used again.
+  generated_node_names_.insert(new_name);
 
   return new_name;
 }

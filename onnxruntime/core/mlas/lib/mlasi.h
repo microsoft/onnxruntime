@@ -21,6 +21,7 @@ Abstract:
 #include <memory.h>
 #include <algorithm>
 #include <limits>
+#include <cmath>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -95,6 +96,10 @@ Abstract:
 
 //
 // Select the threading model.
+//
+// N.B. MLAS_NO_ONNXRUNTIME_THREADPOOL is used to build MLAS test code outside
+// of the ONNX Runtime source tree. OpenMP may or may not be enabled in this
+// configuration.
 //
 
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
@@ -665,18 +670,16 @@ MlasGetMaximumThreadCount(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-#ifdef MLAS_NO_ONNXRUNTIME_THREADPOOL
+#if defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
-#else
-    if (ThreadPool != nullptr) {
-        return ThreadPool->NumThreads();
-    }
-#endif
 
 #if defined(_OPENMP)
     return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
 #else
     return 1;
+#endif
+#else
+	return onnxruntime::concurrency::ThreadPool::NumThreads(ThreadPool);
 #endif
 }
 

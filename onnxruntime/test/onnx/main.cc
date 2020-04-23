@@ -590,7 +590,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
     broken_tests.insert({"tf_inception_v1", "flaky test"});  //TODO: Investigate cause for flakiness
-    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
     broken_tests.insert({"faster_rcnn", "Linux: faster_rcnn:output=6383:shape mismatch, expect {77} got {57}"});
     broken_tests.insert({"split_zero_size_splits", "alloc failed"});
   }
@@ -665,6 +664,18 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"dynamic_slice_end_out_of_bounds", "This model uses contrib ops."});
   broken_tests.insert({"dynamic_slice_neg", "This model uses contrib ops."});
   broken_tests.insert({"mvn", "This model uses contrib ops.", {"onnx130"}});
+  broken_tests.insert({"cdist_float32_euclidean_1000_2000_1", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float32_euclidean_1000_2000_500", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float32_euclidean_1_1_1", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float32_sqeuclidean_1000_2000_1", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float32_sqeuclidean_1000_2000_500", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float32_sqeuclidean_1_1_1", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float64_euclidean_1000_2000_1", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float64_euclidean_1000_2000_500", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float64_euclidean_1_1_1", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float64_sqeuclidean_1000_2000_1", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float64_sqeuclidean_1000_2000_500", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float64_sqeuclidean_1_1_1", "This model uses contrib ops."});
 #endif
 
   int result = 0;

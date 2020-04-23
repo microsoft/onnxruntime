@@ -4,26 +4,21 @@
 #include "testPch.h"
 #include "LearningModelAPITest.h"
 #include "APITest.h"
-#include <winrt/Windows.Graphics.Imaging.h>
-#include <winrt/Windows.Media.h>
-#include <winrt/Windows.Storage.h>
-#include <winrt/Windows.Storage.Streams.h>
 
 using namespace winrt;
-using namespace winrt::Windows::AI::MachineLearning;
-using namespace winrt::Windows::Foundation::Collections;
-using namespace winrt::Windows::Graphics::Imaging;
-using namespace winrt::Windows::Media;
-using namespace winrt::Windows::Storage;
-using namespace winrt::Windows::Storage::Streams;
+using namespace winml;
+using namespace wfc;
+using namespace wgi;
+using namespace wm;
+using namespace ws;
+using namespace wss;
 
-static void LearningModelAPITestSetup() {
+static void LearningModelAPITestsClassSetup() {
   init_apartment();
 }
 
-static void LearningModelAPITestGpuSetup() {
+static void LearningModelAPITestsGpuMethodSetup() {
   GPUTEST;
-  init_apartment();
 }
 
 static void CreateModelFromFilePath() {
@@ -33,7 +28,7 @@ static void CreateModelFromFilePath() {
 
 static void CreateModelFromIStorage() {
   std::wstring path = FileHelpers::GetModulePath() + L"squeezenet_modifiedforruntimestests.onnx";
-  auto storageFile = winrt::Windows::Storage::StorageFile::GetFileFromPathAsync(path).get();
+  auto storageFile = ws::StorageFile::GetFileFromPathAsync(path).get();
   LearningModel learningModel = nullptr;
   WINML_EXPECT_NO_THROW(learningModel = LearningModel::LoadFromStorageFileAsync(storageFile).get());
   WINML_EXPECT_TRUE(learningModel != nullptr);
@@ -45,7 +40,7 @@ static void CreateModelFromIStorage() {
 
 static void CreateModelFromIStorageOutsideCwd() {
   std::wstring path = FileHelpers::GetModulePath() + L"ModelSubdirectory\\ModelInSubdirectory.onnx";
-  auto storageFile = winrt::Windows::Storage::StorageFile::GetFileFromPathAsync(path).get();
+  auto storageFile = ws::StorageFile::GetFileFromPathAsync(path).get();
   LearningModel learningModel = nullptr;
   WINML_EXPECT_NO_THROW(learningModel = LearningModel::LoadFromStorageFileAsync(storageFile).get());
   WINML_EXPECT_TRUE(learningModel != nullptr);
@@ -57,8 +52,8 @@ static void CreateModelFromIStorageOutsideCwd() {
 
 static void CreateModelFromIStream() {
   std::wstring path = FileHelpers::GetModulePath() + L"squeezenet_modifiedforruntimestests.onnx";
-  auto storageFile = winrt::Windows::Storage::StorageFile::GetFileFromPathAsync(path).get();
-  winrt::Windows::Storage::Streams::IRandomAccessStreamReference streamref;
+  auto storageFile = ws::StorageFile::GetFileFromPathAsync(path).get();
+  ws::Streams::IRandomAccessStreamReference streamref;
   storageFile.as(streamref);
   LearningModel learningModel = nullptr;
   WINML_EXPECT_NO_THROW(learningModel = LearningModel::LoadFromStreamAsync(streamref).get());
@@ -254,11 +249,11 @@ static void CloseModelNoNewSessions() {
       });
 }
 
-const LearningModelApiTestApi& getapi() {
-  static constexpr LearningModelApiTestApi api =
+const LearningModelApiTestsApi& getapi() {
+  static constexpr LearningModelApiTestsApi api =
   {
-    LearningModelAPITestSetup,
-    LearningModelAPITestGpuSetup,
+    LearningModelAPITestsClassSetup,
+    LearningModelAPITestsGpuMethodSetup,
     CreateModelFromFilePath,
     CreateModelFromIStorage,
     CreateModelFromIStorageOutsideCwd,

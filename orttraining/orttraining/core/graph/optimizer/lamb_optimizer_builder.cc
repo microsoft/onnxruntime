@@ -256,11 +256,11 @@ Status LambOptimizerBuilder::Build(
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("ratio_max", ratio_max));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("do_bias_correction", do_bias_correction));
 
-  graph_defs.AddNodeDefs({NodeDef(OpType(),
+  graph_defs.AddNodeDefs({NodeDef(OpDefinition(),
                                   input_argdefs,
                                   output_argdefs,
                                   attribute_protos,
-                                  OptimizerNodeName(OpType()))});
+                                  OptimizerNodeName("AllWeights"))});
 
   return Status::OK();
 }

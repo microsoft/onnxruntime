@@ -135,7 +135,8 @@ static void propagateRecvOutputTensorElemTypes(
 // For Brevity documentation was not copied
 OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
   op_schema
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Attr(
           "alpha",
           "Coefficient of previous gradient in running average.",
@@ -205,7 +206,33 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
       .TypeConstraint(
           "TInt64",
           {"tensor(int64)"},
-          "Constrain update count to 64-bit integer");
+          "Constrain update count to 64-bit integer")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Handle update count, the first output.
+        const size_t step_input_index = 4;
+        const size_t step_output_index = 0;
+        auto input_type = ctx.getInputType(step_input_index);
+        if (input_type != nullptr) {
+            propagateElemTypeFromInputToOutput(ctx, step_input_index, step_output_index);
+            if (hasInputShape(ctx, step_input_index)){
+                propagateShapeFromInputToOutput(ctx, step_input_index, step_output_index);
+            }
+        }
+
+        // Handle other tensors including new weight, new gradient (update direction), 
+        // new momentums.
+        for (size_t i = 0; i < ctx.getNumInputs() - 5; ++i) {
+            const size_t input_index = 5 + i; // The first 5 inputs don't affect output shape.
+            const size_t output_index = 1 + i; // The first output has been processed above.
+            input_type = ctx.getInputType(input_index);
+            if (input_type != nullptr) {
+                propagateElemTypeFromInputToOutput(ctx, input_index, output_index);
+                if (hasInputShape(ctx, input_index)) {
+                    propagateShapeFromInputToOutput(ctx, input_index, output_index);
+                }
+            }
+        }
+      });
 
   op_schema
       .Input(
@@ -405,6 +432,43 @@ void RegisterGradientSchemas() {
           {"tensor(int32)", "tensor(int64)"},
           "Constrain indices to integer types");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherElementsGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("GatherElementsGrad")
+      .Attr(
+          "axis",
+          "Which axis to scatter on. Negative value means "
+          "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Input(
+          0,
+          "dY",
+          "Tensor of rank r >=1 (same rank and shape as indices)",
+          "T")
+      .Input(1, "shape", "Shape of the GatherElements input data.", "I")
+      .Input(
+          2,
+          "indices",
+          "Tensor of int32/int64 indices, of r >= 1 (same rank as input). All index values are expected to be "
+          "within bounds [-s, s-1] along axis of size s. It is an error if any of the index values are out of bounds.",
+          "Tind")
+      .Output(0, "dX", "Tensor of rank r >= 1 (same rank as input).", "T")
+      .TypeConstraint(
+          "I",
+          {"tensor(int64)"},
+          "Constrain input shape to integer tensors.")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Input and output types can be of any tensor type.")
+      .TypeConstraint(
+          "Tind",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain indices to integer types");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(DivGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -421,7 +485,8 @@ void RegisterGradientSchemas() {
   //TODO: Move this to the right location. Its only here for quick experimentation.
   //TODO: Use the mutli weight / grad version.
   ONNX_CONTRIB_OPERATOR_SCHEMA(SGDOptimizer)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "ETA", "Learning Rate", "L")
       .Input(1, "W", "Original weight(s)", "T")
       .Input(2, "G", "Gradient of Weight(s)", "T")
@@ -439,7 +504,8 @@ void RegisterGradientSchemas() {
   // TODO: This is copied from onnx schemas. When the change is in and we update this can be removed.
   // For Brevity documentation was not copied
   ONNX_CONTRIB_OPERATOR_SCHEMA(AdamOptimizer)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "R", "The initial learning rate.", "T1")
       .Input(1, "T", "The update count of \"X\". It should be a scalar.", "T2")
       .Input(
@@ -824,6 +890,35 @@ void RegisterGradientSchemas() {
                       {"tensor(int32)", "tensor(int64)"},
                       "Constrain indices to integer types")
       .SetDoc(R"DOC(SparseSoftmaxCrossEntropyGrad)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyLossGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("reduction",
+            reduction_doc,
+            AttributeProto::STRING,
+            std::string("mean"))
+      .Attr(
+          "ignore_index",
+          "Specifies a target value that is ignored and does not contribute to the input gradient.",
+          AttributeProto::INT,
+          false)
+      .Input(0, "dY", "gradient of Y", "T")
+      .Input(1, "log_prob", "logsoftmax(logits), (N+1)-D input of shape (batch_size).", "T")
+      .Input(2, "label",
+             "label is N-D input whose shape should match that of logits. "
+             "It is a tensor of nonnegative integers, "
+             "where each element is the nonnegative integer label for the element of the batch.",
+             "Tind")
+      .Input(3, "weight", "weight for each sample. The shape is 1-D tensor.", "T", OpSchema::Optional)
+      .Output(0, "d_logits", "gradient of logits", "T")
+      .TypeConstraint("T",
+                      {"tensor(float16)", "tensor(float)", "tensor(double)"},
+                      "Constrain to float, float16 and double tensors.")
+      .TypeConstraint("Tind",
+                      {"tensor(int32)", "tensor(int64)"},
+                      "Constrain indices to integer types")
+      .SetDoc(R"DOC(SoftmaxCrossEntropyLossGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
       .SetDomain(kOnnxDomain)
@@ -1575,7 +1670,7 @@ Return true if all elements are true and false otherwise.
           "Allow inputs and outputs to be any kind of tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         if (ctx.getNumInputs() < ctx.getNumOutputs() + 1)
-          fail_shape_inference("WaitEvent must have at least (num_outputs + 1) inputs.");
+          fail_shape_inference("RecordEvent must have at least (num_outputs + 1) inputs.");
 
         // note: if num_input > num_output + 1,
         // the additional inputs (idx >= num_ouput + 1) are regarded as dependencies

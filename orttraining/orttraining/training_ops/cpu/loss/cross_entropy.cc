@@ -13,38 +13,39 @@
 namespace onnxruntime {
 namespace contrib {
 
+template <typename T>
 void ComputeShareSoftmaxCrossEntropyCPU(const int n,
                                         const int d,
                                         const int nd,
-                                        const float* logit_data,
-                                        float* shifted_logit,
-                                        float* log_prob_data) {
+                                        const T* logit_data,
+                                        T* shifted_logit,
+                                        T* log_prob_data) {
   // Find the max in each batch, resulting in a tensor of shape [batch]
   // logit_max = max(logit_data)
-  std::vector<float> logit_max(n);
-  math::RowwiseMax<float, CPUMathUtil>(n, d, logit_data, logit_max.data(), nullptr);
+  std::vector<T> logit_max(n);
+  math::RowwiseMax<T, CPUMathUtil>(n, d, logit_data, logit_max.data(), nullptr);
 
   // Subtract the max in batch b from every element in batch b.
   // Broadcasts along the batch dimension.
   // shifted_logit = logit_data - logit_max
   gsl::copy(gsl::make_span(logit_data, nd), gsl::make_span(shifted_logit, nd));
-  math::SubToCol<float, CPUMathUtil>(n, d, logit_max.data(), shifted_logit, nullptr);
+  math::SubToCol<T, CPUMathUtil>(n, d, logit_max.data(), shifted_logit, nullptr);
 
   // exp_shifted_logit = exp(shifted_logit)
-  math::Exp<float, CPUMathUtil>(nd, shifted_logit, log_prob_data, nullptr);
+  math::Exp<T, CPUMathUtil>(nd, shifted_logit, log_prob_data, nullptr);
 
   // sum_exp = sum_{class} (exp_shifted_logit)
   float* sum_exp = logit_max.data();
-  math::RowwiseSum<float, CPUMathUtil>(n, d, log_prob_data, sum_exp, nullptr);
+  math::RowwiseSum<T, CPUMathUtil>(n, d, log_prob_data, sum_exp, nullptr);
 
   // log_sum_exp = log(sum_exp)
   float* log_sum_exp = sum_exp;
-  math::Log<float, CPUMathUtil>(n, sum_exp, log_sum_exp, nullptr);
+  math::Log<T, CPUMathUtil>(n, sum_exp, log_sum_exp, nullptr);
 
   // log_prob = shifted_logit - log(sum_exp)
   // the subtraction broadcasts along the batch dimension
   gsl::copy(gsl::make_span(shifted_logit, nd), gsl::make_span(log_prob_data, nd));
-  math::SubToCol<float, CPUMathUtil>(n, d, log_sum_exp, log_prob_data, nullptr);
+  math::SubToCol<T, CPUMathUtil>(n, d, log_sum_exp, log_prob_data, nullptr);
 }
 
 ONNX_OPERATOR_KERNEL_EX(

@@ -12,6 +12,8 @@
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/expand_elimination.h"
+#include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
@@ -53,6 +55,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
       rule_transformer->Register(make_unique<InsertMaxPoolOutput>());
       rule_transformer->Register(make_unique<AdjustBatchNormOutputs>());
       rule_transformer->Register(make_unique<UnsqueezeElimination>());
+      rule_transformer->Register(make_unique<ExpandElimination>());
+      rule_transformer->Register(make_unique<CastElimination>());
+      rule_transformer->Register(make_unique<InsertSoftmaxCrossEntropyLossOutput>());
 
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(compatible_eps));

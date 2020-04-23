@@ -3,8 +3,6 @@
 
 #include "test/providers/compare_provider_test_utils.h"
 
-using namespace std;
-
 namespace onnxruntime {
 namespace test {
 
@@ -24,6 +22,7 @@ static void TestSoftmax(const std::vector<int64_t>& X_dims,
 
   test.CompareWithCPU(kCudaExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
 }
+
 TEST(CudaKernelTest, Softmax_SmallTensor) {
   std::vector<int64_t> X_dims{8, 2, 128, 128};
   std::vector<int64_t> Y_dims{8, 2, 128, 128};
@@ -66,7 +65,9 @@ TEST(CudaKernelTest, SoftmaxGrad_SmallTensor) {
   TestSoftmaxGrad(dY_dims, Y_dims, dX_dims, per_sample_tolerance, relative_per_sample_tolerance);
 }
 
-TEST(CudaKernelTest, SoftmaxGrad_LargeTensor) {
+// TODO fix flaky test (https://msdata.visualstudio.com/Vienna/_workitems/edit/596949)
+// failing random seed: 552621640
+TEST(CudaKernelTest, DISABLED_SoftmaxGrad_LargeTensor) {
   std::vector<int64_t> dY_dims{8, 16, 512, 512};
   std::vector<int64_t> Y_dims{8, 16, 512, 512};
   std::vector<int64_t> dX_dims{8, 16, 512, 512};

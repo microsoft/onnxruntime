@@ -32,6 +32,30 @@ bool InsertMaxPoolOutput::SatisfyCondition(const Graph& /*graph*/, const Node& n
   return false;
 }
 
+Status InsertSoftmaxCrossEntropyLossOutput::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& /*logger*/) const {
+  auto& outputs = node.MutableOutputDefs();
+  const NodeArg* X = node.InputDefs()[0];
+
+  TypeProto t;
+  t.mutable_tensor_type()->set_elem_type(X->TypeAsProto()->tensor_type().elem_type());
+  t.mutable_tensor_type()->mutable_shape()->CopyFrom(*X->Shape());  // log probability should have the same shape as logits.
+
+  NodeArg& node_arg = graph.GetOrCreateNodeArg(X->Name() + "_log_prob", &t);
+
+  outputs.push_back(&node_arg);
+
+  rule_effect = RewriteRuleEffect::kUpdatedCurrentNode;
+  return Status::OK();
+}
+
+bool InsertSoftmaxCrossEntropyLossOutput::SatisfyCondition(const Graph& /*graph*/, const Node& node, const logging::Logger& /*logger*/) const {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "SoftmaxCrossEntropyLoss", {12}) &&
+      node.OutputDefs().size() == 1) {
+    return true;
+  }
+  return false;
+}
+
 Status AdjustBatchNormOutputs::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& /*logger*/) const {
   auto& outputs = node.MutableOutputDefs();
   const auto& inputs = node.InputDefs();

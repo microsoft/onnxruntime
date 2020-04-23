@@ -7,7 +7,7 @@
 #include "OnnxruntimeEngine.h"
 #include "OnnxruntimeErrors.h"
 
-using namespace Windows::AI::MachineLearning;
+using namespace _winml;
 
 HRESULT OnnxruntimeCpuSessionBuilder::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory) {
   engine_factory_ = engine_factory;

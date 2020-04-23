@@ -21,6 +21,13 @@
 
 using namespace onnxruntime::common;
 
+namespace {
+struct KernelRegistryAndStatus {
+  std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
+  Status st;
+};
+}  // namespace
+
 namespace onnxruntime {
 
 namespace cuda {
@@ -54,9 +61,6 @@ thread_local std::unique_ptr<CUDAExecutionProvider::PerThreadContextMap> CUDAExe
 CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
-  #if CUDA_VERSION >= 10010
-  CUBLAS_CALL_THROW(cublasLtCreate(&cublasLt_handle_));
-  #endif
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
   CURAND_CALL_THROW(curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT));
 
@@ -76,14 +80,6 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cublasDestroy threw:" << ex.what();
   }
-
-#if CUDA_VERSION >= 10010
-  try {
-    CUBLAS_CALL(cublasLtDestroy(cublasLt_handle_));
-  } catch (const std::exception& ex) {
-    LOGS_DEFAULT(ERROR) << "cublasLtDestroy threw:" << ex.what();
-  }
-#endif
 
   try {
     CUDNN_CALL(cudnnDestroy(cudnn_handle_));
@@ -221,6 +217,8 @@ void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
 }
 
 Status CUDAExecutionProvider::OnRunStart() {
+  // always set CUDA device when session::Run() in case it runs in a worker thread
+  CUDA_RETURN_IF_ERROR(cudaSetDevice(GetDeviceId()));
   auto cpu_alloc = GetAllocator(0, OrtMemTypeCPU);
   // check if cudaEvents has passed for deferred release
   // note that we need to take a mutex in case of multi-threaded Run()
@@ -742,6 +740,11 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 10, int8_t, DequantizeLinear);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 10, uint8_t, DequantizeLinear);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, CumSum);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, int64_t_int64_t_int64_t, OneHot);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, int64_t_float_int64_t, OneHot);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, int32_t_float_int32_t, OneHot);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, int64_t_MLFloat16_int64_t, OneHot);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, int32_t_MLFloat16_int32_t, OneHot);
 
 // OpSet 12
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, Clip);
@@ -766,7 +769,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, int8_t, ReduceMin);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, uint8_t, ReduceMin);
 
-static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
+static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
@@ -1250,6 +1253,11 @@ static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, double, Round)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, MLFloat16, Round)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, CumSum)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, int64_t_int64_t_int64_t, OneHot)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, int64_t_float_int64_t, OneHot)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, int32_t_float_int32_t, OneHot)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, int64_t_MLFloat16_int64_t, OneHot)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, int32_t_MLFloat16_int32_t, OneHot)>,
 
       // OpSet 12
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, Clip)>,
@@ -1273,33 +1281,36 @@ static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, int32_t, ReduceMin)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, int8_t, ReduceMin)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, uint8_t, ReduceMin)>,
-
   };
 
   for (auto& function_table_entry : function_table) {
-    kernel_registry.Register(function_table_entry());
+    ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
   }
-}  // namespace cuda
-
-std::shared_ptr<KernelRegistry> GetCudaKernelRegistry() {
-  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  RegisterCudaKernels(*kernel_registry);
 
 #ifndef DISABLE_CONTRIB_OPS
-  ::onnxruntime::contrib::cuda::RegisterCudaContribKernels(*kernel_registry);
+  ORT_RETURN_IF_ERROR(::onnxruntime::contrib::cuda::RegisterCudaContribKernels(kernel_registry));
 #endif
 
 #ifdef ENABLE_TRAINING
-  ::onnxruntime::cuda::RegisterCudaTrainingKernels(*kernel_registry);
+  ORT_RETURN_IF_ERROR(::onnxruntime::cuda::RegisterCudaTrainingKernels(kernel_registry));
 #endif
-  return kernel_registry;
+
+  return Status::OK();
+}
+
+KernelRegistryAndStatus GetCudaKernelRegistry() {
+  KernelRegistryAndStatus ret;
+  ret.st = RegisterCudaKernels(*ret.kernel_registry);
+  return ret;
 }
 
 }  // namespace cuda
 
 std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::cuda::GetCudaKernelRegistry();
-  return kernel_registry;
+  static KernelRegistryAndStatus k = onnxruntime::cuda::GetCudaKernelRegistry();
+  // throw if the registry failed to initialize
+  ORT_THROW_IF_ERROR(k.st);
+  return k.kernel_registry;
 }
 
 static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
@@ -1367,7 +1378,7 @@ static bool ConvNeedFallbackToCPU(const onnxruntime::Node& node) {
 
     //cudnn only supports symmetric padding
     if ("pads" == attr_name && ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS == attr_value.type()) {
-      auto pads = attr_value.ints();
+      auto& pads = attr_value.ints();
       int pads_size = pads.size();
       ORT_ENFORCE(pads_size % 2 == 0);
       int rank = pads_size / 2;
@@ -1425,7 +1436,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     for (auto registry : kernel_registries) {
       cuda_kernel_def = registry->TryFindKernel(node, Type());
 
-      // atleast one registry has a CUDA kernel for this node
+      // at least one registry has a CUDA kernel for this node
       if (cuda_kernel_def)
         break;
     }

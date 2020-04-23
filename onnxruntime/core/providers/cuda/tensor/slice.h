@@ -11,7 +11,7 @@ namespace cuda {
 
 template <bool dynamic>
 class Slice : public CudaKernel, public SliceBase {
- public:
+public:
   Slice(const OpKernelInfo& info) : CudaKernel(info), SliceBase(info, dynamic) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override;

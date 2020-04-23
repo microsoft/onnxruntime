@@ -1,8 +1,6 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/onnx_protobuf.h"
-
 #include "orttraining/core/session/training_session.h"
 
 #include "core/framework/data_transfer_utils.h"
@@ -17,6 +15,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "orttraining/core/graph/mixed_precision_transformer.h"
 #include "orttraining/core/graph/tensorboard_transformer.h"
+#include "orttraining/core/graph/pipeline_transformer.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
 
 //Gist Encoding
@@ -130,15 +129,23 @@ Status TrainingSession::ConfigureForTraining(
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
 
   std::string loss_name{};
-  const optional<LossFunctionInfo> loss_function_info =
-      config.loss_function_config.has_value()
-          ? config.loss_function_config.value().loss_function_info
-          : optional<LossFunctionInfo>{};
   optional<std::string> loss_scale_input_name =
-      is_mixed_precision_enabled_ ? optional<std::string>{""} : optional<std::string>{};
-  ORT_RETURN_IF_ERROR(ConfigureLossFunction(
-      config.loss_name, loss_function_info,
-      loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
+        is_mixed_precision_enabled_ ? optional<std::string>{""} : optional<std::string>{};
+  if (config.use_pipeline) {
+    // if use pipeline, first check if model contains send op. If it does, set the
+    // send node's output as the start tensor to build gradient graph
+    GetPipelineSendOutput(model_->MainGraph(), loss_name);
+  }
+  if (loss_name.empty()) {
+    const optional<LossFunctionInfo> loss_function_info =
+        config.loss_function_config.has_value()
+            ? config.loss_function_config.value().loss_function_info
+            : optional<LossFunctionInfo>{};
+    ORT_RETURN_IF_ERROR(ConfigureLossFunction(
+        config.loss_name, loss_function_info,
+        loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
+  }
+
   ORT_ENFORCE(
       !loss_scale_input_name.has_value() || !loss_scale_input_name.value().empty(),
       "loss_scale_input_name should not be set to an empty string.");
@@ -172,7 +179,6 @@ Status TrainingSession::ConfigureForTraining(
                                  << weight_names_stream.str();
   }
 
-  // add gradient graph
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.set_gradients_as_graph_outputs));
 
@@ -184,12 +190,30 @@ Status TrainingSession::ConfigureForTraining(
         weight_names_to_train, mixed_precision_config.use_fp16_initializers, fp32_weight_name_to_fp16_node_arg));
   }
 
+  if (config.use_pipeline) {
+    ORT_RETURN_IF_ERROR(InsertPipelineOps());
+  }
+
+  // All non-float tensors are not trainable. Remove those weights.
+  // TODO: this is a temp workaround for removing rank tensor before adding optimizer.
+  // Re-visit after we port logic for model splitting and hence know the rank tensor name.
+  for (auto it = weights_to_train_.begin(); it != weights_to_train_.end();) {
+      const auto* node_arg = model_->MainGraph().GetNodeArg(*it);
+      ORT_RETURN_IF_NOT(node_arg, "Failed to get NodeArg with name ", *it);
+      if (node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        it = weights_to_train_.erase(it);
+      }
+      else{
+          ++it;
+      }
+  }
+
   // add optimizer or gradient accumulation
   if (config.optimizer_config.has_value()) {
     OptimizerGraphConfig opt_graph_config{};
     std::unordered_map<std::string, OptimizerNodeConfig> opt_node_configs{};
     ORT_RETURN_IF_ERROR(SetupOptimizerParams(
-        weight_names_to_train, fp32_weight_name_to_fp16_node_arg,
+        weights_to_train_, fp32_weight_name_to_fp16_node_arg,
         loss_scale_input_name, config, opt_graph_config, opt_node_configs));
 
     TrainingConfigurationResult::OptimizerConfigurationResult optimizer_config_result{};
@@ -200,7 +224,7 @@ Status TrainingSession::ConfigureForTraining(
     config_result.opt_config_result = optimizer_config_result;
   } else {
     if (config.gradient_accumulation_steps > 1) {
-      ORT_RETURN_IF_ERROR(BuildAccumulationNode(weight_names_to_train));
+      ORT_RETURN_IF_ERROR(BuildAccumulationNode(weights_to_train_));
     }
   }
 
@@ -441,6 +465,11 @@ Status TrainingSession::AddTensorboard(const std::string& summary_name,
   ORT_RETURN_IF_ERROR(
       TransformGraphForTensorboard(
           model_->MainGraph(), summary_name, scalar_nodes, histogram_nodes, norm_nodes, dump_convergence_metrics));
+  return DoPostLoadProcessing(*model_);
+}
+
+Status TrainingSession::InsertPipelineOps() {
+  ORT_RETURN_IF_ERROR(TransformGraphForPipeline(model_->MainGraph()));
   return DoPostLoadProcessing(*model_);
 }
 

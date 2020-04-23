@@ -14,10 +14,10 @@
 
 #include <robuffer.h>
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 LearningModel::LearningModel(
     const hstring& path,
-    const winml::ILearningModelOperatorProvider op_provider) try : LearningModel(WinML::Strings::UTF8FromHString(path),
+    const winml::ILearningModelOperatorProvider op_provider) try : LearningModel(_winml::Strings::UTF8FromHString(path),
                                                                                  op_provider) {
 }
 WINML_CATCH_ALL
@@ -34,9 +34,9 @@ LearningModel::LearningModel(
 WINML_CATCH_ALL
 
 static HRESULT CreateModelFromStream(
-    WinML::IEngineFactory* engine_factory,
+    _winml::IEngineFactory* engine_factory,
     const wss::IRandomAccessStreamReference stream,
-    WinML::IModel** model) {
+    _winml::IModel** model) {
   auto content = stream.OpenReadAsync().get();
 
   wss::Buffer buffer(static_cast<uint32_t>(content.Size()));
@@ -74,7 +74,7 @@ LearningModel::Author() try {
   const char* out;
   size_t len;
   WINML_THROW_IF_FAILED(model_info_->GetAuthor(&out, &len));
-  return WinML::Strings::HStringFromUTF8(out);
+  return _winml::Strings::HStringFromUTF8(out);
 }
 WINML_CATCH_ALL
 
@@ -83,7 +83,7 @@ LearningModel::Name() try {
   const char* out;
   size_t len;
   WINML_THROW_IF_FAILED(model_info_->GetName(&out, &len));
-  return WinML::Strings::HStringFromUTF8(out);
+  return _winml::Strings::HStringFromUTF8(out);
 }
 WINML_CATCH_ALL
 
@@ -92,7 +92,7 @@ LearningModel::Domain() try {
   const char* out;
   size_t len;
   WINML_THROW_IF_FAILED(model_info_->GetDomain(&out, &len));
-  return WinML::Strings::HStringFromUTF8(out);
+  return _winml::Strings::HStringFromUTF8(out);
 }
 WINML_CATCH_ALL
 
@@ -101,7 +101,7 @@ LearningModel::Description() try {
   const char* out;
   size_t len;
   WINML_THROW_IF_FAILED(model_info_->GetDescription(&out, &len));
-  return WinML::Strings::HStringFromUTF8(out);
+  return _winml::Strings::HStringFromUTF8(out);
 }
 WINML_CATCH_ALL
 
@@ -227,9 +227,9 @@ LearningModel::LoadFromStream(
 }
 WINML_CATCH_ALL
 
-WinML::IModel*
+_winml::IModel*
 LearningModel::DetachModel() {
-  com_ptr<WinML::IModel> detached_model;
+  com_ptr<_winml::IModel> detached_model;
   if (model_ != nullptr) {
     detached_model.attach(model_.detach());
 
@@ -239,26 +239,26 @@ LearningModel::DetachModel() {
   return detached_model.detach();
 }
 
-WinML::IModel*
+_winml::IModel*
 LearningModel::CloneModel() {
   if (model_ == nullptr) {
     return nullptr;
   }
 
-  com_ptr<WinML::IModel> model_copy;
+  com_ptr<_winml::IModel> model_copy;
   WINML_THROW_IF_FAILED(model_->CloneModel(model_copy.put()));
 
   return model_copy.detach();
 }
 
-WinML::IEngineFactory*
+_winml::IEngineFactory*
 LearningModel::GetEngineFactory() {
   return engine_factory_.get();
 }
 
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP
 
-namespace winrt::Windows::AI::MachineLearning::factory_implementation {
+namespace WINML::factory_implementation {
 // copied from cppwinrt magic to create abi wrappers.   Need to do it this way
 // since peeps underneath (like the constructor) will throw
 HRESULT
@@ -271,11 +271,11 @@ __stdcall LearningModel::Load(
     WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, model_path_size > 0, "Failed to create LearningModel. Ivalid argument model_path_size.");
     WINML_THROW_HR_IF_NULL_MSG(E_INVALIDARG, pp_model_unk, "Failed to create LearningModel. Ivalid argument pp_model_unk.");
 
-    auto path = WinML::Strings::UTF8FromUnicode(p_model_path, model_path_size);
+    auto path = _winml::Strings::UTF8FromUnicode(p_model_path, model_path_size);
     auto model = make<winmlp::LearningModel>(path, nullptr);
     *pp_model_unk = model.as<IUnknown>().detach();
     return S_OK;
   }
   WINML_CATCH_ALL_COM
 }
-}  // namespace winrt::Windows::AI::MachineLearning::factory_implementation
+}  // namespace WINML::factory_implementation

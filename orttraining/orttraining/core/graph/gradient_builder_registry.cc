@@ -77,11 +77,13 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Softmax", GetSoftmaxGradient);
   REGISTER_GRADIENT_BUILDER("SoftmaxCrossEntropy", GetSoftmaxCrossEntropyGradient);
   REGISTER_GRADIENT_BUILDER("SparseSoftmaxCrossEntropy", GetSparseSoftmaxCrossEntropyGradient);
+  REGISTER_GRADIENT_BUILDER("SoftmaxCrossEntropyLoss", GetSoftmaxCrossEntropyLossGradient);
   REGISTER_GRADIENT_BUILDER("GlobalAveragePool", GetGlobalAveragePoolGradient);
   REGISTER_GRADIENT_BUILDER("AveragePool", GetAveragePoolGradient);
   REGISTER_GRADIENT_BUILDER("Dropout", GetDropoutGradient)
   REGISTER_GRADIENT_BUILDER("TrainableDropout", GetTrainableDropoutGradient)
   REGISTER_GRADIENT_BUILDER("GatherND", GetGatherNDGradient)
+  REGISTER_GRADIENT_BUILDER("GatherElements", GetGatherElementsGradient)
   REGISTER_GRADIENT_BUILDER("Gelu", GetGeluGradient)
   REGISTER_GRADIENT_BUILDER("LayerNormalization", GetLayerNormalizationGradient);
   REGISTER_GRADIENT_BUILDER("BatchNormalization", GetBatchNormalizationGradient);
@@ -92,6 +94,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Where", GetWhereGradient);
   REGISTER_GRADIENT_BUILDER("Send", GetSendGradient);
   REGISTER_GRADIENT_BUILDER("Recv", GetRecvGradient);
+  REGISTER_GRADIENT_BUILDER("Expand", GetExpandGradient);
 };
 
 }  // namespace training

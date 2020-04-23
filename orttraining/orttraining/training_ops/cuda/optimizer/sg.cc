@@ -11,8 +11,8 @@ namespace cuda {
 
 ONNX_OPERATOR_KERNEL_EX(
     SGDOptimizer,
-    kOnnxDomain,
-    9,
+    kMSDomain,
+    1,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(1, 0)  // Update weights in-place
