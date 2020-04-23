@@ -11,7 +11,7 @@ namespace cuda {
 
 class Concat final : public CudaKernel, public ConcatBase {
  public:
-  Concat(const OpKernelInfo& info) : ConcatBase(info), CudaKernel(info) {}
+  Concat(const OpKernelInfo& info) : CudaKernel(info), ConcatBase(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
