@@ -88,7 +88,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_NGraph("CPU");  //TODO: this API should be refined
 #endif
 #if USE_OPENVINO
-                opt.AppendExecutionProvider_OpenVINO("");
+                opt.AppendExecutionProvider_OpenVINO();
 #endif
 #if USE_TENSORRT
                 opt.AppendExecutionProvider_Tensorrt(0);
