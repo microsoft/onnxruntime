@@ -8,9 +8,9 @@ namespace test {
 TEST(QLinearLookupTableBasedOperatorTests, QLinearLeakyRelu_Int8) {
   OpTester test("QLinearLeakyRelu", 1, onnxruntime::kMSDomain);
   test.AddAttribute<float>("alpha", 0.1f);
-  float X_scale = 0.25;
+  float X_scale = 0.25f;
   int8_t X_zero_point = 0;
-  float Y_scale = 0.1;
+  float Y_scale = 0.1f;
   int8_t Y_zero_point = -100;
 
   std::vector<int64_t> dims = {16};
@@ -27,9 +27,9 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearLeakyRelu_Int8) {
 TEST(QLinearLookupTableBasedOperatorTests, QLinearLeakyRelu_UInt8) {
   OpTester test("QLinearLeakyRelu", 1, onnxruntime::kMSDomain);
   test.AddAttribute<float>("alpha", 0.1f);
-  float X_scale = 0.25;
+  float X_scale = 0.25f;
   uint8_t X_zero_point = 128;
-  float Y_scale = 0.1;
+  float Y_scale = 0.1f;
   uint8_t Y_zero_point = 30;
 
   std::vector<int64_t> dims = {16};
