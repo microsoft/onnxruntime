@@ -26,16 +26,6 @@ class MatMulInteger final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  // pad matrix and B to make their leading dimension be multiples of *align_size*
-  Status PadMatrix(
-      int64_t row,
-      int64_t col,
-      int64_t align_size,
-      const int8_t*& src,
-      int64_t& pad_size,
-      IAllocatorUniquePtr<int8_t>& temp_mem_holder) const;
-
- private:
   bool has_a_zero_point_;
   bool has_b_zero_point_;
 };

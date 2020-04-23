@@ -314,13 +314,6 @@ mask_index shall not be provided.)DOC";
       .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
-  static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
-Quantization of Multi-Head Self Attention.
-The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
-and segment_emedding; the embeddings are added then applied layer normalization using gamma and beta tensors.
-The last input mask is optional. If mask is provided, mask index (that is position of first 0 in mask, or number of words)
-will be calculated.)DOC";
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(QAttention)
       .SetDomain(kMSDomain)
       .SinceVersion(1)

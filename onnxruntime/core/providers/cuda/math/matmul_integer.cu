@@ -28,11 +28,10 @@ __global__ void ReduceRowSumOnMatrixAKernel(const int8_t* matrix, int32_t* row_s
 
 Status ReduceRowSumOnMatrixA(const int8_t* matrix, int32_t* row_sum, const int8_t offset, const MatMulComputeHelper& helper) {
   for (size_t batch = 0; batch < helper.OutputOffsets().size(); batch++) {
-    ReduceRowSumOnMatrixAKernel<static_cast<int>(GridDim::maxThreadsPerBlock)>
-        <<<static_cast<int>(helper.M()), GridDim::maxThreadsPerBlock, 0>>>(matrix + helper.LeftOffsets()[batch],
-                                                                           row_sum + batch * helper.M(),
-                                                                           offset,
-                                                                           static_cast<int>(helper.K()));
+    ReduceRowSumOnMatrixAKernel<static_cast<int>(GridDim::maxThreadsPerBlock)><<<static_cast<int>(helper.M()), GridDim::maxThreadsPerBlock, 0>>>(matrix + helper.LeftOffsets()[batch],
+                                                                                                                                                 row_sum + batch * helper.M(),
+                                                                                                                                                 offset,
+                                                                                                                                                 static_cast<int>(helper.K()));
   }
 
   return CUDA_CALL(cudaPeekAtLastError()) ? Status::OK() : Status(common::ONNXRUNTIME, common::FAIL);
@@ -57,12 +56,11 @@ __global__ void ReduceColSumOnMatrixBKernel(const int8_t* matrix, int32_t* col_s
 
 Status ReduceColSumOnMatrixB(const int8_t* matrix, int32_t* col_sum, const int8_t offset, const MatMulComputeHelper& helper) {
   for (size_t batch = 0; batch < helper.OutputOffsets().size(); batch++) {
-    ReduceColSumOnMatrixBKernel<static_cast<int>(GridDim::maxThreadsPerBlock)>
-        <<<static_cast<int>(helper.N()), GridDim::maxThreadsPerBlock, 0>>>(matrix + helper.RightOffsets()[batch],
-                                                                           col_sum + batch * helper.N(),
-                                                                           offset,
-                                                                           static_cast<int32_t>(helper.K()),
-                                                                           static_cast<int32_t>(helper.N()));
+    ReduceColSumOnMatrixBKernel<static_cast<int>(GridDim::maxThreadsPerBlock)><<<static_cast<int>(helper.N()), GridDim::maxThreadsPerBlock, 0>>>(matrix + helper.RightOffsets()[batch],
+                                                                                                                                                 col_sum + batch * helper.N(),
+                                                                                                                                                 offset,
+                                                                                                                                                 static_cast<int32_t>(helper.K()),
+                                                                                                                                                 static_cast<int32_t>(helper.N()));
   }
 
   return CUDA_CALL(cudaPeekAtLastError()) ? Status::OK() : Status(common::ONNXRUNTIME, common::FAIL);
@@ -128,21 +126,5 @@ Status OffsetOutput(const int32_t* row_sum,
   return CUDA_CALL(cudaPeekAtLastError()) ? Status::OK() : Status(common::ONNXRUNTIME, common::FAIL);
 }
 
-__global__ void PadMatrixInLeadingDimensionKernel(const int8_t* src, int8_t* dst, int col_src, int col_dst) {
-  for (int32_t i = threadIdx.x; i < col_src; i += blockDim.x) {
-    *(dst + blockIdx.x * col_dst + i) = *(src + blockIdx.x * col_src + i);
-  }
-}
-
-Status PadMatrixInLeadingDimension(const int8_t* src, int8_t* dst, int64_t row, int64_t col, int64_t pad_size) {
-  PadMatrixInLeadingDimensionKernel<<<static_cast<int>(row), GridDim::maxThreadsPerBlock, 0>>>(
-      src,
-      dst,
-      static_cast<int>(col),
-      static_cast<int>(col + pad_size));
-
-  return CUDA_CALL(cudaPeekAtLastError()) ? Status::OK() : Status(common::ONNXRUNTIME, common::FAIL);
-  ;
-}
 }  // namespace cuda
 }  // namespace onnxruntime
