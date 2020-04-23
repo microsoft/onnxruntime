@@ -26,6 +26,17 @@ static void CreateModelFromFilePath() {
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"squeezenet_modifiedforruntimestests.onnx", learningModel));
 }
 
+static void CreateModelFileNotFound() {
+  LearningModel learningModel = nullptr;
+
+  WINML_EXPECT_THROW_SPECIFIC(
+    APITest::LoadModel(L"missing_model.onnx", learningModel),
+    winrt::hresult_error,
+    [](const winrt::hresult_error& e) -> bool {
+          return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+    });
+}
+
 static void CreateModelFromIStorage() {
   std::wstring path = FileHelpers::GetModulePath() + L"squeezenet_modifiedforruntimestests.onnx";
   auto storageFile = ws::StorageFile::GetFileFromPathAsync(path).get();
@@ -242,7 +253,7 @@ static void CloseModelNoNewSessions() {
   WINML_EXPECT_NO_THROW(learningModel.Close());
   LearningModelSession session = nullptr;
   WINML_EXPECT_THROW_SPECIFIC(
-      session = LearningModelSession(learningModel);,
+      session = LearningModelSession(learningModel),
       winrt::hresult_error,
       [](const winrt::hresult_error& e) -> bool {
             return e.code() == E_INVALIDARG;
@@ -255,6 +266,7 @@ const LearningModelApiTestsApi& getapi() {
     LearningModelAPITestsClassSetup,
     LearningModelAPITestsGpuMethodSetup,
     CreateModelFromFilePath,
+    CreateModelFileNotFound,
     CreateModelFromIStorage,
     CreateModelFromIStorageOutsideCwd,
     CreateModelFromIStream,
