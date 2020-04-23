@@ -1,7 +1,7 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 from setuptools import setup, find_packages, Extension
 from distutils import log as logger
@@ -62,9 +62,9 @@ for arg in sys.argv[1:]:
         break
 
 is_manylinux1 = False
-#PEP 513 defined manylinux1_x86_64 and manylinux1_i686
-#PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
-#PEP 599 defines the following platform tags:
+# PEP 513 defined manylinux1_x86_64 and manylinux1_i686
+# PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
+# PEP 599 defines the following platform tags:
 # manylinux2014_x86_64
 # manylinux2014_i686
 # manylinux2014_aarch64
@@ -73,12 +73,24 @@ is_manylinux1 = False
 # manylinux2014_ppc64le
 # manylinux2014_s390x
 
-manylinux_tags = ['manylinux1_x86_64', 'manylinux1_i686', 'manylinux2010_x86_64', 'manylinux2010_i686', 'manylinux2014_x86_64', 'manylinux2014_i686', 'manylinux2014_aarch64', 'manylinux2014_armv7l', 'manylinux2014_ppc64', 'manylinux2014_ppc64le', 'manylinux2014_s390x']
+manylinux_tags = [
+    'manylinux1_x86_64',
+    'manylinux1_i686',
+    'manylinux2010_x86_64',
+    'manylinux2010_i686',
+    'manylinux2014_x86_64',
+    'manylinux2014_i686',
+    'manylinux2014_aarch64',
+    'manylinux2014_armv7l',
+    'manylinux2014_ppc64',
+    'manylinux2014_ppc64le',
+    'manylinux2014_s390x']
 ENV_AUDITWHEEL_PLAT = environ.get('AUDITWHEEL_PLAT', None)
 if ENV_AUDITWHEEL_PLAT in manylinux_tags:
     is_manylinux1 = True
 
 print("is_manylinux1=%s" % is_manylinux1)
+
 
 class build_ext(_build_ext):
     def build_extension(self, ext):
@@ -89,6 +101,7 @@ class build_ext(_build_ext):
 
 try:
     from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
+
     class bdist_wheel(_bdist_wheel):
         def finalize_options(self):
             _bdist_wheel.finalize_options(self)
@@ -107,7 +120,8 @@ try:
                 if len(to_preload) > 0:
                     f.write('from ctypes import CDLL, RTLD_GLOBAL\n')
                     for library in to_preload:
-                        f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
+                        f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(
+                            library.split('.')[0], library))
 
         def run(self):
             if is_manylinux1:
@@ -115,8 +129,10 @@ try:
                 dest = 'onnxruntime/capi/onnxruntime_pybind11_state_manylinux1.so'
                 logger.info('copying %s -> %s', source, dest)
                 copyfile(source, dest)
-                result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
-                cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so']
+                result = subprocess.run(['patchelf', '--print-needed', dest],
+                                        check=True, stdout=subprocess.PIPE, universal_newlines=True)
+                cuda_dependencies = ['libcublas.so', 'libcudnn.so',
+                                     'libcudart.so', 'libcurand.so', 'libcufft.so']
                 to_preload = []
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):
@@ -130,11 +146,12 @@ try:
                 self._rewrite_ld_preload(to_preload)
             _bdist_wheel.run(self)
             if is_manylinux1:
-                #The following part doesn't work in cross-compiling
+                # The following part doesn't work in cross-compiling
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
                 logger.info('repairing %s for manylinux1', file)
                 try:
-                    subprocess.run(['auditwheel', 'repair', '-w', self.dist_dir, file], check=True, stdout=subprocess.PIPE)
+                    subprocess.run(['auditwheel', 'repair', '-w', self.dist_dir,
+                                    file], check=True, stdout=subprocess.PIPE)
                 finally:
                     logger.info('removing %s', file)
                     remove(file)
@@ -146,28 +163,33 @@ except ImportError as error:
 
 # Additional binaries
 if platform.system() == 'Linux':
-  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
-  # nGraph Libs
-  libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
-  # Nuphar Libs
-  libs.extend(['libtvm.so.0.5.1'])
-  # Openvino Libs
-  libs.extend(['libcpu_extension.so'])
-  if nightly_build:
-    libs.extend(['libonnxruntime_pywrapper.so'])
+    libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1',
+            'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
+    # nGraph Libs
+    libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so',
+                 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
+    # Nuphar Libs
+    libs.extend(['libtvm.so.0.5.1'])
+    # Openvino Libs
+    libs.extend(['libcpu_extension.so'])
+    if nightly_build:
+        libs.extend(['libonnxruntime_pywrapper.so'])
 elif platform.system() == "Darwin":
-  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.1.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
-  if nightly_build:
-    libs.extend(['libonnxruntime_pywrapper.dylib'])
+    # TODO add libmklml and libiomp5 later.
+    libs = ['onnxruntime_pybind11_state.so', 'libdnnl.1.dylib', 'mimalloc.so']
+    if nightly_build:
+        libs.extend(['libonnxruntime_pywrapper.dylib'])
 else:
-  libs = ['onnxruntime_pybind11_state.pyd', 'dnnl.dll', 'mklml.dll', 'libiomp5md.dll']
-  libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll', 'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll'])
-  # Nuphar Libs
-  libs.extend(['tvm.dll'])
-  # Openvino Libs
-  libs.extend(['cpu_extension.dll'])
-  if nightly_build:
-    libs.extend(['onnxruntime_pywrapper.dll'])
+    libs = ['onnxruntime_pybind11_state.pyd',
+            'dnnl.dll', 'mklml.dll', 'libiomp5md.dll']
+    libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll',
+                 'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll'])
+    # Nuphar Libs
+    libs.extend(['tvm.dll'])
+    # Openvino Libs
+    libs.extend(['cpu_extension.dll'])
+    if nightly_build:
+        libs.extend(['onnxruntime_pywrapper.dll'])
 
 if is_manylinux1:
     data = ['capi/libonnxruntime_pywrapper.so'] if nightly_build else []
@@ -178,15 +200,16 @@ if is_manylinux1:
         ),
     ]
 else:
-    data = [path.join('capi', x) for x in libs if path.isfile(path.join('onnxruntime', 'capi', x))]
+    data = [path.join('capi', x) for x in libs if path.isfile(
+        path.join('onnxruntime', 'capi', x))]
     ext_modules = []
 
 
 python_modules_list = list()
 if '--use_openvino' in sys.argv:
-  #Adding python modules required for openvino ep
-  python_modules_list.extend(['openvino_mo', 'openvino_emitter'])
-  sys.argv.remove('--use_openvino')
+    # Adding python modules required for openvino ep
+    python_modules_list.extend(['openvino_mo', 'openvino_emitter'])
+    sys.argv.remove('--use_openvino')
 
 # Additional examples
 examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
@@ -195,7 +218,7 @@ examples = [path.join('datasets', x) for x in examples_names]
 # Extra files such as EULA and ThirdPartyNotices
 extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
 if package_name == 'onnxruntime-nuphar':
-  extra.extend([path.join('nuphar', 'NUPHAR_CACHE_VERSION')])
+    extra.extend([path.join('nuphar', 'NUPHAR_CACHE_VERSION')])
 
 # Description
 README = path.join(getcwd(), "docs/python/README.rst")
@@ -212,13 +235,13 @@ version_number = ''
 with open('VERSION_NUMBER') as f:
     version_number = f.readline().strip()
 if nightly_build:
-    #https://docs.microsoft.com/en-us/azure/devops/pipelines/build/variables
+    # https://docs.microsoft.com/en-us/azure/devops/pipelines/build/variables
     build_suffix = environ.get('BUILD_BUILDNUMBER')
     if build_suffix is None:
-      #The following line is only for local testing
-      build_suffix = str(datetime.datetime.now().date().strftime("%Y%m%d"))
+        # The following line is only for local testing
+        build_suffix = str(datetime.datetime.now().date().strftime("%Y%m%d"))
     else:
-      build_suffix = build_suffix.replace('.','')
+        build_suffix = build_suffix.replace('.', '')
 
     version_number = version_number + ".dev" + build_suffix
 
@@ -226,7 +249,7 @@ if wheel_name_suffix:
     package_name = "{}_{}".format(package_name, wheel_name_suffix)
 
 cmd_classes = {}
-if bdist_wheel is not None :
+if bdist_wheel is not None:
     cmd_classes['bdist_wheel'] = bdist_wheel
 cmd_classes['build_ext'] = build_ext
 
@@ -261,7 +284,7 @@ setup(
     },
     py_modules=python_modules_list,
     install_requires=install_requires,
-    entry_points= {
+    entry_points={
         'console_scripts': [
             'onnxruntime_test = onnxruntime.tools.onnxruntime_test:main',
         ]
@@ -276,5 +299,6 @@ setup(
         'Programming Language :: Python :: 3 :: Only',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7'],
-    )
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8'],
+)
