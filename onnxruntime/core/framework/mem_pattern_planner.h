@@ -65,6 +65,8 @@ class MemPatternPlanner {
     buffer_size_ = std::max(buffer_size_, SafeInt<size_t>(best_offset) + size);
     allocs_.emplace_back(ml_value_idx, MemoryBlock(best_offset, size));
     blocks_.insert(best_fit_it, (static_cast<int>(allocs_.size()) - 1));
+    // DEBUG_HELPER: uncomment this to check memory allocation size
+    std::cout << "(" << ml_value_idx << ") :" << size << ", MemPattern buffer_size_:" << (uint64_t)(buffer_size_) << std::endl;
   }
 
   void TraceFree(int ml_value_index) {

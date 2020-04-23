@@ -228,6 +228,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   for (auto& node_plan : exe_plan->execution_plan) {
     int node_index = node_index_info.GetNodeOffset(node_plan.node_index);
     auto* node = graph_viewer_->GetNode(node_plan.node_index);
+    std::cout << "Planning for node: " << node->Name() << " (" << node->OpType() << ")" << std::endl;
     int output_start = node_index + static_cast<int>(node->InputDefs().size()) + static_cast<int>(node->ImplicitInputDefs().size());
     //allocate output
     for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
