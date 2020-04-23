@@ -42,7 +42,7 @@ Status CheckBatchDimensionsMatch(
   if (T_type == DataTypeImpl::GetType<T>()) {                                                                                                 \
     GatherNDImpl<ToCudaType<T>::MappedType>(num_slices, kernel_input_data, kernel_output_data, slice_size, input_slice_offsets_buffer.get()); \
   }
-  
+
 #define TYPED_FUNCTION_CALL_BWD(T)                                                                                                                \
   if (T_type == DataTypeImpl::GetType<T>()) {                                                                                                     \
     GatherNDGradImpl<ToCudaType<T>::MappedType>(num_slices, kernel_input_data, kernel_output_data, slice_size, input_slice_offsets_buffer.get()); \

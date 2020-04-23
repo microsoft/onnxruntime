@@ -34,6 +34,6 @@ void GatherNDGradImpl(
     void* output_data,
     const size_t slice_size,
     const int64_t* input_slice_offsets_data);
-    
+
 }  // namespace cuda
 }  // namespace onnxruntime

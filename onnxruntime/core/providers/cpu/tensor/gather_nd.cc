@@ -110,10 +110,10 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
       auto index = *(indice_offset + i * (last_indices_dimension - batch_dims_) + (j - batch_dims_));
       auto upper_limit = input_shape[j];
       auto lower_limit = -upper_limit;
-      if (index < lower_limit || index >= input_shape[j]) {
-        err_index = index ;
+      if (index < lower_limit || index >= upper_limit) {
+        err_index = index;
       }
-      if (index  < 0) {
+      if (index < 0) {
         index += static_cast<Tind>(upper_limit);
       }
       p.element_offsets[i] += index * element_counts[j];

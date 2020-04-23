@@ -55,7 +55,7 @@ TEST(GatherNDOpTest, string) {
                        {2, 1, 1, 0, 0, 1}, {3}, {"kite", "bob", "dance"});
 
   RunTest<std::string>({2, 2}, {"ab", "cde", "f", "ghi"}, {2, 1, 1}, {1LL, 0LL}, {2, 1, 2}, {"f", "ghi", "ab", "cde"});
-  
+
   // with negative indices
   RunTest<std::string>({2, 2}, {"ab", "cde", "f", "ghi"}, {2, 1, 1}, {-1, 0}, {2, 1, 2}, {"f", "ghi", "ab", "cde"});
 }
@@ -75,7 +75,7 @@ TEST(GatherNDOpTest, int64_t) {
 
   // with negative indices
   RunTest<int64_t>({2, 2, 2}, {0LL, 1LL, 2LL, 3LL, 4LL, 5LL, 6LL, 7LL}, {2, 1, 1}, {-1, 0}, {2, 1, 2, 2},
-                  {4LL, 5LL, 6LL, 7LL, 0LL, 1LL, 2LL, 3LL});
+                   {4LL, 5LL, 6LL, 7LL, 0LL, 1LL, 2LL, 3LL});
 }
 
 TEST(GatherNDOpTest, float) {
