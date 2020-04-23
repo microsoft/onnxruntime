@@ -10,6 +10,10 @@
 namespace onnxruntime {
 namespace cuda {
 
+Status CheckBatchDimensionsMatch(
+    size_t num_batch_dimensions,
+    const std::vector<std::reference_wrapper<TensorShape>>& tensor_shapes);
+
 class GatherNDBase : public CudaKernel {
  public:
   GatherNDBase(const OpKernelInfo& info) : CudaKernel(info) {
@@ -35,13 +39,6 @@ template <typename Tind>
 class GatherND final : public GatherNDBase {
  public:
   GatherND(const OpKernelInfo& info) : GatherNDBase(info) {}
-  Status ComputeInternal(OpKernelContext* context) const override;
-};
-
-template <typename Tind>
-class GatherNDGrad final : public GatherNDBase {
- public:
-  GatherNDGrad(const OpKernelInfo& info) : GatherNDBase(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
