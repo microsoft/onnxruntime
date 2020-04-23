@@ -1179,7 +1179,8 @@ def nuphar_run_python_tests(build_dir, configs):
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, wheel_name_suffix, use_acl,
-        nightly_build=False):
+        nightly_build=False,
+        featurizers_build=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -1204,6 +1205,8 @@ def build_python_wheel(
             args.append('--wheel_name_suffix={}'.format(wheel_name_suffix))
         elif use_acl:
             args.append('--use_acl')
+        elif featurizers_build:
+            args.append("--use_featurizers")
 
         run_subprocess(args, cwd=cwd)
 
@@ -1537,6 +1540,7 @@ def main():
                 args.wheel_name_suffix,
                 args.use_acl,
                 nightly_build=nightly_build,
+                featurizers_build=args.use_featurizers,
             )
 
     if args.gen_doc and (args.build or args.test):
