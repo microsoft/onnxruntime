@@ -169,6 +169,7 @@ class TrainingRunner {
   common::Status ResetLossScaler();
 
   size_t GetRound() const { return round_; }
+  TrainingSession& GetSession() { return session_; }
 
  private:
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader);
