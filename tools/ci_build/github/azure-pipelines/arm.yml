@@ -22,7 +22,7 @@ jobs:
           SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
           SET(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
           EOF
-          
+          export PATH=/mnt/toolchains/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu/bin:$PATH
           azcopy cp https://onnxruntimetestdata.blob.core.windows.net/models/toolchains.tar.xz $(Build.BinariesDirectory)/toolchains.tar.xz
           sudo rm -rf /mnt/toolchains
           mkdir /mnt/toolchains
