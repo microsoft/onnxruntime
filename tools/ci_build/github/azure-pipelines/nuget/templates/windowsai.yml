@@ -217,7 +217,19 @@ jobs:
         Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile $zip_tool
         Start-Process -FilePath $zip_tool -ArgumentList "-r $merged_nuget ." -WorkingDirectory $x64_unzipped_directory -NoNewWindow
 
-        dir $merged_nuget_path
+        Write-Host "All files in $merged_nuget_path"
+        dir /s $merged_nuget_path
+        Write-Host "$merged_nuget_path dump DONE"
+        
+        Write-Host "All files in $zip_tool_directory"
+        dir /s $zip_tool_directory
+        Write-Host "$zip_tool_directory dump DONE"
+
+        Write-Host "All files in $Env:BUILD_ARTIFACTSTAGINGDIRECTORY"
+        dir /s $Env:BUILD_ARTIFACTSTAGINGDIRECTORY
+        Write-Host "$Env:BUILD_ARTIFACTSTAGINGDIRECTORY dump DONE"
+
+
       workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
 
   - template: ../../templates/esrp_nuget.yml
