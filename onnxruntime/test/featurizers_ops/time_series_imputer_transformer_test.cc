@@ -215,12 +215,13 @@ TEST(FeaturizersTests, RowImputation_2_grains_1_gap_input_interleaved_add_additi
   test.AddInput<int64_t>("Input_1", {4, 1}, {1, 2, 3, 4});
   test.AddInput<float>("Input_2", {4, 1}, {1, 2, 3, 4});
   test.AddInput<std::string>("Input_3", {4, 1}, {"1", "2", "3", "4"});
+  test.AddInput<bool>("Input_4", {4, 1}, {false, true, true, true});
   AddOutputs(test, {false, false, true, false, true, false}, {tp_0, tp_5, tp_1, tp_2, tp_6, tp_7},
              {"a", "b", "a", "a", "b", "b"}, {"14.5", "18", "114.5", "118", "14.5", "18", "14.5", "12", "114.5", "118", "114.5", "112"});
   test.AddOutput<int64_t>("Output_1", {6, 1}, {1, 2, 0, 3, 0, 4});
   test.AddOutput<float>("Output_2", {6, 1}, {1, 2, std::numeric_limits<float>::quiet_NaN(), 3, std::numeric_limits<float>::quiet_NaN(), 4});
   test.AddOutput<std::string>("Output_3", {6, 1}, {"1", "2", "", "3", "", "4"});
-
+  test.AddOutput<bool>("Output_4", {6, 1}, {false, true, false, true, false, true});
   test.Run();
 }
 

@@ -2067,6 +2067,8 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
           "Keys",
           "Composite keys tensor of shape [R][K]. R is the same as Input(1)",
           "T2")
+      // The first input in Input(3)(a variadic tensor that has multiple output) is the below commented input
+      // for the ONNX requirement that allow 0 size of variadic input
       // .Input(
       //     3,
       //     "Data",
@@ -2094,6 +2096,8 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
           "ImputedKeys",
           "Contains keys along with the imputed keys. Tensor of shape [IR][K].",
           "T2")
+      // The first output in Output(3)(a variadic tensor that has multiple output) is the below commented output
+      // for the ONNX requirement that allow 0 size of variadic output
       // .Output(
       //     3,
       //     "ImputedData",
@@ -2151,19 +2155,6 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
               *shape.add_dim() = input2_shape.dim(1);
               ONNX_NAMESPACE::updateOutputShape(ctx, 2, shape);
             }
-
-            // // Data shape
-            // propagateElemTypeFromInputToOutput(ctx, 3, 3);
-            // if (hasInputShape(ctx, 3)) {
-            //   const auto& input3_shape = getInputShape(ctx, 3);
-            //   if (input3_shape.dim_size() != 2) {
-            //     fail_shape_inference("Expecting data to have 2 dimensions");
-            //   }
-            //   ONNX_NAMESPACE::TensorShapeProto shape;
-            //   shape.add_dim();
-            //   *shape.add_dim() = input3_shape.dim(1);
-            //   ONNX_NAMESPACE::updateOutputShape(ctx, 3, shape);
-            // }
 
             //Data Shape & Variadic I/O shapes
             propagateElemTypeFromInputToOutput(ctx, 3, 3);

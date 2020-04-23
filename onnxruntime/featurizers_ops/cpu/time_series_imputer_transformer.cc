@@ -144,6 +144,13 @@ struct Helper<double> {
   }
 };
 
+template<>
+struct Helper<bool> {
+  static bool GetDefaultValue() {
+    return false;
+  }
+};
+
 template <typename T>
 struct GenerateImputedColumnsImpl {
   void operator()(const Tensor* variadic_input_tensor, Tensor* output_after_impute_tensor,
@@ -289,11 +296,11 @@ class TimeSeriesImputerTransformer final : public OpKernel {
 
     const auto& keys = *ctx->Input<Tensor>(2);
     ORT_RETURN_IF_ERROR(CheckBatches(rows, keys.Shape()));
-    // const auto& data = *ctx->Input<Tensor>(3);
-    // ORT_RETURN_IF_ERROR(CheckBatches(rows, data.Shape()));
+    const auto& data = *ctx->Input<Tensor>(3);
+    ORT_RETURN_IF_ERROR(CheckBatches(rows, data.Shape()));
 
-    // auto data_type = data.GetElementType();
-    // ORT_RETURN_IF_NOT(keys.GetElementType() == data_type, "Keys and data must have the same datatype");
+    auto data_type = data.GetElementType();
+    ORT_RETURN_IF_NOT(keys.GetElementType() == data_type, "Keys and data must have the same datatype");
 
     TimeSeriesImputerTransformerImpl<std::string>()(ctx, rows);
     return Status::OK();
