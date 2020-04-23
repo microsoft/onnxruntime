@@ -195,9 +195,9 @@ jobs:
              move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
              move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
              move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
-             move win-arm\runtimes\win10-arm\native\onnxruntime.lib %%~ni\runtimes\win10-arm\native\onnxruntime.lib
-             move win-arm\runtimes\win10-arm\native\onnxruntime.dll %%~ni\runtimes\win10-arm\native\onnxruntime.dll
-             move win-arm\runtimes\win10-arm\native\onnxruntime.pdb %%~ni\runtimes\win10-arm\native\onnxruntime.pdb
+             move win10-arm\runtimes\win10-arm\native\onnxruntime.lib %%~ni\runtimes\win10-arm\native\onnxruntime.lib
+             move win10-arm\runtimes\win10-arm\native\onnxruntime.dll %%~ni\runtimes\win10-arm\native\onnxruntime.dll
+             move win10-arm\runtimes\win10-arm\native\onnxruntime.pdb %%~ni\runtimes\win10-arm\native\onnxruntime.pdb
              move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
              unzip osx-x64.zip -d osx-x64
              dir osx-x64 /s
