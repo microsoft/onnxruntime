@@ -212,11 +212,12 @@ jobs:
 
         Write-Host "ZipTool: $zip_tool"
         Write-Host "Zip Directory: $x64_unzipped_directory"
-        Write-Host "Merged Nuget Path: $merged_nuget"
+        Write-Host "Merged Nuget: $merged_nuget"
 
         Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile $zip_tool
         Start-Process -FilePath $zip_tool -ArgumentList "-r $merged_nuget ." -WorkingDirectory $x64_unzipped_directory -NoNewWindow
 
+        dir $merged_nuget_path
       workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
 
   - template: ../../templates/esrp_nuget.yml
