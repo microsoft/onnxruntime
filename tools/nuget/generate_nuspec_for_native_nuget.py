@@ -120,7 +120,7 @@ def generate_files(list, args):
 
     includes_cuda = is_cuda_gpu_package or is_cpu_package # Why does the CPU package ship the cuda provider headers?
     includes_winml = is_windowsai_package
-    includes_directml = (is_dml_package or is_windowsai_package) and args.target_architecture == 'x64' or args.target_architecture == 'x86'
+    includes_directml = (is_dml_package or is_windowsai_package) and (args.target_architecture == 'x64' or args.target_architecture == 'x86')
 
     # Process headers
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'include\\onnxruntime\\core\\session\\onnxruntime_*.h') + '" target="build\\native\\include" />')
