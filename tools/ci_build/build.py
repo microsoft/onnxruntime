@@ -348,7 +348,7 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None,
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
 
-    my_env["MACOSX_DEPLOYMENT_TARGET"] = "10.9"
+    my_env["MACOSX_DEPLOYMENT_TARGET"] = 10.5
     stdout, stderr = (subprocess.PIPE, subprocess.STDOUT) if capture else (
         None, None)
     my_env.update(env)
@@ -1189,7 +1189,7 @@ def build_python_wheel(
         if is_windows():
             cwd = os.path.join(cwd, config)
         args = [sys.executable, os.path.join(source_dir, 'setup.py'),
-                'bdist_wheel']
+                'bdist_wheel', '-p' , 'macosx_10_9_x86_64']
         if nightly_build:
             args.append('--nightly_build')
         if use_tensorrt:
