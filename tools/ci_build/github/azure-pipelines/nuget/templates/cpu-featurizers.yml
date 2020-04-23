@@ -154,7 +154,7 @@ jobs:
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)'
       NugetPackage: 'Microsoft.ML.ORTFeaturizers*nupkg'
-      PlatformsSupported: 'win10-x64,win10-x86,linux-x64,osx-x64'
+      PlatformsSupported: 'win-x64,win-x86,linux-x64,osx-x64'
       VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
   - task: PublishPipelineArtifact@0
