@@ -45,7 +45,7 @@ struct RollingWindowTransformerImpl {
     callback_fn = [ctx, &output_data, &has_allocate_output_data, output_dim_0](OutputType value) -> void {
       //Allocate tensor memory after first output is generated
       if(!has_allocate_output_data) {
-        TensorShape output_shape({output_dim_0, 1, static_cast<int64_t>(value.size())});
+        TensorShape output_shape({output_dim_0, static_cast<int64_t>(1), static_cast<int64_t>(value.size())});
         Tensor* output_tensor(ctx->Output(0, output_shape));
         output_data = output_tensor->MutableData<double>();
         has_allocate_output_data = true;

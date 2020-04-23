@@ -1655,7 +1655,7 @@ void RegisterRollingWindowFeaturizerVer1() {
 
               ONNX_NAMESPACE::TensorShapeProto shape;
               *shape.add_dim() = grains_shape.dim(0);
-              *shape.add_dim() = 1;
+              shape.add_dim();
               shape.add_dim();
               ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape);
             }
