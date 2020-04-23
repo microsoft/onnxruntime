@@ -618,7 +618,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"fp16_inception_v1", "Temporarily disabled pending investigation"});
     broken_tests.insert({"candy", "Temporarily disabled pending investigation"});
     broken_tests.insert({"BERT_Squad", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"LSTM_Seq_lens_unpacked", "The parameter is incorrect"});
   }
 
 #if defined(_WIN32) && !defined(_WIN64)
