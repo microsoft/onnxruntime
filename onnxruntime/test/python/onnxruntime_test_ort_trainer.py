@@ -418,7 +418,7 @@ class TestOrtTrainer(unittest.TestCase):
                         loss_scaler=None)
 
         # load changed checkpoint
-        model2.load_checkpoint('./', 'bert_toy_save')
+        model2.load_checkpoint(ckpt_dir, 'bert_toy_save')
         loaded_sd = model2.state_dict()
 
         for k,v in loaded_sd.items():

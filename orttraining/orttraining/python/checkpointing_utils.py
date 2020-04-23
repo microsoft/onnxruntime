@@ -154,8 +154,8 @@ class Combine_Zero_Checkpoint():
         
         for i in range(self.world_size):
             ckpt_file_name = ckpt_prefix + '_ZeROrank_' + str(i) + '_of_' + str(self.world_size-1)+'.tar'
-            print("Loading Pretrained Bert state dict from: {}".format(os.path.join(checkpoint_dir, ckpt_file_name)))
-            rank_state_dict = torch.load(os.path.join(checkpoint_dir, ckpt_file_name), map_location=torch.device("cpu"))
+            print("Loading Pretrained state dict from: {}".format(ckpt_file_name))
+            rank_state_dict = torch.load(ckpt_file_name), map_location=torch.device("cpu"))
             if 'model' in rank_state_dict:
                 rank_state_dict = rank_state_dict['model']
             
