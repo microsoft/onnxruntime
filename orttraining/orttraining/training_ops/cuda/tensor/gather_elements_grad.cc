@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gather_elements_grad.h"
-#include "gather_elements_grad_impl.h"
+#include "orttraining/training_ops/cuda/tensor/gather_elements_grad.h"
+#include "orttraining/training_ops/cuda/tensor/gather_elements_grad_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/common.h"
 
