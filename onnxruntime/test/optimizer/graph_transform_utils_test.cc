@@ -76,7 +76,7 @@ TEST(GraphTransformerUtilsTests, TestCustomOnlyTransformers) {
   ASSERT_TRUE(custom_transformers.size() == 1);
   ASSERT_TRUE(custom_transformers[0]->Name() == l2_transformer);
 #else
-  ASSERT_TRUE(transformers.size() == 0);
+  ASSERT_TRUE(custom_transformers.size() == 0);
 #endif
 }
 
