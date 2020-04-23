@@ -25,7 +25,7 @@ struct __declspec(uuid("D113B493-BBA2-4993-8608-D706A73B91CE")) __declspec(novta
 }  // namespace guid_details
 static const GUID WINML_PIX_EVAL_CAPTURABLE_WORK_GUID = __uuidof(guid_details::WINML_PIX_EVAL_CAPTURABLE_WORK_GUID);
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 
 LearningModelSession::LearningModelSession(
     winml::LearningModel const& model) try : LearningModelSession(model,
@@ -50,7 +50,7 @@ LearningModelSession::LearningModelSession(
 }
 WINML_CATCH_ALL
 
-WinML::IModel*
+_winml::IModel*
 LearningModelSession::GetOptimizedModel() {
   // Get the model proto
 
@@ -61,9 +61,9 @@ LearningModelSession::GetOptimizedModel() {
   return GetOptimizedModel(should_close_model);
 }
 
-WinML::IModel*
+_winml::IModel*
 LearningModelSession::GetOptimizedModel(bool should_close_model) {
-  com_ptr<WinML::IModel> model;
+  com_ptr<_winml::IModel> model;
 
   {
     // Lock the model detach/copy since multiple threads can access concurrently
@@ -93,7 +93,7 @@ void LearningModelSession::Initialize() {
   _winmlt::TelemetryEvent session_creation_event(
       _winmlt::EventCategory::kSessionCreation);
   // Get the optimized model proto from the learning model
-  com_ptr<WinML::IModel> model;
+  com_ptr<_winml::IModel> model;
   model.attach(GetOptimizedModel());
 
   // Create the session builder
@@ -102,7 +102,7 @@ void LearningModelSession::Initialize() {
 
   engine_factory_.copy_from(model_impl->GetEngineFactory());
 
-  com_ptr<WinML::IEngineBuilder> engine_builder;
+  com_ptr<_winml::IEngineBuilder> engine_builder;
   engine_factory_->CreateEngineBuilder(engine_builder.put());
 
   if (device_impl->IsCpuDevice() == false) {
@@ -114,7 +114,7 @@ void LearningModelSession::Initialize() {
     engine_builder->SetBatchSizeOverride(session_options_.BatchSizeOverride());
   }
 
-  com_ptr<WinML::IEngine> engine;
+  com_ptr<_winml::IEngine> engine;
   WINML_THROW_IF_FAILED(engine_builder->CreateEngine(engine.put()));
 
   // Register the custom operator registry
@@ -205,7 +205,7 @@ uint64_t LearningModelSession::Run(winrt::com_ptr<winmlp::LearningModelBinding> 
       [&](auto& name) { return name.c_str(); });
 
   auto& inputs = binding_impl->GetInputs();
-  std::vector<WinML::IValue*> inputs_raw;
+  std::vector<_winml::IValue*> inputs_raw;
   std::transform(
       std::begin(inputs),
       std::end(inputs),
@@ -221,7 +221,7 @@ uint64_t LearningModelSession::Run(winrt::com_ptr<winmlp::LearningModelBinding> 
       [&](auto& name) { return name.c_str(); });
 
   auto outputs = binding_impl->GetOutputs();
-  std::vector<WinML::IValue*> outputs_raw;
+  std::vector<_winml::IValue*> outputs_raw;
   std::transform(
       std::begin(outputs),
       std::end(outputs),
@@ -407,7 +407,7 @@ void LearningModelSession::ToggleProfiler() {
   }
 }
 
-WinML::IEngine*
+_winml::IEngine*
 LearningModelSession::GetEngine() {
   return engine_.get();
 }
@@ -417,4 +417,4 @@ void LearningModelSession::CheckClosed() {
     WINML_THROW_HR(RO_E_CLOSED);
   }
 }
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP

@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 
 class BertOnnxModelKeras(BertOnnxModelTF):
 
-    def __init(self, model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only):
-        super().__init__(model, model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only)
+    def __init(self, model, num_heads, hidden_size):
+        super().__init__(model, num_heads, hidden_size)
 
     def match_mask_path(self, add_or_sub_before_softmax):
         mask_nodes = self.match_parent_path(add_or_sub_before_softmax, ['Mul', 'Sub', 'Reshape', 'Cast'],

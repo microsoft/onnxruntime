@@ -4,7 +4,7 @@
 #include "pch.h"
 #include "LearningModelEvaluationResult.h"
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 hstring LearningModelEvaluationResult::CorrelationId() try {
   return m_correlationId;
 }
@@ -36,7 +36,7 @@ Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspec
   std::unordered_map<hstring, Windows::Foundation::IInspectable> outputs;
 
   for (auto& output : m_outputs) {
-    auto key = WinML::Strings::HStringFromUTF8(output.first);
+    auto key = _winml::Strings::HStringFromUTF8(output.first);
     auto value = output.second;
     outputs.emplace(key, value);
   }
@@ -49,7 +49,7 @@ void LearningModelEvaluationResult::Outputs(Windows::Foundation::Collections::IM
   m_outputs.clear();
 
   for (auto pair : outputs) {
-    auto key = WinML::Strings::UTF8FromHString(pair.Key());
+    auto key = _winml::Strings::UTF8FromHString(pair.Key());
     auto value = pair.Value();
     m_outputs.emplace(key, value);
   }
@@ -61,7 +61,7 @@ HRESULT LearningModelEvaluationResult::GetOutput(
     IUnknown** result) {
   *result = nullptr;
 
-  auto outputName = WinML::Strings::UTF8FromUnicode(name, cchName);
+  auto outputName = _winml::Strings::UTF8FromUnicode(name, cchName);
   auto foundIt = m_outputs.find(outputName);
 
   if (foundIt == std::end(m_outputs)) {
@@ -80,4 +80,4 @@ HRESULT LearningModelEvaluationResult::SetOutputs(
   return S_OK;
 }
 
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP

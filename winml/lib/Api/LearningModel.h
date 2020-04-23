@@ -5,13 +5,13 @@
 
 #include "LearningModel.g.h"
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 struct IEngineFactory;
 struct IModel;
 struct IModelInfo;
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 
 struct LearningModel : LearningModelT<LearningModel> {
   /* LearningModel constructors (MachineLearningContract 1). */
@@ -60,11 +60,11 @@ struct LearningModel : LearningModelT<LearningModel> {
   /* LearningModel static methods (MachineLearningContract 1). */
   static wf::IAsyncOperation<winml::LearningModel>
   LoadFromStorageFileAsync(
-      Windows::Storage::IStorageFile const model_file);
+      ws::IStorageFile const model_file);
 
   static wf::IAsyncOperation<winml::LearningModel>
   LoadFromStorageFileAsync(
-      Windows::Storage::IStorageFile const model_file,
+      ws::IStorageFile const model_file,
       winml::ILearningModelOperatorProvider const operator_provider);
 
   static wf::IAsyncOperation<winml::LearningModel>
@@ -98,25 +98,24 @@ struct LearningModel : LearningModelT<LearningModel> {
   /* Non-ABI methods */
   bool IsDisposed();
   IMLOperatorRegistry* GetOperatorRegistry();
-  WinML::IModel* DetachModel();
-  WinML::IModel* CloneModel();
-  WinML::IEngineFactory* GetEngineFactory();
+  _winml::IModel* DetachModel();
+  _winml::IModel* CloneModel();
+  _winml::IEngineFactory* GetEngineFactory();
 
  private:
-  com_ptr<WinML::IEngineFactory> engine_factory_;
-  com_ptr<WinML::IModel> model_;
-  com_ptr<WinML::IModelInfo> model_info_;
+  com_ptr<_winml::IEngineFactory> engine_factory_;
+  com_ptr<_winml::IModel> model_;
+  com_ptr<_winml::IModelInfo> model_info_;
 
   ILearningModelOperatorProvider operator_provider_;
 };
 
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
-
-namespace winrt::Windows::AI::MachineLearning::factory_implementation {
+}  // namespace WINMLP
+namespace WINML::factory_implementation {
 
 struct LearningModel : LearningModelT<LearningModel, implementation::LearningModel, ILearningModelStaticsNative> {
   STDMETHOD(Load)
   (const wchar_t* p_model_path, UINT32 model_path_size, IUnknown** pp_model_unk);
 };
 
-}  // namespace winrt::Windows::AI::MachineLearning::factory_implementation
+}  // namespace WINML::factory_implementation
