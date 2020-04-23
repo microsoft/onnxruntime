@@ -158,7 +158,7 @@ def quantize_matmul_2d_with_weight(in_node, in_graph, nf, converted_weights, qua
             Q_Xf = nf.make_node('Mul', [norm_X, np.asarray(x_qcfg.q_range()).astype(np.float32)])
             Q_Xf = nf.make_node('Add', [Q_Xf, np.asarray(0.5).astype(np.float32)])
             Q_Xf = nf.make_node('Floor', Q_Xf)
-            Q_Xf = nf.make_node('Clip', Q_Xf, {'max':x_qcfg.q_max(), 'min':x_qcfg.q_min()})
+            Q_Xf = nf.make_node('Clip', [Q_Xf, np.asarray(x_qcfg.q_min()).astype(np.float32), np.asarray(x_qcfg.q_max()).astype(np.float32)])
             Q_X = nf.make_node('Cast', Q_Xf, {'to':int({np.uint8  : onnx.TensorProto.UINT8,
                                                         np.int8   : onnx.TensorProto.INT8,
                                                         np.uint16 : onnx.TensorProto.UINT16,

@@ -230,12 +230,16 @@ class SymbolicShapeInference:
             if self.auto_merge_:
                 assert len(dims) == 2 # only allow symbol->int merge in binary ops for now
                 is_int = [is_literal(d) for d in dims]
-                assert sum(is_int) == 1
-                int_dim = is_int.index(1)
-                if self.verbose_ > 0:
-                    print('dim {} has been merged with value {}'.format(dims[1 - int_dim], dims[int_dim]))
-                self._check_merged_dims(dims, allow_broadcast=False)
-                return dims[int_dim]
+                if sum(is_int) == 1:
+                  int_dim = is_int.index(1)
+                  if self.verbose_ > 0:
+                      print('dim {} has been merged with value {}'.format(dims[1 - int_dim], dims[int_dim]))
+                  self._check_merged_dims(dims, allow_broadcast=False)
+                  return dims[int_dim]
+                else:
+                  if self.verbose_ > 0:
+                      print('dim {} has been mergd with dim {}'.format(dims[0], dims[1]))
+                  return dims[0]
             else:
                 return None
         if all([d == dims[0] for d in dims]):
