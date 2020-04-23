@@ -239,14 +239,14 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     skip_layer_norm_node.SetExecutionProviderType(ln_node.GetExecutionProviderType());
-
-    for (const auto& node : nodes_to_remove) {
-      graph_utils::RemoveNodeOutputEdges(graph, node);
-      graph.RemoveNode(node.get().Index());
-    }
-
-    modified = true;
   }
+  for (const auto& node : nodes_to_remove) {
+    graph_utils::RemoveNodeOutputEdges(graph, node);
+    graph.RemoveNode(node.get().Index());
+  }
+
+  modified = true;
+
   return Status::OK();
 }
 }  // namespace onnxruntime
