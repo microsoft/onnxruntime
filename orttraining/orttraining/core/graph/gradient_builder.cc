@@ -573,6 +573,17 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherGradient) {
               SrcNodeAttributes())};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetGatherElementsGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Shape",
+              {I(0)},
+              {IA("x_shape")}),
+      NodeDef(OpDef{"GatherElementsGrad", kMSDomain, 1},
+              {GO(0), IA("x_shape"), I(1)},
+              {GI(0)},
+              SrcNodeAttributes())};
+};
+
 IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {
   return std::vector<NodeDef>{
       NodeDef("ReluGrad",
@@ -1034,7 +1045,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetSendGradient) {
   }
 
   return std::vector<NodeDef>{
-      NodeDef("Recv",
+      NodeDef(OpDef{"Recv", kMSDomain, 1},
               {O(0), I(1)},  // {Signal, Remote}
               out_args,
               SrcNodeAttributes())};
@@ -1046,14 +1057,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetRecvGradient) {
 
   std::vector<ArgDef> in_args;
   in_args.push_back(O(0));  // Signal
-  in_args.push_back(I(0));  // Remote
+  in_args.push_back(I(1));  // Remote
 
   for (int i = 1; i < GetSrcNodeOutputSize(); ++i) {
     in_args.push_back(GO(i));  // Data
   }
 
   return std::vector<NodeDef>{
-      NodeDef("Send",
+      NodeDef(OpDef{"Send", kMSDomain, 1},
               in_args,
               {GI(0)},  // Signal
               SrcNodeAttributes())};

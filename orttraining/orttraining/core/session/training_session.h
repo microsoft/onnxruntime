@@ -132,6 +132,9 @@ class TrainingSession : public InferenceSession {
     // The optimizer configuration.
     // If not provided, no optimizer is added.
     optional<OptimizerConfiguration> optimizer_config{};
+
+    // Whether to use pipeline in training.
+    bool use_pipeline{false};
   };
 
   /**
@@ -262,6 +265,7 @@ class TrainingSession : public InferenceSession {
                                 const std::vector<std::string>& norm_nodes,
                                 const bool dump_convergence_metrics);
 
+  common::Status InsertPipelineOps();
   common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train);
 
   /** configure initial transformers for training */
