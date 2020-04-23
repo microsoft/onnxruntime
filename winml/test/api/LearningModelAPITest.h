@@ -7,6 +7,7 @@ struct LearningModelApiTestsApi
   SetupClass LearningModelAPITestsClassSetup;
   SetupTest LearningModelAPITestsGpuMethodSetup;
   VoidTest CreateModelFromFilePath;
+  VoidTest CreateModelFileNotFound;
   VoidTest CreateModelFromIStorage;
   VoidTest CreateModelFromIStorageOutsideCwd;
   VoidTest CreateModelFromIStream;
@@ -27,6 +28,7 @@ WINML_TEST_CLASS_BEGIN(LearningModelAPITests)
 WINML_TEST_CLASS_SETUP_CLASS(LearningModelAPITestsClassSetup)
 WINML_TEST_CLASS_BEGIN_TESTS
 WINML_TEST(LearningModelAPITests, CreateModelFromFilePath)
+WINML_TEST(LearningModelAPITests, CreateModelFileNotFound)
 WINML_TEST(LearningModelAPITests, CreateModelFromIStorage)
 WINML_TEST(LearningModelAPITests, CreateModelFromIStorageOutsideCwd)
 WINML_TEST(LearningModelAPITests, CreateModelFromIStream)
