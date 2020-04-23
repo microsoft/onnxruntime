@@ -293,9 +293,8 @@ struct Prov_KernelRegistry_Impl : Prov_KernelRegistry {
 
   Status Register(Prov_KernelCreateInfo&& create_info) override {
     KernelCreateInfo info_real(std::move(static_cast<Prov_KernelDef_Impl*>(create_info.kernel_def.get())->p_),
-                               [](const OpKernelInfo& info) -> OpKernel* {
+                               [](const OpKernelInfo& /*info*/) -> OpKernel* {
       PROVIDER_NOT_IMPLEMENTED // So far providers use the function API, not creating kernels this way
-      info;
       return nullptr;  /*create_info.kernel_create_func);*/ });
 
     return p_->Register(std::move(info_real));
@@ -418,10 +417,8 @@ struct ProviderHostImpl : ProviderHost {
     return std::make_unique<Prov_IExecutionProvider_Router_Impl>(outer, type);
   };
 
-  void SessionOptions_AddProviderFactory(OrtSessionOptions& options, std::shared_ptr<Prov_IExecutionProviderFactory> provider) override {
+  void SessionOptions_AddProviderFactory(OrtSessionOptions& /*options*/, std::shared_ptr<Prov_IExecutionProviderFactory> /*provider*/) override {
     // options.provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena));
-    options;
-    provider;
     PROVIDER_NOT_IMPLEMENTED
   }
 
@@ -430,7 +427,7 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
-  void HeapFree(void* p) override { delete p; }
+  void HeapFree(void* p) override { delete reinterpret_cast<uint8_t*>(p); }
 
   bool CPU_HasAVX2() override {
     return CPUIDInfo::GetCPUIDInfo().HasAVX2();

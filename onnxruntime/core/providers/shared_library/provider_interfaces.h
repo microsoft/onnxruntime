@@ -13,7 +13,7 @@
 #endif
 
 namespace ONNX_NAMESPACE {
-enum AttributeProto_AttributeType;
+enum AttributeProto_AttributeType : int;
 enum OperatorStatus;
 
 // String pointer as unique TypeProto identifier.

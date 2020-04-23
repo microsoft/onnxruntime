@@ -16,7 +16,7 @@
 
 namespace ONNX_NAMESPACE {
 
-enum AttributeProto_AttributeType {
+enum AttributeProto_AttributeType : int {
   AttributeProto_AttributeType_UNDEFINED = 0,
   AttributeProto_AttributeType_FLOAT = 1,
   AttributeProto_AttributeType_INT = 2,
