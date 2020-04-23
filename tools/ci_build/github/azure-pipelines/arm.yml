@@ -34,6 +34,7 @@ jobs:
           tar --strip=1 -zxf cmake-3.17.1-Linux-x86_64.tar.gz
           bin/cmake -Donnxruntime_GCC_STATIC_CPP_RUNTIME=ON -DCMAKE_BUILD_TYPE=Release -Dprotobuf_WITH_ZLIB=OFF -DCMAKE_TOOLCHAIN_FILE=tool-chain.cmake -Donnxruntime_ENABLE_PYTHON=ON -DPYTHON_LIBRARY=dl -DPYTHON_EXECUTABLE=/mnt/toolchains/manylinux2014_aarch64/opt/python/cp37-cp37m/bin/python3  -Donnxruntime_BUILD_SHARED_LIB=OFF  -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_DEV_MODE=ON -DONNX_CUSTOM_PROTOC_EXECUTABLE=$(Build.BinariesDirectory)/bin/protoc "-DPYTHON_INCLUDE_DIR=/mnt/toolchains/manylinux2014_aarch64/usr/include;/mnt/toolchains/manylinux2014_aarch64/opt/python/cp37-cp37m/include/python3.7m" -DNUMPY_INCLUDE_DIR=/mnt/toolchains PYTHON_LIBRARY=/mnt/toolchains/manylinux2014_aarch64/usr/lib64/librt.so $(Build.SourcesDirectory)/cmake
           make -j$(getconf _NPROCESSORS_ONLN)
+          cp $(Build.SourcesDirectory)/setup.py .
           docker run  -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -v $(Build.BinariesDirectory):/tmp/a -w /tmp/a --rm quay.io/pypa/manylinux2014_aarch64 /opt/python/cp37-cp37m/bin/python3 setup.py bdist_wheel
         workingDirectory: $(Build.BinariesDirectory)
     - task: PublishBuildArtifacts@1
