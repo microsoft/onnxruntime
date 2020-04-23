@@ -15,10 +15,6 @@
 namespace onnxruntime {
 class GraphViewer;
 class Node;
-}  // namespace onnxruntime
-
-namespace onnxruntime {
-
 struct ComputeCapability;
 class KernelRegistry;
 class KernelRegistryManager;
