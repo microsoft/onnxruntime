@@ -1609,6 +1609,39 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusionTest) {
   TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3_no_fusion.onnx", 1, 1, 0, logger_.get());
 }
 
+TEST_F(GraphTransformationTests, SkipLayerNormFusion_Input_Output_Check) {
+  auto model_uri = MODEL_FOLDER "fusion/skip_layer_norm_input_output_check.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<LayerNormFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<SkipLayerNormFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  for (Node& node : graph.Nodes()) {
+    if (node.OpType() == "SkipLayerNormalization") {
+      // check inputs
+      std::vector<NodeArg*>& input_defs = node.MutableInputDefs();
+      EXPECT_EQ(input_defs.size(), 5u) << "SkipLayerNormalization number of inputs does not equal to 5. Got:" << node.InputDefs().size();
+      EXPECT_EQ(input_defs[0]->Name(), "input.1");
+      EXPECT_EQ(input_defs[1]->Name(), "6");
+      EXPECT_EQ(input_defs[2]->Name(), "1");
+      EXPECT_EQ(input_defs[3]->Name(), "2");
+      EXPECT_EQ(input_defs[4]->Name(), "4");
+
+      // check outputs
+      std::vector<NodeArg*>& output_defs = node.MutableOutputDefs();
+      EXPECT_EQ(node.OutputDefs().size(), 1u) << "SkipLayerNormalization number of outputs does not equal to 1. Got:" << node.OutputDefs().size();
+      EXPECT_EQ(output_defs[0]->Name(), "19");
+    } else {
+      EXPECT_EQ(node.OpType(), "MatMul") << "Unexpected node: " << node.OpType() << "," << node.Name();
+    }
+  }
+}
+
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat1) {
   auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm_format1.onnx";
   std::shared_ptr<Model> p_model;
