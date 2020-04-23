@@ -121,9 +121,7 @@ def run_perf_tests(model_path, num_threads=1):
             for k in k_vals:
                 if k < num_items:
                     # adjust as necessary for the inputs your model requires
-                    x = np.random.randn(n, num_items).astype(np.float32)
-                    k_in = np.asarray([k]).astype(np.int64)
-                    inputs = {'X': x, 'K': k_in}
+                    inputs = create_test_input(n, num_items, k)
 
                     # use timeit to disable gc etc. but let each test measure total time and average time
                     # as multiple iterations may be required between each measurement
