@@ -88,8 +88,9 @@ def train_with_trainer(args, trainer, device, train_loader, epoch):
         data = data.reshape(data.shape[0], -1)
 
         learning_rate = torch.tensor([args.lr])
-        loss = trainer.train_step([data, target, learning_rate])
+        loss = trainer.train_step(data, target, learning_rate)
 
+        # Since the output corresponds to [loss_desc, probability_desc], the first value is taken as loss.
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
