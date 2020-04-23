@@ -204,7 +204,16 @@ jobs:
         New-Item -Path $merged_nuget_path -ItemType Directory
 
         $merged_nuget = [System.IO.Path]::Combine($merged_nuget_path, $x64_nuget_package_name)
-        [System.IO.Compression.ZipFile]::CreateFromDirectory($x64_unzipped_directory, $merged_nuget)
+
+        $zip_tool_directory = [System.IO.Path]::Combine($x64_unzipped_directory_root, 'ziptool')
+        New-Item -Path $zip_tool_directory -ItemType Directory
+
+        $zip_tool = [System.IO.Path]::Combine($zip_tool_directory, 'zip.exe')
+        Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile $zip_tool
+
+        pushd $x64_unzipped_directory
+        & $ziptool -r $merged_nuget .
+        popd
       workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
 
   - template: ../../templates/esrp_nuget.yml
