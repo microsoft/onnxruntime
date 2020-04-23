@@ -556,7 +556,7 @@ Configured with: ../gcc-9.2.1-20190827/configure --bindir=/usr/bin **--build=x86
 Thread model: single    
 gcc version 9.2.1 20190827 (Red Hat Cross 9.2.1-3) (GCC)     
 
-Please check the value of "--build", "--host", "--target", and if it has special args like "--with-arch=armv8-a", "--with-arch=armv6 --with-tune=arm1176jz-s --with-fpu=vfp --with-float=hard". And you must know what kind of flags your target hardware need. It may largely different. For example, if you just get normal ARMv7 compiler and use it for raspberry pi V1, it won't work, because raspberry pi only has ARMv6.
+Please check the value of "--build", "--host", "--target", and if it has special args like "--with-arch=armv8-a", "--with-arch=armv6 --with-tune=arm1176jz-s --with-fpu=vfp --with-float=hard". And you must know what kind of flags your target hardware need. It may largely differ. For example, if you just get normal ARMv7 compiler and use it for raspberry pi V1 straightly, it won't work, because raspberry pi only has ARMv6. Usually every hardware vendor will provide a toolchain for you, please check how that one was built. 
 
 A target env is identifed by four things:
 1. arch: arm
