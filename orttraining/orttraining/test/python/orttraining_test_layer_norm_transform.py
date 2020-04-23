@@ -1,8 +1,4 @@
-import sys
-import os.path
-from onnx import *
 import onnx
-import numpy as np
 
 def find_node(graph_proto, op_type):
     nodes = []
@@ -23,22 +19,19 @@ def gen_attribute(key, value):
     return attr
 
 def layer_norm_transform(model_proto):
-    #print(model_proto)
 
     graph_proto = model_proto.graph
-    #print(graph_proto)
-    #print(graph_proto.input)
 
     nodes_Div,  map_input_Div = find_node(graph_proto, 'Div')
-    #print(map_input_Div)
+
     nodes_Sqrt,  map_input_Sqrt = find_node(graph_proto, 'Sqrt')
-    #print(map_input_Sqrt)
+
     nodes_Add,  map_input_Add = find_node(graph_proto, 'Add')
-    #print(map_input_Add)
+
     nodes_ReduceMean,  map_input_ReduceMean = find_node(graph_proto, 'ReduceMean')
-    #print(map_input_ReduceMean)
+
     nodes_Pow,  map_input_Pow = find_node(graph_proto, 'Pow')
-    #print(map_input_Pow)
+
     nodes_Mul,  map_input_Mul = find_node(graph_proto, 'Mul')
 
     # find right side Sub
@@ -49,7 +42,6 @@ def layer_norm_transform(model_proto):
             if node.output[0] in map_input_Pow:
                 nodes_Sub.append(node)
                 map_input_Sub[node.input[1]] = node
-    #print(map_input_Sub)
 
     # find first ReduceMean
     first_ReduceMean = []
@@ -58,7 +50,6 @@ def layer_norm_transform(model_proto):
         if node.output[0] in map_input_Sub:
             first_ReduceMean.append(node)
             first_ReduceMean_outputs.append(node.output[0])
-    #print(first_ReduceMean)
 
     # find constant node
     nodes_Constant = []
@@ -67,7 +58,6 @@ def layer_norm_transform(model_proto):
         if node.op_type == 'Constant':
             nodes_Constant.append(node)
             map_output_Constant[node.output[0]] = node
-    #print(map_input_Sub)
 
     id = 0
     removed_nodes = []
@@ -102,14 +92,14 @@ def layer_norm_transform(model_proto):
         removed_nodes.append(node_Mul)
         removed_nodes.append(node_Add1)
         removed_nodes.append(map_output_Constant[node_pow.input[1]])
-        #print(map_output_Constant[node_Add.input[1]])
+
         removed_nodes.append(map_output_Constant[node_Add.input[1]])
         layer_norm_output.append(node_Add1.output[0])
         id = id + 1
         layer_norm_output.append('saved_mean_' + str(id))
         id = id + 1
         layer_norm_output.append('saved_inv_std_var_' + str(id))
-        layer_norm = helper.make_node("LayerNormalization",
+        layer_norm = onnx.helper.make_node("LayerNormalization",
                                         layer_norm_input,
                                         layer_norm_output,
                                         "LayerNormalization_" + str(id),

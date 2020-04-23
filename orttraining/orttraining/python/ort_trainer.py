@@ -596,8 +596,11 @@ class ORTTrainer():
         self.enable_grad_norm_clip_ = enable_grad_norm_clip
         self.frozen_weights_ = frozen_weights
         self.opset_version_ = _opset_version
-        self.loss_scale_input_name = ''
         self.state_dict_ = None
+
+        # use this special string to workaround a corner case that external loss_scale is passed into train_step as kargs.
+        # see prepare_input_and_fetches for more details.
+        self.loss_scale_input_name = 'unset_loss_scale_input_name'
 
         self._init_session()
 
@@ -722,20 +725,15 @@ class ORTTrainer():
             input = input + (internal_learning_rate,)
         if internal_loss_scale is not None:
             input = input + (internal_loss_scale,)
-
-        # loss_scale input name is needed to call train_step.
-        # loss_scale input name is determined at the time training session is created.
-        # training session creation is delay to train_step.
-        # as a result, loss_scale input name is not available when calling train_step. 
-        # to work around this problem, we have to use the following pattern matching code to get the loss_scaler argument.
-        # this problem can be solved if leter it is decided that loss scaler is always internal.
-        # note: when self.loss_fn_ is present, following pattern is invalid. 
-        extra_kargs_keys = [key for key in kwargs.keys() if key not in [desc.name_ for desc in input_desc_with_]]
-        if self.loss_fn_ is None and len(input_desc_with_) > len(input) and len(extra_kargs_keys) == 1 and internal_loss_scale is None:
-            print("In mixed precision mode with external loss scaler, loss_scale input name is not available at train_step call. Argument")
-            print(extra_kargs_keys[0])
-            print(" is used as the loss scale input.")
-            input = input + (kwargs[extra_kargs_keys[0]],)
+        elif self.use_mixed_precision:
+            # loss_scale input name is needed to call train_step, for example:
+            #   kwargs[model.loss_scale_input_name] = loss_scale
+            #   outputs = model.train_step(*args, **kwargs)
+            # However, when first time train_step is called model.loss_scale_input_name is not set.
+            # To workaround this problem, we use the special name 'unset_loss_scale_input_name' to indicate 
+            # the loss_scale.
+            if 'unset_loss_scale_input_name' in kwargs.keys():
+                input = input + (kwargs['unset_loss_scale_input_name'],)
 
         fetches = None
         if 'fetches' in kwargs:

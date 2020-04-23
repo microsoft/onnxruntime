@@ -1,7 +1,6 @@
 import torch
 
-import onnxruntime as ort
-from onnxruntime.capi.ort_trainer import ORTTrainer, LossScaler, IODescription, ModelDescription
+from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription
 
 from orttraining_test_data_loader import create_ort_test_dataloader, BatchArgsOption, split_batch
 from orttraining_test_bert_postprocess import postprocess_model

@@ -158,26 +158,31 @@ class BertModelTest(unittest.TestCase):
                 return get_lr(args, global_step)
             loss_scaler = LossScaler('loss_scale_input_name', True, up_scale_window=2000)
 
-            option_gradient_accumulation_steps = [8]
             option_fp16 = [True]
-            option_allreduce_post_accumulation = True
-            option_use_internal_get_lr_this_step = False
-            option_use_internal_loss_scaler = True
+            option_allreduce_post_accumulation = [True]
+            option_gradient_accumulation_steps = [1, 8]
+            option_use_internal_get_lr_this_step = [True, False]
+            option_use_internal_loss_scaler = [True, False]
             option_split_batch = [BatchArgsOption.ListAndDict]
 
-            for gradient_accumulation_steps in option_gradient_accumulation_steps:
-                for fp16 in option_fp16:
-                    for split_batch in option_split_batch:                
-                        loss_ort, prediction_scores_ort, seq_relationship_score_ort =\
-                            run_test(model, model_desc, self.device, args, gradient_accumulation_steps, fp16,
-                                     option_allreduce_post_accumulation,
-                                     get_lr_this_step, option_use_internal_get_lr_this_step,
-                                     loss_scaler, option_use_internal_loss_scaler,
-                                     split_batch)
+            for fp16 in option_fp16:
+                for allreduce_post_accumulation in option_allreduce_post_accumulation:
+                    for gradient_accumulation_steps in option_gradient_accumulation_steps:
+                        for use_internal_get_lr_this_step in option_use_internal_get_lr_this_step:
+                            for use_internal_loss_scaler in option_use_internal_loss_scaler:
+                                for split_batch in option_split_batch:
+                                    print("gradient_accumulation_steps:", gradient_accumulation_steps)
+                                    print("use_internal_loss_scaler:", use_internal_loss_scaler)
+                                    loss_ort, prediction_scores_ort, seq_relationship_score_ort =\
+                                        run_test(model, model_desc, self.device, args, gradient_accumulation_steps, fp16,
+                                                allreduce_post_accumulation,
+                                                get_lr_this_step, use_internal_get_lr_this_step,
+                                                loss_scaler, use_internal_loss_scaler,
+                                                split_batch)
 
-                        print(loss_ort)
-                        print(prediction_scores_ort)
-                        print(seq_relationship_score_ort)
+                                    print(loss_ort)
+                                    print(prediction_scores_ort)
+                                    print(seq_relationship_score_ort)
 
     def setUp(self):
         self.model_tester = BertModelTest.BertModelTester(self)

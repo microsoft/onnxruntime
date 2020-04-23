@@ -3,6 +3,7 @@ import random
 import torch
 from torch.utils.data import Dataset, DataLoader
 from onnxruntime.capi.ort_trainer import generate_sample
+
 global_rng = random.Random()
 
 def ids_tensor(shape, vocab_size, rng=None, name=None):
