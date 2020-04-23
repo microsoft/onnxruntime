@@ -249,6 +249,14 @@ static void CloseModelNoNewSessions() {
       });
 }
 
+static void CheckMetadataCaseInsensitive() {
+  LearningModel learningModel = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"modelWithMetaData.onnx", learningModel));
+  IMapView metadata = learningModel.Metadata();
+  WINML_EXPECT_TRUE(metadata.HasKey(L"tHiSiSaLoNgKeY"));
+  WINML_EXPECT_EQUAL(metadata.Lookup(L"tHiSiSaLoNgKeY"), L"thisisalongvalue");
+}
+
 const LearningModelApiTestsApi& getapi() {
   static constexpr LearningModelApiTestsApi api =
   {
@@ -267,7 +275,8 @@ const LearningModelApiTestsApi& getapi() {
     EnumerateOutputs,
     CloseModelCheckMetadata,
     CloseModelCheckEval,
-    CloseModelNoNewSessions
+    CloseModelNoNewSessions,
+    CheckMetadataCaseInsensitive
   };
   return api;
 }
