@@ -999,15 +999,15 @@ class PipelineBatchPlanner {
 
 // verify pipeline config can load and gradient graph can construct.
 TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
-  std::string filename_base{"testdata/test_training_model_"};
+  PathString filename_base = ORT_TSTR("testdata/test_training_model_");
 
-  auto load_gradient_graph = [](int stageIdx, std::string& filename) {
+  auto load_gradient_graph = [](int stageIdx, PathString& filename) {
     auto config = MakeBasicTrainingConfig();
 
     config.use_pipeline = true;
 
     PathString backprop_model_file;
-    ASSERT_STATUS_OK(BuildBackPropGraph(filename + ".onnx", config, backprop_model_file));
+    ASSERT_STATUS_OK(BuildBackPropGraph(filename, config, backprop_model_file));
 
     std::shared_ptr<Model> model;
     ASSERT_TRUE(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
@@ -1086,7 +1086,12 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
   };
 
   for (int i = 0; i < 3; ++i) {
-    std::string name = filename_base + std::to_string(i);
+#ifdef _WIN32
+    auto surfix = std::to_wstring(i);
+#else
+    auto surfix = std::to_string(i);
+#endif
+    PathString name = filename_base + surfix + ORT_TSTR(".onnx");
     load_gradient_graph(i, name);
   }
 }
