@@ -1,13 +1,13 @@
 jobs:
 - job: 'build'
-  pool: 'Win-GPU-2019'
+  pool: 'edch-test-win-gpu-2019'
   strategy:
     maxParallel: 2
     matrix:
       debug:
         BuildConfig: 'Debug'
-      release:
-        BuildConfig: 'RelWithDebInfo'
+      # release:
+      #   BuildConfig: 'RelWithDebInfo'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
