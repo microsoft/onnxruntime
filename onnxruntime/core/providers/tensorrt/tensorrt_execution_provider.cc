@@ -454,11 +454,11 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         std::string string_buf;
         model_proto.SerializeToString(&string_buf);
 
-		if (dump_subgraphs_) {
-		  // Dump TensorRT subgraph for debugging if enabled via ORT_TENSORRT_DUMP_SUBGRAPHS env variable.
-		  std::fstream dump("TensorrtExecutionProvider_TRT_Subgraph.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
-		  model_proto.SerializeToOstream(&dump);
-		}
+        if (dump_subgraphs_) {
+          // Dump TensorRT subgraph for debugging if enabled via ORT_TENSORRT_DUMP_SUBGRAPHS env variable.
+          std::fstream dump("TensorrtExecutionProvider_TRT_Subgraph.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+          model_proto.SerializeToOstream(&dump);
+        }
 	
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
