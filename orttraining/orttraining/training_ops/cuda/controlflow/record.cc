@@ -2,39 +2,45 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/utils.h"
-#include "common.h"
+// Include RecordEvent's utility functions shared by CPU and GPU implementations.
+#include "orttraining/training_ops/cpu/controlflow/common.h"
+// Include event mechanism shared by CPU and GPU implementations.
+#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #include "record.h"
 
 namespace onnxruntime {
-namespace contrib {
+namespace cuda {
 
 ONNX_OPERATOR_KERNEL_EX(
     RecordEvent,
     kMSDomain,
     1,
-    kCpuExecutionProvider,
+    kCudaExecutionProvider,
     KernelDefBuilder()
+        .InputMemoryType<OrtMemTypeCPUInput>(0)   /* CPU variable */
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .Alias(AliasRange<1, 0>(0, 1024)),
+        .Alias(onnxruntime::contrib::AliasRange<1, 0>(0, 1024)),
     RecordEvent);
 
-Status RecordEvent::Compute(OpKernelContext* ctx) const {
+Status RecordEvent::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* event_id_tensor = ctx->Input<Tensor>(0);
   const int64_t event_id = *event_id_tensor->template Data<int64_t>();
 
   ORT_RETURN_IF_NOT(event_id != -1, "-1 is reserved for skip wait, so cannot be used in RecordEvent");
 
-  OrtEventPool::GetInstance().SignalEvent(event_id);
+  onnxruntime::contrib::OrtEventPool::GetInstance().SignalEvent(event_id);
 
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
+    // This iteration copies (i-1)-th input to i-th output.
     const Tensor* X = ctx->Input<Tensor>(i_out + 1);
     const TensorShape& data_shape = X->Shape();
     Tensor* Y = ctx->Output(i_out, data_shape);
-    CopyCpuTensor(X, Y);
+    CopyTensor(*X, *Y);
   }
+
   return Status::OK();
 }
 
-}  // namespace contrib
+}  // namespace cuda
 }  // namespace onnxruntime

@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef NDEBUG  // disable for debug builds because some of these tests are slow
+//#ifdef NDEBUG  // disable for debug builds because some of these tests are slow
 
 #include <algorithm>
 #include <bitset>
@@ -1761,6 +1761,18 @@ void record_event(int64_t event_id) {
   test_record.Run();
 }
 
+void record_event_multiple_inputs_and_outputs(int64_t event_id) {
+  OpTester test_record("RecordEvent", 1, onnxruntime::kMSDomain);
+  test_record.AddInput<int64_t>("EventIdentifier", {}, {event_id});
+  test_record.AddInput<bool>("InputSignal", {}, {true});
+  test_record.AddInput<float>("Input1", {3}, {9.4f, 1.7f, 3.6f});
+  test_record.AddInput<float>("Input2", {1}, {1.6f});
+  test_record.AddOutput<bool>("OutputSignal", {}, {true});
+  test_record.AddOutput<float>("Output1", {3}, {9.4f, 1.7f, 3.6f});
+  test_record.AddOutput<float>("Output2", {1}, {1.6f});
+  test_record.Run();
+}
+
 void wait_event(int64_t event_id) {
   OpTester test_wait("WaitEvent", 1, onnxruntime::kMSDomain);
   test_wait.AddInput<int64_t>("EventIdentifier", {}, {event_id});
@@ -1769,10 +1781,28 @@ void wait_event(int64_t event_id) {
   test_wait.Run();
 }
 
+void wait_event_multiple_inputs_and_outputs(int64_t event_id) {
+  OpTester test_wait("WaitEvent", 1, onnxruntime::kMSDomain);
+  test_wait.AddInput<int64_t>("EventIdentifier", {}, {event_id});
+  test_wait.AddInput<bool>("InputSignal", {}, {true});
+  test_wait.AddInput<float>("Input1", {1}, {1.6f});
+  test_wait.AddInput<float>("Input2", {3}, {9.4f, 1.7f, 3.6f});
+  test_wait.AddOutput<bool>("OutputSignal", {}, {true});
+  test_wait.AddOutput<float>("output1", {1}, {1.6f});
+  test_wait.AddOutput<float>("output2", {3}, {9.4f, 1.7f, 3.6f});
+  test_wait.Run();
+}
+
 TEST(Synchronization, RecordAndWaitEvent) {
   const int64_t event_id = static_cast<int64_t>(1736);
   record_event(event_id);
   wait_event(event_id);
+}
+
+TEST(Synchronization, RecordAndWaitEventMultipleInputsAndOutputs) {
+  const int64_t event_id = static_cast<int64_t>(995);
+  record_event_multiple_inputs_and_outputs(event_id);
+  wait_event_multiple_inputs_and_outputs(event_id);
 }
 
 TEST(Synchronization, WaitAndRecordEvent) {
@@ -1803,4 +1833,4 @@ TEST(Synchronization, WaitAndRecordEventMany) {
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif  // NDEBUG
+//#endif  // NDEBUG
