@@ -1670,7 +1670,7 @@ Return true if all elements are true and false otherwise.
           "Allow inputs and outputs to be any kind of tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         if (ctx.getNumInputs() < ctx.getNumOutputs() + 1)
-          fail_shape_inference("WaitEvent must have at least (num_outputs + 1) inputs.");
+          fail_shape_inference("RecordEvent must have at least (num_outputs + 1) inputs.");
 
         // note: if num_input > num_output + 1,
         // the additional inputs (idx >= num_ouput + 1) are regarded as dependencies
