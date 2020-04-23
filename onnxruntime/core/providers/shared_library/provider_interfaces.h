@@ -9,7 +9,7 @@
 #if _MSC_VER
 #define PROVIDER_NOT_IMPLEMENTED __debugbreak();
 #else
-#define PROVIDER_NOT_IMPLEMENTED raise(SIGTRAP);
+#define PROVIDER_NOT_IMPLEMENTED abort();
 #endif
 
 namespace ONNX_NAMESPACE {
