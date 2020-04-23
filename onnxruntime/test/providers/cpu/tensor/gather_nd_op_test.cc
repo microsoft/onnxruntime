@@ -80,10 +80,16 @@ TEST(GatherNDOpTest, int64_t) {
 
 TEST(GatherNDOpTest, float) {
   RunTest<float>({2, 2}, {0.0f, 0.1f, 0.2f, 0.3f}, {2, 1}, {1LL, 0LL}, {2, 2}, {0.2f, 0.3f, 0.0f, 0.1f});
+
+  // with negative indices
+  RunTest<float>({2, 2}, {0.0f, 0.1f, 0.2f, 0.3f}, {2, 1}, {-1LL, 0LL}, {2, 2}, {0.2f, 0.3f, 0.0f, 0.1f});
 }
 
 TEST(GatherNDOpTest, double) {
   RunTest<double>({2, 2}, {0.0, 0.1, 0.2, 0.3}, {2, 1}, {1LL, 0LL}, {2, 2}, {0.2, 0.3, 0.0, 0.1});
+  
+  // with negative indices
+  RunTest<double>({2, 2}, {0.0, 0.1, 0.2, 0.3}, {2, 1}, {-1LL, 0LL}, {2, 2}, {0.2, 0.3, 0.0, 0.1});
 }
 
 TEST(GatherNDOpTest, int8_t) {

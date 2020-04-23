@@ -90,9 +90,11 @@ Status GatherNDBase::CommonComputeKernel(
 
   auto input_slice_offsets_buffer = GetScratchBuffer<int64_t>(num_slices);
 
-  // TODO error handling for invalid slice indices
+  TArray<int64_t> input_dims(input_shape.GetDims());
   // TODO reuse computed slice offsets from GatherND in GatherNDGrad
   ComputeSliceOffsetsImpl(
+      batch_dims,
+      input_dims,
       num_slices,
       num_slices_per_batch,
       input_batch_stride,
