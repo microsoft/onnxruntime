@@ -209,6 +209,11 @@ jobs:
         New-Item -Path $zip_tool_directory -ItemType Directory
 
         $zip_tool = [System.IO.Path]::Combine($zip_tool_directory, 'zip.exe')
+
+        Write-Host "ZipTool: $zip_tool"
+        Write-Host "Zip Directory: $x64_unzipped_directory"
+        Write-Host "Merged Nuget Path: $merged_nuget"
+
         Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile $zip_tool
         Start-Process -FilePath $zip_tool -ArgumentList "-r $merged_nuget ." -WorkingDirectory $x64_unzipped_directory -NoNewWindow
 
