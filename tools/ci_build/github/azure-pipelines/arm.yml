@@ -40,5 +40,5 @@ jobs:
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: wheels'
       inputs:
-        PathtoPublish: '$(Build.ArtifactStagingDirectory)/dist'
+        PathtoPublish: '$(Build.BinariesDirectory)/dist'
         ArtifactName: wheels
