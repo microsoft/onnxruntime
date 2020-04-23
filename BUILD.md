@@ -559,13 +559,12 @@ gcc version 9.2.1 20190827 (Red Hat Cross 9.2.1-3) (GCC)
 Please check the value of "--build", "--host", "--target", and if it has special args like "--with-arch=armv8-a", "--with-arch=armv6 --with-tune=arm1176jz-s --with-fpu=vfp --with-float=hard". And you must know what kind of flags your target hardware need. It may largely differ. For example, if you just get normal ARMv7 compiler and use it for raspberry pi V1 straightly, it won't work, because raspberry pi only has ARMv6. Usually every hardware vendor will provide a toolchain for you, please check how that one was built. 
 
 A target env is identifed by four things:
-1. arch: arm
-2. os: bare-metal or linux
-3. libc: gnu libc/ulibc/musl/...
-4. abi: eabi, eabihf
+1. Arch: x86_32, x86_64, armv6,armv7,arvm7l,aarch64,...
+2. OS: bare-metal or linux.
+3. Libc: gnu libc/ulibc/musl/...
+4. ABI: ARM has mutilple ABIs like eabi, eabihf...
 
-You can get all these information from the previous output, please be sure they all matchs. 
-
+You can get all these information from the previous output, please be sure they are all correct. 
 
     
 ##### 2. Get a pre-compiled protoc:    
