@@ -6,6 +6,12 @@
 
 #include "core/framework/func_api.h"
 
+#if _MSC_VER
+#define PROVIDER_NOT_IMPLEMENTED __debugbreak();
+#else
+#define PROVIDER_NOT_IMPLEMENTED raise(SIGTRAP);
+#endif
+
 namespace ONNX_NAMESPACE {
 enum AttributeProto_AttributeType;
 enum OperatorStatus;

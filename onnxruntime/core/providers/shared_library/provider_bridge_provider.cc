@@ -258,22 +258,22 @@ TensorShape TensorShape::Slice(size_t dimstart) const {
 }
 
 std::string TensorShape::ToString() const {
-  __debugbreak();
+  PROVIDER_NOT_IMPLEMENTED
   return "";
 }
 
 const TensorShape& Tensor::Shape() const noexcept {
-  __debugbreak();
+  PROVIDER_NOT_IMPLEMENTED
   return *(TensorShape*)nullptr;
 }
 
 OpKernel::OpKernel(const OpKernelInfo& info) {
-  __debugbreak();
+  PROVIDER_NOT_IMPLEMENTED
   info;
 }
 
 Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
-  __debugbreak();
+  PROVIDER_NOT_IMPLEMENTED
   index;
   shape;
   return nullptr;
@@ -302,7 +302,7 @@ std::unique_ptr<Prov_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Prov_O
 }
 
 Prov_AllocatorPtr CreateDummyArenaAllocator(Prov_AllocatorPtr resource_allocator) {
-  __debugbreak();
+  PROVIDER_NOT_IMPLEMENTED
   return nullptr;
 }
 
@@ -327,7 +327,7 @@ const Logger& LoggingManager::DefaultLogger() {
 
 Capture::Capture(const Logger& logger, logging::Severity severity, const char* category,
                  logging::DataType dataType, const CodeLocation& location) {
-  __debugbreak();
+  PROVIDER_NOT_IMPLEMENTED
   logger;
   severity;
   category;
@@ -336,7 +336,7 @@ Capture::Capture(const Logger& logger, logging::Severity severity, const char* c
 }
 
 std::ostream& Capture::Stream() noexcept {
-  __debugbreak();
+  PROVIDER_NOT_IMPLEMENTED
   return *(std::ostream*)nullptr;
 }
 
@@ -347,26 +347,26 @@ const char* Category::onnxruntime = "foo";
 namespace common {
 
 Status::Status(StatusCategory category, int code, const std::string& msg) {
-  __debugbreak();
+  PROVIDER_NOT_IMPLEMENTED
   category;
   code;
   msg;
 }
 
 Status::Status(StatusCategory category, int code, const char* msg) {
-  __debugbreak();
+  PROVIDER_NOT_IMPLEMENTED
   category;
   code;
   msg;
 }
 
 std::string Status::ToString() const {
-  __debugbreak();
+  PROVIDER_NOT_IMPLEMENTED
   return "";
 }
 
 const std::string& Status::ErrorMessage() const noexcept {
-  __debugbreak();
+  PROVIDER_NOT_IMPLEMENTED
   static std::string dummy;
   return dummy;
 }
@@ -374,7 +374,7 @@ const std::string& Status::ErrorMessage() const noexcept {
 }  // namespace common
 
 std::vector<std::string> GetStackTrace() {
-  __debugbreak();
+  PROVIDER_NOT_IMPLEMENTED
   return {};
 }
 

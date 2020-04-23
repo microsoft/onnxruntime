@@ -34,7 +34,7 @@ struct Prov_IAllocator_Impl : Prov_IAllocator {
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
   const Prov_OrtMemoryInfo& Info() const override {
-    __debugbreak();
+    PROVIDER_NOT_IMPLEMENTED
     return *(Prov_OrtMemoryInfo*)nullptr;
     //return p_->Info();
   }
@@ -48,7 +48,7 @@ struct Prov_IDeviceAllocator_Impl : Prov_IDeviceAllocator {
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
   const Prov_OrtMemoryInfo& Info() const override {
-    __debugbreak();
+    PROVIDER_NOT_IMPLEMENTED
     return *(Prov_OrtMemoryInfo*)nullptr;
     //return p_->Info();
   }
@@ -294,7 +294,8 @@ struct Prov_KernelRegistry_Impl : Prov_KernelRegistry {
   Status Register(Prov_KernelCreateInfo&& create_info) override {
     KernelCreateInfo info_real(std::move(static_cast<Prov_KernelDef_Impl*>(create_info.kernel_def.get())->p_),
                                [](const OpKernelInfo& info) -> OpKernel* {
-      __debugbreak(); info;
+      PROVIDER_NOT_IMPLEMENTED // So far providers use the function API, not creating kernels this way
+      info;
       return nullptr;  /*create_info.kernel_create_func);*/ });
 
     return p_->Register(std::move(info_real));
@@ -421,7 +422,7 @@ struct ProviderHostImpl : ProviderHost {
     // options.provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena));
     options;
     provider;
-    __debugbreak();
+    PROVIDER_NOT_IMPLEMENTED
   }
 
   logging::Logger* LoggingManager_GetDefaultLogger() override {

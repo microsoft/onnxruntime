@@ -152,13 +152,13 @@ class Tensor final {
 
   template <typename T>
   T* MutableData() {
-    __debugbreak();
+    PROVIDER_NOT_IMPLEMENTED
     return nullptr;
   }
 
   template <typename T>
   const T* Data() const {
-    __debugbreak();
+    PROVIDER_NOT_IMPLEMENTED
     return nullptr;
   }
 };
@@ -167,7 +167,7 @@ class OpKernelInfo {
  public:
   template <typename T>
   Status GetAttr(const std::string& name, T* value) const {
-    __debugbreak();
+    PROVIDER_NOT_IMPLEMENTED
     name;
     value;
     return Status::OK();
@@ -183,7 +183,7 @@ class OpKernelContext {
  public:
   template <typename T>
   const T* Input(int index) const {
-    __debugbreak();
+    PROVIDER_NOT_IMPLEMENTED
     index;
     return nullptr;
   }
