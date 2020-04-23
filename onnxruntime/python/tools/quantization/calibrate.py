@@ -230,6 +230,9 @@ def main():
     parser.add_argument('--augmented_model_path', type=str, default = 'augmented_model.onnx',
                         help='save augmented model to this file for verification purpose')
     parser.add_argument('--output_model_path', type=str, default='calibrated_quantized_model.onnx')
+    parser.add_argument('--height', type=int, default=0, help='specify image height if can not get from model')
+    parser.add_argument('--width', type=int, default=0, help='specify image width if can not get from model')
+    parser.add_argument('--force_opset', type=int, default=0, help='0 to not force onnx op set version for new model')
     parser.add_argument('--dataset_size',
                         type=int,
                         default=0,
@@ -259,6 +262,10 @@ def main():
     # Conducting inference
     session = onnxruntime.InferenceSession(args.augmented_model_path, None)
     (samples, channels, height, width) = session.get_inputs()[0].shape
+    if (args.height > 0):
+      height = args.height
+    if (args.width > 0):
+      width = args.width
 
     # Generating inputs for quantization
     if args.data_preprocess == "None":
@@ -271,7 +278,8 @@ def main():
     calibrated_quantized_model = quantize(onnx.load(model_path),
                                           quantization_mode=QuantizationMode.QLinearOps,
                                           force_fusions=args.force_fusions,
-                                          quantization_params=quantization_params_dict)
+                                          quantization_params=quantization_params_dict,
+                                          force_opset=args.force_opset)
     onnx.save(calibrated_quantized_model, output_model_path)
 
     print("Calibrated, quantized model saved.")

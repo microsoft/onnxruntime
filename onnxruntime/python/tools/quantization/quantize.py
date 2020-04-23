@@ -300,6 +300,7 @@ class ONNXQuantizer:
         self.quantized_value_map = {}
 
     def quantize_model(self):
+        global onnx_op_set_version
         # Create a new topologically sorted list for quantizing a model
         new_list = []
         for node in self.model.graph.node:
@@ -317,11 +318,15 @@ class ONNXQuantizer:
                 elif node.op_type == 'MatMul':
                     new_list += self._quantize_matmul(node, new_list)
                 elif node.op_type == 'Gather' and self._is_valid_quantize_value(node.input[0]):
-                    new_list += self._quantize_gather_ops(node, new_list)
+                    new_list += self._quantize_gather_like_ops(node, new_list)
+                elif (node.op_type == 'MaxPool' and onnx_op_set_version == 12) and self._is_valid_quantize_value(node.input[0]):
+                    new_list += self._quantize_gather_like_ops(node, new_list)
                 elif node.op_type == 'Add' or node.op_type == 'Mul':
                     new_list += self._quantize_binary_math_ops(node, new_list)
                 elif node.op_type == 'Relu' or node.op_type == 'Clip':
                     new_list += self._handle_activation_ops(node, new_list)
+                elif node.op_type == 'LeakyRelu':
+                    new_list += self._quantize_activation_ops(node, new_list)
                 else:
                     new_list += self._handle_other_ops(node, new_list)
 
@@ -1075,8 +1080,59 @@ class ONNXQuantizer:
 
         return nodes
 
-    def _quantize_gather_ops(self, node, new_nodes_list):
-        assert (node.op_type == "Gather")
+    def _quantize_activation_ops(self, node, new_nodes_list):
+        '''
+        Used when self.mode is QuantizationMode.QLinearOps.
+        Quantize the given activation op, like LeakyRelu, etc to QLinearLeakyRelu...
+
+            parameter node: Current activation node
+            parameter new_nodes_list: List of new nodes created before processing current node
+            return: List of nodes in topological order that represents quantized activation node
+        '''
+        if self.mode is not QuantizationMode.QLinearOps:
+            return self._handle_other_ops(node, new_nodes_list)
+
+        data_found, output_scale_name, output_zp_name, _, _ = \
+            self._get_quantization_params(node.output[0])
+        if (not data_found): # only try to quantize when given quantization parameters for it
+            return self._handle_other_ops(node, new_nodes_list)
+
+        (quantized_input_names, zero_point_names, scale_names, nodes) = \
+            self._quantize_inputs(node, [0], new_nodes_list)
+
+        qlinear_activation_output = node.output[0] + "_quantized"
+        qlinear_activation_name = ""
+        if node.name != "":
+            qlinear_activation_name = node.name + "_quant"
+        kwargs = {}
+        for attribute in node.attribute:
+            kwargs.update(_attribute_to_kwarg(attribute))
+        kwargs["domain"]=ms_domain
+
+        qlinear_activation_inputs = []
+        # Input 0
+        qlinear_activation_inputs.append(quantized_input_names[0])
+        qlinear_activation_inputs.append(scale_names[0])
+        qlinear_activation_inputs.append(zero_point_names[0])
+
+        # Output
+        qlinear_activation_inputs.append(output_scale_name)
+        qlinear_activation_inputs.append(output_zp_name)
+
+        qlinear_activation_node = onnx.helper.make_node(
+            "QLinear" + node.op_type, qlinear_activation_inputs,
+            [qlinear_activation_output], qlinear_activation_name, **kwargs)
+        nodes.append(qlinear_activation_node)
+
+        # Create an entry for this quantized value
+        q_output = QuantizedValue(node.output[0], qlinear_activation_output, output_scale_name,
+                                  output_zp_name, QuantizedValueType.Input)
+        self.quantized_value_map[node.output[0]] = q_output
+
+        return nodes
+
+    def _quantize_gather_like_ops(self, node, new_nodes_list):
+        #assert (node.op_type == "Gather")
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
             self._quantize_inputs(node, [0], new_nodes_list)
 
@@ -1389,7 +1445,8 @@ def quantize(model,
              symmetric_weight=False,
              quantization_params=None,
              nodes_to_quantize=None,
-             nodes_to_exclude=None):
+             nodes_to_exclude=None,
+             force_opset=0):
     '''
         Given an onnx model, create a quantized onnx model and save it into a file
 
@@ -1442,6 +1499,7 @@ def quantize(model,
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
     '''
+    global onnx_op_set_version
     if nbits == 8:
         input_qType = onnx_proto.TensorProto.INT8 if symmetric_activation else onnx_proto.TensorProto.UINT8
         weight_qType = onnx_proto.TensorProto.INT8 if symmetric_weight else onnx_proto.TensorProto.UINT8
@@ -1449,6 +1507,8 @@ def quantize(model,
         copy_model = onnx_proto.ModelProto()
         copy_model.CopyFrom(model)
         fuse_dynamic_quant = check_opset_version(copy_model, force_fusions)
+        if force_opset > 0 and force_opset > onnx_op_set_version:
+          onnx_op_set_version = force_opset
         quantizer = ONNXQuantizer(copy_model, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
                                   quantization_params, nodes_to_quantize, nodes_to_exclude)
         quantizer.quantize_model()
