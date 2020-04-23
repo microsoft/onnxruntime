@@ -9,16 +9,17 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_GRADIENT_KERNEL_TYPED(T, U)                      \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      LayerNormalizationGrad,                                     \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T##_##U,                                                    \
-      kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
-          .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()), \
+#define REGISTER_GRADIENT_KERNEL_TYPED(T, U)                     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
+      LayerNormalizationGrad,                                    \
+      kMSDomain,                                                 \
+      1,                                                         \
+      T##_##U,                                                   \
+      kCudaExecutionProvider,                                    \
+      KernelDefBuilder()                                         \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
+          .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()) \
+          .MayInplace(0, 0),                                     \
       LayerNormGrad<T, U>);
 REGISTER_GRADIENT_KERNEL_TYPED(float, float)
 REGISTER_GRADIENT_KERNEL_TYPED(double, float)

@@ -85,14 +85,16 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   return Status::OK();
 }
 
-#define BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(x, ver, T)                     \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      x,                                                                        \
-      kOnnxDomain,                                                              \
-      ver,                                                                      \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(x, ver, T)      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
+      x,                                                         \
+      kOnnxDomain,                                               \
+      ver,                                                       \
+      T,                                                         \
+      kCudaExecutionProvider,                                    \
+      KernelDefBuilder()                                         \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
+          .MayInplace({{0, 0}, {1, 0}}),                         \
       x<T>);
 
 #define BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(x, ver, T)                                                                     \
