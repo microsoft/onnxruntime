@@ -55,13 +55,13 @@ jobs:
     DoEsrp: ${{ parameters.DoEsrp }}
     ArtifactName: 'drop-nuget-arm64'
     NuPackScript: |
-     mkdir $(Build.BinariesDirectory)\arm64\runtimes\win-arm\native
+     mkdir $(Build.BinariesDirectory)\arm64\runtimes\win10-arm\native
      cd $(Build.BinariesDirectory)\arm64
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime.pdb $(Build.BinariesDirectory)\arm64\runtimes\win-arm\native
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime.lib $(Build.BinariesDirectory)\arm64\runtimes\win-arm\native
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime.dll $(Build.BinariesDirectory)\arm64\runtimes\win-arm\native
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime.pdb $(Build.BinariesDirectory)\arm64\runtimes\win10-arm\native
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime.lib $(Build.BinariesDirectory)\arm64\runtimes\win10-arm\native
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime.dll $(Build.BinariesDirectory)\arm64\runtimes\win10-arm\native
      powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
-     zip -r win-arm.zip runtimes
+     zip -r win10-arm.zip runtimes
      copy *.zip $(Build.ArtifactStagingDirectory)
 
 - job: 'Linux_CI_Dev'
@@ -184,20 +184,20 @@ jobs:
              unzip %%~ni.zip -d %%~ni
              del /Q %%~ni.zip
              unzip win-x86.zip -d win-x86
-             unzip win-arm.zip -d win-arm
+             unzip win10-arm.zip -d win10-arm
              unzip linux-x64.zip -d linux-x64
              mkdir %%~ni\runtimes\win-x86
-             mkdir %%~ni\runtimes\win-arm
+             mkdir %%~ni\runtimes\win10-arm
              mkdir %%~ni\runtimes\linux-x64
              mkdir %%~ni\runtimes\win-x86\native
-             mkdir %%~ni\runtimes\win-arm\native
+             mkdir %%~ni\runtimes\win10-arm\native
              mkdir %%~ni\runtimes\linux-x64\native
              move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
              move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
              move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
-             move win-arm\runtimes\win-arm\native\onnxruntime.lib %%~ni\runtimes\win-arm\native\onnxruntime.lib
-             move win-arm\runtimes\win-arm\native\onnxruntime.dll %%~ni\runtimes\win-arm\native\onnxruntime.dll
-             move win-arm\runtimes\win-arm\native\onnxruntime.pdb %%~ni\runtimes\win-arm\native\onnxruntime.pdb
+             move win-arm\runtimes\win10-arm\native\onnxruntime.lib %%~ni\runtimes\win10-arm\native\onnxruntime.lib
+             move win-arm\runtimes\win10-arm\native\onnxruntime.dll %%~ni\runtimes\win10-arm\native\onnxruntime.dll
+             move win-arm\runtimes\win10-arm\native\onnxruntime.pdb %%~ni\runtimes\win10-arm\native\onnxruntime.pdb
              move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
              unzip osx-x64.zip -d osx-x64
              dir osx-x64 /s
@@ -225,7 +225,7 @@ jobs:
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)'
       NugetPackage: 'Microsoft.ML.OnnxRuntime.*nupkg'
-      PlatformsSupported: 'win-x64,win-x86,win-arm,linux-x64,osx-x64'
+      PlatformsSupported: 'win-x64,win-x86,win10-arm,linux-x64,osx-x64'
       VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
   - task: PublishPipelineArtifact@0
