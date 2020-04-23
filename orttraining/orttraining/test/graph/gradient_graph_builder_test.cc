@@ -1001,13 +1001,13 @@ class PipelineBatchPlanner {
 TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
   PathString filename_base = ORT_TSTR("testdata/test_training_model_");
 
-  auto load_gradient_graph = [](int stageIdx, PathString& filename) {
+  auto load_gradient_graph = [](int stageIdx, PathString& input_file, PathString& output_file) {
     auto config = MakeBasicTrainingConfig();
 
     config.use_pipeline = true;
 
     PathString backprop_model_file;
-    ASSERT_STATUS_OK(BuildBackPropGraph(filename, config, backprop_model_file));
+    ASSERT_STATUS_OK(BuildBackPropGraph(input_file, config, backprop_model_file));
 
     std::shared_ptr<Model> model;
     ASSERT_TRUE(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
@@ -1080,7 +1080,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
     }
 
     auto mp = model->ToProto();
-    std::ofstream ofs(filename + "_back.onnx", std::ofstream::binary);
+    std::ofstream ofs(output_file, std::ofstream::binary);
     mp.SerializeToOstream(&ofs);
     ofs.close();
   };
@@ -1091,8 +1091,9 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
 #else
     auto surfix = std::to_string(i);
 #endif
-    PathString name = filename_base + surfix + ORT_TSTR(".onnx");
-    load_gradient_graph(i, name);
+    PathString input_file = filename_base + surfix + ORT_TSTR(".onnx");
+    PathString output_file = filename_base + surfix + ORT_TSTR("_back.onnx");
+    load_gradient_graph(i, input_file, output_file);
   }
 }
 
