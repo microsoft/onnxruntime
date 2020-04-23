@@ -1186,7 +1186,7 @@ def build_python_wheel(
         if is_windows():
             cwd = os.path.join(cwd, config)
         args = [sys.executable, os.path.join(source_dir, 'setup.py'),
-                'bdist_wheel', '-p', 'macosx_10_9_x86_64']
+                'bdist_wheel', '-p', 'macosx_10_6_x86_64']
         if nightly_build:
             args.append('--nightly_build')
         if use_tensorrt:
