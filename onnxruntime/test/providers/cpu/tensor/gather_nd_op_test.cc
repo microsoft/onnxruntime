@@ -136,7 +136,7 @@ TEST(GatherNDOpTest, GatherND_slice_float_batch_dims_0) {
   test.Run();
 }
 
-TEST(GatherNDOpTest, GatherND_slice_float__batch_dims_1) {
+TEST(GatherNDOpTest, GatherND_slice_float_batch_dims_1) {
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddAttribute<int64_t>("batch_dims", 1);
   test.AddInput<float>("data", {2, 3, 4}, ValueRange(24, 1.0f));

@@ -83,7 +83,7 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
                                    "Mask_LM_Positions_Unsqueezed"));
     TypeProto* gathered_prediction_type_proto = GetGatheredPredictionTypeProto(prediction_arg,
                                                                                graph_defs);
-    new_nodes.emplace_back(NodeDef("GatherND",
+    new_nodes.emplace_back(NodeDef(OpDef{"GatherND", kOnnxDomain, 12},
                                    {ArgDef(prediction_masked_lm), ArgDef("masked_lm_positions_unsqueezed")},
                                    {ArgDef("gathered_prediction", gathered_prediction_type_proto)},
                                    {ONNX_NAMESPACE::MakeAttribute("axis", static_cast<int64_t>(1))},
