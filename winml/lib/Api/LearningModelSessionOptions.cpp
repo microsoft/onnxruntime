@@ -4,7 +4,7 @@
 #include "pch.h"
 #include "LearningModelSessionOptions.h"
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 LearningModelSessionOptions::LearningModelSessionOptions(const LearningModelSessionOptions& options) : batch_size_override_(options.batch_size_override_),
                                                                                                        close_model_on_session_creation_(options.close_model_on_session_creation_) {}
 
@@ -23,4 +23,4 @@ bool LearningModelSessionOptions::CloseModelOnSessionCreation() {
 void LearningModelSessionOptions::CloseModelOnSessionCreation(bool value) {
   close_model_on_session_creation_ = value;
 }
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP

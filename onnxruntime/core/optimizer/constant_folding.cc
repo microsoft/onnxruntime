@@ -82,8 +82,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
             // constant folding does not support executing a node that includes subgraphs (control flow operators,
             // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
             // by the Recurse call above
-            node->ContainsSubgraph() ||
-            !graph_utils::AllNodeInputsAreConstant(graph, *node, constant_inputs, excluded_initializers_)) {
+            node->ContainsSubgraph() || !graph_utils::AllNodeInputsAreConstant(graph, *node, constant_inputs, excluded_initializers_)) {
           continue;
         }
 
@@ -108,8 +107,11 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
 
         auto* kernel = info.GetKernel(node->Index());
-        OpKernelContext op_kernel_context(&frame, kernel, nullptr, onnxruntime::logging::LoggingManager::DefaultLogger());
+        if (kernel == nullptr) {
+          continue;
+        }
 
+        OpKernelContext op_kernel_context(&frame, kernel, nullptr, logger);
         ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
 
         std::vector<OrtValue> fetches;
@@ -136,8 +138,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
             // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
             auto* constant_arg_out = node->MutableOutputDefs()[fetch_idx];
             const Tensor& out_tensor = ort_value.Get<Tensor>();
-            ONNX_NAMESPACE::TensorProto out_tensorproto =
-                utils::TensorToTensorProto(out_tensor, constant_arg_out->Name());
+            ONNX_NAMESPACE::TensorProto out_tensorproto = utils::TensorToTensorProto(out_tensor, constant_arg_out->Name());
 
             ONNX_NAMESPACE::TensorShapeProto result_shape;
             for (auto& dim : out_tensor.Shape().GetDims()) {

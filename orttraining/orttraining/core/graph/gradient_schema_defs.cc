@@ -135,7 +135,8 @@ static void propagateRecvOutputTensorElemTypes(
 // For Brevity documentation was not copied
 OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
   op_schema
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Attr(
           "alpha",
           "Coefficient of previous gradient in running average.",
@@ -205,7 +206,33 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
       .TypeConstraint(
           "TInt64",
           {"tensor(int64)"},
-          "Constrain update count to 64-bit integer");
+          "Constrain update count to 64-bit integer")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Handle update count, the first output.
+        const size_t step_input_index = 4;
+        const size_t step_output_index = 0;
+        auto input_type = ctx.getInputType(step_input_index);
+        if (input_type != nullptr) {
+            propagateElemTypeFromInputToOutput(ctx, step_input_index, step_output_index);
+            if (hasInputShape(ctx, step_input_index)){
+                propagateShapeFromInputToOutput(ctx, step_input_index, step_output_index);
+            }
+        }
+
+        // Handle other tensors including new weight, new gradient (update direction), 
+        // new momentums.
+        for (size_t i = 0; i < ctx.getNumInputs() - 5; ++i) {
+            const size_t input_index = 5 + i; // The first 5 inputs don't affect output shape.
+            const size_t output_index = 1 + i; // The first output has been processed above.
+            input_type = ctx.getInputType(input_index);
+            if (input_type != nullptr) {
+                propagateElemTypeFromInputToOutput(ctx, input_index, output_index);
+                if (hasInputShape(ctx, input_index)) {
+                    propagateShapeFromInputToOutput(ctx, input_index, output_index);
+                }
+            }
+        }
+      });
 
   op_schema
       .Input(
@@ -421,7 +448,8 @@ void RegisterGradientSchemas() {
   //TODO: Move this to the right location. Its only here for quick experimentation.
   //TODO: Use the mutli weight / grad version.
   ONNX_CONTRIB_OPERATOR_SCHEMA(SGDOptimizer)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "ETA", "Learning Rate", "L")
       .Input(1, "W", "Original weight(s)", "T")
       .Input(2, "G", "Gradient of Weight(s)", "T")
@@ -439,7 +467,8 @@ void RegisterGradientSchemas() {
   // TODO: This is copied from onnx schemas. When the change is in and we update this can be removed.
   // For Brevity documentation was not copied
   ONNX_CONTRIB_OPERATOR_SCHEMA(AdamOptimizer)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "R", "The initial learning rate.", "T1")
       .Input(1, "T", "The update count of \"X\". It should be a scalar.", "T2")
       .Input(

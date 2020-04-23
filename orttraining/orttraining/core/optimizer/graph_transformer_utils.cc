@@ -12,6 +12,8 @@
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/expand_elimination.h"
+#include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
@@ -53,6 +55,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
                                                               compatible_eps);
       rule_transformer->Register(make_unique<InsertMaxPoolOutput>());
       rule_transformer->Register(make_unique<AdjustBatchNormOutputs>());
+      rule_transformer->Register(make_unique<ExpandElimination>());
+      rule_transformer->Register(make_unique<CastElimination>());
       rule_transformer->Register(make_unique<InsertSoftmaxCrossEntropyLossOutput>());
 
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(compatible_eps));
@@ -84,6 +88,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
 
   // if the custom list to enable transformers\rules is empty then return the default generated transformers and rules
   // otherwise generate a filtered list based on the provided custom list.
+  // Note that some rule-based transformers are depending on some custom transformers,
+  // e.g., ExpandElimination and CastElimination are depending on ConstantFolding to fold the constant first,
+  // so we should always push the rule-based transformer to the end, this is expecially important when transformation step is 1.
   if (transformers_and_rules_to_enable.empty()) {
     if (rule_transformer != nullptr) {
       transformers.emplace_back(std::move(rule_transformer));
@@ -91,10 +98,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
     return transformers;
   }
   std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
-  // If the rule-based transformer is not empty, it should be included in the custom transformer list below.
-  if (rule_transformer != nullptr) {
-    filtered_list.emplace_back(std::move(rule_transformer));
-  }
   // pick custom transformers enabled for this session
   for (const auto& t_name : transformers_and_rules_to_enable) {
     std::for_each(transformers.begin(), transformers.end(),
@@ -103,6 +106,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
                       filtered_list.push_back(std::move(item));
                     }
                   });
+  }
+  // If the rule-based transformer is not empty, it should be included in the custom transformer list below.
+  if (rule_transformer != nullptr) {
+    filtered_list.emplace_back(std::move(rule_transformer));
   }
   return filtered_list;
 }

@@ -10,7 +10,7 @@ namespace training {
 
 class AdamOptimizerBuilder final : public OptimizerBuilder {
  public:
-  AdamOptimizerBuilder() : OptimizerBuilder("AdamOptimizer",
+  AdamOptimizerBuilder() : OptimizerBuilder(OpDef{"AdamOptimizer", kMSDomain, 1},
                                             {"alpha",
                                              "beta",
                                              "lambda",

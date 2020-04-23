@@ -1,8 +1,6 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/onnx_protobuf.h"
-
 #include "orttraining/core/session/training_session.h"
 
 #include "core/framework/data_transfer_utils.h"

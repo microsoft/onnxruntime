@@ -41,8 +41,8 @@ ONNX_NAMESPACE::TensorProto CreateTensorProto(
 
 class OptimizerBuilder {
  public:
-  OptimizerBuilder(const std::string& name, const std::vector<std::string>& attribute_names = {})
-      : name_(name),
+  OptimizerBuilder(const OpDef& op_def, const std::vector<std::string>& attribute_names = {})
+      : op_def_(op_def),
         attr_names_(attribute_names) {}
 
   virtual ~OptimizerBuilder() {}
@@ -123,11 +123,11 @@ class OptimizerBuilder {
       std::vector<ArgDef>& output_gradient_argdefs,
       const bool enable_grad_clipping) const = 0;
 
-  const std::string& OpType() const { return name_; }
+  const OpDef& OpDefinition() const { return op_def_; }
 
  protected:
   const std::string OptimizerNodeName(const std::string& weight_name) const {
-    return name_ + "_" + weight_name;
+    return op_def_.type + "_" + weight_name;
   }
 
   std::vector<ONNX_NAMESPACE::AttributeProto> BuildAttributeProto(const OptimizerNodeConfig& opt_config) const {
@@ -150,7 +150,7 @@ class OptimizerBuilder {
   }
 
  private:
-  std::string name_;
+  OpDef op_def_;
   std::vector<std::string> attr_names_;
 };
 
