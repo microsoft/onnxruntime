@@ -7,7 +7,7 @@ jobs:
       inputs:
         script: |
           sudo apt-get install -y qemu-user-static
-          azcopy cp https://onnxruntimetestdata.blob.core.windows.net/models/toolchains.tar.xz $(Build.BinariesDirectory)
+          azcopy cp https://onnxruntimetestdata.blob.core.windows.net/models/toolchains.tar.xz $(Build.BinariesDirectory)/toolchains.tar.xz
           mkdir /mnt/toolchains
           tar -Jxf $(Build.BinariesDirectory)/toolchains.tar.xz -C /mnt/toolchains
           sudo find /mnt/toolchains/manylinux2014_aarch64 -type l -exec realpath  {} \; |grep 'No such file'
