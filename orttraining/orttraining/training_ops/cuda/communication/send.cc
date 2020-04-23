@@ -62,6 +62,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
   ORT_ENFORCE(world_rank != dst, "Sending data to rank ", dst, " on the rank ", world_rank, ".");
 
+  /*
   if (world_rank == 1) {
     std::cout << "(send.cc) pid: " << getpid() << ", tid: " << std::this_thread::get_id() << std::endl;	
     bool gdb_flag = true;
@@ -69,6 +70,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
       gdb_flag = gdb_flag;
     }
   }
+  */
 
   // Compute tensor shapes and sizes
   size_t prefix_tensor_shape_size_sum = 0;

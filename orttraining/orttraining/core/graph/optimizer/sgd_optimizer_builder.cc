@@ -66,7 +66,7 @@ Status SGDOptimizerBuilder::Build(
         output_args.push_back(output_gradient_argdef);  // g_new
       }
 
-      graph_defs.AddNodeDefs({NodeDef(OpType(),
+      graph_defs.AddNodeDefs({NodeDef(OpDefinition(),
                                       input_args,
                                       output_args,
                                       NodeAttributes(),

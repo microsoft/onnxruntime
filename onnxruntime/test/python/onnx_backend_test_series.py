@@ -84,78 +84,53 @@ def create_backend_test(testname=None):
         backend_test.include(testname + '.*')
     else:
         # Tests that are failing temporarily and should be fixed
-        current_failing_tests = [ # '^test_cast_STRING_to_FLOAT_cpu',  # old test data that is bad on Linux CI builds
-            '^test_argmax*', # NOT_IMPLEMENTED : Could not find an implementation for the node ArgMax(12)
-            '^test_adagrad*', # NOT_IMPLEMENTED : Could not find an implementation for the node Adagrad(1)
-            '^test_argmin*', # NOT_IMPLEMENTED : Could not find an implementation for the node ArgMin(12)
-            '^test_batchnorm_epsilon_training_mode*', # Training_mode is not a scalar boolean
-            '^test_batchnorm_example_training_mode*', # Training_mode is not a scalar boolean
-            '^test_celu*', #  Unrecognized attribute: alpha for operator Constant
-            '^test_clip_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Clip(12)
-            '^test_clip_default_inbounds_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Clip(12)
-            '^test_clip_default_int8_inbounds_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Clip(12)
-            '^test_clip_default_int8_max_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Clip(12)
-            '^test_clip_default_int8_min_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Clip(12)
-            '^test_clip_default_max_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Clip(12)
-            '^test_clip_default_min_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Clip(12)
-            '^test_clip_example_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Clip(12)
-            '^test_clip_inbounds_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Clip(12)
-            '^test_clip_outbounds_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Clip(12)
-            '^test_clip_splitbounds_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Clip(12)
-            '^test_dropout*', # Could not find an implementation for the node Dropset(12)..so weird its there!
-            '^test_dropout_default*', # Result differs
-            '^test_einsum*', # NOT_IMPLEMENTED : Could not find an implementation for the node Einsum(12)
-            '^test_gathernd_example_int32_batch_dim1_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node GatherND(12)
-            '^test_gradient_of_add_cpu*',
-            '^test_gradient_of_add_and_mul*',
-            '^test_inverse_batched_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Inverse(12)
-            '^test_inverse_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Inverse(12)
-            '^test_max_float16_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Max(12)
-            '^test_max_float32_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Max(12)
-            '^test_max_float64_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Max(12)
-            '^test_max_int16_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Max(12)
-            '^test_max_int32_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Max(12)
-            '^test_max_int64_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Max(12)
-            '^test_max_int8_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Max(12)
-            '^test_max_uint16_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Max(12)
-            '^test_max_uint32_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Max(12)
-            '^test_max_uint64_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Max(12)
-            '^test_max_uint8_cpu*', # NOT_IMPLEMENTED : Could not find an implementation for the node Max(12)
-            '^test_maxpool_2d_uint8*', # result differs
-            '^test_maxunpool_export_with_output_shape_cpu', # Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398'
-            '^test_mean_square_distance_mean_3d_cpu*',
-            '^test_mean_square_distance_mean_3d_expanded*',
-            '^test_mean_square_distance_mean_4d_cpu*',
-            '^test_mean_square_distance_mean_4d_expanded*',
-            '^test_mean_square_distance_mean_cpu*',
-            '^test_mean_square_distance_mean_expanded*',
-            '^test_mean_square_distance_none_cpu*',
-            '^test_mean_square_distance_none_expanded*',
-            '^test_mean_square_distance_none_weights*',
-            '^test_mean_square_distance_none_weights_expanded*',
-            '^test_mean_square_distance_sum_cpu*',
-            '^test_mean_square_distance_sum_expanded*',
-            '^test_min_float16_cpu*',
-            '^test_min_float32_cpu*',
-            '^test_min_float64_cpu*',
-            '^test_min_int16_cpu*',
-            '^test_min_int32_cpu*',
-            '^test_min_int64_cpu*',
-            '^test_min_int8_cpu*',
-            '^test_min_uint16_cpu*',
-            '^test_min_uint32_cpu*',
-            '^test_min_uint64_cpu*',
-            '^test_min_uint8_cpu*',
+        current_failing_tests = [
+            '^test_adagrad_cpu',
+            '^test_adagrad_multiple_cpu',
+            '^test_batchnorm_epsilon_old_cpu',
+            '^test_batchnorm_epsilon_training_mode_cpu',
+            '^test_batchnorm_example_old_cpu',
+            '^test_batchnorm_example_training_mode_cpu',
+            '^test_celu_cpu',
+            '^test_dropout_default_cpu',
+            '^test_dropout_random_cpu',
+            '^test_einsum_batch_diagonal_cpu',
+            '^test_einsum_batch_matmul_cpu',
+            '^test_einsum_inner_prod_cpu',
+            '^test_einsum_sum_cpu',
+            '^test_einsum_transpose_cpu',
+            '^test_gathernd_example_int32_batch_dim1_cpu',
+            '^test_inverse_batched_cpu',
+            '^test_inverse_cpu',
+            '^test_max_int16_cpu',
+            '^test_max_int8_cpu',
+            '^test_max_uint16_cpu',
+            '^test_max_uint8_cpu',
+            '^test_mean_square_distance_mean_3d_cpu',
+            '^test_mean_square_distance_mean_3d_expanded_cpu',
+            '^test_mean_square_distance_mean_4d_cpu',
+            '^test_mean_square_distance_mean_4d_expanded_cpu',
+            '^test_mean_square_distance_mean_cpu',
+            '^test_mean_square_distance_mean_expanded_cpu',
+            '^test_mean_square_distance_none_cpu',
+            '^test_mean_square_distance_none_expanded_cpu',
+            '^test_mean_square_distance_none_weights_cpu',
+            '^test_mean_square_distance_none_weights_expanded_cpu',
+            '^test_mean_square_distance_sum_cpu',
+            '^test_mean_square_distance_sum_expanded_cpu',
+            '^test_min_int16_cpu',
+            '^test_min_int8_cpu',
+            '^test_min_uint16_cpu',
+            '^test_min_uint8_cpu',
             '^test_momentum_cpu',
             '^test_momentum_multiple_cpu',
-            '^test_mod_float_mixed_sign_example_cpu',  # onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be true for float, float16 and double types
-            '^test_negative_log_likelihood_loss_input_shape_is_NC_cpu*',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_cpu*',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_mean_cpu*',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_sum_cpu*',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_cpu*',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_mean_cpu*',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_cpu*',
+            '^test_negative_log_likelihood_loss_input_shape_is_NC_cpu',
+            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_cpu',
+            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_mean_cpu',
+            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_sum_cpu',
+            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_cpu',
+            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_mean_cpu',
+            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_cpu',
             '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_ignore_index_cpu',
             '^test_nesterov_momentum_cpu',
             '^test_pow_bcast_array_cpu',
@@ -172,25 +147,33 @@ def create_backend_test(testname=None):
             '^test_pow_types_int64_float32_cpu',
             '^test_pow_types_int64_int64_cpu',
             '^test_pow_types_int_cpu',
+            '^test_softmax_cross_entropy_mean_3d_cpu',
+            '^test_softmax_cross_entropy_mean_3d_expanded_cpu',
+            '^test_softmax_cross_entropy_mean_cpu',
+            '^test_softmax_cross_entropy_mean_expanded_cpu',
+            '^test_softmax_cross_entropy_mean_weight_cpu',
+            '^test_softmax_cross_entropy_mean_weight_expanded_cpu',
+            '^test_softmax_cross_entropy_mean_weight_ignore_index_cpu',
+            '^test_softmax_cross_entropy_mean_weight_ignore_index_expanded_cpu',
+            '^test_softmax_cross_entropy_none_cpu',
+            '^test_softmax_cross_entropy_none_expanded_cpu',
+            '^test_softmax_cross_entropy_none_weights_cpu',
+            '^test_softmax_cross_entropy_none_weights_expanded_cpu',
+            '^test_softmax_cross_entropy_sum_cpu',
+            '^test_softmax_cross_entropy_sum_expanded_cpu',
+            '^test_unfoldtodepth_with_padding_cpu',
+            '^test_unfoldtodepth_with_padding_stride_cpu',
+            '^test_unfoldtodepth_without_padding_cpu',
+            '^test_gradient_of_add_and_mul_cpu',
+            '^test_gradient_of_add_cpu',
+            '^test_batchnorm_example_training_mode_cpu',
+            '^test_batchnorm_epsilon_training_mode_cpu',
+            '^test_maxunpool_export_with_output_shape_cpu', #result mismatch
             '^test_resize_downsample_scales_cubic_align_corners_cpu',  # results mismatch with onnx tests
-            '^test_resize_downsample_scales_linear_align_corners_cpu',  # results mismatch with onnx tests
-            '^test_resize_tf_crop_and_resize_cpu',  # bad expected data, needs test fix
-            '^test_resize_upsample_sizes_nearest_ceil_half_pixel_cpu',  # bad expected data, needs test fix
-            '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu',  # bad expected data, needs test fix
-            '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu',  # bad expected data, needs test fix
-            '^test_sequence_model4*',
-            '^test_softmax_cross_entropy_mean*',
-            '^test_softmax_cross_entropy_mean_3d*',
-            '^test_softmax_cross_entropy_mean_weight*',
-            '^test_softmax_cross_entropy_none*',
-            '^test_softmax_cross_entropy_none_weights*',
-            '^test_softmax_cross_entropy_sum*',
-            '^test_split_zero_size_splits*', #Invalid value
-            '^test_unfoldtodepth_with_padding_cpu*',
-            '^test_unfoldtodepth_with_padding_stride_cpu*',
-            '^test_unfoldtodepth_without_padding_cpu*',
+            '^test_resize_downsample_scales_linear_align_corners_cpu'  # results mismatch with onnx tests
         ]
-
+        if platform.architecture()[0] == '32bit':
+            current_failing_tests += ['^test_vgg19', '^test_zfnet512', '^test_bvlc_alexnet_cpu']
         # Example of how to disable tests for a specific provider.
         # if c2.supports_device('NGRAPH'):
         #    current_failing_tests.append('^test_operator_repeat_dim_overflow_cpu')
@@ -217,10 +200,10 @@ def create_backend_test(testname=None):
             ]
 
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
-            current_failing_tests.append('^test_div_cpu*')
+            current_failing_tests.append('^test_div_cpu')
             # temporarily exclude vgg19 test which comsumes too much memory, run out of memory on Upsquared device.
             # single test pass for vgg19, need furture investigation
-            current_failing_tests.append('^test_vgg19_cpu*')
+            current_failing_tests.append('^test_vgg19_cpu')
 
         if c2.supports_device('OPENVINO_CPU_FP32'):
             current_failing_tests += [

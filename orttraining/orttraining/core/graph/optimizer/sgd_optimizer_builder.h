@@ -10,7 +10,7 @@ namespace training {
 
 class SGDOptimizerBuilder final : public OptimizerBuilder {
  public:
-  SGDOptimizerBuilder() : OptimizerBuilder("SGDOptimizer") {}
+  SGDOptimizerBuilder() : OptimizerBuilder(OpDef{"SGDOptimizer", kMSDomain, 1}) {}
 
   virtual Status Build(
       const std::vector<ArgDef>& weight_argdefs,

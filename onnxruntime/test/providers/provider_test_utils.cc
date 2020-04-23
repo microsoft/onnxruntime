@@ -626,15 +626,22 @@ void OpTester::Run(
     const RunOptions* run_options,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
     ExecutionMode execution_mode,
-    const CustomOutputVerifierFn& custom_output_verifier) {
+    const CustomOutputVerifierFn& custom_output_verifier,
+    const Graph::ResolveOptions& options) {
   SessionOptions so;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
   so.execution_mode = execution_mode;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
   Run(so, expect_result, expected_failure_string, excluded_provider_types,
-      run_options, execution_providers, custom_output_verifier);
+      run_options, execution_providers, custom_output_verifier, options);
 }
+
+#define ASSERT_PROVIDER_STATUS_OK(function)                                                         \
+  do {                                                                                              \
+    Status _tmp_status = function;                                                                  \
+    ASSERT_TRUE(_tmp_status.IsOK()) << "provider: " << provider_type << ", error: " << _tmp_status; \
+  } while (false)
 
 void OpTester::Run(
     SessionOptions so,  // Take the SessionOptions by value (i.e. make a copy)
@@ -643,7 +650,8 @@ void OpTester::Run(
     const std::unordered_set<std::string>& excluded_provider_types,
     const RunOptions* run_options,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
-    const CustomOutputVerifierFn& custom_output_verifier) {
+    const CustomOutputVerifierFn& custom_output_verifier,
+    const Graph::ResolveOptions& options) {
   std::string cur_provider = "not set";
   try {
 #ifndef NDEBUG
@@ -660,12 +668,12 @@ void OpTester::Run(
           expect_result == ExpectResult::kExpectFailure) {
         // capture possible exceptions from shape inference for invalid testcase
         try {
-          status = graph.Resolve();
+          status = graph.Resolve(options);
         } catch (const std::exception& ex) {
           status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
         }
       } else {
-        status = graph.Resolve();
+        status = graph.Resolve(options);
       }
 
       if (!status.IsOK()) {
@@ -721,8 +729,7 @@ void OpTester::Run(
 
       for (auto& entry : *execution_providers) {
         provider_types += entry->Type() + ":";
-        EXPECT_TRUE(
-            session_object.RegisterExecutionProvider(std::move(entry)).IsOK());
+        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(entry)));
       }
 
       fetches_ = ExecuteModel<InferenceSession>(
@@ -744,7 +751,7 @@ void OpTester::Run(
         InferenceSession session_object{so, GetEnvironment()};
 
         for (auto& custom_session_registry : custom_session_registries_)
-          session_object.RegisterCustomRegistry(custom_session_registry);
+          ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(custom_session_registry));
 
         std::unique_ptr<IExecutionProvider> execution_provider;
         if (provider_type == onnxruntime::kCpuExecutionProvider)
@@ -805,14 +812,11 @@ void OpTester::Run(
           continue;
 
         for (auto& custom_session_registry : custom_session_registries_)
-          session_object.RegisterCustomRegistry(custom_session_registry);
+          ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(custom_session_registry));
 
         has_run = true;
 
-        EXPECT_TRUE(
-            session_object
-                .RegisterExecutionProvider(std::move(execution_provider))
-                .IsOK());
+        ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
 
         fetches_ = ExecuteModel<InferenceSession>(
             *p_model, session_object, expect_result, expected_failure_string,

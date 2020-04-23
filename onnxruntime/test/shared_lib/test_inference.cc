@@ -100,7 +100,7 @@ void TestInference(Ort::Env& env, T model_uri,
 
   if (custom_op_library_filename) {
     void* library_handle = nullptr;  // leak this, no harm.
-    Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle);
+    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle));
   }
 
   // if session creation passes, model loads fine
@@ -318,7 +318,11 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
 }
 #endif
 
+#ifndef __ANDROID__
+TEST(CApiTest, test_custom_op_library) {
+#else
 TEST(CApiTest, DISABLED_test_custom_op_library) {
+#endif
   std::cout << "Running inference using custom op shared library" << std::endl;
 
   std::vector<Input> inputs(2);
@@ -346,7 +350,7 @@ TEST(CApiTest, DISABLED_test_custom_op_library) {
 #elif defined(__APPLE__)
   lib_name = "libcustom_op_library.dylib";
 #else
-  lib_name = "libcustom_op_library.so";
+  lib_name = "./libcustom_op_library.so";
 #endif
 
   TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
@@ -509,37 +513,71 @@ TEST(CApiTest, end_profiling) {
 }
 
 TEST(CApiTest, model_metadata) {
-  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
-
-  // Create session
-  Ort::SessionOptions session_options;
-  Ort::Session session(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options);
-
-  // Fetch model metadata
   // The following all tap into the c++ APIs which internally wrap over C APIs
-  auto model_metadata = session.GetModelMetadata();
 
-  char* producer_name = model_metadata.GetProducerName(allocator.get());
-  ASSERT_TRUE(strcmp("Hari", producer_name) == 0);
+  // The following section tests a model containing all metadata supported via the APIs
+  {
+    Ort::SessionOptions session_options;
+    Ort::Session session(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options);
 
-  char* graph_name = model_metadata.GetGraphName(allocator.get());
-  ASSERT_TRUE(strcmp("matmul test", graph_name) == 0);
+    // Fetch model metadata
+    auto model_metadata = session.GetModelMetadata();
 
-  char* domain = model_metadata.GetDomain(allocator.get());
-  ASSERT_TRUE(strcmp("", domain) == 0);
+    char* producer_name = model_metadata.GetProducerName(allocator.get());
+    ASSERT_TRUE(strcmp("Hari", producer_name) == 0);
+    allocator.get()->Free(producer_name);
 
-  char* description = model_metadata.GetDescription(allocator.get());
-  ASSERT_TRUE(strcmp("This is a test model with a valid ORT config Json", description) == 0);
+    char* graph_name = model_metadata.GetGraphName(allocator.get());
+    ASSERT_TRUE(strcmp("matmul test", graph_name) == 0);
+    allocator.get()->Free(graph_name);
 
-  int64_t version = model_metadata.GetVersion();
-  ASSERT_TRUE(version == 1);
+    char* domain = model_metadata.GetDomain(allocator.get());
+    ASSERT_TRUE(strcmp("", domain) == 0);
+    allocator.get()->Free(domain);
 
-  char* lookup_value = model_metadata.LookupCustomMetadataMap("ort_config", allocator.get());
-  ASSERT_TRUE(strcmp(lookup_value,
-                     "{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, \"graph_optimization_level\": 99, \"enable_profiling\": 1}}") == 0);
+    char* description = model_metadata.GetDescription(allocator.get());
+    ASSERT_TRUE(strcmp("This is a test model with a valid ORT config Json", description) == 0);
+    allocator.get()->Free(description);
 
-  // key doesn't exist in custom metadata map
-  lookup_value = model_metadata.LookupCustomMetadataMap("key_doesnt_exist", allocator.get());
-  ASSERT_TRUE(lookup_value == nullptr);
+    int64_t version = model_metadata.GetVersion();
+    ASSERT_TRUE(version == 1);
+
+    int64_t num_keys_in_custom_metadata_map;
+    char** custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeys(allocator.get(), num_keys_in_custom_metadata_map);
+    ASSERT_TRUE(num_keys_in_custom_metadata_map == 1);
+    ASSERT_TRUE(strcmp(custom_metadata_map_keys[0], "ort_config") == 0);
+    allocator.get()->Free(custom_metadata_map_keys[0]);
+    allocator.get()->Free(custom_metadata_map_keys);
+
+    char* lookup_value = model_metadata.LookupCustomMetadataMap("ort_config", allocator.get());
+    ASSERT_TRUE(strcmp(lookup_value,
+                       "{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, \"graph_optimization_level\": 99, \"enable_profiling\": 1}}") == 0);
+    allocator.get()->Free(lookup_value);
+
+    // key doesn't exist in custom metadata map
+    lookup_value = model_metadata.LookupCustomMetadataMap("key_doesnt_exist", allocator.get());
+    ASSERT_TRUE(lookup_value == nullptr);
+  }
+
+  // The following section tests a model with some missing metadata info
+  // Adding this just to make sure the API implementation is able to handle empty/missing info
+  {
+    Ort::SessionOptions session_options;
+    Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+    // Fetch model metadata
+    auto model_metadata = session.GetModelMetadata();
+
+    // Model description is empty
+    char* description = model_metadata.GetDescription(allocator.get());
+    ASSERT_TRUE(strcmp("", description) == 0);
+    allocator.get()->Free(description);
+
+    // Model does not contain custom metadata map
+    int64_t num_keys_in_custom_metadata_map;
+    char** custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeys(allocator.get(), num_keys_in_custom_metadata_map);
+    ASSERT_TRUE(num_keys_in_custom_metadata_map == 0);
+    ASSERT_TRUE(custom_metadata_map_keys == nullptr);
+  }
 }

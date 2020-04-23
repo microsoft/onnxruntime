@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "gradient_checker.h"
 #include "gradient_op_test_utils.h"
-#include "core/framework/random_seed.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
+#include "test/util/include/test_random_seed.h"
 #include <random>
 
 namespace onnxruntime {
@@ -496,7 +496,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
   // TODO: Consider varying mean and variance
   float scale = 5.f;
   float mean = 0.f;
-  const int64_t seed = utils::GetRandomSeed();
+  const auto seed = GetTestRandomSeed();
   std::default_random_engine generator{gsl::narrow_cast<decltype(generator)::result_type>(seed)};
   std::normal_distribution<X_T> distribution{mean, scale};
 

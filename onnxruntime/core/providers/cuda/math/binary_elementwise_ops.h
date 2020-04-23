@@ -14,7 +14,7 @@ struct BinaryElementwisePreparation {
   const Tensor* lhs_tensor = nullptr;
   const Tensor* rhs_tensor = nullptr;
   Tensor* output_tensor = nullptr;
-  int32_t output_rank_or_simple_broadcast = 0;  // for no_broadcast|left_scalar|right_scalar cases, output_rank uses SimpleBroadcast enums
+  int32_t output_rank_or_simple_broadcast = 0; // for no_broadcast|left_scalar|right_scalar cases, output_rank uses SimpleBroadcast enums
 
   TArray<int64_t> lhs_padded_strides;
   TArray<int64_t> rhs_padded_strides;
@@ -42,8 +42,8 @@ struct BinaryElementwisePreparation {
     // early return if one operand is scalar
     if (lhs_shape.Size() == 1 || rhs_shape.Size() == 1) {
       output_rank_or_simple_broadcast = static_cast<int32_t>(lhs_shape.Size() == 1
-                                                                 ? SimpleBroadcast::LeftScalar
-                                                                 : SimpleBroadcast::RightScalar);
+                                                                ? SimpleBroadcast::LeftScalar
+                                                                : SimpleBroadcast::RightScalar);
       return Status::OK();
     }
 

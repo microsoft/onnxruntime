@@ -83,11 +83,11 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
 
 Status TrainingRunner::Initialize() {
   if (pipeline_context_.pipeline_stage_id == 0) {
-    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/wechi/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_0_back.onnx"));
+    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/xuzhu/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_0_back.onnx"));
   } else if (pipeline_context_.pipeline_stage_id == 1) {
-    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/wechi/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_1_back.onnx"));
+    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/xuzhu/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_1_back.onnx"));
   } else if (pipeline_context_.pipeline_stage_id == 2) {
-    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/wechi/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_2_back.onnx"));
+    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/xuzhu/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_2_back.onnx"));
   }
   /*
   ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
@@ -183,8 +183,8 @@ Status TrainingRunner::Initialize() {
   if (pipeline_context_.pipeline_stage_id == 0) {
     config_result.pipeline_config_result = TrainingSession::TrainingConfigurationResult::PipelineConfigurationResult{
       "WaitEvent_fw_event_id_9",
-      "RecordEvent_fw_event_id_15",
-      "WaitEvent_bw_event_id_18",
+      "RecordEvent_fw_event_id_30",
+      "WaitEvent_bw_event_id_33",
       "RecordEvent_bw_event_id_6"
     };
     /*
@@ -196,8 +196,8 @@ Status TrainingRunner::Initialize() {
   } else if (pipeline_context_.pipeline_stage_id == 1) {
     config_result.pipeline_config_result = TrainingSession::TrainingConfigurationResult::PipelineConfigurationResult{
       "WaitEvent_fw_event_id_10",
-      "RecordEvent_fw_event_id_13",
-      "WaitEvent_bw_event_id_16",
+      "RecordEvent_fw_event_id_32",
+      "WaitEvent_bw_event_id_35",
       "RecordEvent_bw_event_id_7"
     };
     /*

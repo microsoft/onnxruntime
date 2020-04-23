@@ -8,16 +8,16 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                         \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
-      Tile,                                                              \
-      kOnnxDomain,                                                       \
-      6,                                                                 \
-      T,                                                                 \
-      kCudaExecutionProvider,                                            \
-      KernelDefBuilder()                                                 \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)                        \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
+#define REGISTER_KERNEL_TYPED(T)                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      Tile,                                                       \
+      kOnnxDomain,                                                \
+      6,                                                          \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .InputMemoryType<OrtMemTypeCPUInput>(1)                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()), \
       Tile<T>);
 
@@ -29,7 +29,7 @@ Status Tile<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   if (repeats_tensor.Shape().NumDimensions() != 1)
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'repeat' input tensor must be 1 dimensional");
-  if (size_t(repeats_tensor.Shape().Size()) != rank)
+  if (repeats_tensor.Shape().Size() != rank)
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'repeat' input tensor must have the same length as the 'input' tensor");
 
   // Calculate the shape of the output tensor

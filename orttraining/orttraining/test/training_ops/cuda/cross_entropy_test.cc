@@ -363,7 +363,9 @@ TEST(CudaKernelTest, SoftmaxCrossEntropyLoss_MediumSizeTensor) {
   TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims_none, &log_prob_dims, "none");
 }
 
-TEST(CudaKernelTest, SoftmaxCrossEntropyLoss_LargeSizeTensor) {
+// TODO fix flaky test (https://msdata.visualstudio.com/Vienna/_workitems/edit/596949)
+// failing random seed: 2873512643
+TEST(CudaKernelTest, DISABLED_SoftmaxCrossEntropyLoss_LargeSizeTensor) {
   std::vector<int64_t> X_dims{4, 512, 30528};
   std::vector<int64_t> index_dims{4, 30528};
   std::vector<int64_t> weight_dims{512};

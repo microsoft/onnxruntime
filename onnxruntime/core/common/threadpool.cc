@@ -224,7 +224,7 @@ static ParallelForBlock CalculateParallelForBlock(const ptrdiff_t n, const Eigen
   // Calculate parallel efficiency as fraction of total CPU time used for
   // computations:
   double max_efficiency =
-      static_cast<double>(block_count) / (Eigen::divup<int>(block_count, num_threads) * num_threads);
+      static_cast<double>(block_count) / (Eigen::divup<ptrdiff_t>(block_count, num_threads) * num_threads);
 
   // Now try to increase block size up to max_block_size as long as it
   // doesn't decrease parallel efficiency.
@@ -245,7 +245,7 @@ static ParallelForBlock CalculateParallelForBlock(const ptrdiff_t n, const Eigen
     assert(coarser_block_count < prev_block_count);
     prev_block_count = coarser_block_count;
     const double coarser_efficiency =
-        static_cast<double>(coarser_block_count) / (Eigen::divup<int>(coarser_block_count, num_threads) * num_threads);
+        static_cast<double>(coarser_block_count) / (Eigen::divup<ptrdiff_t>(coarser_block_count, num_threads) * num_threads);
     if (coarser_efficiency + 0.01 >= max_efficiency) {
       // Taking it.
       block_size = coarser_block_size;
@@ -296,6 +296,15 @@ void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c,
 void ThreadPool::ParallelFor(std::ptrdiff_t total, double cost_per_unit,
                              const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn) {
   ParallelFor(total, TensorOpCost{0, 0, static_cast<double>(cost_per_unit)}, fn);
+}
+
+int ThreadPool::NumThreads(const concurrency::ThreadPool* tp) {
+#ifdef _OPENMP
+  ORT_UNUSED_PARAMETER(tp);
+  return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
+#else
+  return tp ? tp->NumThreads() : 1;
+#endif
 }
 
 int ThreadPool::NumThreads() const {
