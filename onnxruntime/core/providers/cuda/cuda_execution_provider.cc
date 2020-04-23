@@ -12,11 +12,11 @@
 #include "core/providers/cuda/gpu_data_transfer.h"
 
 #ifndef DISABLE_CONTRIB_OPS
-#include "contrib_ops/cuda_contrib_kernels.h"
+#include "contrib_ops/cuda/cuda_contrib_kernels.h"
 #endif
 
 #ifdef ENABLE_TRAINING
-#include "orttraining/training_ops/cuda_training_kernels.h"
+#include "orttraining/training_ops/cuda/cuda_training_kernels.h"
 #endif
 
 using namespace onnxruntime::common;
