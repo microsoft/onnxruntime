@@ -37,6 +37,7 @@ class TestTrainingDropout(unittest.TestCase):
                 return output[0]
         dim_size = 3
         device = torch.device("cuda", 0)
+        # This will drop all values, therefore expecting all 0 in output tensor
         model = TwoDropoutNet(0.999, 0.999, dim_size)
         input_desc = IODescription('input', [dim_size], torch.float32)
         output_desc = IODescription('output', [], torch.float32)
@@ -60,6 +61,10 @@ class TestTrainingDropout(unittest.TestCase):
 
         eval_output = model.eval_step(input)
         assert_allclose(expected_eval_output, eval_output.item(), rtol=rtol, err_msg="dropout eval loss mismatch")
+ 
+        # Do another train step to make sure it's using original ratios
+        train_output_2 = model.train_step(*input_args)
+        assert_allclose(expected_training_output, train_output_2.item(), rtol=rtol, err_msg="dropout training loss 2 mismatch")
 
 if __name__ == '__main__':
     unittest.main(module=__name__, buffer=True)
