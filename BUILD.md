@@ -572,10 +572,10 @@ You can get all these information from the previous output, please be sure they 
    You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.11.2/protoc-3.11.2-linux-x86_64.zip . Please unzip it after downloading.
    The version must match the one onnxruntime is using. Currently we are using 3.11.2.
    
-##### 3. Setup sysroot to enable python extension. 
+##### 3. (optional) Setup sysroot to enable python extension. 
    (Skip this part if you don't use python)
    
-   Dump the root file system of the target operating system to your build machine. We'll call that folder "sysroot" and use it for build onnxruntime python extension. Before doing that, you should install python3 dev package(which contains the C header files) and numpy python package on the target machine first. 
+   Dump the root file system of the target operating system to your build machine. We'll call that folder "sysroot" and use it for build onnxruntime python extension. Before doing that, you should install python3 dev package(which contains the C header files) and numpy python package on the target machine first. However, you can't install numpy in manylinux2014, it just doesn't work.
    
    Below are some examples.
    
@@ -653,17 +653,20 @@ docker export 5a796e98db05 -o manylinux2014_aarch64.tar
 
 ##### 4. Generate CMake toolchain file
    Save the following content as tool.cmake
-    ```
-    SET(CMAKE_SYSTEM_NAME Linux)
-    SET(CMAKE_SYSTEM_VERSION 1)
-    SET(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
-    SET(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)          
-    SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-    SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-    SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-    SET(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
-    SET(CMAKE_FIND_ROOT_PATH /mnt/pi)
-    ```
+   
+```cmake
+    SET(CMAKE_SYSTEM_NAME Linux)    
+    SET(CMAKE_SYSTEM_VERSION 1)    
+    SET(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)    
+    SET(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)            
+    SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)    
+    SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)    
+    SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)    
+    SET(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)    
+    SET(CMAKE_FIND_ROOT_PATH /mnt/pi)    
+```
+If you don't have a sysroot, you can delete the last line.
+
 ##### 5.  Run CMake and make
 6. Append `-DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake` to your cmake args, run cmake and make to build it. If you want to build python package as well, you can use cmake args like:
 ```
