@@ -37,38 +37,42 @@ class Gelu : public OpKernel {
   Gelu(const OpKernelInfo& info) : OpKernel(info) {}
 
   Status Compute(OpKernelContext* context) const override {
-    const auto* X = context->Input<Tensor>(0);
-    Tensor* Y = context->Output(0, X->Shape());
-    const T* input = X->template Data<T>();
-    T* output = Y->template MutableData<T>();
-    concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
-    int num_threads = concurrency::ThreadPool::NumThreads(tp);
-    int64_t elem_count = X->Shape().Size();
-    if (elem_count > num_threads) {
-      concurrency::ThreadPool::TryBatchParallelFor(
-          tp, elem_count, [input, output, elem_count, num_threads](std::ptrdiff_t i) {
-            int64_t elem_inx_start = i * elem_count / num_threads;
-            int64_t elem_inx_end = (i + 1) * elem_count / num_threads;
-            for (int64_t elem_inx = elem_inx_start; elem_inx < elem_inx_end; elem_inx++) {
-              output[elem_inx] = input[elem_inx] * static_cast<float>(M_SQRT1_2);
-            }
-            MlasComputeErf(output + elem_inx_start, output + elem_inx_start, elem_inx_end - elem_inx_start);
-            for (int64_t elem_inx = elem_inx_start; elem_inx < elem_inx_end; elem_inx++) {
-              output[elem_inx] = 0.5f * input[elem_inx] * (output[elem_inx] + 1.0f);
-            }
-          },
-          num_threads);
-      return Status::OK();
-    }
+    const Tensor* input = context->Input<Tensor>(0);
+    const T* input_data = input->template Data<T>();
 
-    EIGEN_X_VAR(xm);
-    EIGEN_Y_VAR(ym);
-    ym = xm * static_cast<float>(M_SQRT1_2);
-    MlasComputeErf(Y->template MutableData<T>(), Y->template MutableData<T>(), X->Shape().Size());
-    ym = xm * 0.5f * (ym + 1.0f);
+    Tensor* output = context->Output(0, input->Shape());
+    T* output_data = output->template MutableData<T>();
+
+    concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+    int64_t elem_count = input->Shape().Size();
+    // FastGelu allows optional bias. Here we split input data into chunks. Each chunk
+    // has N elements (except the last chunk), and use thread pool to parallel chunks.
+    // N = 4096 is selected based on performance test results on input shape 1x128x768.
+    static const int64_t length_per_task = 4096;
+    int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
+    concurrency::ThreadPool::TryBatchParallelFor(
+        tp, static_cast<int32_t>(task_count),
+        [&](ptrdiff_t task_idx) {
+          const auto start = task_idx * length_per_task;
+          const T* p_input = input_data + start;
+          T* p_output = output_data + start;
+          int64_t count = std::min(length_per_task, elem_count - start);
+
+          for (int64_t i = 0; i < count; i++) {
+            T value = p_input[i];
+            p_output[i] = value * static_cast<float>(M_SQRT1_2);
+          }
+
+          MlasComputeErf(p_output, p_output, count);
+
+          for (int64_t i = 0; i < count; i++) {
+            p_output[i] = 0.5f * p_input[i] * (p_output[i] + 1.0f);
+          }
+        },
+        0);
     return Status::OK();
   }
-};
+};  // namespace contrib
 
 }  // namespace contrib
 }  // namespace onnxruntime
