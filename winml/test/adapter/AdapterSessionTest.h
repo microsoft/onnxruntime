@@ -4,7 +4,8 @@
 #include "test.h"
 struct AdapterSessionTestAPi
 {
-  SetupTest AdapterSessionTestSetup;
+  SetupClass AdapterSessionTestSetup;
+  TeardownClass AdapterSessionTestTeardown;
   VoidTest AppendExecutionProvider_CPU;
   VoidTest AppendExecutionProvider_DML;
   VoidTest CreateWithoutModel;
@@ -24,6 +25,7 @@ const AdapterSessionTestAPi& getapi();
 
 WINML_TEST_CLASS_BEGIN(AdapterSessionTest)
 WINML_TEST_CLASS_SETUP_CLASS(AdapterSessionTestSetup)
+WINML_TEST_CLASS_TEARDOWN_CLASS(AdapterSessionTestTeardown)
 WINML_TEST_CLASS_BEGIN_TESTS
 WINML_TEST(AdapterSessionTest, AppendExecutionProvider_CPU)
 WINML_TEST(AdapterSessionTest, AppendExecutionProvider_DML)
