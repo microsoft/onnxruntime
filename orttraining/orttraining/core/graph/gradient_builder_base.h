@@ -6,7 +6,6 @@
 #include <vector>
 #include <string>
 #include "core/graph/graph.h"
-#include "core/graph/onnx_protobuf.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "onnx/defs/attr_proto_util.h"
 

@@ -6,13 +6,8 @@
 #include "gtest/gtest.h"
 
 #include "core/platform/env.h"
-#include "test/framework/test_utils.h"
-
-// Windows.h reserves the word OPTIONAL in macro, which introduces
-// conflict on variables declared from onnx external library. Currently workaround
-// this by re-ordering the included files.
-// TODO: undefine OPTIONAL in path_lib.h and move path_lib.h to the first include
 #include "core/platform/path_lib.h"
+#include "test/framework/test_utils.h"
 
 namespace onnxruntime {
 namespace test {

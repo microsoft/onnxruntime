@@ -23,21 +23,10 @@
 namespace onnxruntime {
 namespace cuda {
 
-constexpr int CUDA_WARP_SIZE = 32;
-
 inline int log2_ceil(int value) {
   int log2_value = 0;
   while ((1 << log2_value) < value) ++log2_value;
   return log2_value;
-}
-
-template <typename T>
-__device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = warpSize, unsigned int mask = 0xffffffff) {
-#if CUDA_VERSION >= 9000
-  return __shfl_xor_sync(mask, value, laneMask, width);
-#else
-  return __shfl_xor(value, laneMask, width);
-#endif
 }
 
 template <typename T>

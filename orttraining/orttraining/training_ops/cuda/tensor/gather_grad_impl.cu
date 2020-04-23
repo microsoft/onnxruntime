@@ -11,8 +11,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-static constexpr int WARP_SIZE = 32;
-
 template <typename T>
 __global__ void _Iota(
     cub::CountingInputIterator<T> input,
@@ -47,7 +45,7 @@ __global__ void _GatherGradImpl(
 
 #pragma unroll
         for (int ii = 0; ii < SZ; ii++) {
-          int feature_dim = start_feature + ii * WARP_SIZE;
+          int feature_dim = start_feature + ii * GPU_WARP_SIZE;
           if (feature_dim < stride) {
             gradient[ii] = static_cast<T>(grad_output[grad_row + feature_dim]);
             weight[ii] = static_cast<T>(grad_weight[weight_row + feature_dim]);
@@ -61,7 +59,7 @@ __global__ void _GatherGradImpl(
 
 #pragma unroll
         for (int ii = 0; ii < SZ; ii++) {
-          int feature_dim = start_feature + ii * WARP_SIZE;
+          int feature_dim = start_feature + ii * GPU_WARP_SIZE;
           if (feature_dim < stride) {
             grad_weight[weight_row + feature_dim] = static_cast<T>(weight[ii]);
           }
@@ -114,8 +112,8 @@ void GatherGradImpl(
       original_indices.get(), original_indices_sorted.get(),
       num_indices));
 
+  dim3 block(GPU_WARP_SIZE, 4);
   dim3 grid(CeilDiv(num_indices, 4), CeilDiv(stride, 128));
-  dim3 block(WARP_SIZE, 4);
 
   _GatherGradImpl<<<grid, block>>>(
       indices_data_sorted.get(),

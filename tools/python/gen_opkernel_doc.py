@@ -10,7 +10,6 @@ import sys
 import argparse
 
 
-import onnxruntime as rt
 import onnxruntime.capi.onnxruntime_pybind11_state as rtpy 
 from onnxruntime.capi.onnxruntime_pybind11_state import opkernel
 from onnxruntime.capi.onnxruntime_pybind11_state import schemadef 
@@ -41,7 +40,7 @@ def format_param_strings(params):
     firstparam = True
     s = ''
     if params:
-        for param in params:
+        for param in sorted(params):
             if firstparam:
                 firstparam = False
             else:
@@ -132,7 +131,7 @@ def main(args):  # type: (Type[Args]) -> None
                                 fout.write('|')
 
                             tclist = []
-                            for tc in tcset:
+                            for tc in sorted(tcset):
                                 tclist.append(tc)
                             fout.write('**'+tname+'** = '+format_type_constraints(tclist)+'|\n')
                         
