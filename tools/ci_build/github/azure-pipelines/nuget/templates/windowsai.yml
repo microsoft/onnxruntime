@@ -210,10 +210,8 @@ jobs:
 
         $zip_tool = [System.IO.Path]::Combine($zip_tool_directory, 'zip.exe')
         Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile $zip_tool
+        Start-Process -FilePath $ziptool -ArgumentList "-r $merged_nuget ." -WorkingDirectory $x64_unzipped_directory -NoNewWindow
 
-        pushd $x64_unzipped_directory
-        & $ziptool -r $merged_nuget .
-        popd
       workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
 
   - template: ../../templates/esrp_nuget.yml
