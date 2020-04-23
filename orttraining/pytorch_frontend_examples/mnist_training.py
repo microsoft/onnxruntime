@@ -58,7 +58,7 @@ def train_with_model(args, model, device, train_loader, optimizer, epoch):
             optimizer.zero_grad()
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), float(loss)))
+                100. * batch_idx / len(train_loader), loss.item()))
 
 def test_with_model(args, model, device, test_loader, optimizer, epoch):
     model.eval()
