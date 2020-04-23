@@ -164,9 +164,10 @@ class ThreadPool {
   void ParallelFor(std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
                    const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn);
 
-#ifdef _OPENMP
-  static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost&,
+  static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
                              const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
+#ifdef _OPENMP
+    ORT_UNUSED_PARAMETER(cost_per_unit);
     std::ptrdiff_t num_threads = concurrency::ThreadPool::NumThreads(tp);
     if (total < num_threads) {
       num_threads = total;
@@ -178,17 +179,14 @@ class ThreadPool {
       std::ptrdiff_t end = start + work_remaining;
       fn(start, end);
     }
-  }
 #else
-  static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
-                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
     if (tp == nullptr) {
       fn(0, total);
       return;
     }
     tp->ParallelFor(total, cost_per_unit, fn);
-  }
 #endif
+  }
 
   // Similar to ParallelFor above, but takes the specified scheduling strategy
   // into account.
@@ -196,9 +194,10 @@ class ThreadPool {
   ParallelFor(std::ptrdiff_t total, const SchedulingParams& scheduling_params,
               const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
 
+  static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const SchedulingParams& scheduling_params,
+                             const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
 #ifdef _OPENMP
-  static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const SchedulingParams&,
-                             const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
+    ORT_UNUSED_PARAMETER(scheduling_params);
     std::ptrdiff_t num_threads = concurrency::ThreadPool::NumThreads(tp);
     if (total < num_threads) {
       num_threads = total;
@@ -210,17 +209,14 @@ class ThreadPool {
       std::ptrdiff_t end = start + work_remaining;
       fn(start, end);
     }
-  }
 #else
-  static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const SchedulingParams& scheduling_params,
-                             const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
     if (tp == nullptr) {
       fn(0, total);
       return;
     }
     tp->ParallelFor(total, scheduling_params, fn);
-  }
 #endif
+  }  // namespace concurrency
 
   // Prefer using this API to get the number of threads unless you know what you're doing.
   // This API takes into account if openmp is enabled/disabled and if the thread pool ptr is nullptr.
@@ -242,16 +238,6 @@ class ThreadPool {
   // cutting them by halves
   void SimpleParallelFor(std::ptrdiff_t total, std::function<void(std::ptrdiff_t)> fn);
 
-#ifdef _OPENMP
-  template <typename F>
-  inline static void TryBatchParallelFor(ThreadPool*, std::ptrdiff_t total, F&& fn, std::ptrdiff_t /*num_batches*/) {
-#pragma omp parallel for
-    for (std::ptrdiff_t i = 0; i < total; ++i) {
-      fn(i);
-    }
-  }
-#else
-
   /**
    * Tries to call the given function in parallel, with calls split into (num_batches) batches.
    *\param num_batches If it is zero, it will be replaced to the value of NumThreads().
@@ -264,6 +250,14 @@ class ThreadPool {
    **/
   template <typename F>
   inline static void TryBatchParallelFor(ThreadPool* tp, std::ptrdiff_t total, F&& fn, std::ptrdiff_t num_batches) {
+#ifdef _OPENMP
+    ORT_UNUSED_PARAMETER(tp);
+    ORT_UNUSED_PARAMETER(num_batches);
+#pragma omp parallel for
+    for (std::ptrdiff_t i = 0; i < total; ++i) {
+      fn(i);
+    }
+#else
     if (tp == nullptr) {
       for (std::ptrdiff_t i = 0; i < total; ++i) {
         // In many cases, fn can be inlined here.
@@ -298,8 +292,8 @@ class ThreadPool {
         fn(i);
       }
     });
-  }
 #endif
+  }
 
 #ifndef _OPENMP
   //Deprecated. Please avoid using Eigen Tensor because it will blow up binary size quickly.
@@ -325,7 +319,7 @@ class ThreadPool {
   Eigen::ThreadPoolInterface* underlying_threadpool_;
   // eigen_threadpool_ is instantiated and owned by thread::ThreadPool if
   // user_threadpool is not in the constructor.
-  std::unique_ptr<ThreadPoolTempl<Env>> eigen_threadpool_;
+  std::unique_ptr<ThreadPoolTempl<Env> > eigen_threadpool_;
 #ifndef _OPENMP
   std::unique_ptr<Eigen::ThreadPoolDevice> threadpool_device_;
 #endif
@@ -343,7 +337,7 @@ class ThreadPool {
       *WorkRemaining = WorkPerThread;
     }
   }
-};
+};  // namespace concurrency
 
 }  // namespace concurrency
 }  // namespace onnxruntime

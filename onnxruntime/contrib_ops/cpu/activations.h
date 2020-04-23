@@ -57,7 +57,7 @@ class Gelu : public OpKernel {
 
           for (int64_t i = 0; i < count; i++) {
             T value = p_input[i];
-            p_output[i] = value * static_cast<float>(M_SQRT1_2);
+            p_output[i] = value * static_cast<T>(M_SQRT1_2);
           }
 
           MlasComputeErf(p_output, p_output, count);
