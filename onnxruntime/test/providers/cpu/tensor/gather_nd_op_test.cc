@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -125,22 +126,6 @@ TEST(GatherNDOpTest, ContribOpInt32Indices) {
 }
 
 #endif
-
-namespace {
-// Returns a vector of `count` values which start at `start` and change by increments of `step`.
-template <typename T>
-std::vector<T> ValueRange(
-    size_t count, T start = static_cast<T>(0), T step = static_cast<T>(1)) {
-  std::vector<T> result;
-  result.reserve(count);
-  T curr = start;
-  for (size_t i = 0; i < count; ++i) {
-    result.emplace_back(curr);
-    curr += step;
-  }
-  return result;
-}
-}  // namespace
 
 TEST(GatherNDOpTest, GatherND_slice_float_batch_dims_0) {
   OpTester test("GatherND", 12, kOnnxDomain);
