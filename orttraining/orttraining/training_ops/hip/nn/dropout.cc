@@ -67,7 +67,7 @@ Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
                 "T2 must be float16 or float or double");
 
   if (ratio) {
-    ratio_data = static_cast<float>(*reinterpret_cast<const T2*>(ratio->template Data<T2>()));
+    ratio_data = static_cast<float>(*(ratio->template Data<T2>()));
   } else {
     ratio_data = default_ratio_;
   }
@@ -111,7 +111,7 @@ Status DropoutGrad<T1, T2>::ComputeInternal(OpKernelContext* context) const {
                 "T2 must be float16 or float or double");
 
   if (ratio) {
-    ratio_data = static_cast<float>(*reinterpret_cast<const T2*>(ratio->template Data<T2>()));
+    ratio_data = static_cast<float>(*(ratio->template Data<T2>()));
   } else {
     ratio_data = default_ratio_;
   }

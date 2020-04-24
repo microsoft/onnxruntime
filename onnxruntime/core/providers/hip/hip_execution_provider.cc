@@ -13,11 +13,11 @@
 #include "core/providers/hip/gpu_data_transfer.h"
 
 #ifndef DISABLE_CONTRIB_OPS
-#include "contrib_ops/hip_contrib_kernels.h"
+#include "contrib_ops/hip/hip_contrib_kernels.h"
 #endif
 
 #ifdef ENABLE_TRAINING
-#include "orttraining/training_ops/hip_training_kernels.h"
+#include "orttraining/training_ops/hip/hip_training_kernels.h"
 #endif
 
 using namespace onnxruntime::common;
