@@ -2,7 +2,7 @@
 
 ONNX Runtime provides high performance and flexibility of hardware options with the concept of "Execution Providers" to represent different execution kernels. See: [design overview](./HighLevelDesign.md), [supported execution providers](../README.md#supported-accelerators).
 
-Along with this flexibility comes decisions for tuning and usage options. For different models and different hardware, there is no silver bullet that can always perform the best. Even for a single execution provider, often there are several knobs that can be tuned (e.g. thread number, wait policy, etc).
+Along with this flexibility comes decisions for tuning and usage. For each model running with each execution provider, there are settings that can be tuned (e.g. thread number, wait policy, etc) to improve performance.
 
 This document covers basic tools and knobs that can be leveraged to find the best performance for your model and hardware.
 
@@ -165,7 +165,6 @@ Most TensorFlow operations used by a CNN support both NHWC and NCHW data format.
 
 ### I'm using the Python APIs on GPU and my model is slower than PyTorch.
 This is likely not an execution latency issue with ONNX Runtime. When using the GPU provider, inputs and outputs need to be copied from CPU to GPU and vice-versa. The current version of the ORT Python API makes this copy during execution, while PyTorch allows these to be set up on the GPU prior to execution. Work is in progress to add support of IOBinding in the Python API that allows copying of inputs to the GPU prior to calling Run.
-
 
 
 
