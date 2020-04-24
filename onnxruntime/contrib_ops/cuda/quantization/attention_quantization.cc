@@ -6,16 +6,13 @@
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
-#include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/math/matmul_integer.cuh"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/shared_inc/integer_gemm.h"
 #include "core/providers/cuda/tensor/quantize_linear.h"
 
 using namespace onnxruntime::cuda;
-using namespace ::onnxruntime::common;
-using namespace ONNX_NAMESPACE;
+using namespace onnxruntime::common;
 
 namespace onnxruntime {
 namespace contrib {
