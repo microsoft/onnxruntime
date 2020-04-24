@@ -37,7 +37,7 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int e
     } else if (src_device.Type() == OrtDevice::GPU) {
       // copying between GPU, this is non-blocking
       // Copy only if the two addresses are different.
-      if (dst_data !=  src_data) {
+      if (dst_data != src_data) {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToDevice, streams_[kCudaStreamDefault]));
       }
     } else {
