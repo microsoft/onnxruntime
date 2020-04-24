@@ -28,8 +28,8 @@ namespace cuda {
       T##_##TQuant,                                                      \
       kCudaExecutionProvider,                                            \
       KernelDefBuilder()                                                 \
+          .InputMemoryType<OrtMemTypeCPUInput>(3)                        \
           .InputMemoryType<OrtMemTypeCPUInput>(4)                        \
-          .InputMemoryType<OrtMemTypeCPUInput>(5)                        \
           .InputMemoryType<OrtMemTypeCPUInput>(6)                        \
           .InputMemoryType<OrtMemTypeCPUInput>(7)                        \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<TQuant>())   \
@@ -47,19 +47,19 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   //   Input 0 - input             : (batch_size, sequence_length, hidden_size)
   //   Input 1 - weights           : (hidden_size, 3 * hidden_size)
   //   Input 2 - bias              : (3 * hidden_size)
-  //   Input 3 - mask_index        : (batch_size)
-  //   Input 4 - input_scale       : scalar
-  //   Input 5 - weight_scale      : scalar
+  //   Input 3 - input_scale       : scalar
+  //   Input 4 - weight_scale      : scalar
+  //   Input 5 - mask_index        : (batch_size)
   //   Input 6 - input_zero_point  : scalar
   //   Input 7 - weight_zero_point : scalar
   //   Output                      : (batch_size, sequence_length, hidden_size)
-  ORT_RETURN_IF_ERROR(CheckInputs(context));
+  //   ORT_RETURN_IF_ERROR(CheckInputs(context));
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
-  const Tensor* mask_index = context->Input<Tensor>(3);
-  const Tensor* input_scale_tensor = context->Input<Tensor>(4);
-  const Tensor* weight_scale_tensor = context->Input<Tensor>(5);
+  const Tensor* input_scale_tensor = context->Input<Tensor>(3);
+  const Tensor* weight_scale_tensor = context->Input<Tensor>(4);
+  const Tensor* mask_index = context->Input<Tensor>(5);
   /*const Tensor* i_zp_tensor = context->Input<Tensor>(6);
   const Tensor* w_zp_tensor = context->Input<Tensor>(7);*/
 
@@ -113,7 +113,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
   if (!LaunchAttentionKernel(
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
-          mask_index->template Data<int>(),
+          nullptr == mask_index ? nullptr : mask_index->template Data<int>(),
           output->template MutableData<T>(),
           batch_size,
           sequence_length,

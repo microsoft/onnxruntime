@@ -337,36 +337,39 @@ mask_index shall not be provided.)DOC";
           "T3")
       .Input(
           3,
-          "mask_index",
-          "Attention mask index with shape (batch_size)",
-          "T4")
-      .Input(
-          4,
           "input_scale",
           "scale of quantized input tensor. It's a scalar, which means a per-tensor/layer quantization.",
           "T3")
       .Input(
-          5,
+          4,
           "weight_scale",
           "scale of weight scale. It's a scalar, which means a per-tensor/layer quantization.",
           "T3")
       .Input(
+          5,
+          "mask_index",
+          "Attention mask index with shape (batch_size)",
+          "T4",
+          OpSchema::Optional)
+      .Input(
           6,
           "input_zero_point",
           "zero point of quantized input tensor.It's a scalar, which means a per-tensor/layer quantization.",
-          "T1")
+          "T1",
+          OpSchema::Optional)
       .Input(
           7,
           "weight_zero_point",
           "zero point of quantized weight tensor. It's a scalar, which means a per-tensor/layer quantization.",
-          "T2")
+          "T2",
+          OpSchema::Optional)
       .Output(
           0,
           "output",
           "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
           "T3")
-      .TypeConstraint("T1", {"tensor(int8)", "tensor(int8)"}, "Constrain input and output types to int8 tensors.")
-      .TypeConstraint("T2", {"tensor(int8)", "tensor(int8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
       .TypeConstraint("T3", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("T4", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
