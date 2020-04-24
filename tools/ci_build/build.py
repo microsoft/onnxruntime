@@ -605,7 +605,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
                 "-Donnxruntime_USE_HOROVOD=ON",
                 "-Donnxruntime_USE_FULL_PROTOBUF=ON"]
 
-    # nGraph and TensorRT providers currently only supports
+    # nGraph, TensorRT and OpenVINO providers currently only supports
     # full_protobuf option.
     if (args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or
             args.use_openvino or args.gen_doc):
