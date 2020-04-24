@@ -28,18 +28,21 @@ std::vector<uint8_t> GetStream(EstimatorT& estimator, const std::vector<InputTyp
 
 TEST(FeaturizersTests, AnalyticalRollingWindow_Transformer_Grained_Mean_1_grain_window_size_1_horizon_1) {
   using EstimatorT = NS::Featurizers::GrainedAnalyticalRollingWindowEstimator<double>;
-
-  EstimatorT      estimator(NS::CreateTestAnnotationMapsPtr(1), NS::Featurizers::AnalyticalRollingWindowCalculation::Mean, 1, 1);
   using GrainType = std::vector<std::string>;
   using GrainedInputType = EstimatorT::InputType;
-  GrainType const grain({"one"});
-  double const value1(static_cast<double>(10));
-  GrainedInputType const tup1(grain, value1);
-  std::vector<std::tuple<std::vector<std::string> const &, double const &>> const training_batch = {tup1};
+
+  EstimatorT      estimator(NS::CreateTestAnnotationMapsPtr(1), NS::Featurizers::AnalyticalRollingWindowCalculation::Mean, 1, 1);
+
+  const GrainType grain({"one"});
+  const double value1(static_cast<double>(10));
+  const GrainedInputType tup1(grain, value1);
+  const std::vector<std::tuple<std::vector<std::string> const &, double const &>> training_batch = {tup1};
 
   auto stream = GetStream(estimator, training_batch);
   auto dim = static_cast<int64_t>(stream.size());
+
   OpTester test("AnalyticalRollingWindowTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+
   test.AddInput<uint8_t>("State", {dim}, stream);
   test.AddInput<std::string>("Grains", {3, 1}, {"one", "one", "one"});
   test.AddInput<double>("Target", {3}, {1, 2, 3});
@@ -51,18 +54,21 @@ TEST(FeaturizersTests, AnalyticalRollingWindow_Transformer_Grained_Mean_1_grain_
 
 TEST(FeaturizersTests, AnalyticalRollingWindow_Transformer_Grained_Mean_1_grain_window_size_2_horizon_2_min_window_size_2) {
   using EstimatorT = NS::Featurizers::GrainedAnalyticalRollingWindowEstimator<double>;
-
-  EstimatorT      estimator(NS::CreateTestAnnotationMapsPtr(1), NS::Featurizers::AnalyticalRollingWindowCalculation::Mean, 2, 2, 2);
   using GrainType = std::vector<std::string>;
   using GrainedInputType = EstimatorT::InputType;
-  GrainType const grain({"one"});
-  double const value1(static_cast<double>(1));
-  GrainedInputType const tup1(grain, value1);
-  std::vector<std::tuple<std::vector<std::string> const &, double const &>> const training_batch = {tup1};
+
+  EstimatorT      estimator(NS::CreateTestAnnotationMapsPtr(1), NS::Featurizers::AnalyticalRollingWindowCalculation::Mean, 2, 2, 2);
+
+  const GrainType grain({"one"});
+  const double value1(static_cast<double>(1));
+  const GrainedInputType tup1(grain, value1);
+  const std::vector<std::tuple<std::vector<std::string> const &, double const &>> training_batch = {tup1};
 
   auto stream = GetStream(estimator, training_batch);
   auto dim = static_cast<int64_t>(stream.size());
+
   OpTester test("AnalyticalRollingWindowTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+
   test.AddInput<uint8_t>("State", {dim}, stream);
   test.AddInput<std::string>("Grains", {4, 1}, {"one", "one", "one", "one"});
   test.AddInput<double>("Target", {4}, {1, 2, 3, 4});
@@ -81,10 +87,11 @@ TEST(FeaturizersTests, AnalyticalRollingWindow_Transformer_Grained_Mean_1_grain_
 
 TEST(FeaturizersTests, AnalyticalRollingWindow_Transformer_Grained_Mean_2_grain_window_size_2_horizon_2_min_window_size_2) {
   using EstimatorT = NS::Featurizers::GrainedAnalyticalRollingWindowEstimator<double>;
-
-  EstimatorT      estimator(NS::CreateTestAnnotationMapsPtr(1), NS::Featurizers::AnalyticalRollingWindowCalculation::Mean, 2, 2);
   using GrainType = std::vector<std::string>;
   using GrainedInputType = EstimatorT::InputType;
+
+  EstimatorT      estimator(NS::CreateTestAnnotationMapsPtr(1), NS::Featurizers::AnalyticalRollingWindowCalculation::Mean, 2, 2);
+
   const GrainType grainOne({"one"});
   const GrainType grainTwo({"two"});
   const double value1(static_cast<double>(1));
@@ -95,7 +102,9 @@ TEST(FeaturizersTests, AnalyticalRollingWindow_Transformer_Grained_Mean_2_grain_
 
   auto stream = GetStream(estimator, training_batch);
   auto dim = static_cast<int64_t>(stream.size());
+
   OpTester test("AnalyticalRollingWindowTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+
   test.AddInput<uint8_t>("State", {dim}, stream);
   test.AddInput<std::string>("Grains", {4, 1}, {"one", "two", "one", "two"});
   test.AddInput<double>("Target", {4}, {1, 1, 2, 2});
@@ -114,10 +123,11 @@ TEST(FeaturizersTests, AnalyticalRollingWindow_Transformer_Grained_Mean_2_grain_
 
 TEST(FeaturizersTests, SimpleRollingWindow_Transformer_Grained_Min_1_grain_window_size_1_horizon_1) {
   using EstimatorT = NS::Featurizers::GrainedSimpleRollingWindowEstimator<double>;
-
-  EstimatorT      estimator(NS::CreateTestAnnotationMapsPtr(1), NS::Featurizers::SimpleRollingWindowCalculation::Min, 1, 1);
   using GrainType = std::vector<std::string>;
   using GrainedInputType = EstimatorT::InputType;
+
+  EstimatorT      estimator(NS::CreateTestAnnotationMapsPtr(1), NS::Featurizers::SimpleRollingWindowCalculation::Min, 1, 1);
+
   const GrainType grainOne({"one"});
   const double value1(static_cast<double>(1));
   const GrainedInputType tup1(grainOne, value1);
@@ -125,7 +135,9 @@ TEST(FeaturizersTests, SimpleRollingWindow_Transformer_Grained_Min_1_grain_windo
 
   auto stream = GetStream(estimator, training_batch);
   auto dim = static_cast<int64_t>(stream.size());
+
   OpTester test("SimpleRollingWindowTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+
   test.AddInput<uint8_t>("State", {dim}, stream);
   test.AddInput<std::string>("Grains", {3, 1}, {"one", "one", "one"});
   test.AddInput<double>("Target", {3}, {1, 2, 3});
