@@ -60,5 +60,25 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
 #endif
 }
 
+TEST(GraphTransformerUtilsTests, TestCustomOnlyTransformers) {
+  // Transformers that are disabled by default. They can only be enabled by custom list.
+  std::string l2_transformer = "GeluApproximation";
+
+  std::vector<std::string> default_list = {};
+  auto default_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, default_list);
+  for (auto& transformer : default_transformers) {
+    ASSERT_TRUE(transformer->Name() != l2_transformer);
+  }
+
+  std::vector<std::string> custom_list = {l2_transformer};
+  auto custom_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, custom_list);
+#ifndef DISABLE_CONTRIB_OPS
+  ASSERT_TRUE(custom_transformers.size() == 1);
+  ASSERT_TRUE(custom_transformers[0]->Name() == l2_transformer);
+#else
+  ASSERT_TRUE(custom_transformers.size() == 0);
+#endif
+}
+
 }  // namespace test
 }  // namespace onnxruntime
