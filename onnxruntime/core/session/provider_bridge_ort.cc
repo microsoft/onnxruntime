@@ -13,6 +13,7 @@
 #include "core/framework/compute_capability.h"
 #define PROVIDER_BRIDGE_ORT
 #include "core/providers/shared_library/provider_interfaces.h"
+#include "onnx/common/stl_backports.h"
 #include "core/common/logging/logging.h"
 #include "core/common/cpuid_info.h"
 

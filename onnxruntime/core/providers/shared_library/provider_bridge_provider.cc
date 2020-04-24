@@ -274,8 +274,8 @@ OpKernel::OpKernel(const OpKernelInfo& info) {
 
 Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
   PROVIDER_NOT_IMPLEMENTED
-  index;
-  shape;
+  ORT_UNUSED_PARAMETER(index);
+  ORT_UNUSED_PARAMETER(shape);
   return nullptr;
 }
 
@@ -313,8 +313,8 @@ Prov_IExecutionProvider::Prov_IExecutionProvider(const std::string& type) {
 namespace logging {
 
 bool Logger::OutputIsEnabled(Severity severity, DataType data_type) const noexcept {
-  severity;
-  data_type;
+  ORT_UNUSED_PARAMETER(severity);
+  ORT_UNUSED_PARAMETER(data_type);
   return false;
   // TODO: Logging not essential to make it work initially, do later
 }
@@ -328,11 +328,11 @@ const Logger& LoggingManager::DefaultLogger() {
 Capture::Capture(const Logger& logger, logging::Severity severity, const char* category,
                  logging::DataType dataType, const CodeLocation& location) {
   PROVIDER_NOT_IMPLEMENTED
-  logger;
-  severity;
-  category;
-  dataType;
-  location;
+  ORT_UNUSED_PARAMETER(logger);
+  ORT_UNUSED_PARAMETER(severity);
+  ORT_UNUSED_PARAMETER(category);
+  ORT_UNUSED_PARAMETER(dataType);
+  ORT_UNUSED_PARAMETER(location);
 }
 
 std::ostream& Capture::Stream() noexcept {
@@ -348,16 +348,16 @@ namespace common {
 
 Status::Status(StatusCategory category, int code, const std::string& msg) {
   PROVIDER_NOT_IMPLEMENTED
-  category;
-  code;
-  msg;
+  ORT_UNUSED_PARAMETER(category);
+  ORT_UNUSED_PARAMETER(code);
+  ORT_UNUSED_PARAMETER(msg);
 }
 
 Status::Status(StatusCategory category, int code, const char* msg) {
   PROVIDER_NOT_IMPLEMENTED
-  category;
-  code;
-  msg;
+  ORT_UNUSED_PARAMETER(category);
+  ORT_UNUSED_PARAMETER(code);
+  ORT_UNUSED_PARAMETER(msg);
 }
 
 std::string Status::ToString() const {
