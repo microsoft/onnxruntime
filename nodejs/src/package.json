@@ -5,7 +5,7 @@
   "main": "./lib/index.js",
   "types": "./types/lib/index.d.ts",
   "scripts": {
-    "prepare": "tsc",
+    "install": "prebuild-install || (tsc && node ./script/build)",
     "build": "tsc && node ./script/build",
     "buildd": "tsc && node ./script/build --debug",
     "rebuild": "tsc && node ./script/build --rebuild",
@@ -38,9 +38,7 @@
   "devDependencies": {
     "@types/fs-extra": "^8.1.0",
     "@types/mocha": "^7.0.2",
-    "@types/rimraf": "^3.0.0",
     "@typescript-eslint/eslint-plugin": "^2.29.0",
-    "@typescript-eslint/eslint-plugin-tslint": "^2.29.0",
     "@typescript-eslint/parser": "^2.29.0",
     "clang-format": "^1.4.0",
     "cmake-js": "^6.1.0",
@@ -59,6 +57,6 @@
     "typescript": "^3.8.3"
   },
   "dependencies": {
-    "node-pre-gyp": "^0.14.0"
+    "prebuild-install": "^5.3.3"
   }
 }
