@@ -138,8 +138,8 @@ struct Prov_NodeArg_Impl : Prov_NodeArg {
   Prov_NodeArg_Impl(const NodeArg* p) : p_{p}, tensor_shape_proto_{p_->Shape()->dim_size()} {}
 
   const std::string& Name() const noexcept override { return p_->Name(); }
-  const ONNX_NAMESPACE::Prov_TensorShapeProto* Shape() const { return &tensor_shape_proto_; }
-  virtual ONNX_NAMESPACE::DataType Type() const noexcept { return p_->Type(); }
+  const ONNX_NAMESPACE::Prov_TensorShapeProto* Shape() const override { return &tensor_shape_proto_; }
+  virtual ONNX_NAMESPACE::DataType Type() const noexcept override { return p_->Type(); }
 
   const NodeArg* p_;
   ONNX_NAMESPACE::Prov_TensorShapeProto tensor_shape_proto_;
