@@ -210,25 +210,8 @@ jobs:
 
         $zip_tool = [System.IO.Path]::Combine($zip_tool_directory, 'zip.exe')
 
-        Write-Host "ZipTool: $zip_tool"
-        Write-Host "Zip Directory: $x64_unzipped_directory"
-        Write-Host "Merged Nuget: $merged_nuget"
-
         Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile $zip_tool
         Start-Process -FilePath $zip_tool -ArgumentList "-r $merged_nuget ." -WorkingDirectory $x64_unzipped_directory -NoNewWindow -Wait
-
-        Write-Host "All files in $merged_nuget_path"
-        Get-ChildItem -Recurse $merged_nuget_path
-        Write-Host "$merged_nuget_path dump DONE"
-        
-        Write-Host "All files in $zip_tool_directory"
-        Get-ChildItem -Recurse $zip_tool_directory
-        Write-Host "$zip_tool_directory dump DONE"
-
-        Write-Host "All files in $Env:BUILD_ARTIFACTSTAGINGDIRECTORY"
-        Get-ChildItem -Recurse $Env:BUILD_ARTIFACTSTAGINGDIRECTORY
-        Write-Host "$Env:BUILD_ARTIFACTSTAGINGDIRECTORY dump DONE"
-
 
       workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
 
