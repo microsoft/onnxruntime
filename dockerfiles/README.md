@@ -80,7 +80,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
   ```
 
 ## TensorRT
-**Ubuntu 18.04, CUDA 10.1.243, TensorRT 6.0.1**
+**Ubuntu 18.04, CUDA 10.2, TensorRT 7.0.0**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
