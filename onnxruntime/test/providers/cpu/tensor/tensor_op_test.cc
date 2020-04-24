@@ -35,7 +35,6 @@ TEST(TensorOpTest, ReshapeWithEmptyDim) {
 
 TEST(TensorOpTest, ReshapeWithEmptyInput) {
   OpTester test("Reshape");
-
   test.AddInput<float>("data", {0, 10}, std::vector<float>());
   test.AddInput<int64_t>("shape", {3}, {0, 10, 1}, false);
   test.AddOutput<float>("reshaped", {0, 10, 1}, std::vector<float>());
