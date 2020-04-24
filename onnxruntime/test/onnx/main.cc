@@ -37,7 +37,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'ngraph', "
-      "'openvino', 'nuphar' or 'acl'. "
+      "'openvino', 'nuphar', or 'acl'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
@@ -94,10 +94,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_cuda = false;
   bool enable_dnnl = false;
   bool enable_ngraph = false;
+  bool enable_openvino = false;
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
-  bool enable_openvino = false;
   bool enable_nnapi = false;
   bool enable_dml = false;
   bool enable_acl = false;
@@ -155,12 +155,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_dnnl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
             enable_ngraph = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
+            enable_openvino = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
             enable_nuphar = true;
           } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
             enable_tensorrt = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
-            enable_openvino = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
             enable_nnapi = true;
           } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
@@ -279,10 +279,24 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-
     if (enable_openvino) {
 #ifdef USE_OPENVINO
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "CPU"));
+      //Setting default optimization level for OpenVINO can be overriden with -o option
+      sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+      if(p_models != 1){
+        fprintf(stderr, "OpenVINO doesn't support more than 1 model running simultaneously default value of 1 will be set \n");
+        p_models = 1;
+      }
+      if(concurrent_session_runs != 1){
+        fprintf(stderr, "OpenVINO doesn't support more than 1 session running simultaneously default value of 1 will be set \n");
+        concurrent_session_runs = 1;
+      }
+      if(execution_mode == ExecutionMode::ORT_PARALLEL){
+        fprintf(stderr, "OpenVINO doesn't support parallel executor switching to sequential executor\n");
+        sf.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
+      }
+
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, ""));
 #else
       fprintf(stderr, "OpenVINO is not supported in this build");
       return -1;
@@ -506,6 +520,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
   }
+
+  if (enable_openvino){
+    broken_tests.insert({"operator_permute2", "Disabled temporariliy"});
+    broken_tests.insert({"operator_repeat", "Disabled temporariliy"});
+    broken_tests.insert({"operator_repeat_dim_overflow", "Disabled temporariliy"});
+    broken_tests.insert({"mlperf_ssd_resnet34_1200", "Disabled temporariliy"});
+    broken_tests.insert({"candy", "Results mismatch: 1 of 150528"});
+  }
+
   if (enable_dnnl) {
     broken_tests.insert({"tf_mobilenet_v2_1.0_224", "result mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});
@@ -520,29 +543,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "test pass on dev box but fails on CI build"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
     broken_tests.insert({"maxpool_2d_uint8", "Does not work on DNNL, NNAPI"});
-  }
-
-  if (enable_openvino) {
-    broken_tests.insert({"fp16_shufflenet", "accuracy mismatch with fp16 precision"});
-    broken_tests.insert({"fp16_inception_v1", "accuracy mismatch with fp16 precision"});
-    broken_tests.insert({"fp16_tiny_yolov2", "accuaracy mismatch with fp16 precision"});
-    broken_tests.insert({"scan_sum", "disable temporarily"});
-    broken_tests.insert({"scan9_sum", "disable temporarily"});
-    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-    broken_tests.insert({"bvlc_alexnet", "disable temporarily"});
-    broken_tests.insert({"bvlc_googlenet", "disable temporarily"});
-    broken_tests.insert({"bvlc_reference_caffenet", "disable temporarily"});
-    broken_tests.insert({"bvlc_reference_rcnn_ilsvrc13", "disable temporarily"});
-    broken_tests.insert({"inception_v1", "disable temporarily"});
-    broken_tests.insert({"squeezenet", "disable temporarily"});
-    broken_tests.insert({"vgg19", "disable temporarily"});
-#ifdef OPENVINO_CONFIG_GPU_FP32
-    broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
-    broken_tests.insert({"div", "will be fixed in the next release"});
-#ifdef OPENVINO_CONFIG_GPU_FP16
-    broken_tests.insert({"div", "will be fixed in the next release"});
-#endif
-#endif
   }
 
   if (enable_nnapi) {

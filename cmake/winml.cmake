@@ -170,7 +170,7 @@ if (onnxruntime_USE_DML)
     ${winml_lib_api_ort_dir}/OnnxruntimeDmlSessionBuilder.h
     ${winml_lib_api_ort_dir}/OnnxruntimeDmlSessionBuilder.cpp
     )
-endif(onnxruntime_USE_DML)
+endif()
 
 # Add static library that will be archived/linked for both static/dynamic library
 add_library(winml_lib_ort STATIC ${winml_lib_api_ort_files})
@@ -218,7 +218,8 @@ if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_ort)
 endif()
 target_link_libraries(winml_lib_ort PRIVATE wil)
-
+target_link_libraries(winml_lib_ort INTERFACE winml_lib_api)
+target_link_libraries(winml_lib_ort INTERFACE winml_lib_telemetry)
 
 ###########################
 # Add winml_adapter
@@ -242,7 +243,7 @@ if (onnxruntime_USE_DML)
     ${winml_adapter_dir}/abi_custom_registry_impl.cpp
     ${winml_adapter_dir}/abi_custom_registry_impl.h
     )
-endif(onnxruntime_USE_DML)
+endif()
 
 add_library(winml_adapter ${winml_adapter_files})
 
@@ -271,7 +272,7 @@ set_target_properties(winml_adapter
 target_link_libraries(winml_adapter PRIVATE wil)
 if (onnxruntime_USE_DML)
   target_add_dml(winml_adapter)
-endif(onnxruntime_USE_DML)
+endif()
 
 # add it to the onnxruntime shared library
 set(onnxruntime_winml winml_adapter)
