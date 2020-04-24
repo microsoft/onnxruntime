@@ -38,16 +38,31 @@ Status CheckBatchDimensionsMatch(
   return Status::OK();
 }
 
-#define TYPED_FUNCTION_CALL_FWD(T)                                                                                                            \
-  if (T_type == DataTypeImpl::GetType<T>()) {                                                                                                 \
-    GatherNDImpl<ToCudaType<T>::MappedType>(num_slices, kernel_input_data, kernel_output_data, slice_size, input_slice_offsets_buffer.get()); \
+template <typename T>
+struct ComputeImpl {
+  void operator()(const int64_t num_slices,
+                  const int64_t slice_size,
+                  const void* const kernel_input_data,
+                  const bool fwd,
+                  void* const kernel_output_data,
+                  int64_t* const input_slice_offsets_data) const {
+    typedef typename ToCudaType<T>::MappedType CudaT;
+    if (fwd) {
+      GatherNDImpl<CudaT>(num_slices, kernel_input_data,
+                          kernel_output_data, slice_size,
+                          input_slice_offsets_data);
+    } else {
+#ifdef ENABLE_TRAINING
+      GatherNDGradImpl<CudaT>(num_slices, kernel_input_data,
+                              kernel_output_data, slice_size,
+                              input_slice_offsets_data);
+#else
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Gradient computation is only supported in the training mode.");
+#endif
+    }
   }
-
-#define TYPED_FUNCTION_CALL_BWD(T)                                                                                                                \
-  if (T_type == DataTypeImpl::GetType<T>()) {                                                                                                     \
-    GatherNDGradImpl<ToCudaType<T>::MappedType>(num_slices, kernel_input_data, kernel_output_data, slice_size, input_slice_offsets_buffer.get()); \
-  }
-
+};
 
 template <typename TIndex>
 Status GatherNDBase::CommonComputeKernel(
@@ -104,39 +119,22 @@ Status GatherNDBase::CommonComputeKernel(
       indices_data,
       input_slice_offsets_buffer.get());
 
-  if (fwd) {
-    MLDataType T_type = kernel_input_tensor->DataType();
-    TYPED_FUNCTION_CALL_FWD(float);
-    TYPED_FUNCTION_CALL_FWD(MLFloat16);
-    TYPED_FUNCTION_CALL_FWD(double);
-  } else {
-#ifdef ENABLE_TRAINING
-    MLDataType T_type = kernel_input_tensor->DataType();
-    TYPED_FUNCTION_CALL_BWD(float);
-    TYPED_FUNCTION_CALL_BWD(MLFloat16);
-    TYPED_FUNCTION_CALL_BWD(double);
-#else
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Gradient computation is only supported in the training mode.");
-#endif
-  }
-
+  utils::MLTypeCallDispatcher<ComputeImpl, float, MLFloat16, double>
+      t_disp(kernel_input_tensor->GetElementType());
+  t_disp.Invoke(num_slices, slice_size, kernel_input_data, fwd, kernel_output_data, input_slice_offsets_buffer.get());
   return Status::OK();
 }
 
-#undef TYPED_FUNCTION_CALL_FWD
-#undef TYPED_FUNCTION_CALL_BWD
-
-#define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex, ver)                                                                             \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                            \
-      GatherND,                                                                                                             \
-      kOnnxDomain,                                                                                                          \
-      ver,                                                                                                                   \
-      TIndex,                                                                                                               \
-      kCudaExecutionProvider,                                                                                               \
-      KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),                                     \
-                                              DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}) \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()),                                                   \
+#define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex, ver)                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                          \
+      GatherND,                                                           \
+      kOnnxDomain,                                                        \
+      ver,                                                                \
+      TIndex,                                                             \
+      kCudaExecutionProvider,                                             \
+      KernelDefBuilder()                                                  \
+          .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())   \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()), \
       GatherND<TIndex>);
 
 // TODO: decprecate GatherND-1 after updating training models to opset-12
@@ -169,13 +167,13 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(CheckBatchDimensionsMatch(
       static_cast<size_t>(batch_dims_), {input_shape, indices_shape}));
 
-  //Output shape
+  // Output shape
   std::vector<int64_t> shape(indices_shape.GetDims().begin(), indices_shape.GetDims().end() - 1);
   shape.insert(shape.end(), input_shape.GetDims().begin() + last_indices_dimension, input_shape.GetDims().end());
 
   auto output_tensor = context->Output(0, TensorShape(shape));
 
-  //Compute
+  // Compute
   auto status = CommonComputeKernel<TIndex>(batch_dims_, input_shape, input_tensor, output_tensor, indices_shape, indices_tensor, true);
 
   return status;
