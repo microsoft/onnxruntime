@@ -107,13 +107,14 @@ __device__ void cuWelfordMuSigma2(
       cuWelfordOnlineSum<U>(curr, mu, sigma2, count);
     }
     // intra-warp reductions
-    for (int l = 0; l <= 4; ++l) {
-      int srcLaneB = (threadIdx.x + (1 << l)) & 31;
-      U muB = WARP_SHFL(mu, srcLaneB);
-      U countB = WARP_SHFL(count, srcLaneB);
-      U sigma2B = WARP_SHFL(sigma2, srcLaneB);
+    #pragma unroll
+    for (int stride = GPU_WARP_SIZE / 2; stride > 0; stride /= 2) {
+      U muB = WARP_SHFL_DOWN(mu, stride);
+      U countB = WARP_SHFL_DOWN(count, stride);
+      U sigma2B = WARP_SHFL_DOWN(sigma2, stride);
       cuChanOnlineSum<U>(muB, sigma2B, countB, mu, sigma2, count);
     }
+
     // threadIdx.x == 0 has correct values for each warp
     // inter-warp reductions
     if (blockDim.y > 1) {
@@ -192,8 +193,8 @@ __device__ void cuWelfordMuSigma2(
     for (; l + 7 < n2; l += 8 * numx) {
       for (int k = 0; k < 8; k += 2) {
         float2 curr = __half22float2(*((__half2*)(lvals + l + k)));
-        cuWelfordOnlineSum(curr.x, mu, sigma2, count);
-        cuWelfordOnlineSum(curr.y, mu, sigma2, count);
+        cuWelfordOnlineSum(static_cast<float>(curr.x), mu, sigma2, count);
+        cuWelfordOnlineSum(static_cast<float>(curr.y), mu, sigma2, count);
       }
     }
     for (; l < n2; ++l) {
@@ -201,13 +202,14 @@ __device__ void cuWelfordMuSigma2(
       cuWelfordOnlineSum(curr, mu, sigma2, count);
     }
     // intra-warp reductions
-    for (int l = 0; l <= 4; ++l) {
-      int srcLaneB = (threadIdx.x + (1 << l)) & 31;
-      float muB = WARP_SHFL(mu, srcLaneB);
-      float countB = WARP_SHFL(count, srcLaneB);
-      float sigma2B = WARP_SHFL(sigma2, srcLaneB);
+    #pragma unroll
+    for (int stride = GPU_WARP_SIZE / 2; stride > 0; stride /= 2) {
+      float muB = WARP_SHFL_DOWN(mu, stride);
+      float countB = WARP_SHFL_DOWN(count, stride);
+      float sigma2B = WARP_SHFL_DOWN(sigma2, stride);
       cuChanOnlineSum(muB, sigma2B, countB, mu, sigma2, count);
     }
+
     // threadIdx.x == 0 has correct values for each warp
     // inter-warp reductions
     if (blockDim.y > 1) {
@@ -310,7 +312,7 @@ __global__ void cuApplyLayerNorm(
   // 1) blockDim.x == GPU_WARP_SIZE
   // 2) Tensors are contiguous
   //
-  for (auto i1 = blockIdx.y; i1 < n1; i1 += gridDim.y) {
+  for (int i1 = blockIdx.y; i1 < n1; i1 += gridDim.y) {
     SharedMemory<U> shared;
     U* buf = shared.getPointer();
     U mu, sigma2;
