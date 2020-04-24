@@ -82,6 +82,18 @@ class OptimizerGraphBuilder {
       const bool allreduce_in_fp16,
       const bool fuse_scaling_outputs);
 
+  Status AddGradientScalingNodes(
+      const NodeArgNameGeneratorFn& nodearg_name_generator,
+      const float scale,
+      std::vector<ArgDef>& gradient_argdefs,
+      GraphAugmenter::GraphDefs& graph_defs,
+      const bool allreduce_in_fp16) {
+    ArgDef unused_fused_gradient_argdef;
+    return AddGradientScalingNodes(
+        nodearg_name_generator, scale, gradient_argdefs, unused_fused_gradient_argdef,
+        graph_defs, allreduce_in_fp16, /*fuse_scaling_outputs:*/ false);
+  }
+
   Status AddGradientNorm(
       const NodeArgNameGeneratorFn& nodearg_name_generator,
       const std::vector<ArgDef>& grad_argdefs,

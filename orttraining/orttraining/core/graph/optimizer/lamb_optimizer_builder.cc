@@ -134,113 +134,110 @@ Status LambOptimizerBuilder::Build(
     if (opt_configs[i].fp16_weight_arg != nullptr)
       output_weight_argdef = ArgDef(opt_configs[i].fp16_weight_arg->Name(), opt_configs[i].fp16_weight_arg->TypeAsProto());
 
-    // In distributed training, some weights may not be updated by all ranks.
-    if (opt_configs[i].enabled) {
-      auto alpha_iter = attrs.find("alpha");
-      if (alpha_iter != attrs.end())
-        alpha.emplace_back(alpha_iter->second);
-      else
-        alpha.emplace_back(0.9f);
+    auto alpha_iter = attrs.find("alpha");
+    if (alpha_iter != attrs.end())
+      alpha.emplace_back(alpha_iter->second);
+    else
+      alpha.emplace_back(0.9f);
 
-      auto beta_iter = attrs.find("beta");
-      if (beta_iter != attrs.end())
-        beta.emplace_back(beta_iter->second);
-      else
-        beta.emplace_back(0.999f);
+    auto beta_iter = attrs.find("beta");
+    if (beta_iter != attrs.end())
+      beta.emplace_back(beta_iter->second);
+    else
+      beta.emplace_back(0.999f);
 
-      auto lambda_iter = attrs.find("lambda");
-      if (lambda_iter != attrs.end())
-        lambda.emplace_back(lambda_iter->second);
-      else
-        lambda.emplace_back(0.0f);
+    auto lambda_iter = attrs.find("lambda");
+    if (lambda_iter != attrs.end())
+      lambda.emplace_back(lambda_iter->second);
+    else
+      lambda.emplace_back(0.0f);
 
-      auto epsilon_iter = attrs.find("epsilon");
-      if (epsilon_iter != attrs.end())
-        epsilon.emplace_back(epsilon_iter->second);
-      else
-        epsilon.emplace_back(1e-6f);
+    auto epsilon_iter = attrs.find("epsilon");
+    if (epsilon_iter != attrs.end())
+      epsilon.emplace_back(epsilon_iter->second);
+    else
+      epsilon.emplace_back(1e-6f);
 
-      auto ratio_min_iter = attrs.find("ratio_min");
-      if (ratio_min_iter != attrs.end()) {
-        // All weight tensors should have the same min ratio.
-        ORT_ENFORCE(ratio_min_iter->second == ratio_min);
-      }
+    auto ratio_min_iter = attrs.find("ratio_min");
+    if (ratio_min_iter != attrs.end()) {
+      // All weight tensors should have the same min ratio.
+      ORT_ENFORCE(ratio_min_iter->second == ratio_min);
+    }
 
-      auto ratio_max_iter = attrs.find("ratio_max");
-      if (ratio_max_iter != attrs.end()) {
-        // All weight tensors should have the same max ratio.
-        ORT_ENFORCE(ratio_max_iter->second == ratio_max);
-      }
+    auto ratio_max_iter = attrs.find("ratio_max");
+    if (ratio_max_iter != attrs.end()) {
+      // All weight tensors should have the same max ratio.
+      ORT_ENFORCE(ratio_max_iter->second == ratio_max);
+    }
 
-      auto do_bias_correction_iter = int_attrs.find("do_bias_correction");
-      if (do_bias_correction_iter != int_attrs.end()) {
-        // All weight tensors should have the same bias correction flag.
-        ORT_ENFORCE(do_bias_correction_iter->second == do_bias_correction);
-      }
+    auto do_bias_correction_iter = int_attrs.find("do_bias_correction");
+    if (do_bias_correction_iter != int_attrs.end()) {
+      // All weight tensors should have the same bias correction flag.
+      ORT_ENFORCE(do_bias_correction_iter->second == do_bias_correction);
+    }
 
-      // Extract weight's type and shape information.
-      const TypeProto* const weight_type_proto = weight_argdefs[i].type_proto;
-      const TypeProto* const gradient_type_proto = gradient_argdefs[i].type_proto;
-      std::vector<int64_t> weight_dims;
-      ORT_RETURN_IF_NOT(
-          weight_argdefs[i].type_proto &&
-          weight_argdefs[i].type_proto->has_tensor_type() &&
-          weight_argdefs[i].type_proto->tensor_type().has_shape());
-      for (const auto& dim : weight_argdefs[i].type_proto->tensor_type().shape().dim()) {
-        weight_dims.push_back(dim.dim_value());
-      }
+    // Extract weight's type and shape information.
+    const TypeProto* const weight_type_proto = weight_argdefs[i].type_proto;
+    const TypeProto* const gradient_type_proto = gradient_argdefs[i].type_proto;
+    std::vector<int64_t> weight_dims;
+    ORT_RETURN_IF_NOT(
+        weight_argdefs[i].type_proto &&
+        weight_argdefs[i].type_proto->has_tensor_type() &&
+        weight_argdefs[i].type_proto->tensor_type().has_shape());
+    for (const auto& dim : weight_argdefs[i].type_proto->tensor_type().shape().dim()) {
+      weight_dims.push_back(dim.dim_value());
+    }
 
-      // w & g
-      input_argdefs.push_back(weight_argdefs[i]);
-      input_argdefs.push_back(gradient_argdefs[i]);
+    // w & g
+    input_argdefs.push_back(weight_argdefs[i]);
+    input_argdefs.push_back(gradient_argdefs[i]);
 
-      // Output either w_new or g_new based on config.
-      if (opt_configs[i].update_weight) {
-        output_weight_argdef = ArgDef(weight_new_name, weight_type_proto);
-        output_argdefs.push_back(output_weight_argdef);  // w_new
-        output_argdefs.push_back(ArgDef());  // g_new
+    // Output either w_new or g_new based on config.
+    if (opt_configs[i].update_weight) {
+      output_weight_argdef = ArgDef(weight_new_name, weight_type_proto);
+      output_argdefs.push_back(output_weight_argdef);  // w_new
+      output_argdefs.push_back(ArgDef());  // g_new
+    } else {
+      output_gradient_argdef = ArgDef(gradient_new_name, gradient_type_proto);
+      output_argdefs.push_back(ArgDef());  // w_new
+      output_argdefs.push_back(output_gradient_argdef);  // g_new
+    }
+
+    // m1 & m2 & m1_new & m2_new
+    const std::vector<std::string> moments_suffixes({"_Moment1", "_Moment2"});
+    for (const auto& moments_suffix : moments_suffixes) {
+      const std::string moment_name = weight_name + moments_suffix;
+
+      // Construct type of momentum tensor.
+      TensorProto moment_tensor_proto;
+      TypeProto* moment_type_proto = graph_defs.CopyTypeProto(weight_argdefs[i]);
+      if (opt_configs[i].use_fp16_moments) {
+        moment_tensor_proto = CreateTensorProto<MLFloat16>(moment_name, MLFloat16(math::floatToHalf(0.f)), weight_dims);
+        moment_type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16);
       } else {
-        output_gradient_argdef = ArgDef(gradient_new_name, gradient_type_proto);
-        output_argdefs.push_back(ArgDef());  // w_new
-        output_argdefs.push_back(output_gradient_argdef);  // g_new
+        moment_tensor_proto = CreateTensorProto<float>(moment_name, 0.f, weight_dims);
       }
 
-      // m1 & m2 & m1_new & m2_new
-      const std::vector<std::string> moments_prefixes({"Moment_1_", "Moment_2_"});
-      for (const auto& moment_prefix : moments_prefixes) {
-        const std::string gradient_moment_name = moment_prefix + gradient_name;
+      // Store momentum tensor to initializer list.
+      new_external_initializers.emplace_back(std::move(moment_tensor_proto));
 
-        // Construct type of momentum tensor.
-        TensorProto moment_tensor_proto;
-        TypeProto* moment_type_proto = graph_defs.CopyTypeProto(weight_argdefs[i]);
-        if (opt_configs[i].use_fp16_moments) {
-          moment_tensor_proto = CreateTensorProto<MLFloat16>(gradient_moment_name, MLFloat16(math::floatToHalf(0.f)), weight_dims);
-          moment_type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16);
-        } else {
-          moment_tensor_proto = CreateTensorProto<float>(gradient_moment_name, 0.f, weight_dims);
-        }
+      // Add momentums to the input and output list of the Lamb node.
+      input_argdefs.emplace_back(ArgDef(moment_name, moment_type_proto));
+      output_argdefs.emplace_back(ArgDef(moment_name + "_Out", moment_type_proto));
+    }
 
-        // Store momentum tensor to initializer list.
-        new_external_initializers.emplace_back(std::move(moment_tensor_proto));
-
-        // Add momentums to the input and output list of the Lamb node.
-        input_argdefs.emplace_back(ArgDef(gradient_moment_name, moment_type_proto));
-        output_argdefs.emplace_back(ArgDef(gradient_moment_name + "_Out", moment_type_proto));
-      }
-
-      // w_fp16 & w_fp16_new
-      if (opt_configs[i].update_weight && opt_configs[i].fp16_weight_arg != nullptr) {
-        input_argdefs.emplace_back(ArgDef(
-          opt_configs[i].fp16_weight_arg->Name(),
-          opt_configs[i].fp16_weight_arg->TypeAsProto()));
-        output_weight_argdef = ArgDef(
-          opt_configs[i].fp16_weight_arg->Name() + "_Lamb_out",
-          opt_configs[i].fp16_weight_arg->TypeAsProto());
-        output_argdefs.push_back(output_weight_argdef);
-      } else {
-        input_argdefs.emplace_back(ArgDef());
-        output_argdefs.emplace_back(ArgDef());
-      }
+    // w_fp16 & w_fp16_new
+    if (opt_configs[i].update_weight && opt_configs[i].fp16_weight_arg != nullptr) {
+      input_argdefs.emplace_back(ArgDef(
+        opt_configs[i].fp16_weight_arg->Name(),
+        opt_configs[i].fp16_weight_arg->TypeAsProto()));
+      output_weight_argdef = ArgDef(
+        opt_configs[i].fp16_weight_arg->Name() + "_Lamb_out",
+        opt_configs[i].fp16_weight_arg->TypeAsProto());
+      output_argdefs.push_back(output_weight_argdef);
+    } else {
+      input_argdefs.emplace_back(ArgDef());
+      output_argdefs.emplace_back(ArgDef());
     }
 
     output_weight_argdefs.push_back(output_weight_argdef);

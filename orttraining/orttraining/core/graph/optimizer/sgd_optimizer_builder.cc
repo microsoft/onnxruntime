@@ -47,31 +47,28 @@ Status SGDOptimizerBuilder::Build(
     ArgDef output_gradient_argdef = gradient_argdefs[i];
     ArgDef output_weight_argdef = weight_argdefs[i];
 
-    // In distributed training, some weights may not be updated by all ranks.
-    if (opt_configs[i].enabled) {
-      std::vector<ArgDef> input_args;
-      input_args.push_back(ArgDef(opt_configs[i].lr_feed_name, CreateLearningRateTypeProto(graph_defs)));
-      graph_defs.AddGraphInputs({opt_configs[i].lr_feed_name});
-      input_args.push_back(weight_argdefs[i]);
-      input_args.push_back(gradient_argdefs[i]);
+    std::vector<ArgDef> input_args;
+    input_args.push_back(ArgDef(opt_configs[i].lr_feed_name, CreateLearningRateTypeProto(graph_defs)));
+    graph_defs.AddGraphInputs({opt_configs[i].lr_feed_name});
+    input_args.push_back(weight_argdefs[i]);
+    input_args.push_back(gradient_argdefs[i]);
 
-      std::vector<ArgDef> output_args;
-      if (opt_configs[i].update_weight) {
-        output_weight_argdef = ArgDef(weight_name + "_SGD_out", weight_type_proto);
-        output_args.push_back(output_weight_argdef);  // w_new
-        output_args.push_back(ArgDef());  // g_new
-      } else {
-        output_gradient_argdef = ArgDef(gradient_name + "_SGD_out", gradient_type_proto);
-        output_args.push_back(ArgDef());  // w_new
-        output_args.push_back(output_gradient_argdef);  // g_new
-      }
-
-      graph_defs.AddNodeDefs({NodeDef(OpDefinition(),
-                                      input_args,
-                                      output_args,
-                                      NodeAttributes(),
-                                      OptimizerNodeName(weight_name))});
+    std::vector<ArgDef> output_args;
+    if (opt_configs[i].update_weight) {
+      output_weight_argdef = ArgDef(weight_name + "_SGD_out", weight_type_proto);
+      output_args.push_back(output_weight_argdef);  // w_new
+      output_args.push_back(ArgDef());  // g_new
+    } else {
+      output_gradient_argdef = ArgDef(gradient_name + "_SGD_out", gradient_type_proto);
+      output_args.push_back(ArgDef());  // w_new
+      output_args.push_back(output_gradient_argdef);  // g_new
     }
+
+    graph_defs.AddNodeDefs({NodeDef(OpDefinition(),
+                                    input_args,
+                                    output_args,
+                                    NodeAttributes(),
+                                    OptimizerNodeName(weight_name))});
 
     output_weight_argdefs.push_back(output_weight_argdef);
     output_gradient_argdefs.push_back(output_gradient_argdef);

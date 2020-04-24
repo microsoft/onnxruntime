@@ -29,7 +29,6 @@ struct OptimizerNodeConfig {
   std::string loss_scale_input_name{};
   bool use_fp16_moments{false};
   bool update_weight{true};  // indicates whether Optimizer should do weight update, or output new gradient
-  bool enabled{true};        // indicates whether this weight is included in the Optimizer
 };
 
 // configuration for optimizer portion of graph
