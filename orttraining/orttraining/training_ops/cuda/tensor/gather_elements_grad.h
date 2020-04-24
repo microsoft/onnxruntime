@@ -1,30 +1,28 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
-#ifdef USE_HOROVOD
-
 #pragma once
+
 #include "core/common/common.h"
+#include "core/framework/op_kernel.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-class Recv final : public CudaKernel {
-public:
-  Recv(const OpKernelInfo& info) : CudaKernel(info) {
-    ORT_ENFORCE(info.GetAttr<int64_t>("tag", &tag_).IsOK());
-    ORT_ENFORCE(info.GetAttrs<int64_t>("element_types", element_types_).IsOK());
+class GatherElementsGrad final : public CudaKernel {
+ public:
+  GatherElementsGrad(const OpKernelInfo& info) : CudaKernel(info) {
+    info.GetAttrOrDefault("axis", &axis_, static_cast<int64_t>(0));
   }
-
+  ~GatherElementsGrad() = default;
   Status ComputeInternal(OpKernelContext* context) const override;
 
-private:
-  int64_t tag_;
-  std::vector<int64_t> element_types_;
+ private:
+  template <typename T>
+  struct ComputeImpl;
+
+  int64_t axis_;
 };
 
 }  // namespace cuda
 }  // namespace onnxruntime
-
-#endif

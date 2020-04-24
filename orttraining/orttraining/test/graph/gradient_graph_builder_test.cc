@@ -997,6 +997,106 @@ class PipelineBatchPlanner {
   }
 };
 
+// verify pipeline config can load and gradient graph can construct.
+TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
+  PathString filename_base = ORT_TSTR("testdata/test_training_model_");
+
+  auto load_gradient_graph = [](int stageIdx, PathString& input_file, PathString& output_file) {
+    auto config = MakeBasicTrainingConfig();
+
+    config.use_pipeline = true;
+
+    PathString backprop_model_file;
+    ASSERT_STATUS_OK(BuildBackPropGraph(input_file, config, backprop_model_file));
+
+    std::shared_ptr<Model> model;
+    ASSERT_TRUE(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+
+    Graph& graph = model->MainGraph();
+    auto is_backward = [](Node& node) {
+      return (node.Description() == "Backward pass");
+    };
+    // check for wait/record node
+    Node* wait_fw{nullptr};
+    Node* wait_bw{nullptr};
+    Node* record_fw{nullptr};
+    Node* record_bw{nullptr};
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "WaitEvent") {
+        if (is_backward(node)) {
+          wait_bw = &node;
+        } else {
+          wait_fw = &node;
+        }
+      } else if (node.OpType() == "RecordEvent") {
+        if (is_backward(node)) {
+          record_bw = &node;
+        } else {
+          record_fw = &node;
+        }
+      }
+    }
+    // every partition should have wait forward and record backward
+    ASSERT_TRUE(wait_fw && record_bw);
+    if (stageIdx == 2) {
+      // the last partition can perform back prop right away. It won't have record
+      // forward and wait backward
+      ASSERT_TRUE(!record_fw && !wait_bw);
+    } else {
+      ASSERT_TRUE(record_fw && wait_bw);
+    }
+
+    // check for send/recv node
+    Node* send_fw{nullptr};
+    Node* send_bw{nullptr};
+    Node* recv_fw{nullptr};
+    Node* recv_bw{nullptr};
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "Send") {
+        if (is_backward(node)) {
+          send_bw = &node;
+        } else {
+          send_fw = &node;
+        }
+      } else if (node.OpType() == "Recv") {
+        if (is_backward(node)) {
+          recv_bw = &node;
+        } else {
+          recv_fw = &node;
+        }
+      }
+    }
+    // except the last partion, each partition should have send forward and recv backward
+    if (stageIdx == 0 || stageIdx == 1) {
+      ASSERT_TRUE(send_fw && recv_bw);
+    } else {
+      ASSERT_TRUE(!send_fw && !recv_bw);
+    }
+    // except the first partion, each partition should have recv forward and send backward
+    if (stageIdx == 1 || stageIdx == 2) {
+      ASSERT_TRUE(recv_fw && send_bw);
+    } else {
+      ASSERT_TRUE(!recv_fw && !send_bw);
+    }
+
+    auto mp = model->ToProto();
+    std::ofstream ofs(output_file, std::ofstream::binary);
+    mp.SerializeToOstream(&ofs);
+    ofs.close();
+  };
+
+  for (int i = 0; i < 3; ++i) {
+#ifdef _WIN32
+    auto surfix = std::to_wstring(i);
+#else
+    auto surfix = std::to_string(i);
+#endif
+    PathString input_file = filename_base + surfix + ORT_TSTR(".onnx");
+    PathString output_file = filename_base + surfix + ORT_TSTR("_back.onnx");
+    load_gradient_graph(i, input_file, output_file);
+  }
+}
+
 TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   auto config = MakeBasicTrainingConfig();
   //config.set_gradients_as_graph_outputs = true;

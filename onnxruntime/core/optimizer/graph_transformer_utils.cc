@@ -27,6 +27,7 @@
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/attention_fusion.h"
+#include "core/optimizer/expand_elimination.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/mlas/inc/mlas.h"
 
@@ -47,6 +48,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
       rules.push_back(onnxruntime::make_unique<EliminateSlice>());
       rules.push_back(onnxruntime::make_unique<UnsqueezeElimination>());
       rules.push_back(onnxruntime::make_unique<EliminateDropout>());
+      rules.push_back(onnxruntime::make_unique<ExpandElimination>());
       rules.push_back(onnxruntime::make_unique<CastElimination>());
       rules.push_back(onnxruntime::make_unique<FuseReluClip>());
       rules.push_back(onnxruntime::make_unique<ShapeToInitializer>());

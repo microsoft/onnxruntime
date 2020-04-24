@@ -3,7 +3,6 @@
 
 #include "attention.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "attention_impl.h"
