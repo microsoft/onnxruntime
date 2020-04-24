@@ -479,6 +479,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "Bad onnx test output. Needs test fix."},
       {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
+      {"dropout_default", "result differs", {"onnxtip"}},
+      {"dropout_random", "result differs", {"onnxtip"}},
+      {"celu", "invalid model", {"onnxtip"}},
       {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"}
   };
 
@@ -498,7 +501,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
     broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
     broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
-    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});    
+    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.0_224", "Results mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
@@ -615,6 +618,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"fp16_inception_v1", "Temporarily disabled pending investigation"});
     broken_tests.insert({"candy", "Temporarily disabled pending investigation"});
     broken_tests.insert({"BERT_Squad", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"LSTM_Seq_lens_unpacked", "The parameter is incorrect"});
   }
 
 #if defined(_WIN32) && !defined(_WIN64)

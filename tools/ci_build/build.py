@@ -94,6 +94,25 @@ def parse_arguments():
     parser.add_argument(
         "--skip_tests", action='store_true', help="Skip all tests.")
 
+    # Test options
+    parser.add_argument("--ctest_label_regex",
+                        help="Only run CTest tests with a label matching the pattern (passed to ctest --label-regex).")
+
+    # Training options
+    parser.add_argument(
+        "--enable_training", action='store_true', help="Enable training in ORT.")
+    parser.add_argument(
+        "--enable_training_e2e_tests", action="store_true",
+        help="Enable the training end-to-end tests.")
+    parser.add_argument(
+        "--training_e2e_test_data_path",
+        help="Path to training end-to-end test data directory.")
+    parser.add_argument(
+        "--enable_training_python_frontend_e2e_tests", action="store_true",
+        help="Enable the pytorch frontend training tests.")
+    parser.add_argument(
+        "--use_horovod", action='store_true', help="Enable Horovod.")
+
     # enable ONNX tests
     parser.add_argument(
         "--enable_onnx_tests", action='store_true',
@@ -235,15 +254,6 @@ def parse_arguments():
         "--enable_msinternal", action="store_true",
         help="Enable for Microsoft internal builds only.")
     parser.add_argument("--llvm_path", help="Path to llvm dir")
-    parser.add_argument(
-        "--use_brainslice", action="store_true", help="Build with brain slice")
-    parser.add_argument(
-        "--brain_slice_package_path", help="Path to brain slice packages")
-    parser.add_argument(
-        "--brain_slice_package_name", help="Name of brain slice packages")
-    parser.add_argument(
-        "--brain_slice_client_package_name",
-        help="Name of brainslice client package")
     parser.add_argument(
         "--use_nuphar", action='store_true', help="Build with nuphar")
     parser.add_argument(
@@ -530,8 +540,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + (
             "ON" if args.enable_msinternal else "OFF"),
-        "-Donnxruntime_USE_BRAINSLICE=" + (
-            "ON" if args.use_brainslice else "OFF"),
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_TENSORRT_HOME=" + (
@@ -562,11 +570,27 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             "ON" if args.use_acl == "ACL_1905" else "OFF"),
         "-Donnxruntime_USE_ACL_1908=" + (
             "ON" if args.use_acl == "ACL_1908" else "OFF"),
+        # Training related flags
+        "-Donnxruntime_ENABLE_TRAINING=" + (
+            "ON" if args.enable_training else "OFF"),
+        "-Donnxruntime_ENABLE_TRAINING_E2E_TESTS=" + (
+            "ON" if args.enable_training_e2e_tests else "OFF"),
+        "-Donnxruntime_USE_HOROVOD=" + (
+            "ON" if args.use_horovod else "OFF"),
     ]
 
     if args.winml_root_namespace_override:
         cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE="
                        + args.winml_root_namespace_override]
+
+    # temp turn on only for linux gpu build
+    if not is_windows():
+        if args.use_cuda:
+            if "-Donnxruntime_USE_HOROVOD=OFF" in cmake_args:
+               cmake_args.remove("-Donnxruntime_USE_HOROVOD=OFF")
+            cmake_args += [
+                "-Donnxruntime_USE_HOROVOD=ON",
+                "-Donnxruntime_USE_FULL_PROTOBUF=ON"]
 
     # nGraph and TensorRT providers currently only supports
     # full_protobuf option.
@@ -575,20 +599,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         cmake_args += [
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
             "-DProtobuf_USE_STATIC_LIBS=ON"
-        ]
-
-    if args.use_brainslice:
-        bs_pkg_name = args.brain_slice_package_name.split('.', 1)
-        bs_shared_lib_name = '.'.join(
-            (bs_pkg_name[0], 'redist', bs_pkg_name[1]))
-        cmake_args += [
-            "-Donnxruntime_BRAINSLICE_LIB_PATH=%s/%s" % (
-                args.brain_slice_package_path, args.brain_slice_package_name),
-            "-Donnxruntime_BS_CLIENT_PACKAGE=%s/%s" % (
-                args.brain_slice_package_path,
-                args.brain_slice_client_package_name),
-            "-Donnxruntime_BRAINSLICE_dynamic_lib_PATH=%s/%s" % (
-                args.brain_slice_package_path, bs_shared_lib_name)
         ]
 
     if args.use_llvm:
@@ -653,6 +663,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=ON"]
     else:
         cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=OFF"]
+
+    if args.training_e2e_test_data_path is not None:
+        cmake_args += ["-Donnxruntime_TRAINING_E2E_TEST_DATA_ROOT={}".format(
+            os.path.abspath(args.training_e2e_test_data_path))]
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -741,7 +755,11 @@ def build_targets(args, cmake_path, build_dir, configs, parallel):
         if parallel:
             num_cores = str(multiprocessing.cpu_count())
             if is_windows():
-                build_tool_args += ["/maxcpucount:" + num_cores]
+                build_tool_args += [
+                    "/maxcpucount:" + num_cores,
+                    # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
+                    "/nodeReuse:False",
+                    ]
             else:
                 build_tool_args += ["-j" + num_cores]
 
@@ -912,10 +930,15 @@ def adb_push(source_dir, src, dest, **kwargs):
 def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
 
+def run_training_python_frontend_e2e_tests(args, cwd, dll_path):
+    # frontend tests are to be added here:
+    log.info("Running python frontend e2e tests.")
+    run_subprocess(
+        [sys.executable, 'onnxruntime_test_ort_trainer_with_mixed_precision.py'],
+        cwd=cwd, dll_path=dll_path)
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
-                          enable_python_tests, enable_tvm=False,
-                          enable_tensorrt=False):
+                          enable_tvm=False, enable_tensorrt=False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
@@ -973,10 +996,13 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                      source_dir, 'cmake\\codeconv.runsettings')] + executables,
                 cwd=cwd2, dll_path=dll_path)
         else:
-            run_subprocess([ctest_path, "--build-config", config, "--verbose"],
-                           cwd=cwd, dll_path=dll_path)
+            ctest_cmd = [ctest_path, "--build-config", config, "--verbose"]
+            if args.ctest_label_regex is not None:
+                ctest_cmd += ["--label-regex", args.ctest_label_regex]
 
-        if enable_python_tests:
+            run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
+
+        if args.enable_pybind:
             # Disable python tests for TensorRT because many tests are
             # not supported yet.
             if enable_tensorrt:
@@ -987,6 +1013,16 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
             run_subprocess(
                 [sys.executable, 'onnxruntime_test_python.py'],
                 cwd=cwd, dll_path=dll_path)
+
+            if args.enable_training and args.use_cuda:
+                # run basic frontend tests
+                run_subprocess(
+                    [sys.executable, 'onnxruntime_test_ort_trainer.py'],
+                    cwd=cwd, dll_path=dll_path)
+
+                # run additional frontend tests for orttraining-linux-gpu-frontend_test_ci-pipeline
+                if args.enable_training_python_frontend_e2e_tests:
+                    run_training_python_frontend_e2e_tests(args, cwd=cwd, dll_path=dll_path)
 
             try:
                 import onnx  # noqa
@@ -1009,9 +1045,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                      os.path.join(source_dir, 'onnxruntime', 'test', 'onnx',
                                   'gen_test_models.py'),
                      '--output_dir', 'test_models'], cwd=cwd)
-                run_subprocess(
-                    [os.path.join(cwd, 'onnx_test_runner'), 'test_models'],
-                    cwd=cwd)
+                if not args.skip_onnx_tests:
+                    run_subprocess(
+                        [os.path.join(cwd, 'onnx_test_runner'), 'test_models'],
+                        cwd=cwd)
                 if config != 'Debug':
                     run_subprocess(
                         [sys.executable, 'onnx_backend_test_series.py'],
@@ -1450,7 +1487,6 @@ def main():
 
     if args.test:
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
-                              args.enable_pybind and not args.skip_onnx_tests,
                               args.use_tvm, args.use_tensorrt)
         # run the onnx model tests if requested explicitly.
         if args.enable_onnx_tests and not args.skip_onnx_tests:

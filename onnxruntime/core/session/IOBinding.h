@@ -79,6 +79,12 @@ class IOBinding {
     */
   AllocatorPtr GetCPUAllocator(int id, onnxruntime::ProviderType provider_type) const;
 
+  /**
+    * clear inputs or outputs. IOBinding is stateful. There are cases we need to reset its state.
+    */
+  void ClearOutputs();
+  void ClearInputs();
+
  private:
   friend InferenceSession;
 

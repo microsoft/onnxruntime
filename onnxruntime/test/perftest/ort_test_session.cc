@@ -44,7 +44,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
@@ -82,7 +82,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   } else if (provider_name == onnxruntime::kAclExecutionProvider) {
 #ifdef USE_ACL
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(session_options,
-	performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
+                                                                   performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
 #else
     ORT_THROW("Acl is not supported in this build\n");
 #endif

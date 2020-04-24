@@ -133,7 +133,7 @@ TEST(MathOpTest, Clip) {
 TEST(MathOpTest, ClipDimWithZero) {
   std::vector<int64_t> dims{3, 0};  // dim with value of zero should be handled
 
-  OpTester test("Clip", -1);  // latest opset
+  OpTester test("Clip", 11);
   test.AddInput<float>("X", dims, {});
   test.AddInput<float>("min", {}, {-5});
   test.AddInput<float>("max", {}, {5});

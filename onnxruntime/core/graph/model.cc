@@ -21,6 +21,7 @@
 
 #include "core/platform/env.h"
 #include "core/graph/schema_registry.h"
+
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;
 using namespace ::onnxruntime::common;
@@ -194,7 +195,7 @@ Version Model::ModelVersion() const {
   return kNoVersion;
 }
 
-void Model::SetModelversion(onnxruntime::Version version) {
+void Model::SetModelVersion(onnxruntime::Version version) {
   model_proto_.set_model_version(version);
 }
 
@@ -269,7 +270,9 @@ Status Model::Load(const ModelProto& model_proto,
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
   }
 
-  ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(true));
+  Graph::ResolveOptions options;
+  options.no_proto_sync_required = true;
+  ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(options));
 
   return Status::OK();
 }
@@ -299,7 +302,9 @@ Status Model::Load(ModelProto&& model_proto,
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
   }
 
-  ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(true));
+  Graph::ResolveOptions options;
+  options.no_proto_sync_required = true;
+  ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(options));
 
   return Status::OK();
 }
@@ -425,7 +430,9 @@ Status Model::LoadFromBytes(int count, void* p_bytes, const PathString& model_pa
 
   p_model = std::make_shared<Model>(std::move(model_proto), model_path, local_registries, logger);
 
-  ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
+  Graph::ResolveOptions options;
+  options.no_proto_sync_required = true;
+  ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(options));
 
   return Status::OK();
 }
@@ -474,7 +481,9 @@ Status Model::Load(int fd, const PathString& model_path, std::shared_ptr<Model>&
 
   p_model = std::make_shared<Model>(std::move(model_proto), model_path, local_registries, logger);
 
-  ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
+  Graph::ResolveOptions options;
+  options.no_proto_sync_required = true;
+  ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(options));
 
   return Status::OK();
 }

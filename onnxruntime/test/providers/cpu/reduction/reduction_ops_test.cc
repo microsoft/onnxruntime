@@ -1021,6 +1021,72 @@ TEST(ReductionOpTest, ReduceSum_int32) {
   test.Run();
 }
 
+#ifdef USE_CUDA
+TEST(ReductionOpTest, ReduceSumHalfHalf) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 1});
+
+  std::vector<float> data = {1.0f, 2.0f,
+                             3.0f, 4.0f,
+
+                             5.0f, 6.0f,
+                             7.0f, 8.0f,
+
+                             9.0f, 10.0f,
+                             11.0f, 12.0f};
+  std::vector<MLFloat16> data_half(12);
+  ConvertFloatToMLFloat16(data.data(), data_half.data(), 12);
+
+  std::vector<float> result = {36.0f, 42.0f};
+  std::vector<MLFloat16> result_half(2);
+  ConvertFloatToMLFloat16(result.data(), result_half.data(), 2);
+
+  test.AddInput<MLFloat16>("data", {3, 2, 2}, data_half);
+  test.AddOutput<MLFloat16>("reduced", {2}, result_half);
+  test.Run();
+} 
+
+void test_half_reduce_sum(
+    int64_t m, int64_t n) {
+  OpTester test("ReduceSum");
+  // Input tensor.
+  std::vector<float> X(m * n, 0.0f);
+  // Reduced tensor.
+  std::vector<float> Y(n, 0.0f);
+  // Random number generator.
+  std::default_random_engine generator(0);
+  std::uniform_real_distribution<float> distribution(0.0, 1.0);
+  for (int64_t i = 0; i < m; ++i) {
+    for (int64_t j = 0; j < n; ++j) {
+      const float value = distribution(generator) / float(m);
+      X[i * n + j] = value;
+      Y[j] += value;
+    }
+  }
+
+  std::vector<MLFloat16> X_half(m * n);
+  ConvertFloatToMLFloat16(X.data(), X_half.data(), int(m * n));
+
+  std::vector<MLFloat16> Y_half(n);
+  ConvertFloatToMLFloat16(Y.data(), Y_half.data(), int(n));
+
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddInput<MLFloat16>("data", {m, n}, X_half);
+  test.AddOutput<MLFloat16>("reduced", {n}, Y_half);
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_half_bert) {
+  test_half_reduce_sum(6 * 128, 128);
+  test_half_reduce_sum(8 * 128, 128);
+  test_half_reduce_sum(6 * 384, 128);
+  test_half_reduce_sum(8 * 384, 128);
+}
+
+// Add more UTs for half as needed
+#endif
 TEST(ReductionOpTest, ReduceSum_apex_reduction) {
   OpTester test("ReduceSum");
   test.AddAttribute("keepdims", (int64_t)0);
@@ -1106,7 +1172,7 @@ TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_128) {
 }
 
 #ifdef USE_CUDA
-TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_30528) {  
+TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_30528) {
   test_apex_reduce_sum(4 * 128, 30528);
   test_apex_reduce_sum(4 * 512, 30528);
 }
