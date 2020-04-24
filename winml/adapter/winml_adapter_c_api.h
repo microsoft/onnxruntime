@@ -394,8 +394,8 @@ struct WinmlAdapterApi {
 
   /**
     * CreateCustomRegistry
-	 * This api creates a custom registry that callers can populate with cusom ops.
-    * 
+	 * This api creates a custom registry that callers can populate with custom ops.
+    *
     * WinML uses this to support custom ops.
     */
   OrtStatus*(ORT_API_CALL* CreateCustomRegistry)(_Out_ IMLOperatorRegistry** registry)NO_EXCEPTION;

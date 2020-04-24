@@ -55,6 +55,8 @@ These optimizations include complex node fusions. They are run after graph parti
 
 To optimize inference performance of BERT model, approximation is used in GELU approximation and Attention fusion for cuda execution provider. There might be slight difference in result. The impact on accuracy could be neglected based on our evaluation: F1 score for a BERT model on SQuAD v1.1 is almost same (87.05 vs 87.03).
 
+GELU approximation is disabled by default.
+
 ### Layout Optimizations
 
 These optimizations change the data layout for applicable nodes to achieve higher performance improvements. They are run after graph partitioning and are only applied to nodes assigned to CPU execution provider. Available layout optimizations are as follows:

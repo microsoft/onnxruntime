@@ -319,7 +319,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     for (std::ptrdiff_t i = begin; i != end; ++i) {
       T* current_tmp_data = reinterpret_cast<T*>(out_tmp_data) + sequence_length_mul_head_size * i;
       math::MatMul<T>(sequence_length, head_size, sequence_length,
-                      reinterpret_cast<T*>(scratch_data) + sequence_length_mul_head_size * i,
+                      reinterpret_cast<T*>(scratch_data) + sequence_length * sequence_length * i,
                       V + sequence_length_mul_head_size * i, current_tmp_data, nullptr);
 
       // transpose: out(B, S, N, H) = transpose out_tmp(B, N, S, H)

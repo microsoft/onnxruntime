@@ -43,7 +43,13 @@ void TestBatchNorm(const unordered_map<string, vector<T>>& input_data_map,
   std::unordered_set<std::string> excluded_eps = {kTensorrtExecutionProvider};
   if (spatial_mode == 0) {
     excluded_eps.insert(kNGraphExecutionProvider);
+    excluded_eps.insert(kOpenVINOExecutionProvider);
   }
+
+  // OpenVINO: Disabled due to software limitations
+  #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+    excluded_eps.insert(kOpenVINOExecutionProvider);
+  #endif
   test.Run(expect_result, err_str, excluded_eps);
 }
 
