@@ -205,7 +205,6 @@ else:
         path.join('onnxruntime', 'capi', x))]
     ext_modules = []
 
-
 # Additional examples
 examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join('datasets', x) for x in examples_names]
