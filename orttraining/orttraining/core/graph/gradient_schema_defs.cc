@@ -206,7 +206,33 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
       .TypeConstraint(
           "TInt64",
           {"tensor(int64)"},
-          "Constrain update count to 64-bit integer");
+          "Constrain update count to 64-bit integer")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Handle update count, the first output.
+        const size_t step_input_index = 4;
+        const size_t step_output_index = 0;
+        auto input_type = ctx.getInputType(step_input_index);
+        if (input_type != nullptr) {
+            propagateElemTypeFromInputToOutput(ctx, step_input_index, step_output_index);
+            if (hasInputShape(ctx, step_input_index)){
+                propagateShapeFromInputToOutput(ctx, step_input_index, step_output_index);
+            }
+        }
+
+        // Handle other tensors including new weight, new gradient (update direction), 
+        // new momentums.
+        for (size_t i = 0; i < ctx.getNumInputs() - 5; ++i) {
+            const size_t input_index = 5 + i; // The first 5 inputs don't affect output shape.
+            const size_t output_index = 1 + i; // The first output has been processed above.
+            input_type = ctx.getInputType(input_index);
+            if (input_type != nullptr) {
+                propagateElemTypeFromInputToOutput(ctx, input_index, output_index);
+                if (hasInputShape(ctx, input_index)) {
+                    propagateShapeFromInputToOutput(ctx, input_index, output_index);
+                }
+            }
+        }
+      });
 
   op_schema
       .Input(
@@ -401,6 +427,43 @@ void RegisterGradientSchemas() {
           "T",
           OpSchema::all_tensor_types(),
           "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "Tind",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain indices to integer types");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherElementsGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("GatherElementsGrad")
+      .Attr(
+          "axis",
+          "Which axis to scatter on. Negative value means "
+          "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Input(
+          0,
+          "dY",
+          "Tensor of rank r >=1 (same rank and shape as indices)",
+          "T")
+      .Input(1, "shape", "Shape of the GatherElements input data.", "I")
+      .Input(
+          2,
+          "indices",
+          "Tensor of int32/int64 indices, of r >= 1 (same rank as input). All index values are expected to be "
+          "within bounds [-s, s-1] along axis of size s. It is an error if any of the index values are out of bounds.",
+          "Tind")
+      .Output(0, "dX", "Tensor of rank r >= 1 (same rank as input).", "T")
+      .TypeConstraint(
+          "I",
+          {"tensor(int64)"},
+          "Constrain input shape to integer tensors.")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Input and output types can be of any tensor type.")
       .TypeConstraint(
           "Tind",
           {"tensor(int32)", "tensor(int64)"},
@@ -635,12 +698,84 @@ void RegisterGradientSchemas() {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherNDGrad)
+  // TODO: Depreacate this schema when training support is udpated to opset-12
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
       .SetDomain(kOnnxDomain)
       .SinceVersion(1)
       .Attr(
-          "axis",
-          "The number of batch dims. The gather of indexing starts from dimension of data[axis+1:]",
+          "batch_dims",
+          "The number of batch dims. The gather of indexing starts from dimension of data[batch_dims:]",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Input(0, "data", "Tensor of rank r >= 1.", "T")
+      .Input(1, "indices", "Tensor of rank q >= 1.", "Tind")
+      .Output(0, "output", "Tensor of rank q-1+r-indices[-1].", "T")
+      .TypeConstraint(
+          "T",
+          OpSchema::all_tensor_types(),
+          "Constrain input and output types to any tensor type.")
+      .TypeConstraint(
+          "Tind",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain indice type to int32 or int64")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasNInputShapes(ctx, 2)) {
+          return;
+        }
+        auto& data_shape = ctx.getInputType(0)->tensor_type().shape();
+        auto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
+        auto data_rank = data_shape.dim_size();
+        auto indices_rank = indices_shape.dim_size();
+        auto batch_dims = ctx.getAttribute("batch_dims");
+        int64_t batch_dims_data = batch_dims ? static_cast<int>(batch_dims->i()) : 0;
+        if (data_rank < 1 || indices_rank < 1) {
+          fail_shape_inference("both data and indices tensor need to have rank larger than zero.");
+        }
+        auto last_indice_dimension = indices_shape.dim(indices_rank - 1).dim_value() + batch_dims_data;
+        if (last_indice_dimension > data_rank) {
+          fail_shape_inference("last dimension of indices must not be larger and rank of data tensor");
+        }
+        for (int i = 0; i < indices_rank - 1; ++i) {
+          *ctx.getOutputType(0)
+               ->mutable_tensor_type()
+               ->mutable_shape()
+               ->add_dim() = indices_shape.dim(i);
+        }
+        for (int i = static_cast<int>(last_indice_dimension); i < data_rank; ++i) {
+          *ctx.getOutputType(0)
+               ->mutable_tensor_type()
+               ->mutable_shape()
+               ->add_dim() = data_shape.dim(i);
+        }
+      })
+      .SetDoc(R"DOC(
+Given `data` tensor of rank r >= 1, and `indices` tensor of rank q >= 1, gather
+slices of `data` into an output tensor of rank q - 1 + r - indices[-1].
+Example 1:
+  data    = [[0,1],[2,3]]
+  indices = [[0,0],[1,1]]
+  output  = [0,3]
+Example 2:
+  data    = [[0,1],[2,3]]
+  indices = [[1],[0]]
+  output  = [[2,3],[0,1]]
+Example 3:
+  data    = [[[0,1],[2,3]],[[4,5],[6,7]]]
+  indices = [[0,1],[1,0]]
+  output  = [[2,3],[4,5]]
+Example 4:
+  data    = [[[0,1],[2,3]],[[4,5],[6,7]]]
+  indices = [[[0,1]],[[1,0]]]
+  output  = [[[2,3]],[[4,5]]]
+)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherNDGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr(
+          "batch_dims",
+          "The number of batch dims. The gather of indexing starts from dimension of data[batch_dims+1:]",
           AttributeProto::INT,
           static_cast<int64_t>(0))
       .Input(0, "shape", "The shape of source data input of GatherND.", "T1")
@@ -653,7 +788,7 @@ void RegisterGradientSchemas() {
           "Constrain input and output types to any tensor type.")
       .TypeConstraint(
           "Tind",
-          {"tensor(int32)", "tensor(int64)"},
+          {"tensor(int64)"},
           "Constrain indice type to int32 or int64")
       .TypeConstraint(
           "T1",
@@ -1607,7 +1742,7 @@ Return true if all elements are true and false otherwise.
           "Allow inputs and outputs to be any kind of tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         if (ctx.getNumInputs() < ctx.getNumOutputs() + 1)
-          fail_shape_inference("WaitEvent must have at least (num_outputs + 1) inputs.");
+          fail_shape_inference("RecordEvent must have at least (num_outputs + 1) inputs.");
 
         // note: if num_input > num_output + 1,
         // the additional inputs (idx >= num_ouput + 1) are regarded as dependencies

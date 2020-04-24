@@ -12,10 +12,10 @@
 #define FENCE_SIGNAL_VALUE 1
 
 using namespace winrt;
-using namespace winrt::Windows::AI::MachineLearning;
-using namespace winrt::Windows::Foundation::Collections;
-using namespace winrt::Windows::Media;
-using namespace winrt::Windows::Graphics::Imaging;
+using namespace winml;
+using namespace wfc;
+using namespace wm;
+using namespace wgi;
 
 namespace ImageTestHelper {
     BitmapPixelFormat GetPixelFormat(const std::wstring& inputPixelFormat) {
@@ -37,8 +37,8 @@ namespace ImageTestHelper {
         softwareBitmap = SoftwareBitmap::Convert(softwareBitmap, BitmapPixelFormat::Bgra8);
         BYTE* pData = nullptr;
         UINT32 size = 0;
-        winrt::Windows::Graphics::Imaging::BitmapBuffer spBitmapBuffer(softwareBitmap.LockBuffer(winrt::Windows::Graphics::Imaging::BitmapBufferAccessMode::Read));
-        winrt::Windows::Foundation::IMemoryBufferReference reference = spBitmapBuffer.CreateReference();
+        wgi::BitmapBuffer spBitmapBuffer(softwareBitmap.LockBuffer(wgi::BitmapBufferAccessMode::Read));
+        wf::IMemoryBufferReference reference = spBitmapBuffer.CreateReference();
         auto spByteAccess = reference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
         spByteAccess->GetBuffer(&pData, &size);
 
@@ -82,8 +82,8 @@ namespace ImageTestHelper {
         softwareBitmap = SoftwareBitmap::Convert(softwareBitmap, BitmapPixelFormat::Bgra8);
         BYTE* pData = nullptr;
         UINT32 size = 0;
-        BitmapBuffer spBitmapBuffer(softwareBitmap.LockBuffer(winrt::Windows::Graphics::Imaging::BitmapBufferAccessMode::Read));
-        winrt::Windows::Foundation::IMemoryBufferReference reference = spBitmapBuffer.CreateReference();
+        BitmapBuffer spBitmapBuffer(softwareBitmap.LockBuffer(wgi::BitmapBufferAccessMode::Read));
+        wf::IMemoryBufferReference reference = spBitmapBuffer.CreateReference();
         com_ptr<::Windows::Foundation::IMemoryBufferByteAccess> spByteAccess = reference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
         spByteAccess->GetBuffer(&pData, &size);
 
@@ -214,7 +214,7 @@ namespace ImageTestHelper {
         wil::unique_event hDirectEvent(directEvent);
 
         //Create Fence
-        Microsoft::WRL::ComPtr<ID3D12Fence> spDirectFence = nullptr;
+        ::Microsoft::WRL::ComPtr<ID3D12Fence> spDirectFence = nullptr;
         WINML_EXPECT_HRESULT_SUCCEEDED(pD3D12Device->CreateFence(
             0,
             D3D12_FENCE_FLAG_NONE,
@@ -251,8 +251,8 @@ namespace ImageTestHelper {
 
         uint32_t size = 4 * softwareBitmapActual.PixelHeight() * softwareBitmapActual.PixelWidth();
 
-        winrt::Windows::Storage::Streams::Buffer actualOutputBuffer(size);
-        winrt::Windows::Storage::Streams::Buffer expectedOutputBuffer(size);
+        ws::Streams::Buffer actualOutputBuffer(size);
+        ws::Streams::Buffer expectedOutputBuffer(size);
 
         softwareBitmapActual.CopyToBuffer(actualOutputBuffer);
         softwareBitmapExpected.CopyToBuffer(expectedOutputBuffer);

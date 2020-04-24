@@ -8,7 +8,8 @@
 
 #include <Memorybuffer.h>
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
+
 template <typename T>
 struct TensorResources {
   // ITensorNative::GetBuffer
@@ -29,7 +30,7 @@ struct TensorResources {
 
       // Lazily allocate the cpu resource on call to GetBuffer
       if (CpuResource == nullptr) {
-        CpuResource = std::make_shared<WinML::Tensor<T>>(shape);
+        CpuResource = std::make_shared<_winml::Tensor<T>>(shape);
       }
 
       // Get the data pointer and size
@@ -46,7 +47,7 @@ struct TensorResources {
   }
 
   // Theses are access directly by TensorMemoryBufferReference<T> and TensorBase
-  std::shared_ptr<WinML::Tensor<T>> CpuResource;
+  std::shared_ptr<_winml::Tensor<T>> CpuResource;
   winrt::com_ptr<ID3D12Resource> GpuResource;
 };
 
@@ -58,9 +59,9 @@ struct TensorResources {
 template <typename T>
 class TensorMemoryBufferReference : public winrt::implements<
                                         TensorMemoryBufferReference<T>,
-                                        winrt::Windows::Foundation::IMemoryBufferReference,
+                                        wf::IMemoryBufferReference,
                                         Windows::Foundation::IMemoryBufferByteAccess> {
-  using ClosedDelegate = winrt::Windows::Foundation::TypedEventHandler<winrt::Windows::Foundation::IMemoryBufferReference, winrt::Windows::Foundation::IInspectable>;
+  using ClosedDelegate = wf::TypedEventHandler<wf::IMemoryBufferReference, wf::IInspectable>;
 
  public:
   // winrt::Windows::Foundation::IMemoryBufferReference
@@ -139,9 +140,9 @@ class TensorMemoryBufferReference : public winrt::implements<
 
  private:
   void FireClosed() {
-    winrt::Windows::Foundation::IMemoryBufferReference memoryBufferReference = nullptr;
+    wf::IMemoryBufferReference memoryBufferReference = nullptr;
     WINML_THROW_IF_FAILED(this->QueryInterface(
-        winrt::guid_of<winrt::Windows::Foundation::IMemoryBufferReference>(),
+        winrt::guid_of<wf::IMemoryBufferReference>(),
         reinterpret_cast<void**>(winrt::put_abi(memoryBufferReference))));
 
     for (auto handler : m_handlers) {
@@ -156,4 +157,4 @@ class TensorMemoryBufferReference : public winrt::implements<
   int64_t m_eventTokenCounter = 0;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

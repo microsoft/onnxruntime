@@ -5,7 +5,7 @@
 
 #include "OnnxruntimeSessionBuilder.h"
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 class OnnxruntimeEngineFactory;
 
@@ -31,4 +31,4 @@ class OnnxruntimeDmlSessionBuilder : public Microsoft::WRL::RuntimeClass<
   winrt::com_ptr<ID3D12CommandQueue> queue_;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml
