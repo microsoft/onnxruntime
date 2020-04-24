@@ -255,6 +255,15 @@ def parse_arguments():
         help="Enable for Microsoft internal builds only.")
     parser.add_argument("--llvm_path", help="Path to llvm dir")
     parser.add_argument(
+        "--use_brainslice", action="store_true", help="Build with brain slice")
+    parser.add_argument(
+        "--brain_slice_package_path", help="Path to brain slice packages")
+    parser.add_argument(
+        "--brain_slice_package_name", help="Name of brain slice packages")
+    parser.add_argument(
+        "--brain_slice_client_package_name",
+        help="Name of brainslice client package")
+    parser.add_argument(
         "--use_nuphar", action='store_true', help="Build with nuphar")
     parser.add_argument(
         "--use_tensorrt", action='store_true', help="Build with TensorRT")
@@ -532,6 +541,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             "ON" if args.use_openvino == "VAD-M_FP16" else "OFF"),
         "-Donnxruntime_USE_OPENVINO_VAD_F=" + (
             "ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
+        "-Donnxruntime_USE_OPENVINO_BINARY=" + (
+            "ON" if args.use_openvino else "OFF"),
         "-Donnxruntime_USE_NNAPI=" + ("ON" if args.use_dnnlibrary else "OFF"),
         "-Donnxruntime_USE_OPENMP=" + (
             "ON" if args.use_openmp and not args.use_dnnlibrary and
@@ -540,6 +551,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + (
             "ON" if args.enable_msinternal else "OFF"),
+        "-Donnxruntime_USE_BRAINSLICE=" + (
+            "ON" if args.use_brainslice else "OFF"),
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_TENSORRT_HOME=" + (
@@ -595,10 +608,24 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
     # nGraph and TensorRT providers currently only supports
     # full_protobuf option.
     if (args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or
-            args.gen_doc):
+            args.use_openvino or args.gen_doc):
         cmake_args += [
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
             "-DProtobuf_USE_STATIC_LIBS=ON"
+        ]
+
+    if args.use_brainslice:
+        bs_pkg_name = args.brain_slice_package_name.split('.', 1)
+        bs_shared_lib_name = '.'.join(
+            (bs_pkg_name[0], 'redist', bs_pkg_name[1]))
+        cmake_args += [
+            "-Donnxruntime_BRAINSLICE_LIB_PATH=%s/%s" % (
+                args.brain_slice_package_path, args.brain_slice_package_name),
+            "-Donnxruntime_BS_CLIENT_PACKAGE=%s/%s" % (
+                args.brain_slice_package_path,
+                args.brain_slice_client_package_name),
+            "-Donnxruntime_BRAINSLICE_dynamic_lib_PATH=%s/%s" % (
+                args.brain_slice_package_path, bs_shared_lib_name)
         ]
 
     if args.use_llvm:
@@ -938,7 +965,8 @@ def run_training_python_frontend_e2e_tests(args, cwd, dll_path):
         cwd=cwd, dll_path=dll_path)
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
-                          enable_tvm=False, enable_tensorrt=False):
+                          enable_python_tests, enable_tvm=False,
+                          enable_tensorrt=False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
@@ -1002,7 +1030,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
 
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
-        if args.enable_pybind:
+        if enable_python_tests:
             # Disable python tests for TensorRT because many tests are
             # not supported yet.
             if enable_tensorrt:
@@ -1149,6 +1177,50 @@ def tensorrt_run_onnx_tests(args, build_dir, configs, onnx_test_data_dir,
                 run_subprocess(
                     [exe] + model_test_cmd, cwd=cwd, dll_path=dll_path)
 
+def openvino_run_onnx_tests(build_dir, configs, onnx_test_data_dir,
+                            provider, num_parallel_models,
+                            num_parallel_tests=0):
+    """openvino function to run onnx tests and model tests
+    """
+    for config in configs:
+      cwd = get_config_build_dir(build_dir, config)
+      if is_windows():
+        exe = os.path.join(cwd, config, 'onnx_test_runner')
+        model_dir = os.path.join(cwd, "models")
+      else:
+        exe = os.path.join(cwd, 'onnx_test_runner')
+        model_dir = os.path.join(build_dir, "models")
+
+      cmd = ['-o', '0']
+      if provider:
+        cmd += ["-e", provider]
+
+      if num_parallel_tests != 0:
+        cmd += ['-c', str(num_parallel_tests)]
+
+      if num_parallel_models > 0:
+        cmd += ["-j", str(num_parallel_models)]
+
+      #onnx test
+      if os.path.exists(onnx_test_data_dir):
+        cmd.append(onnx_test_data_dir)
+        run_subprocess([exe] + cmd, cwd=cwd)
+
+      #model test
+      #OpenVINO can run most of the model tests, but only part of
+      #them are enabled here to save CI build time.
+      if config != 'Debug' and os.path.exists(model_dir):
+        model_dir_opset8 = os.path.join(model_dir, "opset8")
+        model_dir_opset8 = glob.glob(os.path.join(
+            model_dir_opset8, "test_*"))
+        model_dir_opset10 = os.path.join(model_dir, "opset10")
+        model_dir_opset10 = glob.glob(os.path.join(
+            model_dir_opset10, "tf_*"))
+        for dir_path in itertools.chain(model_dir_opset8,
+                                        model_dir_opset10):
+          model_test_cmd = cmd + [dir_path]
+          run_subprocess(
+            [exe] + model_test_cmd, cwd=cwd)
 
 def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
     """dnnl temporary function for running onnx tests and
@@ -1232,10 +1304,10 @@ def build_python_wheel(
             args.append('--use_cuda')
         elif use_ngraph:
             args.append('--use_ngraph')
-        elif use_dnnl:
-            args.append('--use_dnnl')
         elif use_openvino:
             args.append('--use_openvino')
+        elif use_dnnl:
+            args.append('--use_dnnl')
         elif use_nuphar:
             args.append('--use_nuphar')
         if wheel_name_suffix:
@@ -1487,6 +1559,7 @@ def main():
 
     if args.test:
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
+                              args.enable_pybind and not args.skip_onnx_tests,
                               args.use_tvm, args.use_tensorrt)
         # run the onnx model tests if requested explicitly.
         if args.enable_onnx_tests and not args.skip_onnx_tests:
@@ -1522,9 +1595,9 @@ def main():
             #    args.enable_multi_device_test, True, 1)
 
             if args.use_openvino:
-                run_onnx_tests(
+                openvino_run_onnx_tests(
                     build_dir, configs, onnx_test_data_dir, 'openvino',
-                    args.enable_multi_device_test, False, 1, 1)
+                    1, 1)
                 # TODO: parallel executor test fails on MacOS
             if args.use_nuphar:
                 run_onnx_tests(
