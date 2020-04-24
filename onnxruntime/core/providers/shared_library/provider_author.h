@@ -32,7 +32,7 @@ enum AttributeProto_AttributeType : int {
   AttributeProto_AttributeType_SPARSE_TENSORS = 12
 };
 
-enum OperatorStatus {
+enum OperatorStatus : int {
   EXPERIMENTAL = 0,
   STABLE = 1
 };
