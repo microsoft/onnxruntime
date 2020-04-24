@@ -43,14 +43,11 @@ Status CheckBatchDimensionsMatch(
     GatherNDImpl<ToCudaType<T>::MappedType>(num_slices, kernel_input_data, kernel_output_data, slice_size, input_slice_offsets_buffer.get()); \
   }
 
-#ifdef ENABLE_TRAINING
 #define TYPED_FUNCTION_CALL_BWD(T)                                                                                                                \
   if (T_type == DataTypeImpl::GetType<T>()) {                                                                                                     \
     GatherNDGradImpl<ToCudaType<T>::MappedType>(num_slices, kernel_input_data, kernel_output_data, slice_size, input_slice_offsets_buffer.get()); \
   }
-#else
-#define TYPED_FUNCTION_CALL_BWD(T) do {} while(0)
-#endif
+
 
 template <typename TIndex>
 Status GatherNDBase::CommonComputeKernel(
@@ -113,10 +110,15 @@ Status GatherNDBase::CommonComputeKernel(
     TYPED_FUNCTION_CALL_FWD(MLFloat16);
     TYPED_FUNCTION_CALL_FWD(double);
   } else {
+#ifdef ENABLE_TRAINING
     MLDataType T_type = kernel_input_tensor->DataType();
     TYPED_FUNCTION_CALL_BWD(float);
     TYPED_FUNCTION_CALL_BWD(MLFloat16);
     TYPED_FUNCTION_CALL_BWD(double);
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Gradient computation is only supported in the training mode.");
+#endif
   }
 
   return Status::OK();
