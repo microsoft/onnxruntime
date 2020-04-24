@@ -3,7 +3,6 @@
 
 #include "orttraining/training_ops/cuda/tensor/gather_grad.h"
 #include "orttraining/training_ops/cuda/tensor/gather_grad_impl.h"
-#include "orttraining/training_ops/cuda/tensor/thrustallocator.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {
