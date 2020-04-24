@@ -525,11 +525,14 @@ void RegisterForecastingPivotFeaturizerVer1(){
           "No information is available")
       .TypeAndShapeInferenceFunction(
           [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            const int input_num_all = static_cast<int>(ctx.getNumInputs());
             //The first num_pivot_columns inputs of Input(1) only support float & double
-            if (hasInputShape(ctx, 1)) {
-              const auto& input_shape = getInputShape(ctx, 1);
-              if (input_shape.dim_size() < 2) {
-                fail_shape_inference("Expecting Inputs to have more than 2 dimensions");
+            for (int input_id = 1; input_id < input_num_all; input_id++) {
+              if (hasInputShape(ctx, input_id)) {
+                const auto& input_shape = getInputShape(ctx, input_id);
+                if (input_shape.dim_size() < 2) {
+                  fail_shape_inference("Expecting Inputs to have more than 2 dimensions");
+                }
               }
             }
             ONNX_NAMESPACE::TensorShapeProto shape;
@@ -1924,7 +1927,13 @@ void RegisterShortGrainDropperFeaturizerVer1() {
           "No information is available")
       .TypeAndShapeInferenceFunction(
           [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            const int input_num_all = static_cast<int>(ctx.getNumInputs());
+            const int output_num_all = static_cast<int>(ctx.getNumOutputs());
+            if (input_num_all != output_num_all + 1)
+              fail_shape_inference("variadic input number != variadic output number + 1");
+
             propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_STRING, 0);
+
             if (hasInputShape(ctx, 1)) {
               const auto& input_shape = getInputShape(ctx, 1);
               if (input_shape.dim_size() != 2) {
@@ -1935,10 +1944,13 @@ void RegisterShortGrainDropperFeaturizerVer1() {
               *shape.add_dim() = input_shape.dim(1);
               ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape);
             }
-            if (hasInputShape(ctx, 2)) {
-              const auto& input_shape = getInputShape(ctx, 2);
-              if (input_shape.dim_size() != 2) {
-                fail_shape_inference("Expecting Input2 to have 2 dimensions");
+
+            for (int input_id = 2; input_id < input_num_all; input_id++) {
+              if (hasInputShape(ctx, input_id)) {
+                const auto& input_shape = getInputShape(ctx, input_id);
+                if (input_shape.dim_size() != 2) {
+                  fail_shape_inference("Expecting Variadic Inputs to have 2 dimensions");
+                }
               }
             }
           });
@@ -2272,6 +2284,11 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
           "No information is available")
       .TypeAndShapeInferenceFunction(
           [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            const int input_num_all = static_cast<int>(ctx.getNumInputs());
+            const int output_num_all = static_cast<int>(ctx.getNumOutputs());
+            if (input_num_all != output_num_all)
+              fail_shape_inference("variadic input number != variadic output number + 1");
+
             propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_BOOL, 0);
             propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_INT64, 1);
             // Number of output rows is not known
@@ -2294,17 +2311,27 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
               ONNX_NAMESPACE::updateOutputShape(ctx, 2, shape);
             }
 
-            //Data Shape & Variadic I/O shapes
+            //Data Shape
             propagateElemTypeFromInputToOutput(ctx, 3, 3);
             if (hasInputShape(ctx, 3)) {
               const auto& input3_shape = getInputShape(ctx, 3);
               if (input3_shape.dim_size() != 2) {
-                fail_shape_inference("Expecting data and variadic inputs to have 2 dimensions");
+                fail_shape_inference("Expecting data to have 2 dimensions");
               }
               ONNX_NAMESPACE::TensorShapeProto shape;
               shape.add_dim();
               *shape.add_dim() = input3_shape.dim(1);
               ONNX_NAMESPACE::updateOutputShape(ctx, 3, shape);
+            }
+
+            // Variadic Input/Output
+            for (int input_id = 4; input_id < input_num_all; input_id++) {
+              if (hasInputShape(ctx, input_id)) {
+                const auto& input_shape = getInputShape(ctx, input_id);
+                if (input_shape.dim_size() != 2) {
+                  fail_shape_inference("Expecting Variadic Inputs to have 2 dimensions");
+                }
+              }
             }
           });
 }
