@@ -572,7 +572,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
 
     # nGraph, TensorRT and OpenVINO providers currently only supports
     # full_protobuf option.
-    if (args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or 
+    if (args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or
             args.use_openvino or args.gen_doc):
         cmake_args += [
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
@@ -1114,6 +1114,50 @@ def tensorrt_run_onnx_tests(args, build_dir, configs, onnx_test_data_dir,
                 run_subprocess(
                     [exe] + model_test_cmd, cwd=cwd, dll_path=dll_path)
 
+def openvino_run_onnx_tests(build_dir, configs, onnx_test_data_dir,
+                            provider, num_parallel_models,
+                            num_parallel_tests=0):
+    """openvino function to run onnx tests and model tests
+    """
+    for config in configs:
+      cwd = get_config_build_dir(build_dir, config)
+      if is_windows():
+        exe = os.path.join(cwd, config, 'onnx_test_runner')
+        model_dir = os.path.join(cwd, "models")
+      else:
+        exe = os.path.join(cwd, 'onnx_test_runner')
+        model_dir = os.path.join(build_dir, "models")
+
+      cmd = ['-o', '0']
+      if provider:
+        cmd += ["-e", provider]
+
+      if num_parallel_tests != 0:
+        cmd += ['-c', str(num_parallel_tests)]
+
+      if num_parallel_models > 0:
+        cmd += ["-j", str(num_parallel_models)]
+
+      #onnx test
+      if os.path.exists(onnx_test_data_dir):
+        cmd.append(onnx_test_data_dir)
+        run_subprocess([exe] + cmd, cwd=cwd)
+
+      #model test
+      #OpenVINO can run most of the model tests, but only part of
+      #them are enabled here to save CI build time.
+      if config != 'Debug' and os.path.exists(model_dir):
+        model_dir_opset8 = os.path.join(model_dir, "opset8")
+        model_dir_opset8 = glob.glob(os.path.join(
+            model_dir_opset8, "test_*"))
+        model_dir_opset10 = os.path.join(model_dir, "opset10")
+        model_dir_opset10 = glob.glob(os.path.join(
+            model_dir_opset10, "tf_*"))
+        for dir_path in itertools.chain(model_dir_opset8,
+                                        model_dir_opset10):
+          model_test_cmd = cmd + [dir_path]
+          run_subprocess(
+            [exe] + model_test_cmd, cwd=cwd)
 
 def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
     """dnnl temporary function for running onnx tests and
@@ -1488,9 +1532,9 @@ def main():
             #    args.enable_multi_device_test, True, 1)
 
             if args.use_openvino:
-                run_onnx_tests(
+                openvino_run_onnx_tests(
                     build_dir, configs, onnx_test_data_dir, 'openvino',
-                    args.enable_multi_device_test, False, 1, 1)
+                    1, 1)
                 # TODO: parallel executor test fails on MacOS
             if args.use_nuphar:
                 run_onnx_tests(
