@@ -133,7 +133,15 @@ TEST(GatherNDOpTest, ContribOpInt32Indices) {
 
 #endif
 
-TEST(GatherNDOpTest, GatherND_slice_float_batch_dims_0) {
+TEST(GatherNDOpTest, GatherND_slice_float_default_batch_dims) {
+  OpTester test("GatherND", 12, kOnnxDomain);
+  test.AddInput<float>("data", {2, 3, 4}, ValueRange(24, 1.0f));
+  test.AddInput<int64_t>("indices", {3, 2, 2}, {0LL, 1LL, 0LL, 2LL, 1LL, 0LL, 0LL, 0LL, 1LL, 1LL, 1LL, 2LL});
+  test.AddOutput<float>("output", {3, 2, 4}, {5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 1.0, 2.0, 3.0, 4.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0});
+  test.Run();
+}
+
+TEST(GatherNDOpTest, GatherND_slice_float_batch_dims_zero) {
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddAttribute<int64_t>("batch_dims", 0);
   test.AddInput<float>("data", {2, 3, 4}, ValueRange(24, 1.0f));
@@ -142,7 +150,7 @@ TEST(GatherNDOpTest, GatherND_slice_float_batch_dims_0) {
   test.Run();
 }
 
-TEST(GatherNDOpTest, GatherND_slice_float_batch_dims_1) {
+TEST(GatherNDOpTest, GatherND_slice_float_batch_dims_one_1) {
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddAttribute<int64_t>("batch_dims", 1);
   test.AddInput<float>("data", {2, 3, 4}, ValueRange(24, 1.0f));
@@ -151,7 +159,7 @@ TEST(GatherNDOpTest, GatherND_slice_float_batch_dims_1) {
   test.Run();
 }
 
-TEST(GatherNDOpTest, GatherND_slice_float_batch_dims_2) {
+TEST(GatherNDOpTest, GatherND_slice_float_batch_dims_one_2) {
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddAttribute<int64_t>("batch_dims", 1);
   test.AddInput<float>("data", {2, 2, 2}, ValueRange(8, 0.0f, 0.1f));
@@ -160,9 +168,57 @@ TEST(GatherNDOpTest, GatherND_slice_float_batch_dims_2) {
   test.Run();
 }
 
+TEST(GatherNDOpTest, GatherND_slice_float_batch_dims_one_3) {
+  OpTester test("GatherND", 12, kOnnxDomain);
+  test.AddAttribute<int64_t>("batch_dims", 1);
+  test.AddInput<float>("data", {2, 2, 2}, ValueRange(8, 0.0f, 0.1f));
+  test.AddInput<int64_t>("indices", {2, 1, 2}, {1LL, 0LL, 0LL, 1LL});
+  test.AddOutput<float>("output", {2, 1}, {0.2f, 0.5f});
+  test.Run();
+}
+
+TEST(GatherNDOpTest, GatherND_slice_float_batch_dims_two) {
+  OpTester test("GatherND", 12, kOnnxDomain);
+  test.AddAttribute<int64_t>("batch_dims", 2);
+  test.AddInput<float>("data", {2, 1, 3, 5}, ValueRange(30, 0.0f, 0.1f));
+  test.AddInput<int64_t>("indices", {2, 1, 3, 2},
+                         {0LL, 0LL,
+                          0LL, 1LL,
+                          1LL, 0LL,
+                          1LL, 1LL,
+                          0LL, 4LL,
+                          2LL, 4LL});
+  test.AddOutput<float>("output", {2, 1, 3}, {0.0f, 0.1f, 0.5f, 2.1f, 1.9f, 2.9f});
+  test.Run();
+}
+
+TEST(GatherNDOpTest, GatherND_negative_slice_float_batch_dims_one) {
+  OpTester test("GatherND", 12, kOnnxDomain);
+  test.AddAttribute<int64_t>("batch_dims", 1);
+  test.AddInput<float>("data", {2, 3, 4}, ValueRange(24, 1.0f));
+  test.AddInput<int64_t>("indices", {2, 2, 2}, {0LL, -3LL, -1LL, 2LL, -1LL, 0LL, 0LL, -2LL});
+  test.AddOutput<float>("output", {2, 2}, {2.0, 11.0, 21.0, 15.0});
+  test.Run();
+}
+
+TEST(GatherNDOpTest, GatherND_negative_slice_float_batch_dims_two) {
+  OpTester test("GatherND", 12, kOnnxDomain);
+  test.AddAttribute<int64_t>("batch_dims", 2);
+  test.AddInput<float>("data", {2, 1, 3, 5}, ValueRange(30, 0.0f, 0.1f));
+  test.AddInput<int64_t>("indices", {2, 1, 3, 2},
+                         {0LL, -5LL,
+                          -3LL, 1LL,
+                          -2LL, 0LL,
+                          -2LL, -4LL,
+                          0LL, -1LL,
+                          2LL, -1LL});
+  test.AddOutput<float>("output", {2, 1, 3}, {0.0f, 0.1f, 0.5f, 2.1f, 1.9f, 2.9f});
+  test.Run();
+}
+
 #ifdef USE_CUDA
 #if __CUDA_ARCH__ >= 600
-TEST(GatherNDOpTest, GatherND_slice_double_batch_dims_3) {
+TEST(GatherNDOpTest, GatherND_slice_double_batch_dims_one_1) {
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddAttribute<int64_t>("batch_dims", 1);
   test.AddInput<double>("data", {2, 2, 2}, ValueRange(8, 0.0f, 0.1f));
@@ -171,7 +227,7 @@ TEST(GatherNDOpTest, GatherND_slice_double_batch_dims_3) {
   test.Run();
 }
 
-TEST(GatherNDOpTest, GatherND_slice_double) {
+TEST(GatherNDOpTest, GatherND_slice_double_default_batch_dims) {
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddInput<double>("data", {2, 2}, {0.0f, 0.1f, 0.2f, 0.3f});
   test.AddInput<int64_t>("indices", {2, 1}, {1LL, 0LL});
@@ -181,18 +237,9 @@ TEST(GatherNDOpTest, GatherND_slice_double) {
 #endif
 #endif
 
-TEST(GatherNDOpTest, GatherND_slice_float_batch_dims_4) {
-  OpTester test("GatherND", 12, kOnnxDomain);
-  test.AddAttribute<int64_t>("batch_dims", 1);
-  test.AddInput<float>("data", {2, 2, 2}, ValueRange(8, 0.0f, 0.1f));
-  test.AddInput<int64_t>("indices", {2, 1, 2}, {1LL, 0LL, 0LL, 1LL});
-  test.AddOutput<float>("output", {2, 1}, {0.2f, 0.5f});
-  test.Run();
-}
-
 #ifdef USE_CUDA
 
-TEST(GatherNDOpTest, GatherND_slice_double_batch_dims_3) {
+TEST(GatherNDOpTest, GatherND_slice_double_batch_dims_one_2) {
   if (!HasCudaEnvironment(600 /*min_cuda_architecture*/)) return;
 
   OpTester test("GatherND", 12, kOnnxDomain);
