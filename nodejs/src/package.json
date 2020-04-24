@@ -5,7 +5,7 @@
   "main": "./lib/index.js",
   "types": "./types/lib/index.d.ts",
   "scripts": {
-    "install": "prebuild-install || (tsc && node ./script/build)",
+    "install": "prebuild-install -r napi || (tsc && node ./script/build)",
     "build": "tsc && node ./script/build",
     "buildd": "tsc && node ./script/build --debug",
     "rebuild": "tsc && node ./script/build --rebuild",
