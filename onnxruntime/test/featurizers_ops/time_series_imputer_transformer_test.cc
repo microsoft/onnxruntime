@@ -187,10 +187,41 @@ TEST(FeaturizersTests, RowImputation_2_grains_1_gap_input_interleaved) {
   OpTester test("TimeSeriesImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
   AddInputs(test, {{tuple_0, tuple_5, tuple_1, tuple_6}}, {tuple_0, tuple_5_inf, tuple_2, tuple_7},
             {NS::TypeId::Float64, NS::TypeId::Float64}, false, NS::Featurizers::Components::TimeSeriesImputeStrategy::Forward);
-
   AddOutputs(test, {false, false, true, false, true, false}, {tp_0, tp_5, tp_1, tp_2, tp_6, tp_7},
              {"a", "b", "a", "a", "b", "b"}, {"14.5", "18", "114.5", "118", "14.5", "18", "14.5", "12", "114.5", "118", "114.5", "112"});
+  test.Run();
+}
 
+TEST(FeaturizersTests, RowImputation_2_grains_1_gap_input_interleaved_add_additional_imputed_columns) {
+  std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
+  auto tp_0 = GetTimePoint(now, 0);
+  auto tp_1 = GetTimePoint(now, 1);
+  auto tp_2 = GetTimePoint(now, 2);
+  auto tp_5 = GetTimePoint(now, 5);
+  auto tp_6 = GetTimePoint(now, 6);
+  auto tp_7 = GetTimePoint(now, 7);
+
+  auto tuple_0 = std::make_tuple(tp_0, std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{"14.5", "18"});
+  auto tuple_2 = std::make_tuple(GetTimePoint(now, 2), std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{nonstd::optional<std::string>{}, "12"});
+  auto tuple_5 = std::make_tuple(tp_5, std::vector<std::string>{"b"}, std::vector<nonstd::optional<std::string>>{"14.5", "18"});
+  auto tuple_5_inf = std::make_tuple(tp_5, std::vector<std::string>{"b"}, std::vector<nonstd::optional<std::string>>{"114.5", "118"});
+  auto tuple_1 = std::make_tuple(tp_1, std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{nonstd::optional<std::string>{}, "12"});
+  auto tuple_6 = std::make_tuple(tp_6, std::vector<std::string>{"b"}, std::vector<nonstd::optional<std::string>>{nonstd::optional<std::string>{}, "12"});
+  auto tuple_7 = std::make_tuple(GetTimePoint(now, 7), std::vector<std::string>{"b"}, std::vector<nonstd::optional<std::string>>{nonstd::optional<std::string>{}, "112"});
+
+  OpTester test("TimeSeriesImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+  AddInputs(test, {{tuple_0, tuple_5, tuple_1, tuple_6}}, {tuple_0, tuple_5_inf, tuple_2, tuple_7},
+            {NS::TypeId::Float64, NS::TypeId::Float64}, false, NS::Featurizers::Components::TimeSeriesImputeStrategy::Forward);
+  test.AddInput<int64_t>("Input_1", {4, 1}, {1, 2, 3, 4});
+  test.AddInput<float>("Input_2", {4, 1}, {1, 2, 3, 4});
+  test.AddInput<std::string>("Input_3", {4, 1}, {"1", "2", "3", "4"});
+  test.AddInput<bool>("Input_4", {4, 1}, {false, true, true, true});
+  AddOutputs(test, {false, false, true, false, true, false}, {tp_0, tp_5, tp_1, tp_2, tp_6, tp_7},
+             {"a", "b", "a", "a", "b", "b"}, {"14.5", "18", "114.5", "118", "14.5", "18", "14.5", "12", "114.5", "118", "114.5", "112"});
+  test.AddOutput<int64_t>("Output_1", {6, 1}, {1, 2, 0, 3, 0, 4});
+  test.AddOutput<float>("Output_2", {6, 1}, {1, 2, std::numeric_limits<float>::quiet_NaN(), 3, std::numeric_limits<float>::quiet_NaN(), 4});
+  test.AddOutput<std::string>("Output_3", {6, 1}, {"1", "2", "", "3", "", "4"});
+  test.AddOutput<bool>("Output_4", {6, 1}, {false, true, false, true, false, true});
   test.Run();
 }
 
