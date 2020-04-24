@@ -13,7 +13,9 @@ namespace test {
 
 namespace {
 
-template<typename EstimatorT, typename InputType>
+using InputType = std::tuple<std::vector<std::string> const &, double const &>;
+
+template<typename EstimatorT>
 std::vector<uint8_t> GetStream(EstimatorT& estimator, const std::vector<InputType>& trainingBatches) {
   NS::TestHelpers::Train<EstimatorT, InputType>(estimator, trainingBatches);
   auto pTransformer = estimator.create_transformer();
@@ -25,7 +27,6 @@ std::vector<uint8_t> GetStream(EstimatorT& estimator, const std::vector<InputTyp
 } // namespace
 
 TEST(FeaturizersTests, AnalyticalRollingWindow_Transformer_Grained_Mean_1_grain_window_size_1_horizon_1) {
-  using InputType = std::tuple<std::vector<std::string> const &, double const &>;
   using EstimatorT = NS::Featurizers::GrainedAnalyticalRollingWindowEstimator<double>;
 
   EstimatorT      estimator(NS::CreateTestAnnotationMapsPtr(1), NS::Featurizers::AnalyticalRollingWindowCalculation::Mean, 1, 1);
@@ -49,7 +50,6 @@ TEST(FeaturizersTests, AnalyticalRollingWindow_Transformer_Grained_Mean_1_grain_
 }
 
 TEST(FeaturizersTests, AnalyticalRollingWindow_Transformer_Grained_Mean_1_grain_window_size_2_horizon_2_min_window_size_2) {
-  using InputType = std::tuple<std::vector<std::string> const &, double const &>;
   using EstimatorT = NS::Featurizers::GrainedAnalyticalRollingWindowEstimator<double>;
 
   EstimatorT      estimator(NS::CreateTestAnnotationMapsPtr(1), NS::Featurizers::AnalyticalRollingWindowCalculation::Mean, 2, 2, 2);
@@ -80,7 +80,6 @@ TEST(FeaturizersTests, AnalyticalRollingWindow_Transformer_Grained_Mean_1_grain_
 }
 
 TEST(FeaturizersTests, AnalyticalRollingWindow_Transformer_Grained_Mean_2_grain_window_size_2_horizon_2_min_window_size_2) {
-  using InputType = std::tuple<std::vector<std::string> const &, double const &>;
   using EstimatorT = NS::Featurizers::GrainedAnalyticalRollingWindowEstimator<double>;
 
   EstimatorT      estimator(NS::CreateTestAnnotationMapsPtr(1), NS::Featurizers::AnalyticalRollingWindowCalculation::Mean, 2, 2);
@@ -114,7 +113,6 @@ TEST(FeaturizersTests, AnalyticalRollingWindow_Transformer_Grained_Mean_2_grain_
 }
 
 TEST(FeaturizersTests, SimpleRollingWindow_Transformer_Grained_Min_1_grain_window_size_1_horizon_1) {
-  using InputType = std::tuple<std::vector<std::string> const &, double const &>;
   using EstimatorT = NS::Featurizers::GrainedSimpleRollingWindowEstimator<double>;
 
   EstimatorT      estimator(NS::CreateTestAnnotationMapsPtr(1), NS::Featurizers::SimpleRollingWindowCalculation::Min, 1, 1);
