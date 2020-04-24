@@ -48,23 +48,27 @@
 #define BACKEND_NGRAPH ""
 #endif
 
-#if OPENVINO_CONFIG_CPU_FP32
-#define BACKEND_OPENVINO "-OPENVINO_CPU_FP32"
+#ifdef USE_OPENVINO
+  #if OPENVINO_CONFIG_CPU_FP32
+  #define BACKEND_OPENVINO "-OPENVINO_CPU_FP32"
 
-#elif OPENVINO_CONFIG_GPU_FP32
-#define BACKEND_OPENVINO "-OPENVINO_GPU_FP32"
+  #elif OPENVINO_CONFIG_GPU_FP32
+  #define BACKEND_OPENVINO "-OPENVINO_GPU_FP32"
 
-#elif OPENVINO_CONFIG_GPU_FP16
-#define BACKEND_OPENVINO "-OPENVINO_GPU_FP16"
+  #elif OPENVINO_CONFIG_GPU_FP16
+  #define BACKEND_OPENVINO "-OPENVINO_GPU_FP16"
 
-#elif OPENVINO_CONFIG_MYRIAD
-#define BACKEND_OPENVINO "-OPENVINO_MYRIAD"
+  #elif OPENVINO_CONFIG_MYRIAD
+  #define BACKEND_OPENVINO "-OPENVINO_MYRIAD"
 
-#elif OPENVINO_CONFIG_VAD_M
-#define BACKEND_OPENVINO "-OPENVINO_VAD_M"
+  #elif OPENVINO_CONFIG_VAD_M
+  #define BACKEND_OPENVINO "-OPENVINO_VAD_M"
 
+  #elif OPENVINO_CONFIG_VAD_F
+  #define BACKEND_OPENVINO "-OPENVINO_VAD_F"
+  #endif
 #else
-#define BACKEND_OPENVINO ""
+  #define BACKEND_OPENVINO ""
 #endif
 
 #ifdef USE_NUPHAR
@@ -79,7 +83,7 @@
 #define BACKEND_OPENBLAS ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_OPENVINO
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -99,6 +103,7 @@
 #endif
 #ifdef USE_OPENVINO
 #include "core/providers/openvino/openvino_provider_factory.h"
+std::string openvino_device;
 #endif
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
@@ -323,7 +328,8 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #endif
     } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO("CPU"));
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device.c_str()));
+      openvino_device.clear();
 #endif
     } else if (type == kNupharExecutionProvider) {
 #if USE_NUPHAR
@@ -381,6 +387,17 @@ void addGlobalMethods(py::module& m, const Environment& env) {
   });
 #endif
 
+#ifdef USE_OPENVINO
+  m.def("set_openvino_device", [](const std::string& device) {
+    openvino_device = device;} ,
+    "Set the prefered OpenVINO device(s) to be used. If left unset, all available devices will be used."
+  );
+  m.def("get_openvino_device", []() -> std::string {
+    return openvino_device;
+    }, ""
+  );
+#endif
+
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
   m.def(
       "get_all_operator_schema", []() -> const std::vector<ONNX_NAMESPACE::OpSchema> {
@@ -403,7 +420,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
 #endif
 #ifdef USE_OPENVINO
-            onnxruntime::CreateExecutionProviderFactory_OpenVINO("CPU"),
+	    onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device),
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(0)
