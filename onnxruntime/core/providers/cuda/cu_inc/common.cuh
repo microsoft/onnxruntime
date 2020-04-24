@@ -219,9 +219,9 @@ __device__ __inline__ T _Gelu(T a) {
   return a * _Normcdf(a);
 }
 
+
 // We would like to use 64-bit integer to support large matrices. However, CUDA seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.
-
 #ifndef CUDA_LONG
 #define CUDA_LONG int32_t
 #endif
@@ -239,6 +239,7 @@ struct GridDim {
   };
 };
 
+
 #define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N)          \
   CUDA_LONG id = blockDim.x * blockIdx.x + threadIdx.x;     \
   if (id >= N)                                              \
@@ -252,6 +253,49 @@ struct GridDim {
 #else // __APPLE__
 #define CUDA_KERNEL_ASSERT(...) assert(__VA_ARGS__)
 #endif // __APPLE__
+
+// WARP related definitions and functions
+constexpr int GPU_WARP_SIZE = 32;
+
+template <typename T>
+__device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
+{
+#if CUDA_VERSION >= 9000
+  return __shfl_sync(mask, value, srcLane, width);
+#else
+  return __shfl(value, srcLane, width);
+#endif
+}
+
+template <typename T>
+__device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
+{
+#if CUDA_VERSION >= 9000
+  return __shfl_xor_sync(mask, value, laneMask, width);
+#else
+  return __shfl_xor(value, laneMask, width);
+#endif
+}
+
+template <typename T>
+__device__ __forceinline__ T WARP_SHFL_UP(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
+{
+#if CUDA_VERSION >= 9000
+  return __shfl_up_sync(mask, value, delta, width);
+#else
+  return __shfl_up(value, delta, width);
+#endif
+}
+
+template <typename T>
+__device__ __forceinline__ T WARP_SHFL_DOWN(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
+{
+#if CUDA_VERSION >= 9000
+  return __shfl_down_sync(mask, value, delta, width);
+#else
+  return __shfl_down(value, delta, width);
+#endif
+}
 
 }  // namespace cuda
 }  // namespace onnxruntime

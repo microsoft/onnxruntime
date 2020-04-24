@@ -467,17 +467,16 @@ __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group) {
     }
   }
 
-  // Thread count in a block must be a multiple of 32.
-  constexpr int warp_size = 32;
+  // Thread count in a block must be a multiple of GPU_WARP_SIZE.
 #pragma unroll
-  for (int stride = warp_size / 2; stride > 0; stride /= 2) {
-    w_sum += __shfl_down_sync(0xFFFFFFFF, w_sum, stride);
-    d_sum += __shfl_down_sync(0xFFFFFFFF, d_sum, stride);
+  for (int stride = GPU_WARP_SIZE / 2; stride > 0; stride /= 2) {
+    w_sum += WARP_SHFL_DOWN(w_sum, stride);
+    d_sum += WARP_SHFL_DOWN(d_sum, stride);
   }
 
-  const int warp_count_in_block = blockDim.x / warp_size;
-  const int lid = threadIdx.x % warp_size;
-  const int wid = threadIdx.x / warp_size;
+  const int warp_count_in_block = blockDim.x / GPU_WARP_SIZE;
+  const int lid = threadIdx.x % GPU_WARP_SIZE;
+  const int wid = threadIdx.x / GPU_WARP_SIZE;
 
   // Shape is 2 x warp_count_in_block.
   extern __shared__ unsigned char shared_memory_[];
@@ -511,13 +510,11 @@ template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename
 void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group) {
   // thread count per block.
   constexpr int thread_count = ChunkGroup<4>::thread_count_per_block;
-  // warp size of GPU.
-  constexpr int warp_size = 32;
   // shared memory's size per block.
-  const int shared_memory_size = thread_count / warp_size * 2 * sizeof(TBuf);
+  const int shared_memory_size = thread_count / GPU_WARP_SIZE * 2 * sizeof(TBuf);
 
   // Enforce assumptions used inside this reduction CUDA kernel.
-  ORT_ENFORCE(thread_count % warp_size == 0);
+  ORT_ENFORCE(thread_count % GPU_WARP_SIZE == 0);
   ORT_ENFORCE((thread_count & (thread_count - 1)) == 0);
 
   LambMultiTensorReductionImpl<TIn1, TIn2, TOut1, TOut2, TBuf><<<chunk_group.chunk_count, thread_count, shared_memory_size>>>(chunk_group);

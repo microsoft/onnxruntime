@@ -128,7 +128,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
     const size_t dy_size = y_infos[y_idx].shape.Size();
 
     // Compute the theoretical Jacobians one row at a time by back propagating
-    // '1.0'for each element of 'dy', while holding all other elements of 'dy' at zero.
+    // '1.0' for each element of 'dy', while holding all other elements of 'dy' at zero.
     for (int c = 0; c < dy_size; ++c) {  // for each value in the dy input vector
       // clear OpTester input/output/initializer
       op_session.ClearData();

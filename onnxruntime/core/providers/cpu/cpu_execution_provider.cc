@@ -6,15 +6,15 @@
 #include "core/framework/kernel_registry.h"
 
 #ifndef DISABLE_CONTRIB_OPS
-#include "contrib_ops/cpu_contrib_kernels.h"
+#include "contrib_ops/cpu/cpu_contrib_kernels.h"
 #endif
 
 #ifdef ML_FEATURIZERS
-#include "featurizers_ops/cpu_featurizers_kernels.h"
+#include "featurizers_ops/cpu/cpu_featurizers_kernels.h"
 #endif
 
 #ifdef ENABLE_TRAINING
-#include "orttraining/training_ops/cpu_training_kernels.h"
+#include "orttraining/training_ops/cpu/cpu_training_kernels.h"
 #endif
 
 #include "core/framework/compute_capability.h"

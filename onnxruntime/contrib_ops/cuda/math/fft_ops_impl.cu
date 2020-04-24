@@ -3,7 +3,6 @@ Copyright(c) 2016 Facebook Inc.
 ==============================================================================*/
 /* Modifications Copyright (c) Microsoft. */
 
-#pragma once
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
