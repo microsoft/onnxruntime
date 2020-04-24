@@ -2066,11 +2066,20 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
           "Keys",
           "Composite keys tensor of shape [R][K]. R is the same as Input(1)",
           "T2")
+      // The first input in Input(3)(a variadic tensor that has multiple output) is the below commented input
+      // for the ONNX requirement that allow 0 size of variadic input
+      // .Input(
+      //     3,
+      //     "Data",
+      //     "It is a data tensor of shape [R][C] where R - rows and C - columns. R must be the same with Input(1)",
+      //     "T2")
       .Input(
           3,
-          "Data",
-          "It is a data tensor of shape [R][C] where R - rows and C - columns. R must be the same with Input(1)",
-          "T2")
+          "Input",
+          "Variadic number of Inputs containing tensors of different type",
+          "T",
+          ONNX_NAMESPACE::OpSchema::FormalParameterOption::Variadic,
+          false)
       .Output(
           0,
           "Added",
@@ -2086,12 +2095,21 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
           "ImputedKeys",
           "Contains keys along with the imputed keys. Tensor of shape [IR][K].",
           "T2")
+      // The first output in Output(3)(a variadic tensor that has multiple output) is the below commented output
+      // for the ONNX requirement that allow 0 size of variadic output
+      // .Output(
+      //     3,
+      //     "ImputedData",
+      //     "Tensor of shape [IR][C] where IR is the number of rows in the output."
+      //     "C is the number of columns.",
+      //     "T2")
       .Output(
           3,
-          "ImputedData",
-          "Tensor of shape [IR][C] where IR is the number of rows in the output."
-          "C is the number of columns.",
-          "T2")
+          "Output",
+          "Variadic number of Outputs containing tensors of different type",
+          "T",
+          ONNX_NAMESPACE::OpSchema::FormalParameterOption::Variadic,
+          false)
       .TypeConstraint(
           "T0",
           {"tensor(uint8)"},
@@ -2108,6 +2126,11 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
           "T3",
           {"tensor(bool)"},
           "Boolean Tensor")
+      .TypeConstraint(
+          "T",
+          {"tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)",
+           "tensor(float)", "tensor(double)", "tensor(bool)", "tensor(string)"},
+          "No information is available")
       .TypeAndShapeInferenceFunction(
           [](ONNX_NAMESPACE::InferenceContext& ctx) {
             propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_BOOL, 0);
@@ -2132,12 +2155,12 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
               ONNX_NAMESPACE::updateOutputShape(ctx, 2, shape);
             }
 
-            // Data shape
+            //Data Shape & Variadic I/O shapes
             propagateElemTypeFromInputToOutput(ctx, 3, 3);
             if (hasInputShape(ctx, 3)) {
               const auto& input3_shape = getInputShape(ctx, 3);
               if (input3_shape.dim_size() != 2) {
-                fail_shape_inference("Expecting data to have 2 dimensions");
+                fail_shape_inference("Expecting data and variadic inputs to have 2 dimensions");
               }
               ONNX_NAMESPACE::TensorShapeProto shape;
               shape.add_dim();
