@@ -57,8 +57,8 @@ struct ComputeImpl {
                               kernel_output_data, slice_size,
                               input_slice_offsets_data);
 #else
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Gradient computation is only supported in the training mode.");
+      ORT_THROW(ONNXRUNTIME, INVALID_ARGUMENT,
+                "Gradient computation is only supported in the training mode.");
 #endif
     }
   }
