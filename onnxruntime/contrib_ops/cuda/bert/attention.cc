@@ -35,8 +35,6 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionB
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
-  ORT_RETURN_IF_ERROR(CheckInputs(context));
-
   // Input and output shapes:
   //   Input 0 - input       : (batch_size, sequence_length, hidden_size)
   //   Input 1 - weights     : (hidden_size, 3 * hidden_size)
@@ -47,6 +45,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
+  ORT_RETURN_IF_ERROR(CheckInputs(input, weights, bias, mask_index));
 
   const auto dims = input->Shape().GetDims();
   int batch_size = static_cast<int>(dims[0]);

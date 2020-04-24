@@ -12,7 +12,10 @@ namespace contrib {
 class AttentionBase {
  protected:
   AttentionBase(const OpKernelInfo& info);
-  Status CheckInputs(const OpKernelContext* context) const;
+  Status CheckInputs(const Tensor* input,
+                     const Tensor* weights,
+                     const Tensor* bias,
+                     const Tensor* mask_index) const;
 
   int num_heads_;  // number of attention heads
   bool is_unidirectional_; // whether every token can only attend to previous tokens.

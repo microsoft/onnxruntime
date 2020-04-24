@@ -5,6 +5,7 @@
 #include "attention_quantization_impl.cuh"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/providers/common.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/math/matmul_integer.cuh"
@@ -42,6 +43,52 @@ REGISTER_KERNEL_TYPED(float, int8_t)
 REGISTER_KERNEL_TYPED(MLFloat16, int8_t)
 
 template <typename T>
+Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
+                                          const Tensor* weights,
+                                          const Tensor* bias,
+                                          const Tensor* input_scale_tensor,
+                                          const Tensor* weight_scale_tensor,
+                                          const Tensor* mask_index,
+                                          const Tensor* i_zp_tensor,
+                                          const Tensor* w_zp_tensor) const {
+  // Input and output shapes:
+  //   Input 0 - input             : (batch_size, sequence_length, hidden_size)
+  //   Input 1 - weights           : (hidden_size, 3 * hidden_size)
+  //   Input 2 - bias              : (3 * hidden_size)
+  //   Input 3 - input_scale       : scalar
+  //   Input 4 - weight_scale      : scalar
+  //   Input 5 - mask_index        : (batch_size)
+  //   Input 6 - input_zero_point  : scalar
+  //   Input 7 - weight_zero_point : scalar
+  //   Output                      : (batch_size, sequence_length, hidden_size)
+
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input, weights, bias, mask_index));
+
+  ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
+                    "input scale must be a scalar or 1D tensor of size 1");
+
+  ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(weight_scale_tensor),
+                    "weight must be a scalar or 1D tensor of size 1");
+
+  if (i_zp_tensor != nullptr) {
+    ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(i_zp_tensor),
+                      "input zero point must be a scalar or 1D tensor of size 1.");
+    if (0 != *(i_zp_tensor->template Data<int8_t>()))
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA only support symmetric quantization for Attention");
+  }
+
+  if (w_zp_tensor != nullptr) {
+    // CUDA only support symmetric quantization for Attention
+    ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(w_zp_tensor),
+                      "weight zero point must be a scalar or 1D tensor of size 1.");
+    if (0 != *(w_zp_tensor->template Data<int8_t>()))
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA only support symmetric quantization for Attention");
+  }
+
+  return Status::OK();
+}
+
+template <typename T>
 Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   // Input and output shapes:
   //   Input 0 - input             : (batch_size, sequence_length, hidden_size)
@@ -60,8 +107,17 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input_scale_tensor = context->Input<Tensor>(3);
   const Tensor* weight_scale_tensor = context->Input<Tensor>(4);
   const Tensor* mask_index = context->Input<Tensor>(5);
-  /*const Tensor* i_zp_tensor = context->Input<Tensor>(6);
-  const Tensor* w_zp_tensor = context->Input<Tensor>(7);*/
+  const Tensor* i_zp_tensor = context->Input<Tensor>(6);
+  const Tensor* w_zp_tensor = context->Input<Tensor>(7);
+
+  ORT_RETURN_IF_ERROR(CheckInputs(input,
+                                  weights,
+                                  bias,
+                                  input_scale_tensor,
+                                  weight_scale_tensor,
+                                  mask_index,
+                                  i_zp_tensor,
+                                  w_zp_tensor));
 
   const auto dims = input->Shape().GetDims();
   /*int input_size = static_cast<int>(input->Shape().Size());*/

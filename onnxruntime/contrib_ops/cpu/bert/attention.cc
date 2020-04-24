@@ -31,15 +31,16 @@ AttentionBase::AttentionBase(const OpKernelInfo& info) {
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 1) == 1;
 }
 
-Status AttentionBase::CheckInputs(const OpKernelContext* context) const {
+Status AttentionBase::CheckInputs(const Tensor* input,
+                                  const Tensor* weights,
+                                  const Tensor* bias,
+                                  const Tensor* mask_index) const {
   // Input and output shapes:
-  //   Input 0 - input       : (batch_size, sequence_length, hidden_size)
-  //   Input 1 - weights     : (hidden_size, 3 * hidden_size)
-  //   Input 2 - bias        : (3 * hidden_size)
-  //   Input 3 - mask_index  : (batch_size) if presented
-  //   Output                : (batch_size, sequence_length, hidden_size)
+  //   input       : (batch_size, sequence_length, hidden_size)
+  //   weights     : (hidden_size, 3 * hidden_size)
+  //   bias        : (3 * hidden_size)
+  //   mask_index  : (batch_size) if presented
 
-  const Tensor* input = context->Input<Tensor>(0);
   const auto dims = input->Shape().GetDims();
   if (dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 0 is expected to have 3 dimensions, got ",
@@ -52,7 +53,6 @@ Status AttentionBase::CheckInputs(const OpKernelContext* context) const {
                            "Input 0 dimension 2 should be divisiable by value of the num_heads attribute.");
   }
 
-  const Tensor* weights = context->Input<Tensor>(1);
   const auto weights_dims = weights->Shape().GetDims();
   if (weights_dims.size() != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 1 is expected to have 2 dimensions, got ",
@@ -66,7 +66,6 @@ Status AttentionBase::CheckInputs(const OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 1 dimension 1 should be 3 times of dimension 0");
   }
 
-  const Tensor* bias = context->Input<Tensor>(2);
   const auto bias_dims = bias->Shape().GetDims();
   if (bias_dims.size() != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 2 is expected to have 1 dimension, got ",
@@ -77,13 +76,13 @@ Status AttentionBase::CheckInputs(const OpKernelContext* context) const {
                            "Input 2 dimension 0 should have same length as dimension 1 of input 1");
   }
 
-  const Tensor* mask_index = context->Input<Tensor>(3);
   if (mask_index != nullptr) {
     // unidirectional (like GPT2) does not need mask input. Here we do not allowed the input for unidirectional.
     if (is_unidirectional_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 3 (mask_index) is not allowed for unidirectional");
     }
 
+  if (mask_index != nullptr) {  // mask_index is optional
     const auto mask_dims = mask_index->Shape().GetDims();
     if (mask_dims.size() != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 3 is expected to have 1 dimension, got ",
@@ -103,13 +102,11 @@ Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionBas
 
 template <typename T>
 Status Attention<T>::Compute(OpKernelContext* context) const {
-  auto* tp = context->GetOperatorThreadPool();
-  ORT_RETURN_IF_ERROR(CheckInputs(context));
-
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
+  ORT_RETURN_IF_ERROR(CheckInputs(input, weights, bias, mask_index));
 
   const auto dims = input->Shape().GetDims();
   const int batch_size = static_cast<int>(dims[0]);
@@ -125,6 +122,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
+  auto* tp = context->GetOperatorThreadPool();
   // STEP.1: gemm_data(BS, 3NH) = input(BS, NH) x weights(NH, 3NH) + bias(3NH)
   auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * 3 * hidden_size * element_size);
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
@@ -180,7 +178,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                                         qkv_dest + qkv_offset,          // C
                                         head_size,                      // ldc
                                         nullptr                         // use single-thread
-        );
+                                        );
       }
     });
   }
