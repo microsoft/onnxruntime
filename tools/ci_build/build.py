@@ -255,15 +255,6 @@ def parse_arguments():
         help="Enable for Microsoft internal builds only.")
     parser.add_argument("--llvm_path", help="Path to llvm dir")
     parser.add_argument(
-        "--use_brainslice", action="store_true", help="Build with brain slice")
-    parser.add_argument(
-        "--brain_slice_package_path", help="Path to brain slice packages")
-    parser.add_argument(
-        "--brain_slice_package_name", help="Name of brain slice packages")
-    parser.add_argument(
-        "--brain_slice_client_package_name",
-        help="Name of brainslice client package")
-    parser.add_argument(
         "--use_nuphar", action='store_true', help="Build with nuphar")
     parser.add_argument(
         "--use_tensorrt", action='store_true', help="Build with TensorRT")
@@ -551,8 +542,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + (
             "ON" if args.enable_msinternal else "OFF"),
-        "-Donnxruntime_USE_BRAINSLICE=" + (
-            "ON" if args.use_brainslice else "OFF"),
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_TENSORRT_HOME=" + (
@@ -612,20 +601,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         cmake_args += [
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
             "-DProtobuf_USE_STATIC_LIBS=ON"
-        ]
-
-    if args.use_brainslice:
-        bs_pkg_name = args.brain_slice_package_name.split('.', 1)
-        bs_shared_lib_name = '.'.join(
-            (bs_pkg_name[0], 'redist', bs_pkg_name[1]))
-        cmake_args += [
-            "-Donnxruntime_BRAINSLICE_LIB_PATH=%s/%s" % (
-                args.brain_slice_package_path, args.brain_slice_package_name),
-            "-Donnxruntime_BS_CLIENT_PACKAGE=%s/%s" % (
-                args.brain_slice_package_path,
-                args.brain_slice_client_package_name),
-            "-Donnxruntime_BRAINSLICE_dynamic_lib_PATH=%s/%s" % (
-                args.brain_slice_package_path, bs_shared_lib_name)
         ]
 
     if args.use_llvm:
@@ -965,8 +940,7 @@ def run_training_python_frontend_e2e_tests(args, cwd, dll_path):
         cwd=cwd, dll_path=dll_path)
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
-                          enable_python_tests, enable_tvm=False,
-                          enable_tensorrt=False):
+                          enable_tvm=False, enable_tensorrt=False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
@@ -1030,7 +1004,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
 
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
-        if enable_python_tests:
+        if args.enable_pybind:
             # Disable python tests for TensorRT because many tests are
             # not supported yet.
             if enable_tensorrt:
@@ -1559,7 +1533,6 @@ def main():
 
     if args.test:
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
-                              args.enable_pybind and not args.skip_onnx_tests,
                               args.use_tvm, args.use_tensorrt)
         # run the onnx model tests if requested explicitly.
         if args.enable_onnx_tests and not args.skip_onnx_tests:
