@@ -21,7 +21,7 @@ RunOnUnload::RunOnUnload(std::function<void()> deleter) {
   static std::mutex mutex;
   std::lock_guard<std::mutex> guard{mutex};
   if (!s_run_on_unload_)
-    s_run_on_unload_ = std::make_unique<std::vector<std::function<void()>>>();
+    s_run_on_unload_ = onnxruntime::make_unique<std::vector<std::function<void()>>>();
   s_run_on_unload_->push_back(std::move(deleter));
 }
 

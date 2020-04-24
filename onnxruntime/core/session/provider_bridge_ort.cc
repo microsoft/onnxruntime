@@ -24,7 +24,7 @@ struct Prov_OrtDevice_Impl : Prov_OrtDevice {
 };
 
 struct Prov_OrtMemoryInfo_Impl : Prov_OrtMemoryInfo {
-  Prov_OrtMemoryInfo_Impl(const char* name_, OrtAllocatorType type_, OrtDevice device_, int id_, OrtMemType mem_type_) : info_{std::make_unique<OrtMemoryInfo>(name_, type_, device_, id_, mem_type_)} {}
+  Prov_OrtMemoryInfo_Impl(const char* name_, OrtAllocatorType type_, OrtDevice device_, int id_, OrtMemType mem_type_) : info_{onnxruntime::make_unique<OrtMemoryInfo>(name_, type_, device_, id_, mem_type_)} {}
 
   std::unique_ptr<OrtMemoryInfo> info_;
 };
@@ -74,7 +74,7 @@ struct Prov_AttributeProto_Impl : ONNX_NAMESPACE::Prov_AttributeProto {
   Prov_AttributeProto_Impl(const ONNX_NAMESPACE::AttributeProto& copy) : v_{copy} {}
 
   std::unique_ptr<Prov_AttributeProto> Clone() const override {
-    return std::make_unique<Prov_AttributeProto_Impl>(v_);
+    return onnxruntime::make_unique<Prov_AttributeProto_Impl>(v_);
   }
 
   ::onnx::AttributeProto_AttributeType type() const override { return v_.type(); }
@@ -92,7 +92,7 @@ struct Prov_AttributeProto_Impl : ONNX_NAMESPACE::Prov_AttributeProto {
   void set_type(::onnx::AttributeProto_AttributeType value) override { v_.set_type(value); }
   ::onnx::Prov_TensorProto* add_tensors() override {
     // Kind of a hack, but the pointer is only valid until the next add_tensors call
-    tensors_ = std::make_unique<Prov_TensorProto_Impl>(v_.add_tensors());
+    tensors_ = onnxruntime::make_unique<Prov_TensorProto_Impl>(v_.add_tensors());
     return tensors_.get();
   }
 
@@ -129,7 +129,7 @@ struct Prov_KernelDefBuilder_Impl : Prov_KernelDefBuilder {
   }
 
   std::unique_ptr<Prov_KernelDef> Build() override {
-    return std::make_unique<Prov_KernelDef_Impl>(v_.Build());
+    return onnxruntime::make_unique<Prov_KernelDef_Impl>(v_.Build());
   }
 
   KernelDefBuilder v_;
@@ -181,7 +181,7 @@ struct Prov_Node_Impl : Prov_Node {
   const Prov_NodeAttributes& GetAttributes() const noexcept override {
     if (attributes_.empty()) {
       for (auto& v : p_->GetAttributes())
-        attributes_[v.first] = std::make_unique<Prov_AttributeProto_Impl>(v.second);
+        attributes_[v.first] = onnxruntime::make_unique<Prov_AttributeProto_Impl>(v.second);
     }
     return attributes_;
   }
@@ -216,11 +216,11 @@ struct Prov_NodeIterator_Impl : Prov_Node::Prov_NodeIterator {
 };
 
 std::unique_ptr<Prov_Node::Prov_NodeIterator> Prov_Node_Impl::InputNodesBegin_internal() const noexcept {
-  return std::make_unique<Prov_NodeIterator_Impl>(p_->InputNodesBegin());
+  return onnxruntime::make_unique<Prov_NodeIterator_Impl>(p_->InputNodesBegin());
 }
 
 std::unique_ptr<Prov_Node::Prov_NodeIterator> Prov_Node_Impl::InputNodesEnd_internal() const noexcept {
-  return std::make_unique<Prov_NodeIterator_Impl>(p_->InputNodesEnd());
+  return onnxruntime::make_unique<Prov_NodeIterator_Impl>(p_->InputNodesEnd());
 }
 
 struct Prov_IndexedSubGraph_Impl : Prov_IndexedSubGraph {
@@ -228,7 +228,7 @@ struct Prov_IndexedSubGraph_Impl : Prov_IndexedSubGraph {
   Prov_IndexedSubGraph_Impl(std::unique_ptr<IndexedSubGraph> p) : p_{std::move(p)} {}
 
   void SetMetaDef(std::unique_ptr<MetaDef>& def_) override {
-    auto real = std::make_unique<IndexedSubGraph::MetaDef>();
+    auto real = onnxruntime::make_unique<IndexedSubGraph::MetaDef>();
 
     real->name = std::move(def_->name);
     real->domain = std::move(def_->domain);
@@ -247,7 +247,7 @@ struct Prov_IndexedSubGraph_Impl : Prov_IndexedSubGraph {
 
   std::vector<onnxruntime::NodeIndex>& Nodes() override { return p_->nodes; }
 
-  std::unique_ptr<IndexedSubGraph> p_{std::make_unique<IndexedSubGraph>()};
+  std::unique_ptr<IndexedSubGraph> p_{onnxruntime::make_unique<IndexedSubGraph>()};
 };
 
 struct Prov_GraphViewer_Impl : Prov_GraphViewer {
@@ -329,7 +329,7 @@ struct Prov_IExecutionProvider_Router_Impl : Prov_IExecutionProvider_Router, IEx
 
     std::vector<std::unique_ptr<Prov_ComputeCapability>> capabilities;
     for (auto& v : capabilities_internal)
-      capabilities.emplace_back(std::make_unique<Prov_ComputeCapability>(std::make_unique<Prov_IndexedSubGraph_Impl>(std::move(v->sub_graph))));
+      capabilities.emplace_back(onnxruntime::make_unique<Prov_ComputeCapability>(onnxruntime::make_unique<Prov_IndexedSubGraph_Impl>(std::move(v->sub_graph))));
     return capabilities;
   }
 
@@ -343,7 +343,7 @@ struct Prov_IExecutionProvider_Router_Impl : Prov_IExecutionProvider_Router, IEx
     std::vector<std::unique_ptr<ComputeCapability>> result;
 
     for (auto& p : prov_result)
-      result.emplace_back(std::make_unique<ComputeCapability>(std::move(static_cast<Prov_IndexedSubGraph_Impl*>(p->t_sub_graph_.get())->p_)));
+      result.emplace_back(onnxruntime::make_unique<ComputeCapability>(std::move(static_cast<Prov_IndexedSubGraph_Impl*>(p->t_sub_graph_.get())->p_)));
 
     for (auto p : registries)
       delete p;
@@ -382,15 +382,15 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   std::unique_ptr<ONNX_NAMESPACE::Prov_AttributeProto> AttributeProto_Create() override {
-    return std::make_unique<Prov_AttributeProto_Impl>();
+    return onnxruntime::make_unique<Prov_AttributeProto_Impl>();
   }
 
   std::unique_ptr<Prov_OrtMemoryInfo> OrtMemoryInfo_Create(const char* name_, OrtAllocatorType type_, Prov_OrtDevice* device_, int id_, OrtMemType mem_type_) override {
-    return std::make_unique<Prov_OrtMemoryInfo_Impl>(name_, type_, device_ ? static_cast<Prov_OrtDevice_Impl*>(device_)->v_ : OrtDevice(), id_, mem_type_);
+    return onnxruntime::make_unique<Prov_OrtMemoryInfo_Impl>(name_, type_, device_ ? static_cast<Prov_OrtDevice_Impl*>(device_)->v_ : OrtDevice(), id_, mem_type_);
   }
 
   std::unique_ptr<Prov_KernelDefBuilder> KernelDefBuilder_Create() override {
-    return std::make_unique<Prov_KernelDefBuilder_Impl>();
+    return onnxruntime::make_unique<Prov_KernelDefBuilder_Impl>();
   }
 
   std::shared_ptr<Prov_KernelRegistry> KernelRegistry_Create() override {
@@ -398,7 +398,7 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   std::unique_ptr<Prov_IndexedSubGraph> IndexedSubGraph_Create() override {
-    return std::make_unique<Prov_IndexedSubGraph_Impl>();
+    return onnxruntime::make_unique<Prov_IndexedSubGraph_Impl>();
   }
 
   Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, OrtDevice::DeviceId device_id = 0) override {
@@ -411,11 +411,11 @@ struct ProviderHostImpl : ProviderHost {
 
   std::unique_ptr<Prov_IDeviceAllocator>
   CreateCPUAllocator(std::unique_ptr<Prov_OrtMemoryInfo> memory_info) override {
-    return std::make_unique<Prov_IDeviceAllocator_Impl>(std::make_unique<CPUAllocator>(std::move(static_cast<Prov_OrtMemoryInfo_Impl*>(memory_info.get())->info_)));
+    return onnxruntime::make_unique<Prov_IDeviceAllocator_Impl>(onnxruntime::make_unique<CPUAllocator>(std::move(static_cast<Prov_OrtMemoryInfo_Impl*>(memory_info.get())->info_)));
   };
 
   std::unique_ptr<Prov_IExecutionProvider_Router> Create_IExecutionProvider_Router(Prov_IExecutionProvider* outer, const std::string& type) override {
-    return std::make_unique<Prov_IExecutionProvider_Router_Impl>(outer, type);
+    return onnxruntime::make_unique<Prov_IExecutionProvider_Router_Impl>(outer, type);
   };
 
   void SessionOptions_AddProviderFactory(OrtSessionOptions& /*options*/, std::shared_ptr<Prov_IExecutionProviderFactory> /*provider*/) override {
