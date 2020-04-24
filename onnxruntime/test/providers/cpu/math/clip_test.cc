@@ -22,7 +22,11 @@ TEST(MathOpTest, Clip_6) {
                         {10.0f, 4.4f, 10.0f,
                          -1.3f, 3.5f, 10.0f,
                          -5.4f, 9.3f, 10.0f});
-  test.Run();
+  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+  #else
+    test.Run();
+  #endif
 }
 
 TEST(MathOpTest, Clip_Default) {
@@ -38,8 +42,12 @@ TEST(MathOpTest, Clip_Default) {
                          -1.3f, 3.5f, 64.0f,
                          -5.4f, 9.3f, 82.4f});
 
+  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kNGraphExecutionProvider});
+  #else
   // nGraph does not support Clip opset 12 yet.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  #endif
 }
 
 TEST(MathOpTest, Clip_Default_int8) {
