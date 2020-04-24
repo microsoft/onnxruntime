@@ -10,7 +10,6 @@
 #include "subgraph/dnnl_func_kernel.h"
 #include "dnnl_execution_provider.h"
 #include "dnnl_fwd.h"
-#include <Windows.h>
 
 const OrtApi* ORT_API_CALL GetApi(uint32_t /*version*/) NO_EXCEPTION { return nullptr; }
 const char* ORT_API_CALL GetVersionString() NO_EXCEPTION { return "invalid"; }
