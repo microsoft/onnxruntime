@@ -1,6 +1,6 @@
 jobs:
 - job: arm
-  timeoutInMinutes:  60
+  timeoutInMinutes: 60
   pool: 'Linux-CPU' 
   steps:
     - task: CmdLine@2
