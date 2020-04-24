@@ -722,16 +722,12 @@ endif()
 
 if(onnxruntime_USE_OPENVINO)
 
-  if (NOT onnxruntime_USE_FULL_PROTOBUF)
-    message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for OpenVINO execution provider.")
-  endif()
+  #TODO: See if we can remove this
+  # if (NOT onnxruntime_USE_FULL_PROTOBUF)
+  #   message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for OpenVINO execution provider.")
+  # endif()
 
   add_definitions(-DUSE_OPENVINO=1)
-  if (NOT WIN32)
-    include(openvino)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ovep_ngraph)
-    list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
-  endif()
 
   if(onnxruntime_USE_OPENVINO_MYRIAD)
     add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
