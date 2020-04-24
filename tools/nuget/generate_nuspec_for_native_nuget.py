@@ -114,6 +114,7 @@ def generate_files(list, args):
     files_list = ['<files>']
     
     is_cpu_package = args.package_name == 'Microsoft.ML.OnnxRuntime'
+    is_mklml_package = args.package_name == 'Microsoft.ML.OnnxRuntime.MKLML'
     is_cuda_gpu_package = args.package_name == 'Microsoft.ML.OnnxRuntime.Gpu'
     is_dml_package = args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML'
     is_windowsai_package = args.package_name == 'Microsoft.AI.MachineLearning'
@@ -157,7 +158,7 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native\\Microsoft.AI.MachineLearning.dll" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.pdb') + '" target="runtimes\\win-' + args.target_architecture + '\\native\\Microsoft.AI.MachineLearning.pdb" />')
 
-    if is_cpu_package or is_cuda_gpu_package or is_dml_package:
+    if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
         # Process dnll.dll    
         if os.path.exists(os.path.join(args.native_build_path, 'dnnl.dll')):
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'dnnl.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
