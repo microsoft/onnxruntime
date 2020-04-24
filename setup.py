@@ -241,11 +241,32 @@ if package_name == 'onnxruntime-nuphar':
 if featurizers_build:
     # Copy the featurizer data from its current directory into the onnx runtime directory so that the
     # content can be included as module data.
-    featurizer_source_dir = path.join("external", "FeaturizersLibrary", "Data")
+
+    # Apparently, the root_dir is different based on how the script is invoked
+    source_root_dir = None
+    dest_root_dir = None
+
+    for potential_source_prefix, potential_dest_prefix in [
+        (getcwd(), getcwd()),
+        (path.dirname(__file__), path.dirname(__file__)),
+        (path.join(getcwd(), ".."), getcwd()),
+    ]:
+        potential_dir = path.join(potential_source_prefix, "external", "FeaturizersLibrary", "Data")
+        if path.isdir(potential_dir):
+            source_root_dir = potential_source_prefix
+            dest_root_dir = potential_dest_prefix
+
+            break
+
+    if source_root_dir is None:
+        raise Exception("Unable to find the build root dir")
+
+    assert dest_root_dir is not None
+
+    featurizer_source_dir = path.join(source_root_dir, "external", "FeaturizersLibrary", "Data")
     assert path.isdir(featurizer_source_dir), featurizer_source_dir
 
-    featurizer_dest_dir = path.join(
-        "onnxruntime", "FeaturizersLibrary", "Data")
+    featurizer_dest_dir = path.join(dest_root_dir, "onnxruntime", "FeaturizersLibrary", "Data")
     if path.isdir(featurizer_dest_dir):
         rmtree(featurizer_dest_dir)
 
@@ -256,10 +277,8 @@ if featurizers_build:
 
         copytree(this_featurizer_source_fullpath, featurizer_dest_dir)
 
-        packages.append("{}.{}".format(
-            featurizer_dest_dir.replace(path.sep, "."), item))
-        package_data[packages[-1]
-                     ] = listdir(path.join(featurizer_dest_dir, item))
+        packages.append("onnxruntime.FeaturizersLibrary.Data.{}".format(item))
+        package_data[packages[-1]] = listdir(path.join(featurizer_dest_dir, item))
 
 package_data["onnxruntime"] = data + examples + extra
 

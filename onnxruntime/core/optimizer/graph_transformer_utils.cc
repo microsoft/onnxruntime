@@ -136,8 +136,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<BiasGelu>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(cpu_cuda_execution_providers));
 
-      std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
-      transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(cpu_cuda_execution_providers));
 #endif
     } break;
@@ -164,6 +162,16 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     }
     return transformers;
   }
+
+  // Some transformers have side-effect like result is not exactly same.
+  // These transformers could only be enabled by custom transformer list.
+#ifndef DISABLE_CONTRIB_OPS
+  if (level == TransformerLevel::Level2) {
+      std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
+      transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cuda_execution_providers));
+  }
+#endif
+
   std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
   // If the rule-based transformer is not empty, it should be included in the custom transformer list below.
   if (rule_transformer != nullptr) {
