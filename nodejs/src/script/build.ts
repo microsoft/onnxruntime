@@ -15,7 +15,9 @@ let command: string;
 let args: string[];
 if (USE_PREBUILD) {
   command = PREBUILD_FULL_PATH;
-  args = ['--backend', 'cmake-js', '--runtime', 'napi', '--include-regex', '"\\.(node|dll|pdb)$"'];
+  args = [
+    '--backend', 'cmake-js', '--runtime', 'napi', '--include-regex', '"\\.(node|dll|pdb)$"', '--prepack', '"npm test"'
+  ];
   if (DEBUG) {
     args.push('--debug');
   }
