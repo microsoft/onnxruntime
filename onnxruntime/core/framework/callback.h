@@ -50,7 +50,9 @@ class ScopedOrtCallbackInvoker {
   }
 
   ScopedOrtCallbackInvoker& operator=(ScopedOrtCallbackInvoker&& other) {
-    if (callback_.f) callback_.f(callback_.param);
+    if (callback_.f) {
+      callback_.f(callback_.param);
+    }
 
     callback_ = other.callback_;
     other.callback_.f = nullptr;
@@ -60,7 +62,9 @@ class ScopedOrtCallbackInvoker {
   }
 
   ~ScopedOrtCallbackInvoker() {
-    if (callback_.f) callback_.f(callback_.param);
+    if (callback_.f) {
+      callback_.f(callback_.param);
+    }
   }
 
  private:
