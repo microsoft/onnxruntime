@@ -16,6 +16,8 @@ This document covers basic tools and knobs that can be leveraged to find the bes
 
 ## Performance Tuning Tools
 The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is an easy-to-use pipeline for converting models to ONNX and optimizing performance with ONNX Runtime. The tool can help identify the optimal runtime configuration to get the best performance on the target hardware for the model.
+As a quickstart, please see the notebooks: [Python](https://github.com/microsoft/OLive/blob/master/notebook/Convert_Models_and_Tune_Performance_with_OLive_Python_SDK.ipynb), [Docker images](https://github.com/microsoft/OLive/blob/master/notebook/Convert_Models_and_Tune_Performance_with_OLive_Docker_Images.ipynb)
+
 
 ### Profiling and Performance Report
 
@@ -129,9 +131,9 @@ number of threads used to parallelize the execution of the graph (across nodes).
 * sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL. Default is already ORT_ENABLE_ALL(99). Please see [onnxruntime_c_api.h](../include/onnxruntime/core/session/onnxruntime_c_api.h#L241)  (enum GraphOptimizationLevel) for the full list of all optimization levels. For details regarding available optimizations and usage please refer to the [Graph Optimizations Doc](../docs/ONNX_Runtime_Graph_Optimizations.md).
 
 ### MKL_DNN/nGraph/MKL_ML Execution Provider
-MKL_DNN, MKL_ML and nGraph all depends on openmp for parallization. For those execution providers, we need to use the openmp environment variable to tune the performance.
+MKL_DNN, MKL_ML and nGraph all depends on openmp for parallelization. For those execution providers, we need to use the openmp environment variable to tune the performance.
 
-The most widely used enviroment variables are:
+The most widely used environment variables are:
 
 * OMP_NUM_THREADS=n
   * Controls the thread pool size
@@ -142,6 +144,7 @@ The most widely used enviroment variables are:
   * ACTIVE will not yield CPU, instead it will have a while loop to check whether the next task is ready
   * Use PASSIVE if your CPU usage already high, and use ACTIVE when you want to trade CPU with latency
 
+
 ## Troubleshooting model performance issues
 The answers below are troubleshooting suggestions based on common previous user-filed issues and questions. This list is by no means exhaustive and there is a lot of case-by-case fluctuation depending on the model and specific usage scenario. Please use this information to guide your troubleshooting, search through previously filed issues for related topics, and/or file a new issue if your problem is still not resolved.
 
@@ -151,6 +154,9 @@ Here is a list of things to check through when assessing performance issues.
 * Have you enabled all [graph optimizations](./ONNX_Runtime_Graph_Optimizations.md)? The official published packages do enable all by default, but when building from source, check that these are enabled in your build.
 * Have you searched through prior filed [Github issues](https://github.com/microsoft/onnxruntime/issues) to see if your problem has been discussed previously? Please do this before filing new issues.
 * If using CUDA or TensorRT, do you have the right versions of the dependent libraries installed? 
+
+### I need help performance tuning for BERT models.
+For BERT models, sometimes ONNX Runtime cannot apply the best optimization due to reasons such as framework version updates. We recommend trying out the [BERT optimization tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/bert), which reflects the latest changes in graph pattern matching and model conversions, and a set of [notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/bert/notebooks) to help get started.
 
 ### Why is the model graph not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?
 The ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may fail some of the graph optimizations, like const folding, operator fusion and etc. Move initializers out of graph inputs if there is no need to override them, by either re-generating the model with latest exporter/converter or with the tool [remove_initializer_from_input.py](./../tools/python/remove_initializer_from_input.py).

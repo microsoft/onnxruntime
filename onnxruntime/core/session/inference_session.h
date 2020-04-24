@@ -159,7 +159,7 @@ class InferenceSession {
     * Calling this API is optional in which case onnxruntime will use its internal CPU execution provider.
     * @return OK if success.
     */
-  common::Status RegisterExecutionProvider(std::unique_ptr<IExecutionProvider> p_exec_provider);
+  common::Status RegisterExecutionProvider(std::unique_ptr<IExecutionProvider> p_exec_provider) ORT_MUST_USE_RESULT;
 
   /**
     * Register a graph transformer. If you've one to register, call this before invoking Initialize().
@@ -170,7 +170,7 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
-                                          TransformerLevel level = TransformerLevel::Level2);
+                                          TransformerLevel level = TransformerLevel::Level2) ORT_MUST_USE_RESULT;
 
   /**
     * Enable a custom set of transformers. Call this before invoking Initialize().
@@ -178,12 +178,12 @@ class InferenceSession {
     * When this list is provided ORT ignores the levels set in session options.
     * @return OK if success.
     */
-  common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable);
+  common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) ORT_MUST_USE_RESULT;
 
   /**
     * Add custom ops. This API is not thread safe.
     */
-  common::Status AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops);
+  common::Status AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops) ORT_MUST_USE_RESULT;
 
   /**
     * Register a custom registry for operator schema and kernels.  If you've one to register,
@@ -194,23 +194,23 @@ class InferenceSession {
     * This API is not thread safe.
     * @return OK if success.
     */
-  common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry);
+  common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) ORT_MUST_USE_RESULT;
 
   /**
     * Load an ONNX model.
     * @param model_uri absolute path of the model file.
     * @return OK if success.
     */
-  common::Status Load(const std::string& model_uri);
+  common::Status Load(const std::string& model_uri) ORT_MUST_USE_RESULT;
 #ifdef _WIN32
-  common::Status Load(const std::wstring& model_uri);
+  common::Status Load(const std::wstring& model_uri) ORT_MUST_USE_RESULT;
 #endif
   /**
     * Load an ONNX model.
     * @param istream object of the model.
     * @return OK if success.
     */
-  common::Status Load(std::istream& model_istream);
+  common::Status Load(std::istream& model_istream) ORT_MUST_USE_RESULT;
 
   /**
     * Load an ONNX model.
@@ -218,14 +218,14 @@ class InferenceSession {
     * @param model_data_len Model data buffer size
     * @return OK if success.
     */
-  common::Status Load(const void* model_data, int model_data_len);
+  common::Status Load(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
 
   /**
     * Load an ONNX model from the member model_proto_. 
     * To be called only in conjunction with a ctor that takes in a model path/ model stream/ model array  
     * @return OK if success.
     */
-  common::Status Load();
+  common::Status Load() ORT_MUST_USE_RESULT;
 
   /**
     * Initializes a previously loaded model. Initialization includes but is not
@@ -234,11 +234,11 @@ class InferenceSession {
     * This API is thread-safe.
     * @return OK if success
     */
-  common::Status Initialize();
+  common::Status Initialize() ORT_MUST_USE_RESULT;
 
   common::Status Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
                      const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
-                     std::vector<OrtValue>* p_fetches);
+                     std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
 
   /**
     * Run a pre-loaded and pre-intialized model.
@@ -251,7 +251,7 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
-                     std::vector<OrtValue>* p_fetches);
+                     std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
 
   /**
    * See Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches)
@@ -259,17 +259,18 @@ class InferenceSession {
    * @param run_options use this to tune the Run call to your needs.
    */
   common::Status Run(const RunOptions& run_options, const NameMLValMap& feeds,
-                     const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches);
+                     const std::vector<std::string>& output_names,
+                     std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
 
   /**
   * Creates a new binding object for binding inputs and outputs.
   * @param provider_type specifies the location where the inputs need to be potentially copied.
   * See IOBinding class for more info.
   */
-  common::Status NewIOBinding(std::unique_ptr<IOBinding>* io_binding);
+  common::Status NewIOBinding(std::unique_ptr<IOBinding>* io_binding) ORT_MUST_USE_RESULT;
 
-  common::Status Run(const RunOptions& run_options, IOBinding& io_binding);
-  common::Status Run(IOBinding& io_binding);
+  common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
+  common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
 
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
@@ -345,16 +346,16 @@ class InferenceSession {
     * @param protobuf object corresponding to the model file. model_proto will be copied by the API.
     * @return OK if success.
     */
-  common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto);
+  common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto) ORT_MUST_USE_RESULT;
 
   /**
     * Load an ONNX model.
     * @param protobuf object corresponding to the model file. This is primarily to support large models.
     * @return OK if success.
     */
-  common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto);
+  common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto) ORT_MUST_USE_RESULT;
 
-  common::Status DoPostLoadProcessing(onnxruntime::Model& model);
+  common::Status DoPostLoadProcessing(onnxruntime::Model& model) ORT_MUST_USE_RESULT;
 
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
@@ -382,7 +383,7 @@ class InferenceSession {
     return !custom_schema_registries_.empty();
   }
 
-  common::Status SaveModelMetadata(const onnxruntime::Model& model);
+  common::Status SaveModelMetadata(const onnxruntime::Model& model) ORT_MUST_USE_RESULT;
 
   // Create a Logger for a single execution if possible. Otherwise use the default logger.
   // If a new logger is created, it will also be stored in new_run_logger,
@@ -392,18 +393,18 @@ class InferenceSession {
   const logging::Logger& CreateLoggerForRun(const RunOptions& run_options,
                                             std::unique_ptr<logging::Logger>& new_run_logger);
 
-  common::Status Load(std::function<common::Status(std::shared_ptr<Model>&)> loader, const std::string& event_name);
+  common::Status Load(std::function<common::Status(std::shared_ptr<Model>&)> loader,
+                      const std::string& event_name) ORT_MUST_USE_RESULT;
 
   common::Status TransformGraph(onnxruntime::Graph& graph,
                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
-                                const ExecutionProviders& providers,
-                                KernelRegistryManager& kernel_registry_manager,
+                                const ExecutionProviders& providers, KernelRegistryManager& kernel_registry_manager,
                                 const InsertCastTransformer& insert_cast_transformer,
-                                SessionState& session_state);
+                                SessionState& session_state) ORT_MUST_USE_RESULT;
 
-  common::Status CreateSubgraphSessionState(Graph& graph, SessionState& session_state);
+  common::Status CreateSubgraphSessionState(Graph& graph, SessionState& session_state) ORT_MUST_USE_RESULT;
 
-  common::Status InitializeSubgraphSessions(Graph& graph, SessionState& session_state);
+  common::Status InitializeSubgraphSessions(Graph& graph, SessionState& session_state) ORT_MUST_USE_RESULT;
 
   void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                  TransformerLevel graph_optimization_level,
@@ -411,18 +412,19 @@ class InferenceSession {
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
-  common::Status CheckShapes(const std::string& input_name,
-                             const TensorShape& input_shape,
-                             const TensorShape& expected_shape) const;
+  common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
+                             const TensorShape& expected_shape) const ORT_MUST_USE_RESULT;
 
-  common::Status ValidateInputs(const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds) const;
+  common::Status ValidateInputs(const std::vector<std::string>& feed_names,
+                                const std::vector<OrtValue>& feeds) const ORT_MUST_USE_RESULT;
 
-  common::Status ValidateOutputs(const std::vector<std::string>& output_names, const std::vector<OrtValue>* p_fetches) const;
+  common::Status ValidateOutputs(const std::vector<std::string>& output_names,
+                                 const std::vector<OrtValue>* p_fetches) const ORT_MUST_USE_RESULT;
 
-  common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms);
+  common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) ORT_MUST_USE_RESULT;
 
   template <typename T>
-  common::Status Load(const std::basic_string<T>& model_uri);
+  common::Status Load(const std::basic_string<T>& model_uri) ORT_MUST_USE_RESULT;
 
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
@@ -437,7 +439,7 @@ class InferenceSession {
   std::vector<std::string> transformers_to_enable_;
 
   /// Logging manager if provided.
-  logging::LoggingManager* logging_manager_ = nullptr;
+  logging::LoggingManager* const logging_manager_;
 
   /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
   std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
@@ -482,9 +484,6 @@ class InferenceSession {
 
   KernelRegistryManager kernel_registry_manager_;
   std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;
-
-  // A set of executors that can run in parallel.
-  std::vector<std::unique_ptr<IExecutor>> executors_;  // TODO do we need this vector?
 
   ModelMetadata model_metadata_;
   std::unordered_set<std::string> required_inputs_;

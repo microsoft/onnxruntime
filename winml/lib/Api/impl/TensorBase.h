@@ -14,7 +14,7 @@
 
 #include "core/session/onnxruntime_c_api.h"
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 // TensorBase
 //
@@ -72,14 +72,14 @@ struct TensorBase : TBase {
   TensorBase() : m_resources(std::make_shared<TensorResources<T>>()) {
   }
 
-  TensorBase(winrt::Windows::Foundation::Collections::IIterable<int64_t> const& shape) : shape_(begin(shape), end(shape)),
-                                                                                         m_resources(std::make_shared<TensorResources<T>>()) {
-    GetCpuResource() = std::make_shared<WinML::Tensor<T>>(shape_);
+  TensorBase(wfc::IIterable<int64_t> const& shape) : shape_(begin(shape), end(shape)),
+                                                     m_resources(std::make_shared<TensorResources<T>>()) {
+    GetCpuResource() = std::make_shared<_winml::Tensor<T>>(shape_);
   }
 
   TensorBase(std::vector<int64_t> const& shape) : shape_(shape),
                                                   m_resources(std::make_shared<TensorResources<T>>()) {
-    GetCpuResource() = std::make_shared<WinML::Tensor<T>>(shape_);
+    GetCpuResource() = std::make_shared<_winml::Tensor<T>>(shape_);
   }
 
   TensorBase(std::vector<int64_t> const& shape, ID3D12Resource* resource) : shape_(shape),
@@ -96,8 +96,8 @@ struct TensorBase : TBase {
   HRESULT CreateGPUMLValue(ID3D12Resource* resource, BindingContext& context, IValue** out) {
     THROW_HR_IF_NULL(E_INVALIDARG, resource);
 
-    auto session = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
-    auto device = session->Device().as<winrt::Windows::AI::MachineLearning::implementation::LearningModelDevice>();
+    auto session = context.session.as<winmlp::LearningModelSession>();
+    auto device = session->Device().as<winmlp::LearningModelDevice>();
     WINML_THROW_HR_IF_TRUE_MSG(WINML_ERR_INVALID_BINDING,
                                device->IsCpuDevice(),
                                "Cannot create GPU tensor on CPU device");
@@ -107,8 +107,8 @@ struct TensorBase : TBase {
     return S_OK;
   }
 
-  HRESULT CPUTensorize(WinML::BindingContext& context, IValue** out) {
-    auto session = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
+  HRESULT CPUTensorize(_winml::BindingContext& context, IValue** out) {
+    auto session = context.session.as<winmlp::LearningModelSession>();
     auto engine = session->GetEngine();
 
     if (GetCpuResource() != nullptr) {
@@ -123,13 +123,13 @@ struct TensorBase : TBase {
     WINML_THROW_HR(WINML_ERR_INVALID_BINDING);
   }
 
-  HRESULT GPUTensorize(WinML::BindingContext& context, IValue** out) {
+  HRESULT GPUTensorize(_winml::BindingContext& context, IValue** out) {
     if (GetGpuResource() != nullptr) {
       return CreateGPUMLValue(GetGpuResource().get(), context, out);
     }
 
     // Get engine
-    auto session = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
+    auto session = context.session.as<winmlp::LearningModelSession>();
     auto engine = session->GetEngine();
 
     // If there is no matching gpu resource, then fallback to a cpu resource
@@ -137,10 +137,10 @@ struct TensorBase : TBase {
       return CreateTensorValueFromExternalBuffer(engine, out);
     }
 
-    if (TensorKind() == winrt::Windows::AI::MachineLearning::TensorKind::String) {
+    if (TensorKind() == winml::TensorKind::String) {
       // Lazily allocate the cpu TensorString resource
       // TensorStrings are CPU only, and so a gpu resource cannot be allocated for them.
-      GetCpuResource() = std::make_shared<WinML::Tensor<T>>(shape_);
+      GetCpuResource() = std::make_shared<_winml::Tensor<T>>(shape_);
       return CreateTensorValueFromExternalBuffer(engine, out);
     } else {
       // Try to allocate the backing memory for the caller
@@ -170,7 +170,7 @@ struct TensorBase : TBase {
           D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
           D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
 
-      auto device = session->Device().as<winrt::Windows::AI::MachineLearning::implementation::LearningModelDevice>();
+      auto device = session->Device().as<winmlp::LearningModelDevice>();
 
       winrt::com_ptr<ID3D12Resource> gpu_resource = nullptr;
       device->GetD3DDevice()->CreateCommittedResource(
@@ -200,7 +200,7 @@ struct TensorBase : TBase {
 
   // ILotusValueProviderPrivate::GetOrtValue
   STDMETHOD(GetValue)
-  (WinML::BindingContext& context, IValue** out) {
+  (_winml::BindingContext& context, IValue** out) {
     RETURN_HR_IF_NULL_MSG(
         WINML_ERR_INVALID_BINDING,
         m_resources,
@@ -208,8 +208,8 @@ struct TensorBase : TBase {
 
     EnsureBufferNotInUse();
 
-    auto spSession = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
-    auto spDevice = spSession->Device().as<winrt::Windows::AI::MachineLearning::implementation::LearningModelDevice>();
+    auto spSession = context.session.as<winmlp::LearningModelSession>();
+    auto spDevice = spSession->Device().as<winmlp::LearningModelDevice>();
 
     if (spDevice->IsCpuDevice()) {
       RETURN_IF_FAILED(CPUTensorize(context, out));
@@ -250,7 +250,7 @@ struct TensorBase : TBase {
   }
 
   template <typename ElementType = T, typename ElementViewType = ViewT>
-  HRESULT CreateTensorValueFromExternalBuffer(WinML::IEngine* engine, IValue** value) {
+  HRESULT CreateTensorValueFromExternalBuffer(_winml::IEngine* engine, IValue** value) {
     // This adds compile time checks that ensure that the API can only be called when
     // the conditions of ASSERT_TEMPLATE_PARAMETERS_EXACT() are met.
     ASSERT_TEMPLATE_PARAMETERS<ElementType, ElementViewType>();
@@ -263,7 +263,7 @@ struct TensorBase : TBase {
   }
 
   template <>
-  HRESULT CreateTensorValueFromExternalBuffer<std::string, winrt::hstring>(WinML::IEngine* engine, IValue** value) {
+  HRESULT CreateTensorValueFromExternalBuffer<std::string, winrt::hstring>(_winml::IEngine* engine, IValue** value) {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
@@ -290,7 +290,7 @@ struct TensorBase : TBase {
         m_resources,
         "The tensor has been closed and its resources have been detached during evaluation!");
 
-    WinML::Resource updated_resource;
+    _winml::Resource updated_resource;
     RETURN_IF_FAILED(value->GetResource(updated_resource));
 
     // get the shape
@@ -298,7 +298,7 @@ struct TensorBase : TBase {
 
     // make sure we always have a CPU resource
     if (GetCpuResource() == nullptr) {
-      GetCpuResource() = std::make_shared<WinML::Tensor<T>>(shape_);
+      GetCpuResource() = std::make_shared<_winml::Tensor<T>>(shape_);
     }
 
     bool is_cpu;
@@ -320,7 +320,7 @@ struct TensorBase : TBase {
       // We don't need to copy the engine provided dx resource into a local copy since we always preallocate gpu
       // resources for tensors. Therefore we are certain that the returned dxresource is the same as the one we passed in
       // and was updated in place.
-      auto spSession = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
+      auto spSession = context.session.as<winmlp::LearningModelSession>();
       auto engine = spSession->GetEngine();
 
       winrt::com_ptr<IValue> dest;
@@ -344,7 +344,7 @@ struct TensorBase : TBase {
 
   // ITensor<T>::Create
   static typename TBase::class_type Create(
-      winrt::Windows::Foundation::Collections::IIterable<int64_t> const& shape) try {
+      wfc::IIterable<int64_t> const& shape) try {
     typename TBase::class_type tensorValue = winrt::make<TDerived>();
     auto tensorValueImpl = tensorValue.as<TDerived>();
     tensorValueImpl->shape_ = std::vector<int64_t>(begin(shape), end(shape));
@@ -354,8 +354,8 @@ struct TensorBase : TBase {
 
   // ITensor<T>::CreateFromIterable
   static typename TBase::class_type CreateFromIterable(
-      winrt::Windows::Foundation::Collections::IIterable<int64_t> shape,
-      winrt::Windows::Foundation::Collections::IIterable<ViewT> const& data) try {
+      wfc::IIterable<int64_t> shape,
+      wfc::IIterable<ViewT> const& data) try {
     std::vector<int64_t> vecShape(begin(shape), end(shape));
     if (HasFreeDimensions(vecShape)) {
       // If the tensor is being created with a free dimension, the data needs to
@@ -363,7 +363,7 @@ struct TensorBase : TBase {
       // In the case of IIterable<T>, there is no Size accessor, and so we require that
       // in this case the underlying object also implement IVectorView, so that we may
       // efficiently query the size of the data.
-      if (auto vectorView = data.try_as<winrt::Windows::Foundation::Collections::IVectorView<ViewT>>()) {
+      if (auto vectorView = data.try_as<wfc::IVectorView<ViewT>>()) {
         vecShape = GetAdjustedShape(vecShape, vectorView.Size());
       }
     }
@@ -377,7 +377,7 @@ struct TensorBase : TBase {
 
   // ITensor<T>::CreateFromArray
   static typename TBase::class_type CreateFromArray(
-      winrt::Windows::Foundation::Collections::IIterable<int64_t> shape,
+      wfc::IIterable<int64_t> shape,
       winrt::array_view<ViewT const> data) try {
     std::vector<int64_t> vecShape(begin(shape), end(shape));
     return CreateFromArrayInternal(vecShape, data);
@@ -409,12 +409,12 @@ struct TensorBase : TBase {
   // ITensor<T>::CreateFromBuffer
   static typename TBase::class_type CreateFromBuffer(
       winrt::array_view<int64_t const> shape,
-      winrt::Windows::Storage::Streams::IBuffer const& buffer) try {
+      wss::IBuffer const& buffer) try {
     std::vector<int64_t> vecShape(shape.begin(), shape.end());
     typename TBase::class_type tensorValue = winrt::make<TDerived>();
     auto tensorValueImpl = tensorValue.as<TDerived>();
     tensorValueImpl->shape_ = vecShape;
-    tensorValueImpl->GetCpuResource() = std::make_shared<WinML::Tensor<T>>(vecShape, buffer);
+    tensorValueImpl->GetCpuResource() = std::make_shared<_winml::Tensor<T>>(vecShape, buffer);
     return tensorValue;
   }
   WINML_CATCH_ALL
@@ -501,7 +501,7 @@ struct TensorBase : TBase {
   ///
 
   // IMemoryBuffer::CreateReference
-  winrt::Windows::Foundation::IMemoryBufferReference CreateReference() try {
+  wf::IMemoryBufferReference CreateReference() try {
     // Create a TensorMemoryBufferReference<T>
 
     // Per IMemoryBuffer.CreateReference (https://docs.microsoft.com/en-us/uwp/api/windows.foundation.imemorybuffer.createreference)
@@ -563,7 +563,7 @@ struct TensorBase : TBase {
 
   // ITensor<T>::GetAsVectorView
   template <typename ElementType = T, typename ElementViewType = ViewT>
-  winrt::Windows::Foundation::Collections::IVectorView<ElementViewType> GetAsVectorView() try {
+  wfc::IVectorView<ElementViewType> GetAsVectorView() try {
     // This adds compile time checks that ensure that the API can only be called when:
     //   1) the conditions of ASSERT_TEMPLATE_PARAMETERS_EXACT() are met.
     //   2) the signature of the method conforms to the ABI signature and the return value matches the ABI Return Type (ViewT).
@@ -588,12 +588,12 @@ struct TensorBase : TBase {
 
   // Specialized version to convert float16 to float
   template <>
-  winrt::Windows::Foundation::Collections::IVectorView<float> GetAsVectorView<WinML::Half, float>() try {
+  wfc::IVectorView<float> GetAsVectorView<_winml::Half, float>() try {
     // Ensure that this call is being called with the correct template parameters
-    ASSERT_TEMPLATE_PARAMETERS<WinML::Half, float>();
+    ASSERT_TEMPLATE_PARAMETERS<_winml::Half, float>();
 
     uint32_t size;
-    WinML::Half* pBuffer;
+    _winml::Half* pBuffer;
 
     // Get the data pointer and size
     std::tie(size, pBuffer) = GetCpuResource()->buffer();
@@ -604,7 +604,7 @@ struct TensorBase : TBase {
         floatValue.data(),
         sizeof(float) /* output stride */,
         reinterpret_cast<DirectX::PackedVector::HALF*>(pBuffer),
-        sizeof(WinML::Half) /* input stride */,
+        sizeof(_winml::Half) /* input stride */,
         size);
 
     // Create IVectorView from copied data.
@@ -614,7 +614,7 @@ struct TensorBase : TBase {
 
   // Specialized version to convert string to hstring
   template <>
-  winrt::Windows::Foundation::Collections::IVectorView<winrt::hstring> GetAsVectorView<std::string, winrt::hstring>() try {
+  wfc::IVectorView<winrt::hstring> GetAsVectorView<std::string, winrt::hstring>() try {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
@@ -627,7 +627,7 @@ struct TensorBase : TBase {
         copy.begin(),
         copy.end(),
         [n = 0, &pData]() mutable {
-          return WinML::Strings::HStringFromUTF8(pData[n++]);
+          return _winml::Strings::HStringFromUTF8(pData[n++]);
         });
 
     return winrt::single_threaded_vector<winrt::hstring>(std::move(copy)).GetView();
@@ -636,7 +636,7 @@ struct TensorBase : TBase {
 
   // Specialized version to convert int8_t to uint8_t
   template <>
-  winrt::Windows::Foundation::Collections::IVectorView<uint8_t> GetAsVectorView<int8_t, uint8_t>() try {
+  wfc::IVectorView<uint8_t> GetAsVectorView<int8_t, uint8_t>() try {
     ASSERT_TEMPLATE_PARAMETERS<int8_t, uint8_t>();
 
     uint32_t size;
@@ -658,19 +658,19 @@ struct TensorBase : TBase {
   ///
 
   // ILearningModelFeatureValue implementation
-  winrt::Windows::AI::MachineLearning::LearningModelFeatureKind Kind() try {
-    return winrt::Windows::AI::MachineLearning::LearningModelFeatureKind::Tensor;
+  winml::LearningModelFeatureKind Kind() try {
+    return winml::LearningModelFeatureKind::Tensor;
   }
   WINML_CATCH_ALL
 
   // ITensor::TensorKind
-  winrt::Windows::AI::MachineLearning::TensorKind TensorKind() try {
+  winml::TensorKind TensorKind() try {
     return TensorKindFrom<TInterface>::Type;
   }
   WINML_CATCH_ALL
 
   // ITensor::Shape
-  winrt::Windows::Foundation::Collections::IVectorView<int64_t> Shape() try {
+  wfc::IVectorView<int64_t> Shape() try {
     std::vector<int64_t> copy(shape_.cbegin(), shape_.cend());
     return winrt::single_threaded_vector(std::move(copy)).GetView();
   }
@@ -678,7 +678,7 @@ struct TensorBase : TBase {
 
   // ILotusValueProviderPrivate::AbiRepresentation
   STDMETHOD(AbiRepresentation)
-  (winrt::Windows::Foundation::IInspectable& abiRepresentation) {
+  (wf::IInspectable& abiRepresentation) {
     using ABIType = typename TBase::class_type;
     ABIType to = nullptr;
     RETURN_IF_FAILED(this->QueryInterface(
@@ -721,12 +721,12 @@ struct TensorBase : TBase {
 
   // Specialized version to convert floats to float16
   template <>
-  void SetBufferFromArray<WinML::Half, float>(winrt::array_view<float const> data) {
+  void SetBufferFromArray<_winml::Half, float>(winrt::array_view<float const> data) {
     // Ensure that this call is being called with the correct template parameters
-    ASSERT_TEMPLATE_PARAMETERS<WinML::Half, float>();
+    ASSERT_TEMPLATE_PARAMETERS<_winml::Half, float>();
 
     uint32_t size;
-    WinML::Half* pBuffer;
+    _winml::Half* pBuffer;
 
     // Get the data pointer and size
     std::tie(size, pBuffer) = GetCpuResource()->buffer();
@@ -734,7 +734,7 @@ struct TensorBase : TBase {
     THROW_HR_IF(E_UNEXPECTED, data.size() != size);
     DirectX::PackedVector::XMConvertFloatToHalfStream(
         reinterpret_cast<DirectX::PackedVector::HALF*>(pBuffer),
-        sizeof(WinML::Half) /* output stride */,
+        sizeof(_winml::Half) /* output stride */,
         data.data(),
         sizeof(float) /* input stride */,
         data.size());
@@ -769,7 +769,7 @@ struct TensorBase : TBase {
     std::transform(
         data.begin(), data.end(), pBuffer,
         [](auto& element) mutable {
-          return WinML::Strings::UTF8FromHString(element);
+          return _winml::Strings::UTF8FromHString(element);
         });
   }
 
@@ -778,7 +778,7 @@ struct TensorBase : TBase {
   ///
   template <typename ElementType = T, typename ElementViewType = ViewT>
   void SetBufferFromIterable(
-      winrt::Windows::Foundation::Collections::IIterable<ElementViewType> const& data) {
+      wfc::IIterable<ElementViewType> const& data) {
     // This adds compile time checks that ensure that the API can only be called when
     // the conditions of ASSERT_TEMPLATE_PARAMETERS_EXACT() are met.
     ASSERT_TEMPLATE_PARAMETERS_EXACT<ElementType, ElementViewType>();
@@ -797,13 +797,13 @@ struct TensorBase : TBase {
 
   // Specialized version to convert floats to float16
   template <>
-  void SetBufferFromIterable<WinML::Half, float>(
-      winrt::Windows::Foundation::Collections::IIterable<float> const& data) {
+  void SetBufferFromIterable<_winml::Half, float>(
+      wfc::IIterable<float> const& data) {
     // Ensure that this call is being called with the correct template parameters
-    ASSERT_TEMPLATE_PARAMETERS<WinML::Half, float>();
+    ASSERT_TEMPLATE_PARAMETERS<_winml::Half, float>();
 
     uint32_t size;
-    WinML::Half* pBuffer;
+    _winml::Half* pBuffer;
 
     // Get the data pointer and size
     std::tie(size, pBuffer) = GetCpuResource()->buffer();
@@ -822,7 +822,7 @@ struct TensorBase : TBase {
   // Specialized version to convert uint8_t to int8_t
   template <>
   void SetBufferFromIterable<int8_t, uint8_t>(
-      winrt::Windows::Foundation::Collections::IIterable<uint8_t> const& data) {
+      wfc::IIterable<uint8_t> const& data) {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<int8_t, uint8_t>();
 
@@ -838,7 +838,7 @@ struct TensorBase : TBase {
   // Specialized version to convert hstring to string
   template <>
   void SetBufferFromIterable<std::string, winrt::hstring>(
-      winrt::Windows::Foundation::Collections::IIterable<winrt::hstring> const& data) {
+      wfc::IIterable<winrt::hstring> const& data) {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
@@ -850,11 +850,11 @@ struct TensorBase : TBase {
 
     // Convert and copy into the underlying buffer
     std::transform(begin(data), end(data), pBuffer, [](const auto& element) {
-      return WinML::Strings::UTF8FromHString(element);
+      return _winml::Strings::UTF8FromHString(element);
     });
   }
 
-  std::shared_ptr<WinML::Tensor<T>>& GetCpuResource() {
+  std::shared_ptr<_winml::Tensor<T>>& GetCpuResource() {
     WINML_THROW_HR_IF_NULL_MSG(
         E_ILLEGAL_METHOD_CALL,
         m_resources,
@@ -879,6 +879,6 @@ struct TensorBase : TBase {
   bool m_isClosed = false;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml
 
 #pragma warning(pop)

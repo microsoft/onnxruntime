@@ -15,6 +15,13 @@
 
 #include "core/framework/compute_capability.h"
 
+namespace {
+struct KernelRegistryAndStatus {
+  std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
+  Status st;
+};
+}  // namespace
+
 namespace onnxruntime {
 
 // Forward declarations of op kernels
@@ -1045,7 +1052,7 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 12,Clip)>,
 
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 12, Min)>,
-
+      
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 12, Max)>,
 
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 12, MaxPool)>,
@@ -1227,11 +1234,6 @@ static Status RegisterCPUKernels(KernelRegistry& kernel_registry) {
 #endif
   return Status::OK();
 }
-
-struct KernelRegistryAndStatus {
-  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  Status st;
-};
 
 KernelRegistryAndStatus GetCpuKernelRegistry() {
   KernelRegistryAndStatus ret;

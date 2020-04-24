@@ -7,14 +7,15 @@ from setuptools import setup, find_packages, Extension
 from distutils import log as logger
 from distutils.command.build_ext import build_ext as _build_ext
 from glob import glob
-from os import path, getcwd, environ, remove
-from shutil import copyfile
+from os import path, getcwd, environ, remove, walk, makedirs, listdir
+from shutil import copyfile, copytree, rmtree
 import platform
 import subprocess
 import sys
 import datetime
 
 nightly_build = False
+featurizers_build = False
 package_name = 'onnxruntime'
 wheel_name_suffix = None
 
@@ -46,6 +47,10 @@ elif '--use_openvino' in sys.argv:
 elif '--use_nuphar' in sys.argv:
     package_name = 'onnxruntime-nuphar'
     sys.argv.remove('--use_nuphar')
+
+elif '--use_featurizers' in sys.argv:
+    featurizers_build = True
+    sys.argv.remove('--use_featurizers')
 
 if '--nightly_build' in sys.argv:
     package_name = 'ort-nightly'
@@ -102,7 +107,7 @@ try:
                 logger.info('copying %s -> %s', source, dest)
                 copyfile(source, dest)
                 result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
-                cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so']
+                cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so']
                 to_preload = []
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):
@@ -179,8 +184,6 @@ examples = [path.join('datasets', x) for x in examples_names]
 
 # Extra files such as EULA and ThirdPartyNotices
 extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
-if package_name == 'onnxruntime-nuphar':
-  extra.extend([path.join('nuphar', 'NUPHAR_CACHE_VERSION')])
 
 # Description
 README = path.join(getcwd(), "docs/python/README.rst")
@@ -192,6 +195,41 @@ if not path.exists(README):
 with open(README) as f:
     long_description = f.read()
 
+packages = [
+    'onnxruntime',
+    'onnxruntime.backend',
+    'onnxruntime.capi',
+    'onnxruntime.datasets',
+    'onnxruntime.tools',
+]
+
+package_data = {}
+data_files = []
+
+if package_name == 'onnxruntime-nuphar':
+    packages += ["onnxruntime.nuphar"]
+    extra += [path.join('nuphar', 'NUPHAR_CACHE_VERSION')]
+
+if featurizers_build:
+    # Copy the featurizer data from its current directory into the onnx runtime directory so that the
+    # content can be included as module data.
+    featurizer_source_dir = path.join("external", "FeaturizersLibrary", "Data")
+    assert path.isdir(featurizer_source_dir), featurizer_source_dir
+
+    featurizer_dest_dir = path.join("onnxruntime", "FeaturizersLibrary", "Data")
+    if path.isdir(featurizer_dest_dir):
+        rmtree(featurizer_dest_dir)
+
+    for item in listdir(featurizer_source_dir):
+        this_featurizer_source_fullpath = path.join(featurizer_source_dir)
+        assert path.isdir(this_featurizer_source_fullpath), this_featurizer_source_fullpath
+
+        copytree(this_featurizer_source_fullpath, featurizer_dest_dir)
+
+        packages.append("{}.{}".format(featurizer_dest_dir.replace(path.sep, "."), item))
+        package_data[packages[-1]] = listdir(path.join(featurizer_dest_dir, item))
+
+package_data["onnxruntime"] = data + examples + extra
 
 version_number = ''
 with open('VERSION_NUMBER') as f:
@@ -234,16 +272,10 @@ setup(
     author_email='onnx@microsoft.com',
     cmdclass=cmd_classes,
     license="MIT License",
-    packages=['onnxruntime',
-              'onnxruntime.backend',
-              'onnxruntime.capi',
-              'onnxruntime.datasets',
-              'onnxruntime.tools',
-              ] + (['onnxruntime.nuphar'] if package_name == 'onnxruntime-nuphar' else []),
+    packages=packages,
     ext_modules=ext_modules,
-    package_data={
-        'onnxruntime': data + examples + extra,
-    },
+    package_data=package_data,
+    data_files=data_files,
     py_modules=python_modules_list,
     install_requires=install_requires,
     entry_points= {

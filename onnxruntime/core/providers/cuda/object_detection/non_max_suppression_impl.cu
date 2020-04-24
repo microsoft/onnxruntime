@@ -47,7 +47,6 @@ constexpr int kNmsBoxesPerThread = 8 * sizeof(int);
 // i / 32 == i >> 5. Using these bit operations should reduce the stall on host
 // thread.
 __device__ constexpr int NumBits(int n) { return (n == 0) ? 0 : NumBits(n >> 1) + 1; }
-constexpr int kNmsBoxesPerThreadModuloMask = kNmsBoxesPerThread - 1;
 
 constexpr int kNmsBlockDim = 16;
 constexpr int kNmsBlockDimMax = 128;
