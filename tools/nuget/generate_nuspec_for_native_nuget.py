@@ -192,7 +192,7 @@ def generate_files(list, args):
         windowsai_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'Microsoft.AI.MachineLearning.targets')
         files_list.append('<file src=' + '"' + windowsai_targets + '" target="build\\native" />')
 
-    if is_cpu_package or is_cuda_gpu_package or is_dml_package:
+    if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
         # Process props file
         source_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'props.xml')
         target_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', args.package_name + '.props')    
