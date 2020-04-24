@@ -2875,10 +2875,10 @@ Status Graph::InlineFunction(Node& node) {
   for (const auto& subgraph_node : subgraph.Nodes()) {
     if (subgraph_node.OpType() == kConstant) {
       // Copy constant nodes _value to name_to_initial_tensor_
-      const gsl::not_null<TensorProto*>
-          tensor{graph_proto_->add_initializer()};
-      *tensor = subgraph_node.GetAttributes().at("value").t();
-      *(tensor->mutable_name()) = subgraph_node.OutputDefs()[0]->Name();
+      ONNX_NAMESPACE::NodeProto subgraph_node_proto{};
+      subgraph_node.ToProto(subgraph_node_proto);
+      const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
+      ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(subgraph_node_proto, *tensor));
       name_to_initial_tensor_[tensor->name()] = tensor;
     } else {
       std::vector<NodeArg*> inputs, outputs;
