@@ -8,7 +8,7 @@ import os
 
 from onnxruntime.capi import _pybind_state as C
 
-def getOrtDeviceType(device):
+def get_ort_device_type(device):
     if device == 'cuda':
         return C.OrtDevice.cuda()
     elif device == 'cpu':
@@ -196,12 +196,12 @@ class IOBinding:
 
     def bind_input(self, name, device_type, device_id, element_type, shape, buffer_ptr):
         self._iobinding.bind_input(name,
-                                   C.OrtDevice(getOrtDeviceType(device_type), C.OrtDevice.default_memory(), device_id),
+                                   C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id),
                                    element_type, shape, buffer_ptr)
 
     def bind_output(self, name, device_type, device_id, element_type, shape, buffer_ptr):
         self._iobinding.bind_output(name,
-                                    C.OrtDevice(getOrtDeviceType(device_type), C.OrtDevice.default_memory(), device_id),
+                                    C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id),
                                     element_type, shape, buffer_ptr)
 
     def clear_binding_inputs(self):

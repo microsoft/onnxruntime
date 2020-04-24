@@ -719,7 +719,9 @@ void Node::ReplaceDefs(const std::map<const onnxruntime::NodeArg*, onnxruntime::
 //
 //  // as we just loaded from file we want to fully initialize/Resolve, but not let that change
 //  // the proto sync flag
-//  auto status = new_graph->Resolve(/* no_proto_sync_required */ true);
+//  ResolveOptions options;
+//  options.no_proto_sync_required = true;
+//  auto status = new_graph->Resolve(options);
 //  return status;
 //}
 using google::protobuf::RepeatedPtrField;
