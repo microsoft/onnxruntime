@@ -76,13 +76,12 @@ Status AttentionBase::CheckInputs(const Tensor* input,
                            "Input 2 dimension 0 should have same length as dimension 1 of input 1");
   }
 
-  if (mask_index != nullptr) {
+  if (mask_index != nullptr) {  // mask_index is optional
     // unidirectional (like GPT2) does not need mask input. Here we do not allowed the input for unidirectional.
     if (is_unidirectional_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 3 (mask_index) is not allowed for unidirectional");
     }
 
-  if (mask_index != nullptr) {  // mask_index is optional
     const auto mask_dims = mask_index->Shape().GetDims();
     if (mask_dims.size() != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 3 is expected to have 1 dimension, got ",
