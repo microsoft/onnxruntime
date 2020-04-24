@@ -79,6 +79,8 @@ TEST(GatherNDOpTest, int64_t) {
 }
 
 TEST(GatherNDOpTest, float) {
+  if (!HasCudaEnvironment(600 /*min_cuda_architecture*/)) return;
+
   RunTest<float>({2, 2}, {0.0f, 0.1f, 0.2f, 0.3f}, {2, 1}, {1LL, 0LL}, {2, 2}, {0.2f, 0.3f, 0.0f, 0.1f});
 
   // with negative indices

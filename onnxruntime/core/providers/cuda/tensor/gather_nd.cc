@@ -43,10 +43,14 @@ Status CheckBatchDimensionsMatch(
     GatherNDImpl<ToCudaType<T>::MappedType>(num_slices, kernel_input_data, kernel_output_data, slice_size, input_slice_offsets_buffer.get()); \
   }
 
+#ifdef ENABLE_TRAINING
 #define TYPED_FUNCTION_CALL_BWD(T)                                                                                                                \
   if (T_type == DataTypeImpl::GetType<T>()) {                                                                                                     \
     GatherNDGradImpl<ToCudaType<T>::MappedType>(num_slices, kernel_input_data, kernel_output_data, slice_size, input_slice_offsets_buffer.get()); \
   }
+#else
+#define TYPED_FUNCTION_CALL_BWD(T) do {} while(0)
+#endif
 
 template <typename TIndex>
 Status GatherNDBase::CommonComputeKernel(
