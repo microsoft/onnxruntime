@@ -296,7 +296,7 @@ TEST(GradientCheckerTest, TanhGrad) {
   UnaryOpGradientTest("Tanh");
 }
 
-// TODO fix flaky test (https://msdata.visualstudio.com/Vienna/_workitems/edit/596949)
+// TODO fix flaky test
 // failing random seed with error_tolerance of 1.5e-2f: 322298223
 TEST(GradientCheckerTest, GemmGrad) {
   float max_error;
@@ -972,7 +972,7 @@ TEST(GradientCheckerTest, SqueezeGrad) {
 // TODO: Reshape missing
 
 #ifdef USE_CUDA
-// TODO fix flaky test (https://msdata.visualstudio.com/Vienna/_workitems/edit/596949)
+// TODO fix flaky test
 // failing random seed: 4133818171
 TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
   float max_error;
@@ -1322,7 +1322,7 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_sh
   }
 }
 
-// TODO fix flaky test (https://msdata.visualstudio.com/Vienna/_workitems/edit/596949)
+// TODO fix flaky test
 // failing random seed: 1
 TEST(GradientCheckerTest, DISABLED_SoftmaxCrossEntropyLossGrad) {
   TestSoftmaxCrossEntropyLossGrad({5}, "mean");
