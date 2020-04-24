@@ -1,15 +1,21 @@
-#include <core/session/onnxruntime_cxx_api.h>
+#include "onnxruntime_cxx_api.h"
 
 #include "common.h"
 #include "inference_session_wrap.h"
 #include "session_options_helper.h"
 #include "tensor_helper.h"
 
+namespace Ort {
+// define Ort global API
+const OrtApi *g_api_;
+} // namespace Ort
+
 Napi::FunctionReference InferenceSessionWrap::constructor;
 Ort::Env *InferenceSessionWrap::ortEnv;
 
 Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
-  // initialize ORT
+  // create ONNX runtime env
+  Ort::g_api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   ortEnv = new Ort::Env{ORT_LOGGING_LEVEL_WARNING, "onnxruntime-node"};
 
   // initialize binding

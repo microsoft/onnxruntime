@@ -1,7 +1,7 @@
 {
   "name": "onnxruntime",
   "description": "Node.js binding of ONNXRuntime",
-  "version": "0.0.1",
+  "version": "0.0.1-dev.20200424.1",
   "main": "./lib/index.js",
   "types": "./types/lib/index.d.ts",
   "scripts": {
@@ -12,7 +12,7 @@
     "rebuildd": "tsc && node ./script/build --debug --rebuild",
     "test": "mocha ./test/test-main",
     "lint": "eslint . --ext .ts",
-    "prepublishOnly": "npm test",
+    "prepack": "node ./script/build --prebuild",
     "format": "clang-format --glob=\"{{lib,test,script}/**/*.ts,src/**/*.{cc,h}}\" --style=file -i"
   },
   "repository": {

@@ -19,22 +19,22 @@ file(GLOB SOURCE_FILES ${CMAKE_SOURCE_DIR}/src/*.cc)
 #
 add_library(onnxruntime_binding SHARED ${SOURCE_FILES})
 set_target_properties(onnxruntime_binding PROPERTIES
-    PREFIX "" SUFFIX ".node"
-    BUILD_WITH_INSTALL_RPATH TRUE
-    INSTALL_RPATH_USE_LINK_PATH FALSE)
+  PREFIX "" SUFFIX ".node"
+  BUILD_WITH_INSTALL_RPATH TRUE
+  INSTALL_RPATH_USE_LINK_PATH FALSE)
 target_link_libraries(onnxruntime_binding PRIVATE ${CMAKE_JS_LIB})
 
 if (WIN32)
-    target_link_libraries(onnxruntime_binding PRIVATE
-        ${CMAKE_SOURCE_DIR}/../../build/Windows/${CMAKE_BUILD_TYPE}/${CMAKE_BUILD_TYPE}/onnxruntime.lib)
+  target_link_libraries(onnxruntime_binding PRIVATE
+    ${CMAKE_SOURCE_DIR}/../../build/Windows/${CMAKE_BUILD_TYPE}/${CMAKE_BUILD_TYPE}/onnxruntime.lib)
 elseif (APPLE)
-    target_link_libraries(onnxruntime_binding PRIVATE
-        ${CMAKE_SOURCE_DIR}/../../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.1.2.0.dylib)
-    set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "@loader_path")
+  target_link_libraries(onnxruntime_binding PRIVATE
+    ${CMAKE_SOURCE_DIR}/../../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.1.2.0.dylib)
+  set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "@loader_path")
 else()
-    target_link_libraries(onnxruntime_binding PRIVATE
-        ${CMAKE_SOURCE_DIR}/../../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.so.1.2.0)
-    set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "$ORIGIN/")
+  target_link_libraries(onnxruntime_binding PRIVATE
+    ${CMAKE_SOURCE_DIR}/../../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.so.1.2.0)
+  set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "$ORIGIN/")
 endif()
 
 
@@ -47,7 +47,7 @@ endif()
 # endif()
 
 add_custom_command(
-    TARGET onnxruntime_binding POST_BUILD
+  TARGET onnxruntime_binding POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bin
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:onnxruntime_binding> ${CMAKE_SOURCE_DIR}/bin/
 )

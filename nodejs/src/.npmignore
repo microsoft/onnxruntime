@@ -1,8 +1,7 @@
 /.vscode/
 /bin/
 /build/
-/deps/
-/onnxruntime/
+/prebuilds/
 /script/
 /src/
 /test/
@@ -14,6 +13,7 @@
 /lib/**/*.js.map
 
 /.clang-format
+/.eslintrc.js
 /.gitmodules
 /CMakeLists.txt
 /tsconfig.json

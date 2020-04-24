@@ -1,4 +1,4 @@
-#include <core/session/onnxruntime_cxx_api.h>
+#include "onnxruntime_cxx_api.h"
 #include <napi.h>
 
 #include "session_options_helper.h"

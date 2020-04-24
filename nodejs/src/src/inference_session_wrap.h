@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <core/session/onnxruntime_cxx_api.h>
+#include "onnxruntime_cxx_api.h"
 
 #include <memory>
 #include <napi.h>
@@ -51,6 +51,7 @@ private:
 
   // private members
 
+  // persistent constructor
   static Napi::FunctionReference constructor;
 
   // global env
