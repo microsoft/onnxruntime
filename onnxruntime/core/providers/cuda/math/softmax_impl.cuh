@@ -17,7 +17,6 @@
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
 
 #pragma once
-
 #include "core/providers/cuda/cu_inc/common.cuh"
 
 namespace onnxruntime {
