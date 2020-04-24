@@ -61,7 +61,7 @@ function(get_winml_test_scenario_src
   output_winml_test_scenario_libs
 )
   if (onnxruntime_USE_DML)
-    file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS 
+    file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS
         "${winml_test_src_path}/scenario/cppwinrt/*.h"
         "${winml_test_src_path}/scenario/cppwinrt/*.cpp")
     set(${output_winml_test_scenario_libs} "onnxruntime_providers_dml" PARENT_SCOPE)
@@ -77,7 +77,7 @@ function(get_winml_test_api_src
   winml_test_src_path
   output_winml_test_api_src
 )
-  file(GLOB winml_test_api_src CONFIGURE_DEPENDS 
+  file(GLOB winml_test_api_src CONFIGURE_DEPENDS
       "${winml_test_src_path}/api/*.h"
       "${winml_test_src_path}/api/*.cpp")
   set(${output_winml_test_api_src} ${winml_test_api_src} PARENT_SCOPE)
@@ -98,8 +98,8 @@ function(get_winml_test_adapter_src
   output_winml_test_adapter_src
   output_winml_test_adapter_libs
 )
-  set(${output_winml_test_adapter_libs} "onnxruntime" PARENT_SCOPE)
-  file(GLOB winml_test_adapter_src CONFIGURE_DEPENDS 
+  set(${output_winml_test_adapter_libs} onnxruntime winml_lib_ort winml_test_common PARENT_SCOPE)
+  file(GLOB winml_test_adapter_src CONFIGURE_DEPENDS
       "${winml_test_src_path}/adapter/*.h"
       "${winml_test_src_path}/adapter/*.cpp")
   set(${output_winml_test_adapter_src} ${winml_test_adapter_src} PARENT_SCOPE)
@@ -118,7 +118,7 @@ function(get_winml_test_image_src
   set(${output_winml_test_image_src} ${winml_test_image_src} PARENT_SCOPE)
 endfunction()
 
-file(GLOB winml_test_common_src CONFIGURE_DEPENDS 
+file(GLOB winml_test_common_src CONFIGURE_DEPENDS
     "${WINML_TEST_SRC_DIR}/common/*.h"
     "${WINML_TEST_SRC_DIR}/common/*.cpp")
 add_library(winml_test_common STATIC ${winml_test_common_src})
@@ -184,14 +184,36 @@ add_winml_test(
   LIBS winml_test_common
 )
 target_include_directories(winml_test_concurrency PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
+target_include_directories(winml_test_concurrency PRIVATE ${ONNXRUNTIME_ROOT}/winml/lib/Api.Ort)
 
 get_winml_test_adapter_src(${WINML_TEST_SRC_DIR} winml_test_adapter_src winml_test_adapter_libs)
 add_winml_test(
   TARGET winml_test_adapter
   SOURCES ${winml_test_adapter_src}
-  LIBS winml_test_common ${winml_test_adapter_libs}
+  LIBS ${winml_test_adapter_libs}
 )
 target_include_directories(winml_test_adapter PRIVATE ${REPO_ROOT}/winml/adapter)
+target_include_directories(winml_test_adapter PRIVATE ${REPO_ROOT}/winml/lib/Api.Ort)
+
+target_include_directories(winml_test_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
+target_include_directories(winml_test_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
+target_include_directories(winml_test_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
+
+target_include_directories(winml_test_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+
+target_include_directories(winml_test_adapter PRIVATE ${REPO_ROOT}/winml ${REPO_ROOT}/winml/lib/Api/inc)
+target_include_directories(winml_test_adapter PRIVATE ${winml_lib_api_dir})                            # needed for generated headers
+target_include_directories(winml_test_adapter PRIVATE ${winml_lib_api_core_dir})
+target_include_directories(winml_test_adapter PRIVATE ${winml_lib_api_ort_dir})
+target_include_directories(winml_test_adapter PRIVATE ${winml_lib_common_dir}/inc)
+target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
+target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_ROOT})
+
+onnxruntime_add_include_to_target(winml_test_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
+add_dependencies(winml_test_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
+target_include_directories(winml_test_adapter PRIVATE ${winml_adapter_dir})
+target_include_directories(winml_test_adapter PRIVATE ${winml_lib_common_dir}/inc)
 
 # During build time, copy any modified collaterals.
 # configure_file(source destination COPYONLY), which configures CMake to copy the file whenever source is modified,
