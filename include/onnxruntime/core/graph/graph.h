@@ -825,18 +825,22 @@ class Graph {
 
   // Options to control Graph::Resolve.
   struct ResolveOptions {
+    // Whether to override existing types with inferred types.
     bool override_types = false;
+    // Names of initializers to keep even if unused (optional).
     const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr;
+    // Whether to set that no proto sync is required after resolving.
+    // Useful for resolving right after loading from a GraphProto.
     bool no_proto_sync_required = false;
   };
 
   /**
   Resolve this Graph to ensure it is completely valid, fully initialized, and able to be executed.
   1. Run through all validation rules.
-  a. Node name and node output's names should be unique.
-  b. Attribute match between node and op definition.
-  c. Input/Output match between node and op definition.
-  d. Graph is acyclic and sort nodes in topological order.
+    a. Node name and node output's names should be unique.
+    b. Attribute match between node and op definition.
+    c. Input/Output match between node and op definition.
+    d. Graph is acyclic and sort nodes in topological order.
   2. Check & Setup inner nodes' dependency.
   3. Cleanup function definition lists.
   Note: the weights for training can't be cleaned during resolve.
@@ -847,12 +851,6 @@ class Graph {
   common::Status Resolve() {
     ResolveOptions default_options;
     return Resolve(default_options);
-  }
-
-  common::Status ResolveAfterTypeTransformation() {
-    ResolveOptions options;
-    options.override_types = true;
-    return Resolve(options);
   }
 
   /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
@@ -1031,8 +1029,7 @@ class Graph {
 
   template <typename TInstance>
   static auto GetProducerNodeImpl(
-      TInstance& instance, const std::string& node_arg_name)
-      -> decltype(instance.GetNode(0)) {
+      TInstance& instance, const std::string& node_arg_name) -> decltype(instance.GetNode(0)) {
     auto iter = instance.node_arg_to_producer_node_.find(node_arg_name);
     if (iter != instance.node_arg_to_producer_node_.end()) {
       auto node_index = iter->second;
@@ -1043,8 +1040,7 @@ class Graph {
 
   template <typename TInstance>
   static auto GetConsumerNodesImpl(
-      TInstance& instance, const std::string& node_arg_name)
-      -> std::vector<decltype(instance.GetNode(0))> {
+      TInstance& instance, const std::string& node_arg_name) -> std::vector<decltype(instance.GetNode(0))> {
     std::vector<decltype(instance.GetNode(0))> results;
     auto iter = instance.node_arg_to_consumer_nodes_.find(node_arg_name);
     if (iter != instance.node_arg_to_consumer_nodes_.end()) {
