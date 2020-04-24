@@ -14,7 +14,7 @@
 
 namespace ONNX_NAMESPACE {
 enum AttributeProto_AttributeType : int;
-enum OperatorStatus;
+enum OperatorStatus : int;
 
 // String pointer as unique TypeProto identifier.
 using DataType = const std::string*;
