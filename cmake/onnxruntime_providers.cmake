@@ -26,8 +26,6 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
 )
 
 file(GLOB_RECURSE onnxruntime_hip_contrib_ops_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/hip_contrib_kernels.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/hip_contrib_kernels.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/hip/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/hip/*.cc"
 )
@@ -825,8 +823,6 @@ if (onnxruntime_USE_HIP)
 
   if (onnxruntime_ENABLE_TRAINING)
     file(GLOB_RECURSE onnxruntime_hip_training_ops_cc_srcs CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip_training_kernels.h"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip_training_kernels.cc"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/*.h"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/*.cc"
     )
