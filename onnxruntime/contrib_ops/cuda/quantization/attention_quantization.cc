@@ -174,7 +174,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
           head_size,
           temp_buffer.get(),
           cublas,
-          element_size)) {
+          element_size,
+          false)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
