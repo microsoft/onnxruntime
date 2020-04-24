@@ -19,22 +19,45 @@ def gen_attribute(key, value):
     return attr
 
 def layer_norm_transform(model_proto):
+    # a layer norm subgraph
+    # input
+    #   |
+    # ReduceMean
+    #  __|____
+    # |       |
+    # Sub     Sub
+    # |       |
+    # |       Pow
+    # |        |
+    # |        ReduceMean
+    # |        |
+    # |        Add
+    # |        |
+    # |__    __Sqrt
+    #    |  |
+    #     Div
+    #     |
+    #     Mul
+    #     |
+    #     Add
+    #     |
+    #     output
 
     graph_proto = model_proto.graph
 
-    nodes_Div,  map_input_Div = find_node(graph_proto, 'Div')
+    _,  map_input_Div = find_node(graph_proto, 'Div')
 
-    nodes_Sqrt,  map_input_Sqrt = find_node(graph_proto, 'Sqrt')
+    _,  map_input_Sqrt = find_node(graph_proto, 'Sqrt')
 
-    nodes_Add,  map_input_Add = find_node(graph_proto, 'Add')
+    _,  map_input_Add = find_node(graph_proto, 'Add')
 
     nodes_ReduceMean,  map_input_ReduceMean = find_node(graph_proto, 'ReduceMean')
 
-    nodes_Pow,  map_input_Pow = find_node(graph_proto, 'Pow')
+    _,  map_input_Pow = find_node(graph_proto, 'Pow')
 
-    nodes_Mul,  map_input_Mul = find_node(graph_proto, 'Mul')
+    _,  map_input_Mul = find_node(graph_proto, 'Mul')
 
-    # find right side Sub
+    # find right side Sub (see the layer norm subgrapg)
     nodes_Sub = []
     map_input_Sub = {}
     for node in graph_proto.node:
@@ -67,21 +90,49 @@ def layer_norm_transform(model_proto):
         layer_norm_input = []
         layer_norm_output = []
         layer_norm_input.append(node.input[0])
+
+        # collect nodes within a layer norm subgraph.
+        # skip building layer norm node if there is a pattern miss-match.
+        if node.output[0] not in map_input_Sub:
+            continue
+
         node_sub = map_input_Sub[node.output[0]]
+        if node_sub.output[0] not in map_input_Pow:
+            continue
+
         node_pow = map_input_Pow[node_sub.output[0]]
+        if node_pow.output[0] not in map_input_ReduceMean:
+            continue
+
         node_reduce = map_input_ReduceMean[node_pow.output[0]]
+        if node_reduce.output[0] not in map_input_Add:
+            continue
+
         node_Add = map_input_Add[node_reduce.output[0]]
+        if node_Add.output[0] not in map_input_Sqrt:
+            continue
+
         node_Sqrt = map_input_Sqrt[node_Add.output[0]]
+        if node_Sqrt.output[0] not in map_input_Div:
+            continue
+ 
         node_Div = map_input_Div[node_Sqrt.output[0]]
+        if node_Div.output[0] not in map_input_Mul:
+            continue
+
         node_Mul = map_input_Mul[node_Div.output[0]]
 
         if node_Mul.input[0] != node_Div.output[0]:
             layer_norm_input.append(node_Mul.input[0])
         else:
             layer_norm_input.append(node_Mul.input[1])
-            
+
+        if node_Mul.output[0] not in map_input_Add:
+            continue
+
         node_Add1 = map_input_Add[node_Mul.output[0]]
         layer_norm_input.append(node_Add1.input[1])
+
         removed_nodes.append(node)
         removed_nodes.append(node_sub)
         removed_nodes.append(node_pow)

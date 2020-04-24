@@ -6,7 +6,7 @@ def add_name(model):
        node.name = '%s_%d' %(node.op_type, i)
        i += 1
 
-def find_output_node(model, arg):
+def find_single_output_node(model, arg):
     result = []
     for node in model.graph.node:
         for input in node.input:
@@ -21,30 +21,32 @@ def find_input_as_initializer(model, arg):
     return None
 
 def get_node_index(model, node):
-    i = 0
-    while i < len(model.graph.node):
-        if model.graph.node[i] == node:
-            break;
-        i += 1
-    return i if i < len(model.graph.node) else None;
+    for i, n in enumerate(model.graph.node):
+        if n == node:
+            return i
+    return None
 
 def replace_input_arg(model, arg, new_arg):
     for node in model.graph.node:
-        i = 0
-        while i < len(node.input):
+        for i in range(len(node.input)):
             if node.input[i] == arg:
                 node.input[i] = new_arg
-            i += 1
 
 def find_weight_index(model, name):
-    index = 0
-    for w in model.graph.initializer:
+    for index, w in enumerate(model.graph.initializer):
         if w.name == name:
             return index
         index += 1
     return None
 
 def fix_transpose(model):
+    """
+    remove transpose node if its input is a 2d weight which only feeds to the node.
+    """
+
+    # Find transpose nodes with initializer weight as input. 
+    # The input weight needs to be only feeded into the transpose node.
+    # Collect these nodes and weights.
     transpose = []
     for node in model.graph.node:
         if node.op_type == 'Transpose':
@@ -62,6 +64,9 @@ def fix_transpose(model):
                 perm = perm.ints
                 assert len(perm) == 2 and perm[0] == 1 and perm[1] == 0
                 transpose.append((get_node_index(model, node), weight))
+
+    # Transpose collected weights and add it to the model initializers. 
+    # The transposed weight initializers become inputs to the transpose nodes' recipient nodes.
     for t in transpose:
         node = model.graph.node[t[0]]
         weight = numpy_helper.to_array(t[1])
@@ -71,19 +76,27 @@ def fix_transpose(model):
         model.graph.initializer.extend([new_weight])
         replace_input_arg(model, node.output[0], new_weight.name)
 
+    # collected transpose nodes can be removed.
     transpose.sort(reverse=True)
     for t in transpose:
         del model.graph.node[t[0]]
 
+    # the original weight initializer can be removed. 
+    # (remember that a wight needs only to be feeded into the transpose node when collecting wights)
     old_ws = []
     for t in transpose:
-        if find_output_node(model, t[1].name) is None:
+        if find_single_output_node(model, t[1].name) is None:
             old_ws.append(find_weight_index(model, t[1].name))
     old_ws.sort(reverse=True)
     for w_i in old_ws:
         del model.graph.initializer[w_i]
 
 def add_expand_shape(model):
+    """
+    this method is very specific to the Bert model where there is a solo Expand op.
+    training backend requires the op's output shape. it is the same as the shape of the model (single) input.
+    """
+
     expand_node = [n for n in model.graph.node if n.op_type == 'Expand']
     if len(expand_node) != 1:
         raise "cannot find the single expand node in the BERT model."

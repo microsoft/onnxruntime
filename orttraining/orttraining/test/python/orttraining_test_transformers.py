@@ -158,6 +158,9 @@ class BertModelTest(unittest.TestCase):
                 return get_lr(args, global_step)
             loss_scaler = LossScaler('loss_scale_input_name', True, up_scale_window=2000)
 
+            # It would be better to test both with/without mixed precision and allreduce_post_accumulation.
+            # However, stress test of all the 4 cases is not stable at lease on the test machine.
+            # There we only test mixed precision and allreduce_post_accumulation because it is the most useful use cases.
             option_fp16 = [True]
             option_allreduce_post_accumulation = [True]
             option_gradient_accumulation_steps = [1, 8]
