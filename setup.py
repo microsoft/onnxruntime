@@ -40,13 +40,12 @@ elif '--use_ngraph' in sys.argv:
 elif '--use_dnnl' in sys.argv:
     package_name = 'onnxruntime-dnnl'
     sys.argv.remove('--use_dnnl')
-
-elif '--use_openvino' in sys.argv:
-    package_name = 'onnxruntime-openvino'
-
 elif '--use_nuphar' in sys.argv:
     package_name = 'onnxruntime-nuphar'
     sys.argv.remove('--use_nuphar')
+elif '--use_openvino' in sys.argv:
+    package_name = 'onnxruntime-openvino'
+    sys.argv.remove('--use_openvino')
 
 elif '--use_featurizers' in sys.argv:
     featurizers_build = True
@@ -93,9 +92,6 @@ manylinux_tags = [
 ENV_AUDITWHEEL_PLAT = environ.get('AUDITWHEEL_PLAT', None)
 if ENV_AUDITWHEEL_PLAT in manylinux_tags:
     is_manylinux1 = True
-
-print("is_manylinux1=%s" % is_manylinux1)
-
 
 class build_ext(_build_ext):
     def build_extension(self, ext):
@@ -173,10 +169,12 @@ if platform.system() == 'Linux':
     # nGraph Libs
     libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so',
                  'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
+    # OpenVINO Libs
+    if package_name == 'onnxruntime-openvino':
+        if platform.system() == 'Linux':
+            libs.extend(['libovep_ngraph.so'])
     # Nuphar Libs
     libs.extend(['libtvm.so.0.5.1'])
-    # Openvino Libs
-    libs.extend(['libcpu_extension.so'])
     if nightly_build:
         libs.extend(['libonnxruntime_pywrapper.so'])
 elif platform.system() == "Darwin":
@@ -191,8 +189,6 @@ else:
                  'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll'])
     # Nuphar Libs
     libs.extend(['tvm.dll'])
-    # Openvino Libs
-    libs.extend(['cpu_extension.dll'])
     if nightly_build:
         libs.extend(['onnxruntime_pywrapper.dll'])
 
@@ -209,12 +205,6 @@ else:
         path.join('onnxruntime', 'capi', x))]
     ext_modules = []
 
-
-python_modules_list = list()
-if '--use_openvino' in sys.argv:
-    # Adding python modules required for openvino ep
-    python_modules_list.extend(['openvino_mo', 'openvino_emitter'])
-    sys.argv.remove('--use_openvino')
 
 # Additional examples
 examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
@@ -254,18 +244,22 @@ if featurizers_build:
     featurizer_source_dir = path.join("external", "FeaturizersLibrary", "Data")
     assert path.isdir(featurizer_source_dir), featurizer_source_dir
 
-    featurizer_dest_dir = path.join("onnxruntime", "FeaturizersLibrary", "Data")
+    featurizer_dest_dir = path.join(
+        "onnxruntime", "FeaturizersLibrary", "Data")
     if path.isdir(featurizer_dest_dir):
         rmtree(featurizer_dest_dir)
 
     for item in listdir(featurizer_source_dir):
         this_featurizer_source_fullpath = path.join(featurizer_source_dir)
-        assert path.isdir(this_featurizer_source_fullpath), this_featurizer_source_fullpath
+        assert path.isdir(
+            this_featurizer_source_fullpath), this_featurizer_source_fullpath
 
         copytree(this_featurizer_source_fullpath, featurizer_dest_dir)
 
-        packages.append("{}.{}".format(featurizer_dest_dir.replace(path.sep, "."), item))
-        package_data[packages[-1]] = listdir(path.join(featurizer_dest_dir, item))
+        packages.append("{}.{}".format(
+            featurizer_dest_dir.replace(path.sep, "."), item))
+        package_data[packages[-1]
+                     ] = listdir(path.join(featurizer_dest_dir, item))
 
 package_data["onnxruntime"] = data + examples + extra
 
@@ -314,7 +308,6 @@ setup(
     ext_modules=ext_modules,
     package_data=package_data,
     data_files=data_files,
-    py_modules=python_modules_list,
     install_requires=install_requires,
     entry_points={
         'console_scripts': [
