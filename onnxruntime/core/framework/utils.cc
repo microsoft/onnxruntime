@@ -538,7 +538,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
                                  execution_mode, terminate_flag, logger, only_execute_path_to_fetches);
 
   return status;
-}  // namespace utils
+}
 
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
