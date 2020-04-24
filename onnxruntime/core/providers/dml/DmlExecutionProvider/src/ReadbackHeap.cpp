@@ -104,7 +104,13 @@ namespace Dml
         gsl::span<ID3D12Resource*> src,
         D3D12_RESOURCE_STATES srcState)
     {
-        assert(!dst.empty());
+        assert(dst.size() == src.size());
+        assert(dstSizes.size() == src.size());
+
+        if (dst.empty())
+        {
+            return;
+        }
 
         uint32_t totalSize = 0;
         for (auto size : dstSizes)
