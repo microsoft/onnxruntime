@@ -86,7 +86,8 @@ core_ops_files = [
                 'tensor/unsqueeze.h'
 ]
 
-training_ops_files = [
+training_ops_files = ['cuda_training_kernels.cc',
+                    'cuda_training_kernels.h',
                     'activation/activations_grad_impl.cu',
                     'activation/activations_grad_impl.h',
                     #'activation/activations_grad.cc',
@@ -153,9 +154,6 @@ training_ops_files = [
                     'tensor/view.h'
 ]
 
-ep_files = ['cuda_training_kernels.cc',
-            'cuda_training_kernels.h',]
-
 HIPIFY_PERL='/opt/rocm/bin/hipify-perl'
 FINDCODE='/opt/rocm/bin/findcode.sh'
 
@@ -183,14 +181,7 @@ def hipify(src_file_path, dst_file_path):
         s = s.replace('GPU_WARP_SIZE = 32', 'GPU_WARP_SIZE = 64')
         s = s.replace('std::exp', 'expf')
         s = s.replace('std::log', 'logf')
-        s = s.replace('device_radix_sort.cuh', 'device_radix_sort.hpp')
-        s = s.replace('#include "core/providers/hip/cudnn_common.h"', '')
-        #s = s.replace('ConcatBase(info), HipKernel(info)', 'HipKernel(info), ConcatBase(info)')
-        #s = s.replace('GatherBase(info), HipKernel(info)', 'HipKernel(info), GatherBase(info)')
-        #s = s.replace('cuWelfordOnlineSum(curr.x', 'cuWelfordOnlineSum(static_cast<float>(curr.x)')
-        #s = s.replace('cuWelfordOnlineSum(curr.y', 'cuWelfordOnlineSum(static_cast<float>(curr.y)')
-        #s = s.replace('for (auto i1 = blockIdx.y; i1 < n1; i1 += gridDim.y)', 'for (int i1 = blockIdx.y; i1 < n1; i1 += gridDim.y)')
-        s = s.replace('#include <cub/device/device_radix_sort.hpp>', '#include <hipcub/hipcub.hpp>')
+        s = s.replace('#include <cub/device/device_radix_sort.cuh>', '#include <hipcub/hipcub.hpp>')
         s = s.replace('#include <cub/iterator/counting_input_iterator.cuh>', '')
     with open(dst_file_path, 'w') as f:
         f.write(s)
@@ -213,13 +204,6 @@ def main():
     cuda_path = training_ops_path + '/cuda/'
     hip_path = training_ops_path + '/hip/'
     for file in training_ops_files:
-        src_file_path = cuda_path + file
-        dst_file_path = hip_path + file
-        hipify(src_file_path, dst_file_path)
-
-    cuda_path = training_ops_path + '/'
-    hip_path = training_ops_path + '/'
-    for file in ep_files:
         src_file_path = cuda_path + file
         dst_file_path = hip_path + file
         hipify(src_file_path, dst_file_path)
