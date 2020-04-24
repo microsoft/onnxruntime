@@ -20,6 +20,7 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
                   const std::vector<T>& output_vals,
                   bool v10_only = false) {
   // V1-9
+  ORT_UNUSED_PARAMETER(steps);
   if (!v10_only) {
     OpTester testv9("Slice", 9);
     testv9.AddAttribute("starts", starts);
@@ -28,7 +29,7 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
       testv9.AddAttribute("axes", axes);
     testv9.AddInput<T>("data", input_dims, input_vals);
     testv9.AddOutput<T>("output", output_dims, output_vals);
-    testv9.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+    testv9.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}); // OpenVINO EP: Disabled temporarily
   }
 
   // V10

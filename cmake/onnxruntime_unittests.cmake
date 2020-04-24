@@ -308,11 +308,6 @@ file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
   )
 
-file(GLOB_RECURSE onnxruntime_test_openvino_src
-  "${ONNXRUNTIME_ROOT}/test/openvino/*.h"
-  "${ONNXRUNTIME_ROOT}/test/openvino/*.cc"
- )
-
 if(onnxruntime_USE_NUPHAR)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/nuphar/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nuphar)
@@ -486,14 +481,6 @@ if(WIN32)
       TARGET ${test_data_target} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
       ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
-      $<TARGET_FILE_DIR:${test_data_target}>
-    )
-  endif()
-  if (onnxruntime_USE_OPENVINO)
-    add_custom_command(
-      TARGET ${test_data_target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy
-      ${OPENVINO_CPU_EXTENSION_DIR}/${OPENVINO_CPU_EXTENSION_LIB}
       $<TARGET_FILE_DIR:${test_data_target}>
     )
   endif()

@@ -148,8 +148,28 @@ STDMETHODIMP ModelInfo::GetVersion(int64_t* out) {
   return S_OK;
 }
 
+struct CaseInsensitiveHash {
+  size_t operator()(const winrt::hstring& key) const {
+    size_t h = 0, i = 0;
+    std::for_each(key.begin(), key.end(), [&](wchar_t c) {
+      i++;
+      h += i * towlower(c);
+    });
+    return h;
+  }
+};
+
+struct CaseInsensitiveEqual {
+  bool operator()(const winrt::hstring& left, const winrt::hstring& right) const {
+    return left.size() == right.size() && std::equal(left.begin(), left.end(), right.begin(),
+                                                     [](wchar_t a, wchar_t b) {
+                                                       return towlower(a) == towlower(b);
+                                                     });
+  }
+};
+
 STDMETHODIMP ModelInfo::GetModelMetadata(ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING>** metadata) {
-  std::unordered_map<winrt::hstring, winrt::hstring> map_copy;
+  std::unordered_map<winrt::hstring, winrt::hstring, CaseInsensitiveHash, CaseInsensitiveEqual> map_copy;
   for (auto& pair : model_metadata_) {
     auto metadata_key = _winml::Strings::HStringFromUTF8(pair.first);
     auto metadata_value = _winml::Strings::HStringFromUTF8(pair.second);

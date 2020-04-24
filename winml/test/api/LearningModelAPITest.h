@@ -21,6 +21,7 @@ struct LearningModelApiTestsApi
   VoidTest CloseModelCheckMetadata;
   VoidTest CloseModelCheckEval;
   VoidTest CloseModelNoNewSessions;
+  VoidTest CheckMetadataCaseInsensitive;
 };
 const LearningModelApiTestsApi& getapi();
 
@@ -41,6 +42,7 @@ WINML_TEST(LearningModelAPITests, EnumerateInputs)
 WINML_TEST(LearningModelAPITests, EnumerateOutputs)
 WINML_TEST(LearningModelAPITests, CloseModelCheckMetadata)
 WINML_TEST(LearningModelAPITests, CloseModelNoNewSessions)
+WINML_TEST(LearningModelAPITests, CheckMetadataCaseInsensitive)
 WINML_TEST_CLASS_END()
 
 WINML_TEST_CLASS_BEGIN(LearningModelAPITestsGpu)
