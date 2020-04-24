@@ -24,10 +24,10 @@ void run_provider_specific_optest(OpTester& tester) {
   RunOptions run_option;
 #ifdef USE_CUDA
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
-  providers.push_back(std::move(DefaultCudaExecutionProvider()));
+  providers.push_back(DefaultCudaExecutionProvider());
 #else 
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
-  providers.push_back(std::move(DefaultCpuExecutionProvider()));
+  providers.push_back(DefaultCpuExecutionProvider());
 #endif
   tester.Run(
       OpTester::ExpectResult::kExpectSuccess,
@@ -81,6 +81,10 @@ TEST(Synchronization, RecordAndWaitEvent) {
   const int64_t event_id = static_cast<int64_t>(1736);
   record_event(event_id);
   wait_event(event_id);
+}
+
+TEST(Synchronization, WaitNullEvent) {
+  wait_event(-1);
 }
 
 TEST(Synchronization, RecordAndWaitEventMultipleInputsAndOutputs) {

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "record.h"
+#include "orttraining/training_ops/cuda/controlflow/record.h"
 #include "core/providers/cpu/tensor/utils.h"
 // Include RecordEvent's utility functions shared by CPU and GPU implementations.
 #include "orttraining/training_ops/cpu/controlflow/common.h"
@@ -18,7 +18,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(0)   /* CPU variable */
+        .InputMemoryType<OrtMemTypeCPUInput>(0)   /* Keep EventIdentifier in CPU */
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .Alias(onnxruntime::contrib::AliasRange<1, 0>(0, 1024)),
@@ -26,7 +26,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status RecordEvent::ComputeInternal(OpKernelContext* ctx) const {
   // Reuse CPU helper to record event because event tensor is a CPU tensor.
-  onnxruntime::contrib::record_event_in_tensor(ctx->Input<Tensor>(0));
+  onnxruntime::contrib::record_event_in_tensor(*ctx->Input<Tensor>(0));
 
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
     // This iteration copies (i-1)-th input to i-th output.

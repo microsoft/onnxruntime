@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "wait.h"
+#include "orttraining/training_ops/cuda/controlflow/wait.h"
 #include "core/providers/cpu/tensor/utils.h"
 // Include RecordEvent's utility functions shared by CPU and GPU implementations.
 #include "orttraining/training_ops/cpu/controlflow/common.h"
@@ -26,7 +26,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status WaitEvent::ComputeInternal(OpKernelContext* ctx) const {
   // Reuse CPU helper to wait event because event tensor is a CPU tensor.
-  onnxruntime::contrib::wait_event_in_tensor(ctx->Input<Tensor>(0));
+  onnxruntime::contrib::wait_event_in_tensor(*ctx->Input<Tensor>(0));
 
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
     // This iteration copies (i-1)-th input to i-th output.

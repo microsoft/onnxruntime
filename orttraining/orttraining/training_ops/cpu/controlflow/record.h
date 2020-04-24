@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace contrib {
 
 // Record the event ID stored in the input tensor.
-void record_event_in_tensor(const Tensor* event_id_tensor);
+void record_event_in_tensor(const Tensor& event_id_tensor);
 
 class RecordEvent final : public OpKernel {
 public:
