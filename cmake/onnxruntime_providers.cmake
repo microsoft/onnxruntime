@@ -7,15 +7,11 @@ file(GLOB_RECURSE onnxruntime_providers_srcs CONFIGURE_DEPENDS
 )
 
 file(GLOB_RECURSE onnxruntime_cpu_contrib_ops_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu_contrib_kernels.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu_contrib_kernels.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.cc"
 )
 
 file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_contrib_kernels.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_contrib_kernels.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
 )
@@ -26,8 +22,6 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
 )
 
 file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu_featurizers_kernels.h"
-  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu_featurizers_kernels.cc"
   "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.cc"
 )
@@ -95,8 +89,6 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu_training_kernels.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu_training_kernels.cc"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.cc"
   )
@@ -174,8 +166,6 @@ if (onnxruntime_USE_CUDA)
 
   if (onnxruntime_ENABLE_TRAINING)
     file(GLOB_RECURSE onnxruntime_cuda_training_ops_cc_srcs CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda_training_kernels.h"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda_training_kernels.cc"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.h"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cc"
     )
