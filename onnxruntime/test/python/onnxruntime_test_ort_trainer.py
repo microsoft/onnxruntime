@@ -375,8 +375,8 @@ class TestOrtTrainer(unittest.TestCase):
         # import pdb; pdb.set_trace()
 
         rtol = 1e-03
-        assert_allclose(expected_losses, actual_losses, err_msg="loss mismatch")
-        assert_allclose(expected_eval_loss, actual_eval_loss, err_msg="evaluation loss mismatch")
+        assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
+        assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
 
 if __name__ == '__main__':
     unittest.main(module=__name__, buffer=True)
