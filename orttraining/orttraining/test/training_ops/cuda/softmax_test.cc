@@ -65,7 +65,7 @@ TEST(CudaKernelTest, SoftmaxGrad_SmallTensor) {
   TestSoftmaxGrad(dY_dims, Y_dims, dX_dims, per_sample_tolerance, relative_per_sample_tolerance);
 }
 
-// TODO fix flaky test (https://msdata.visualstudio.com/Vienna/_workitems/edit/596949)
+// TODO fix flaky test
 // failing random seed: 552621640
 TEST(CudaKernelTest, DISABLED_SoftmaxGrad_LargeTensor) {
   std::vector<int64_t> dY_dims{8, 16, 512, 512};

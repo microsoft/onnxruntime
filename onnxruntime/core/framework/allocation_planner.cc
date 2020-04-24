@@ -332,7 +332,6 @@ class PlannerImpl {
       const onnxruntime::NodeArg* p_node_arg = ort_value_info_.at(reusable).p_def_site;
       if (!p_node_arg) {
         // TODO this should be an error case, needs more investigation
-        // https://msdata.visualstudio.com/Vienna/_workitems/edit/724826/
         continue;
       }
       auto& available_memory_info = AllocPlan(p_node_arg->Name()).location;
