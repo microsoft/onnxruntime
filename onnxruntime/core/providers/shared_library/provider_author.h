@@ -169,8 +169,8 @@ class OpKernelInfo {
   template <typename T>
   Status GetAttr(const std::string& name, T* value) const {
     PROVIDER_NOT_IMPLEMENTED
-    name;
-    value;
+    ORT_UNUSED_PARAMETER(name);
+    ORT_UNUSED_PARAMETER(value);
     return Status::OK();
   }
 };
@@ -185,7 +185,7 @@ class OpKernelContext {
   template <typename T>
   const T* Input(int index) const {
     PROVIDER_NOT_IMPLEMENTED
-    index;
+    ORT_UNUSED_PARAMETER(index);
     return nullptr;
   }
   template <typename T>
