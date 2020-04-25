@@ -129,7 +129,7 @@ struct Prov_IAllocator {
       if (!CalcMemSizeForArray(count_or_bytes, sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type),
                                &alloc_size)) return nullptr;
     }
-    return IAllocatorUniquePtr<T>{
+    return Prov_IAllocatorUniquePtr<T>{
         static_cast<T*>(allocator->Alloc(alloc_size)),  // allocate
         [=](T* ptr) { allocator->Free(ptr); }};         // capture IAllocator so it's always valid, and use as deleter
   }
