@@ -47,7 +47,7 @@ template <typename T1, typename T2>
 class TrainableDropout final : public Dropout<T1, T2> {
  public:
   TrainableDropout(const OpKernelInfo& info) : Dropout<T1, T2>{info} {
-    trainable_dropout_ = true;
+    Dropout<T1, T2>::trainable_dropout_ = true;
   }
 };
 
@@ -55,7 +55,7 @@ template <typename T1, typename T2>
 class TrainableDropoutGrad final : public DropoutGrad<T1, T2> {
  public:
   TrainableDropoutGrad(const OpKernelInfo& info) : DropoutGrad<T1, T2>{info} {
-    trainable_dropout_ = true;
+    DropoutGrad<T1, T2>::trainable_dropout_ = true;
   }
 
 };
