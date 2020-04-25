@@ -3,7 +3,6 @@
 
 include(pybind11)
 
-
 if(NOT PYTHON_INCLUDE_DIR)
   set(PYTHON_NOT_FOUND false)
   exec_program("${PYTHON_EXECUTABLE}"
@@ -39,6 +38,13 @@ set(onnxruntime_pybind_srcs_pattern
     "${ONNXRUNTIME_ROOT}/python/*.h"
 )
 
+if (onnxruntime_ENABLE_TRAINING)
+  list(APPEND onnxruntime_pybind_srcs_pattern
+    "${ORTTRAINING_ROOT}/orttraining/python/*.cc"
+    "${ORTTRAINING_ROOT}/orttraining/python/*.h"
+  )
+endif()
+
 file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
@@ -58,6 +64,7 @@ endif()
 if (onnxruntime_USE_DNNL)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE USE_DNNL=1)
 endif()
+
 if(HAS_TYPE_LIMITS)
   #Need by manylinux2014+gcc7.5.0
   #/usr/include/wchar.h:395:47: error: comparison of unsigned expression >= 0 is always true [-Werror=type-limits]
@@ -65,11 +72,15 @@ if(HAS_TYPE_LIMITS)
 
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-type-limits")
 endif()
+
 if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     #TODO: fix the warnings
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4244")
 endif()
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR} ${pybind11_INCLUDE_DIRS})
+if (onnxruntime_ENABLE_TRAINING)
+  target_include_directories(onnxruntime_pybind11_state PRIVATE ${ORTTRAINING_ROOT})
+endif()
 
 if(APPLE)
   set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
@@ -104,6 +115,10 @@ set(onnxruntime_pybind11_state_libs
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   list(APPEND onnxruntime_pybind11_state_libs onnxruntime_language_interop onnxruntime_pyop)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING)
+  list(INSERT onnxruntime_pybind11_state_libs 1 onnxruntime_training)
 endif()
 
 set(onnxruntime_pybind11_state_dependencies
@@ -145,9 +160,28 @@ endif()
 file(GLOB onnxruntime_backend_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/backend/*.py"
 )
-file(GLOB onnxruntime_python_srcs CONFIGURE_DEPENDS
+
+if (onnxruntime_ENABLE_TRAINING)
+  file(GLOB onnxruntime_python_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/*.py"
-)
+    "${ORTTRAINING_SOURCE_DIR}/python/*.py"
+  )
+else()
+  file(GLOB onnxruntime_python_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/*.py"
+  )
+endif()
+
+if (onnxruntime_ENABLE_TRAINING)
+  file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/*.py"
+  )
+else()
+  file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/training/*.py"
+  )
+endif()
+
 file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/*.py"
 )
@@ -171,6 +205,7 @@ add_custom_command(
   TARGET onnxruntime_pybind11_state POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/backend
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/training
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/featurizer_ops
@@ -195,6 +230,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_capi_training_srcs}
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/training/
   COMMAND ${CMAKE_COMMAND} -E copy
       $<TARGET_FILE:onnxruntime_pybind11_state>
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/

@@ -1,0 +1,28 @@
+trigger: none
+
+jobs:
+- template: templates/linux-ci.yml
+  parameters:
+    AgentPool : 'Linux-CPU'
+    JobName: 'Onnxruntime_Linux_CPU_Training'
+    SubmoduleCheckoutMode: 'recursive'
+    BuildCommand: >
+      tools/ci_build/github/linux/run_dockerbuild.sh
+      -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory)
+      -x " 
+      --build_wheel
+      --config $(buildConfig) 
+      --enable_training
+      --use_dnnl
+      --use_mklml
+      "
+    DoNugetPack: 'false'
+    ArtifactName: 'drop-linux'
+    TimeoutInMinutes: 90
+    Strategy: 
+      maxParallel: 2
+      matrix:
+        Debug:
+          buildConfig: Debug
+        Release:
+          buildConfig: Release

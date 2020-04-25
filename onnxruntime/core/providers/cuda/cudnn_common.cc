@@ -173,8 +173,5 @@ const uint8_t Consts<uint8_t>::Zero = 0;
 template <>
 const uint8_t Consts<uint8_t>::One = 1;
 
-std::vector<cudaDeviceProp> DeviceProp::s_cachedDeviceProps;
-std::once_flag DeviceProp::s_cachedDevicePropsInitFlag;
-
 }  // namespace cuda
 }  // namespace onnxruntime

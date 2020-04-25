@@ -774,6 +774,11 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
   return Status::OK();
 }
 
+bool InferenceSession::IsInitialized() const {
+  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+  return is_inited_;
+}
+
 static bool ModelHasFP16InputsHelper(const onnx::TypeProto& type_proto) {
   switch (type_proto.value_case()) {
     case ::onnx::TypeProto::ValueCase::kTensorType: {
@@ -902,6 +907,7 @@ common::Status InferenceSession::Initialize() {
 
     // handle any subgraphs
     ORT_RETURN_IF_ERROR_SESSIONID_(InitializeSubgraphSessions(graph, *session_state_));
+    session_state_->ResolveMemoryPatternFlag();
     is_inited_ = true;
 
     // and log telemetry
@@ -1140,9 +1146,13 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
       ORT_CHECK_AND_SET_RETVAL(start_func());
     }
 
+    if (run_options.only_execute_path_to_fetches) {
+      session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
+    }
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                                                 session_options_.execution_mode, run_options.terminate, run_logger));
+                                                 session_options_.execution_mode, run_options.terminate, run_logger,
+                                                 run_options.only_execute_path_to_fetches));
 
   } catch (const std::exception& e) {
     retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
@@ -1475,6 +1485,14 @@ common::Status InferenceSession::WaitForNotification(Notification* p_executor_do
   p_executor_done->Wait();
 
   return Status::OK();
+}
+
+SessionIOBinding::SessionIOBinding(InferenceSession* session) {
+  ORT_ENFORCE(session->NewIOBinding(&binding_).IsOK());
+}
+
+IOBinding* SessionIOBinding::Get() {
+  return binding_.get();
 }
 
 }  // namespace onnxruntime

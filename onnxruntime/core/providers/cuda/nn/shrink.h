@@ -4,7 +4,7 @@
 #pragma once
 
 #include "gsl/gsl"
-#include "core/providers/cuda/cudnn_common.h"
+#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace cuda {

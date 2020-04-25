@@ -67,7 +67,7 @@ __global__ void FastGeluKernel2(const half2 a, const half2 b, const half2 c, int
 }
 
 template <>
-bool LaunchFastGeluKernel(cudaStream_t stream, int input_length, int bias_length, const float* input, const float* bias, float* output) {
+bool LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int input_length, int bias_length, const float* input, const float* bias, float* output) {
   constexpr int blockSize = 256;
   const int gridSize = (input_length + blockSize - 1) / blockSize;
   FastGeluKernel<float, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
@@ -76,10 +76,10 @@ bool LaunchFastGeluKernel(cudaStream_t stream, int input_length, int bias_length
 }
 
 template <>
-bool LaunchFastGeluKernel(cudaStream_t stream, int input_length, int bias_length, const half* input, const half* bias, half* output) {
+bool LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int input_length, int bias_length, const half* input, const half* bias, half* output) {
   constexpr int blockSize = 256;
 
-  if (0 == (bias_length & 1) && DeviceProp::GetDeviceProps().major >= 7) {
+  if (0 == (bias_length & 1) && prop.major >= 7) {
     const int n = input_length / 2;
     const int gridSize = (n + blockSize - 1) / blockSize;
     const half2 A2 = __floats2half2_rn(A, A);

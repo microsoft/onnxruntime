@@ -225,6 +225,7 @@ packages = [
     'onnxruntime',
     'onnxruntime.backend',
     'onnxruntime.capi',
+    'onnxruntime.capi.training',
     'onnxruntime.datasets',
     'onnxruntime.tools',
 ]
