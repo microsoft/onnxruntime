@@ -226,7 +226,7 @@ static std::unordered_map<std::string, int> GetOpsetVersionMap(const ONNX_NAMESP
 
 FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            const onnxruntime::NodeIndex& node_index,
-                           const ONNX_NAMESPACE::FunctionProto onnx_func_proto,
+                           const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
                            const logging::Logger& logger)
     : parent_graph_(&graph),
       body_(onnx_func_proto.name(), false, onnxruntime::ModelMetaData(),
@@ -268,12 +268,15 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     }
     int i = 0;
     for (auto& input : cached_op_schema->inputs()) {
-      op_schema_->Input(i, input.GetName(), input.GetDescription(), input.GetTypeStr(), input.GetOption());
+      op_schema_->Input(i, input.GetName(), input.GetDescription(), input.GetTypeStr(), input.GetOption(),
+          input.GetIsHomogeneous(), input.GetMinArity());
+
       ++i;
     }
     i = 0;
     for (auto& output : cached_op_schema->outputs()) {
-      op_schema_->Output(i, output.GetName(), output.GetDescription(), output.GetTypeStr(), output.GetOption());
+      op_schema_->Output(i, output.GetName(), output.GetDescription(), output.GetTypeStr(), output.GetOption(),
+          output.GetIsHomogeneous(), output.GetMinArity());
       ++i;
     }
     for (auto& attribute : cached_op_schema->attributes()) {
@@ -300,8 +303,8 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   //TODO: set correct domain and version
   domain_to_version[onnxruntime::kOnnxDomain] = static_cast<int>(onnx_func_proto_.since_version());
   auto& function_body_graph = body_.MainGraph();
-  std::vector<const NodeArg*> graph_inputs(node_in_parent_graph->InputDefs().size() /*onnx_func_proto_.input_size()*/, nullptr),
-      graph_outputs(node_in_parent_graph->OutputDefs().size() /*onnx_func_proto_.output_size()*/, nullptr);
+  std::vector<const NodeArg*> graph_inputs(node_in_parent_graph->InputDefs().size(), nullptr),
+      graph_outputs(node_in_parent_graph->OutputDefs().size(), nullptr);
 
   // Add node and node args into subgraph
   // The subgraph preserved the input/output tensor names

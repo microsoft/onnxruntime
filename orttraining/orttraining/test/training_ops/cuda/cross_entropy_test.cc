@@ -326,7 +326,7 @@ static void TestNegativeLogLikelihoodLoss(const std::vector<int64_t>* X_dims,
   std::vector<int64_t> index_data = random.Uniform<int64_t>(*index_dims, 0.0f, static_cast<float>((*X_dims)[1]));
   //Add one data point that has ignore_index.
   if (index_data.size() > 0) {
-    index_data[0] = static_cast<int32_t>(ignore_index);
+    index_data[0] = ignore_index;
   }
 
   test.AddInput<float>("X", *X_dims, X_data);
