@@ -128,7 +128,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
     const size_t dy_size = y_infos[y_idx].shape.Size();
 
     // Compute the theoretical Jacobians one row at a time by back propagating
-    // '1.0'for each element of 'dy', while holding all other elements of 'dy' at zero.
+    // '1.0' for each element of 'dy', while holding all other elements of 'dy' at zero.
     for (int c = 0; c < dy_size; ++c) {  // for each value in the dy input vector
       // clear OpTester input/output/initializer
       op_session.ClearData();
@@ -457,8 +457,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
         // TODO: These 4 test failed at following ORT_ENFORCE. need investigate before enable it.
         //GradientCheckerTest.MatMulGrad
         //GradientCheckerTest.GemmGrad
-        //GradientCheckerTest.GatherNDGrad_int64_indice_repeat_float_data
-        //GradientCheckerTest.GatherNDGrad_int64_indice_unique_float_data
+        //GradientCheckerTest.GatherNDGrad_repeat_float_data
+        //GradientCheckerTest.GatherNDGrad_unique_float_data
         //auto jac_t = jacobian_ts[j];
         //ORT_ENFORCE(std::all_of(
         //    &jac_t[0], &jac_t[0] + x_info.shape.Size(), [](auto dx) { return dx == 0; }));

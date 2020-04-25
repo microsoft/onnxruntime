@@ -33,11 +33,14 @@ class GatherNDBase {
 
   template <typename Tind>
   Status PrepareForCompute(OpKernelContext* context, Prepare& p) const;
+  int64_t batch_dims_;
 };  // class GatherNDBase
 
 class GatherND final : public OpKernel, protected GatherNDBase {
  public:
-  explicit GatherND(const OpKernelInfo& info) : OpKernel(info) {}
+  explicit GatherND(const OpKernelInfo& info) : OpKernel(info) {
+    info.GetAttrOrDefault("batch_dims", &batch_dims_, static_cast<int64_t>(0));
+  }
   Status Compute(OpKernelContext* context) const override;
 
  private:

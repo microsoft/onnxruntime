@@ -16,7 +16,7 @@ using namespace WEX::TestExecution;
     TEST_CLASS(test_class_name);
 
 #define WINML_TEST_CLASS_SETUP_CLASS(setup_class) \
-    TEST_CLASS_SETUP(TestMethodSetup) {           \
+    TEST_CLASS_SETUP(TestClassSetup) {           \
       getapi().setup_class();                     \
       return true;                                \
     }

@@ -7,20 +7,20 @@
 #include "ImageConversionHelpers.h"
 #include "ImageConversionTypes.h"
 
-namespace Windows::AI::MachineLearning::Internal {
+namespace _winml {
 class IVideoFrameToTensorConverter {
  public:
   virtual void VideoFrameToDX12Tensor(
       _In_ const UINT32 batch_index,
-      _In_ winrt::Windows::AI::MachineLearning::LearningModelSession& session,
-      _In_ const winrt::Windows::Media::IVideoFrame& input_video_frame,
-      _In_ const winrt::Windows::Graphics::Imaging::BitmapBounds& input_bounds,
+      _In_ winml::LearningModelSession& session,
+      _In_ const wm::IVideoFrame& input_video_frame,
+      _In_ const wgi::BitmapBounds& input_bounds,
       _In_ const ImageTensorDescription& tensor_description,
       _Inout_ ID3D12Resource* output_tensor) = 0;
 
   virtual void VideoFrameToSoftwareTensor(
-      _In_ const winrt::Windows::Media::IVideoFrame& input_video_frame,
-      _In_ const winrt::Windows::Graphics::Imaging::BitmapBounds& input_bounds,
+      _In_ const wm::IVideoFrame& input_video_frame,
+      _In_ const wgi::BitmapBounds& input_bounds,
       _In_ const ImageTensorDescription& tensor_description,
       _Out_ BYTE* output_CPU_tensor) = 0;
 };
@@ -38,9 +38,9 @@ class VideoFrameToTensorConverter : IVideoFrameToTensorConverter, public ImageCo
   // If the region of interest is the entire VideoFrame, the input BitmapBounds should describe the entire image.
   void VideoFrameToDX12Tensor(
       _In_ const UINT32 batch_index,
-      _In_ winrt::Windows::AI::MachineLearning::LearningModelSession& session,
-      _In_ const winrt::Windows::Media::IVideoFrame& input_video_frame,
-      _In_ const winrt::Windows::Graphics::Imaging::BitmapBounds& input_bounds,
+      _In_ winml::LearningModelSession& session,
+      _In_ const wm::IVideoFrame& input_video_frame,
+      _In_ const wgi::BitmapBounds& input_bounds,
       _In_ const ImageTensorDescription& tensor_description,
       _Inout_ ID3D12Resource* output_tensor);
 
@@ -50,8 +50,8 @@ class VideoFrameToTensorConverter : IVideoFrameToTensorConverter, public ImageCo
   // {upperleft X, upperleft Y, width, height} to be turned into a tensor.
   // If the region of interest is the entire VideoFrame, the input BitmapBounds should describe the entire image.
   void VideoFrameToSoftwareTensor(
-      _In_ const winrt::Windows::Media::IVideoFrame& input_video_frame,
-      _In_ const winrt::Windows::Graphics::Imaging::BitmapBounds& input_bounds,
+      _In_ const wm::IVideoFrame& input_video_frame,
+      _In_ const wgi::BitmapBounds& input_bounds,
       _In_ const ImageTensorDescription& tensor_description,
       _Out_ BYTE* output_CPU_tensor);
 
@@ -67,16 +67,16 @@ class VideoFrameToTensorConverter : IVideoFrameToTensorConverter, public ImageCo
 
   void ConvertSoftwareBitmapToGPUTensor(
       _In_ const UINT32 batch_index,
-      _In_ const winrt::Windows::Media::IVideoFrame& videoFrame,
-      _In_ winrt::Windows::AI::MachineLearning::implementation::D3DDeviceCache& device_cache,
-      _In_ const winrt::Windows::Graphics::Imaging::BitmapBounds& input_bounds,
+      _In_ const wm::IVideoFrame& videoFrame,
+      _In_ _winml::D3DDeviceCache& device_cache,
+      _In_ const wgi::BitmapBounds& input_bounds,
       _In_ const ImageTensorDescription& tensor_description,
       _Inout_ ID3D12Resource* pOutputResource);
 
   void ConvertDX12TextureToGPUTensor(
       _In_ const UINT32 batch_index,
       _In_ ID3D12Resource* pInputResource,
-      _In_ winrt::Windows::AI::MachineLearning::implementation::D3DDeviceCache& device_cache,
+      _In_ _winml::D3DDeviceCache& device_cache,
       _In_ const ImageTensorDescription& tensor_description,
       _Inout_ ID3D12Resource* output_resource);
 
@@ -86,9 +86,9 @@ class VideoFrameToTensorConverter : IVideoFrameToTensorConverter, public ImageCo
       const ImageTensorDescription& description);
 
   static void VideoFrameToTensorConverter::ConvertSoftwareBitmapToCPUTensor(
-      _In_ const winrt::Windows::Graphics::Imaging::SoftwareBitmap& software_bitmap,
+      _In_ const wgi::SoftwareBitmap& software_bitmap,
       _In_ const ImageTensorDescription& tensor_description,
-      _In_ const winrt::Windows::Graphics::Imaging::BitmapBounds& input_bounds,
+      _In_ const wgi::BitmapBounds& input_bounds,
       _Inout_ void* CPU_tensor);
 };
-}  // namespace Windows::AI::MachineLearning::Internal
+}  // namespace _winml

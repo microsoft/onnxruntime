@@ -30,34 +30,6 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-template <typename T>
-
-__device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width, unsigned int mask = 0xffffffff)
-
-{
-#if CUDA_VERSION >= 9000
-  return __shfl_sync(mask, value, srcLane, width);
-#else
-  return __shfl(value, srcLane, width);
-#endif
-}
-
-template <typename T>
-
-__device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = warpSize, unsigned int mask = 0xffffffff)
-
-{
-#if CUDA_VERSION >= 9000
-
-  return __shfl_xor_sync(mask, value, laneMask, width);
-
-#else
-
-  return __shfl_xor(value, laneMask, width);
-
-#endif
-}
-
 template <typename U>
 __device__ void cuWelfordOnlineSum(
     const U curr,
@@ -79,8 +51,7 @@ __device__ void cuChanOnlineSum(
     const U countB,
     U& mu,
     U& sigma2,
-    U& count,
-    const int& warp_size) {
+    U& count) {
   U delta = muB - mu;
   U nA = count;
   U nB = countB;
@@ -105,10 +76,9 @@ __device__ void cuWelfordMuSigma2(
     const int i1,
     U& mu,
     U& sigma2,
-    U* buf,
-    const int warp_size) {
+    U* buf) {
   // Assumptions:
-  // 1) blockDim.x == warpSize
+  // 1) blockDim.x == GPU_WARP_SIZE
   // 2) Tensor is contiguous
   // 3) 2*blockDim.y*sizeof(U)+blockDim.y*sizeof(int) shared memory available.
   //
@@ -137,10 +107,10 @@ __device__ void cuWelfordMuSigma2(
     // intra-warp reductions
     for (int l = 0; l <= 4; ++l) {
       int srcLaneB = (threadIdx.x + (1 << l)) & 31;
-      U muB = WARP_SHFL(mu, srcLaneB, warp_size);
-      U countB = WARP_SHFL(count, srcLaneB, warp_size);
-      U sigma2B = WARP_SHFL(sigma2, srcLaneB, warp_size);
-      cuChanOnlineSum<U>(muB, sigma2B, countB, mu, sigma2, count, warp_size);
+      U muB = WARP_SHFL(mu, srcLaneB);
+      U countB = WARP_SHFL(count, srcLaneB);
+      U sigma2B = WARP_SHFL(sigma2, srcLaneB);
+      cuChanOnlineSum<U>(muB, sigma2B, countB, mu, sigma2, count);
     }
     // threadIdx.x == 0 has correct values for each warp
     // inter-warp reductions
@@ -161,7 +131,7 @@ __device__ void cuWelfordMuSigma2(
           U muB = ubuf[2 * threadIdx.y];
           U sigma2B = ubuf[2 * threadIdx.y + 1];
           U countB = ibuf[threadIdx.y];
-          cuChanOnlineSum<U>(muB, sigma2B, countB, mu, sigma2, count, warp_size);
+          cuChanOnlineSum<U>(muB, sigma2B, countB, mu, sigma2, count);
         }
         __syncthreads();
       }
@@ -175,8 +145,8 @@ __device__ void cuWelfordMuSigma2(
       sigma2 = ubuf[1] / U(n2);
       // don't care about final value of count, we know count == n2
     } else {
-      mu = WARP_SHFL(mu, 0, warp_size);
-      sigma2 = WARP_SHFL(sigma2 / U(n2), 0, warp_size);
+      mu = WARP_SHFL(mu, 0);
+      sigma2 = WARP_SHFL(sigma2 / U(n2), 0);
     }
   }
 }
@@ -189,10 +159,9 @@ __device__ void cuWelfordMuSigma2(
     const int i1,
     float& mu,
     float& sigma2,
-    float* buf,
-    const int warp_size) {
+    float* buf) {
   // Assumptions:
-  // 1) blockDim.x == warpSize
+  // 1) blockDim.x == GPU_WARP_SIZE
   // 2) Tensor is contiguous
   // 3) 2*blockDim.y*sizeof(U)+blockDim.y*sizeof(int) shared memory available.
   //
@@ -221,8 +190,8 @@ __device__ void cuWelfordMuSigma2(
     for (; l + 7 < n2; l += 8 * numx) {
       for (int k = 0; k < 8; k += 2) {
         float2 curr = __half22float2(*((__half2*)(lvals + l + k)));
-        cuWelfordOnlineSum(curr.x, mu, sigma2, count);
-        cuWelfordOnlineSum(curr.y, mu, sigma2, count);
+        cuWelfordOnlineSum(static_cast<float>(curr.x), mu, sigma2, count);
+        cuWelfordOnlineSum(static_cast<float>(curr.y), mu, sigma2, count);
       }
     }
     for (; l < n2; ++l) {
@@ -232,10 +201,10 @@ __device__ void cuWelfordMuSigma2(
     // intra-warp reductions
     for (int l = 0; l <= 4; ++l) {
       int srcLaneB = (threadIdx.x + (1 << l)) & 31;
-      float muB = WARP_SHFL(mu, srcLaneB, warp_size);
-      float countB = WARP_SHFL(count, srcLaneB, warp_size);
-      float sigma2B = WARP_SHFL(sigma2, srcLaneB, warp_size);
-      cuChanOnlineSum(muB, sigma2B, countB, mu, sigma2, count, warp_size);
+      float muB = WARP_SHFL(mu, srcLaneB);
+      float countB = WARP_SHFL(count, srcLaneB);
+      float sigma2B = WARP_SHFL(sigma2, srcLaneB);
+      cuChanOnlineSum(muB, sigma2B, countB, mu, sigma2, count);
     }
     // threadIdx.x == 0 has correct values for each warp
     // inter-warp reductions
@@ -256,7 +225,7 @@ __device__ void cuWelfordMuSigma2(
           float muB = ubuf[2 * threadIdx.y];
           float sigma2B = ubuf[2 * threadIdx.y + 1];
           float countB = ibuf[threadIdx.y];
-          cuChanOnlineSum(muB, sigma2B, countB, mu, sigma2, count, warp_size);
+          cuChanOnlineSum(muB, sigma2B, countB, mu, sigma2, count);
         }
         __syncthreads();
       }
@@ -270,8 +239,8 @@ __device__ void cuWelfordMuSigma2(
       sigma2 = ubuf[1] / float(n2);
       // don't care about final value of count, we know count == n2
     } else {
-      mu = WARP_SHFL(mu, 0, warp_size);
-      sigma2 = WARP_SHFL(sigma2 / float(n2), 0, warp_size);
+      mu = WARP_SHFL(mu, 0);
+      sigma2 = WARP_SHFL(sigma2 / float(n2), 0);
     }
   }
 }
@@ -334,17 +303,16 @@ __global__ void cuApplyLayerNorm(
     const int n2,
     const U epsilon,
     const T* __restrict__ gamma,
-    const T* __restrict__ beta,
-    int warp_size) {
+    const T* __restrict__ beta) {
   // Assumptions:
-  // 1) blockDim.x == warpSize
+  // 1) blockDim.x == GPU_WARP_SIZE
   // 2) Tensors are contiguous
   //
-  for (auto i1 = blockIdx.y; i1 < n1; i1 += gridDim.y) {
+  for (int i1 = blockIdx.y; i1 < n1; i1 += gridDim.y) {
     SharedMemory<U> shared;
     U* buf = shared.getPointer();
     U mu, sigma2;
-    cuWelfordMuSigma2(vals, n1, n2, i1, mu, sigma2, buf, warp_size);
+    cuWelfordMuSigma2(vals, n1, n2, i1, mu, sigma2, buf);
     const T* lvals = vals + i1 * n2;
     T* ovals = output_vals + i1 * n2;
     U c_invvar = rsqrt(sigma2 + epsilon);
@@ -382,6 +350,8 @@ void HostApplyLayerNorm(
     const T* beta) {
   const uint64_t maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
+  ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
+
   const dim3 threads(warp_size, 4, 1);
   const dim3 blocks(1, std::min((uint64_t)n1, maxGridY), 1);
   int nshared =
@@ -393,7 +363,7 @@ void HostApplyLayerNorm(
       input,
       n1, n2,
       U(epsilon),
-      gamma, beta, warp_size);
+      gamma, beta);
 }
 
 #define LAYERNORM_LINEAR_IMPL(T, U)                                                                       \
@@ -606,7 +576,7 @@ __global__ void cuComputeGradInput(
     const U* __restrict__ invvar,
     const T* gamma,
     T* grad_input) {
-  for (auto i1 = blockIdx.y; i1 < n1; i1 += gridDim.y) {
+  for (int i1 = blockIdx.y; i1 < n1; i1 += gridDim.y) {
     U sum_loss1 = U(0);
     U sum_loss2 = U(0);
     const U c_mean = mean[i1];
@@ -727,7 +697,10 @@ void HostLayerNormGradient(
     U* part_grad_gamma,
     U* part_grad_beta,
     const int part_size) {
-  const dim3 threads2(prop.warpSize, 4, 1);
+  const int warp_size = prop.warpSize;
+  ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
+
+  const dim3 threads2(warp_size, 4, 1);
   const dim3 blocks2((n2 + threads2.x - 1) / threads2.x, part_size, 1);
   const int nshared2_a = 2 * sizeof(U) * threads2.y * threads2.y * (threads2.x + 1);
   const int nshared2_b = threads2.x * threads2.y * sizeof(U);
@@ -742,7 +715,7 @@ void HostLayerNormGradient(
       part_grad_gamma,
       part_grad_beta);
 
-  const dim3 threads3(prop.warpSize, 8, 1);
+  const dim3 threads3(warp_size, 8, 1);
   const dim3 blocks3((n2 + threads2.x - 1) / threads2.x, 1, 1);
   const int nshared3 = threads3.x * threads3.y * sizeof(U);
   cuComputeGradGammaBeta<<<blocks3, threads3, nshared3, 0>>>(
@@ -756,7 +729,7 @@ void HostLayerNormGradient(
   // compute grad_input
   const uint64_t maxGridY = prop.maxGridSize[1];
   const dim3 blocks1(1, std::min((uint64_t)n1, maxGridY), 1);
-  const dim3 threads1(prop.warpSize, 4, 1);
+  const dim3 threads1(warp_size, 4, 1);
   int nshared =
       threads1.y > 1 ? threads1.y * threads1.x * sizeof(U) : 0;
   cuComputeGradInput<<<blocks1, threads1, nshared, 0>>>(

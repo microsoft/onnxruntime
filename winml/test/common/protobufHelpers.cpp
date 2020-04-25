@@ -18,11 +18,9 @@
 
 #include <fstream>
 
-#include "winrt/Windows.Storage.Streams.h"
-
-using namespace winrt::Windows::Storage::Streams;
-using namespace winrt::Windows::AI::MachineLearning;
-using namespace winrt::Windows::Foundation::Collections;
+using namespace wss;
+using namespace wfc;
+using namespace winml;
 
 // Copy and pasted from LOTUS as is.    temporary code to load tensors from protobufs
 int FdOpen(const std::string& name) {
@@ -192,8 +190,8 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(
   return nullptr;
 }
 
-winrt::Windows::AI::MachineLearning::LearningModel ProtobufHelpers::CreateModel(
-    winrt::Windows::AI::MachineLearning::TensorKind kind,
+winml::LearningModel ProtobufHelpers::CreateModel(
+    winml::TensorKind kind,
     const std::vector<int64_t>& shape,
     uint32_t num_elements) {
   onnx::ModelProto model;

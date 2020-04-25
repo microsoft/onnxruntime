@@ -637,6 +637,12 @@ void OpTester::Run(
       run_options, execution_providers, custom_output_verifier, options);
 }
 
+#define ASSERT_PROVIDER_STATUS_OK(function)                                                         \
+  do {                                                                                              \
+    Status _tmp_status = function;                                                                  \
+    ASSERT_TRUE(_tmp_status.IsOK()) << "provider: " << provider_type << ", error: " << _tmp_status; \
+  } while (false)
+
 void OpTester::Run(
     SessionOptions so,  // Take the SessionOptions by value (i.e. make a copy)
                         // because we may need to modify it
@@ -723,8 +729,7 @@ void OpTester::Run(
 
       for (auto& entry : *execution_providers) {
         provider_types += entry->Type() + ":";
-        EXPECT_TRUE(
-            session_object.RegisterExecutionProvider(std::move(entry)).IsOK());
+        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(entry)));
       }
 
       fetches_ = ExecuteModel<InferenceSession>(
@@ -746,7 +751,7 @@ void OpTester::Run(
         InferenceSession session_object{so, GetEnvironment()};
 
         for (auto& custom_session_registry : custom_session_registries_)
-          session_object.RegisterCustomRegistry(custom_session_registry);
+          ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(custom_session_registry));
 
         std::unique_ptr<IExecutionProvider> execution_provider;
         if (provider_type == onnxruntime::kCpuExecutionProvider)
@@ -827,14 +832,11 @@ void OpTester::Run(
           continue;
 
         for (auto& custom_session_registry : custom_session_registries_)
-          session_object.RegisterCustomRegistry(custom_session_registry);
+          ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(custom_session_registry));
 
         has_run = true;
 
-        EXPECT_TRUE(
-            session_object
-                .RegisterExecutionProvider(std::move(execution_provider))
-                .IsOK());
+        ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
 
         fetches_ = ExecuteModel<InferenceSession>(
             *p_model, session_object, expect_result, expected_failure_string,
