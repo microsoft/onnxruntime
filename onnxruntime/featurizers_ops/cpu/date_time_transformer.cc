@@ -25,44 +25,50 @@ std::string GetDateTimeTransformerDataDir(void) {
   if(Microsoft::Featurizer::Featurizers::IsValidDirectory("./FeaturizersLibrary"))
     return "./FeaturizersLibrary";
 
+  // Get the direname (as this will be used by the strategies below)
+  std::string const exe(Microsoft::Featurizer::Featurizers::GetExecutable());
+  std::string::size_type const lastSlash(
+    [&exe](void) -> std::string::size_type {
+      std::string::size_type slash;
+
+      // Linux-style
+      slash = exe.find_last_of('/');
+
+      if(slash != std::string::npos)
+        return slash;
+
+      // Windows-style
+      slash = exe.find_last_of('\\');
+      if(slash != std::string::npos)
+        return slash;
+
+      return std::string::npos;
+    }()
+  );
+
+  std::string const dirname(
+    [&exe, &lastSlash](void) -> std::string {
+      if(lastSlash == std::string::npos)
+        return "";
+
+      // Include the slash in the dirname
+      return std::string(exe.c_str(), exe.c_str() + lastSlash + 1);
+    }()
+  );
+
+  if(Microsoft::Featurizer::Featurizers::IsValidDirectory(dirname + "FeaturizersLibrary"))
+    return dirname + "FeaturizersLibrary";
+
   // Python environment
   {
     // Is the executable python?
-    std::string const exe(Microsoft::Featurizer::Featurizers::GetExecutable());
-    std::string::size_type const lastSlash(
-      [&exe](void) -> std::string::size_type {
-        std::string::size_type slash;
-
-        // Linux-style
-        slash = exe.find_last_of('/');
-
-        if(slash != std::string::npos)
-          return slash;
-
-        // Windows-style
-        slash = exe.find_last_of('\\');
-        if(slash != std::string::npos)
-          return slash;
-
-        return std::string::npos;
-      }()
-    );
-
     std::string const basename(lastSlash != std::string::npos ? &exe[lastSlash + 1] : exe.c_str());
 
     if(strncmp(basename.c_str(), "python", 6) == 0) {
-      std::string const dirname(
-        [&exe, &lastSlash](void) -> std::string {
-          if(lastSlash != std::string::npos)
-            return std::string(exe.c_str(), exe.c_str() + lastSlash);
-
-          return exe;
-        }()
-      );
 
 #if (defined _WIN32)
       // Get the directory relative to python's executable
-      std::string const potentialDataDir(dirname + "\\Lib\\site-packages\\onnxruntime\\FeaturizersLibrary");
+      std::string const potentialDataDir(dirname + "Lib\\site-packages\\onnxruntime\\FeaturizersLibrary");
 
       if(Microsoft::Featurizer::Featurizers::IsValidDirectory(potentialDataDir))
         return potentialDataDir;
@@ -76,12 +82,7 @@ std::string GetDateTimeTransformerDataDir(void) {
       // is available for inclusion when this file is compiled.
       std::vector<std::string> const potentialDirs{
             // Search relative to the executable
-            [&exe, &lastSlash](void) -> std::string {
-              if(lastSlash == std::string::npos)
-                return "lib";
-
-              return std::string(exe.c_str(), exe.c_str() + lastSlash + 1) + "lib";
-            }(),
+            dirname + "lib",
 
             // Search in the user's local path
             [](void) -> std::string {
@@ -100,7 +101,7 @@ std::string GetDateTimeTransformerDataDir(void) {
 
           assert(dir != nullptr);
 
-          // Abusing std::unique_ptr to take advantage of the custom deletion functionality
+          // (Ab)Using std::unique_ptr to take advantage of the custom deletion functionality
           std::unique_ptr<DIR, std::function<void (DIR *)>>   autoCloseDir(dir, [](DIR *d) { closedir(d); });
 
           dirent * info(nullptr);
@@ -125,6 +126,9 @@ std::string GetDateTimeTransformerDataDir(void) {
   // Dev environment
   if(Microsoft::Featurizer::Featurizers::IsValidDirectory("./external/FeaturizersLibrary"))
     return "./external/FeaturizersLibrary";
+
+  if(Microsoft::Featurizer::Featurizers::IsValidDirectory(dirname + "external/FeaturizersLibrary"))
+    return dirname + "external/FeaturizersLibrary";
 
   // Use the default logic
   return "";
