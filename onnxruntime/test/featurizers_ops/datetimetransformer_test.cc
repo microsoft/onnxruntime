@@ -316,6 +316,16 @@ TEST(FeaturizersTests, DateTimeTransformer_future_2025_june_30) {
 }
 
 TEST(FeaturizersTests, DateTimeTransformer_Country_Canada) {
+  std::string const dataDir(onnxruntime::featurizers::GetDateTimeTransformerDataDir());
+
+  if(dataDir.empty()) {
+    GTEST_SKIP() <<
+      "Skipping country-based tests, as the data directory could not be found. This likely indicates that\n"
+      "the test is being invoked from a nuget installation, which isn't a scenario that is supported by\n"
+      "featurizers (featurizers will only be used via the Python ORT wrappers and data is installed as\n"
+      "part of the wheel).\n";
+  }
+
   const time_t date = 157161600;
   const auto date_tp = std::chrono::system_clock::from_time_t(date);
 
@@ -328,7 +338,7 @@ TEST(FeaturizersTests, DateTimeTransformer_Country_Canada) {
   // We are adding a scalar Tensor in this instance
   test.AddInput<int64_t>("Date", {1}, {date});
 
-  dft::DateTimeTransformer dt("Canada", onnxruntime::featurizers::GetDateTimeTransformerDataDir());
+  dft::DateTimeTransformer dt("Canada", dataDir);
   dft::TimePoint tp = dt.execute(date_tp);
 
   ASSERT_EQ(tp.holidayName, "Christmas Day");
