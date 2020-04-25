@@ -786,14 +786,15 @@ MlasSgemmKernelLoop(
 
 Routine Description:
 
-    This routine implements the single precision matrix/matrix multiply
-    operation (SGEMM).
+    This routine steps through the rows of the input and output matrices calling
+    the kernel until all rows have been processed.
 
 Arguments:
 
     A - Supplies the address of matrix A.
 
-    B - Supplies the address of matrix B.
+    B - Supplies the address of matrix B. The matrix data has been packed using
+        MlasSgemmCopyPackB or MlasSgemmTransposePackB.
 
     C - Supplies the address of matrix C.
 
