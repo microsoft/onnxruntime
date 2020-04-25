@@ -251,7 +251,7 @@ struct Prov_IndexedSubGraph_Impl : Prov_IndexedSubGraph {
 };
 
 struct Prov_GraphViewer_Impl : Prov_GraphViewer {
-  Prov_GraphViewer_Impl(const GraphViewer& v) : v_{v} {
+  Prov_GraphViewer_Impl(const GraphViewer& v) : v_(v) {
     for (int i = 0; i < v_.MaxNodeIndex(); i++)
       prov_nodes_.emplace_back(v_.GetNode(i));
   }
