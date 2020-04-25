@@ -38,8 +38,6 @@ REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, double)
 template <typename T1, typename T2>
 Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T1>::MappedType CudaT;
-  typedef typename ToCudaType<T2>::MappedType CudaT2;
-  typedef typename ToCudaType<bool>::MappedType CudaT3;
 
   //Get X_data
   const Tensor* X = context->Input<Tensor>(0);
@@ -60,8 +58,7 @@ Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
 
   const Tensor* training_mode = context->Input<Tensor>(2);
   //Check for inference mode.
-  if (!trainable_dropout_ && (training_mode == nullptr ||
-      static_cast<bool>(*reinterpret_cast<const CudaT3*>(training_mode->Data<bool>())) == false)) {
+  if (!trainable_dropout_ && (training_mode == nullptr || *(training_mode->Data<bool>()) == false)) {
 
     if (Y_data != X_data) {
       CUDA_CALL_THROW(cudaMemcpyAsync(Y_data, X_data, N * sizeof(T1), cudaMemcpyDeviceToDevice));
