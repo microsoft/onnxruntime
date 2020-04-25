@@ -768,8 +768,9 @@ Return Value:
     }
 }
 
-size_t
-MlasSgemmCallKernel(
+MLAS_FORCEINLINE
+float*
+MlasSgemmKernelLoop(
     const float* A,
     const float* B,
     float* C,
@@ -781,22 +782,68 @@ MlasSgemmCallKernel(
     float alpha,
     bool ZeroMode
     )
+/*++
+
+Routine Description:
+
+    This routine implements the single precision matrix/matrix multiply
+    operation (SGEMM).
+
+Arguments:
+
+    A - Supplies the address of matrix A.
+
+    B - Supplies the address of matrix B.
+
+    C - Supplies the address of matrix C.
+
+    CountK - Supplies the number of columns from matrix A and the number of rows
+        from matrix B to iterate over.
+
+    CountM - Supplies the number of rows from matrix A and matrix C to iterate
+        over.
+
+    CountN - Supplies the number of columns from matrix B and matrix C to
+        iterate over.
+
+    lda - Supplies the first dimension of matrix A.
+
+    ldc - Supplies the first dimension of matrix C.
+
+    alpha - Supplies the scalar alpha multiplier (see SGEMM definition).
+
+    ZeroMode - Supplies true if the output matrix must be zero initialized,
+        else false if the output matrix is accumulated into.
+
+Return Value:
+
+    Returns the next address of matrix C.
+
+--*/
 {
-    size_t RowsHandled;
+    do {
+
+        size_t RowsHandled;
 
 #if defined(MLAS_TARGET_AMD64_IX86)
-    RowsHandled = MlasPlatform.GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
+        RowsHandled = MlasPlatform.GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
 #elif defined(MLAS_TARGET_POWER)
-    RowsHandled = MlasSgemmKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
+        RowsHandled = MlasSgemmKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
 #else
-    if (ZeroMode) {
-        RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
-    } else {
-        RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
-    }
+        if (ZeroMode) {
+            RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+        } else {
+            RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+        }
 #endif
 
-    return RowsHandled;
+        C += ldc * RowsHandled;
+        A += lda * RowsHandled;
+        CountM -= RowsHandled;
+
+    } while (CountM > 0);
+
+    return C;
 }
 
 void
@@ -893,6 +940,7 @@ Return Value:
     // Transpose(A*B) = Transpose(B) * Transpose(A), we can apply the same 'small-M'
     // optimization as above, with A and B flipped.
     //
+
     if (N == 1 && ldb == 1 && ldc == 1 && alpha == 1.0f && (beta == 0.0f || beta == 1.0f)) {
 
 #if defined(MLAS_TARGET_AMD64)
@@ -967,9 +1015,9 @@ Return Value:
         // Step through each slice of matrix B along the K dimension.
         //
 
-        for (size_t k = 0; k < K; k += CountK) {
+        bool ZeroMode = (beta == 0.0f);
 
-            bool ZeroMode = (k == 0 && beta == 0.0f);
+        for (size_t k = 0; k < K; k += CountK) {
 
             CountK = StrideK;
 
@@ -993,31 +1041,14 @@ Return Value:
 
             float* c = C + n;
 
-            size_t RowsRemaining = M;
-            size_t RowsHandled;
-
             if (TransA == CblasNoTrans) {
 
-                const float* a = A + k;
-
-                //
-                // Step through the rows of matrix A.
-                //
-
-                do {
-
-                    RowsHandled = MlasSgemmCallKernel(a, PanelB, c, CountK, RowsRemaining, CountN, lda, ldc, alpha, ZeroMode);
-
-                    c += ldc * RowsHandled;
-                    a += lda * RowsHandled;
-
-                    RowsRemaining -= RowsHandled;
-
-                } while (RowsRemaining > 0);
+                MlasSgemmKernelLoop(A + k, PanelB, c, CountK, M, CountN, lda, ldc, alpha, ZeroMode);
 
             } else {
 
                 const float* a = A + k * lda;
+                size_t RowsRemaining = M;
 
                 do {
 
@@ -1031,31 +1062,21 @@ Return Value:
                         RowsTransposed = MLAS_SGEMM_TRANSA_ROWS;
                     }
 
-                    RowsRemaining -= RowsTransposed;
-
                     MlasSgemmTransposeA(PanelA, a, lda, RowsTransposed, CountK);
 
+                    RowsRemaining -= RowsTransposed;
                     a += RowsTransposed;
 
                     //
                     // Step through the rows of the local buffer.
                     //
 
-                    const float* pa = PanelA;
-
-                    do {
-
-                        RowsHandled = MlasSgemmCallKernel(pa, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode);
-
-                        c += ldc * RowsHandled;
-                        pa += CountK * RowsHandled;
-
-                        RowsTransposed -= RowsHandled;
-
-                    } while (RowsTransposed > 0);
+                    c = MlasSgemmKernelLoop(PanelA, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode);
 
                 } while (RowsRemaining > 0);
             }
+
+            ZeroMode = false;
         }
     }
 }
