@@ -182,10 +182,22 @@ def parse_arguments():
 
     parser.add_argument("--ios", action='store_true', help="build for ios")
     parser.add_argument(
-        "--ios_sysroot", default="", help="Path to ios sysroot")
+        "--ios_sysroot", default="",
+        help="Specify the location name of the macOS platform SDK to be used")
     parser.add_argument(
         "--ios_toolchain_dir", default="",
         help="Path to ios toolchain binaries")
+    parser.add_argument(
+        "--use_xcode", action='store_true',
+        help="Use Xcode as cmake generator, this is only supported on MacOS.")
+    parser.add_argument(
+        "--osx_arch", type=str,
+        help="Specify the Target specific architectures for macOS and iOS"
+        "This is only supported on MacOS")
+    parser.add_argument(
+        "--apple_deploy_target", type=str,
+        help="Specify the minimum version of the target platform (e.g. macOS or iOS)"
+        "This is only supported on MacOS")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -312,6 +324,8 @@ def resolve_executable_path(command_or_path):
 def is_windows():
     return sys.platform.startswith("win")
 
+def is_macOS():
+    return sys.platform.startswith("darwin")
 
 def get_linux_distro():
     try:
@@ -483,7 +497,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             "OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         "-Donnxruntime_DEV_MODE=" + (
-            "OFF" if args.android or args.use_acl else "ON"),
+            "OFF" if args.android or args.use_acl or (args.ios and is_macOS()) else "ON"),
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
         "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
@@ -525,7 +539,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_NNAPI=" + ("ON" if args.use_dnnlibrary else "OFF"),
         "-Donnxruntime_USE_OPENMP=" + (
             "ON" if args.use_openmp and not args.use_dnnlibrary and
-            not args.use_mklml and not args.use_ngraph and not args.android else "OFF"),
+            not args.use_mklml and not args.use_ngraph and
+            not args.android and not (args.ios and is_macOS()) else "OFF"),
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + (
@@ -610,40 +625,71 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             "-DANDROID_ABI=" + str(args.android_abi)
         ]
 
+    if is_macOS() and args.use_xcode:
+        cmake_args += ["-GXcode"]
+
     if args.ios:
-        needed_args = [
-            args.ios_sysroot,
-            args.arm64 or args.arm,
-            args.ios_toolchain_dir
-        ]
-        arg_names = [
-            "--ios_sysroot <path to sysroot>",
-            "--arm or --arm64",
-            "--ios_toolchain_dir <path to toolchain>"
-        ]
-        if not all(needed_args):
-            raise BuildError(
-                "iOS build canceled due to missing arguments: " + ', '.join(
-                    val for val, cond in zip(arg_names, needed_args)
-                    if not cond))
-        compilers = sorted(glob.glob(args.ios_toolchain_dir + "/bin/*-clang*"))
-        os.environ["PATH"] = os.path.join(
-            args.ios_toolchain_dir, "bin") + os.pathsep + os.environ.get(
-                "PATH", "")
-        os.environ["LD_LIBRARY_PATH"] = os.path.join(
-            args.ios_toolchain_dir, "/lib") + os.pathsep + os.environ.get(
-                "LD_LIBRARY_PATH", "")
-        if len(compilers) != 2:
-            raise BuildError(
-                "error identifying compilers in ios_toolchain_dir")
-        cmake_args += [
-            "-DCMAKE_OSX_ARCHITECTURES=" + ("arm64" if args.arm64 else "arm"),
-            "-DCMAKE_SYSTEM_NAME=iOSCross",
-            "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
-            "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
-            "-DCMAKE_C_COMPILER=" + compilers[0],
-            "-DCMAKE_CXX_COMPILER=" + compilers[1]
-        ]
+        if is_macOS():
+            needed_args = [
+                args.use_xcode,
+                args.ios_sysroot,
+                args.osx_arch,
+                args.apple_deploy_target,
+            ]
+            arg_names = [
+                "--use_xcode            <need use xcode to cross build iOS on MacOS>",
+                "--ios_sysroot          <the location or name of the macOS platform SDK>",
+                "--osx_arch             <the Target specific architectures for iOS>",
+                "--apple_deploy_target  <the minimum version of the target platform>",
+            ]
+            if not all(needed_args):
+                raise BuildError(
+                    "iOS build on MacOS canceled due to missing arguments: " + ', '.join(
+                        val for val, cond in zip(arg_names, needed_args)
+                        if not cond))
+            cmake_args += [
+                "-DCMAKE_SYSTEM_NAME=iOS",
+                "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
+                "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
+                "-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch,
+                "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
+                "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF" # we do not need protoc binary for ios cross build
+            ]
+        else:
+            # We are cross comppiling on linux
+            needed_args = [
+                args.ios_sysroot,
+                args.arm64 or args.arm,
+                args.ios_toolchain_dir
+            ]
+            arg_names = [
+                "--ios_sysroot <path to sysroot>",
+                "--arm or --arm64",
+                "--ios_toolchain_dir <path to toolchain>"
+            ]
+            if not all(needed_args):
+                raise BuildError(
+                    "iOS build canceled due to missing arguments: " + ', '.join(
+                        val for val, cond in zip(arg_names, needed_args)
+                        if not cond))
+            compilers = sorted(glob.glob(args.ios_toolchain_dir + "/bin/*-clang*"))
+            os.environ["PATH"] = os.path.join(
+                args.ios_toolchain_dir, "bin") + os.pathsep + os.environ.get(
+                    "PATH", "")
+            os.environ["LD_LIBRARY_PATH"] = os.path.join(
+                args.ios_toolchain_dir, "/lib") + os.pathsep + os.environ.get(
+                    "LD_LIBRARY_PATH", "")
+            if len(compilers) != 2:
+                raise BuildError(
+                    "error identifying compilers in ios_toolchain_dir")
+            cmake_args += [
+                "-DCMAKE_OSX_ARCHITECTURES=" + ("arm64" if args.arm64 else "arm"),
+                "-DCMAKE_SYSTEM_NAME=iOSCross",
+                "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
+                "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
+                "-DCMAKE_C_COMPILER=" + compilers[0],
+                "-DCMAKE_CXX_COMPILER=" + compilers[1]
+            ]
 
     if path_to_protoc_exe:
         cmake_args += [
@@ -742,6 +788,8 @@ def build_targets(args, cmake_path, build_dir, configs, parallel):
             num_cores = str(multiprocessing.cpu_count())
             if is_windows():
                 build_tool_args += ["/maxcpucount:" + num_cores]
+            elif is_macOS() and args.use_xcode:
+                build_tool_args += ["-parallelizeTargets -jobs " + num_cores]
             else:
                 build_tool_args += ["-j" + num_cores]
 
@@ -1233,6 +1281,9 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
         if args.cmake_generator != 'Ninja':
             cmd_args += ['-T', 'host=x64']
         cmd_args += ['-G', args.cmake_generator]
+    elif is_macOS() and args.use_xcode:
+        cmd_args += ['-G', 'Xcode']
+
     run_subprocess(cmd_args, cwd=protoc_build_dir)
     # Build step
     cmd_args = [cmake_path,
@@ -1245,7 +1296,8 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
     expected_protoc_path = (
         os.path.join(
             protoc_build_dir, 'Release', 'protoc.exe') if is_windows()
-        else os.path.join(protoc_build_dir, 'protoc'))
+        else (os.path.join(protoc_build_dir, 'Release', 'protoc') if is_macOS() and args.use_xcode
+            else os.path.join(protoc_build_dir, 'protoc')))
     if not os.path.exists(expected_protoc_path):
         raise BuildError("Couldn't build protoc for host. Failing build.")
 
