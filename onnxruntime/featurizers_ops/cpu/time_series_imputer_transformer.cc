@@ -116,6 +116,61 @@ struct FromStringOptional<std::string> {
 };
 }  // namespace timeseries_imputer_details
 
+template<typename T>
+struct Helper{
+  static T GetDefaultValue() {
+    return static_cast<T>(0);
+  }
+};
+
+template<>
+struct Helper<std::string>{
+  static std::string GetDefaultValue() {
+    return "";
+  }
+};
+
+template<>
+struct Helper<float>{
+  static float GetDefaultValue() {
+    return std::numeric_limits<float>::quiet_NaN();
+  }
+};
+
+template<>
+struct Helper<double> {
+  static double GetDefaultValue() {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+};
+
+template<>
+struct Helper<bool> {
+  static bool GetDefaultValue() {
+    return false;
+  }
+};
+
+template <typename T>
+struct GenerateImputedColumnsImpl {
+  void operator()(const Tensor* variadic_input_tensor, Tensor* output_after_impute_tensor,
+                  const std::vector<bool>& is_row_imputed, int64_t input_row_size) const {
+      const T* input_data(variadic_input_tensor->template Data<T>());
+      T* output_after_impute_data = output_after_impute_tensor->MutableData<T>();
+
+      for (int row_idx = 0; row_idx < static_cast<int>(is_row_imputed.size()); ++row_idx) {
+        if (!is_row_imputed[row_idx]) {
+          output_after_impute_data = std::copy(input_data, input_data + input_row_size, output_after_impute_data);
+          input_data += input_row_size;
+        } else {
+          for (int col_idx = 0; col_idx < input_row_size; col_idx++) {
+            *output_after_impute_data++ = Helper<T>::GetDefaultValue();
+          }
+        }
+      }
+  }
+};
+
 template <typename T>
 struct TimeSeriesImputerTransformerImpl {
   void operator()(OpKernelContext* ctx, int64_t rows) {
@@ -180,7 +235,10 @@ struct TimeSeriesImputerTransformerImpl {
     auto* keys_output = ctx->Output(2, keys_shape)->template MutableData<T>();
     auto* data_output = ctx->Output(3, data_shape)->template MutableData<T>();
 
+    std::vector<bool> is_row_imputed;
+    is_row_imputed.reserve(output_rows_num);
     for (const auto& out : output_rows) {
+      is_row_imputed.push_back(std::get<0>(out));
       *added_output++ = std::get<0>(out);
       *time_output++ = ToSecs(std::get<1>(out));
       const auto& imputed_keys = std::get<2>(out);
@@ -194,6 +252,25 @@ struct TimeSeriesImputerTransformerImpl {
       data_output = std::transform(imputed_data.cbegin(), imputed_data.cend(), data_output,
                                    FromStringOptional<T>());
     }
+
+    const int variadic_input_start_id = ctx->NumVariadicInputs(0) + ctx->NumVariadicInputs(1) + ctx->NumVariadicInputs(2) + 1;
+    const int variadic_input_end_id = variadic_input_start_id + ctx->NumVariadicInputs(3) - 1;
+    for (int input_id = variadic_input_start_id; input_id < variadic_input_end_id; ++input_id) {
+
+      const auto* variadic_input_tensor(ctx->Input<Tensor>(input_id)); //2-d tensor
+      const int64_t input_row_size = variadic_input_tensor->Shape()[1];
+
+      TensorShape output_after_impute_shape({static_cast<int64_t>(is_row_imputed.size()), input_row_size});
+      Tensor* output_after_impute_tensor(ctx->Output(input_id, output_after_impute_shape));
+
+      const auto elem_type = variadic_input_tensor->GetElementType();
+
+      utils::MLTypeCallDispatcher<GenerateImputedColumnsImpl,
+                                  int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t,
+                                  float, double, bool, std::string> t_disp(elem_type);
+      t_disp.Invoke(variadic_input_tensor, output_after_impute_tensor, is_row_imputed, input_row_size);
+  }
+
   }
 };
 
@@ -238,7 +315,19 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T0", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<std::string>()),
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<std::string>())
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<int8_t>(),
+                              DataTypeImpl::GetTensorType<uint8_t>(),
+                              DataTypeImpl::GetTensorType<int16_t>(),
+                              DataTypeImpl::GetTensorType<uint16_t>(),
+                              DataTypeImpl::GetTensorType<int32_t>(),
+                              DataTypeImpl::GetTensorType<uint32_t>(),
+                              DataTypeImpl::GetTensorType<int64_t>(),
+                              DataTypeImpl::GetTensorType<uint64_t>(),
+                              DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<bool>(),
+                              DataTypeImpl::GetTensorType<std::string>()}),
     TimeSeriesImputerTransformer);
 }  // namespace featurizers
 }  // namespace onnxruntime

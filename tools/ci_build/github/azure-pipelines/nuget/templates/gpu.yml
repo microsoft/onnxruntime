@@ -8,7 +8,7 @@ jobs:
     AgentPool : 'Win-GPU-2019'
     ArtifactName: 'drop-nuget'
     JobName: 'Windows_CI_GPU_CUDA_Dev'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --use_telemetry --cmake_generator "Visual Studio 16 2019" --use_cuda --cuda_version=10.1 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.1" --cudnn_home="C:\local\cudnn-10.1-windows10-x64-v7.6.5.32\cuda"
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_winml --use_telemetry --cmake_generator "Visual Studio 16 2019" --use_cuda --cuda_version=10.1 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.1" --cudnn_home="C:\local\cudnn-10.1-windows10-x64-v7.6.5.32\cuda"
     BuildArch: 'x64'
     msbuildArchitecture: 'amd64'
     EnvSetupScript: 'setup_env_cuda.bat'
@@ -74,7 +74,7 @@ jobs:
 - job: 'Linux_CI_GPU_Dev'
   workspace:
     clean: all
-  pool: $(AgentPoolLinux)
+  pool: 'Linux-GPU-CUDA10'
   steps:
     - template: ../../templates/set-version-number-variables-step.yml
     - template: ../../templates/linux-set-variables-and-download.yml
@@ -86,7 +86,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6-gpu /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1  --cudnn_home=/usr/local/cuda-10.1 --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
+          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD onnxruntime-centos6-gpu /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1  --cudnn_home=/usr/local/cuda-10.1 --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
     - script: |
        set -e -x
        mv $(Build.BinariesDirectory)/linux-x64/usr/local/lib64 $(Build.BinariesDirectory)/linux-x64/linux-x64
@@ -175,29 +175,28 @@ jobs:
      powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
      powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
      set PATH=%CD%;%PATH%
+     SETLOCAL EnableDelayedExpansion
      FOR /R %%i IN (*.nupkg) do (
-         rename %%~ni.nupkg %%~ni.zip
-         unzip %%~ni.zip -d %%~ni
-         del /Q %%~ni.zip
+         set filename=%%~ni
+         IF NOT "!filename:~25,7!"=="Managed" (
+             rename %%~ni.nupkg %%~ni.zip
+             unzip %%~ni.zip -d %%~ni
+             del /Q %%~ni.zip
 
-         unzip win-dml-x86.zip -d win-x86
-         mkdir %%~ni\runtimes\win-x86
-         mkdir %%~ni\runtimes\win-x86\native
+             unzip win-dml-x86.zip -d win-x86
+             mkdir %%~ni\runtimes\win-x86
+             mkdir %%~ni\runtimes\win-x86\native
 
-         move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
-         move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
-         move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
+             move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
+             move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
+             move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
+             move win-x86\runtimes\win-x86\native\directml.dll %%~ni\runtimes\win-x86\native\directml.dll
 
-         move win-x86\runtimes\win-x86\native\microsoft.ai.machinelearning.dll %%~ni\runtimes\win-x86\native\microsoft.ai.machinelearning.dll
-         move win-x86\runtimes\win-x86\native\microsoft.ai.machinelearning.lib %%~ni\runtimes\win-x86\native\microsoft.ai.machinelearning.lib
-         move win-x86\runtimes\win-x86\native\microsoft.ai.machinelearning.pdb %%~ni\runtimes\win-x86\native\microsoft.ai.machinelearning.pdb
-
-         move win-x86\runtimes\win-x86\native\directml.dll %%~ni\runtimes\win-x86\native\directml.dll
-
-         pushd %%~ni
-         zip -r ..\%%~ni.zip .
-         popd
-         move %%~ni.zip %%~ni.nupkg
+             pushd %%~ni
+             zip -r ..\%%~ni.zip .
+             popd
+             move %%~ni.zip %%~ni.nupkg
+         )
      )
      popd
      copy $(Build.BinariesDirectory)\nuget-artifact-dml\Microsoft.ML.OnnxRuntime.DirectML*nupkg $(Build.ArtifactStagingDirectory)
@@ -236,5 +235,5 @@ jobs:
 
 - template: test_linux.yml
   parameters:
-    AgentPool : $(AgentPoolLinux)
+    AgentPool : 'Linux-GPU-CUDA10'
     TestGPU : 'true'

@@ -1,0 +1,16 @@
+trigger: none
+
+jobs:
+- template: templates/mac-ci.yml
+  parameters:
+    JobName: 'Mac_CPU_Training'
+    SubmoduleCheckoutMode: 'recursive'
+    BuildCommand: >
+      python3 $(Build.SourcesDirectory)/tools/ci_build/build.py
+      --build_dir $(Build.BinariesDirectory)
+      --skip_submodule_sync
+      --parallel
+      --build_shared_lib
+      --config Debug RelWithDebInfo
+      --enable_training
+    DoNugetPack: 'false'

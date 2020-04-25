@@ -1,5 +1,5 @@
 parameters:
-  DoDebugBuild: 'true'
+  DoDebugBuild: 'true' # Unused. Use BuildConfigurations instead.
   DoCompliance: 'false'
   BuildCommand: ''
   JobName: 'Windows_CI_Dev'
@@ -15,10 +15,17 @@ parameters:
   AgentPool: 'Win-CPU-2019'
   AgentDemands: []
   OrtPackageId: Microsoft.ML.OnnxRuntime
+  BuildConfigurations: ['RelWithDebInfo'] # Options: Debug, RelWithDebInfo
   RunTests : 'true'
 jobs:
 - job: ${{ parameters.JobName }}
   timeoutInMinutes: 120
+  strategy:
+    maxParallel: 2
+    matrix:
+      ${{ each BuildConfiguration in parameters.BuildConfigurations }}:
+        ${{ BuildConfiguration }}:
+          BuildConfig: ${{ BuildConfiguration }}
   workspace:
     clean: all
   pool:
@@ -33,6 +40,10 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
 
   steps:
+    - checkout: self
+      clean: true
+      submodules: recursive
+
     - powershell: |
         if($env:TELEMETRYGUID)
         {
@@ -66,7 +77,7 @@ jobs:
     - powershell: |
        $Env:USE_MSVC_STATIC_RUNTIME=1
        $Env:ONNX_ML=1
-       $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
+       $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ parameters.BuildArch }}-windows-static"
        python setup.py bdist_wheel
        Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
       workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
@@ -76,7 +87,7 @@ jobs:
       displayName: 'Generate cmake config'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '$(BuildCommand) --update --config RelWithDebInfo --enable_lto'
+        arguments: '$(BuildCommand) --update --config $(BuildConfig) --enable_lto'
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
@@ -87,18 +98,19 @@ jobs:
     - task: VSBuild@1
       displayName: 'Build'
       inputs:
-        solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+        solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
         platform: ${{ parameters.sln_platform }}
-        configuration: RelWithDebInfo
+        configuration: $(BuildConfig)
         msbuildArchitecture: ${{ parameters.BuildArch }}
         maximumCpuCount: true
         logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+        workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
         createLogFile: true
 
-    # Build RelWithDebInfo -- this variable required to build C#
+    # The Configuration variable is required to build C#
     - script: |
-       @echo ##vso[task.setvariable variable=Configuration]RelWithDebInfo
+       @echo ##vso[task.setvariable variable=Configuration]$(BuildConfig)
+      displayName: 'Set Configuration variable'
 
     - template: set-test-data-variables-step.yml
 
@@ -112,8 +124,8 @@ jobs:
       inputs:
         command: restore
         projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        configuration: 'RelWithDebInfo'
-        arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
+        configuration: '$(BuildConfig)'
+        arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: DotNetCoreCLI@2
@@ -121,8 +133,8 @@ jobs:
       inputs:
         command: build
         projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        configuration: 'RelWithDebInfo'
-        arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
+        configuration: '$(BuildConfig)'
+        arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - ${{ if in(parameters['sln_platform'], 'Win32', 'x64') }}:      
@@ -131,21 +143,21 @@ jobs:
         inputs:
           command: test
           projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj'
-          configuration: 'RelWithDebInfo'
-          arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
+          configuration: '$(BuildConfig)'
+          arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
       - ${{ if eq(parameters.RunTests, true) }}:
         - script: |
-           mklink  /D /J $(Build.BinariesDirectory)\RelWithDebInfo\models $(Build.BinariesDirectory)\models
+           mklink  /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models $(Build.BinariesDirectory)\models
            DIR dist\ /S /B > wheel_filename_file
            set /p WHEEL_FILENAME=<wheel_filename_file
            del wheel_filename_file
            python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
-           set PATH=%PATH%;$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo
+           set PATH=%PATH%;$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
            @echo %PATH%
-           python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --test --config RelWithDebInfo --enable_lto
-          workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+           python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --test --config $(BuildConfig) --enable_lto
+          workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
           displayName: 'Run tests'
 
     - ${{ if eq(parameters.RunTests, true) }}:
@@ -158,7 +170,7 @@ jobs:
         condition: succeededOrFailed()
 
     # Nuget packaging if needed
-    - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
+    - ${{ if and(eq(parameters['DoNugetPack'], 'true'), eq('$(BuildConfig)', 'RelWithDebInfo')) }}:
       - task: BatchScript@1
         displayName: 'Setup VS2019 env vars'
         inputs:
@@ -168,13 +180,13 @@ jobs:
       # Esrp signing
       - template: esrp_dll.yml
         parameters:
-          FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo'
+          FolderPath: '$(Build.BinariesDirectory)\$(BuildConfig)'
           DisplayName: 'ESRP - Sign Native dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
 
       - template: esrp_dll.yml
         parameters:
-          FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+          FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\$(BuildConfig)'
           DisplayName: 'ESRP - Sign C# dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
 

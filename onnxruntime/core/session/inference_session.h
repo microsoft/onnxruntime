@@ -221,8 +221,8 @@ class InferenceSession {
   common::Status Load(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
 
   /**
-    * Load an ONNX model from the member model_proto_. 
-    * To be called only in conjunction with a ctor that takes in a model path/ model stream/ model array  
+    * Load an ONNX model from the member model_proto_.
+    * To be called only in conjunction with a ctor that takes in a model path/ model stream/ model array
     * @return OK if success.
     */
   common::Status Load() ORT_MUST_USE_RESULT;
@@ -406,9 +406,9 @@ class InferenceSession {
 
   common::Status InitializeSubgraphSessions(Graph& graph, SessionState& session_state) ORT_MUST_USE_RESULT;
 
-  void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                 TransformerLevel graph_optimization_level,
-                                 const std::vector<std::string>& custom_list);
+  virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                         TransformerLevel graph_optimization_level,
+                                         const std::vector<std::string>& custom_list);
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
@@ -451,6 +451,7 @@ class InferenceSession {
   ExecutionProviders execution_providers_;
 
  protected:
+  bool IsInitialized() const;
   // Immutable state for each op in the model. Shared by all executors.
   // It has a dependency on execution_providers_.
   std::unique_ptr<SessionState> session_state_;
@@ -508,7 +509,6 @@ class InferenceSession {
   mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
   bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
   bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
-
   InsertCastTransformer insert_cast_transformer_;
 
   //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
@@ -547,4 +547,15 @@ class InferenceSession {
 
   bool model_loaded_ = false;
 };
+
+struct SessionIOBinding {
+ public:
+  SessionIOBinding(InferenceSession* session);
+
+  IOBinding* Get();
+
+ private:
+  std::unique_ptr<IOBinding> binding_;
+};
+
 }  // namespace onnxruntime

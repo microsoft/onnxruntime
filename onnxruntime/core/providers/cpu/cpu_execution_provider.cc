@@ -13,6 +13,10 @@
 #include "featurizers_ops/cpu_featurizers_kernels.h"
 #endif
 
+#ifdef ENABLE_TRAINING
+#include "orttraining/training_ops/cpu_training_kernels.h"
+#endif
+
 #include "core/framework/compute_capability.h"
 
 namespace {
@@ -1052,7 +1056,7 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 12,Clip)>,
 
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 12, Min)>,
-
+      
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 12, Max)>,
 
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 12, MaxPool)>,
@@ -1231,6 +1235,9 @@ static Status RegisterCPUKernels(KernelRegistry& kernel_registry) {
 #endif
 #ifdef ML_FEATURIZERS
   ORT_RETURN_IF_ERROR(::onnxruntime::featurizers::RegisterCpuMSFeaturizersKernels(kernel_registry));
+#endif
+#ifdef ENABLE_TRAINING
+  ORT_RETURN_IF_ERROR(::onnxruntime::contrib::RegisterCpuTrainingKernels(kernel_registry));
 #endif
   return Status::OK();
 }
