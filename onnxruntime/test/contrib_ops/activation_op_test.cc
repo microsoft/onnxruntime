@@ -4,71 +4,79 @@
 #include "core/providers/cpu/activation/activations.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include <random>
 
 using namespace onnxruntime::test;
 
 namespace onnxruntime {
 namespace test {
 
-void TestActivationContribOp(const char* szOp, std::vector<float>& input_vals,
+void TestActivationContribOp(const char* szOp, const std::vector<std::vector<float>>& input_vals_vec,
                              std::function<float(float)> expected_func,
                              const std::unordered_map<std::string, float> attribs = {},
-                             bool is_tensorrt_supported = true,
-                             int opset_version = 7,
+                             bool is_tensorrt_supported = true, int opset_version = 7,
                              const char* domain = kOnnxDomain) {
-  OpTester test(szOp, opset_version, domain);
+  for (const std::vector<float>& input_vals : input_vals_vec) {
+    OpTester test(szOp, opset_version, domain);
 
-  for (auto attr : attribs)
-    test.AddAttribute(attr.first, attr.second);
+    for (auto attr : attribs) test.AddAttribute(attr.first, attr.second);
+    std::vector<int64_t> dims{(int64_t)input_vals.size()};
 
-  std::vector<int64_t> dims{(int64_t)input_vals.size()};
+    std::vector<float> expected_vals;
+    for (const auto& iv : input_vals) expected_vals.push_back(expected_func(iv));
 
-  std::vector<float> expected_vals;
-  for (const auto& iv : input_vals)
-    expected_vals.push_back(expected_func(iv));
+    test.AddInput<float>("X", dims, input_vals);
+    test.AddOutput<float>("Y", dims, expected_vals);
 
-  test.AddInput<float>("X", dims, input_vals);
-  test.AddOutput<float>("Y", dims, expected_vals);
-
-  // Disable TensorRT on unsupported tests
-  std::unordered_set<std::string> excluded_providers;
-  if (!is_tensorrt_supported) {
-    excluded_providers.insert(kTensorrtExecutionProvider);
+    // Disable TensorRT on unsupported tests
+    std::unordered_set<std::string> excluded_providers;
+    if (!is_tensorrt_supported) {
+      excluded_providers.insert(kTensorrtExecutionProvider);
+    }
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
   }
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
+}  // namespace test
 
-std::vector<float> input_values = {
-    -1.0f, 0, 1.0f,                                              // normal input values for activation
-    100.0f, -100.0f, 1000.0f, -1000.0f,                          // input values that leads to exp() overflow
-    FLT_MIN, FLT_MIN / 10, -FLT_MIN / 10,                        // min, denorm, -denorm
-    FLT_MAX, -FLT_MAX, std::numeric_limits<float>::infinity()};  // max, -max, inf
+class ActivationContribOpTest : public ::testing::Test {
+ protected:
+  std::vector<std::vector<float>> input_values;  // max, -max, inf
 
-TEST(ActivationContribOpTest, ThresholdedRelu_version_1_to_9) {
+  void SetUp() override {
+    float low = -1.0f, high = 1.0f;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<float> dist(low, high);
+    std::vector<std::size_t> batch_size_list = {1, 2, 4, 9, 100000};
+    for (auto batch_size : batch_size_list) {
+      std::vector<float> vec(batch_size);
+      for (size_t i = 0; i != batch_size; ++i) {
+        vec[i] = dist(gen);
+      }
+      input_values.emplace_back(vec);
+    }
+  }
+};
+
+TEST_F(ActivationContribOpTest, ThresholdedRelu_version_1_to_9) {
   float alpha = 0.1f;
   TestActivationContribOp(
-      "ThresholdedRelu",
-      input_values,
-      [alpha](float x) { return (x >= alpha) ? x : 0; },
-      {{"alpha", alpha}}, true, 1);
+      "ThresholdedRelu", input_values, [alpha](float x) { return (x >= alpha) ? x : 0; }, {{"alpha", alpha}}, true, 1);
 }
 
-TEST(ActivationContribOpTest, ScaledTanh) {
+TEST_F(ActivationContribOpTest, ScaledTanh) {
   static constexpr float alpha = 2.0f;
   static constexpr float beta = 1.5f;
 
-  TestActivationContribOp("ScaledTanh",
-                          input_values,
-                          [](float x) { return alpha * tanh(beta * x); },
+  TestActivationContribOp("ScaledTanh", input_values, [](float x) { return alpha * tanh(beta * x); },
                           {{"alpha", alpha}, {"beta", beta}});
 }
 
-TEST(ActivationContribOpTest, ParametricSoftplus) {
+TEST_F(ActivationContribOpTest, ParametricSoftplus) {
   static constexpr float alpha = 2.0f;
   static constexpr float beta = 1.5f;
 
-  TestActivationContribOp("ParametricSoftplus",
-                          input_values,
+  TestActivationContribOp("ParametricSoftplus", input_values,
                           [](float x) {
                             float bx = beta * x;
                             if (bx > 0)
@@ -79,13 +87,10 @@ TEST(ActivationContribOpTest, ParametricSoftplus) {
                           {{"alpha", alpha}, {"beta", beta}});
 }
 
-TEST(ActivationContribOpTest, Gelu) {
+TEST_F(ActivationContribOpTest, Gelu) {
   TestActivationContribOp(
-      "Gelu",
-      input_values,
-      [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); },
-      {}, false, 1, kMSDomain);
+      "Gelu", input_values, [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); }, {},
+      false, 1, kMSDomain);
 }
 
-}  // namespace test
 }  // namespace onnxruntime
