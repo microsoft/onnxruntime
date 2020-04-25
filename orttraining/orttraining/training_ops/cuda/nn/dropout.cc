@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(OpName, Domain, VER, T1, T2, MemIndex)  \
+#define REGISTER_KERNEL_TYPED(OpName, Domain, VER, T1, T2)            \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
       OpName,                                                         \
       Domain,                                                         \
@@ -20,18 +20,19 @@ namespace cuda {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())     \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T2>())    \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())  \
-          .InputMemoryType<OrtMemTypeCPUInput>(MemIndex),             \
+          .InputMemoryType<OrtMemTypeCPUInput>(1)                     \
+          .InputMemoryType<OrtMemTypeCPUInput>(2),                    \
       OpName<T1, T2>);
 
-REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, MLFloat16, 1)
-REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, float, 1)
-REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, double, 1)
-REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, MLFloat16, 1)
-REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, float, 1)
-REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, double, 1)
-REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, MLFloat16, 1)
-REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, float, 1)
-REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, double, 1)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, MLFloat16)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, float)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, MLFloat16, double)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, MLFloat16)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, float)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, double)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, MLFloat16)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, float)
+REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, double)
 
 
 template <typename T1, typename T2>
@@ -59,7 +60,9 @@ Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
 
   const Tensor* training_mode = context->Input<Tensor>(2);
   //Check for inference mode.
-  if (!trainable_dropout_ && training_mode == nullptr) {  // || static_cast<bool>(*reinterpret_cast<const CudaT3*>(training_mode->Data<bool>())) == false) {
+  if (!trainable_dropout_ && (training_mode == nullptr ||
+      static_cast<bool>(*reinterpret_cast<const CudaT3*>(training_mode->Data<bool>())) == false)) {
+
     if (Y_data != X_data) {
       CUDA_CALL_THROW(cudaMemcpyAsync(Y_data, X_data, N * sizeof(T1), cudaMemcpyDeviceToDevice));
     }
@@ -99,15 +102,29 @@ Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, MLFloat16, 2)
-REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, float, 2)
-REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, double, 2)
-REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, MLFloat16, 2)
-REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, float, 2)
-REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, double, 2)
-REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, double, MLFloat16, 2)
-REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, double, float, 2)
-REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, double, double, 2)
+#define REGISTER_GRAD_KERNEL_TYPED(OpName, Domain, VER, T1, T2)      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
+      OpName,                                                        \
+      Domain,                                                        \
+      VER,                                                           \
+      T1##_##T2,                                                     \
+      kCudaExecutionProvider,                                        \
+      KernelDefBuilder()                                             \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())    \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T2>())   \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()) \
+          .InputMemoryType<OrtMemTypeCPUInput>(2),                   \
+      OpName<T1, T2>);
+
+REGISTER_GRAD_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, MLFloat16)
+REGISTER_GRAD_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, float)
+REGISTER_GRAD_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, MLFloat16, double)
+REGISTER_GRAD_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, MLFloat16)
+REGISTER_GRAD_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, float)
+REGISTER_GRAD_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, double)
+REGISTER_GRAD_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, double, MLFloat16)
+REGISTER_GRAD_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, double, float)
+REGISTER_GRAD_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, double, double)
 
 template <typename T1, typename T2>
 Status DropoutGrad<T1, T2>::ComputeInternal(OpKernelContext* context) const {
