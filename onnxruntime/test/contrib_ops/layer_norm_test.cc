@@ -1,7 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+#include "onnxruntime_config.h"
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
 #include "Eigen/Core"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #include "test/providers/compare_provider_test_utils.h"
 
