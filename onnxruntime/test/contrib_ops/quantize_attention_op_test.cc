@@ -30,7 +30,7 @@ static void RunAttentionTest(
     int hidden_size,
     int number_of_heads,
     bool use_float16 = false) {
-  int min_cuda_architecture = use_float16 ? 530 : 0;
+  int min_cuda_architecture = 530;
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
 
@@ -119,8 +119,8 @@ TEST(QAttentionTest, AttentionBatch1_Float16) {
   std::vector<int32_t> mask_index_data = {2L};
 
   std::vector<float> output_data = {
-      3.15039, 0.1082763671875, 4.24609375, 5.6484375,
-      3.96679, 0.072998046875, 4.24609, 5.6484375};
+      3.15039f, 0.1082763671875f, 4.24609375f, 5.6484375f,
+      3.96679f, 0.072998046875f, 4.24609f, 5.6484375f};
 
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads, true);
