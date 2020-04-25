@@ -83,7 +83,7 @@ std::string GetDateTimeTransformerDataDir(void) {
               return std::string(exe.c_str(), exe.c_str() + lastSlash + 1) + "lib";
             }(),
 
-            // Search in the user's path
+            // Search in the user's local path
             [](void) -> std::string {
               char const * const var(std::getenv("HOME"));
 
@@ -118,8 +118,8 @@ std::string GetDateTimeTransformerDataDir(void) {
           }
         }
       }
-    }
 #endif
+    }
   }
 
   // Dev environment
