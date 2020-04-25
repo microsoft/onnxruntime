@@ -291,6 +291,9 @@ def parse_arguments():
         "--enable_wcos", action='store_true',
         help="Build for Windows Core OS.")
     parser.add_argument(
+        "--enable_windows_store", action='store_true',
+        help="Build for Windows Store")
+    parser.add_argument(
         "--enable_lto", action='store_true',
         help="Enable Link Time Optimization")
     parser.add_argument(
@@ -554,6 +557,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
              bool(os.getenv('NIGHTLY_BUILD') == '1')) else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
         "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
+        "-Donnxruntime_BUILD_FOR_WINDOWS_STORE=" + ("ON" if args.enable_windows_store else "OFF"),
         "-Donnxruntime_USE_TELEMETRY=" + (
             "ON" if args.use_telemetry else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
