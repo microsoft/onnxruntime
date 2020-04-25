@@ -246,6 +246,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
                const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
                double default_per_sample_tolerance, double default_relative_per_sample_tolerance,
                const std::unordered_set<std::basic_string<ORTCHAR_T>>& disabled_tests,
+               const std::unordered_set<std::basic_string<ORTCHAR_T>>& dropout_tests,
                const std::function<void(ITestCase*)>& process_function) {
   std::vector<std::basic_string<PATH_CHAR_TYPE>> paths(input_paths);
   while (!paths.empty()) {
@@ -275,6 +276,10 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
 
       ITestCase* l = CreateOnnxTestCase(ToMBString(test_case_name), TestModelInfo::LoadOnnxModel(p.c_str()),
                                         default_per_sample_tolerance, default_relative_per_sample_tolerance);
+      if (dropout_tests.find(test_case_name) != dropout_tests.end()) {
+        l->dropout_test = true;
+      }
+
       process_function(l);
       return true;
     });
@@ -399,7 +404,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     OrtValue* actual_output_value = iter->second;
     std::pair<COMPARE_RESULT, std::string> ret =
         CompareOrtValue(*actual_output_value, *expected_output_value, per_sample_tolerance,
-                        relative_per_sample_tolerance, post_procesing);
+                        relative_per_sample_tolerance, post_procesing, c_->dropout_test);
     COMPARE_RESULT compare_result = ret.first;
     if (compare_result == COMPARE_RESULT::SUCCESS) {
       const ONNX_NAMESPACE::ValueInfoProto* v = name_output_value_info_proto[output_name];

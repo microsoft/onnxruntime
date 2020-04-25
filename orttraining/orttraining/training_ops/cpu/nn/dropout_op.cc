@@ -61,6 +61,7 @@ Status Dropout<T1, T2>::Compute(OpKernelContext* context) const {
 
   const Tensor* ratio = context->Input<Tensor>(1);  // optional
   const float ratio_value = GetRatioOrDefault<T2>(ratio);
+  ORT_ENFORCE(ratio_value >= 0.0f && ratio_value < 1.0f);
 
   const auto& X_shape = X->Shape();
 
@@ -78,13 +79,18 @@ Status Dropout<T1, T2>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(Y->Shape() == X_shape, "X and Y should have the same shape");
   ORT_ENFORCE(!mask || mask->Shape() == X_shape, "X and mask should have the same shape");
 
-  if (ratio_value == 0.0f) {
+  const Tensor* training_mode = context->Input<Tensor>(2);
+  if (!trainable_dropout_ && (training_mode == nullptr || *(training_mode->Data<bool>()) == false)) {
     // drop none
     if (X_span.data() != Y_span.data()) {
       std::copy(X_span.begin(), X_span.end(), Y_span.begin());
     }
-    std::fill(mask_span.begin(), mask_span.end(), true);
-  } else if (ratio_value < 1.0f) {
+
+    if (mask != nullptr) {
+      std::fill(mask_span.begin(), mask_span.end(), true);
+    }
+
+  } else {
     // drop some
     ConstEigenVectorArrayMap<T1> X_arr(X_span.data(), X_span.size());
     EigenVectorArrayMap<T1> Y_arr(Y_span.data(), Y_span.size());
@@ -107,7 +113,7 @@ Status Dropout<T1, T2>::Compute(OpKernelContext* context) const {
 }
 
 // DropoutGrad
-// REVIEW(mzs): ConstEigenVectorArrayMap.cast<MLFLoat16) does not seem to be supported.
+// REVIEW(codemzs): ConstEigenVectorArrayMap.cast<MLFLoat16) does not seem to be supported.
 // However these types work on GPU implementation.
 // REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16, MLFloat16)
 // REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16, float)

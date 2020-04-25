@@ -34,7 +34,7 @@ const Tensor& FetchTensor(const OrtValue& ort_value) {
 }
 
 void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1,
-                    bool use_float16_ratio = false) {
+                    bool training_mode = true, bool use_float16_ratio = false) {
   OpTester t{op, k_dropout_opset_version, kOnnxDomain};
 
   const auto input_size = std::accumulate(
@@ -47,10 +47,15 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
   t.AddInput("data", input_shape, input);
   if (ratio == -1) {
     ratio = 0.5;  // default.
+    t.AddInput("ratio", {}, {ratio});
   } else if (use_float16_ratio) {
     t.AddInput("ratio", {}, {MLFloat16(0)});
   } else {
     t.AddInput("ratio", {}, {ratio});
+  }
+
+  if (strcmp(op, "TrainableDropout") != 0 && training_mode) {
+    t.AddInput("training_mode", {}, {true});
   }
 
   t.AddOutput<float>("output", input_shape, input);  // we'll do our own output verification
@@ -117,7 +122,7 @@ TEST(DropoutTest, Mask) {
 }
 
 TEST(DropoutTest, RatioLimit) {
-  RunDropoutTest("Dropout", true, {1000}, 0.0f);
+  RunDropoutTest("Dropout", true, {1000}, 0.0f, false);
 }
 
 TEST(DropoutTest, EmptyRatio) {
@@ -125,7 +130,7 @@ TEST(DropoutTest, EmptyRatio) {
 }
 
 TEST(DropoutTest, Float16Ratio) {
-  RunDropoutTest("Dropout", true, {1000}, 0.0f, true);
+  RunDropoutTest("Dropout", true, {1000}, 0.0f, true, true);
 }
 
 TEST(TrainableDropoutTest, Basic) {
@@ -137,15 +142,15 @@ TEST(TrainableDropoutTest, Mask) {
 }
 
 TEST(TrainableDropoutTest, RatioLimit) {
-  RunDropoutTest("TrainableDropout", true, {1000}, 0.0f);
+  RunDropoutTest("TrainableDropout", true, {1000}, 0.0f, false);
 }
 
 TEST(TrainableDropoutTest, EmptyRatio) {
-  RunDropoutTest("TrainableDropout", true, {1000});
+  RunDropoutTest("TrainableDropout", true, {1000}, -1);
 }
 
 TEST(TrainableDropoutTest, Float16Ratio) {
-  RunDropoutTest("TrainableDropout", true, {1000}, 0.0f, true);
+  RunDropoutTest("TrainableDropout", true, {1000}, 0.0f, true, true);
 }
 
 namespace {

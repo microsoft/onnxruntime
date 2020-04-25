@@ -85,7 +85,7 @@ int real_main(int argc, wchar_t* argv[], Ort::Env& env) {
 int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
   // if this var is not empty, only run the tests with name in this list
-  std::vector<std::basic_string<PATH_CHAR_TYPE> > whitelisted_test_cases;
+  std::vector<std::basic_string<PATH_CHAR_TYPE>> whitelisted_test_cases;
   int concurrent_session_runs = GetNumCpuCores();
   bool enable_cpu_mem_arena = true;
   ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL;
@@ -246,7 +246,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     return -1;
   }
 
-  std::vector<std::basic_string<PATH_CHAR_TYPE> > data_dirs;
+  std::vector<std::basic_string<PATH_CHAR_TYPE>> data_dirs;
   TestResultStat stat;
 
   for (int i = 0; i != argc; ++i) {
@@ -402,7 +402,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
                                                      ORT_TSTR("tf_mobilenet_v2_1.0_224"), ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"), ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"),
                                                      ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152"), ORT_TSTR("batchnorm_example_training_mode"), ORT_TSTR("batchnorm_epsilon_training_mode")};
 
-    std::unordered_set<std::basic_string<ORTCHAR_T> > all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
+    std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
     }
@@ -421,8 +421,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
     std::vector<ITestCase*> tests;
+    std::unordered_set<std::basic_string<ORTCHAR_T>> dropout_tests = {ORT_TSTR("training_dropout"),
+                                                                      ORT_TSTR("training_dropout_mask"),
+                                                                      ORT_TSTR("training_dropout_default"),
+                                                                      ORT_TSTR("training_dropout_default_mask")};
+
     LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, all_disabled_tests,
-              [&tests](ITestCase* l) { tests.push_back(l); });
+              dropout_tests, [&tests](ITestCase* l) { tests.push_back(l); });
 
     TestEnv args(tests, stat, env, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
@@ -479,11 +484,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "Bad onnx test output. Needs test fix."},
       {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
-      {"dropout_default", "result differs", {"onnxtip"}},
-      {"dropout_random", "result differs", {"onnxtip"}},
-      {"celu", "invalid model", {"onnxtip"}},
-      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"}
-  };
+      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"}};
 
   if (enable_ngraph) {
     broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});

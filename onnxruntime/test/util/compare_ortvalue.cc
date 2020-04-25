@@ -34,7 +34,6 @@
 #pragma warning(pop)
 #endif
 
-
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
@@ -65,35 +64,65 @@ bool IsResultCloselyMatch(const T& outvalue, const T& expected_value, const doub
 template <typename FLOAT_TYPE>
 std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue, const Tensor& expected_value,
                                                           double per_sample_tolerance,
-                                                          double relative_per_sample_tolerance, bool post_processing) {
+                                                          double relative_per_sample_tolerance, bool post_processing,
+                                                          bool dropout = false) {
   const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
   const FLOAT_TYPE* expected_output = expected_value.template Data<FLOAT_TYPE>();
   const FLOAT_TYPE* real_output = outvalue.template Data<FLOAT_TYPE>();
   std::pair<COMPARE_RESULT, std::string> res = std::make_pair(COMPARE_RESULT::SUCCESS, "");
   double max_diff = 0;
   size_t diff_count = 0;
-  for (size_t di = 0; di != size1; ++di) {
-    const double real_value =
-        post_processing ? std::max<double>(0.0, std::min<double>(255.0, real_output[di])) : real_output[di];
-    const double diff = std::fabs(expected_output[di] - real_value);
-    const double tol = per_sample_tolerance + relative_per_sample_tolerance * std::fabs(expected_output[di]);
-    if (!IsResultCloselyMatch<double>(real_value, expected_output[di], diff, tol)) {
-      res.first = COMPARE_RESULT::RESULT_DIFFERS;
-      // update error message if this is a larger diff
-      if (diff > max_diff || (std::isnan(diff) && !std::isnan(max_diff))) {
-        int64_t expected_int = 0;
-        int64_t real_int = 0;
-        memcpy(&expected_int, &expected_output[di], sizeof(FLOAT_TYPE));
-        memcpy(&real_int, &real_output[di], sizeof(FLOAT_TYPE));
 
-        std::ostringstream oss;
-        oss << std::hex << "expected " << expected_output[di] << " (" << expected_int << "), got " << real_value << " ("
-            << real_int << ")"
-            << ", diff: " << diff << ", tol=" << tol << ".";
-        res.second = oss.str();
-        max_diff = diff;
+  // In dropout there is randomness in the mask and that makes it impossible to always get deterministic results.
+  // Hence, we count the number of zeros in real and expected outputs and ensure the count is similar.
+  if (dropout) {
+    int expected_dropout_zeros = 0;
+    int real_dropout_zeros = 0;
+    for (size_t di = 0; di != size1; ++di) {
+      if ((post_processing ? std::max<double>(0.0, std::min<double>(255.0, real_output[di])) : real_output[di]) == 0) {
+        real_dropout_zeros += 1;
       }
-      ++diff_count;
+
+      if (expected_output[di] == 0) {
+        expected_dropout_zeros += 1;
+      }
+    }
+
+    float ratio = static_cast<float>(real_dropout_zeros) / static_cast<float>(expected_dropout_zeros);
+
+    if (ratio >= 0.80f && ratio <= 1.20f) {
+      res.first = COMPARE_RESULT::SUCCESS;
+    } else {
+      res.first = COMPARE_RESULT::RESULT_DIFFERS;
+      std::ostringstream oss;
+      oss << std::hex << "expected zeros (" << expected_dropout_zeros << "), got (" << real_dropout_zeros << ")";
+      res.second = oss.str();
+    }
+  } else {
+    for (size_t di = 0; di != size1; ++di) {
+      const double real_value =
+          post_processing ? std::max<double>(0.0, std::min<double>(255.0, real_output[di])) : real_output[di];
+
+      const double diff = std::fabs(expected_output[di] - real_value);
+      const double tol = per_sample_tolerance + relative_per_sample_tolerance * std::fabs(expected_output[di]);
+      if (!IsResultCloselyMatch<double>(real_value, expected_output[di], diff, tol)) {
+        res.first = COMPARE_RESULT::RESULT_DIFFERS;
+        // update error message if this is a larger diff
+        if (diff > max_diff || (std::isnan(diff) && !std::isnan(max_diff))) {
+          int64_t expected_int = 0;
+          int64_t real_int = 0;
+          memcpy(&expected_int, &expected_output[di], sizeof(FLOAT_TYPE));
+          memcpy(&real_int, &real_output[di], sizeof(FLOAT_TYPE));
+
+          std::ostringstream oss;
+          oss << std::hex << "expected " << expected_output[di] << " (" << expected_int << "), got " << real_value << " ("
+              << real_int << ")"
+              << ", diff: " << diff << ", tol=" << tol << ".";
+          res.second = oss.str();
+          max_diff = diff;
+        }
+        ++diff_count;
+      }
     }
   }
 
@@ -106,17 +135,43 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue
 }
 
 template <typename T>
-std::pair<COMPARE_RESULT, std::string> IsResultExactlyMatch(const Tensor& outvalue, const Tensor& expected_value) {
+std::pair<COMPARE_RESULT, std::string> IsResultExactlyMatch(const Tensor& outvalue, const Tensor& expected_value,
+    bool dropout = false) {
   const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
   const T* expected_output = expected_value.template Data<T>();
   const T* real_output = outvalue.template Data<T>();
-  for (size_t di = 0; di != size1; ++di) {
-    if (expected_output[di] != real_output[di]) {
+  // In dropout there is randomness in the mask and that makes it impossible to always get deterministic results.
+  // Hence, we count the number of zeros in real and expected outputs and ensure the count is similar.
+  const T zero = T();
+  if (dropout) {
+    int expected_dropout_zeros = 0;
+    int real_dropout_zeros = 0;
+    for (size_t di = 0; di != size1; ++di) {
+      if (real_output[di] == zero) {
+        real_dropout_zeros += 1;
+      }
+
+      if (expected_output[di] == zero) {
+        expected_dropout_zeros += 1;
+      }
+    }
+
+    float ratio = static_cast<float>(real_dropout_zeros) / static_cast<float>(expected_dropout_zeros);
+    if (ratio < 0.80f || ratio > 1.20f) {
       std::ostringstream oss;
-      oss << "expected " << expected_output[di] << ", got " << real_output[di];
+      oss << std::hex << "expected zeros (" << expected_dropout_zeros << "), got (" << real_dropout_zeros << ")";
       return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
     }
+  } else {
+    for (size_t di = 0; di != size1; ++di) {
+      if (expected_output[di] != real_output[di]) {
+        std::ostringstream oss;
+        oss << "expected " << expected_output[di] << ", got " << real_output[di];
+        return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
+      }
+    }
   }
+
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 }
 
@@ -168,7 +223,8 @@ std::pair<COMPARE_RESULT, std::string> CompareBFloat16Result(const Tensor& outva
 
 std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Tensor& outvalue, const Tensor& expected_tensor,
                                                          double per_sample_tolerance,
-                                                         double relative_per_sample_tolerance, bool post_processing) {
+                                                         double relative_per_sample_tolerance, bool post_processing,
+                                                         bool dropout_test = false) {
   if (expected_tensor.Shape() != outvalue.Shape()) {
     std::ostringstream oss;
     oss << "shape mismatch, expect " << expected_tensor.Shape().ToString() << " got " << outvalue.Shape().ToString();
@@ -176,7 +232,7 @@ std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Tensor& outvalue,
   }
   if (outvalue.IsDataType<float>()) {
     return CompareFloatResult<float>(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
-                                     post_processing);
+                                     post_processing, dropout_test);
   } else if (outvalue.IsDataType<double>()) {
     return CompareFloatResult<double>(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
                                       post_processing);
@@ -199,7 +255,7 @@ std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Tensor& outvalue,
   } else if (outvalue.IsDataType<int64_t>()) {
     return IsResultExactlyMatch<int64_t>(outvalue, expected_tensor);
   } else if (outvalue.IsDataType<bool>()) {
-    return IsResultExactlyMatch<bool>(outvalue, expected_tensor);
+    return IsResultExactlyMatch<bool>(outvalue, expected_tensor, dropout_test);
   } else if (outvalue.IsDataType<MLFloat16>()) {
     return CompareFloat16Result(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
                                 post_processing);
@@ -300,7 +356,8 @@ std::ostringstream& VectorToString(const std::vector<T>& input, std::ostringstre
 namespace onnxruntime {
 std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const OrtValue& expected_mlvalue,
                                                        double per_sample_tolerance,
-                                                       double relative_per_sample_tolerance, bool post_processing) {
+                                                       double relative_per_sample_tolerance, bool post_processing,
+                                                       bool dropout_test) {
   if (o.IsTensor() != expected_mlvalue.IsTensor() || o.Type() != expected_mlvalue.Type()) {
     return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
   }
@@ -324,7 +381,7 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const 
     return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
   }
   return CompareTwoTensors(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
-                           post_processing);
+                           post_processing, dropout_test);
 }
 
 std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const Ort::Value& o) {

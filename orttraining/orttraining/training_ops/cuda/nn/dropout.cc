@@ -38,6 +38,7 @@ template <typename T1, typename T2>
 Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T1>::MappedType CudaT;
   typedef typename ToCudaType<T2>::MappedType CudaT2;
+  typedef typename ToCudaType<bool>::MappedType CudaT3;
 
   //Get X_data
   const Tensor* X = context->Input<Tensor>(0);
@@ -48,11 +49,29 @@ Status Dropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
 
   //Get Y_data
   auto Y = context->Output(0, shape);
+  ORT_ENFORCE(Y->Shape() == shape, "X and Y should have the same shape");
+
   auto Y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T1>());
 
   //Get mask_data
   auto mask = context->Output(1, shape);
   ORT_ENFORCE(!mask || mask->Shape().Size() == N);
+
+  const Tensor* training_mode = context->Input<Tensor>(2);
+  //Check for inference mode.
+  if (!trainable_dropout_ && training_mode == nullptr) {  // || static_cast<bool>(*reinterpret_cast<const CudaT3*>(training_mode->Data<bool>())) == false) {
+    if (Y_data != X_data) {
+      CUDA_CALL_THROW(cudaMemcpyAsync(Y_data, X_data, N * sizeof(T1), cudaMemcpyDeviceToDevice));
+    }
+
+    // If mask is requested, return all 1s.
+    if (mask != nullptr) {
+      ORT_ENFORCE(cudaMemset(mask->MutableData<bool>(), true, N * sizeof(bool)) == cudaSuccess);
+    }
+
+    return Status::OK();
+  }
+
   IAllocatorUniquePtr<bool> temp_mask_buffer{};  // buffer to use if mask is not provided
   bool* const mask_data = [this, N, mask, &temp_mask_buffer]() {
     if (mask) return mask->MutableData<bool>();

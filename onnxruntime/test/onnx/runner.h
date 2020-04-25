@@ -131,6 +131,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
                const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
                double default_per_sample_tolerance, double default_relative_per_sample_tolerance,
                const std::unordered_set<std::basic_string<ORTCHAR_T>>& disabled_tests,
+               const std::unordered_set<std::basic_string<ORTCHAR_T>>& dropout_tests,
                const std::function<void(ITestCase*)>& process_function);
 
 //Do not run this function in the thread pool passed in

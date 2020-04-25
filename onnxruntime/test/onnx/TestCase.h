@@ -19,6 +19,7 @@ class ValueInfoProto;
 //One test case can contain multiple test data(input/output pairs)
 class ITestCase {
  public:
+  ITestCase() : dropout_test(false){};
   virtual void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b, std::unordered_map<std::string, OrtValue*>& name_data_map,
                             bool is_input) = 0;
   virtual const PATH_CHAR_TYPE* GetModelUrl() const = 0;
@@ -35,6 +36,7 @@ class ITestCase {
   virtual ::onnxruntime::common::Status GetPerSampleTolerance(double* value) = 0;
   virtual ::onnxruntime::common::Status GetRelativePerSampleTolerance(double* value) = 0;
   virtual ::onnxruntime::common::Status GetPostProcessing(bool* value) = 0;
+  bool dropout_test;
 };
 
 class TestModelInfo {
