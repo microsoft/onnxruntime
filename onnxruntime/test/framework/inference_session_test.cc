@@ -362,6 +362,22 @@ TEST(InferenceSessionTests, NoTimeout) {
   RunModel(session_object, run_options);
 }
 
+TEST(InferenceSessionTests, OnlyExecutePathToFetches) {
+  SessionOptions so;
+
+  so.session_logid = "InferenceSessionTests.OnlyExecutePathToFetches";
+
+  InferenceSession session_object{so, GetEnvironment()};
+  Status st;
+  ASSERT_TRUE((st = session_object.Load(MODEL_URI)).IsOK()) << st.ErrorMessage();
+  ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st.ErrorMessage();
+
+  RunOptions run_options;
+  run_options.run_tag = "one session/one tag";
+  run_options.only_execute_path_to_fetches = true;
+  RunModel(session_object, run_options);
+}
+
 TEST(InferenceSessionTests, DisableCPUArena) {
   SessionOptions so;
 

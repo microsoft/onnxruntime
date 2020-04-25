@@ -77,7 +77,6 @@ option(onnxruntime_USE_OPENMP "Build with OpenMP support" OFF)
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
 option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
-option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
@@ -103,6 +102,11 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
 
 
+
+# training options
+option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
+option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
+option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -164,6 +168,9 @@ endif()
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
+set(ORTTRAINING_ROOT ${PROJECT_SOURCE_DIR}/../orttraining)
+set(ORTTRAINING_SOURCE_DIR ${ORTTRAINING_ROOT}/orttraining)
+
 file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" ORT_VERSION)
 
 # Guarantee that the Eigen code that you are #including is licensed
@@ -428,6 +435,7 @@ if (onnxruntime_USE_OPENBLAS AND onnxruntime_USE_EIGEN_FOR_BLAS)
 endif()
 
 get_filename_component(ONNXRUNTIME_ROOT "${ONNXRUNTIME_ROOT}" ABSOLUTE)
+get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
 set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
@@ -856,6 +864,37 @@ if (onnxruntime_USE_DML)
   include(dml)
 endif()
 
+if (onnxruntime_ENABLE_TRAINING)
+  add_compile_definitions(ENABLE_TRAINING)
+  if (onnxruntime_USE_HOROVOD)
+    if (WIN32)
+      message( FATAL_ERROR "Horovod is not supported on Windows." )
+    elseif (UNIX)
+      find_package(MPI REQUIRED)
+      add_definitions(-DUSE_HOROVOD=1)
+      set(HOROVOD_ROOT ${PROJECT_SOURCE_DIR}/external/horovod)
+      set(HOROVOD_INCLUDE_DIRS  "${HOROVOD_ROOT}/horovod/common" ${MPI_CXX_INCLUDE_PATH})
+      add_subdirectory(horovod EXCLUDE_FROM_ALL)
+      # use external/horovod/third_party/gloo/cmake/Modules/Findnccl.cmake to locate nccl lib path
+      list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external/horovod/third_party/gloo/cmake/Modules/)
+      find_package(nccl REQUIRED)  
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES horovod ${NCCL_LIBRARIES} ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+    endif()
+  endif()
+
+  if (onnxruntime_USE_CUDA)
+    if (WIN32)
+      message(WARNING "NCCL is not supported on Windows GPU Build." )
+    elseif (UNIX)
+      message( "NCCL is enabled in Linux GPU Build." )
+      add_definitions(-DUSE_NCCL=1)
+    endif()
+  endif()
+
+  add_subdirectory(tensorboard EXCLUDE_FROM_ALL)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
+endif()
+
 #names in this var must match the directory names under onnxruntime/core/providers
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas)
@@ -915,6 +954,7 @@ if (onnxruntime_USE_WINML)
   include(winml.cmake)
 endif() # if(onnxruntime_USE_WINML)
 
+
 #The following files may use the 'onnxruntime_libs' and 'onnxruntime_EXTERNAL_LIBRARIES' vars
 
 if (onnxruntime_BUILD_SHARED_LIB)
@@ -939,6 +979,13 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   # turned ON by the previous step when building a shared lib
   set(CMAKE_SKIP_BUILD_RPATH OFF)
   include(onnxruntime_unittests.cmake)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING)
+  include(onnxruntime_training.cmake)
+  if (onnxruntime_ENABLE_TRAINING_E2E_TESTS)
+    include(onnxruntime_training_e2e_tests.cmake)
+  endif()
 endif()
 
 if (onnxruntime_BUILD_CSHARP)
