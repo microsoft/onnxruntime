@@ -788,9 +788,7 @@ def build_targets(args, cmake_path, build_dir, configs, parallel):
             num_cores = str(multiprocessing.cpu_count())
             if is_windows():
                 build_tool_args += ["/maxcpucount:" + num_cores]
-            elif is_macOS() and args.use_xcode:
-                build_tool_args += ["-parallelizeTargets -jobs " + num_cores]
-            else:
+            elif not (is_macOS() and args.use_xcode):
                 build_tool_args += ["-j" + num_cores]
 
         if build_tool_args:
