@@ -23,28 +23,28 @@ ONNX_OPERATOR_KERNEL_EX(
 class GemmHelper {
  public:
   GemmHelper(const TensorShape& left, bool trans_left, const TensorShape& right, bool trans_right, const TensorShape& bias) {
-    assert(false);
-    left;
-    trans_left;
-    right;
-    trans_right;
-    bias;
+    PROVIDER_NOT_IMPLEMENTED
+    ORT_UNUSED_PARAMETER(left);
+    ORT_UNUSED_PARAMETER(trans_left);
+    ORT_UNUSED_PARAMETER(right);
+    ORT_UNUSED_PARAMETER(trans_right);
+    ORT_UNUSED_PARAMETER(bias);
   }
 
   int64_t M() const {
-    assert(false);
+    PROVIDER_NOT_IMPLEMENTED
     return 0;
   }
   int64_t N() const {
-    assert(false);
+    PROVIDER_NOT_IMPLEMENTED
     return 0;
   }
   int64_t K() const {
-    assert(false);
+    PROVIDER_NOT_IMPLEMENTED
     return 0;
   }
   Status State() const {
-    assert(false);
+    PROVIDER_NOT_IMPLEMENTED
     return Status::OK();
   }
 };

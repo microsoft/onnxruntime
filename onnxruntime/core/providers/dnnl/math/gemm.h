@@ -20,7 +20,7 @@ class Gemm final : public OpKernel {
     ORT_ENFORCE(info.GetAttr<float>("beta", &beta_).IsOK());
   }
 
-  Status Compute(OpKernelContext* context) const override;
+  Status Compute(OpKernelContext* context) const;
 
  private:
   bool trans_A_;
