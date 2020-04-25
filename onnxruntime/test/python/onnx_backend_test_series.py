@@ -199,6 +199,12 @@ def create_backend_test(testname=None):
               '^test_maxpool_2d_uint8'
             ]
 
+        if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
+            current_failing_tests.append('^test_div_cpu')
+            # temporarily exclude vgg19 test which comsumes too much memory, run out of memory on Upsquared device.
+            # single test pass for vgg19, need furture investigation
+            current_failing_tests.append('^test_vgg19_cpu')
+
         if c2.supports_device('OPENVINO_CPU_FP32'):
             current_failing_tests += [
                 '^test_operator_permute2_cpu',

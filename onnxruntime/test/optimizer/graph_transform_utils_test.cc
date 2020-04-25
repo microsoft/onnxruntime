@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/onnx_protobuf.h"
 #include "test/framework/test_utils.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
@@ -43,6 +44,7 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
 
   auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, custom_list);
   ASSERT_TRUE(transformers.size() == 2);
+
   auto l1_rule_transformer_name = optimizer_utils::GenerateRuleBasedTransformerName(TransformerLevel::Level1);
   RuleBasedGraphTransformer* rule_transformer = nullptr;
   for (const auto& transformer : transformers) {

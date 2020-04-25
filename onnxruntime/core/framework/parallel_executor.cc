@@ -237,7 +237,6 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
         }
       }
     }
-
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      node.Name() + "_fence_after",

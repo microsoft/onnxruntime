@@ -8,6 +8,7 @@
 #include "ort_value_pattern_planner.h"
 #include "utils.h"
 #include "tensorprotoutils.h"
+#include "arena.h"
 
 namespace onnxruntime {
 
@@ -30,7 +31,13 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
                       "Failed to get allocator for location: " + location.ToString());
 
       if (mem_patterns_.patterns[i].PeakSize() > 0) {
-        void* buffer = alloc->Alloc(mem_patterns_.patterns[i].PeakSize());
+        void* buffer;
+        if (alloc->Info().alloc_type == OrtArenaAllocator) {
+          buffer = static_cast<IArenaAllocator*>(alloc.get())->Reserve(mem_patterns_.patterns[i].PeakSize());
+        }
+        else {
+          buffer = alloc->Alloc(mem_patterns_.patterns[i].PeakSize());
+        }
         weights_buffers_.push_back(BufferUniquePtr(buffer, alloc));
         auto kvp = buffers_.insert(std::make_pair(location, buffer));
         if (!kvp.second) {

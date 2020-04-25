@@ -10,6 +10,7 @@ set(WINML_TEST_INC_DIR
   ${REPO_ROOT}/cmake/external/googletest/googletest/include
   ${REPO_ROOT}/cmake/external/protobuf/src
   ${REPO_ROOT}/cmake/external/wil/include
+  ${REPO_ROOT}/cmake/external/SafeInt
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated

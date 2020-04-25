@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -66,7 +67,7 @@ TEST(GatherOpTest, Gather_invalid_axis) {
 }
 
 TEST(GatherOpTest, Gather_invalid_index_cpu) {
-  OpTester test("Gather", 11);  // added check in opset 11
+  OpTester test("Gather"); 
   // Invalid index 3. data[3] does not exist.
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<float>("data", {3, 4},

@@ -2,9 +2,15 @@
 // Licensed under the MIT License.
 
 #include "core/platform/path_lib.h"
+
+#include <cassert>
+#include <array>
+#include <algorithm>
+
+#include "gsl/gsl"
+
 #include "core/common/status.h"
 #include "core/common/common.h"
-#include <assert.h>
 #ifdef _WIN32
 
 #if defined(USE_PATHCCH_LIB)
@@ -20,11 +26,15 @@
 #endif
 #else
 #include <libgen.h>
+#include <stdlib.h>
+#include <sys/stat.h>
 #endif
 
 #ifdef _WIN32
 namespace onnxruntime {
+
 namespace {
+
 Status RemoveFileSpec(PWSTR pszPath, size_t cchPath) {
   assert(pszPath != nullptr && pszPath[0] != L'\0');
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) && !defined(USE_PATHCCH_LIB)
@@ -90,23 +100,34 @@ common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& s, std
   ret.resize(wcslen(ret.c_str()));
   return Status::OK();
 }
+
 }  // namespace onnxruntime
 #else
 namespace onnxruntime {
 
+namespace {
+
+template <typename T>
+struct Freer {
+  void operator()(T* p) { ::free(p); }
+};
+
+using MallocdStringPtr = std::unique_ptr<char, Freer<char> >;
+
+}  // namespace
+
 common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& input,
                                       std::basic_string<ORTCHAR_T>& output) {
-  char* s = strdup(input.c_str());
-  output = dirname(s);
-  free(s);
+  MallocdStringPtr s{strdup(input.c_str())};
+  output = dirname(s.get());
   return Status::OK();
 }
 
 std::string GetLastComponent(const std::string& input) {
-  char* s = strdup(input.c_str());
-  std::string ret = basename(s);
-  free(s);
+  MallocdStringPtr s{strdup(input.c_str())};
+  std::string ret = basename(s.get());
   return ret;
 }
+
 }  // namespace onnxruntime
 #endif
