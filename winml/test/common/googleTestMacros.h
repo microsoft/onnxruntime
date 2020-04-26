@@ -39,10 +39,10 @@
         getapi().teardown_class();                      \
       }
 
-#define WINML_TEST_CLASS_TEARDOWN_CLASS(teardown_class, api) \
-    protected:                                               \
-      static void TearDownTestSuite() {                      \
-        getapi<api>().teardown_class();                      \
+#define WINML_TEST_CLASS_TEARDOWN_CLASS_EX(teardown_class, api) \
+    protected:                                                  \
+      static void TearDownTestSuite() {                         \
+        getapi<api>().teardown_class();                         \
       }
 
 #define WINML_TEST_CLASS_SETUP_METHOD(setup_method) \
