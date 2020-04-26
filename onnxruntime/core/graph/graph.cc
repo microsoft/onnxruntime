@@ -2396,6 +2396,7 @@ std::string Graph::GenerateNodeArgName(const std::string& base_name) {
 
 std::string Graph::GenerateNodeName(const std::string& base_name) {
   // Define name-checking function for node name.
+  // Return true if the input name hasn't been used. Otherwise, return false.
   auto name_is_ok = [&] (const std::string name) {
     for (auto it = nodes_.begin(); it != nodes_.end(); ++it) {
       if (*it == nullptr) {
@@ -2404,12 +2405,12 @@ std::string Graph::GenerateNodeName(const std::string& base_name) {
       if (it->get()->Name() != name) {
         continue;
       }
-      // Find a matched name so we can reuse the input name.
+      // Find a matched name so we cannot reuse the input name.
       return false;
     }
 
     if (generated_node_names_.find(name) != generated_node_names_.end()) {
-      // Find a matched name so we can reuse the input name.
+      // Find a matched name so we cannot reuse the input name.
       return false;
     }
     
