@@ -21,10 +21,22 @@ using namespace WEX::TestExecution;
       return true;                                \
     }
 
+#define WINML_TEST_CLASS_SETUP_CLASS_EX(setup_class, api) \
+    TEST_CLASS_SETUP(TestClassSetup) {                    \
+      getapi<api>().setup_class();                          \
+      return true;                                        \
+    }
+
 #define WINML_TEST_CLASS_TEARDOWN_CLASS(teardown_class) \
     TEST_CLASS_CLEANUP(TestClassCleanup) {              \
       getapi().teardown_class();                        \
       return true;                                      \
+    }
+
+#define WINML_TEST_CLASS_TEARDOWN_CLASS_EX(teardown_class, api) \
+    TEST_CLASS_CLEANUP(TestClassCleanup) {                      \
+      getapi<api>().teardown_class();                             \
+      return true;                                              \
     }
 
 #define WINML_TEST_CLASS_SETUP_METHOD(setup_method) \
@@ -33,10 +45,22 @@ using namespace WEX::TestExecution;
       return true;                                  \
     }
 
+#define WINML_TEST_CLASS_SETUP_METHOD_EX(setup_method, api) \
+    TEST_METHOD_SETUP(TestMethodSetup) {                    \
+      getapi<api>().setup_method();                           \
+      return true;                                          \
+    }
+
 #define WINML_TEST_CLASS_TEARDOWN_METHOD(teardown_method) \
     TEST_METHOD_CLEANUP(TestClassCleanup) {               \
       getapi().teardown_method();                         \
       return true;                                        \
+    }
+
+#define WINML_TEST_CLASS_TEARDOWN_METHOD_EX(teardown_method, api) \
+    TEST_METHOD_CLEANUP(TestClassCleanup) {                       \
+      getapi<api>().teardown_method();                              \
+      return true;                                                \
     }
 
 #define WINML_TEST_CLASS_BEGIN_TESTS
@@ -48,6 +72,11 @@ using namespace WEX::TestExecution;
 #define WINML_TEST(group_name, test_name) \
   TEST_METHOD(test_name) {                \
     getapi().test_name();                 \
+  }
+
+#define WINML_TEST_EX(group_name, test_name, api) \
+  TEST_METHOD(test_name) {                        \
+    getapi<api>().test_name();                    \
   }
 
 #define WINML_SKIP_TEST(message)                                                                 \

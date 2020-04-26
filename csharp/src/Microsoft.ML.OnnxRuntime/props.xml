@@ -22,6 +22,16 @@
    </Link>
   </ItemDefinitionGroup>
 
+ <PropertyGroup>
+    <EnginePlatform Condition="'$(Platform)' == 'Win32'">x86</EnginePlatform>
+    <EnginePlatform Condition="'$(Platform)' != 'Win32'">$(Platform)</EnginePlatform>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <OnnxRuntimeBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win-$(EnginePlatform)\native\onnxruntime.dll</OnnxRuntimeBinary>
+    <DirectMLBinary Condition="Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-$(EnginePlatform)\native\directml.dll')">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(EnginePlatform)\native\directml.dll</DirectMLBinary>
+  </PropertyGroup>
+
   <ItemGroup Condition="Exists('packages.config') OR
                         Exists('$(MSBuildProjectName).packages.config') OR
                         Exists('packages.$(MSBuildProjectName).config')">

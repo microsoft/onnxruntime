@@ -3,6 +3,7 @@
 
 set(WINML_TEST_SRC_DIR ${REPO_ROOT}/winml/test)
 set(WINML_TEST_INC_DIR
+  ${REPO_ROOT}/winml/api
   ${REPO_ROOT}/winml/test/common
   ${REPO_ROOT}/winml/lib/Common/inc
   ${REPO_ROOT}/onnxruntime
@@ -80,7 +81,11 @@ function(get_winml_test_api_src
 )
   file(GLOB winml_test_api_src CONFIGURE_DEPENDS
       "${winml_test_src_path}/api/*.h"
-      "${winml_test_src_path}/api/*.cpp")
+      "${winml_test_src_path}/api/*.cpp"
+      "${winml_test_src_path}/api/raw/*.h"
+      "${winml_test_src_path}/api/raw/*.cpp"
+      "${winml_test_src_path}/api/raw/winml/*.h"
+      "${winml_test_src_path}/api/raw/winml/*.cpp")
   set(${output_winml_test_api_src} ${winml_test_api_src} PARENT_SCOPE)
 endfunction()
 
