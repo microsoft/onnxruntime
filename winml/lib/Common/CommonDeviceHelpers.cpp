@@ -84,7 +84,7 @@ HRESULT GetDXCoreAdapterMetadata(ID3D12Device& device, bool& isMcdmAdapter, uint
 }
 #endif
 
-HRESULT GetD3D12Device(const winrt::Windows::AI::MachineLearning::LearningModelDevice& device, ID3D12Device** outDevice) {
+HRESULT GetD3D12Device(const winml::LearningModelDevice& device, ID3D12Device** outDevice) {
   _LUID id;
   id.LowPart = device.AdapterId().LowPart;
   id.HighPart = device.AdapterId().HighPart;
@@ -139,7 +139,7 @@ constexpr uint32_t c_intelVendorId = 0x8086;
 constexpr uint32_t c_nvidiaVendorId = 0x10DE;
 constexpr uint32_t c_amdVendorId = 0x1002;
 
-bool IsFloat16Supported(const winrt::Windows::AI::MachineLearning::LearningModelDevice& device) {
+bool IsFloat16Supported(const winml::LearningModelDevice& device) {
   auto adapterId = device.AdapterId();
   if (!adapterId.HighPart && !adapterId.LowPart) {
     // CPU device
@@ -154,7 +154,7 @@ bool IsFloat16Supported(const winrt::Windows::AI::MachineLearning::LearningModel
 
 bool IsFloat16Supported(ID3D12Device* device) {
 #ifndef USE_DML
-    throw winrt::hresult_error(ERROR_NOT_SUPPORTED, L"IsFloat16Supported is not implemented for WinML only build."); 
+    throw winrt::hresult_error(E_NOTIMPL, L"IsFloat16Supported is not implemented for WinML only build."); 
 #else
   bool isBlocked;
   if (FAILED(IsFloat16Blocked(*device, &isBlocked)) || isBlocked) {

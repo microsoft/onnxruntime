@@ -46,6 +46,11 @@ namespace cuda {
                           ? common::Status::OK() \
                           : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDNN2 error executing ", #expr))
 
+#define CUFFT_RETURN_IF_ERROR(expr)              \
+  ORT_RETURN_IF_ERROR(CUFFT_CALL(expr)           \
+                          ? common::Status::OK() \
+                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUFFT error executing ", #expr))
+
 // -----------------------------------------------------------------------
 // Base class for CUDA kernels
 // -----------------------------------------------------------------------
@@ -91,6 +96,8 @@ class CudaKernel : public OpKernel {
   inline void AddDeferredReleaseCPUPtr(void* p) const {
     provider_->AddDeferredReleaseCPUPtr(p);
   }
+
+  const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); };
 
   // To support cudaMemcpyAsync, the cpu memory should be allocated in pinned memory
   // and it can only be released after the copy has finished
@@ -165,7 +172,7 @@ class CudaKernel : public OpKernel {
   inline curandGenerator_t CurandGenerator() const {
     return provider_->PerThreadCurandGenerator();
   }
-  
+
   template <typename T>
   inline const T* GetConstOnes(size_t count) const {
     return provider_->template GetConstOnes<T>(count);
@@ -214,38 +221,6 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
   }
   return true;
 }
-
-struct DeviceProp {
-  static const std::vector<cudaDeviceProp>& GetCachedDeviceProps() {
-    std::call_once(s_cachedDevicePropsInitFlag, [=] {
-      int numDevices;
-      // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
-      CUDA_CALL_THROW(cudaDeviceSynchronize());
-      CUDA_CALL_THROW(cudaGetDeviceCount(&numDevices));
-      s_cachedDeviceProps.resize(numDevices);
-      for (int i = 0; i < numDevices; i++)
-        CUDA_CALL_THROW(cudaGetDeviceProperties(&s_cachedDeviceProps[i], i));
-    });
-
-    return s_cachedDeviceProps;
-  }
-
-  static size_t GetCurrentDeviceId() {
-    int deviceId;
-    cudaGetDevice(&deviceId);
-    return (size_t)deviceId;
-  }
-
-  // get device properties of current device
-  static const cudaDeviceProp& GetDeviceProps() {
-    const auto& cachedDevicesProps = GetCachedDeviceProps();
-    return cachedDevicesProps[GetCurrentDeviceId()];
-  }
-
- private:
-  static std::vector<cudaDeviceProp> s_cachedDeviceProps;
-  static std::once_flag s_cachedDevicePropsInitFlag;
-};
 
 class CublasMathModeSetter {
  public:

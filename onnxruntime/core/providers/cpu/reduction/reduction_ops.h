@@ -27,10 +27,13 @@ class ReduceKernelBase {
       ORT_ENFORCE(info.GetAttr("keepdims", &keepdims).IsOK());
     }
     keepdims_ = (keepdims == 1);
+    int64_t select_last_index = info.GetAttrOrDefault<int64_t>("select_last_index", 0);
+    select_last_index_ = (select_last_index != 0);
   }
 
   std::vector<int64_t> axes_;
   bool keepdims_;
+  bool select_last_index_;
 };
 
 template <bool allow_multi_axes>

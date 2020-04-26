@@ -26,6 +26,7 @@
 #pragma warning(push)
 #pragma warning(disable : 4267)
 #pragma warning(disable : 4127)
+#pragma warning(disable : 6255)
 #endif
 #include "Eigen/src/Core/arch/Default/Half.h"
 #if defined(__GNUC__)
@@ -83,6 +84,17 @@ void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE
   int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
 }
+
+#if defined(_M_AMD64) || defined(__x86_64__)
+template <>
+void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                              const int64_t N, const int64_t K, double alpha, const double* A, const double* B, double beta,
+                              double* C, ThreadPool* threadpool) {
+  int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
+  int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
+  MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
+}
+#endif
 
 template <>
 void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C, ThreadPool* threadpool) {
@@ -161,6 +173,20 @@ void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE
 }
 
 template <>
+void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                              const int64_t N, const int64_t K, double alpha, const double* A, const double* B, double beta,
+                              double* C, ThreadPool* /*context*/) {
+  int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
+  int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
+  cblas_dgemm(CblasRowMajor, TransA, TransB,
+              gsl::narrow_cast<int>(M),
+              gsl::narrow_cast<int>(N),
+              gsl::narrow_cast<int>(K),
+              alpha, A, lda, B, ldb,
+              beta, C, gsl::narrow_cast<int>(N));
+}
+
+template <>
 void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C, ThreadPool*) {
   cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, M, N, K, 1, A, K, B, N, 0, C, N);
 }
@@ -204,6 +230,7 @@ CAFFE2_SPECIALIZED_AXPY(float, s)
     EigenVectorMap<T>(y, N) = ConstEigenVectorMap<T>(x, N).array().expr(); \
   }
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Exp, exp)
+DELEGATE_SIMPLE_UNARY_FUNCTION(float, Log, log)
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Sqr, square)
 #undef DELEGATE_SIMPLE_UNARY_FUNCTION
 
@@ -227,7 +254,9 @@ DELEGATE_POWX_FUNCTION(float)
   EIGEN_SIMPLE_BINARY_FUNCTION(int64_t, Funcname, expr)
 
 DEFINE_SIMPLE_BINARY_FUNCTION(Add, +)
+DEFINE_SIMPLE_BINARY_FUNCTION(Sub, -)
 DEFINE_SIMPLE_BINARY_FUNCTION(Mul, *)
+DEFINE_SIMPLE_BINARY_FUNCTION(Div, / )
 
 #undef EIGEN_SIMPLE_BINARY_FUNCTION
 #undef DEFINE_FLOAT_BINARY_FUNCTION
@@ -531,9 +560,81 @@ uint16_t floatToHalf(float f) {
   return Eigen::half_impl::float_to_half_rtne(f).x;
 }
 
+uint16_t doubleToHalf(double f) {
+  return Eigen::half_impl::float_to_half_rtne(static_cast<float>(f)).x;
+}
+
 float halfToFloat(uint16_t h) {
   return Eigen::half_impl::half_to_float(Eigen::half_impl::raw_uint16_to_half(h));
 }
+
+// AddToRow and AddToCol adds the corresponding row/col vector b to the matrix a
+// of shape M x N. The actual implementation uses eigen which is column major,
+// so notice the row/column swap in the actual implementation.
+#define DELEGATE_BROADCAST_BINARY_FUNCTION(T, Funcname, expr)                                                    \
+  template <>                                                                                                    \
+  void Funcname##ToRow<T, CPUMathUtil>(int M, int N, const T* a, const T* b, T* y, CPUMathUtil*) {               \
+    EigenArrayMap<T>(y, N, M) = ConstEigenArrayMap<T>(a, N, M).colwise() expr ConstEigenVectorArrayMap<T>(b, N); \
+  }                                                                                                              \
+  /* inplace versions */                                                                                         \
+  template <>                                                                                                    \
+  void Funcname##ToRow<T, CPUMathUtil>(int M, int N, const T* x, T* y, CPUMathUtil*) {                           \
+    EigenArrayMap<T>(y, N, M).colwise() expr## = ConstEigenVectorArrayMap<T>(x, N);                              \
+  }                                                                                                              \
+  template <>                                                                                                    \
+  void Funcname##ToCol<T, CPUMathUtil>(int M, int N, const T* x, T* y, CPUMathUtil*) {                           \
+    EigenArrayMap<T>(y, N, M).rowwise() expr## = ConstEigenVectorArrayMap<T>(x, M).transpose();                  \
+  }
+
+#define DEFINE_BROADCAST_BINARY_FUNCTION(name, op)      \
+  DELEGATE_BROADCAST_BINARY_FUNCTION(int32_t, name, op) \
+  DELEGATE_BROADCAST_BINARY_FUNCTION(int64_t, name, op) \
+  DELEGATE_BROADCAST_BINARY_FUNCTION(float, name, op)
+
+DEFINE_BROADCAST_BINARY_FUNCTION(Add, +)
+DEFINE_BROADCAST_BINARY_FUNCTION(Sub, -)
+DEFINE_BROADCAST_BINARY_FUNCTION(Mul, *)
+DEFINE_BROADCAST_BINARY_FUNCTION(Div, /)
+
+#define SPECIALIZED_ROWWISESUM(T)                                                 \
+  template <>                                                                     \
+  void RowwiseSum<T, CPUMathUtil>(int N, int D, const T* x, T* y, CPUMathUtil*) { \
+    EigenVectorMap<T>(y, N) = ConstEigenMatrixMap<T>(x, D, N).colwise().sum();    \
+  }
+SPECIALIZED_ROWWISESUM(float)
+#undef SPECIALIZED_ROWWISESUM
+
+#define SPECIALIZED_SUM(T)                                                                             \
+  template <>                                                                                          \
+  void Sum<T, CPUMathUtil>(int N, const T* x, T* y, CPUMathUtil* /* unused */, Tensor* /* unused */) { \
+    *y = ConstEigenVectorMap<T>(x, N).sum();                                                           \
+  }
+
+SPECIALIZED_SUM(float);
+SPECIALIZED_SUM(int32_t);
+SPECIALIZED_SUM(int64_t);
+
+#undef SPECIALIZED_SUM
+
+#define SPECIALIZED_SCALE(T)                                                                           \
+  template <>                                                                                          \
+  void Scale<T, CPUMathUtil>(int n, float alpha, const T* x, T* y, CPUMathUtil* /*provider*/) {        \
+    EigenVectorMap<T>(y, n) = ConstEigenVectorMap<T>(x, n) * alpha;                                    \
+  }                                                                                                    \
+  template <>                                                                                          \
+  void Scale<T, CPUMathUtil>(int n, const float* alpha, const T* x, T* y, CPUMathUtil* /*provider*/) { \
+    EigenVectorMap<T>(y, n) = ConstEigenVectorMap<T>(x, n) * (*alpha);                                 \
+  }
+SPECIALIZED_SCALE(float)
+#undef SPECIALIZED_SCALE
+
+#define SPECIALIZED_DOT(T)                                                                   \
+  template <>                                                                                \
+  void Dot<T, CPUMathUtil>(int N, const T* a, const T* b, T* y, CPUMathUtil* /*provider*/) { \
+    *y = ConstEigenVectorMap<T>(a, N).dot(ConstEigenVectorMap<T>(b, N));                     \
+  }
+SPECIALIZED_DOT(float)
+#undef SPECIALIZED_DOT
 
 }  // namespace math
 }  // namespace onnxruntime

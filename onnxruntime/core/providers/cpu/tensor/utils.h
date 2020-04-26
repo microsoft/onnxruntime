@@ -25,6 +25,11 @@ struct TensorPitches : std::vector<int64_t> {
     if (gsl::narrow_cast<ptrdiff_t>(padded_rank) < 0)
       return false;
 
+    // Guard against Scalars
+    if (pitch_rank == 0) {
+      return true;
+    }
+
     *(p.rbegin()) = 1;  // The innermost axis is 1 (single values)
     if (tensor_rank > 1) {
       for (size_t i = tensor_rank - 1; i-- > 0;) {
@@ -34,7 +39,7 @@ struct TensorPitches : std::vector<int64_t> {
 
     if (padded_rank >= 1) {
       for (size_t i = 0; i < padded_rank; ++i) {
-        if (i == 0)
+        if (i == 0 && tensor_rank > 0)  // For scalar tensor, the values in the pitches are all 1.
           p.operator[](padded_rank - 1) = p.operator[](padded_rank) * dims[0];
         else
           p.operator[](padded_rank - 1 - i) = p.operator[](padded_rank - 1);
@@ -157,10 +162,14 @@ struct SliceSkips : std::vector<int64_t> {
 };
 
 // This provides easy sequential iteration over a subset of a tensor given a span of starts, extents & optionally steps
-template <typename T>
-struct SliceIterator {
-  SliceIterator(const Tensor& tensor, gsl::span<const int64_t> starts,
-                gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
+// The base class is type agnostic to minimize binary size. The derived class provides any type specific logic.
+struct SliceIteratorBase {
+ private:
+  enum class byte : unsigned char {};
+
+ protected:
+  SliceIteratorBase(const Tensor& tensor, gsl::span<const int64_t> starts,
+                    gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
       : tensor_(tensor), extents_(extents), skips_(tensor_.Shape(), extents, steps), indices_(extents.size(), 0) {
     auto& dims = tensor_.Shape().GetDims();
     Init(dims, starts, steps);
@@ -170,16 +179,15 @@ struct SliceIterator {
   // The explicit tensor_shape usually has inner most axis flattened. For example, given shape[1,4,4,2], if last axis
   // does not have padding or slice, then it will be flattened as [1,4,8] for better performance (One inner most copy instead of 4).
   // Also supports arbitrary positive and negative stepping along individual axes
-  SliceIterator(const Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts,
-                gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
+  SliceIteratorBase(const Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts,
+                    gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
       : tensor_(tensor), extents_(extents), skips_(tensor_shape, extents, steps), indices_(extents.size(), 0) {
     const auto& dims = tensor_shape.GetDims();
     Init(dims, starts, steps);
   }
 
   // Initialize initial skip and inner_extent.
-  void Init(const std::vector<int64_t>& dims, gsl::span<const int64_t> starts,
-            gsl::span<const int64_t> steps) {
+  void Init(const std::vector<int64_t>& dims, gsl::span<const int64_t> starts, gsl::span<const int64_t> steps) {
     ORT_ENFORCE(dims.size() == starts.size() &&
                 dims.size() == extents_.size() &&
                 dims.size() >= steps.size());
@@ -187,7 +195,7 @@ struct SliceIterator {
     size_t pitch = 1;
     // Initial skip, so that input_ points to the first element to copy
     for (size_t i = dims.size(); i-- > 0;) {
-      input_ += pitch * starts[i];
+      input_ += pitch * starts[i] * element_size_;
       pitch *= dims[i];
     }
 
@@ -199,38 +207,74 @@ struct SliceIterator {
 
   void AdvanceOverInnerExtent() {
     size_t axis = skips_.size() - 1;
-    input_ += skips_[axis];
+    input_ += skips_[axis] * element_size_;
     while (axis-- && ++indices_[axis] == extents_[axis]) {
       indices_[axis] = 0;
-      input_ += skips_[axis];
+      input_ += skips_[axis] * element_size_;
     }
   }
 
   void IncrementInnerDimension() {
-    input_ += inner_step_;
+    input_ += inner_step_ * element_size_;
     if (++inner_counter_ == inner_extent_) {
       inner_counter_ = 0;
       AdvanceOverInnerExtent();
     }
   }
 
-  // postfix iterator increment
-  const T* operator++(int) {
-    const T* input = input_;
-    IncrementInnerDimension();
-    return input;
-  }
-
-  // prefix iterator increment
-  const T* operator++() {
-    IncrementInnerDimension();
+  const void* cur_input() const {
     return input_;
   }
 
-  const T& operator*() const {
-    return *input_;
+  // Assumes SolitaryInnerStep() == true
+  void* CopyInnermostAxisSolitaryInnerStep(void* output) {
+    byte* out_bytes = reinterpret_cast<byte*>(output);
+    auto bytes_to_copy = inner_extent_ * element_size_;
+
+    if (!is_string_tensor_) {
+      std::copy(input_, input_ + bytes_to_copy, out_bytes);
+    } else {
+      const std::string* input = reinterpret_cast<const std::string*>(input_);
+      std::string* out = reinterpret_cast<std::string*>(output);
+      std::copy(input, input + inner_extent_, out);
+    }
+
+    input_ += bytes_to_copy;
+    out_bytes += bytes_to_copy;
+    AdvanceOverInnerExtent();
+
+    return out_bytes;
   }
 
+  // Assumes generic inner_step_
+  void* CopyInnermostAxisNonSolitaryInnerStep(void* output) {
+    // need to special case std::string so the copy works correctly
+    if (!is_string_tensor_) {
+      // switch on element size so copy is efficient
+      switch (element_size_) {
+        case sizeof(uint8_t):
+          output = TypedCopyInnermostAxisNonSolitaryInnerStep<uint8_t>(output);
+          break;
+        case sizeof(uint16_t):
+          output = TypedCopyInnermostAxisNonSolitaryInnerStep<uint16_t>(output);
+          break;
+        case sizeof(uint32_t):
+          output = TypedCopyInnermostAxisNonSolitaryInnerStep<uint32_t>(output);
+          break;
+        case sizeof(uint64_t):
+          output = TypedCopyInnermostAxisNonSolitaryInnerStep<uint64_t>(output);
+          break;
+        default:
+          ORT_THROW("Unexpected element size of ", element_size_);
+      }
+    } else {
+      output = TypedCopyInnermostAxisNonSolitaryInnerStep<std::string>(output);
+    }
+
+    return output;
+  }
+
+ public:
   // splitting the function that copies the innermost dimension into 2 separate methods,
   // CopyInnermostAxisSolitaryInnerStep and CopyInnermostAxisNonSolitaryInnerStep,
   // as this is most likely being called within a loop
@@ -238,31 +282,76 @@ struct SliceIterator {
   // up to the caller to call the correct one based on SolitaryInnerStep().
   bool SolitaryInnerStep() const { return inner_step_ == 1; }
 
-  // Assumes SolitaryInnerStep() == true
-  T* CopyInnermostAxisSolitaryInnerStep(T* output) {
-    std::copy(input_, input_ + inner_extent_, output);
-    input_ += inner_extent_;
-    output += inner_extent_;
-    AdvanceOverInnerExtent();
-    return output;
-  }
-
-  // Assumes generic inner_step_
-  T* CopyInnermostAxisNonSolitaryInnerStep(T* output) {
+ private:
+  template <typename T>
+  void* TypedCopyInnermostAxisNonSolitaryInnerStep(void* output) {
+    // sizeof(T) == element_size_
+    T* out = reinterpret_cast<T*>(output);
     for (size_t i = 0; i < inner_extent_; ++i) {
-      *output++ = *input_;
+      *out++ = *reinterpret_cast<const T*>(input_);
       IncrementInnerDimension();
     }
-    return output;
+
+    return out;
   }
 
- private:
   const Tensor& tensor_;
-  const T* input_{tensor_.template Data<T>()};
+  const bool is_string_tensor_{tensor_.IsDataTypeString()};
+  // we do everything in this class using bytes to minimize binary size
+  const byte* input_{reinterpret_cast<const byte*>(tensor_.DataRaw())};
+  const int64_t element_size_ = tensor_.DataType()->Size();
+
   gsl::span<const int64_t> extents_;
   size_t inner_counter_{}, inner_extent_, inner_step_;
   SliceSkips skips_;
   std::vector<int64_t> indices_;  // There is no index for innermost axis since it's a special case
+};
+
+// This provides easy sequential iteration over a subset of a tensor given a span of starts, extents & optionally steps
+template <typename T>
+struct SliceIterator : public SliceIteratorBase {
+  SliceIterator(const Tensor& tensor, gsl::span<const int64_t> starts,
+                gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
+      : SliceIteratorBase(tensor, starts, extents, steps) {
+  }
+
+  // This construct takes a explicit tensor_shape which might be different from the shape defined in input tensor.
+  // The explicit tensor_shape usually has inner most axis flattened. For example, given shape[1,4,4,2], if last axis
+  // does not have padding or slice, then it will be flattened as [1,4,8] for better performance (One inner most copy instead of 4).
+  // Also supports arbitrary positive and negative stepping along individual axes
+  SliceIterator(const Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts,
+                gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
+      : SliceIteratorBase(tensor, tensor_shape, starts, extents, steps) {
+  }
+
+  // postfix iterator increment
+  const T* operator++(int) {
+    const T* input = static_cast<const T*>(cur_input());
+    IncrementInnerDimension();
+    return input;
+  }
+
+  // prefix iterator increment
+  const T* operator++() {
+    IncrementInnerDimension();
+    return static_cast<const T*>(cur_input());
+  }
+
+  const T& operator*() const {
+    return *static_cast<const T*>(cur_input());
+  }
+
+  // Assumes SolitaryInnerStep() == true
+  T* CopyInnermostAxisSolitaryInnerStep(T* output) {
+    void* new_output = SliceIteratorBase::CopyInnermostAxisSolitaryInnerStep(output);
+    return static_cast<T*>(new_output);
+  }
+
+  // Assumes generic inner_step_
+  T* CopyInnermostAxisNonSolitaryInnerStep(T* output) {
+    void* new_output = SliceIteratorBase::CopyInnermostAxisNonSolitaryInnerStep(output);
+    return static_cast<T*>(new_output);
+  }
 };
 
 inline void CopyCpuTensor(const Tensor* src, Tensor* tgt) {
@@ -364,6 +453,8 @@ struct WritableSliceIterator {
     return *input_;
   }
 
+  bool SolitaryInnerStep() const { return inner_step_ == 1; }
+
   // spliting the function that copies the innermost dimension into 2 separate methods,
   // as this is most likely being called within a loop
   // and we want to avoid the check inside to avoid overhead
@@ -378,6 +469,14 @@ struct WritableSliceIterator {
     return output;
   }
 
+  T* CopyFromInnermostAxisSolitaryInnerStep(T* src) {
+    std::copy(src, src + inner_extent_, input_);
+    input_ += inner_extent_;
+    src += inner_extent_;
+    AdvanceOverInnerExtent();
+    return src;
+  }
+
   // Assumes generic inner_step_
   T* CopyInnermostAxisNonSolitaryInnerStep(T* output) {
     for (size_t i = 0; i < inner_extent_; ++i) {
@@ -385,6 +484,14 @@ struct WritableSliceIterator {
       input_ += inner_step_;
     }
     return output;
+  }
+
+  T* CopyFromInnermostAxisNonSolitaryInnerStep(T* src) {
+    for (size_t i = 0; i < inner_extent_; ++i) {
+      *input_ = *src++;
+      IncrementInnerDimension();
+    }
+    return src;
   }
 
  private:

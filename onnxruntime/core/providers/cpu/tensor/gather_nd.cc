@@ -56,7 +56,7 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
   std::vector<int64_t> element_counts(last_indices_dimension,
                                       0LL);  // Number of elements for each input dimension
 
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp parallel for
 #endif
   for (int64_t i = 0; i < last_indices_dimension; ++i) {
@@ -79,7 +79,7 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
     p.output_base = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
   }
 
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp parallel for
 #endif
   for (int64_t i = 0; i < offset_count; ++i) {
@@ -114,7 +114,7 @@ Status GatherND::Compute(OpKernelContext* context) const {
 }
 
 Status GatherND::GatherNumber(const Prepare& p) const {
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp parallel for
 #endif
   for (int64_t i = 0; i < static_cast<int64_t>(p.element_offsets.size()); ++i) {
@@ -126,7 +126,7 @@ Status GatherND::GatherNumber(const Prepare& p) const {
 }
 
 Status GatherND::GatherString(const Prepare& p) const {
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp parallel for
 #endif
   for (int64_t i = 0; i < static_cast<int64_t>(p.element_offsets.size()); ++i) {

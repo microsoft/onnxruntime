@@ -176,6 +176,12 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
    * The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
 
 #### Build Instructions
+##### Windows
+
+```
+.\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home>
+```
+
 ##### Linux
 
 ```
@@ -221,17 +227,27 @@ See more information on the nGraph Execution Provider [here](./docs/execution_pr
 See more information on the OpenVINO Execution Provider [here](./docs/execution_providers/OpenVINO-ExecutionProvider.md).
 
 #### Pre-Requisites
-* Install the OpenVINO release along with its dependencies: [Windows]([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit), [Linux](https://software.intel.com/en-us/openvino-toolkit).
-   * For Linux, currently supports and is validated on OpenVINO 2019 R3.1
-   * For Windows, download the 2019 R3.1 Windows Installer.
-* Install the model optimizer prerequisites for ONNX by running:
-   * Windows: `<openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.bat`
-   * Linux: `<openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh`
-* Initialize the OpenVINO environment by running the setupvars in `\<openvino\_install\_directory\>\/bin` using `setupvars.bat` (Windows) or `source setupvars.sh` (Linux)
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
-   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Windows](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_windows.html#usb-myriad), [Linux](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_linux.html#install-VPU)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_VisionAcceleratorFPGA_Configure_2019R3.html)
+1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2020.2** for the appropriate OS and target hardware :
+   * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
+   * [Linux - FPGA](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux-fpga)
+   * [Windows - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-windows).
+
+   Follow [documentation](https://docs.openvinotoolkit.org/2020.2/index.html) for detailed instructions.
+2. Configure the target hardware with specific follow on instructions:
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux.html#install-VPU)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux_fpga.html)
+
+3. Initialize the OpenVINO environment by running the setupvars script as shown below:
+   * For Linux run:
+   ```
+      $ source <openvino_install_directory>/bin/setupvars.sh
+   ```
+   * For Windows run:
+   ```
+      C:\ <openvino_install_directory>\bin\setupvars.bat
+   ```
 
 
 #### Build Instructions
@@ -248,9 +264,7 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 
    <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
 
-  <code>--build_server</code>: Using this flag in addition to --use_openvino builds the OpenVINO Execution Provider with ONNX Runtime Server.
-
-* `<hardware_option>`: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
+* `<hardware_option>`: Specifies the default hardware target for building OpenVINO Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO-ExecutionProvider.md](./docs/execution_providers/OpenVINO-ExecutionProvider.md) for more details on dynamic device selection). Below are the options for different Intel target devices.
 
 | Hardware Option | Target Device |
 | --------------- | ------------------------|
@@ -397,6 +411,8 @@ alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/sh
 ```
 cmake ../onnxruntime-arm-upstream/cmake -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_GENERATE_TEST_REPORTS=ON -Donnxruntime_DEV_MODE=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_SHARED_LIB=ON -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_ACL=ON -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=ON -Donnxruntime_USE_TVM=OFF -Donnxruntime_USE_LLVM=OFF -Donnxruntime_ENABLE_MICROSOFT_INTERNAL=OFF -Donnxruntime_USE_BRAINSLICE=OFF -Donnxruntime_USE_NUPHAR=OFF -Donnxruntime_USE_EIGEN_THREADPOOL=OFF -Donnxruntime_BUILD_UNIT_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
 ```
+The ```-Donnxruntime_USE_ACL=ON``` option will use, by default, the 19.05 version of the Arm Compute Library. To set the right version you can use:
+```-Donnxruntime_USE_ACL_1902=ON```, ```-Donnxruntime_USE_ACL_1905=ON``` or ```-Donnxruntime_USE_ACL_1908=ON```;
 
 2. Build ONNX Runtime library, test and performance application:
 ```
@@ -408,6 +424,27 @@ make -j 6
 libonnxruntime.so.0.5.0
 onnxruntime_perf_test
 onnxruntime_test_all
+```
+
+#### Build Instructions(Jetson Nano)
+
+1. Build ACL Library (skip if already built)
+```
+cd ~
+git clone https://github.com/Arm-software/ComputeLibrary.git
+cd ComputeLibrary
+sudo apt install scons
+sudo apt install g++-arm-linux-gnueabihf
+scons -j8 arch=arm64-v8a  Werror=1 debug=0 asserts=0 neon=1 opencl=1 examples=1 build=native
+```
+2. Set environment variables to set include directory and shared object library path.
+```
+export CPATH=~/ComputeLibrary/include/:~/ComputeLibrary/
+export LD_LIBRARY_PATH=~/ComputeLibrary/build/
+```
+3. Build onnxruntime with --use_acl flag
+```
+./build.sh --use_acl
 ```
 
 ---

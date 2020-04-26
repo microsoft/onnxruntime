@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -66,7 +67,7 @@ TEST(GatherOpTest, Gather_invalid_axis) {
 }
 
 TEST(GatherOpTest, Gather_invalid_index_cpu) {
-  OpTester test("Gather", 11);  // added check in opset 11
+  OpTester test("Gather"); 
   // Invalid index 3. data[3] does not exist.
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<float>("data", {3, 4},
@@ -76,7 +77,9 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
   test.AddInput<int32_t>("indices", {3}, {0LL, 1L, 1000L});
   test.AddOutput<float>("output", {1}, {1.0f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Mismatch between number of source and target dimensions.");
+  // On Cuda it is impossible to dereference indecies memory on CPU so the check can not run
+  test.Run(OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=1000 must be within the inclusive range [-3,2]",
+           {kCudaExecutionProvider, kOpenVINOExecutionProvider,kNGraphExecutionProvider, kDnnlExecutionProvider, kNupharExecutionProvider, kTensorrtExecutionProvider});
 }
 
 #ifdef USE_CUDA
@@ -320,7 +323,9 @@ TEST(GatherOpTest, Gather_axis1_neg_indices2d_int8) {
                          {1, 0, 2, 1,
                           11, 10, 12, 11,
                           21, 20, 22, 21});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Assertion `regionRanges != nullptr' failed
+  // OpenVINO EP: Disabled due to accuracy issues
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //TensorRT: Assertion `regionRanges != nullptr' failed
+
 }
 
 }  // namespace test

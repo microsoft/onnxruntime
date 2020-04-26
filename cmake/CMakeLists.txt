@@ -57,7 +57,7 @@ option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
-option(onnxruntime_USE_MKLML "Build DNNL with MKL-ML binary dependency" OFF)
+option(onnxruntime_USE_MKLML "Build the default cpu provider with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_FEATURIZERS "Build ML Featurizers support" OFF)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
@@ -69,12 +69,14 @@ option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to prov
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_TVM "Build tvm for code-gen" OFF)
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
+option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
+option(onnxruntime_USE_AVX2 "Use AVX2 instructions" OFF)
+option(onnxruntime_USE_AVX512 "Use AVX512 instructions" OFF)
 option(onnxruntime_USE_LLVM "Build tvm with LLVM" OFF)
 option(onnxruntime_USE_OPENMP "Build with OpenMP support" OFF)
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
 option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
-option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
@@ -89,6 +91,9 @@ option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_MIGRAPHX "Build with AMDMIGraphX support" OFF)
 option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
+option(onnxruntime_USE_ACL_1902 "Build with ACL version 1902 support" OFF)
+option(onnxruntime_USE_ACL_1905 "Build with ACL version 1905 support" OFF)
+option(onnxruntime_USE_ACL_1908 "Build with ACL version 1908 support" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 #The onnxruntime_PREFER_SYSTEM_LIB is mainly designed for package managers like apt/yum/vcpkg.
@@ -98,6 +103,11 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
 
 
+
+# training options
+option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
+option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
+option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -116,7 +126,7 @@ if(NOT WIN32)
 else()
   check_cxx_compiler_flag(/d2FH4- HAS_D2FH4)
   if (HAS_D2FH4)
-    message("Enabling /d2FH4-")
+    message("Disabling /d2FH4")
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /d2FH4-")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /d2FH4-")
   endif()
@@ -132,7 +142,6 @@ if(onnxruntime_USE_OPENMP)
   if (OPENMP_FOUND)
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    add_definitions(-DUSE_OPENMP)
     # MKLML and NGraph depend on their own OpenMP library that may be different with the compiler's.
     # Disable the options to build mklml/NGraph and OpenMP together.
     if(onnxruntime_USE_MKLML)
@@ -160,11 +169,18 @@ endif()
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
+set(ORTTRAINING_ROOT ${PROJECT_SOURCE_DIR}/../orttraining)
+set(ORTTRAINING_SOURCE_DIR ${ORTTRAINING_ROOT}/orttraining)
+
 file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" ORT_VERSION)
 
 # Guarantee that the Eigen code that you are #including is licensed
 # under the MPL2 and possibly more permissive licenses (like BSD).
 add_definitions(-DEIGEN_MPL2_ONLY)
+if(MSVC)
+  add_definitions(-DEIGEN_HAS_CONSTEXPR -DEIGEN_HAS_VARIADIC_TEMPLATES -DEIGEN_HAS_CXX11_MATH -DEIGEN_HAS_CXX11_ATOMIC
+          -DEIGEN_STRONG_INLINE=inline)
+endif()
 
 if(onnxruntime_CROSS_COMPILING)
   set(CMAKE_CROSSCOMPILING ON)
@@ -208,7 +224,18 @@ if (MSVC)
     set(gtest_force_shared_crt ON CACHE BOOL "Use shared (DLL) run-time lib for gtest" FORCE)
   endif()
   #Always enable exception handling, even for Windows ARM
-  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
+  string(APPEND CMAKE_CXX_FLAGS " /EHsc /wd26812")
+  string(APPEND CMAKE_C_FLAGS " /EHsc /wd26812")
+  if(onnxruntime_USE_AVX)
+    string(APPEND CMAKE_CXX_FLAGS " /arch:AVX")
+    string(APPEND CMAKE_C_FLAGS " /arch:AVX")
+  elseif(onnxruntime_USE_AVX2)
+    string(APPEND CMAKE_CXX_FLAGS " /arch:AVX2")
+    string(APPEND CMAKE_C_FLAGS " /arch:AVX2")
+  elseif(onnxruntime_USE_AVX512)
+    string(APPEND CMAKE_CXX_FLAGS " /arch:AVX512")
+    string(APPEND CMAKE_C_FLAGS " /arch:AVX512")
+  endif()
   if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
@@ -233,10 +260,17 @@ if (MSVC)
   endif()
 else()
   if(onnxruntime_BUILD_FOR_NATIVE_MACHINE)
-    string(APPEND CMAKE_CXX_FLAGS_RELEASE " -march=native -mtune=native")
-    string(APPEND CMAKE_C_FLAGS_RELEASE " -march=native -mtune=native")
-    string(APPEND CMAKE_CXX_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
-    string(APPEND CMAKE_C_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
+    string(APPEND CMAKE_CXX_FLAGS " -march=native -mtune=native")
+    string(APPEND CMAKE_C_FLAGS " -march=native -mtune=native")
+  elseif(onnxruntime_USE_AVX)
+    string(APPEND CMAKE_CXX_FLAGS " -mavx")
+    string(APPEND CMAKE_C_FLAGS " -mavx")
+  elseif(onnxruntime_USE_AVX2)
+    string(APPEND CMAKE_CXX_FLAGS " -mavx2")
+    string(APPEND CMAKE_C_FLAGS " -mavx2")
+  elseif(onnxruntime_USE_AVX512)
+    string(APPEND CMAKE_CXX_FLAGS " -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl")
+    string(APPEND CMAKE_C_FLAGS " -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl")
   endif()
 endif()
 
@@ -244,6 +278,16 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     #For Mac compliance
     message("Adding flags for Mac builds")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
+endif()
+
+if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
+    #For ios compliance
+    message("Adding flags for ios builds")
+    if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target arm64-apple-darwin-macho")
+    elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target armv7a-apple-darwin-macho")
+    endif()
 endif()
 
 #Dependencies
@@ -392,6 +436,7 @@ if (onnxruntime_USE_OPENBLAS AND onnxruntime_USE_EIGEN_FOR_BLAS)
 endif()
 
 get_filename_component(ONNXRUNTIME_ROOT "${ONNXRUNTIME_ROOT}" ABSOLUTE)
+get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
 set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
@@ -439,8 +484,19 @@ endfunction()
 set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto)
 
 # ACL
-if (onnxruntime_USE_ACL)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute acl arm_compute_graph arm_compute_core)
+if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 OR onnxruntime_USE_ACL_1908)
+  set(onnxruntime_USE_ACL ON)
+  if(onnxruntime_USE_ACL_1902)
+    add_definitions(-DACL_1902=1)
+  else()
+    if(onnxruntime_USE_ACL_1908)
+      add_definitions(-DACL_1908=1)
+    else()
+      add_definitions(-DACL_1905=1)
+    endif()
+  endif()
+
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_graph arm_compute_core)
 endif()
 
 # MKLML
@@ -536,9 +592,11 @@ if (WIN32)
     string(APPEND CMAKE_CXX_FLAGS " /wd4127")
     # class needs to have dll-interface to be used by clients
     string(APPEND CMAKE_CXX_FLAGS " /wd4251")
+    # issued by thrust nonstandard extension used: nameless struct/union
+    string(APPEND CMAKE_CXX_FLAGS " /wd4201")
     if (onnxruntime_ENABLE_STATIC_ANALYSIS)
         string(APPEND CMAKE_CXX_FLAGS
-            " /analyze:WX- "
+            " /analyze:stacksize 131072"
             # disable warning because there are many occurrences from test macros
             " /wd6326 " # potential comparison of a constant with another constant
         )
@@ -590,6 +648,7 @@ else()
   check_cxx_compiler_flag(-Wmissing-braces HAS_MISSING_BRACES)
   check_cxx_compiler_flag(-Wignored-attributes HAS_IGNORED_ATTRIBUTES)
   check_cxx_compiler_flag(-Wdeprecated-copy HAS_DEPRECATED_COPY)
+  check_cxx_compiler_flag(-Wdeprecated-declarations HAS_DEPRECATED_DECLARATIONS)
   check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
   check_cxx_compiler_flag(-Wmaybe-uninitialized HAS_MAYBE_UNINITIALIZED)
 
@@ -664,31 +723,40 @@ endif()
 
 if(onnxruntime_USE_OPENVINO)
 
+  if (NOT onnxruntime_USE_FULL_PROTOBUF)
+    message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for OpenVINO execution provider.")
+  endif()
+
   add_definitions(-DUSE_OPENVINO=1)
+  if (NOT WIN32)
+    include(openvino)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ovep_ngraph)
+    list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
+  endif()
 
-    if(onnxruntime_USE_OPENVINO_MYRIAD)
-        add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
-    endif()
+  if(onnxruntime_USE_OPENVINO_MYRIAD)
+    add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
+  endif()
 
-    if(onnxruntime_USE_OPENVINO_GPU_FP32)
-        add_definitions(-DOPENVINO_CONFIG_GPU_FP32=1)
-    endif()
+  if(onnxruntime_USE_OPENVINO_GPU_FP32)
+    add_definitions(-DOPENVINO_CONFIG_GPU_FP32=1)
+  endif()
 
-    if(onnxruntime_USE_OPENVINO_GPU_FP16)
-        add_definitions(-DOPENVINO_CONFIG_GPU_FP16=1)
-    endif()
+  if(onnxruntime_USE_OPENVINO_GPU_FP16)
+    add_definitions(-DOPENVINO_CONFIG_GPU_FP16=1)
+  endif()
 
-    if(onnxruntime_USE_OPENVINO_CPU_FP32)
-        add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
-    endif()
+  if(onnxruntime_USE_OPENVINO_CPU_FP32)
+    add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
+  endif()
 
-    if(onnxruntime_USE_OPENVINO_VAD_M)
-        add_definitions(-DOPENVINO_CONFIG_VAD_M=1)
-    endif()
+  if(onnxruntime_USE_OPENVINO_VAD_M)
+    add_definitions(-DOPENVINO_CONFIG_VAD_M=1)
+  endif()
 
-    if(onnxruntime_USE_OPENVINO_VAD_F)
-        add_definitions(-DOPENVINO_CONFIG_VAD_F=1)
-    endif()
+  if(onnxruntime_USE_OPENVINO_VAD_F)
+    add_definitions(-DOPENVINO_CONFIG_VAD_F=1)
+  endif()
 
 endif()
 
@@ -712,17 +780,22 @@ if (onnxruntime_USE_CUDA)
   if ( CMAKE_CUDA_FLAGS )
     list(REMOVE_ITEM CMAKE_CUDA_FLAGS "-cudart static")
   endif()
-  string(APPEND CMAKE_CUDA_FLAGS "-cudart shared")
+  if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.17.0")
+    # cmake 3.17.0 introduces CMAKE_CUDA_RUNTIME which must be used instead of explicit -cudart shared flag
+    set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
+  else()
+    string(APPEND CMAKE_CUDA_FLAGS "-cudart shared")
+  endif()
   enable_language(CUDA)
   set(CMAKE_CUDA_STANDARD 11)
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
-  list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand)
+  list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
   if (WIN32)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
 
     # delayload causes crash on exit, so disable for now
-    #file(GLOB cuda_dll_paths "${onnxruntime_CUDA_HOME}/bin/cublas64_*" "${onnxruntime_CUDA_HOME}/bin/cudart64_*" "${onnxruntime_CUDA_HOME}/bin/curand64_*")
+    #file(GLOB cuda_dll_paths "${onnxruntime_CUDA_HOME}/bin/cublas64_*" "${onnxruntime_CUDA_HOME}/bin/cudart64_*" "${onnxruntime_CUDA_HOME}/bin/curand64_*" "${onnxruntime_CUDA_HOME}/bin/cufft64_*")
     #set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:cudnn64_7.dll")
     #foreach(cuda_dll_path ${cuda_dll_paths})
     #    get_filename_component(cuda_dll_file_name ${cuda_dll_path} NAME)
@@ -742,6 +815,10 @@ if (onnxruntime_USE_CUDA)
   if (NOT WIN32)
     set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --expt-relaxed-constexpr --compiler-options -fPIC")
   endif()
+  # Options passed to cudafe
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=bad_friend_decl\"")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=unsigned_compare_with_zero\"")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=expr_has_no_effect\"")
 endif()
 
 if (onnxruntime_USE_TENSORRT)
@@ -796,6 +873,37 @@ if (onnxruntime_USE_DML)
   include(dml)
 endif()
 
+if (onnxruntime_ENABLE_TRAINING)
+  add_compile_definitions(ENABLE_TRAINING)
+  if (onnxruntime_USE_HOROVOD)
+    if (WIN32)
+      message( FATAL_ERROR "Horovod is not supported on Windows." )
+    elseif (UNIX)
+      find_package(MPI REQUIRED)
+      add_definitions(-DUSE_HOROVOD=1)
+      set(HOROVOD_ROOT ${PROJECT_SOURCE_DIR}/external/horovod)
+      set(HOROVOD_INCLUDE_DIRS  "${HOROVOD_ROOT}/horovod/common" ${MPI_CXX_INCLUDE_PATH})
+      add_subdirectory(horovod EXCLUDE_FROM_ALL)
+      # use external/horovod/third_party/gloo/cmake/Modules/Findnccl.cmake to locate nccl lib path
+      list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external/horovod/third_party/gloo/cmake/Modules/)
+      find_package(nccl REQUIRED)  
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES horovod ${NCCL_LIBRARIES} ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+    endif()
+  endif()
+
+  if (onnxruntime_USE_CUDA)
+    if (WIN32)
+      message(WARNING "NCCL is not supported on Windows GPU Build." )
+    elseif (UNIX)
+      message( "NCCL is enabled in Linux GPU Build." )
+      add_definitions(-DUSE_NCCL=1)
+    endif()
+  endif()
+
+  add_subdirectory(tensorboard EXCLUDE_FROM_ALL)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
+endif()
+
 #names in this var must match the directory names under onnxruntime/core/providers
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas)
@@ -836,12 +944,13 @@ else()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
 endif()
 
-# Default version parts for Windows.AI.MachineLearning.dll and onnxruntime.dll in non-ADO pipeline local builds
+# Default version parts for Microsoft.AI.MachineLearning.dll and onnxruntime.dll in non-ADO pipeline local builds
 set(VERSION_MAJOR_PART   0 CACHE STRING "First part of numeric file/product version.")
 set(VERSION_MINOR_PART   0 CACHE STRING "Second part of numeric file/product version.")
 set(VERSION_BUILD_PART       0 CACHE STRING "Third part of numeric file/product version.")
 set(VERSION_PRIVATE_PART     0 CACHE STRING "Fourth part of numeric file/product version.")
 set(VERSION_STRING       "Internal Build" CACHE STRING "String representation of file/product version.")
+include(wil.cmake)
 
 if (onnxruntime_USE_WINML)
   # WINML uses and depends on the shared lib.  Note:  You can build WINML without DML and you will get a
@@ -851,9 +960,9 @@ if (onnxruntime_USE_WINML)
         FATAL_ERROR
         "Option onnxruntime_USE_WINML can only be used when onnxruntime_BUILD_SHARED_LIB is also enabled")
   endif()
-  include(wil.cmake)
   include(winml.cmake)
 endif() # if(onnxruntime_USE_WINML)
+
 
 #The following files may use the 'onnxruntime_libs' and 'onnxruntime_EXTERNAL_LIBRARIES' vars
 
@@ -881,8 +990,28 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   include(onnxruntime_unittests.cmake)
 endif()
 
+if (onnxruntime_ENABLE_TRAINING)
+  include(onnxruntime_training.cmake)
+  if (onnxruntime_ENABLE_TRAINING_E2E_TESTS)
+    include(onnxruntime_training_e2e_tests.cmake)
+  endif()
+endif()
+
 if (onnxruntime_BUILD_CSHARP)
   message(STATUS "CSharp Build is enabled")
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
   include(onnxruntime_csharp.cmake)
+endif()
+
+if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
+  set_target_properties(onnxruntime PROPERTIES VS_GLOBAL_AppContainerApplication true)
+  set_target_properties(winml_dll PROPERTIES VS_GLOBAL_AppContainerApplication true)
+
+  target_link_options(onnxruntime PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
+  target_link_options(winml_dll PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
+
+  if (onnxruntime_target_platform STREQUAL "x86")
+    target_link_options(onnxruntime PRIVATE /SAFESEH)
+    target_link_options(winml_dll PRIVATE /SAFESEH)
+  endif()
 endif()

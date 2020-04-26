@@ -11,6 +11,7 @@
 #include "core/framework/op_kernel.h"
 #include "test/framework/model_builder_utils.h"
 #include "core/framework/allocation_planner.h"
+#include "core/util/thread_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "test/test_environment.h"
 using namespace ONNX_NAMESPACE;
@@ -156,7 +157,7 @@ class PlannerTest : public ::testing::Test {
   std::vector<std::unique_ptr<OpKernelInfo>> op_kernel_infos_;
   std::vector<std::pair<onnxruntime::Node*, KernelDef&>> kernel_bindings_;
   ExecutionProviders execution_providers_;
-  concurrency::ThreadPool tp_;
+  std::unique_ptr<concurrency::ThreadPool> tp_;
   SessionState state_;
   ShapeMap shape_map_;
   std::unique_ptr<SequentialExecutionPlan> plan_;
@@ -165,8 +166,8 @@ class PlannerTest : public ::testing::Test {
   PlannerTest()
       : model_("test", false, DefaultLoggingManager().DefaultLogger()),
         graph_(model_.MainGraph()),
-        tp_("test", 1),
-        state_(execution_providers_, false, &tp_, nullptr) {
+        tp_(concurrency::CreateThreadPool(&onnxruntime::Env::Default(), OrtThreadPoolParams(), concurrency::ThreadPoolType::INTRA_OP)),
+        state_(execution_providers_, false, tp_.get(), nullptr) {
     std_kernel_ = KernelDefBuilder().SetName("Transpose").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
     in_place_kernel_ =
         KernelDefBuilder().SetName("Relu").Provider(kCpuExecutionProvider).SinceVersion(1, 10).MayInplace(0, 0).Build();
@@ -200,8 +201,8 @@ class PlannerTest : public ::testing::Test {
 
   void BindKernel(onnxruntime::Node* p_node, ::onnxruntime::KernelDef& kernel_def, KernelRegistry* reg) {
     auto info = onnxruntime::make_unique<OpKernelInfo>(*p_node, kernel_def, *execution_providers_.Get(*p_node),
-                                               state_.GetInitializedTensors(), state_.GetOrtValueNameIdxMap(),
-                                               state_.GetFuncMgr(), state_.GetDataTransferMgr());
+                                                       state_.GetInitializedTensors(), state_.GetOrtValueNameIdxMap(),
+                                                       state_.GetFuncMgr(), state_.GetDataTransferMgr());
     op_kernel_infos_.push_back(std::move(info));
     if (reg->TryFindKernel(*p_node, onnxruntime::kCpuExecutionProvider) == nullptr) {
       auto st = reg->Register(

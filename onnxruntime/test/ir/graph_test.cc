@@ -246,6 +246,31 @@ TEST_F(GraphTest, SimpleUnique) {
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
 }
+  
+TEST_F(GraphTest, UnusedValueInfoSerializes) {
+  ModelProto m;
+  m.set_ir_version(4);
+  ImportOpset(m, "", 11);
+  GraphProto& g = *m.mutable_graph();   
+  NodeProto* node = g.add_node();
+  *node->add_input() = "x";
+  *node->add_output() = "sum";
+  node->set_op_type("Unique");
+  node->set_domain("");
+  ValueInfoProto* input1 = g.add_input();
+  input1->set_name("x");
+  SetTypeAndShape(input1->mutable_type()->mutable_tensor_type(), 1, {3, 4, 5});
+  ValueInfoProto* output = g.add_output();
+  output->set_name("sum");
+  SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {60});
+  ValueInfoProto* unused = g.add_value_info();
+  unused->set_name("unused");
+  SetTypeAndShape(unused->mutable_type()->mutable_tensor_type(), 1, {123});
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+  model->MainGraph().SetGraphProtoSyncNeeded();
+  EXPECT_TRUE(Model::Save(*model, "graph_with_unused_value_info.onnx").IsOK());
+}
 
 TEST_F(GraphTest, WrongOpset) {
   ModelProto m;
@@ -1282,6 +1307,50 @@ TEST_F(GraphTest, AddRemoveInitializerHandling) {
   auto num_initializers = graph_proto_from_resolved_graph.initializer_size();
   ASSERT_EQ(num_initializers, 0) << "Expected unused initializers to be removed from proto. "
                                  << num_initializers << " remain.";
+}
+
+TEST_F(GraphTest, SetInputsAndSetOutputs_NewInputAndOutput) {
+  std::shared_ptr<Model> model;
+  {
+    ModelProto m;
+    m.set_ir_version(4);
+    ImportOpset(m, "", 10);
+    ConstructASimpleAddGraph(*m.mutable_graph(), nullptr);
+    ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+  }
+
+  // starting from:
+  //   x + y = sum
+  // modify to:
+  //   (x + y) + z = sum_with_z
+  // set z as an additional input
+  // set sum_with_z as an additional output
+
+  Graph& graph = model->MainGraph();
+  TypeProto type_proto{};
+  SetTypeAndShape(type_proto.mutable_tensor_type(), 1, {3, 4, 5});
+  auto* sum = graph.GetNodeArg("sum");
+  auto* z = &graph.GetOrCreateNodeArg("z", &type_proto);
+  auto* sum_with_z = &graph.GetOrCreateNodeArg("sum_with_z", &type_proto);
+
+  graph.AddNode("add_z", "Add", "add z to sum", {sum, z}, {sum_with_z});
+
+  auto inputs = graph.GetInputsIncludingInitializers();
+  inputs.push_back(z);
+  graph.SetInputs(inputs);
+
+  auto outputs = graph.GetOutputs();
+  outputs.push_back(sum_with_z);
+  graph.SetOutputs(outputs);
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  inputs = graph.GetInputsIncludingInitializers();
+  ASSERT_TRUE(std::find(inputs.begin(), inputs.end(), z) != inputs.end()) << "expected new input z";
+
+  outputs = graph.GetOutputs();
+  ASSERT_TRUE(std::find(outputs.begin(), outputs.end(), sum_with_z) != outputs.end())
+      << "expected new output sum_with_z";
 }
 }  // namespace test
 }  // namespace onnxruntime

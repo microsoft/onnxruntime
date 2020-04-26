@@ -10,7 +10,7 @@
 #include "OnnxruntimeErrors.h"
 #include "LearningModelDevice.h"
 
-using namespace Windows::AI::MachineLearning;
+using namespace _winml;
 
 HRESULT OnnxruntimeDmlSessionBuilder::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, ID3D12Device* device, ID3D12CommandQueue* queue) {
   engine_factory_ = engine_factory;

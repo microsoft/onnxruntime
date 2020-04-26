@@ -197,7 +197,7 @@ void Check<MLFloat16>(const OpTester::Data& expected_data,
   }
 
   float threshold = 0.001f;
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA)
   threshold = 0.005f;
 #endif
   for (int i = 0; i < size; ++i) {
@@ -470,13 +470,17 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
   }
 
   // Create a simple model
-  std::unordered_map<std::string, int> domain_to_version(
-      extra_domain_to_version.begin(), extra_domain_to_version.end());
+  std::unordered_map<std::string, int> domain_to_version(extra_domain_to_version);
   if (domain_to_version.count(domain_) == 0) {
     domain_to_version.insert({domain_, opset_version_});
   } else {
-    ORT_ENFORCE(extra_domain_to_version.find(domain_)->second ==
-                opset_version_);
+    auto key_val = extra_domain_to_version.find(domain_);
+
+    ORT_ENFORCE(key_val->second <= opset_version_);
+
+    if (key_val->second < opset_version_) {
+      domain_to_version[domain_] = opset_version_;
+    }
   }
 
   auto p_model = onnxruntime::make_unique<onnxruntime::Model>(
@@ -517,8 +521,11 @@ std::vector<MLValue> OpTester::ExecuteModel(
   if (!status.IsOK()) {
     if (expect_result == ExpectResult::kExpectFailure) {
       EXPECT_TRUE(!status.IsOK());
-      EXPECT_THAT(status.ErrorMessage(),
+      // Disable expected_failure_string checks for OpenVINO EP
+      if (provider_type != kOpenVINOExecutionProvider) {
+        EXPECT_THAT(status.ErrorMessage(),
                   testing::HasSubstr(expected_failure_string));
+      }
     } else {
       LOGS_DEFAULT(ERROR) << "Initialize failed with status: "
                           << status.ErrorMessage();
@@ -549,9 +556,10 @@ std::vector<MLValue> OpTester::ExecuteModel(
       }
     } else {
       if (expect_result == ExpectResult::kExpectFailure) {
-        // Disable expected_failure_string checks for MKL-DNN and nGraph EP's
+        // Disable expected_failure_string checks for MKL-DNN ,nGraph and OpenVINO EP's
         if (provider_type != kDnnlExecutionProvider &&
-            provider_type != kNGraphExecutionProvider) {
+            provider_type != kNGraphExecutionProvider &&
+            provider_type != kOpenVINOExecutionProvider) {
           EXPECT_THAT(status.ErrorMessage(),
                       testing::HasSubstr(expected_failure_string));
         }
@@ -622,15 +630,22 @@ void OpTester::Run(
     const RunOptions* run_options,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
     ExecutionMode execution_mode,
-    const CustomOutputVerifierFn& custom_output_verifier) {
+    const CustomOutputVerifierFn& custom_output_verifier,
+    const Graph::ResolveOptions& options) {
   SessionOptions so;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
   so.execution_mode = execution_mode;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
   Run(so, expect_result, expected_failure_string, excluded_provider_types,
-      run_options, execution_providers, custom_output_verifier);
+      run_options, execution_providers, custom_output_verifier, options);
 }
+
+#define ASSERT_PROVIDER_STATUS_OK(function)                                                         \
+  do {                                                                                              \
+    Status _tmp_status = function;                                                                  \
+    ASSERT_TRUE(_tmp_status.IsOK()) << "provider: " << provider_type << ", error: " << _tmp_status; \
+  } while (false)
 
 void OpTester::Run(
     SessionOptions so,  // Take the SessionOptions by value (i.e. make a copy)
@@ -639,7 +654,8 @@ void OpTester::Run(
     const std::unordered_set<std::string>& excluded_provider_types,
     const RunOptions* run_options,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
-    const CustomOutputVerifierFn& custom_output_verifier) {
+    const CustomOutputVerifierFn& custom_output_verifier,
+    const Graph::ResolveOptions& options) {
   std::string cur_provider = "not set";
   try {
 #ifndef NDEBUG
@@ -656,12 +672,12 @@ void OpTester::Run(
           expect_result == ExpectResult::kExpectFailure) {
         // capture possible exceptions from shape inference for invalid testcase
         try {
-          status = graph.Resolve();
+          status = graph.Resolve(options);
         } catch (const std::exception& ex) {
           status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
         }
       } else {
-        status = graph.Resolve();
+        status = graph.Resolve(options);
       }
 
       if (!status.IsOK()) {
@@ -717,8 +733,7 @@ void OpTester::Run(
 
       for (auto& entry : *execution_providers) {
         provider_types += entry->Type() + ":";
-        EXPECT_TRUE(
-            session_object.RegisterExecutionProvider(std::move(entry)).IsOK());
+        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(entry)));
       }
 
       fetches_ = ExecuteModel<InferenceSession>(
@@ -740,7 +755,7 @@ void OpTester::Run(
         InferenceSession session_object{so, GetEnvironment()};
 
         for (auto& custom_session_registry : custom_session_registries_)
-          session_object.RegisterCustomRegistry(custom_session_registry);
+          ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(custom_session_registry));
 
         std::unique_ptr<IExecutionProvider> execution_provider;
         if (provider_type == onnxruntime::kCpuExecutionProvider)
@@ -751,12 +766,12 @@ void OpTester::Run(
           execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kNGraphExecutionProvider)
           execution_provider = DefaultNGraphExecutionProvider();
+	      else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
+	        execution_provider = DefaultOpenVINOExecutionProvider();
         else if (provider_type == onnxruntime::kNupharExecutionProvider)
           execution_provider = DefaultNupharExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
-        else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
-          execution_provider = DefaultOpenVINOExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
           execution_provider = DefaultNnapiExecutionProvider();
         else if (provider_type == onnxruntime::kAclExecutionProvider)
@@ -775,8 +790,8 @@ void OpTester::Run(
           // if node is not registered for the provider, skip
           node.SetExecutionProviderType(provider_type);
           if (provider_type == onnxruntime::kNGraphExecutionProvider ||
+	            provider_type == onnxruntime::kOpenVINOExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
-              provider_type == onnxruntime::kOpenVINOExecutionProvider ||
               provider_type == onnxruntime::kNupharExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
@@ -801,14 +816,11 @@ void OpTester::Run(
           continue;
 
         for (auto& custom_session_registry : custom_session_registries_)
-          session_object.RegisterCustomRegistry(custom_session_registry);
+          ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(custom_session_registry));
 
         has_run = true;
 
-        EXPECT_TRUE(
-            session_object
-                .RegisterExecutionProvider(std::move(execution_provider))
-                .IsOK());
+        ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
 
         fetches_ = ExecuteModel<InferenceSession>(
             *p_model, session_object, expect_result, expected_failure_string,
@@ -833,8 +845,8 @@ template std::vector<MLValue> OpTester::ExecuteModel<training::TrainingSession>(
     Model& model, training::TrainingSession& session_object,
     ExpectResult expect_result, const std::string& expected_failure_string,
     const RunOptions* run_options,
-    std::unordered_map<std::string, MLValue> feeds,
-    std::vector<std::string> output_names, const std::string& provider_type,
+    const std::unordered_map<std::string, MLValue>& feeds,
+    const std::vector<std::string>& output_names, const std::string& provider_type,
     const CustomOutputVerifierFn& custom_output_verifier);
 #endif
 

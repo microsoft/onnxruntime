@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 
 class BertOnnxModelKeras(BertOnnxModelTF):
 
-    def __init(self, model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only):
-        super().__init__(model, model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only)
+    def __init(self, model, num_heads, hidden_size):
+        super().__init__(model, num_heads, hidden_size)
 
     def match_mask_path(self, add_or_sub_before_softmax):
         mask_nodes = self.match_parent_path(add_or_sub_before_softmax, ['Mul', 'Sub', 'Reshape', 'Cast'],
@@ -174,7 +174,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         reshape_nodes = self.get_nodes_by_op_type("Reshape")
         for reshape_node in reshape_nodes:
             parent = self.get_parent(reshape_node, 0)
-            if parent is None or parent.op_type == "Reshape":
+            if parent is not None and parent.op_type == "Reshape":
                 reshape_node.input[0] = parent.input[0]
                 count += 1
 
@@ -346,7 +346,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         for skiplayernorm_node in skiplayernorm_nodes:
             path = self.match_parent_path(
                 skiplayernorm_node,
-                ['Add', 'Reshape', 'MatMul', 'Reshape', 'Gelu', 'Add', 'Reshape', 'MatMul', 'Reshape', 'SkipLayerNormalization']
+                ['Add', 'Reshape', 'MatMul', 'Reshape', 'Gelu', 'Add', 'Reshape', 'MatMul', 'Reshape', 'SkipLayerNormalization'],
                 [None, 0, 0, 0, 0, 0, 0, 0, 0, 0]) # yapf: disable
             if path is None:
                 continue
@@ -386,7 +386,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
      Note that constant input for Add and Mul could be first or second input: like either A=0.5 or B=0.5 is fine.
     """
 
-    def fuse_gelu_with_elf(self, gelu_op_name):
+    def fuse_gelu_with_elf(self):
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
@@ -451,14 +451,13 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
-            gelu_node = onnx.helper.make_node(gelu_op_name, inputs=[root_node.output[0]], outputs=[mul.output[0]])
+            gelu_node = onnx.helper.make_node('Gelu', inputs=[root_node.output[0]], outputs=[mul.output[0]])
             gelu_node.domain = "com.microsoft"
             nodes_to_add.append(gelu_node)
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
         if len(nodes_to_add) > 0:
-            logger.info("Fused {} count:{}".format('FastGelu (approximation)' if gelu_op_name == 'FastGelu' else 'Gelu',
-                                                   len(nodes_to_add)))
+            logger.info(f"Fused Gelu count:{len(nodes_to_add)}")
         else:
-            super().fuse_gelu_with_elf(gelu_op_name)
+            super().fuse_gelu_with_elf()

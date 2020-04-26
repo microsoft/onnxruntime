@@ -44,7 +44,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
@@ -61,9 +61,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
+ } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(session_options, "CPU"));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(session_options, ""));
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
@@ -82,7 +82,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   } else if (provider_name == onnxruntime::kAclExecutionProvider) {
 #ifdef USE_ACL
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(session_options,
-	performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
+                                                                   performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
 #else
     ORT_THROW("Acl is not supported in this build\n");
 #endif
@@ -140,6 +140,31 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   for (size_t i = 0; i != input_count; ++i) {
     input_names_[i] = strdup(m->GetInputName(i).c_str());
   }
+}
+
+bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData()
+{
+  // iterate over all input nodes
+  for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
+    Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
+    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    if (type_info.GetONNXType() == ONNX_TYPE_TENSOR) {
+        auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+        std::vector<int64_t> input_node_dim = tensor_info.GetShape();
+
+        // free dimensions are treated as 1
+        for (int64_t& dim : input_node_dim) {
+          if (dim == -1) {
+            dim = 1;
+          }
+        }
+        // default allocator doesn't have to be freed by user
+        auto allocator = static_cast<OrtAllocator*>(Ort::AllocatorWithDefaultOptions());
+        Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(), input_node_dim.size(), tensor_info.GetElementType());
+        PreLoadTestData(0, i, input_tensor.release());
+    }
+  }
+  return true;
 }
 
 }  // namespace perftest

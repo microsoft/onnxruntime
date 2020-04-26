@@ -31,6 +31,7 @@ namespace perftest {
       "\t\tProvide 'duration' to run the test for a fix duration, and 'times' to repeated for a certain times. \n"
       "\t-M: Disable memory pattern.\n"
       "\t-A: Disable memory arena\n"
+      "\t-I: Generate tensor input binding (Free dimensions are treated as 1.)\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
       "\t-e [cpu|cuda|dnnl|tensorrt|ngraph|openvino|nuphar|dml|acl]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
       "'ngraph', 'openvino', 'nuphar', 'dml' or 'acl'. "
@@ -52,7 +53,7 @@ namespace perftest {
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:o:u:AMPvhs"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:o:u:AMPIvhs"))) != -1) {
     switch (ch) {
       case 'm':
         if (!CompareCString(optarg, ORT_TSTR("duration"))) {
@@ -84,10 +85,11 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kDnnlExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kNGraphExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kOpenVINOExecutionProvider;
+          test_config.run_config.optimization_level = ORT_DISABLE_ALL;
+        } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kNnapiExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
@@ -169,6 +171,9 @@ namespace perftest {
       }
       case 'u':
         test_config.run_config.optimized_model_path = optarg;
+        break;
+      case 'I':
+        test_config.run_config.generate_model_input_binding = true;
         break;
       case '?':
       case 'h':

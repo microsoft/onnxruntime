@@ -94,10 +94,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_cuda = false;
   bool enable_dnnl = false;
   bool enable_ngraph = false;
+  bool enable_openvino = false;
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
-  bool enable_openvino = false;
   bool enable_nnapi = false;
   bool enable_dml = false;
   bool enable_acl = false;
@@ -156,12 +156,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_dnnl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
             enable_ngraph = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
+            enable_openvino = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
             enable_nuphar = true;
           } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
             enable_tensorrt = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
-            enable_openvino = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
             enable_nnapi = true;
           } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
@@ -282,10 +282,24 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-
     if (enable_openvino) {
 #ifdef USE_OPENVINO
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "CPU"));
+      //Setting default optimization level for OpenVINO can be overriden with -o option
+      sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+      if(p_models != 1){
+        fprintf(stderr, "OpenVINO doesn't support more than 1 model running simultaneously default value of 1 will be set \n");
+        p_models = 1;
+      }
+      if(concurrent_session_runs != 1){
+        fprintf(stderr, "OpenVINO doesn't support more than 1 session running simultaneously default value of 1 will be set \n");
+        concurrent_session_runs = 1;
+      }
+      if(execution_mode == ExecutionMode::ORT_PARALLEL){
+        fprintf(stderr, "OpenVINO doesn't support parallel executor switching to sequential executor\n");
+        sf.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
+      }
+
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, ""));
 #else
       fprintf(stderr, "OpenVINO is not supported in this build");
       return -1;
@@ -411,7 +425,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     static const ORTCHAR_T* dnnl_disabled_tests[] = {ORT_TSTR("test_densenet121"), ORT_TSTR("test_resnet18v2"), ORT_TSTR("test_resnet34v2"), ORT_TSTR("test_resnet50v2"), ORT_TSTR("test_resnet101v2"),
                                                      ORT_TSTR("test_resnet101v2"), ORT_TSTR("test_vgg19"), ORT_TSTR("tf_inception_resnet_v2"), ORT_TSTR("tf_inception_v1"), ORT_TSTR("tf_inception_v3"), ORT_TSTR("tf_inception_v4"), ORT_TSTR("tf_mobilenet_v1_1.0_224"),
                                                      ORT_TSTR("tf_mobilenet_v2_1.0_224"), ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"), ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"),
-                                                     ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152")};
+                                                     ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152"), ORT_TSTR("batchnorm_example_training_mode"), ORT_TSTR("batchnorm_epsilon_training_mode")};
 
     std::unordered_set<std::basic_string<ORTCHAR_T> > all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
     if (enable_cuda) {
@@ -490,7 +504,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "Bad onnx test output. Needs test fix."},
       {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
-      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"},
+      {"dropout_default", "result differs", {"onnxtip"}},
+      {"dropout_random", "result differs", {"onnxtip"}},
+      {"celu", "invalid model", {"onnxtip"}},
+      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"}
   };
 
   if (enable_ngraph) {
@@ -509,14 +526,20 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
     broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
     broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
-    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});    
+    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.0_224", "Results mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
   }
-  if (enable_nuphar) {
-    broken_tests.insert({"cgan", "TVM exception during initialization"});
+
+  if (enable_openvino){
+    broken_tests.insert({"operator_permute2", "Disabled temporariliy"});
+    broken_tests.insert({"operator_repeat", "Disabled temporariliy"});
+    broken_tests.insert({"operator_repeat_dim_overflow", "Disabled temporariliy"});
+    broken_tests.insert({"mlperf_ssd_resnet34_1200", "Disabled temporariliy"});
+    broken_tests.insert({"candy", "Results mismatch: 1 of 150528"});
   }
+
   if (enable_dnnl) {
     broken_tests.insert({"tf_mobilenet_v2_1.0_224", "result mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});
@@ -530,22 +553,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"maxpool_2d_dilations", "maxpool dilations not supported"});
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "test pass on dev box but fails on CI build"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-  }
-
-  if (enable_openvino) {
-    broken_tests.insert({"fp16_shufflenet", "accuracy mismatch with fp16 precision"});
-    broken_tests.insert({"fp16_inception_v1", "accuracy mismatch with fp16 precision"});
-    broken_tests.insert({"fp16_tiny_yolov2", "accuaracy mismatch with fp16 precision"});
-    broken_tests.insert({"scan_sum", "disable temporarily"});
-    broken_tests.insert({"scan9_sum", "disable temporarily"});
-    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-#ifdef OPENVINO_CONFIG_GPU_FP32
-    broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
-    broken_tests.insert({"div", "will be fixed in the next release"});
-#ifdef OPENVINO_CONFIG_GPU_FP16
-    broken_tests.insert({"div", "will be fixed in the next release"});
-#endif
-#endif
+    broken_tests.insert({"maxpool_2d_uint8", "Does not work on DNNL, NNAPI"});
   }
 
   if (enable_nnapi) {
@@ -559,6 +567,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"range_float_type_positive_delta_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"range_int32_type_negative_delta_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+    broken_tests.insert({"maxpool_2d_uint8", "result mismatch"});
+    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NC_expanded", "shape mismatch"});
+    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_expanded", "shape mismatch"});
+    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_mean_expanded", "shape mismatch"});
+    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_sum_expanded", "shape mismatch"});
+    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_expanded", "shape mismatch"});
+    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_mean_expanded", "shape mismatch"});
+    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_expanded", "shape mismatch"});
+    broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_ignore_index_expanded", "shape mismatch"});
   }
 
   if (enable_tensorrt) {
@@ -584,7 +601,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
     broken_tests.insert({"tf_inception_v1", "flaky test"});  //TODO: Investigate cause for flakiness
-    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+    broken_tests.insert({"faster_rcnn", "Linux: faster_rcnn:output=6383:shape mismatch, expect {77} got {57}"});
+    broken_tests.insert({"split_zero_size_splits", "alloc failed"});
   }
 
   if (enable_dml) {
@@ -611,6 +629,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"fp16_inception_v1", "Temporarily disabled pending investigation"});
     broken_tests.insert({"candy", "Temporarily disabled pending investigation"});
     broken_tests.insert({"BERT_Squad", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"LSTM_Seq_lens_unpacked", "The parameter is incorrect"});
   }
 
 #if defined(_WIN32) && !defined(_WIN64)
@@ -657,6 +676,18 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"dynamic_slice_end_out_of_bounds", "This model uses contrib ops."});
   broken_tests.insert({"dynamic_slice_neg", "This model uses contrib ops."});
   broken_tests.insert({"mvn", "This model uses contrib ops.", {"onnx130"}});
+  broken_tests.insert({"cdist_float32_euclidean_1000_2000_1", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float32_euclidean_1000_2000_500", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float32_euclidean_1_1_1", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float32_sqeuclidean_1000_2000_1", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float32_sqeuclidean_1000_2000_500", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float32_sqeuclidean_1_1_1", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float64_euclidean_1000_2000_1", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float64_euclidean_1000_2000_500", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float64_euclidean_1_1_1", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float64_sqeuclidean_1000_2000_1", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float64_sqeuclidean_1000_2000_500", "This model uses contrib ops."});
+  broken_tests.insert({"cdist_float64_sqeuclidean_1_1_1", "This model uses contrib ops."});
 #endif
 
   int result = 0;

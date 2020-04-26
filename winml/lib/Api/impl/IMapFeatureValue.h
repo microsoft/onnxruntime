@@ -3,17 +3,17 @@
 
 #pragma once
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 /* [uuid("3e4d4350-0b61-4517-aa6d-79d49bf164b4"), feature, contract, object, exclusiveto] */
 MIDL_INTERFACE("3e4d4350-0b61-4517-aa6d-79d49bf164b4")
 IMapFeatureValue : public ::IUnknown {
  public:
   /* [propget] */ virtual HRESULT STDMETHODCALLTYPE get_KeyKind(
-      /* [out, retval] */ winrt::Windows::AI::MachineLearning::TensorKind * kind) = 0;
+      /* [out, retval] */ winml::TensorKind * kind) = 0;
 
   /* [propget] */ virtual HRESULT STDMETHODCALLTYPE get_ValueDescriptor(
-      /* [out, retval] */ winrt::Windows::AI::MachineLearning::ILearningModelFeatureDescriptor * result) = 0;
+      /* [out, retval] */ winml::ILearningModelFeatureDescriptor * result) = 0;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml
