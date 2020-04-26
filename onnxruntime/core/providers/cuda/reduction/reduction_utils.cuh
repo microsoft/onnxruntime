@@ -18,21 +18,21 @@ __forceinline__ __host__ __device__ int least_pow2_bound(int value) {
   return static_cast<int>(++value_);
 }
 
-template<typename TAccumulated, typename TValue>
+template <typename TAccumulated, typename TValue>
 struct Cast {
   __forceinline__ __device__ TAccumulated operator()(const TValue& value) {
     return TAccumulated(value);
   }
 };
 
-template<typename TAccumulated, typename TValue>
+template <typename TAccumulated, typename TValue>
 struct Square {
   __forceinline__ __device__ TAccumulated operator()(const TValue& value) {
     return TAccumulated(value) * TAccumulated(value);
   }
 };
 
-template<typename TAccumulated, typename TValue>
+template <typename TAccumulated, typename TValue>
 struct Abs {
   __forceinline__ __device__ TAccumulated operator()(const TValue& value) {
     TAccumulated value_ = TAccumulated(value);
@@ -40,14 +40,14 @@ struct Abs {
   }
 };
 
-template<typename T> 
+template <typename T>
 struct Sqrt {
   __forceinline__ __device__ T operator()(const T& value) {
     return _Sqrt(value);
   }
 };
 
-template<typename T>
+template <typename T>
 struct Identity {
   __forceinline__ __device__ T operator()(const T& value) {
     return value;

@@ -19,7 +19,7 @@ using namespace onnxruntime::cuda;
       TIND,                                                                                                                                                                                                                                                             \
       kCudaExecutionProvider,                                                                                                                                                                                                                                           \
       KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).InputMemoryType<OrtMemTypeCPUInput>(2).InputMemoryType<OrtMemTypeCPUInput>(3).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
-      cuda::Slice<TIND, true>);
+      cuda::Slice<true>);
 
 REGISTER_TYPED_DYNAMICSLICE(int32_t)
 REGISTER_TYPED_DYNAMICSLICE(int64_t)

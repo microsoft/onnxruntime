@@ -5,8 +5,8 @@
 	path = cmake/external/googletest
 	url = https://github.com/google/googletest.git
 [submodule "cmake/external/onnx"]
-  path = cmake/external/onnx
-  url = https://github.com/onnx/onnx
+	path = cmake/external/onnx
+	url = https://github.com/onnx/onnx
 [submodule "cmake/external/tvm"]
 	path = cmake/external/tvm
 	url = https://github.com/microsoft/onnxruntime-tvm.git
@@ -28,6 +28,15 @@
 [submodule "cmake/external/DNNLibrary"]
 	path = cmake/external/DNNLibrary
 	url = https://github.com/JDAI-CV/DNNLibrary
+[submodule "cmake/external/horovod"]
+	path = cmake/external/horovod
+	url = https://github.com/horovod/horovod.git
+[submodule "cmake/external/cxxopts"]
+	path = cmake/external/cxxopts
+	url = https://github.com/jarro2783/cxxopts.git
+[submodule "cmake/external/tensorboard"]
+	path = cmake/external/tensorboard
+	url = https://github.com/tensorflow/tensorboard.git
 [submodule "cmake/external/mimalloc"]
 	path = cmake/external/mimalloc
 	url = https://github.com/microsoft/mimalloc.git
