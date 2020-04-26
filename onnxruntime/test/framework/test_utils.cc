@@ -50,7 +50,8 @@ IExecutionProvider* TestRknpuExecutionProvider() {
 }
 #endif
 
-static void CountOpsInGraphImpl(const Graph& graph, std::map<std::string, int>& ops) {
+static void CountOpsInGraphImpl(
+    const Graph& graph, bool recurse_into_subgraphs, std::map<std::string, int>& ops) {
   for (auto& node : graph.Nodes()) {
     auto pos = ops.find(node.OpType());
     if (pos == ops.end()) {
@@ -59,9 +60,9 @@ static void CountOpsInGraphImpl(const Graph& graph, std::map<std::string, int>& 
       ++pos->second;
     }
 
-    if (node.ContainsSubgraph()) {
+    if (recurse_into_subgraphs && node.ContainsSubgraph()) {
       for (auto& subgraph : node.GetSubgraphs()) {
-        CountOpsInGraphImpl(*subgraph, ops);
+        CountOpsInGraphImpl(*subgraph, recurse_into_subgraphs, ops);
       }
     }
   }
@@ -69,9 +70,9 @@ static void CountOpsInGraphImpl(const Graph& graph, std::map<std::string, int>& 
 
 // Returns a map with the number of occurrences of each operator in the graph.
 // Helper function to check that the graph transformations have been successfully applied.
-std::map<std::string, int> CountOpsInGraph(const Graph& graph) {
+std::map<std::string, int> CountOpsInGraph(const Graph& graph, bool recurse_into_subgraphs) {
   std::map<std::string, int> ops;
-  CountOpsInGraphImpl(graph, ops);
+  CountOpsInGraphImpl(graph, recurse_into_subgraphs, ops);
 
   return ops;
 }

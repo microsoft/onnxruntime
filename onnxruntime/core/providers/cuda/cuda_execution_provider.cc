@@ -15,6 +15,10 @@
 #include "contrib_ops/cuda_contrib_kernels.h"
 #endif
 
+#ifdef ENABLE_TRAINING
+#include "orttraining/training_ops/cuda_training_kernels.h"
+#endif
+
 using namespace onnxruntime::common;
 
 namespace {
@@ -54,7 +58,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 thread_local std::unique_ptr<CUDAExecutionProvider::PerThreadContextMap> CUDAExecutionProvider::per_thread_context_map_;
 
-CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit) {
+CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
@@ -62,7 +66,8 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
 
   DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault,
-       [](OrtDevice::DeviceId id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); }, cuda_mem_limit});
+       [](OrtDevice::DeviceId id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); }, cuda_mem_limit, arena_extend_strategy});
+
   allocator_ = CreateAllocator(default_memory_info, device_id);
 }
 
@@ -85,8 +90,15 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
 }
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id), cuda_mem_limit_(info.cuda_mem_limit) {
+    : IExecutionProvider{onnxruntime::kCudaExecutionProvider},
+      device_id_(info.device_id),
+      cuda_mem_limit_(info.cuda_mem_limit),
+      arena_extend_strategy_(info.arena_extend_strategy) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
+
+  // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
+  CUDA_CALL_THROW(cudaDeviceSynchronize());
+  CUDA_CALL_THROW(cudaGetDeviceProperties(&device_prop_, device_id_));
 
   size_t free = 0;
   size_t total = 0;
@@ -151,7 +163,7 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
     std::lock_guard<OrtMutex> lock(context_pool_mutex_);
     std::shared_ptr<PerThreadContext> ptc;
     if (retired_context_pool_.empty()) {
-      ptc = std::make_shared<PerThreadContext>(device_id_, cuda_mem_limit_);
+      ptc = std::make_shared<PerThreadContext>(device_id_, cuda_mem_limit_, arena_extend_strategy_);
     } else {
       ptc = retired_context_pool_.back();
       retired_context_pool_.pop_back();
@@ -1278,6 +1290,11 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
 #ifndef DISABLE_CONTRIB_OPS
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::cuda::RegisterCudaContribKernels(kernel_registry));
 #endif
+
+#ifdef ENABLE_TRAINING
+  ORT_RETURN_IF_ERROR(::onnxruntime::cuda::RegisterCudaTrainingKernels(kernel_registry));
+#endif
+
   return Status::OK();
 }
 

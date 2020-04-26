@@ -80,7 +80,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
   ```
 
 ## TensorRT
-**Ubuntu 18.04, CUDA 10.1.243, TensorRT 6.0.1**
+**Ubuntu 18.04, CUDA 10.2, TensorRT 7.0.0**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
@@ -102,7 +102,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
    Retrieve your docker image in one of the following ways.
 
-    -  To build your docker image, download the OpenVINO online installer version 2019 R1.1 for Linux from [this link](https://software.intel.com/en-us/openvino-toolkit/choose-download) and copy the OpenVINO tar file to the same directory before building the Docker image. The online installer size is 16MB and the components needed for the accelerators are mentioned in the dockerfile. Providing the docker build argument DEVICE enables the onnxruntime build for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default repository is http://github.com/microsoft/onnxruntime and default branch is master.
+    -  To build your docker image, download the OpenVINO online installer version **2020.2** for Linux from [this link](https://software.intel.com/en-us/openvino-toolkit/choose-download) and copy the OpenVINO tar file to the same directory before building the Docker image. The online installer size is 16MB and the components needed for the accelerators are mentioned in the dockerfile. Providing the docker build argument DEVICE enables the onnxruntime build for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default repository is http://github.com/microsoft/onnxruntime and default branch is master.
        ```
        docker build -t onnxruntime --build-arg DEVICE=$DEVICE .
        ```

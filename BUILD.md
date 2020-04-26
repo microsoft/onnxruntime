@@ -228,17 +228,27 @@ See more information on the nGraph Execution Provider [here](./docs/execution_pr
 See more information on the OpenVINO Execution Provider [here](./docs/execution_providers/OpenVINO-ExecutionProvider.md).
 
 #### Pre-Requisites
-* Install the OpenVINO release along with its dependencies: [Windows]([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit), [Linux](https://software.intel.com/en-us/openvino-toolkit).
-   * For Linux, currently supports and is validated on OpenVINO 2019 R3.1
-   * For Windows, download the 2019 R3.1 Windows Installer.
-* Install the model optimizer prerequisites for ONNX by running:
-   * Windows: `<openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.bat`
-   * Linux: `<openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh`
-* Initialize the OpenVINO environment by running the setupvars in `\<openvino\_install\_directory\>\/bin` using `setupvars.bat` (Windows) or `source setupvars.sh` (Linux)
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
-   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Windows](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_windows.html#usb-myriad), [Linux](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_linux.html#install-VPU)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_VisionAcceleratorFPGA_Configure_2019R3.html)
+1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2020.2** for the appropriate OS and target hardware :
+   * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
+   * [Linux - FPGA](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux-fpga)
+   * [Windows - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-windows).
+
+   Follow [documentation](https://docs.openvinotoolkit.org/2020.2/index.html) for detailed instructions.
+2. Configure the target hardware with specific follow on instructions:
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux.html#install-VPU)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux_fpga.html)
+
+3. Initialize the OpenVINO environment by running the setupvars script as shown below:
+   * For Linux run:
+   ```
+      $ source <openvino_install_directory>/bin/setupvars.sh
+   ```
+   * For Windows run:
+   ```
+      C:\ <openvino_install_directory>\bin\setupvars.bat
+   ```
 
 
 #### Build Instructions
@@ -255,9 +265,7 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 
    <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
 
-  <code>--build_server</code>: Using this flag in addition to --use_openvino builds the OpenVINO Execution Provider with ONNX Runtime Server.
-
-* `<hardware_option>`: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
+* `<hardware_option>`: Specifies the default hardware target for building OpenVINO Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO-ExecutionProvider.md](./docs/execution_providers/OpenVINO-ExecutionProvider.md) for more details on dynamic device selection). Below are the options for different Intel target devices.
 
 | Hardware Option | Target Device |
 | --------------- | ------------------------|
