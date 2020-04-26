@@ -18,15 +18,16 @@ namespace Dml::GraphDescBuilder
         
         // The suffix used when inserting mem copies is equal to the below, probably followed by an incrementing number.
         if (!suffix) {
-            strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider_");
+            suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider_");
         }
 
+        // The suffix used when inserting mem copies is equal to the below, not followed by an incrementing number.
         if (!suffix) {
-            strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider");
+            suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider");
         }
         
         if (!suffix) {
-            suffix = strstr(fusedNodeArgeName.c_str(), "_token_")
+            suffix = strstr(fusedNodeArgeName.c_str(), "_token_");
         }
 
         if (suffix)
