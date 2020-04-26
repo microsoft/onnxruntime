@@ -39,17 +39,27 @@ struct RknpuFuncState {
 
 RknpuExecutionProvider::RknpuExecutionProvider()
     : IExecutionProvider{onnxruntime::kRknpuExecutionProvider} {
-  DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
-                                              [](int) { return onnxruntime::make_unique<CPUAllocator>(
-                                                            onnxruntime::make_unique<OrtMemoryInfo>(RKNPU,
-                                                                                                    OrtAllocatorType::OrtDeviceAllocator)); },
-                                              std::numeric_limits<size_t>::max()};
-  InsertAllocator(CreateAllocator(device_info));
+  auto default_allocator_factory = [](int) {
+    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(RKNPU, OrtAllocatorType::OrtDeviceAllocator);
+    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
+  };
+  DeviceAllocatorRegistrationInfo default_memory_info{
+    OrtMemTypeDefault,
+    std::move(default_allocator_factory),
+    std::numeric_limits<size_t>::max()
+  };
+  InsertAllocator(CreateAllocator(default_memory_info));
 
-  DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUOutput,
-                                                   [](int) { return onnxruntime::make_unique<CPUAllocator>(onnxruntime::make_unique<OrtMemoryInfo>(RKNPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); },
-                                                   std::numeric_limits<size_t>::max()});
-
+  auto cpu_allocator_factory = [](int) {
+    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(
+      RKNPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
+    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
+  };
+  DeviceAllocatorRegistrationInfo cpu_memory_info{
+    OrtMemTypeCPUOutput,
+    std::move(cpu_allocator_factory),
+    std::numeric_limits<size_t>::max()
+  };
   InsertAllocator(CreateAllocator(cpu_memory_info));
 }
 
@@ -160,11 +170,10 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
         }
 
         // For output searching, there is a special case:
-        // If node's OutputEdges are more than its outputs, meaning certain //
+        // If node's OutputEdges are more than its outputs, meaning certain
         // output is used more than once,
         // if the output is connected to nodes that don't belong to the
-        // subgraph, the output need to be added
-        // to the output list
+        // subgraph, the output need to be added to the output list
         if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
           for (auto it = node->OutputEdgesBegin(),
                     end = node->OutputEdgesEnd();

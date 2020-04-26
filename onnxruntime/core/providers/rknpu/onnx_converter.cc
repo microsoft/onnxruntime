@@ -867,7 +867,7 @@ void OnnxConverter::AddQLinearConv(const string& input_name,
                                    const string& input_zp_name,
                                    const std::vector<int>& strides,
                                    const std::vector<int>& pads,
-                                   const std::vector<int>& dilations, 
+                                   const std::vector<int>& dilations,
                                    int group,
                                    const string& auto_pad,
                                    const string& weight_name,
@@ -1248,8 +1248,7 @@ void OnnxConverter::AddLayerAvePoolImpl(
   attr.pad[3] = pads[3];
   attr.pad_type = rk::nn::PadType::AUTO;
   attr.pool_type = rk::nn::PoolType::POOLING_AVG;
-  attr.round_type = (ceil_mode == 1) ?
-          rk::nn::RoundType::ROUND_CEIL : rk::nn::RoundType::ROUND_FLOOR;
+  attr.round_type = (ceil_mode == 1) ? rk::nn::RoundType::ROUND_CEIL : rk::nn::RoundType::ROUND_FLOOR;
   attr.global_pooling = (kernel_shape[0] == -1 && kernel_shape[1] == -1);
 
   graph_->AddOperator(rk::nn::OperatorType::POOL,
@@ -1288,8 +1287,7 @@ void OnnxConverter::AddLayerMaxPoolImpl(
   attr.pad[3] = pads[3];
   attr.pad_type = rk::nn::PadType::AUTO;
   attr.pool_type = rk::nn::PoolType::POOLING_MAX;
-  attr.round_type = (ceil_mode == 1) ?
-          rk::nn::RoundType::ROUND_CEIL : rk::nn::RoundType::ROUND_FLOOR;
+  attr.round_type = (ceil_mode == 1) ? rk::nn::RoundType::ROUND_CEIL : rk::nn::RoundType::ROUND_FLOOR;
   attr.global_pooling = (kernel_shape[0] == -1 && kernel_shape[1] == -1);
 
   graph_->AddOperator(rk::nn::OperatorType::POOL,
