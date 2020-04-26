@@ -1812,10 +1812,12 @@ void OnnxConverter::AddLayerClip(const std::string& input,
     rk_tensors_[output] = rk_output;
   }
 
-  if (min == 0 && max == 6) {
+  /* if (min == 0 && max == 6) {  // RELU6 will cause loss of accuracy
     graph_->AddOperator(rk::nn::OperatorType::RELU6,
                         inputs, outputs, nullptr);
-  } else {
+  }
+  else */
+  {
     rk::nn::ClipAttr attr;
     attr.min = min;
     attr.max = max;
