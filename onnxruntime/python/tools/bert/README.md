@@ -55,7 +55,7 @@ See below for description of some options of bert_model_optimization.py:
 - **input**: input model path
 - **output**: output model path
 - **model_type**: (*defaul: bert*)
-    There are 4 model types: *bert* (exported by PyTorch), *bert_tf* (BERT exported by PyTorch), *bert_keras* (BERT exported by keras2onnx) and *gpt2* (exported by PyTorch) respectively.
+    There are 4 model types: *bert* (exported by PyTorch), *bert_tf* (BERT exported by tf2onnx), *bert_keras* (BERT exported by keras2onnx) and *gpt2* (exported by PyTorch) respectively.
 - **num_heads**: (*default: 12*)
     Number of attention heads. BERT-base and BERT-large has 12 and 16 respectively.
 - **hidden_size**: (*default: 768*)

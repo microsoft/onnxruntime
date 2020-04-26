@@ -156,6 +156,24 @@ def parse_arguments():
                         help="disable Add Bias and Gelu/FastGelu fusion")
     parser.set_defaults(disable_bias_gelu=False)
 
+    parser.add_argument('--disable_layer_norm',
+                        required=False,
+                        action='store_true',
+                        help="disable LayerNormalization fusion")
+    parser.set_defaults(disable_layer_norm=False)
+
+    parser.add_argument('--disable_gelu',
+                        required=False,
+                        action='store_true',
+                        help="disable Gelu fusion")
+    parser.set_defaults(disable_gelu=False)
+
+    parser.add_argument('--enable_gelu_approximation',
+                        required=False,
+                        action='store_true',
+                        help="enable Gelu/BiasGelu to FastGelu conversion")
+    parser.set_defaults(enable_gelu_approximation=False)
+
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
@@ -173,6 +191,10 @@ def parse_arguments():
 
 def get_optimization_options(args):
     optimization_options = BertOptimizationOptions(args.model_type)
+    if args.disable_gelu:
+        optimization_options.enable_gelu = False
+    if args.disable_layer_norm:
+        optimization_options.enable_layer_norm = False
     if args.disable_attention:
         optimization_options.enable_attention = False
     if args.disable_skip_layer_norm:
@@ -183,6 +205,8 @@ def get_optimization_options(args):
         optimization_options.enable_bias_skip_layer_norm = False
     if args.disable_bias_gelu:
         optimization_options.enable_bias_gelu = False
+    if args.enable_gelu_approximation:
+        optimization_options.enable_gelu_approximation = True
     return optimization_options
 
 
