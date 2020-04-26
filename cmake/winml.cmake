@@ -272,7 +272,6 @@ target_link_libraries(winml_adapter PRIVATE wil)
 if (onnxruntime_USE_DML)
   target_add_dml(winml_adapter)
 endif(onnxruntime_USE_DML)
-
 # add it to the onnxruntime shared library
 set(onnxruntime_winml winml_adapter)
 list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES winml_adapter)
@@ -350,10 +349,6 @@ add_dependencies(winml_lib_image winml_api_native_internal)
 target_link_libraries(winml_lib_image PRIVATE dxgi d3d11 d3d12 wil winml_lib_common)
 
 get_target_property(winml_lib_image_include_directories winml_lib_image INCLUDE_DIRECTORIES)
-try_compile(has_dxcore "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/test_dxcore.cpp" CMAKE_FLAGS -DLINK_DIRECTORIES="${winml_lib_image_include_directories}")
-if (has_dxcore)
-  target_link_libraries(winml_lib_image PRIVATE dxcore)
-endif()
 
 if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_image)
