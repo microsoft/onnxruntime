@@ -215,7 +215,7 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
           fused_outputs_to_add.begin(), fused_outputs_to_add.end());
 
       // Sort inputs and outputs by the order they were added
-      std::multimap<int, const NodeArg*> inputs, outputs;
+      std::map<int, const NodeArg*> inputs, outputs;
 
       for (auto it = fused_inputs.begin(),
                 end = fused_inputs.end();
