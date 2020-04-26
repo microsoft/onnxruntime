@@ -619,6 +619,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"candy", "Temporarily disabled pending investigation"});
     broken_tests.insert({"BERT_Squad", "Temporarily disabled pending investigation"});
     broken_tests.insert({"LSTM_Seq_lens_unpacked", "The parameter is incorrect"});
+
+    broken_tests.insert({"resize_downsample_scales_linear", "DML uses half_pixel and this test assumed \"asymmetric\" but does not include \"mode\""});
+    broken_tests.insert({"resize_downsample_sizes_linear_pytorch_half_pixel", "DML does not support downsampling by such a large factor - skips input pixels"});
+    broken_tests.insert({"resize_downsample_sizes_nearest", "DML uses pixel centers for nearest, rounding 1 value off for the middle column"});
+    broken_tests.insert({"resize_upsample_sizes_nearest", "DML uses pixel centers for nearest, which makes more sense (the 3rd row mismatches)"});
+    broken_tests.insert({"unsqueeze_three_axes", "DML does not support 6D tensors"});
+    broken_tests.insert({"unsqueeze_unsorted_axes", "DMLdoes not support 6D tensors"});
+
   }
 
 #if defined(_WIN32) && !defined(_WIN64)
