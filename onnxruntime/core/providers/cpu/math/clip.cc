@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/math/clip.h"
 #include "core/framework/data_types_internal.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 
@@ -30,6 +31,17 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
       KERNEL_CLASS);
 
 REG_KERNEL_NONTEMPL(Clip, 12, Clip, float, double, int8_t, uint8_t, int64_t, uint64_t);
+
+template<typename T>
+Status Clip_6<T>::Compute(OpKernelContext* ctx) const {
+    const auto* X = ctx->Input<Tensor>(0);
+    Tensor* Y = ctx->Output(0, X->Shape());
+    EigenVectorMap<T>(Y->template MutableData<T>(), Y->Shape().Size()) =
+        ConstEigenVectorMap<T>(X->template Data<T>(), X->Shape().Size())
+            .cwiseMax(this->min_)
+            .cwiseMin(this->max_);
+    return Status::OK();
+}
 
 template <typename T>
 struct Clip::ComputeImpl {
