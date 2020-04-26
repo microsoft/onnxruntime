@@ -113,7 +113,7 @@ struct TernaryElementwisePreparation {
     }
 
     if (b_shape != output_shape) {
-      padder(b_rank, b_shape, b_padded_strides);
+     padder(b_rank, b_shape, b_padded_strides);
     }
 
     if (c_shape != output_shape) {

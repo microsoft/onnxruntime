@@ -376,7 +376,7 @@ struct OrtApi {
     *   OrtSessionOptionsAppendExecutionProvider_CPU
     *   OrtSessionOptionsAppendExecutionProvider_CUDA
     *   OrtSessionOptionsAppendExecutionProvider_<remaining providers...>
-    * The order they care called indicates the preference order as well. In other words call this method
+    * The order they are called indicates the preference order as well. In other words call this method
     * on your most preferred execution provider first followed by the less preferred ones.
     * If none are called Ort will use its internal CPU execution provider.
     */

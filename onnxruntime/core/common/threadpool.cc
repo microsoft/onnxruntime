@@ -298,6 +298,15 @@ void ThreadPool::ParallelFor(std::ptrdiff_t total, double cost_per_unit,
   ParallelFor(total, TensorOpCost{0, 0, static_cast<double>(cost_per_unit)}, fn);
 }
 
+int ThreadPool::NumThreads(const concurrency::ThreadPool* tp) {
+#ifdef _OPENMP
+  ORT_UNUSED_PARAMETER(tp);
+  return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
+#else
+  return tp ? tp->NumThreads() : 1;
+#endif
+}
+
 int ThreadPool::NumThreads() const {
   return underlying_threadpool_->NumThreads();
 }

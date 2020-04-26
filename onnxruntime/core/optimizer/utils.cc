@@ -126,6 +126,21 @@ bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name
   return false;
 }
 
+bool IsAttributeWithExpectedValues(const Node& node, const std::string& attr_name, const std::vector<int64_t>& expected_values) {
+  const auto* attr_proto = graph_utils::GetNodeAttribute(node, attr_name);
+  if ((nullptr == attr_proto) || attr_proto->ints_size() != (int)expected_values.size()) {
+    return false;
+  }
+
+  for (int i = 0; i < attr_proto->ints_size(); i++) {
+    if (attr_proto->ints(i) != expected_values[i]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data) {
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
   if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
