@@ -1184,6 +1184,23 @@ TEST_F(GraphTransformationTests, ReshapeFusionAnotherGraphInput) {
   ASSERT_EQ(op_to_count_orig, op_to_count);
 }
 
+TEST_F(GraphTransformationTests, ReshapeFusionOverridableInitializer) {
+  auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_overridable_initializer.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count_orig = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  // The optimization does not apply.
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count_orig, op_to_count);
+}
+
 TEST_F(GraphTransformationTests, ExpandElimination) {
   auto model_uri = MODEL_FOLDER "expand_elimination.onnx";
   std::shared_ptr<Model> model;

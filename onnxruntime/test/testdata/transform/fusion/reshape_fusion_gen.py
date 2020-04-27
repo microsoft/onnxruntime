@@ -143,3 +143,23 @@ graph = helper.make_graph(
 
 save_model(graph, 'reshape_fusion_input_is_graph_input.onnx')
 
+graph = helper.make_graph(
+    [ # nodes
+        helper.make_node("Concat", ["a"], ["concat_out"], "concat", axis=0),
+        helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
+    ],
+    "Reshape_Fusion",  #name
+    [  # inputs
+        helper.make_tensor_value_info('SubgraphRoot', TensorProto.FLOAT, [2, 3, 4]),
+        helper.make_tensor_value_info('a', TensorProto.INT64, [3]),
+    ],
+    [  # outputs
+        helper.make_tensor_value_info('Result', TensorProto.FLOAT, ['unk_0', 'unk_1', 'unk_2']),
+    ],
+    [  # initializers
+        helper.make_tensor('a', TensorProto.INT64, [3], [1, 1, 2*3*4]),
+    ]
+)
+
+save_model(graph, 'reshape_fusion_overridable_initializer.onnx')
+
