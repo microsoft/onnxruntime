@@ -67,7 +67,7 @@ After fusion:
                     Reshape
 */
 bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::Logger& logger) {
-  const Node* p_root = graph_utils::GetInputNode(reshape, 0);
+  const NodeArg* root_def = reshape.InputDefs()[0];
 
   const Node* p_concat = graph_utils::GetInputNode(reshape, 1);
   if (nullptr == p_concat) {
@@ -91,10 +91,8 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
   std::set<std::pair<NodeType, NodeIndex>> candidates_for_removal;
   for (int i = 0; i < concat_input_count; ++i) {
     // First check if the i-th argument is an initializer.
-    // We do not check whether the initializer is constant.
-    // Some model uses constant initializer and some does not.
-    // Here we assume that no one will override the initializer using graph input.
-    if (optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[i]), shape_value)) {
+    if (graph_utils::IsConstantInitializer(graph, concat.InputDefs()[i]->Name()) &&
+      optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[i]), shape_value)) {
       continue;
     }
 
@@ -113,7 +111,7 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
     const Node& gather = edges[1]->GetNode();
     const Node& shape = edges[2]->GetNode();
 
-    if (graph_utils::GetInputNode(shape, 0) != p_root) {
+    if (shape.InputDefs()[0] != root_def) {
       return false;
     }
 

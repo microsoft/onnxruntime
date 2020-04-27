@@ -118,3 +118,28 @@ graph = helper.make_graph(
 
 save_model(graph, 'reshape_fusion_multiple_values_in_initializer_tensor_2.onnx')
 
+graph = helper.make_graph(
+    [ # nodes
+        helper.make_node("Shape", ["AnotherInput"], ["shape2_out"], "shape2"),
+        helper.make_node("Gather", ["shape2_out", "indices2"], ["gather2_out"], "gather2", axis=0),
+        helper.make_node("Unsqueeze", ["gather2_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]),
+
+        helper.make_node("Concat", ["a", "unsqueeze2_out"], ["concat_out"], "concat", axis=0),
+        helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
+    ],
+    "Reshape_Fusion",  #name
+    [  # inputs
+        helper.make_tensor_value_info('SubgraphRoot', TensorProto.FLOAT, [10, 20, 30]),
+        helper.make_tensor_value_info('AnotherInput', TensorProto.FLOAT, ['input_dim_0', 'input_dim_1', 'input_dim_2']),
+    ],
+    [  # outputs
+        helper.make_tensor_value_info('Result', TensorProto.FLOAT, ['unk_0', 'unk_1', 'unk_2']),
+    ],
+    [  # initializers
+        helper.make_tensor('a', TensorProto.INT64, [2], [1, 200]),
+        helper.make_tensor('indices2', TensorProto.INT64, [], [2]),
+    ]
+)
+
+save_model(graph, 'reshape_fusion_input_is_graph_input.onnx')
+
