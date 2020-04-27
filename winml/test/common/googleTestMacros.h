@@ -12,11 +12,6 @@
     getapi().test_name();                 \
   }
 
-#define WINML_TEST_EX(group_name, test_name, api) \
-  TEST_F(group_name, test_name) {                 \
-    getapi<api>().test_name();                    \
-  }
-
 #define WINML_TEST_CLASS_BEGIN(test_class_name)      \
   namespace {                                        \
     class test_class_name : public ::testing::Test {
@@ -27,22 +22,10 @@
         getapi().setup_class();                   \
       }
 
-#define WINML_TEST_CLASS_SETUP_CLASS_EX(setup_class, api) \
-    protected:                                            \
-      static void SetUpTestSuite() {                      \
-        getapi<api>().setup_class();                      \
-      }
-
 #define WINML_TEST_CLASS_TEARDOWN_CLASS(teardown_class) \
     protected:                                          \
       static void TearDownTestSuite() {                 \
         getapi().teardown_class();                      \
-      }
-
-#define WINML_TEST_CLASS_TEARDOWN_CLASS_EX(teardown_class, api) \
-    protected:                                                  \
-      static void TearDownTestSuite() {                         \
-        getapi<api>().teardown_class();                         \
       }
 
 #define WINML_TEST_CLASS_SETUP_METHOD(setup_method) \
@@ -51,22 +34,10 @@
         getapi().setup_method();                    \
       }
 
-#define WINML_TEST_CLASS_SETUP_METHOD_EX(setup_method, api) \
-    protected:                                              \
-      void SetUp() override {                               \
-        getapi<api>().setup_method();                       \
-      }
-
 #define WINML_TEST_CLASS_TEARDOWN_METHOD(teardown_method) \
     protected:                                            \
       void TearDown() override {                          \
         getapi().teardown_method();                       \
-      }
-
-#define WINML_TEST_CLASS_TEARDOWN_METHOD(teardown_method, api) \
-    protected:                                                 \
-      void TearDown() override {                               \
-        getapi<api>().teardown_method();                       \
       }
 
 #define WINML_TEST_CLASS_BEGIN_TESTS };

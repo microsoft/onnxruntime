@@ -246,7 +246,7 @@ private:
         }
 
         HRESULT STDMETHODCALLTYPE Invoke(
-            ABI::Windows::Foundation::IAsyncOperation<uint32_t> */*asyncInfo*/,
+            ABI::Windows::Foundation::IAsyncOperation<uint32_t> * /*asyncInfo*/,
             ABI::Windows::Foundation::AsyncStatus /*status*/)
         {
             SetEvent(completed_event_);

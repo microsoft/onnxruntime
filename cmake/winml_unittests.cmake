@@ -83,9 +83,7 @@ function(get_winml_test_api_src
       "${winml_test_src_path}/api/*.h"
       "${winml_test_src_path}/api/*.cpp"
       "${winml_test_src_path}/api/raw/*.h"
-      "${winml_test_src_path}/api/raw/*.cpp"
-      "${winml_test_src_path}/api/raw/winml/*.h"
-      "${winml_test_src_path}/api/raw/winml/*.cpp")
+      "${winml_test_src_path}/api/raw/*.cpp")
   set(${output_winml_test_api_src} ${winml_test_api_src} PARENT_SCOPE)
 endfunction()
 
