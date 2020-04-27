@@ -1839,7 +1839,7 @@ void test_reduce_apis(int64_t size, float tolerance = 1e-4f) {
   float expected_output_mean = 0;
   const std::vector<int64_t> shape = {size};
   RandomValueGenerator random_value_generator{};
-  const auto input = random_value_generator.Uniform<float>(shape, 0.1, 1.0f);
+  const auto input = random_value_generator.Uniform<float>(shape, 0.1f, 1.0f);
   for (const auto input_value : input) {
     expected_output_sum += input_value;
     expected_output_square_sum += input_value * input_value;
