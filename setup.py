@@ -40,13 +40,12 @@ elif '--use_ngraph' in sys.argv:
 elif '--use_dnnl' in sys.argv:
     package_name = 'onnxruntime-dnnl'
     sys.argv.remove('--use_dnnl')
-
-elif '--use_openvino' in sys.argv:
-    package_name = 'onnxruntime-openvino'
-
 elif '--use_nuphar' in sys.argv:
     package_name = 'onnxruntime-nuphar'
     sys.argv.remove('--use_nuphar')
+elif '--use_openvino' in sys.argv:
+    package_name = 'onnxruntime-openvino'
+    sys.argv.remove('--use_openvino')
 
 elif '--use_featurizers' in sys.argv:
     featurizers_build = True
@@ -139,10 +138,12 @@ if platform.system() == 'Linux':
   libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
   # nGraph Libs
   libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
+  # OpenVINO Libs
+  if package_name == 'onnxruntime-openvino':
+    if platform.system() == 'Linux':
+      libs.extend(['libovep_ngraph.so'])
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
-  # Openvino Libs
-  libs.extend(['libcpu_extension.so'])
   if nightly_build:
     libs.extend(['libonnxruntime_pywrapper.so'])
 elif platform.system() == "Darwin":
@@ -154,8 +155,6 @@ else:
   libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll', 'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll'])
   # Nuphar Libs
   libs.extend(['tvm.dll'])
-  # Openvino Libs
-  libs.extend(['cpu_extension.dll'])
   if nightly_build:
     libs.extend(['onnxruntime_pywrapper.dll'])
 
@@ -170,13 +169,6 @@ if is_manylinux1:
 else:
     data = [path.join('capi', x) for x in libs if path.isfile(path.join('onnxruntime', 'capi', x))]
     ext_modules = []
-
-
-python_modules_list = list()
-if '--use_openvino' in sys.argv:
-  #Adding python modules required for openvino ep
-  python_modules_list.extend(['openvino_mo', 'openvino_emitter'])
-  sys.argv.remove('--use_openvino')
 
 # Additional examples
 examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
@@ -199,6 +191,7 @@ packages = [
     'onnxruntime',
     'onnxruntime.backend',
     'onnxruntime.capi',
+    'onnxruntime.capi.training',
     'onnxruntime.datasets',
     'onnxruntime.tools',
 ]
@@ -213,10 +206,32 @@ if package_name == 'onnxruntime-nuphar':
 if featurizers_build:
     # Copy the featurizer data from its current directory into the onnx runtime directory so that the
     # content can be included as module data.
-    featurizer_source_dir = path.join("external", "FeaturizersLibrary", "Data")
+
+    # Apparently, the root_dir is different based on how the script is invoked
+    source_root_dir = None
+    dest_root_dir = None
+
+    for potential_source_prefix, potential_dest_prefix in [
+        (getcwd(), getcwd()),
+        (path.dirname(__file__), path.dirname(__file__)),
+        (path.join(getcwd(), ".."), getcwd()),
+    ]:
+        potential_dir = path.join(potential_source_prefix, "external", "FeaturizersLibrary", "Data")
+        if path.isdir(potential_dir):
+            source_root_dir = potential_source_prefix
+            dest_root_dir = potential_dest_prefix
+
+            break
+
+    if source_root_dir is None:
+        raise Exception("Unable to find the build root dir")
+
+    assert dest_root_dir is not None
+
+    featurizer_source_dir = path.join(source_root_dir, "external", "FeaturizersLibrary", "Data")
     assert path.isdir(featurizer_source_dir), featurizer_source_dir
 
-    featurizer_dest_dir = path.join("onnxruntime", "FeaturizersLibrary", "Data")
+    featurizer_dest_dir = path.join(dest_root_dir, "onnxruntime", "FeaturizersLibrary", "Data")
     if path.isdir(featurizer_dest_dir):
         rmtree(featurizer_dest_dir)
 
@@ -226,7 +241,7 @@ if featurizers_build:
 
         copytree(this_featurizer_source_fullpath, featurizer_dest_dir)
 
-        packages.append("{}.{}".format(featurizer_dest_dir.replace(path.sep, "."), item))
+        packages.append("onnxruntime.FeaturizersLibrary.Data.{}".format(item))
         package_data[packages[-1]] = listdir(path.join(featurizer_dest_dir, item))
 
 package_data["onnxruntime"] = data + examples + extra
@@ -276,7 +291,6 @@ setup(
     ext_modules=ext_modules,
     package_data=package_data,
     data_files=data_files,
-    py_modules=python_modules_list,
     install_requires=install_requires,
     entry_points= {
         'console_scripts': [

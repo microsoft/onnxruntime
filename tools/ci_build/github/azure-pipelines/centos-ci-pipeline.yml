@@ -1,8 +1,7 @@
 jobs:
 - job: linux_centos_ci
   timeoutInMinutes:  60
-  pool:
-    vmImage: 'ubuntu-latest'
+  pool: 'Linux-CPU'
   strategy:
     maxParallel: 2
     matrix: 
