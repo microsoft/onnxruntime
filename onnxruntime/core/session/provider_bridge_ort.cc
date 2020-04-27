@@ -402,9 +402,9 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, OrtDevice::DeviceId device_id = 0) override {
-    DeviceAllocatorRegistrationInfo info_real;
-    info_real.mem_type = info.mem_type;
-    info_real.factory = [&info](int value) { return std::move(static_cast<Prov_IDeviceAllocator_Impl*>(&*info.factory(value))->p_); };
+    DeviceAllocatorRegistrationInfo info_real{
+        info.mem_type, [&info](int value) { return std::move(static_cast<Prov_IDeviceAllocator_Impl*>(&*info.factory(value))->p_); },
+        info.max_mem};
 
     return std::make_shared<Prov_IAllocator_Impl>(onnxruntime::CreateAllocator(info_real, device_id));
   }
