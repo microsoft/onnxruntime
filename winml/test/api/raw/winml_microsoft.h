@@ -633,9 +633,9 @@ public:
 private:
     int32_t Initialize(const Model& model, const Device& device)
     {
-        // {0f6b881d-1c9b-47b6-bfe0-f1cf62a67579}
+        // {d7d86c54-d03d-5ae3-a958-fe952b640620}
         static const GUID IID_ILearningModelSessionFactory =
-        { 0x0f6b881d, 0x1c9b, 0x47b6, { 0xbf, 0xe0, 0xf1, 0xcf, 0x62, 0xa6, 0x75, 0x79 } };
+        { 0xd7d86c54, 0xd03d, 0x5ae3, { 0xa9, 0x58, 0xfe, 0x95, 0x2b, 0x64, 0x06, 0x20 } };
 
         Microsoft::WRL::ComPtr<ABI::Microsoft::AI::MachineLearning::ILearningModelSessionFactory>
             m_learning_model_session_factory;
@@ -660,9 +660,9 @@ private:
 
 inline int32_t WinMLLearningModelBinding::Initialize(const WinMLLearningModelSession& session)
 {
-    // {c95f7a7a-e788-475e-8917-23aa381faf0b}
+    // {ae2f1c97-2fd5-55b9-a05f-53b9dbb4f9e2}
     static const GUID IID_ILearningModelBindingFactory =
-    { 0xc95f7a7a, 0xe788, 0x475e, { 0x89, 0x17, 0x23, 0xaa, 0x38, 0x1f, 0xaf, 0x0b } };
+    { 0xae2f1c97, 0x2fd5, 0x55b9, { 0xa0, 0x5f, 0x53, 0xb9, 0xdb, 0xb4, 0xf9, 0xe2 } };
 
     Microsoft::WRL::ComPtr<ABI::Microsoft::AI::MachineLearning::ILearningModelBindingFactory>
         learning_model_binding_factory;

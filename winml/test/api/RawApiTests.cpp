@@ -6,6 +6,9 @@
 #include "RawApiHelpers.h"
 
 #include <fstream>
+#include <thread>
+
+#include <roapi.h>
 
 namespace ml = Microsoft::AI::MachineLearning;
 
@@ -19,6 +22,10 @@ auto CreateModelAsBuffer(const wchar_t* model_path)
     input_stream.read(buffer.data(), size);
 
     return std::make_pair(buffer, size);
+}
+
+static void RawApiTestsApiTestsClassSetup() {
+  RoInitialize(RO_INIT_TYPE::RO_INIT_SINGLETHREADED);
 }
 
 static void CreateModelFromFilePath() {
@@ -59,31 +66,13 @@ static void EvaluateNoInputCopy() {
   WINML_EXPECT_NO_THROW(model.reset());
 }
 
-static void EvaluateFromModelFromBuffer() {
-  std::wstring model_path = L"model.onnx";
-
-  size_t size;
-  std::vector<char> buffer;
-  std::tie(buffer, size) = CreateModelAsBuffer(model_path.c_str());
-
-  std::unique_ptr<ml::learning_model> model = nullptr;
-  WINML_EXPECT_NO_THROW(model = std::make_unique<ml::learning_model>(buffer.data(), size));
-
-  std::unique_ptr<ml::learning_model_device> device = nullptr;
-  WINML_EXPECT_NO_THROW(device = std::make_unique<ml::learning_model_device>());
-
-  RunOnDevice(*model.get(), *device.get(), true);
-
-  WINML_EXPECT_NO_THROW(model.reset());
-}
-
 const RawApiTestsApi& getapi() {
   static constexpr RawApiTestsApi api = {
+      RawApiTestsApiTestsClassSetup,
       CreateModelFromFilePath,
       CreateCpuDevice,
       Evaluate,
       EvaluateNoInputCopy,
-      EvaluateFromModelFromBuffer,
   };
   return api;
 }

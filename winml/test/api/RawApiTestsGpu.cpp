@@ -100,6 +100,10 @@ ml::learning_model_device CreateDevice(DeviceType deviceType)
     }
 }
 
+static void RawApiTestsGpuApiTestsClassSetup() {
+  RoInitialize(RO_INIT_TYPE::RO_INIT_SINGLETHREADED);
+}
+
 static void GpuMethodSetup() {
   GPUTEST;
 }
@@ -152,6 +156,7 @@ static void EvaluateNoInputCopy() {
 
 const RawApiTestsGpuApi& getapi() {
   static constexpr RawApiTestsGpuApi api = {
+      RawApiTestsGpuApiTestsClassSetup,
       GpuMethodSetup,
       CreateDirectXDevice,
       CreateD3D11DeviceDevice,
