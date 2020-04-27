@@ -111,7 +111,6 @@ class Sqrt final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-template <typename T>
 class Pow final : public OpKernel {
  public:
   Pow(const OpKernelInfo& info) : OpKernel(info) {

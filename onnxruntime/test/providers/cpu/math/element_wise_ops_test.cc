@@ -621,6 +621,60 @@ TEST(MathOpTest, Pow_Broadcast_Scalar1) {
   test.Run();
 }
 
+TEST(MathOpTest, Pow_float_int64) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{3};
+  test.AddInput<float>("X", dims, {1.0f, 2.0f, 3.0f});
+  test.AddInput<int64_t>("Y", dims, {4, 5, 6});
+  test.AddOutput<float>("Z", dims, {1.f, 32.f, 729.f});
+  test.Run();
+}
+
+TEST(MathOpTest, Pow_int64_float) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{3};
+  test.AddInput<int64_t>("X", dims, {1, 2, 3});
+  test.AddInput<float>("Y", dims, {4.f, 5.f, 6.f});
+  test.AddOutput<int64_t>("Z", dims, {1, 32, 729});
+  test.Run();
+}
+
+TEST(MathOpTest, Pow_float_int32) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{3};
+  test.AddInput<float>("X", dims, {1.0f, 2.0f, 3.0f});
+  test.AddInput<int32_t>("Y", dims, {4, 5, 6});
+  test.AddOutput<float>("Z", dims, {1.f, 32.f, 729.f});
+  test.Run();
+}
+
+TEST(MathOpTest, Pow_int32_float) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{3};
+  test.AddInput<int32_t>("X", dims, {1, 2, 3});
+  test.AddInput<float>("Y", dims, {4.f, 5.f, 6.f});
+  test.AddOutput<int32_t>("Z", dims, {1, 32, 729});
+  test.Run();
+}
+
+TEST(MathOpTest, Pow_int64_double) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{3};
+  test.AddInput<int64_t>("X", dims, {1, 2, 3});
+  test.AddInput<double>("Y", dims, {4.f, 5.f, 6.f});
+  test.AddOutput<int64_t>("Z", dims, {1, 32, 729});
+  test.Run();
+}
+
+TEST(MathOpTest, Pow_double_int64) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{3};
+  test.AddInput<double>("X", dims, {1., 2., 3.});
+  test.AddInput<int64_t>("Y", dims, {4, 5, 6});
+  test.AddOutput<double>("Z", dims, {1., 32., 729.});
+  test.Run();
+}
+
 TEST(MathOpTest, Exp_float) {
   OpTester test("Exp");
   std::vector<int64_t> dims{2, 2};
