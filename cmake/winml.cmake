@@ -272,7 +272,7 @@ set_target_properties(winml_adapter
 target_link_libraries(winml_adapter PRIVATE wil)
 if (onnxruntime_USE_DML)
   target_add_dml(winml_adapter)
-endif(onnxruntime_USE_DML)
+endif()
 
 # add it to the onnxruntime shared library
 set(onnxruntime_winml winml_adapter)
@@ -593,7 +593,7 @@ set_target_properties(winml_dll
 set(os_component_link_flags_list ${os_component_link_flags})
 separate_arguments(os_component_link_flags_list)
 
-target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/winml.def ${os_component_link_flags_list} /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-threadpool-legacy-l1-1-0.dll /DELAYLOAD:api-ms-win-core-processtopology-obsolete-l1-1-0.dll /DELAYLOAD:api-ms-win-core-kernel32-legacy-l1-1-0.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll)
+target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/winml.def ${os_component_link_flags_list} /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-threadpool-legacy-l1-1-0.dll /DELAYLOAD:api-ms-win-core-processtopology-obsolete-l1-1-0.dll /DELAYLOAD:api-ms-win-core-kernel32-legacy-l1-1-0.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll)
 
 
 if (EXISTS ${dxcore_header})
