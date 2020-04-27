@@ -6,7 +6,6 @@
 #include "RawApiHelpers.h"
 
 #include <fstream>
-#include <thread>
 
 #include <roapi.h>
 
@@ -66,6 +65,24 @@ static void EvaluateNoInputCopy() {
   WINML_EXPECT_NO_THROW(model.reset());
 }
 
+static void EvaluateFromModelFromBuffer() {
+  std::wstring model_path = L"model.onnx";
+
+  size_t size;
+  std::vector<char> buffer;
+  std::tie(buffer, size) = CreateModelAsBuffer(model_path.c_str());
+
+  std::unique_ptr<ml::learning_model> model = nullptr;
+  WINML_EXPECT_NO_THROW(model = std::make_unique<ml::learning_model>(buffer.data(), size));
+
+  std::unique_ptr<ml::learning_model_device> device = nullptr;
+  WINML_EXPECT_NO_THROW(device = std::make_unique<ml::learning_model_device>());
+
+  RunOnDevice(*model.get(), *device.get(), true);
+
+  WINML_EXPECT_NO_THROW(model.reset());
+}
+
 const RawApiTestsApi& getapi() {
   static constexpr RawApiTestsApi api = {
       RawApiTestsApiTestsClassSetup,
@@ -73,6 +90,7 @@ const RawApiTestsApi& getapi() {
       CreateCpuDevice,
       Evaluate,
       EvaluateNoInputCopy,
+      EvaluateFromModelFromBuffer,
   };
   return api;
 }
