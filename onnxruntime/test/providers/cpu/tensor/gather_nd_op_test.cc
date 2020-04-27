@@ -217,8 +217,10 @@ TEST(GatherNDOpTest, GatherND_negative_slice_float_batch_dims_two) {
 }
 
 #ifdef USE_CUDA
-#if __CUDA_ARCH__ >= 600
+
 TEST(GatherNDOpTest, GatherND_slice_double_batch_dims_one_1) {
+  if (!HasCudaEnvironment(600 /*min_cuda_architecture*/)) return;
+
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddAttribute<int64_t>("batch_dims", 1);
   test.AddInput<double>("data", {2, 2, 2}, ValueRange(8, 0.0f, 0.1f));
@@ -228,16 +230,14 @@ TEST(GatherNDOpTest, GatherND_slice_double_batch_dims_one_1) {
 }
 
 TEST(GatherNDOpTest, GatherND_slice_double_default_batch_dims) {
+  if (!HasCudaEnvironment(600 /*min_cuda_architecture*/)) return;
+
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddInput<double>("data", {2, 2}, {0.0f, 0.1f, 0.2f, 0.3f});
   test.AddInput<int64_t>("indices", {2, 1}, {1LL, 0LL});
   test.AddOutput<double>("output", {2, 2}, {0.2f, 0.3f, 0.0f, 0.1f});
   test.Run();
 }
-#endif
-#endif
-
-#ifdef USE_CUDA
 
 TEST(GatherNDOpTest, GatherND_slice_double_batch_dims_one_2) {
   if (!HasCudaEnvironment(600 /*min_cuda_architecture*/)) return;
