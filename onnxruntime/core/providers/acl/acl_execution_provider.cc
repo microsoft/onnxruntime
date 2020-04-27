@@ -7,7 +7,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/compute_capability.h"
-#include "contrib_ops/cpu/cpu_contrib_kernels.h"
+#include "contrib_ops/cpu_contrib_kernels.h"
 #include "acl_fwd.h"
 
 namespace onnxruntime {

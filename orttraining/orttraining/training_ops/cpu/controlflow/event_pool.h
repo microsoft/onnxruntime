@@ -34,8 +34,6 @@ class OrtEventPool final {
   OrtEventPool(const OrtEventPool&) = delete;
   OrtEventPool& operator=(const OrtEventPool&) = delete;
 
-  void CheckRange(const int64_t event_id) const;
-
   struct Item {
     std::atomic<bool> signaled;
     mutable std::mutex mutex;
@@ -45,11 +43,9 @@ class OrtEventPool final {
       signaled.store(false);
     }
   };
-
   enum {
     MaxNumItems = 4096
   };
-
   Item pool_[MaxNumItems];
 };
 

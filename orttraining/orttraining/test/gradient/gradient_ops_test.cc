@@ -1535,62 +1535,68 @@ TEST(GradientCheckerTest, DISABLED_DropoutGrad) {
   }
 }
 
-TEST(GradientCheckerTest, GatherNDGrad_repeat_float_data) {
+TEST(GradientCheckerTest, GatherNDGrad_int64_indice_repeat_float_data) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"GatherND", kOnnxDomain, 12};
+  OpDef op_def{"GatherND"};
 
   TensorInfo x_info({2, 2}, true);
   TensorInfo indice_info({2, 2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
   std::vector<std::vector<float>> x_datas = {{0, 1, 2, 3}, {1, 1, 1, 1}};
 
   TensorInfo y_info({2}, true);
-  int64_t batch_dims = 0;
+  int64_t axis = 0;
 
-  gradient_checker.ComputeGradientError(op_def, {x_info, indice_info}, {y_info}, &max_error, x_datas, {MakeAttribute("batch_dims", batch_dims)});
+  gradient_checker.ComputeGradientError(op_def, {x_info, indice_info}, {y_info}, &max_error, x_datas, {MakeAttribute("axis", axis)});
   EXPECT_IS_TINY(max_error);
 }
 
-TEST(GradientCheckerTest, GatherNDGrad_unique_float_data) {
+TEST(GradientCheckerTest, GatherNDGrad_int64_indice_unique_float_data) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"GatherND", kOnnxDomain, 12};
+  OpDef op_def{"GatherND"};
 
-  {
-    TensorInfo x_info({2, 2}, true);
-    TensorInfo indice_info({2, 2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{0, 1, 2, 3}, {0, 1, 1, 0}};
+  TensorInfo x_info({2, 2}, true);
+  TensorInfo indice_info({2, 2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+  std::vector<std::vector<float>> x_datas = {{0, 1, 2, 3}, {0, 1, 1, 0}};
 
-    TensorInfo y_info({2}, true);
-    int64_t batch_dims = 0;
+  TensorInfo y_info({2}, true);
+  int64_t axis = 0;
 
-    gradient_checker.ComputeGradientError(op_def, {x_info, indice_info}, {y_info}, &max_error, x_datas, {MakeAttribute("batch_dims", batch_dims)});
-    EXPECT_IS_TINY(max_error);
-  }
+  gradient_checker.ComputeGradientError(op_def, {x_info, indice_info}, {y_info}, &max_error, x_datas, {MakeAttribute("axis", axis)});
+  EXPECT_IS_TINY(max_error);
+}
 
-  {
-    TensorInfo x_info({2, 2, 3}, true);
-    TensorInfo indice_info({2, 1}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, {1, 0}};
+TEST(GradientCheckerTest, GatherNDGrad_int32_indice_unique_float_data) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"GatherND"};
 
-    TensorInfo y_info({2, 3}, true);
-    int64_t batch_dims = 1;
+  TensorInfo x_info({2, 2, 3}, true);
+  TensorInfo indice_info({2, 1}, false, nullptr, DataTypeImpl::GetTensorType<int32_t>());
+  std::vector<std::vector<float>> x_datas = {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, {1, 0}};
 
-    gradient_checker.ComputeGradientError(op_def, {x_info, indice_info}, {y_info}, &max_error, x_datas, {MakeAttribute("batch_dims", batch_dims)});
-    EXPECT_IS_TINY(max_error);
-  }
+  TensorInfo y_info({2, 3}, true);
+  int64_t axis = 1;
 
-  {
-    TensorInfo x_info({2, 2, 3}, true);
-    TensorInfo indice_info({2, 2, 1}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, {1, 0, 2, 1}};
+  gradient_checker.ComputeGradientError(op_def, {x_info, indice_info}, {y_info}, &max_error, x_datas, {MakeAttribute("axis", axis)});
+  EXPECT_IS_TINY(max_error);
+}
 
-    TensorInfo y_info({2, 2}, true);
-    int64_t batch_dims = 2;
+TEST(GradientCheckerTest, GatherNDGrad_int32_indice_unique_float_data_axis_2) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"GatherND"};
 
-    gradient_checker.ComputeGradientError(op_def, {x_info, indice_info}, {y_info}, &max_error, x_datas, {MakeAttribute("batch_dims", batch_dims)});
-    EXPECT_IS_TINY(max_error);
-  }
+  TensorInfo x_info({2, 2, 3}, true);
+  TensorInfo indice_info({2, 2, 1}, false, nullptr, DataTypeImpl::GetTensorType<int32_t>());
+  std::vector<std::vector<float>> x_datas = {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, {1, 0, 2, 1}};
+
+  TensorInfo y_info({2, 2}, true);
+  int64_t axis = 2;
+
+  gradient_checker.ComputeGradientError(op_def, {x_info, indice_info}, {y_info}, &max_error, x_datas, {MakeAttribute("axis", axis)});
+  EXPECT_IS_TINY(max_error);
 }
 
 TEST(GradientCheckerTest, GatherElementsGradWithDuplicateUpdate) {
@@ -1795,6 +1801,53 @@ TEST(GradientCheckerTest, SliceGrad) {
                                           &max_error, x_datas);
 
     EXPECT_IS_TINY(max_error);
+  }
+}
+
+void record_event(int64_t event_id) {
+  OpTester test_record("RecordEvent", 1, onnxruntime::kMSDomain);
+  test_record.AddInput<int64_t>("EventIdentifier", {}, {event_id});
+  test_record.AddInput<bool>("InputSignal", {}, {true});
+  test_record.AddOutput<bool>("OutputSignal", {}, {true});
+  test_record.Run();
+}
+
+void wait_event(int64_t event_id) {
+  OpTester test_wait("WaitEvent", 1, onnxruntime::kMSDomain);
+  test_wait.AddInput<int64_t>("EventIdentifier", {}, {event_id});
+  test_wait.AddInput<bool>("InputSignal", {}, {true});
+  test_wait.AddOutput<bool>("OutputSignal", {}, {true});
+  test_wait.Run();
+}
+
+TEST(Synchronization, RecordAndWaitEvent) {
+  const int64_t event_id = static_cast<int64_t>(1736);
+  record_event(event_id);
+  wait_event(event_id);
+}
+
+TEST(Synchronization, WaitAndRecordEvent) {
+  const int64_t event_id = static_cast<int64_t>(1228);
+  std::thread waiting_thread(wait_event, event_id);
+  std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  std::thread recording_thread(record_event, event_id);
+
+  waiting_thread.join();
+  recording_thread.join();
+}
+
+TEST(Synchronization, WaitAndRecordEventMany) {
+  const size_t event_count = 16;
+  for (int i = 0; i < 8; ++i) {
+    std::thread thread_pool[2 * event_count];
+    for (int j = 0; j < static_cast<int>(event_count); ++j) {
+      thread_pool[j] = std::thread(wait_event, j);
+      thread_pool[j + event_count] = std::thread(record_event, j);
+    }
+    for (size_t j = 0; j < event_count; ++j) {
+      thread_pool[j].join();
+      thread_pool[j + event_count].join();
+    }
   }
 }
 
