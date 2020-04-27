@@ -515,7 +515,6 @@ if (onnxruntime_USE_DML)
       target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/DirectML.lib")
 	  target_compile_definitions(${target} PRIVATE DML_TARGET_VERSION_USE_LATEST)
     endif()
-    target_link_options(${target} PUBLIC /DELAYLOAD:directml.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:d3d12.dll)
   endfunction()
 
   target_add_dml(onnxruntime_providers_dml)
@@ -527,7 +526,7 @@ if (onnxruntime_USE_DML)
     target_link_libraries(onnxruntime_providers_dml PRIVATE delayimp.lib)
   endif()
 
-  set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll")
+  set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /ignore:4199")
 
   # The DML EP requires C++17
   set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD 17)
