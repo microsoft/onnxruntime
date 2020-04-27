@@ -1,9 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// needs to be included first to get around onnxruntime\cmake\external\onnx\onnx/common/constants.h(14): error C2513: 'bool': no variable declared before '='
-#include "core/framework/tensorprotoutils.h"
-
 #include "onnxruntime_pybind_mlvalue.h"
 
 #define NO_IMPORT_ARRAY
