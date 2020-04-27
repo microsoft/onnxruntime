@@ -143,7 +143,7 @@ void ComputePixelOffsetsAndScales(
             else // inputDimensions[i] <= 1
             {
                 // 0.5 * (start_x + end_x) * (length_original - 1)
-                inputPixelOffset = -0.5 * (regionOfInterest[i] + regionOfInterest[i + rank]) * (inputDimensions[i] - 1);
+                inputPixelOffset = -0.5f * (regionOfInterest[i] + regionOfInterest[i + rank]) * (inputDimensions[i] - 1);
                 outputPixelOffset = 0.0;
                 scales[i] = 1;
             }
