@@ -5,6 +5,7 @@
 #include <cmath>
 #include <type_traits>
 #include "gtest/gtest.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/cpu/reduction/reduction_test_cases.h"
 #ifdef USE_CUDA
@@ -37,11 +38,11 @@ void TestReduceOp(const std::string& op,
   test.AddAttribute("keepdims", keepdims);
   test.AddInput<float>("data", input_dims, data);
   test.AddOutput<OutT>("reduced", expected_dims, expected_data);
-  #if defined(OPENVINO_CONFIG_GPU_FP32)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});  //TensorRT,OpenVINO: result differs
-  #else
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});  //TensorRT: result differs
-  #endif
+#if defined(OPENVINO_CONFIG_GPU_FP32)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});  //TensorRT,OpenVINO: result differs
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});  //TensorRT: result differs
+#endif
 }
 
 //TODO:investigate why it is so slow. It need 12 seconds on an Azure Standard F48s_v2 (48 vcpus, 96 GiB memory)
@@ -174,7 +175,6 @@ TEST(ReductionOpTest, ReduceL10DTensor) {
   test.Run();
 }
 #endif  // !(defined USE_TENSORRT) && !(defined USE_TVM)
-
 
 TEST(ReductionOpTest, ReduceL2_default_axes_keepdims) {
   OpTester test("ReduceL2");
@@ -425,7 +425,6 @@ TEST(ReductionOpTest, ReduceLogSumExp_do_not_keepdims_2) {
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {3.40760596f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
-
 }
 
 TEST(ReductionOpTest, ReduceLogSumExp_keepdims) {
@@ -596,13 +595,12 @@ TEST(ReductionOpTest, ReduceMax_int32) {
                           11, 12});
   test.AddOutput<int32_t>("reduced", {3, 1, 1}, {4, 8, 12});
 
-
-  #if defined (OPENVINO_CONFIG_GPU_FP32)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
-  #else
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
-  #endif
-  }
+#if defined(OPENVINO_CONFIG_GPU_FP32)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
+#endif
+}
 
 TEST(ReductionOpTest, ReduceMax_int64) {
   OpTester test("ReduceMax");
@@ -626,14 +624,14 @@ TEST(ReductionOpTest, ReduceMax_int8) {
   test.AddAttribute("axes", std::vector<int64_t>{1, 2});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<int8_t>("data", {3, 2, 2},
-                         {1, 2,
-                          3, 4,
+                        {1, 2,
+                         3, 4,
 
-                          5, 6,
-                          7, 8,
+                         5, 6,
+                         7, 8,
 
-                          9, 10,
-                          11, 12});
+                         9, 10,
+                         11, 12});
   test.AddOutput<int8_t>("reduced", {3, 1, 1}, {4, 8, 12});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
 }
@@ -643,14 +641,14 @@ TEST(ReductionOpTest, ReduceMax_uint8) {
   test.AddAttribute("axes", std::vector<int64_t>{1, 2});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<uint8_t>("data", {3, 2, 2},
-                        {1, 2,
-                         3, 4,
+                         {1, 2,
+                          3, 4,
 
-                         5, 6,
-                         7, 8,
+                          5, 6,
+                          7, 8,
 
-                         9, 10,
-                         11, 12});
+                          9, 10,
+                          11, 12});
   test.AddOutput<uint8_t>("reduced", {3, 1, 1}, {4, 8, 12});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
 }
@@ -908,14 +906,14 @@ TEST(ReductionOpTest, ReduceMin_int8) {
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<int8_t>("data", {3, 2, 2},
-                         {1, 2,
-                          3, 4,
+                        {1, 2,
+                         3, 4,
 
-                          5, 6,
-                          7, 8,
+                         5, 6,
+                         7, 8,
 
-                          9, 10,
-                          11, 12});
+                         9, 10,
+                         11, 12});
   test.AddOutput<int8_t>("reduced", {1, 2, 1}, {1, 3});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
@@ -925,18 +923,17 @@ TEST(ReductionOpTest, ReduceMin_uint8) {
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<uint8_t>("data", {3, 2, 2},
-                        {1, 2,
-                         3, 4,
+                         {1, 2,
+                          3, 4,
 
-                         5, 6,
-                         7, 8,
+                          5, 6,
+                          7, 8,
 
-                         9, 10,
-                         11, 12});
+                          9, 10,
+                          11, 12});
   test.AddOutput<uint8_t>("reduced", {1, 2, 1}, {1, 3});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
-
 
 #if !(defined USE_TENSORRT) && !(defined USE_TVM)
 TEST(ReductionOpTest, ReduceMin0DTensor) {
@@ -1056,7 +1053,7 @@ TEST(ReductionOpTest, ReduceSumHalfHalf) {
   test.AddInput<MLFloat16>("data", {3, 2, 2}, data_half);
   test.AddOutput<MLFloat16>("reduced", {2}, result_half);
   test.Run();
-} 
+}
 
 void test_half_reduce_sum(
     int64_t m, int64_t n) {
@@ -1791,7 +1788,6 @@ TEST(ReductionOpTest, ArgMin_do_not_keepdims_2_select_last) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
 }
 
-
 TEST(ReductionOpTest, ArgMin_int32) {
   OpTester test("ArgMin");
   test.AddAttribute("axis", (int64_t)0);
@@ -1834,23 +1830,20 @@ TEST(ReductionOpTest, ArgMin_int32_select_last) {
 
 #ifdef USE_CUDA
 
-void test_reduce_apis(size_t size) {
+void test_reduce_apis(int64_t size, float tolerance = 1e-4f) {
   float output_sum = 0;
   float output_square_sum = 0;
   float output_mean = 0;
   float expected_output_sum = 0;
   float expected_output_square_sum = 0;
   float expected_output_mean = 0;
-  const std::vector<int64_t> shape = {static_cast<int64_t>(size)};
-  std::random_device random_device;
-  std::mt19937 random_engine(random_device());
-  std::uniform_real_distribution<float> dist(0.1f, 1.0f);
-  std::vector<float> input(size);
-  for (size_t i = 0; i < size; ++i) {
-    input[i] = dist(random_engine);
-    expected_output_sum += input[i];
-    expected_output_square_sum += input[i] * input[i];
-    expected_output_mean += input[i] / float(size);
+  const std::vector<int64_t> shape = {size};
+  RandomValueGenerator random_value_generator{};
+  const auto input = random_value_generator.Uniform<float>(shape, 0.1, 1.0f);
+  for (const auto input_value : input) {
+    expected_output_sum += input_value;
+    expected_output_square_sum += input_value * input_value;
+    expected_output_mean += input_value / float(size);
   }
   const int buffer_size_in_byte = onnxruntime::cuda::compute_reduction_buffer_size(
       static_cast<int>(sizeof(float)), static_cast<int>(size));
@@ -1892,9 +1885,9 @@ void test_reduce_apis(size_t size) {
   cudaFree(device_output_square_sum);
   cudaFree(device_output_mean);
 
-  EXPECT_TRUE(std::abs(output_sum - expected_output_sum) / expected_output_sum < 1e-4f);
-  EXPECT_TRUE(std::abs(output_square_sum - expected_output_square_sum) / expected_output_square_sum < 1e-4);
-  EXPECT_TRUE(std::abs(output_mean - expected_output_mean) / expected_output_mean < 1e-4f);
+  EXPECT_LT(std::abs(output_sum - expected_output_sum) / expected_output_sum, tolerance);
+  EXPECT_LT(std::abs(output_square_sum - expected_output_square_sum) / expected_output_square_sum, tolerance);
+  EXPECT_LT(std::abs(output_mean - expected_output_mean) / expected_output_mean, tolerance);
 }
 
 TEST(ReduceApiTest, Sum) {
@@ -1903,7 +1896,7 @@ TEST(ReduceApiTest, Sum) {
   test_reduce_apis(123);
   test_reduce_apis(1128);
   test_reduce_apis(5566);
-  test_reduce_apis(941736);
+  test_reduce_apis(941736, 2e-4f);
 }
 
 #endif
@@ -1935,7 +1928,7 @@ TEST(ReductionOpTest, ReduceDimWithZero) {
                                     : OpTester::ExpectResult::kExpectFailure;
 
     // exclude OpenVINO, NGraph and TensorRT as this isn't handled by those EPs
-    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kNGraphExecutionProvider,kOpenVINOExecutionProvider, kNupharExecutionProvider});
+    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kNGraphExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider});
   };
 
   // reduce on all axes keeping dims. should allow the 0 to be the reduced value

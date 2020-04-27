@@ -7,6 +7,7 @@
 
 #include "gtest/gtest.h"
 
+#include "core/common/common.h"
 #include "core/util/math.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/test_random_seed.h"
@@ -20,7 +21,9 @@ class RandomValueGenerator {
 
   template <class T>
   inline std::vector<T> Uniform(const std::vector<int64_t>& dims, float min, float max) {
-    int64_t size = std::accumulate(dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+    const int64_t size = std::accumulate(
+        dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+    ORT_ENFORCE(size >= 0);
     std::vector<T> val(size);
     std::uniform_real_distribution<float> distribution(min, max);
     for (size_t i = 0; i < val.size(); ++i) {
@@ -31,7 +34,9 @@ class RandomValueGenerator {
 
   template <class T>
   inline std::vector<T> OneHot(const std::vector<int64_t>& dims, int64_t stride) {
-    int64_t size = std::accumulate(dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+    const int64_t size = std::accumulate(
+        dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+    ORT_ENFORCE(size >= 0);
     std::vector<T> val(size, T(0));
     std::uniform_int_distribution<int64_t> distribution(0, stride - 1);
     for (size_t offset = 0; offset < val.size(); offset += stride) {
