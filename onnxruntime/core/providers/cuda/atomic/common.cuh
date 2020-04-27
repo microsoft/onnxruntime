@@ -1,5 +1,20 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+/**
+* Copyright (c) 2016-present, Facebook, Inc.
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
+
+/* Modifications Copyright (c) Microsoft. */
 
 #pragma once
 #include "cuda.h"
@@ -31,20 +46,23 @@ __device__ __forceinline__ void atomic_add(double *address, double value) {
 #endif
 }
 
+//
+// ref: https://github.com/pytorch/pytorch/blob/master/aten/src/THC/THCAtomics.cuh
+//
 __device__ __forceinline__ void atomic_add(half *address, half value) {
 #if __CUDA_ARCH__ < 700
-  half packed_old[2];
-  half packed_new[2];
-  int* const p_packed_old = reinterpret_cast<int*>(packed_old);
-  int* const p_packed_new = reinterpret_cast<int*>(packed_new);
-  int seen_old_value = 0;
+  unsigned int* base_address = (unsigned int*)((char*)address - ((size_t)address & 2));
+  unsigned int old = *base_address;
+  unsigned int assumed;
+  unsigned short x;
+
   do {
-    packed_old[0] = *address;
-    packed_old[1] = *(address + 1);
-    packed_new[0] = half(float(packed_old[0]) + float(value));
-    packed_new[1] = packed_old[1];
-    seen_old_value = atomicCAS(reinterpret_cast<int*>(address), *p_packed_old, *p_packed_new);
-  } while (seen_old_value != *p_packed_old);
+    assumed = old;
+    x = (size_t)address & 2 ? (old >> 16) : (old & 0xffff);
+    x = __half_as_short(__float2half(__half2float(*reinterpret_cast<const __half*>(&x)) + __half2float(value)));
+    old = (size_t)address & 2 ? (old & 0xffff) | (x << 16) : (old & 0xffff0000) | x;
+    old = atomicCAS(base_address, assumed, old);
+  } while (assumed != old);
 #else
   atomicAdd(address, value);
 #endif

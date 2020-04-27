@@ -22,7 +22,6 @@ bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 */
 bool IsInitializerWithExpectedValue(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, float expected_value, bool is_constant);
 
-
 /** Check whether a input is initializer with specified integer value.
 @param expected_value is the expected value of the initializer.
 @param is_constant means whether the initializer is required to be constant.
@@ -31,9 +30,14 @@ bool IsInitializerWithExpectedValue(const onnxruntime::Graph& graph, const onnxr
 bool IsInitializerWithExpectedValue(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, int64_t expected_value, bool is_constant);
 
 /** Check whether an attribute of node has specified integer value.
-@param expected_value is the expected value of the initializer.
+@param expected_value is the expected value of the attribute.
 */
 bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name, int64_t expected_value);
+
+/** Check whether an attribute of node has specified integer values.
+@param expected_values is the expected values of the attribute.
+*/
+bool IsAttributeWithExpectedValues(const Node& node, const std::string& attr_name, const std::vector<int64_t>& expected_values);
 
 /** Get values of an integer tensor from initializer, and append them to a vector.
 @remarks only support int32 and int64 tensor. This function does not clear vector before appending.

@@ -183,6 +183,45 @@ class Initializer final {
     }
   }
 
+  ONNX_NAMESPACE::TensorProto ToFP16(const std::string name) {
+    ONNX_NAMESPACE::TensorProto tensor_proto;
+    tensor_proto.set_name(name);
+
+    for (auto d : dims_) {
+      tensor_proto.add_dims(d);
+    }
+
+    tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+
+    switch (data_type_) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+        uint16_t* dst = data<uint16_t>();
+        for (int i = 0; i < size_; i++) {
+          tensor_proto.add_int32_data(dst[i]);
+        }
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
+        float* dst = data<float>();
+        for (int i = 0; i < size_; i++) {
+          tensor_proto.add_int32_data(math::floatToHalf(dst[i]));
+        }
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
+        double* dst = data<double>();
+        for (int i = 0; i < size_; i++) {
+          tensor_proto.add_int32_data(math::doubleToHalf(dst[i]));
+        }
+        break;
+      }
+      default:
+        ORT_NOT_IMPLEMENTED(__FUNCTION__, "data type is not supported");
+        break;
+    }
+    return tensor_proto;
+  }
+
   int data_type() const {
     return data_type_;
   }

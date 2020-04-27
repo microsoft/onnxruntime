@@ -8,6 +8,7 @@
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/framework/bfc_arena.h"
 #include "shared_inc/cuda_utils.h"
 #include <deque>
 
@@ -19,6 +20,7 @@ const int CPU_ALLOCATOR_DEVICE_ID = 0;
 struct CUDAExecutionProviderInfo {
   OrtDevice::DeviceId device_id{0};
   size_t cuda_mem_limit{std::numeric_limits<size_t>::max()};
+  ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
 };
 
 // Logical device representation.
@@ -74,10 +76,13 @@ class CUDAExecutionProvider : public IExecutionProvider {
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
   int GetDeviceId() const { return device_id_; }
+  const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
 
  private:
   OrtDevice::DeviceId device_id_;
+  cudaDeviceProp device_prop_;
   size_t cuda_mem_limit_;
+  ArenaExtendStrategy arena_extend_strategy_;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
@@ -88,7 +93,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   class PerThreadContext final {
    public:
-    PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit);
+    PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy);
     ~PerThreadContext();
 
     cublasHandle_t CublasHandle() const {
