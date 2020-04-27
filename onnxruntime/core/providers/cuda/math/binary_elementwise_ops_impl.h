@@ -20,7 +20,7 @@ namespace cuda {
   BINARY_OP_NAME_EXPR(Sub, (a - b))                  \
   BINARY_OP_NAME_EXPR(Mul, (a * b))                  \
   BINARY_OP_NAME_EXPR(Div, (a / b))                  \
-  BINARY_OP_NAME_EXPR(Pow, _Pow(a, b))               \
+  BINARY_OP_NAME_EXPR(Pow_7, _Pow(a, b))             \
   BINARY_OP_NAME_EXPR(And, (a & b))                  \
   BINARY_OP_NAME_EXPR(Or, (a | b))                   \
   BINARY_OP_NAME_EXPR(Xor, (a ^ b))                  \
@@ -34,23 +34,39 @@ namespace cuda {
 // NOTE that cu files are compiled with nvcc and should not refer to any onnxruntime headers
 // so struct BinaryElementwisePreparation cannot be used here
 
-#define BINARY_ELEMENTWISE_IMPL_DECLARATION(name) \
-  template <typename T>                           \
-  void Impl_##name(                               \
-      int32_t output_rank_or_simple_broadcast,    \
-      const TArray<int64_t>* lhs_padded_strides,  \
-      const T* lhs_data,                          \
-      const TArray<int64_t>* rhs_padded_strides,  \
-      const T* rhs_data,                          \
+#define BINARY_ELEMENTWISE_IMPL_DECLARATION(name)    \
+  template <typename T>                              \
+  void Impl_##name(                                  \
+      int32_t output_rank_or_simple_broadcast,       \
+      const TArray<int64_t>* lhs_padded_strides,     \
+      const T* lhs_data,                             \
+      const TArray<int64_t>* rhs_padded_strides,     \
+      const T* rhs_data,                             \
       const TArray<fast_divmod>* fdm_output_strides, \
-      const fast_divmod& fdm_H,                   \
-      const fast_divmod& fdm_C,                   \
-      T* output_data,                             \
+      const fast_divmod& fdm_H,                      \
+      const fast_divmod& fdm_C,                      \
+      T* output_data,                                \
       size_t count)
 
 #define BINARY_OP_NAME_EXPR(name, expr) BINARY_ELEMENTWISE_IMPL_DECLARATION(name);
 BINARY_OPS()
 #undef BINARY_OP_NAME_EXPR
+
+#define BINARY_ELEMENTWISE_IMPL_DECLARATION_T1(name) \
+  template <typename T, typename T1>                 \
+  void ImplT1_##name(                                \
+      int32_t output_rank_or_simple_broadcast,       \
+      const TArray<int64_t>* lhs_padded_strides,     \
+      const T* lhs_data,                             \
+      const TArray<int64_t>* rhs_padded_strides,     \
+      const T1* rhs_data,                            \
+      const TArray<fast_divmod>* fdm_output_strides, \
+      const fast_divmod& fdm_H,                      \
+      const fast_divmod& fdm_C,                      \
+      T* output_data,                                \
+      size_t count)
+
+BINARY_ELEMENTWISE_IMPL_DECLARATION_T1(Pow);
 
 }  // namespace cuda
 }  // namespace onnxruntime

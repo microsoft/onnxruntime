@@ -85,7 +85,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   return Status::OK();
 }
 
-#define BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(x, ver, T)                     \
+#define BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED_V(x, class_name, ver, T)       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       x,                                                                        \
       kOnnxDomain,                                                              \
@@ -93,7 +93,19 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      x<T>);
+      class_name<T>);
+
+#define BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(x, ver, T) \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED_V(x, x, ver, T)
+
+#define BINARY_ELEMENTWISE_REGISTER_KERNEL_NONTEMP(x, class_name, ver, ...)              \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                         \
+      x,                                                                                 \
+      kOnnxDomain,                                                                       \
+      ver,                                                                               \
+      kCudaExecutionProvider,                                                            \
+      KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<>(__VAR_ARGS__)), \
+      class_name);
 
 #define BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(x, ver, T)                                                                     \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                          \
@@ -115,6 +127,17 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
       kCudaExecutionProvider,                                                      \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),    \
       x<T>);
+
+#define BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED_CLASS(x, class_name, startver, endver, T) \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                           \
+      x,                                                                                             \
+      kOnnxDomain,                                                                                   \
+      startver,                                                                                      \
+      endver,                                                                                        \
+      T,                                                                                             \
+      kCudaExecutionProvider,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),                      \
+      class_name<T>);
 
 #define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                         \
   template <>                                                                                                    \
@@ -138,6 +161,10 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
 #define BINARY_OP_TYPED(name, ver, T)                    \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, T) \
   BINARY_ELEMENTWISE_COMPUTE(name, T)
+
+#define BINARY_OP_TYPED_VERSIONED_V(name, class_name, startver, endver, T)                        \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED_CLASS(name, class_name, startver, endver, T) \
+  BINARY_ELEMENTWISE_COMPUTE(class_name, T)
 
 #define BINARY_LOGICALOP_TYPED(name, ver, T)                       \
   BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, T) \
@@ -211,6 +238,11 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, float)     \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, double)
 
+#define BINARY_OP_REGISTER_VERSIONED_CLASS_HFD(name, class_name, startver, endver) \
+  BINARY_OP_TYPED_VERSIONED_V(name, class_name, startver, endver, MLFloat16)       \
+  BINARY_OP_TYPED_VERSIONED_V(name, class_name, startver, endver, float)           \
+  BINARY_OP_TYPED_VERSIONED_V(name, class_name, startver, endver, double)
+
 #define BINARY_OP_REGISTER_VERSIONED_UZILHFD(name, startver, endver)                   \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, uint32_t) \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, uint64_t) \
@@ -222,11 +254,110 @@ BINARY_OP_UZILHFD(Add, 7)
 BINARY_OP_UZILHFD(Sub, 7)
 BINARY_OP_UZILHFD(Mul, 7)
 BINARY_OP_UZILHFD(Div, 7)
-BINARY_OP_HFD(Pow, 7)
+BINARY_OP_REGISTER_VERSIONED_CLASS_HFD(Pow, Pow_7, 7, 11)
 BINARY_LOGICALOP_TYPED(And, 7, bool)
 BINARY_LOGICALOP_TYPED(Or, 7, bool)
 BINARY_LOGICALOP_TYPED(Xor, 7, bool)
 BINARY_OP_HFD(PRelu, 7)
+
+// Pow version 12
+ONNX_OPERATOR_KERNEL_EX(
+    Pow,
+    kOnnxDomain,
+    12,
+    kCudaExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double>())
+                      .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double>()),
+    Pow);
+
+namespace pow12_internal {
+template <class T>
+void DispatchOnFirstArg(const BinaryElementwisePreparation& prepare) {
+  namespace on = ONNX_NAMESPACE;
+  switch (prepare.rhs_tensor->GetElementType()) {
+    case on::TensorProto_DataType_INT32:
+      ImplT1_Pow<typename ToCudaType<T>::MappedType, typename ToCudaType<int32_t>::MappedType>(
+          prepare.output_rank_or_simple_broadcast,
+          &prepare.lhs_padded_strides,
+          reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
+          &prepare.rhs_padded_strides,
+          reinterpret_cast<const typename ToCudaType<int32_t>::MappedType*>(prepare.rhs_tensor->template Data<int32_t>()),
+          &prepare.fdm_output_strides,
+          prepare.fdm_H,
+          prepare.fdm_C,
+          reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
+          prepare.output_tensor->Shape().Size());
+      break;
+    case on::TensorProto_DataType_INT64:
+      ImplT1_Pow<typename ToCudaType<T>::MappedType, typename ToCudaType<int64_t>::MappedType>(
+          prepare.output_rank_or_simple_broadcast,
+          &prepare.lhs_padded_strides,
+          reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
+          &prepare.rhs_padded_strides,
+          reinterpret_cast<const typename ToCudaType<int64_t>::MappedType*>(prepare.rhs_tensor->template Data<int64_t>()),
+          &prepare.fdm_output_strides,
+          prepare.fdm_H,
+          prepare.fdm_C,
+          reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
+          prepare.output_tensor->Shape().Size());
+      break;
+    case on::TensorProto_DataType_FLOAT:
+      ImplT1_Pow<typename ToCudaType<T>::MappedType, typename ToCudaType<float>::MappedType>(
+          prepare.output_rank_or_simple_broadcast,
+          &prepare.lhs_padded_strides,
+          reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
+          &prepare.rhs_padded_strides,
+          reinterpret_cast<const typename ToCudaType<float>::MappedType*>(prepare.rhs_tensor->template Data<float>()),
+          &prepare.fdm_output_strides,
+          prepare.fdm_H,
+          prepare.fdm_C,
+          reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
+          prepare.output_tensor->Shape().Size());
+      break;
+    case on::TensorProto_DataType_DOUBLE:
+      ImplT1_Pow<typename ToCudaType<T>::MappedType, typename ToCudaType<double>::MappedType>(
+          prepare.output_rank_or_simple_broadcast,
+          &prepare.lhs_padded_strides,
+          reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
+          &prepare.rhs_padded_strides,
+          reinterpret_cast<const typename ToCudaType<double>::MappedType*>(prepare.rhs_tensor->template Data<double>()),
+          &prepare.fdm_output_strides,
+          prepare.fdm_H,
+          prepare.fdm_C,
+          reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
+          prepare.output_tensor->Shape().Size());
+      break;
+    default:
+      assert(false);
+  }
+}
+}  // namespace pow12_internal
+
+Status Pow::ComputeInternal(OpKernelContext* context) const {
+  BinaryElementwisePreparation prepare;
+  Prepare(context, &prepare);
+  namespace on = ONNX_NAMESPACE;
+  using namespace pow12_internal;
+
+  switch (prepare.lhs_tensor->GetElementType()) {
+    case on::TensorProto_DataType_INT32:
+      DispatchOnFirstArg<int32_t>(prepare);
+      break;
+    case on::TensorProto_DataType_INT64:
+      DispatchOnFirstArg<int64_t>(prepare);
+      break;
+    case on::TensorProto_DataType_FLOAT:
+      DispatchOnFirstArg<float>(prepare);
+      break;
+    case on::TensorProto_DataType_DOUBLE:
+      DispatchOnFirstArg<double>(prepare);
+      break;
+    default:
+      assert(false);
+  }
+
+  return Status::OK();
+}
 
 template <typename T, typename CudaT>
 Status VariadicInputBase<T, CudaT>::ComputeMethod(OpKernelContext* context, ImplCompute Impl_Compute) const {
