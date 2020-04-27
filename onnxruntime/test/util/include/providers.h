@@ -31,3 +31,6 @@
 #ifdef USE_ACL
 #include "core/providers/acl/acl_provider_factory.h"
 #endif
+#ifdef USE_ARMNN
+#include "core/providers/armnn/armnn_provider_factory.h"
+#endif

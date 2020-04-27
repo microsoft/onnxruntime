@@ -98,6 +98,8 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kDmlExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("armnn"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kArmNNExecutionProvider;
         } else {
           return false;
         }

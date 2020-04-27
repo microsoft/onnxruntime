@@ -93,6 +93,8 @@ option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_USE_ACL_1902 "Build with ACL version 1902 support" OFF)
 option(onnxruntime_USE_ACL_1905 "Build with ACL version 1905 support" OFF)
 option(onnxruntime_USE_ACL_1908 "Build with ACL version 1908 support" OFF)
+option(onnxruntime_USE_ARMNN "Build with ArmNN support" OFF)
+option(onnxruntime_ARMNN_RELU_USECPU "Use the CPU implementation for the Relu operator for the ArmNN EP" ON)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 #The onnxruntime_PREFER_SYSTEM_LIB is mainly designed for package managers like apt/yum/vcpkg.
@@ -496,6 +498,15 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
   endif()
 
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_graph arm_compute_core)
+endif()
+
+# ArmNN
+if (onnxruntime_USE_ARMNN)
+  if (NOT onnxruntime_ARMNN_RELU_USECPU)
+    add_definitions(-DRELU_ARMNN=1)
+  endif()
+
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn pthread arm_compute_core arm_compute arm_compute_graph)
 endif()
 
 # MKLML

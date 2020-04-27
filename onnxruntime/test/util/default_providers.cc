@@ -20,6 +20,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 
 namespace test {
 
@@ -89,6 +90,15 @@ std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_arena) {
 #ifdef USE_ACL
   return CreateExecutionProviderFactory_ACL(enable_arena)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(enable_arena);
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_arena){
+#ifdef USE_ARMNN
+  return CreateExecutionProviderFactory_ArmNN(enable_arena)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(enable_arena);
   return nullptr;
