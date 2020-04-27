@@ -318,7 +318,7 @@ std::unique_ptr<Prov_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Prov_O
 
 Prov_AllocatorPtr CreateDummyArenaAllocator(Prov_AllocatorPtr resource_allocator) {
   PROVIDER_NOT_IMPLEMENTED
-  ORT_UNUSED_PARAMETER(reource_allocator);
+  ORT_UNUSED_PARAMETER(resource_allocator);
   return nullptr;
 }
 
