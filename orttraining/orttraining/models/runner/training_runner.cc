@@ -78,7 +78,6 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
     pipeline_context_.num_gradient_accumulation_steps = params_.gradient_accumulation_steps;
     pipeline_schedule_.add(0, pipeline_context_.num_pipeline_batches);
   }
-
 }
 
 Status TrainingRunner::Initialize() {
@@ -182,10 +181,10 @@ Status TrainingRunner::Initialize() {
 
   if (pipeline_context_.pipeline_stage_id == 0) {
     config_result.pipeline_config_result = TrainingSession::TrainingConfigurationResult::PipelineConfigurationResult{
-      "WaitEvent_fw_event_id_9",
-      "RecordEvent_fw_event_id_30",
-      "WaitEvent_bw_event_id_33",
-      "RecordEvent_bw_event_id_6"
+      "WaitEvent_fw_event_id",
+      "RecordEvent_fw_event_id",
+      "WaitEvent_bw_event_id",
+      "RecordEvent_bw_event_id"
     };
     /*
     config_result.pipeline_config_result.forward_waited_event_name = "WaitEvent_fw_event_id_8";
@@ -195,10 +194,10 @@ Status TrainingRunner::Initialize() {
     */
   } else if (pipeline_context_.pipeline_stage_id == 1) {
     config_result.pipeline_config_result = TrainingSession::TrainingConfigurationResult::PipelineConfigurationResult{
-      "WaitEvent_fw_event_id_10",
-      "RecordEvent_fw_event_id_32",
-      "WaitEvent_bw_event_id_35",
-      "RecordEvent_bw_event_id_7"
+      "WaitEvent_fw_event_id",
+      "RecordEvent_fw_event_id",
+      "WaitEvent_bw_event_id",
+      "RecordEvent_bw_event_id"
     };
     /*
     config_result.pipeline_config_result.value.forward_waited_event_name = "WaitEvent_fw_event_id_9";
@@ -208,10 +207,10 @@ Status TrainingRunner::Initialize() {
     */
   } else if (pipeline_context_.pipeline_stage_id == 2) {
     config_result.pipeline_config_result = TrainingSession::TrainingConfigurationResult::PipelineConfigurationResult{
-    "WaitEvent_fw_event_id_18",
+    "WaitEvent_fw_event_id",
     "",
     "",
-    "RecordEvent_bw_event_id_15"
+    "RecordEvent_bw_event_id"
     };
     /*
     config_result.pipeline_config_result.value.forward_waited_event_name = "WaitEvent_fw_event_id_17";
@@ -376,9 +375,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
   VectorString fetch_names; // = params_.fetch_names;
   if (pipeline_context_.pipeline_stage_id == 0) {
-    fetch_names.push_back("send_output_signal0");
+    fetch_names.push_back("bert.encoder.layer.0.attention.self.query.bias_grad_3");
   } else if (pipeline_context_.pipeline_stage_id == 1) {
-    fetch_names.push_back("recv_input_signal0_grad_8");
+    fetch_names.push_back("recv_input_signal0_grad_3");
   } else if (pipeline_context_.pipeline_stage_id == 2) {
     fetch_names.push_back("total_loss");
   }
