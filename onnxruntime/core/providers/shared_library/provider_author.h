@@ -42,8 +42,14 @@ enum OperatorStatus : int {
 
 namespace onnxruntime {
 
+// The function passed in will be run on provider DLL unload. This is used to free thread_local variables that are in threads we don't own
+// Since these are not destroyed when the DLL unloads we have to do it manually. Search for usage for an example.
 struct RunOnUnload {
   RunOnUnload(std::function<void()> run);
+  ~RunOnUnload();
+
+private:
+  bool* enabled_{};
 };
 
 constexpr const char* kOnnxDomain = "";
