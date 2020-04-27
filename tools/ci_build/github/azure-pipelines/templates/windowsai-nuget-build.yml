@@ -100,7 +100,13 @@ steps:
         searchFolder: '$(Build.BinariesDirectory)'
         testRunTitle: 'Unit Test Run'
       condition: succeededOrFailed()
-
+  - ${{ if and(eq(parameters.BuildArch, 'x64'), eq(parameters.BuildForStore, 'false')) }}:
+    - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline Artifact: downlevel-test-artifact'
+        inputs:
+          artifactName: downlevel-test-artifact
+          targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+  
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 4.9
     inputs:
