@@ -54,7 +54,7 @@ namespace Dml
             m_capacity = ComputeNewCapacity(c_initialCapacity, size);
             m_readbackHeap = CreateReadbackHeap(m_device.Get(), m_capacity);
         }
-        else if (gsl::narrow_cast<ptrdiff_t>(m_capacity) < size)
+        else if (m_capacity < size)
         {
             // Ensure there's sufficient capacity
             m_capacity = ComputeNewCapacity(m_capacity, size);
