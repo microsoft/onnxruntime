@@ -1830,7 +1830,7 @@ TEST(ReductionOpTest, ArgMin_int32_select_last) {
 
 #ifdef USE_CUDA
 
-void test_reduce_apis(int64_t size, float tolerance = 1e-4f) {
+void test_reduce_apis(int64_t size, float relative_error_tolerance = 1e-4f) {
   float output_sum = 0;
   float output_square_sum = 0;
   float output_mean = 0;
@@ -1885,9 +1885,10 @@ void test_reduce_apis(int64_t size, float tolerance = 1e-4f) {
   cudaFree(device_output_square_sum);
   cudaFree(device_output_mean);
 
-  EXPECT_LT(std::abs(output_sum - expected_output_sum) / expected_output_sum, tolerance);
-  EXPECT_LT(std::abs(output_square_sum - expected_output_square_sum) / expected_output_square_sum, tolerance);
-  EXPECT_LT(std::abs(output_mean - expected_output_mean) / expected_output_mean, tolerance);
+  EXPECT_LT(std::abs(output_sum - expected_output_sum) / expected_output_sum, relative_error_tolerance);
+  EXPECT_LT(std::abs(output_square_sum - expected_output_square_sum) / expected_output_square_sum,
+            relative_error_tolerance);
+  EXPECT_LT(std::abs(output_mean - expected_output_mean) / expected_output_mean, relative_error_tolerance);
 }
 
 TEST(ReduceApiTest, Sum) {
