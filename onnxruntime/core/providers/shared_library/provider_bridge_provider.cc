@@ -284,7 +284,7 @@ const TensorShape& Tensor::Shape() const noexcept {
 
 OpKernel::OpKernel(const OpKernelInfo& info) {
   PROVIDER_NOT_IMPLEMENTED
-  info;
+  ORT_UNUSED_PARAMETER(info);
 }
 
 Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
@@ -318,6 +318,7 @@ std::unique_ptr<Prov_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Prov_O
 
 Prov_AllocatorPtr CreateDummyArenaAllocator(Prov_AllocatorPtr resource_allocator) {
   PROVIDER_NOT_IMPLEMENTED
+  ORT_UNUSED_PARAMETER(reource_allocator);
   return nullptr;
 }
 
