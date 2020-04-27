@@ -708,7 +708,7 @@ class ORTTrainer():
             print("WARNING: {} already exists, overwriting.".format(checkpoint_file))
 
         torch.save(checkpoint_state_dict, checkpoint_file)
-    
+
     def _load_single_checkpoint(self, checkpoint_dir, checkpoint_prefix, is_partitioned, strict):
         checkpoint_name = get_checkpoint_name(checkpoint_prefix, is_partitioned, self.world_rank, self.world_size)
         checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
@@ -732,7 +732,7 @@ class ORTTrainer():
         checkpoint_files = list_checkpoint_files(checkpoint_dir, checkpoint_prefix)
         assert len(checkpoint_files) > 0, "No checkpoint files found with prefix \"{}\" in directory {}.".format(checkpoint_prefix, checkpoint_dir)
 
-        ckpt_agg = Combine_Zero_Checkpoint(checkpoint_files)
+        ckpt_agg = CombineZeroCheckpoint(checkpoint_files)
         aggregate_state_dict = ckpt_agg.aggregate_checkpoints()
 
         self.load_state_dict(aggregate_state_dict, strict=strict)

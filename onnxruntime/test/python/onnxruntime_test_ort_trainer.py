@@ -434,7 +434,7 @@ class TestOrtTrainer(unittest.TestCase):
                         loss_scaler=None)
 
         ckpt_dir = get_name("ort_ckpt")
-        model.load_checkpoint(ckpt_dir, 'bert_toy_lamb_', is_partitioned=True)
+        model.load_checkpoint(ckpt_dir, 'bert_toy_lamb', is_partitioned=True)
                 
         expected_eval_loss = [10.997552871]
 

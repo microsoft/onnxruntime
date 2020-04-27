@@ -2,7 +2,7 @@ import os
 from collections import OrderedDict
 import torch
 
-def list_checkpoint_files(checkpoint_dir, checkpoint_prefix, extension='.tar'):
+def list_checkpoint_files(checkpoint_dir, checkpoint_prefix, extension='.ort.pt'):
     ckpt_file_names = [f for f in os.listdir(checkpoint_dir) if f.startswith(checkpoint_prefix)]
     ckpt_file_names = [f for f in ckpt_file_names if f.endswith(extension)]
     ckpt_file_names = [os.path.join(checkpoint_dir, f) for f in ckpt_file_names]
@@ -28,7 +28,7 @@ class CombineZeroCheckpoint(object):
 
         self.checkpoint_files = checkpoint_files
         self.clean_state_dict = clean_state_dict
-        self.world_size = int(self.checkpoint_files[0].split('ZeRO')[1].split('.')[1]) +1        
+        self.world_size = int(self.checkpoint_files[0].split('ZeRO')[1].split('.')[2]) +1
         print(f"World size = {self.world_size}, expecting {self.world_size} files.")        
         assert len(self.checkpoint_files) == self.world_size, "Could not find {} files".format(self.world_size)
         
@@ -69,7 +69,7 @@ class CombineZeroCheckpoint(object):
   
     def aggregate_checkpoints(self):
         checkpoint_dir=os.path.dirname(self.checkpoint_files[0])
-        checkpoint_prefix = self.checkpoint_files[0].split('ZeRO')[0]
+        checkpoint_prefix = self.checkpoint_files[0].split('.ZeRO')[0]
         self.aggregate_state_dict=dict()
 
         is_fp16 = False
