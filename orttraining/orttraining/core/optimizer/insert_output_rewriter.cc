@@ -25,7 +25,7 @@ Status InsertMaxPoolOutput::Apply(Graph& graph, Node& node, RewriteRuleEffect& r
 }
 
 bool InsertMaxPoolOutput::SatisfyCondition(const Graph& /*graph*/, const Node& node, const logging::Logger& /*logger*/) const {
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {8}) &&
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {8, 10, 11, 12}) &&
       node.OutputDefs().size() == 1) {
     return true;
   }
