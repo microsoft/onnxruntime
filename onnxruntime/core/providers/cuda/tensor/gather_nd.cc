@@ -38,55 +38,23 @@ Status CheckBatchDimensionsMatch(
   return Status::OK();
 }
 
-template <typename T>
-struct ComputeImpl {
-  void operator()(const int64_t num_slices,
-                  const int64_t slice_size,
-                  const void* const kernel_input_data,
-                  const bool fwd,
-                  void* const kernel_output_data,
-                  int64_t* const input_slice_offsets_data) const {
-    typedef typename ToCudaType<T>::MappedType CudaT;
-    if (fwd) {
-      GatherNDImpl<CudaT>(num_slices, kernel_input_data,
-                          kernel_output_data, slice_size,
-                          input_slice_offsets_data);
-    } else {
-#ifdef ENABLE_TRAINING
-      GatherNDGradImpl<CudaT>(num_slices, kernel_input_data,
-                              kernel_output_data, slice_size,
-                              input_slice_offsets_data);
-#else
-      ORT_THROW(ONNXRUNTIME, INVALID_ARGUMENT,
-                "Gradient computation is only supported in the training mode.");
-#endif
-    }
-  }
-};
-
 template <typename TIndex>
-Status GatherNDBase::CommonComputeKernel(
+Status GatherNDBase::PrepareCompute(
     const int64_t batch_dims,
     const TensorShape& input_shape,
-    const Tensor* kernel_input_tensor,
-    Tensor* kernel_output_tensor,
     const TensorShape& indices_shape,
     const Tensor* indices_tensor,
-    const bool fwd) const {
-  // Note on naming:
-  // `input` refers to the GatherND `data` input, while `kernel_input` refers to
-  // what the GatherND[Grad] CUDA kernel accepts as input.
-
+    int64_t& num_slices,
+    int64_t& slice_size,
+    IAllocatorUniquePtr<int64_t>& input_slice_offsets_buffer) const {
   const auto num_slice_dims = indices_shape[indices_shape.NumDimensions() - 1];
-  const auto num_slices = indices_shape.SizeToDimension(indices_shape.NumDimensions() - 1);
-  const auto slice_size = input_shape.SizeFromDimension(batch_dims + num_slice_dims);
+  num_slices = indices_shape.SizeToDimension(indices_shape.NumDimensions() - 1);
+  slice_size = input_shape.SizeFromDimension(batch_dims + num_slice_dims);
   const auto num_batches = input_shape.SizeToDimension(batch_dims);
   const auto input_batch_stride = input_shape.SizeFromDimension(batch_dims);
   const auto num_slices_per_batch = num_slices / num_batches;
 
   const TIndex* const indices_data = indices_tensor->Data<TIndex>();
-  const void* const kernel_input_data = kernel_input_tensor->DataRaw();
-  void* const kernel_output_data = kernel_output_tensor->MutableDataRaw();
 
   std::vector<int64_t> sizes_from_slice_dims(num_slice_dims);
   {
@@ -104,10 +72,10 @@ Status GatherNDBase::CommonComputeKernel(
       sizes_from_slice_dims.size() * sizeof(int64_t),
       cudaMemcpyHostToDevice));
 
-  auto input_slice_offsets_buffer = GetScratchBuffer<int64_t>(num_slices);
+  input_slice_offsets_buffer = GetScratchBuffer<int64_t>(num_slices);
 
   TArray<int64_t> input_dims(input_shape.GetDims());
-  // TODO reuse computed slice offsets from GatherND in GatherNDGrad
+
   ComputeSliceOffsetsImpl(
       batch_dims,
       input_dims,
@@ -119,9 +87,6 @@ Status GatherNDBase::CommonComputeKernel(
       indices_data,
       input_slice_offsets_buffer.get());
 
-  utils::MLTypeCallDispatcher<ComputeImpl, float, MLFloat16, double>
-      t_disp(kernel_input_tensor->GetElementType());
-  t_disp.Invoke(num_slices, slice_size, kernel_input_data, fwd, kernel_output_data, input_slice_offsets_buffer.get());
   return Status::OK();
 }
 
@@ -142,6 +107,20 @@ Status GatherNDBase::CommonComputeKernel(
 REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 1)
 #endif
 REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 12)
+
+template <typename T>
+struct GatherNDComputeImpl {
+  void operator()(const int64_t num_slices,
+                  const int64_t slice_size,
+                  const void* const kernel_input_data,
+                  void* const kernel_output_data,
+                  int64_t* const input_slice_offsets_data) const {
+    typedef typename ToCudaType<T>::MappedType CudaT;
+    GatherNDImpl<CudaT>(num_slices, kernel_input_data,
+                        kernel_output_data, slice_size,
+                        input_slice_offsets_data);
+  }
+};
 
 template <typename TIndex>
 Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
@@ -174,9 +153,19 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
   auto output_tensor = context->Output(0, TensorShape(shape));
 
   // Compute
-  auto status = CommonComputeKernel<TIndex>(batch_dims_, input_shape, input_tensor, output_tensor, indices_shape, indices_tensor, true);
+  int64_t num_slices;
+  int64_t slice_size;
+  IAllocatorUniquePtr<int64_t> input_slice_offsets_buffer;
+  ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(batch_dims_, input_shape, indices_shape, indices_tensor,
+                                             num_slices, slice_size, input_slice_offsets_buffer));
 
-  return status;
+  const void* const kernel_input_data = input_tensor->DataRaw();
+  void* const kernel_output_data = output_tensor->MutableDataRaw();
+  utils::MLTypeCallDispatcher<GatherNDComputeImpl, float, MLFloat16, double>
+      t_disp(input_tensor->GetElementType());
+  t_disp.Invoke(num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
+
+  return Status::OK();
 }
 
 }  // namespace cuda
