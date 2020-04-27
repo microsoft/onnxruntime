@@ -9,7 +9,7 @@ import torch.nn
 import torch.onnx
 import onnxruntime as ort
 from distutils.version import LooseVersion
-from .checkpointing_utils import list_checkpoint_files, Combine_Zero_Checkpoint
+from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
 
 DEFAULT_OPSET_VERSION = 10
 
@@ -699,36 +699,29 @@ class ORTTrainer():
         else:
             checkpoint_state_dict.update({'model': self.state_dict()})
 
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
+        assert os.path.exists(checkpoint_dir), "ERROR: Checkpoint directory doesn't exist: {}".format(checkpoint_dir)
 
-        if self.partition_optimizer_:
-            checkpoint_name = checkpoint_prefix + "_ZeROrank_" + str(self.world_rank) + "_of_" + str(self.world_size-1) + ".tar"
-        else:
-            checkpoint_name = checkpoint_prefix + ".tar" 
+        checkpoint_name = get_checkpoint_name(checkpoint_prefix,self.partition_optimizer_, self.world_rank, self.world_size) 
         checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
 
         if os.path.exists(checkpoint_file):
             print("WARNING: {} already exists, overwriting.".format(checkpoint_file))
 
-        print("Saving checkpoint {}".format(checkpoint_file))
         torch.save(checkpoint_state_dict, checkpoint_file)
-        print("Saved checkpoint at: {}".format(checkpoint_file))
     
     def _load_single_checkpoint(self, checkpoint_dir, checkpoint_prefix, is_partitioned, strict):
+        checkpoint_name = get_checkpoint_name(checkpoint_prefix, is_partitioned, self.world_rank, self.world_size)
+        checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
 
-        if is_partitioned:
-            checkpoint_file = os.path.join(checkpoint_dir, checkpoint_prefix + "_ZeROrank_" + str(self.world_rank) + "_of_" + str(self.world_size-1) + ".tar")
+        if is_partitioned:          
             assert_msg = ("Couldn't find checkpoint file {}." +
                 "Optimizer partitioning is enabled using ZeRO. Please make sure that the "+
                 "checkpoint file exists for rank {} of {}.").format(checkpoint_file,self.world_rank, self.world_size)
-            assert os.path.exists(checkpoint_file), assert_msg
         else:
-            checkpoint_file = os.path.join(checkpoint_dir, checkpoint_prefix + ".tar")
             assert_msg = "Couldn't find checkpoint file {}.".format(checkpoint_file)
-            assert os.path.exists(checkpoint_file), assert_msg
 
-        print("Loading checkpoint {}".format(checkpoint_file))
+        assert os.path.exists(checkpoint_file), assert_msg
+
         checkpoint_state = torch.load(checkpoint_file, map_location='cpu')
 
         self.load_state_dict(checkpoint_state['model'], strict=strict)
@@ -738,7 +731,6 @@ class ORTTrainer():
     def _load_multi_checkpoint(self, checkpoint_dir, checkpoint_prefix, strict):
         checkpoint_files = list_checkpoint_files(checkpoint_dir, checkpoint_prefix)
         assert len(checkpoint_files) > 0, "No checkpoint files found with prefix \"{}\" in directory {}.".format(checkpoint_prefix, checkpoint_dir)
-        print("Loading checkpoint files: {}".format(checkpoint_files))
 
         ckpt_agg = Combine_Zero_Checkpoint(checkpoint_files)
         aggregate_state_dict = ckpt_agg.aggregate_checkpoints()
