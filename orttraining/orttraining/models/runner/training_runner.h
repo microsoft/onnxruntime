@@ -14,6 +14,7 @@
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/models/runner/data_loader.h"
+#include "orttraining/models/runner/pipeline.h"
 
 namespace onnxruntime {
 namespace training {
@@ -153,6 +154,10 @@ class TrainingRunner {
     int horizontal_parallel_size = 1;
     // Enable gradient clipping.
     bool enable_grad_norm_clip=true;
+
+    // Pipeline configuration.
+    bool do_pipeline;
+    size_t num_pipeline_stages;
   };
 
   TrainingRunner(Parameters params, const Environment& env);
@@ -194,6 +199,15 @@ class TrainingRunner {
   AllocatorPtr input_allocator_;
 
   std::unique_ptr<CheckpointRegistry> checkpoint_registry_;
+  
+  // Pipeline fields are valid only if do_pipeline_ is true.
+  bool do_pipeline_;
+  // Information for running pipeline.
+  pipeline::PipelineContext pipeline_context_;
+  // Pipeline schedule for deciding when to run batch, forward, or backward.
+  pipeline::PipelineSchedule pipeline_schedule_;
+  // Workers to run pipeline stage.
+  pipeline::PipelineWorkerPool pipeline_worker_pool_;
 };
 
 }  // namespace training

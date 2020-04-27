@@ -135,6 +135,16 @@ class TrainingSession : public InferenceSession {
 
     // Whether to use pipeline in training.
     bool use_pipeline{false};
+
+    struct PipelineConfiguration {
+      // Total number of pipeline stages. 
+      size_t num_pipeline_stages;
+      // Id of stage handled by this process. Currently, it matches the MPI's rank.
+      size_t pipeline_stage_id;
+      // [TODO] Add cut information.
+    };
+
+    optional<PipelineConfiguration> pipeline_config{};
   };
 
   /**
@@ -156,6 +166,20 @@ class TrainingSession : public InferenceSession {
     // The optimizer configuration output.
     // This is only set if an optimizer is added.
     optional<OptimizerConfigurationResult> opt_config_result;
+
+    // The names of pipeline events in model's input list.
+    // If an event is not used, its name should be empty.
+    struct PipelineConfigurationResult {
+      // The names of pipeline events in model's input list.
+      std::string forward_waited_event_name;
+      std::string forward_recorded_event_name;
+      std::string backward_waited_event_name;
+      std::string backward_recorded_event_name;
+    };
+
+    // The pipeline configuration output.
+    // This is only set if an pipeline is enabled.
+    optional<PipelineConfigurationResult> pipeline_config_result;
   };
 
   /**

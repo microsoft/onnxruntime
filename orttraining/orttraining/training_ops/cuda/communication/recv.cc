@@ -104,7 +104,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
     // Keep the sync copy in the previous design
     // TODO they can be moved to async call after global stream becoming accessible
-    ORT_ENFORCE(cudaMemcpy(x_tensor->MutableData<void>(), buffer.get() + tensor_offset_in_bytes,
+    ORT_ENFORCE(cudaMemcpy(x_tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
                            x_tensor->SizeInBytes(), cudaMemcpyHostToDevice) == cudaSuccess);
     tensor_offset_in_bytes += x_tensor->SizeInBytes();
   }
