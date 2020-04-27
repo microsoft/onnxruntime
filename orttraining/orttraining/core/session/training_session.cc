@@ -191,7 +191,12 @@ Status TrainingSession::ConfigureForTraining(
   }
 
   if (config.use_pipeline) {
-    ORT_RETURN_IF_ERROR(InsertPipelineOps());
+    TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
+    ORT_RETURN_IF_ERROR(InsertPipelineOps(pipeline_result.forward_waited_event_name,
+                                          pipeline_result.forward_recorded_event_name,
+                                          pipeline_result.backward_waited_event_name,
+                                          pipeline_result.backward_recorded_event_name));
+    config_result.pipeline_config_result = pipeline_result;
   }
 
   // All non-float tensors are not trainable. Remove those weights.
@@ -465,8 +470,17 @@ Status TrainingSession::AddTensorboard(const std::string& summary_name,
   return DoPostLoadProcessing(*model_);
 }
 
-Status TrainingSession::InsertPipelineOps() {
-  ORT_RETURN_IF_ERROR(TransformGraphForPipeline(model_->MainGraph()));
+Status TrainingSession::InsertPipelineOps(
+  std::string& forward_waited_event_name,
+  std::string& forward_recorded_event_name,
+  std::string& backward_waited_event_name,
+  std::string& backward_recorded_event_name) {
+  ORT_RETURN_IF_ERROR(TransformGraphForPipeline(
+    model_->MainGraph(),
+    forward_waited_event_name,
+    forward_recorded_event_name,
+    backward_waited_event_name,
+    backward_recorded_event_name));
   return DoPostLoadProcessing(*model_);
 }
 

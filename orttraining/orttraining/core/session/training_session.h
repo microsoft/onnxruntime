@@ -289,7 +289,16 @@ class TrainingSession : public InferenceSession {
                                 const std::vector<std::string>& norm_nodes,
                                 const bool dump_convergence_metrics);
 
-  common::Status InsertPipelineOps();
+  // Insert operators for running pipeline and return event tensor names.
+  // For an intermediate pipeline stage, two WaitEvent and two RecordEvent would
+  // be inserted. The dependent event tensor names are returned.
+  // The related computation order is
+  //  WaitEvent --> Forward --> RecordEvent --> WaitEvent --> Backward --> RecordEvent
+  common::Status InsertPipelineOps(std::string& forward_waited_event_name,
+                                   std::string& forward_recorded_event_name,
+                                   std::string& backward_waited_event_name,
+                                   std::string& backward_recorded_event_name);
+
   common::Status ApplyTransformationsToMainGraph();
 
   /** configure initial transformers for training */
