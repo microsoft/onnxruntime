@@ -39,8 +39,7 @@ public class ScoreMNIST {
     public final List<int[]> indices;
     public final List<float[]> values;
 
-    public SparseData(
-        int[] labels, List<int[]> indices, List<float[]> values) {
+    public SparseData(int[] labels, List<int[]> indices, List<float[]> values) {
       this.labels = labels;
       this.indices = Collections.unmodifiableList(indices);
       this.values = Collections.unmodifiableList(values);
