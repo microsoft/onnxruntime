@@ -223,7 +223,7 @@ TEST(GatherNDOpTest, GatherND_slice_double_batch_dims_one_1) {
 
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddAttribute<int64_t>("batch_dims", 1);
-  test.AddInput<double>("data", {2, 2, 2}, ValueRange(8, 0.0f, 0.1f));
+  test.AddInput<double>("data", {2, 2, 2}, ValueRange(8, 0.0, 0.1));
   test.AddInput<int64_t>("indices", {2, 1, 1}, {1LL, 0LL});
   test.AddOutput<double>("output", {2, 1, 2}, {0.2f, 0.3f, 0.4f, 0.5f});
   test.Run();
