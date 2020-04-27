@@ -1,7 +1,7 @@
 {
   "name": "onnxruntime",
   "description": "Node.js binding of ONNXRuntime",
-  "version": "0.0.1-dev.20200424.1",
+  "version": "0.0.1-dev.20200427.1",
   "main": "./lib/index.js",
   "types": "./types/lib/index.d.ts",
   "scripts": {
@@ -17,9 +17,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/fs-eire/onnxruntime-node.git"
+    "url": "https://github.com/Microsoft/onnxruntime.git"
   },
   "keywords": [
+    "ONNX",
     "ONNX Runtime"
   ],
   "os": [
@@ -29,6 +30,7 @@
   ],
   "binary": {
     "module_path": "./bin",
+    "host": "https://onnxruntimetestdata.blob.core.windows.net/onnxruntime-node-prebuild/",
     "napi_versions": [
       3
     ]
