@@ -72,7 +72,8 @@ Status RegisterDNNLKernels(Prov_KernelRegistry& kernel_registry) {
 
 KernelRegistryAndStatus GetDnnlKernelRegistry() {
   KernelRegistryAndStatus ret;
-  ret.st = RegisterDNNLKernels(*ret.kernel_registry);
+// TODO (George.Wu): Registering these causes Gemm Kernels to be created in some test cases (which is deprecated as far as I knew)
+//  ret.st = RegisterDNNLKernels(*ret.kernel_registry);
   return ret;
 }
 }  // namespace ort_dnnl
