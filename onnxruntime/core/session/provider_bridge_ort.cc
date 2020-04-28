@@ -479,7 +479,7 @@ struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
 };
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int device_id) {
-  static ProviderLibrary library("C:\\code\\github\\onnxrt\\build\\windows\\debug\\debug\\onnxruntime_providers_dnnl.dll");
+  static ProviderLibrary library("onnxruntime_providers_dnnl.dll");
   if (!library.provider_)
     return nullptr;
 
