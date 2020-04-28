@@ -554,15 +554,9 @@ std::vector<std::vector<int>> OnnxConverter::GetSupportedNodes(
 
   std::vector<std::vector<int>> supported_node_vecs;
   std::vector<int> supported_node_vec;
-  bool force_unsupport = false;
   for (int i = 0; i < model_proto.graph().node_size(); i++) {
     bool supported;
     std::string error_msg;
-    if (force_unsupport) {
-      const auto& op = model_proto.graph().node(i).op_type();
-      LOGS_DEFAULT(INFO) << op << ": Force unsupported operator";
-      continue;
-    }
     std::tie(supported, error_msg) =
         IsNodeSupported(model_proto, model_proto.graph().node(i));
     if (supported) {
@@ -571,16 +565,12 @@ std::vector<std::vector<int>> OnnxConverter::GetSupportedNodes(
       const auto& op = model_proto.graph().node(i).op_type();
       LOGS_DEFAULT(INFO) << op << ": " << error_msg;
       if (!supported_node_vec.empty()) {
-        // if (supported_node_vec.size() >= 2)
         supported_node_vecs.push_back(supported_node_vec);
         supported_node_vec.clear();
       }
-      // if (op == "NonMaxSuppression" || op == "TopK")
-      //   force_unsupport = true;
     }
   }
   if (!supported_node_vec.empty()) {
-    // if (supported_node_vec.size() >= 2)
     supported_node_vecs.push_back(supported_node_vec);
   }
 
