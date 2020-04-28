@@ -105,7 +105,7 @@ TEST(GatherGradOpTest, Gather_axis1_float_impl2) {
   int64_t output_shape = 4;
   RandomValueGenerator random{};
   std::vector<float> grad(random.Uniform<float>({axis_0 * axis_1 * axis_2}, 1.0f, 1.0f));
-  std::vector<int64_t> indices(random.Uniform<int64_t>({axis_1 * axis_2}, (int64_t)0, (int64_t)3));
+  std::vector<int64_t> indices(random.Uniform<int64_t>({axis_1 * axis_2}, (int64_t)0, (int64_t)2));
 
   std::vector<int64_t> shape{axis_0, output_shape};
   std::vector<float> output(axis_0 * output_shape);
@@ -132,7 +132,7 @@ TEST(GatherGradOpTest, Gather_axis0_float_impl2) {
   int64_t output_shape = 4;
   RandomValueGenerator random{};
   std::vector<float> grad(random.Uniform<float>({axis_1 * axis_2 * output_shape}, 1.0f, 1.0f));
-  std::vector<int64_t> indices(random.Uniform<int64_t>({axis_1 * axis_2}, (int64_t)0, (int64_t)3));
+  std::vector<int64_t> indices(random.Uniform<int64_t>({axis_1 * axis_2}, (int64_t)0, (int64_t)2));
   std::vector<int64_t> shape{axis_0, output_shape};
   std::vector<float> output(axis_0 * output_shape);
 
