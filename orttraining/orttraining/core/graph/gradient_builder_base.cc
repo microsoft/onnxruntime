@@ -41,6 +41,16 @@ void ComputeBroadcastBackwardAxes(
       if (A_dim != B_dim) {
         ORT_THROW("Error");
       }
+    } else if (A_dims[i].has_dim_value() && B_dims[j].has_dim_param()) {
+      auto A_dim = A_dims[j].dim_value();
+      auto B_dim = B_dims[i].dim_param();
+ 
+      if (A_dim != 1) {
+        ORT_THROW("Error");
+      }
+      if (A_axes) {
+        A_axes->push_back(gsl::narrow_cast<int64_t>(k));
+      }
     }
     // TODO : complete othere cases
 

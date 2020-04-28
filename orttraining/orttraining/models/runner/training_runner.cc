@@ -59,10 +59,22 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
   ORT_ENFORCE(!params_.training_optimizer_name.empty());
   if (params.partition_optimizer)
     ORT_ENFORCE(params.use_nccl, "Optimizer partitioning is only supported with NCCL distributed training.");
+  
+  pipeline_context_.pipeline_stage_id = params_.mpi_context.world_rank;
+  pipeline_context_.num_pipeline_stages = params_.num_pipeline_stages;
 }
 
 Status TrainingRunner::Initialize() {
+  if (pipeline_context_.pipeline_stage_id == 0) {
+    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/xuzhu/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_0.onnx"));
+  } else if (pipeline_context_.pipeline_stage_id == 1) {
+    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/xuzhu/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_1.onnx"));
+  } else if (pipeline_context_.pipeline_stage_id == 2) {
+    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/xuzhu/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_2.onnx"));
+  }
+  /*
   ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
+  */
 
   TrainingSession::TrainingConfiguration config{};
   config.model_with_loss_function_path = params_.model_with_loss_func_path;
@@ -91,7 +103,7 @@ Status TrainingRunner::Initialize() {
   }
 
   // always configure the loss function
-  {
+  if (!params_.use_pipeline || params_.mpi_context.world_rank == params_.mpi_context.world_size - 1) {
     TrainingSession::TrainingConfiguration::LossFunctionConfiguration lf{};
     lf.loss_function_info = params_.loss_func_info;
 
@@ -129,6 +141,16 @@ Status TrainingRunner::Initialize() {
     TrainingSession::TrainingConfiguration::GistConfiguration gist{};
 
     config.gist_config = gist;
+  }
+
+  if (params_.use_pipeline) {
+    config.use_pipeline = params_.use_pipeline;
+
+    TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
+    pipe.num_pipeline_stages = params_.num_pipeline_stages;
+    pipe.pipeline_stage_id = params_.mpi_context.world_rank;
+
+    config.pipeline_config = pipe;
   }
 
   TrainingSession::TrainingConfigurationResult config_result{};

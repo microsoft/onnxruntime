@@ -135,7 +135,10 @@ Status TrainingSession::ConfigureForTraining(
     // if use pipeline, first check if model contains send op. If it does, set the
     // send node's output as the start tensor to build gradient graph
     GetPipelineSendOutput(model_->MainGraph(), loss_name);
+
+    std::cout << "Find loss @ " << config.distributed_config.world_rank << ": " << loss_name << std::endl;
   }
+
   if (loss_name.empty()) {
     const optional<LossFunctionInfo> loss_function_info =
         config.loss_function_config.has_value()
@@ -144,6 +147,18 @@ Status TrainingSession::ConfigureForTraining(
     ORT_RETURN_IF_ERROR(ConfigureLossFunction(
         config.loss_name, loss_function_info,
         loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
+  }
+
+  std::cout << "Final loss @ " << config.distributed_config.world_rank << ": " << loss_name << std::endl;
+  if (config.distributed_config.world_rank == 0) {
+    ORT_IGNORE_RETURN_VALUE(Save(
+        "/bert_ort/wechi/stage_0.onnx", SaveOption::NO_RELOAD));
+  } else if (config.distributed_config.world_rank == 1) {
+    ORT_IGNORE_RETURN_VALUE(Save(
+        "/bert_ort/wechi/stage_1.onnx", SaveOption::NO_RELOAD));
+  } else if (config.distributed_config.world_rank == 2) {
+    ORT_IGNORE_RETURN_VALUE(Save(
+        "/bert_ort/wechi/stage_2.onnx", SaveOption::NO_RELOAD));
   }
 
   ORT_ENFORCE(

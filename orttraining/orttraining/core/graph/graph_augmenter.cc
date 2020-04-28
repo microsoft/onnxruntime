@@ -5,6 +5,12 @@
 
 #include "core/common/logging/logging.h"
 
+#include <thread>
+#include <chrono>
+#include <csignal>
+#include <unistd.h>
+#include <sys/types.h>
+
 namespace onnxruntime {
 namespace training {
 
@@ -21,6 +27,13 @@ Status AddToExistingNodeArgs(
 
   for (const auto& new_nodearg_name : new_nodearg_names) {
     const auto* new_nodearg = graph.GetNodeArg(new_nodearg_name);
+    if (!new_nodearg) {
+      bool gdb_flag = true;
+      std::cout << getpid() << std::endl;
+      while (gdb_flag) {
+        gdb_flag = gdb_flag;
+      }
+    }
     ORT_RETURN_IF_NOT(
         new_nodearg,
         addition_context, " - failed to find NodeArg by name: ", new_nodearg_name);

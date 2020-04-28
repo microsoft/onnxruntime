@@ -156,7 +156,7 @@ class TrainingRunner {
     bool enable_grad_norm_clip=true;
 
     // Pipeline configuration.
-    bool do_pipeline;
+    bool use_pipeline;
     size_t num_pipeline_stages;
   };
 
@@ -200,8 +200,7 @@ class TrainingRunner {
 
   std::unique_ptr<CheckpointRegistry> checkpoint_registry_;
   
-  // Pipeline fields are valid only if do_pipeline_ is true.
-  bool do_pipeline_;
+  // Pipeline fields are valid only if params_.use_pipeline_ is true.
   // Information for running pipeline.
   pipeline::PipelineContext pipeline_context_;
   // Pipeline schedule for deciding when to run batch, forward, or backward.
