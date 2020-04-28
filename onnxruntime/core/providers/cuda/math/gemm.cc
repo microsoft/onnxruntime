@@ -3,7 +3,7 @@
 
 #include "gemm.h"
 #include "core/providers/cpu/math/gemm_helper.h"
-#include "core/providers/cuda/cudnn_common.h"
+#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 
 namespace onnxruntime {

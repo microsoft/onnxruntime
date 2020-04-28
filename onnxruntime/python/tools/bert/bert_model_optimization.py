@@ -47,7 +47,7 @@ MODEL_CLASSES = {
 }
 
 
-def optimize_by_onnxruntime(onnx_model_path, use_gpu, optimized_model_path=None, opt_level=99):
+def optimize_by_onnxruntime(onnx_model_path, use_gpu=False, optimized_model_path=None, opt_level=99):
     """
     Use onnxruntime package to optimize model. It could support models exported by PyTorch.
 
@@ -116,8 +116,6 @@ def parse_arguments():
                         default=768,
                         help="bert model hidden size. 768 for bert-base model and 1024 for bert-large")
 
-    parser.add_argument('--sequence_length', required=False, type=int, default=128, help="max sequence length")
-
     parser.add_argument('--input_int32',
                         required=False,
                         action='store_true',
@@ -130,12 +128,6 @@ def parse_arguments():
         action='store_true',
         help="If your target device is V100 or T4 GPU, use this to convert float32 to float16 for best performance")
     parser.set_defaults(float16=False)
-
-    parser.add_argument('--gpu_only',
-                        required=False,
-                        action='store_true',
-                        help="whether the target device is gpu or not")
-    parser.set_defaults(gpu_only=False)
 
     parser.add_argument('--disable_attention', required=False, action='store_true', help="disable Attention fusion")
     parser.set_defaults(disable_attention=False)
@@ -196,19 +188,15 @@ def get_optimization_options(args):
 
 def optimize_model(input,
                    model_type,
-                   gpu_only,
                    num_heads,
                    hidden_size,
-                   sequence_length,
-                   input_int32,
-                   float16,
                    opt_level=99,
                    optimization_options=None):
     (optimizer_class, producer, run_onnxruntime) = MODEL_CLASSES[model_type]
 
     input_model_path = input
     if run_onnxruntime and opt_level > 0:
-        input_model_path = optimize_by_onnxruntime(input_model_path, gpu_only, opt_level=opt_level)
+        input_model_path = optimize_by_onnxruntime(input_model_path, use_gpu=False, opt_level=opt_level)
         logger.info("Use OnnxRuntime to optimize and save the optimized model to {}".format(input_model_path))
 
     model = ModelProto()
@@ -223,7 +211,7 @@ def optimize_model(input,
     if optimization_options is None:
         optimization_options = BertOptimizationOptions(model_type)
 
-    bert_model = optimizer_class(model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only)
+    bert_model = optimizer_class(model, num_heads, hidden_size)
     bert_model.optimize(optimization_options)
 
     return bert_model
@@ -243,9 +231,14 @@ def main():
 
     optimization_options = get_optimization_options(args)
 
-    bert_model = optimize_model(args.input, args.model_type, args.gpu_only, args.num_heads, args.hidden_size,
-                                args.sequence_length, args.input_int32, args.float16, args.opt_level,
-                                optimization_options)
+    bert_model = optimize_model(args.input, args.model_type, args.num_heads, args.hidden_size,
+                                args.opt_level, optimization_options)
+
+    if args.float16:
+        bert_model.convert_model_float32_to_float16()
+
+    if args.input_int32:
+        bert_model.change_input_to_int32()
 
     bert_model.save_model_to_file(args.output)
 

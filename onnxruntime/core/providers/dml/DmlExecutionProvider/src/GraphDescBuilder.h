@@ -33,9 +33,9 @@ namespace Dml
         struct GraphDesc
         {
             std::vector<NodeInfo> nodes;
-            std::vector<DML_PREVIEW_INPUT_GRAPH_EDGE> inputEdges;
-            std::vector<DML_PREVIEW_OUTPUT_GRAPH_EDGE> outputEdges;
-            std::vector<DML_PREVIEW_INTERMEDIATE_GRAPH_EDGE> intermediateEdges;
+            std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
+            std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
+            std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
             bool reuseCommandList;
         };
 

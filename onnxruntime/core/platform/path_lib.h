@@ -16,6 +16,7 @@
 #include <time.h>    //strftime
 #include <stddef.h>  //ptrdiff_t
 #endif
+#include "core/common/path_string.h"
 #include "core/common/status.h"
 #include "core/session/onnxruntime_c_api.h"
 
