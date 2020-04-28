@@ -6,13 +6,165 @@
 namespace Dml
 {
 
+void ComputePixelOffsetsAndScales(
+    const MLOperatorKernelCreationContext& kernelCreationContext,
+    gsl::span<const float> regionOfInterest, // May be empty depending on mode.
+    gsl::span<const uint32_t> inputDimensions,
+    gsl::span<const uint32_t> outputDimensions,
+    /*inout*/ gsl::span<float> scales,
+    /*out*/   gsl::span<float> inputPixelOffsets,
+    /*out*/   gsl::span<float> outputPixelOffsets
+    )
+{
+    assert(inputDimensions.size() == outputDimensions.size());
+    assert(inputPixelOffsets.size() == outputPixelOffsets.size());
+    assert(inputPixelOffsets.size() == scales.size());
+    assert(inputPixelOffsets.size() == inputDimensions.size());
+    assert(regionOfInterest.empty() || regionOfInterest.size() == inputDimensions.size() * 2);
+
+    std::string coordinateTransformationMode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::CoordinateTransformationMode, "half_pixel");
+    uint32_t coordinateTransformationModeValue = UINT32_MAX;
+
+    const char* modes[] = { "half_pixel", "pytorch_half_pixel", "align_corners", "asymmetric", "tf_half_pixel_for_nn", "tf_crop_and_resize" };
+    for (uint32_t i = 0; i < std::size(modes); ++i)
+    {
+        if (strcmp(modes[i], coordinateTransformationMode.c_str()) == 0)
+        {
+            coordinateTransformationModeValue = i;
+            break;
+        }
+    }
+
+    ML_CHECK_VALID_ARGUMENT(
+        !regionOfInterest.empty() || coordinateTransformationModeValue != 5 /*tf_crop_and_resize*/,
+        "Resize expects 'roi' tensor for 'tf_crop_and_resize' mode."
+    );
+
+    const uint32_t rank = gsl::narrow_cast<uint32_t>(inputDimensions.size());
+
+    // Fill in all the input/output pixel offset for each axis,
+    // and recompute the scale for certain modes.
+
+    for (uint32_t i = 0; i < rank; ++i)
+    {
+        float inputPixelOffset = 0;
+        float outputPixelOffset = 0;
+
+        // All these mapping modes can be generalized to the equations:
+        //
+        // output_coordinate = (input_coordinate  + input_offset ) * scale + output_offset
+        // input_coordinate  = (output_coordinate - output_offset) / scale - input_offset
+        //
+        // With DML, a scale > 1 maps input to an upsampled output, and a positive pixel
+        // offset shifts the input contents to the right/down in the output.
+        //
+        // Since the equations from ONNX are in terms of mapping the output coordinate back
+        // to the input coordinate, any offsets need their signs flipped. e.g. For "half_pixel",
+        // the "x_resized" is the output coordinate, and the "+ 0.5" is the output coordinate
+        // adjustment which needs to be -0.5 when passed to DML.
+
+        switch (coordinateTransformationModeValue)
+        {
+        case 0:
+            // coordinate_transformation_mode is "half_pixel",
+            // x_original = (x_resized + 0.5) / scale - 0.5
+            inputPixelOffset = 0.5;
+            outputPixelOffset = -0.5;
+            // Keep existing scales.
+            break;
+
+        case 1:
+            // if coordinate_transformation_mode is "pytorch_half_pixel",
+            // x_original = length_resized > 1 ? (x_resized + 0.5) / scale - 0.5 : 0
+            if (inputDimensions[i] <= 1)
+            {
+                inputPixelOffset = 0.0;
+                outputPixelOffset = 0.0;
+                scales[i] = FLT_MAX; // Set large scale so all output pixels map to 0th input pixel.
+            }
+            else
+            {
+                inputPixelOffset = 0.5;
+                outputPixelOffset = -0.5;
+                // Keep existing scales.
+            }
+            break;
+
+        case 2:
+            // if coordinate_transformation_mode is "align_corners",
+            // x_original = x_resized * (length_original - 1) / (length_resized - 1)
+            inputPixelOffset = 0.0;
+            outputPixelOffset = 0.0;
+            if (outputDimensions[i] <= 1 || inputDimensions[i] <= 1)
+            {
+                // Protect against division by zero when either input/output is a single pixel.
+                scales[i] = FLT_MAX;
+            }
+            else
+            {
+                // Recalcalculate scale, ignoring existing one (only used to determine output size).
+                scales[i] = float(outputDimensions[i] - 1) / (inputDimensions[i] - 1);
+            }
+            break;
+
+        case 3:
+            // if coordinate_transformation_mode is "asymmetric",
+            // x_original = x_resized / scale
+            inputPixelOffset = 0.0;
+            outputPixelOffset = 0.0;
+            // Keep existing scales.
+            break;
+
+        case 4:
+            // if coordinate_transformation_mode is "tf_half_pixel_for_nn",
+            // x_original = (x_resized + 0.5) / scale
+            inputPixelOffset = 0.0;
+            outputPixelOffset = -0.5;
+            // Keep existing scales.
+            break;
+
+        case 5:
+            // if coordinate_transformation_mode is "tf_crop_and_resize",
+            // x_original = length_resized > 1 ? start_x * (length_original - 1) + x_resized * (end_x - start_x) * (length_original - 1) / (length_resized - 1)
+            //                                 : 0.5 * (start_x + end_x) * (length_original - 1)
+            if (inputDimensions[i] > 1)
+            {
+                assert(regionOfInterest.size() == rank * 2);
+
+                // Fold this part of the equation into the input offset: start_x * (length_original - 1)
+                inputPixelOffset = -(regionOfInterest[i] * (inputDimensions[i] - 1));
+                outputPixelOffset = 0.0;
+
+                // Fold this part to scale: (end_x - start_x) * (length_original - 1) / (length_resized - 1)
+                float computedScale = float(outputDimensions[i] - 1)
+                                    / std::max((regionOfInterest[i + rank] - regionOfInterest[i]) * (inputDimensions[i] - 1), 1.0f);
+                scales[i] = computedScale;
+            }
+            else // inputDimensions[i] <= 1
+            {
+                // 0.5 * (start_x + end_x) * (length_original - 1)
+                inputPixelOffset = -0.5f * (regionOfInterest[i] + regionOfInterest[i + rank]) * (inputDimensions[i] - 1);
+                outputPixelOffset = 0.0;
+                scales[i] = 1;
+            }
+            break;
+
+        default:
+            ML_INVALID_ARGUMENT("Unknown 'coordinate_transformation_mode'");
+        }
+
+        inputPixelOffsets[i] = inputPixelOffset;
+        outputPixelOffsets[i] = outputPixelOffset;
+    }
+}
+
 class DmlOperatorResize : public DmlOperator, public ResizeHelper
 {
 public:
     // Resample a multidimensional image to a new size.
-    DmlOperatorResize(const MLOperatorKernelCreationContext& kernelCreationContext)
+    DmlOperatorResize(const MLOperatorKernelCreationContext& kernelCreationContext, uint32_t opsetVersion)
     :   DmlOperator(kernelCreationContext), 
-        ResizeHelper(kernelCreationContext, kernelCreationContext.GetTensorShapeDescription())
+        ResizeHelper(kernelCreationContext, kernelCreationContext.GetTensorShapeDescription(), opsetVersion)
     {
         ML_CHECK_VALID_ARGUMENT(!m_scales.empty(), "Resize/Upsample expect scales, either a 2nd input tensors or 'scales' attribute.");
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1, "Resize/Upsample expect 1 output tensor.");
@@ -32,9 +184,31 @@ public:
         std::vector<uint32_t> squeezedOutputShape = m_outputDimensions;
         std::vector<uint32_t> squeezableDimensionIndices;
         std::vector<float> paddedScales = m_scales;
-        FindValueIndices<uint32_t>(gsl::make_span(m_outputDimensions), 1u, /*out*/ squeezableDimensionIndices);
+        std::vector<float> inputPixelOffsets(paddedScales.size());
+        std::vector<float> outputPixelOffsets(paddedScales.size());
+
+        ComputePixelOffsetsAndScales(
+            kernelCreationContext,
+            m_regionOfInterest, // May be empty depending on mode.
+            m_inputDimensions,
+            m_outputDimensions,
+            /*inout*/ paddedScales,
+            /*out*/ inputPixelOffsets,
+            /*out*/ outputPixelOffsets
+        );
+
+        // Find any useless dimensions of size 1 that occur in both input and output.
+        for (size_t i = 0, rank = m_outputDimensions.size(); i < rank; ++i)
+        {
+            if (m_inputDimensions[i] = 1 && m_outputDimensions[i] == 1)
+            {
+                squeezableDimensionIndices.push_back(gsl::narrow_cast<uint32_t>(i));
+            }
+        }
         RemoveValuesByIndex(squeezableDimensionIndices, /*keepOneValue*/ true, /*inout*/ squeezedInputShape);
         RemoveValuesByIndex(squeezableDimensionIndices, /*keepOneValue*/ true, /*inout*/ paddedScales);
+        RemoveValuesByIndex(squeezableDimensionIndices, /*keepOneValue*/ true, /*inout*/ inputPixelOffsets);
+        RemoveValuesByIndex(squeezableDimensionIndices, /*keepOneValue*/ true, /*inout*/ outputPixelOffsets);
         RemoveValuesByIndex(squeezableDimensionIndices, /*keepOneValue*/ true, /*inout*/ squeezedOutputShape);
 
         // Update the tensor descriptions.
@@ -52,6 +226,8 @@ public:
         if (dmlCompatibleDimCount > squeezedDimCount)
         {
             paddedScales.insert(paddedScales.begin(), dmlCompatibleDimCount - squeezedDimCount, 1.0f);
+            inputPixelOffsets.insert(inputPixelOffsets.begin(), dmlCompatibleDimCount - squeezedDimCount, 0.5f);
+            outputPixelOffsets.insert(outputPixelOffsets.begin(), dmlCompatibleDimCount - squeezedDimCount, -0.5f);
         }
 
         std::string mode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::Mode, "NEAREST");
@@ -61,19 +237,77 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        DML_RESAMPLE_OPERATOR_DESC operatorDesc = {};
+        DML_RESAMPLE1_OPERATOR_DESC operatorDesc = {};
         operatorDesc.InputTensor = inputDescs.data();
         operatorDesc.OutputTensor = outputDescs.data();
         operatorDesc.InterpolationMode = interpolationMode;
         operatorDesc.Scales = paddedScales.data();
-        operatorDesc.ScaleCount = gsl::narrow_cast<uint32_t>(paddedScales.size());
+        operatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(paddedScales.size());
+        operatorDesc.InputPixelOffsets = inputPixelOffsets.data();
+        operatorDesc.OutputPixelOffsets = outputPixelOffsets.data();
 
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_RESAMPLE, &operatorDesc };
+        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_RESAMPLE1, &operatorDesc };
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
     }
 };
 
-DML_OP_DEFINE_CREATION_FUNCTION(Resize, DmlOperatorResize);
-DML_OP_DEFINE_CREATION_FUNCTION(Upsample, DmlOperatorResize);
+// A specific type of operation for registration.
+template <uint32_t OpsetVersion>
+struct DmlOperatorResizeTemplate : public DmlOperatorResize
+{
+public:
+    DmlOperatorResizeTemplate(const MLOperatorKernelCreationContext& kernelInfo)
+    :   DmlOperatorResize(kernelInfo, OpsetVersion)
+    {
+    }
+};
+
+void CALLBACK QueryResize(IMLOperatorSupportQueryContextPrivate* context, bool* isSupported)
+{
+    *isSupported = false;
+
+    MLOperatorAttributes attributes(context);
+
+    // DML does not support cubic.
+    std::string mode = attributes.GetOptionalAttribute<std::string>(AttrName::Mode, "nearest");
+    if (mode == "cubic")
+    {
+        return;
+    }
+
+    // DML clamps the input coordinates to the edges and essentially repeats the last pixel.
+    // So rescaling the input kernel total denominator is not supported.
+    int32_t excludeOutside = attributes.GetOptionalAttribute<int32_t>(AttrName::ExcludeOutside, 0);
+    if (excludeOutside != 0)
+    {
+        return;
+    }
+
+    // DML does not support specifying a specific element value for reading outside the edges.
+    // Note the extrapolation value is only pertinent for "tf_crop_and_resize" mode.
+    float extrapolationValue = attributes.GetOptionalAttribute<float>(AttrName::ExtrapolationValue, 0.0);
+    if (extrapolationValue != 0.0)
+    {
+        return;
+    }
+
+    // DML's nearest neighbor mode uses half pixels rounded down.
+    std::string nearestMode = attributes.GetOptionalAttribute<std::string>(AttrName::NearestMode, "round_prefer_floor");
+    if (nearestMode != "round_prefer_floor")
+    {
+        return;
+    }
+
+    // Ignore parameter "cubic_coeff_a" since Cubic interpolation unsupported in DML.
+    // Ignore parameter "extrapolation_value" as DML clamps to the input rather than reading black pixels.
+
+    *isSupported = true;
+}
+
+DML_OP_DEFINE_CREATION_FUNCTION(Resize10, DmlOperatorResizeTemplate<10>);
+DML_OP_DEFINE_CREATION_FUNCTION(Resize11, DmlOperatorResizeTemplate<11>);
+DML_OP_DEFINE_CREATION_FUNCTION(Upsample7, DmlOperatorResizeTemplate<7>);
+DML_OP_DEFINE_CREATION_FUNCTION(Upsample9, DmlOperatorResizeTemplate<9>);
+DML_OP_DEFINE_CREATION_FUNCTION(Upsample10, DmlOperatorResizeTemplate<10>);
 
 } // namespace Dml
