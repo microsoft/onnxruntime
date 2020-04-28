@@ -209,7 +209,7 @@ def parse_arguments():
     parser.add_argument(
         "--ios_toolchain_file", default="",
         help="Path to ios toolchain file, "
-        "or cmake/onnxruntime_ios.cmake will be used")
+        "or cmake/onnxruntime_ios.toolchain.cmake will be used")
     parser.add_argument(
         "--use_xcode", action='store_true',
         help="Use Xcode as cmake generator, this is only supported on MacOS.")
@@ -687,7 +687,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
                 "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
                 "-DCMAKE_TOOLCHAIN_FILE=" + (
                     args.ios_toolchain_file if args.ios_toolchain_file
-                    else "../cmake/onnxruntime_ios.cmake")
+                    else "../cmake/onnxruntime_ios.toolchain.cmake")
             ]
         else:
             # We are cross comppiling on linux
