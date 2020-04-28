@@ -121,6 +121,8 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       "ReduceLogSumExp",
       "Resize",
       "Round",
+      "Scatter",
+      "ScatterElements",
       "Scan",
       "Shrink",
       "Softplus",

@@ -47,7 +47,7 @@ void TestBatchNorm(const unordered_map<string, vector<T>>& input_data_map,
   }
 
   // OpenVINO: Disabled due to software limitations
-  #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+  #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M) || defined(OPENVINO_CONFIG_CPU_FP32)
     excluded_eps.insert(kOpenVINOExecutionProvider);
   #endif
   test.Run(expect_result, err_str, excluded_eps);
