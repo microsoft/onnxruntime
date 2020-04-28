@@ -833,7 +833,10 @@ def build_targets(args, cmake_path, build_dir, configs, parallel):
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
                     "/nodeReuse:False",
                     ]
-            elif not (is_macOS() and args.use_xcode):
+            elif (is_macOS() and args.use_xcode):
+                # CMake will generate correct build tool args for Xcode
+                cmd_args += ["--parallel", num_cores]
+            else:
                 build_tool_args += ["-j" + num_cores]
 
         if build_tool_args:
