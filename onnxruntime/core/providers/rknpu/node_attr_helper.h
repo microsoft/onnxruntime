@@ -9,6 +9,7 @@
 #include <string>
 
 namespace onnxruntime {
+namespace rknpu {
 
 /**
  * Wrapping onnx::NodeProto for retrieving attribute values
@@ -28,5 +29,7 @@ class NodeAttrHelper {
  private:
   ONNX_NAMESPACE::NodeProto node_;
 };
+
+}  // namespace rknpu
 }  // namespace onnxruntime
 

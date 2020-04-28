@@ -12,6 +12,7 @@ using std::string;
 using std::vector;
 
 namespace onnxruntime {
+namespace rknpu {
 
 NodeAttrHelper::NodeAttrHelper(ONNX_NAMESPACE::NodeProto proto) : node_(proto) {
 }
@@ -110,4 +111,6 @@ bool NodeAttrHelper::has_attr(const std::string& key) {
 
   return false;
 }
+
+}  // namespace rknpu
 }  // namespace onnxruntime

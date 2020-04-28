@@ -7,6 +7,7 @@
 #include <iostream>
 
 namespace onnxruntime {
+namespace rknpu {
 
 class Shaper {
  public:
@@ -130,4 +131,5 @@ class Shaper {
   std::map<std::string, Shape> shape_map_;
 };
 
+}  // namespace rknpu
 }  // namespace onnxruntime

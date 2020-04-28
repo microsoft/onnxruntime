@@ -16,6 +16,7 @@
 #include "rknpu/rknpu_pub.h"
 
 namespace onnxruntime {
+namespace rknpu {
 class OnnxConverter {
  private:
   Shaper shaper_;
@@ -234,4 +235,5 @@ class OnnxConverter {
   std::string m(const std::string& str) const;
 };
 
+}  // namespace rknpu
 }  // namespace onnxruntime

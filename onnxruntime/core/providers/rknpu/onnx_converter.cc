@@ -18,6 +18,7 @@ using std::string;
 using std::vector;
 
 namespace onnxruntime {
+namespace rknpu {
 
 #define HAS(map, key) \
   (map.find(key) != map.end())
@@ -1880,4 +1881,5 @@ void OnnxConverter::AddLayerDequantizeLinear(const string& input,
                       inputs, outputs, nullptr);
 }
 
+}  // namespace rknpu
 }  // namespace onnxruntime

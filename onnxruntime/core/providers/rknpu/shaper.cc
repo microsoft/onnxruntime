@@ -7,6 +7,7 @@ using std::string;
 using std::vector;
 
 namespace onnxruntime {
+namespace rknpu {
 
 template <typename T>
 T Product(const std::vector<T>& v) {
@@ -527,4 +528,5 @@ std::ostream& operator<<(std::ostream& os, const Shaper& shaper) {
   return os;
 }
 
+}  // namespace rknpu
 }  // namespace onnxruntime

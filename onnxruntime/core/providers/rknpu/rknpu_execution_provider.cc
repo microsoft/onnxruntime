@@ -67,7 +67,7 @@ RknpuExecutionProvider::~RknpuExecutionProvider() {}
 
 std::vector<std::vector<int>> RknpuExecutionProvider::GetSupportedNodes(
     const ONNX_NAMESPACE::ModelProto& model_proto) const {
-  OnnxConverter converter;
+  rknpu::OnnxConverter converter;
   return converter.GetSupportedNodes(model_proto);
 }
 
@@ -383,7 +383,7 @@ common::Status RknpuExecutionProvider::Compile(
 
       rk::nn::Graph* graph = s->exector->GetGraph();
       if (rebuild) {
-        OnnxConverter converter;
+        rknpu::OnnxConverter converter;
         converter.Convert(s->model_proto, graph, input_bufs, s->input_map);
 
         s->exector->Build();
