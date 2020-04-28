@@ -8,6 +8,7 @@
 #include "core/platform/threadpool.h"
 
 namespace onnxruntime {
+namespace contrib {
 
 class GatherNDBase {
  protected:
@@ -33,11 +34,14 @@ class GatherNDBase {
 
   template <typename Tind>
   Status PrepareForCompute(OpKernelContext* context, Prepare& p) const;
+  int64_t axis_;
 };  // class GatherNDBase
 
 class GatherND final : public OpKernel, protected GatherNDBase {
  public:
-  explicit GatherND(const OpKernelInfo& info) : OpKernel(info) {}
+  explicit GatherND(const OpKernelInfo& info) : OpKernel(info) {
+    info.GetAttrOrDefault("axis", &axis_, static_cast<int64_t>(0));
+  }
   Status Compute(OpKernelContext* context) const override;
 
  private:
@@ -45,4 +49,5 @@ class GatherND final : public OpKernel, protected GatherNDBase {
   Status GatherString(const Prepare& p) const;
 };
 
+}  // namespace contrib
 }  // namespace onnxruntime

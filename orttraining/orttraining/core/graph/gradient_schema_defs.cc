@@ -698,84 +698,12 @@ void RegisterGradientSchemas() {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
-  // TODO: Depreacate this schema when training support is udpated to opset-12
-  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherNDGrad)
       .SetDomain(kOnnxDomain)
       .SinceVersion(1)
       .Attr(
-          "batch_dims",
-          "The number of batch dims. The gather of indexing starts from dimension of data[batch_dims:]",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Input(0, "data", "Tensor of rank r >= 1.", "T")
-      .Input(1, "indices", "Tensor of rank q >= 1.", "Tind")
-      .Output(0, "output", "Tensor of rank q-1+r-indices[-1].", "T")
-      .TypeConstraint(
-          "T",
-          OpSchema::all_tensor_types(),
-          "Constrain input and output types to any tensor type.")
-      .TypeConstraint(
-          "Tind",
-          {"tensor(int32)", "tensor(int64)"},
-          "Constrain indice type to int32 or int64")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        if (!hasNInputShapes(ctx, 2)) {
-          return;
-        }
-        auto& data_shape = ctx.getInputType(0)->tensor_type().shape();
-        auto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
-        auto data_rank = data_shape.dim_size();
-        auto indices_rank = indices_shape.dim_size();
-        auto batch_dims = ctx.getAttribute("batch_dims");
-        int64_t batch_dims_data = batch_dims ? static_cast<int>(batch_dims->i()) : 0;
-        if (data_rank < 1 || indices_rank < 1) {
-          fail_shape_inference("both data and indices tensor need to have rank larger than zero.");
-        }
-        auto last_indice_dimension = indices_shape.dim(indices_rank - 1).dim_value() + batch_dims_data;
-        if (last_indice_dimension > data_rank) {
-          fail_shape_inference("last dimension of indices must not be larger and rank of data tensor");
-        }
-        for (int i = 0; i < indices_rank - 1; ++i) {
-          *ctx.getOutputType(0)
-               ->mutable_tensor_type()
-               ->mutable_shape()
-               ->add_dim() = indices_shape.dim(i);
-        }
-        for (int i = static_cast<int>(last_indice_dimension); i < data_rank; ++i) {
-          *ctx.getOutputType(0)
-               ->mutable_tensor_type()
-               ->mutable_shape()
-               ->add_dim() = data_shape.dim(i);
-        }
-      })
-      .SetDoc(R"DOC(
-Given `data` tensor of rank r >= 1, and `indices` tensor of rank q >= 1, gather
-slices of `data` into an output tensor of rank q - 1 + r - indices[-1].
-Example 1:
-  data    = [[0,1],[2,3]]
-  indices = [[0,0],[1,1]]
-  output  = [0,3]
-Example 2:
-  data    = [[0,1],[2,3]]
-  indices = [[1],[0]]
-  output  = [[2,3],[0,1]]
-Example 3:
-  data    = [[[0,1],[2,3]],[[4,5],[6,7]]]
-  indices = [[0,1],[1,0]]
-  output  = [[2,3],[4,5]]
-Example 4:
-  data    = [[[0,1],[2,3]],[[4,5],[6,7]]]
-  indices = [[[0,1]],[[1,0]]]
-  output  = [[[2,3]],[[4,5]]]
-)DOC");
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherNDGrad)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .Attr(
-          "batch_dims",
-          "The number of batch dims. The gather of indexing starts from dimension of data[batch_dims+1:]",
+          "axis",
+          "The number of batch dims. The gather of indexing starts from dimension of data[axis+1:]",
           AttributeProto::INT,
           static_cast<int64_t>(0))
       .Input(0, "shape", "The shape of source data input of GatherND.", "T1")
@@ -788,7 +716,7 @@ Example 4:
           "Constrain input and output types to any tensor type.")
       .TypeConstraint(
           "Tind",
-          {"tensor(int64)"},
+          {"tensor(int32)", "tensor(int64)"},
           "Constrain indice type to int32 or int64")
       .TypeConstraint(
           "T1",
