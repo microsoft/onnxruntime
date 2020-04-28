@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "iengine.h"
+#include "UniqueOrtPtr.h"
 
 #include <memory>
 

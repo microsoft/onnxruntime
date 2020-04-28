@@ -333,17 +333,17 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                 LayerNormalization
             /       |        |     \     [Weights](WxW)
            /        |        |      \    /
-          |   q_MatMul    k_MatMul  v_MatMul  [Bias](W)    
+          |   q_MatMul    k_MatMul  v_MatMul  [Bias](W)
           |         |        |        |   /
           |     q_Add     k_Add     v_Add     [Shape=0,0,N,H]
           |         |        |        |      /
           | q_Reshape   k_Reshape   v_Reshape                [Mask] (BxS)
           |         |        |        |                          |
           |q_Transpose  k_Transpose v_Transpose            mask_Unsqueeze(axes=1)
-          |  (0,2,1,3)  (0,2,3,1)    (perm=0,2,1,3)              | 
-          |         \       /         |                    mask_Unsqueeze(axes=2) 
+          |  (0,2,1,3)  (0,2,3,1)    (perm=0,2,1,3)              |
+          |         \       /         |                    mask_Unsqueeze(axes=2)
           |      qk_MatMul            |                          |
-          |           |    [B=2]      |              [A=1] mask_Cast(to=1)        
+          |           |    [B=2]      |              [A=1] mask_Cast(to=1)
           |           |   /           |                   \     /
           |        qk_Div             |                 mask_Sub   [A=1000]
           |            \              |                        \   /
@@ -370,9 +370,9 @@ After Fusion:
       |        \      /   [Bias](3W)     |
       |         \    /   /               |
       |         Attention <------------ReduceSum
-      \          |        
-       \        MatMul    
-        \        |      
+      \          |
+       \        MatMul
+        \        |
          \      Add
           +------|---+
                  |   |

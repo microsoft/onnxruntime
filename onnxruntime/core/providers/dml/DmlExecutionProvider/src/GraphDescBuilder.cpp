@@ -14,8 +14,21 @@ namespace Dml::GraphDescBuilder
     // mismatch is fixed (WindowsAI: 21114358, Lotus: 1953), this workaround should be removed.
     static std::string GetFusedNodeArgNameMatchingGraph(const std::string& fusedNodeArgeName)
     {
-        // The suffix used when inserting mem copies is equal to the below, followed by an incrementing number.
-        const char* suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider_");
+        const char* suffix = nullptr;
+        
+        // The suffix used when inserting mem copies is equal to the below, probably followed by an incrementing number.
+        if (!suffix) {
+            suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider_");
+        }
+
+        // The suffix used when inserting mem copies is equal to the below, not followed by an incrementing number.
+        if (!suffix) {
+            suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider");
+        }
+        
+        if (!suffix) {
+            suffix = strstr(fusedNodeArgeName.c_str(), "_token_");
+        }
 
         if (suffix)
         {
@@ -23,9 +36,9 @@ namespace Dml::GraphDescBuilder
                 fusedNodeArgeName.begin(),
                 fusedNodeArgeName.begin() + (suffix - fusedNodeArgeName.c_str())
             );
+        } else {
+            return fusedNodeArgeName;
         }
-
-        return fusedNodeArgeName;
     }
 
     const std::string& GetUniqueNodeName(const onnxruntime::Node& node)

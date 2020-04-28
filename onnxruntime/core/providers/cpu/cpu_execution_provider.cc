@@ -6,11 +6,15 @@
 #include "core/framework/kernel_registry.h"
 
 #ifndef DISABLE_CONTRIB_OPS
-#include "contrib_ops/cpu_contrib_kernels.h"
+#include "contrib_ops/cpu/cpu_contrib_kernels.h"
 #endif
 
 #ifdef ML_FEATURIZERS
-#include "featurizers_ops/cpu_featurizers_kernels.h"
+#include "featurizers_ops/cpu/cpu_featurizers_kernels.h"
+#endif
+
+#ifdef ENABLE_TRAINING
+#include "orttraining/training_ops/cpu/cpu_training_kernels.h"
 #endif
 
 #include "core/framework/compute_capability.h"
@@ -431,7 +435,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 12, int8_t, ReduceMin);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 12, uint8_t, ReduceMin);
 
-
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 12, GatherND);
 
 Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
@@ -1078,6 +1082,8 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
                                                                   ReduceMin)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 12, uint8_t,
                                                                   ReduceMin)>,
+                                                                  
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 12, GatherND)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -1231,6 +1237,9 @@ static Status RegisterCPUKernels(KernelRegistry& kernel_registry) {
 #endif
 #ifdef ML_FEATURIZERS
   ORT_RETURN_IF_ERROR(::onnxruntime::featurizers::RegisterCpuMSFeaturizersKernels(kernel_registry));
+#endif
+#ifdef ENABLE_TRAINING
+  ORT_RETURN_IF_ERROR(::onnxruntime::contrib::RegisterCpuTrainingKernels(kernel_registry));
 #endif
   return Status::OK();
 }
