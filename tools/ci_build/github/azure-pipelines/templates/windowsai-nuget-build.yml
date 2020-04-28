@@ -113,7 +113,7 @@ steps:
        xcopy $(Build.SourcesDirectory)\winml\test\collateral\models\ModelSubdirectory $(Build.ArtifactStagingDirectory)\test_artifact\ModelSubdirectory\ /i
        copy $(Build.SourcesDirectory)\winml\test\collateral\images\*.png $(Build.ArtifactStagingDirectory)\test_artifact\
        copy $(Build.SourcesDirectory)\winml\test\collateral\images\*.jpg $(Build.ArtifactStagingDirectory)\test_artifact\
-      displayName: 'Create NuGet Package'
+      displayName: 'Copy WinML test collateral to artifact directory'
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 4.9
     inputs:
