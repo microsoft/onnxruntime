@@ -193,7 +193,7 @@ jobs:
 
       - template: clean-agent-build-directory-step.yml
 
-- ${{ if eq(parameters.enable_windows_cpu) }}:
+- ${{ if eq(parameters.enable_windows_cpu, true) }}:
   - job: Windows_py_Wheels
     pool: 'Win-CPU-2019'
     strategy:
@@ -281,7 +281,7 @@ jobs:
         ArtifactName: onnxruntime
 
     - template: component-governance-component-detection-steps.yml
-      parameters :
+      parameters:
         condition : 'succeeded'
 
     - template: clean-agent-build-directory-step.yml
