@@ -40,6 +40,9 @@ RunOnUnload::~RunOnUnload() {
 
 struct OnUnload {
   ~OnUnload() {
+    if (!s_run_on_unload_)
+      return;
+
     for (auto& function : *s_run_on_unload_) {
       if(function->enabled_)
 		  function->function_();
