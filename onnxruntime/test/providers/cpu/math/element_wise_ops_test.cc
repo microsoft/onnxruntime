@@ -627,7 +627,7 @@ TEST(MathOpTest, Pow_float_int64) {
   test.AddInput<float>("X", dims, {1.0f, 2.0f, 3.0f});
   test.AddInput<int64_t>("Y", dims, {4, 5, 6});
   test.AddOutput<float>("Z", dims, {1.f, 32.f, 729.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 }
 
 TEST(MathOpTest, Pow_int64_float) {
@@ -636,7 +636,7 @@ TEST(MathOpTest, Pow_int64_float) {
   test.AddInput<int64_t>("X", dims, {1, 2, 3});
   test.AddInput<float>("Y", dims, {4.f, 5.f, 6.f});
   test.AddOutput<int64_t>("Z", dims, {1, 32, 729});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 }
 
 TEST(MathOpTest, Pow_float_int32) {
@@ -645,7 +645,7 @@ TEST(MathOpTest, Pow_float_int32) {
   test.AddInput<float>("X", dims, {1.0f, 2.0f, 3.0f});
   test.AddInput<int32_t>("Y", dims, {4, 5, 6});
   test.AddOutput<float>("Z", dims, {1.f, 32.f, 729.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 }
 
 TEST(MathOpTest, Pow_int32_float) {
@@ -654,7 +654,7 @@ TEST(MathOpTest, Pow_int32_float) {
   test.AddInput<int32_t>("X", dims, {1, 2, 3});
   test.AddInput<float>("Y", dims, {4.f, 5.f, 6.f});
   test.AddOutput<int32_t>("Z", dims, {1, 32, 729});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 }
 
 TEST(MathOpTest, Pow_int64_double) {
@@ -663,7 +663,7 @@ TEST(MathOpTest, Pow_int64_double) {
   test.AddInput<int64_t>("X", dims, {1, 2, 3});
   test.AddInput<double>("Y", dims, {4.f, 5.f, 6.f});
   test.AddOutput<int64_t>("Z", dims, {1, 32, 729});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 }
 
 TEST(MathOpTest, Pow_double_int64) {
@@ -672,7 +672,7 @@ TEST(MathOpTest, Pow_double_int64) {
   test.AddInput<double>("X", dims, {1., 2., 3.});
   test.AddInput<int64_t>("Y", dims, {4, 5, 6});
   test.AddOutput<double>("Z", dims, {1., 32., 729.});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 }
 
 TEST(MathOpTest, Exp_float) {

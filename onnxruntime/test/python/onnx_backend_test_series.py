@@ -132,6 +132,7 @@ def create_backend_test(testname=None):
             '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_cpu',
             '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_ignore_index_cpu',
             '^test_nesterov_momentum_cpu',
+            '^test_pow_types_float32_uint32_cpu',
             '^test_pow_types_float32_uint64_cpu',
             '^test_pow_types_int64_float32_cpu',
             '^test_softmax_cross_entropy_mean_3d_cpu',
