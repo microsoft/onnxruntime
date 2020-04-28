@@ -70,3 +70,30 @@ graph = helper.make_graph(
 
 save_model(graph, 'reshape_fusion_internal_node_is_graph_output.onnx')
 
+
+
+graph = helper.make_graph(
+    [ # nodes
+        helper.make_node("Shape", ["query"], ["shape0_out"], "shape0"),
+        helper.make_node("Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0),
+        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
+        helper.make_node("Concat", ["a", "unsqueeze0_out"], ["concat_out"], "concat", axis=0),
+        helper.make_node("Reshape", ["doc_word_mask", "concat_out"], ["Result"], "reshape"),
+    ],
+    "Reshape_Fusion",  #name
+    [  # inputs
+        helper.make_tensor_value_info('query', TensorProto.FLOAT, [1, 50]),
+        helper.make_tensor_value_info('doc_word_mask', TensorProto.FLOAT, [1, 200, 50]),
+    ],
+    [  # outputs
+        helper.make_tensor_value_info('Result', TensorProto.FLOAT, [10, 20, 'unk']),
+    ],
+    [  # initializers
+        helper.make_tensor('a', TensorProto.INT64, [1], [-1]),
+        helper.make_tensor('indices0', TensorProto.INT64, [], [1]),
+    ]
+)
+
+save_model(graph, 'reshape_fusion_with_graph_inputs.onnx')
+
+
