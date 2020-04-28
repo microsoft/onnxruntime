@@ -79,7 +79,9 @@ TEST(GatherNDOpTest, int64_t) {
 }
 
 TEST(GatherNDOpTest, float) {
-  if (!HasCudaEnvironment(600 /*min_cuda_architecture*/)) return;
+  if (NeedSkipIfCudaArchLowerThan(600)) {
+    return;
+  }
 
   RunTest<float>({2, 2}, {0.0f, 0.1f, 0.2f, 0.3f}, {2, 1}, {1LL, 0LL}, {2, 2}, {0.2f, 0.3f, 0.0f, 0.1f});
 
@@ -88,7 +90,9 @@ TEST(GatherNDOpTest, float) {
 }
 
 TEST(GatherNDOpTest, double) {
-  if (!HasCudaEnvironment(600 /*min_cuda_architecture*/)) return;
+  if (NeedSkipIfCudaArchLowerThan(600)) {
+    return;
+  }
 
   RunTest<double>({2, 2}, {0.0, 0.1, 0.2, 0.3}, {2, 1}, {1LL, 0LL}, {2, 2}, {0.2, 0.3, 0.0, 0.1});
 
@@ -216,10 +220,10 @@ TEST(GatherNDOpTest, GatherND_negative_slice_float_batch_dims_two) {
   test.Run();
 }
 
-#ifdef USE_CUDA
-
 TEST(GatherNDOpTest, GatherND_slice_double_batch_dims_one_1) {
-  if (!HasCudaEnvironment(600 /*min_cuda_architecture*/)) return;
+  if (NeedSkipIfCudaArchLowerThan(600)) {
+    return;
+  }
 
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddAttribute<int64_t>("batch_dims", 1);
@@ -230,17 +234,21 @@ TEST(GatherNDOpTest, GatherND_slice_double_batch_dims_one_1) {
 }
 
 TEST(GatherNDOpTest, GatherND_slice_double_default_batch_dims) {
-  if (!HasCudaEnvironment(600 /*min_cuda_architecture*/)) return;
+  if (NeedSkipIfCudaArchLowerThan(600)) {
+    return;
+  }
 
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddInput<double>("data", {2, 2}, {0.0f, 0.1f, 0.2f, 0.3f});
   test.AddInput<int64_t>("indices", {2, 1}, {1LL, 0LL});
   test.AddOutput<double>("output", {2, 2}, {0.2f, 0.3f, 0.0f, 0.1f});
   test.Run();
-}
+}  // namespace test
 
 TEST(GatherNDOpTest, GatherND_slice_double_batch_dims_one_2) {
-  if (!HasCudaEnvironment(600 /*min_cuda_architecture*/)) return;
+  if (NeedSkipIfCudaArchLowerThan(600)) {
+    return;
+  }
 
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddAttribute<int64_t>("batch_dims", 1);
@@ -251,7 +259,9 @@ TEST(GatherNDOpTest, GatherND_slice_double_batch_dims_one_2) {
 }
 
 TEST(GatherNDOpTest, GatherND_slice_half) {
-  if (!HasCudaEnvironment(600 /*min_cuda_architecture*/)) return;
+  if (NeedSkipIfCudaArchLowerThan(600)) {
+    return;
+  }
 
   OpTester test("GatherND", 12, kOnnxDomain);
   std::vector<float> data_f({0.0f, 0.1f, 0.2f, 0.3f});
@@ -288,8 +298,6 @@ TEST(GatherNDOpTest, GatherND_batch_dims_of_2) {
       });
   test.Run();
 }
-
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

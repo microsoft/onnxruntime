@@ -37,5 +37,15 @@ inline bool HasCudaEnvironment(int min_cuda_architecture) {
   return cuda_architecture >= min_cuda_architecture;
 }
 
+inline bool IsCPUOnlyBuild() {
+#ifdef USE_CUDA
+  return false;
+#endif
+  return true;
+}
+
+inline bool NeedSkipIfCudaArchLowerThan(int min_cuda_architecture) {
+  return !IsCPUOnlyBuild() && !HasCudaEnvironment(min_cuda_architecture);
+}
 }  // namespace test
 }  // namespace onnxruntime
