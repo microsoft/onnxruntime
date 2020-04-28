@@ -14,7 +14,7 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearLeakyRelu_Int8) {
   int8_t Y_zero_point = -100;
 
   std::vector<int64_t> dims = {16};
-  test.AddInput<int8_t>("X", dims, {0, 16, 17,  18, 19,   90, 91, 127, -128, -110, -108, -100, -16, -17, -18, -1});
+  test.AddInput<int8_t>("X", dims, {0, 16, 17,  18, 19, 90, 91, 127, -128, -110, -108, -100, -16, -17, -18, -1});
   test.AddInput<float>("X_scale", {}, {X_scale});
   test.AddInput<int8_t>("X_zero_point", {}, {X_zero_point});
   test.AddInput<float>("Y_scale", {}, {Y_scale});

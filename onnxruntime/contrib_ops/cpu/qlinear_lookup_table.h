@@ -9,19 +9,17 @@
 namespace onnxruntime {
 namespace contrib {
 
-void QLinearLookupTableTransform(const uint8_t* x, const uint8_t* table, uint8_t* y, size_t n);
-
 template <typename T>
 class QLinearLeakyRelu final : public OpKernel {
  public:
-  QLinearLeakyRelu(const OpKernelInfo& info)
-      : OpKernel(info), alpha_(info.GetAttrOrDefault("alpha", 0.01f)) {
-  }
+  QLinearLeakyRelu(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
   const float alpha_;
+  bool is_fixed_parameters_;   // Fixed Scale and Zero Point for both x and y
+  uint8_t fixed_lookup_table_[256];  // when is const paramter, table value is here.
 };
 
 }  // namespace contrib
