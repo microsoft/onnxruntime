@@ -19,8 +19,9 @@ Status EliminateDropout::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule
 }
 
 bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
-  // We currently support elimination for Dropout operator v1, v6, v7, and v10.
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", {1, 6, 7, 10})) {
+  // We currently support elimination for Dropout operator v1, v6, v7, v10 and v12.
+  // REVIEW(mzs): v10 implementation does not exist.
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", {1, 6, 7, 10, 12})) {
     return false;
   }
 

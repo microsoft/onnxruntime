@@ -14,7 +14,7 @@ o) BUILD_OS=${OPTARG};;
 #cpu, gpu, tensorrt
 d) BUILD_DEVICE=${OPTARG};;
 r) BUILD_DIR=${OPTARG};;
-#python version: 3.6 3.7 (absence means default 3.5)
+#python version: 3.6 3.7 (absence means default 3.6)
 p) PYTHON_VER=${OPTARG};;
 # "--build_wheel --use_openblas"
 x) BUILD_EXTR_PAR=${OPTARG};;
@@ -30,7 +30,7 @@ esac
 done
 
 EXIT_CODE=1
-PYTHON_VER=${PYTHON_VER:=3.5}
+PYTHON_VER=${PYTHON_VER:=3.6}
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
 
 cd $SCRIPT_DIR/docker
@@ -67,7 +67,7 @@ else
         if [ $CUDA_VER = "cuda9.1-cudnn7.1" ]; then
         DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
         fi
-        docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
+        docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg BUILD_EXTR_PAR="${BUILD_EXTR_PAR}" -f $DOCKER_FILE .
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
         # TensorRT container release 20.01
         IMAGE="$BUILD_OS-cuda10.2-cudnn7.6-tensorrt7.0"

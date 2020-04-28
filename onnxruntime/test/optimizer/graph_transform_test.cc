@@ -1,5 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4244)
+#endif
+
 #include "core/graph/onnx_protobuf.h"
 
 #include "core/session/inference_session.h"
@@ -26,6 +31,7 @@
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/shape_to_initializer.h"
@@ -34,11 +40,14 @@
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/optimizer/fast_gelu_fusion.h"
+#include "core/optimizer/expand_elimination.h"
+#include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/util/math.h"
 #include "test/capturing_sink.h"
 #include "test/framework/test_utils.h"
+#include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
 #include "asserts.h"
@@ -51,15 +60,6 @@ namespace onnxruntime {
 namespace test {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
-
-class GraphTransformationTests : public ::testing::Test {
- protected:
-  GraphTransformationTests() {
-    logger_ = DefaultLoggingManager().CreateLogger("GraphTransformationTests");
-  }
-
-  std::unique_ptr<logging::Logger> logger_;
-};
 
 TEST_F(GraphTransformationTests, IdentityElimination) {
   auto model_uri = MODEL_FOLDER "abs-id-max.onnx";
@@ -617,6 +617,84 @@ TEST_F(GraphTransformationTests, Gemm_Relu_three_input) {
   ASSERT_TRUE(op_to_count["Relu"] == 0);
 }
 
+TEST_F(GraphTransformationTests, TransposeMatmulFusion) {
+  auto model_uri = MODEL_FOLDER "fusion/transpose_matmul_4d_fusion.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Transpose"] == 0);
+  ASSERT_TRUE(op_to_count["MatMul"] == 0);
+  ASSERT_TRUE(op_to_count["TransposeMatMul"] == 1);
+}
+
+TEST_F(GraphTransformationTests, TransposeMatmulFusionOnTwoTranspose) {
+  auto model_uri = MODEL_FOLDER "fusion/transpose_matmul_4d_fusion_2_transpose.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Transpose"] == 0);
+  ASSERT_TRUE(op_to_count["MatMul"] == 0);
+  ASSERT_TRUE(op_to_count["TransposeMatMul"] == 1);
+
+  auto& node = *graph.Nodes().begin();
+  ASSERT_TRUE(node.OpType() == "TransposeMatMul");
+  ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transA").i()));
+  ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transB").i()));
+}
+
+TEST_F(GraphTransformationTests, TransposeMatmulFusionOnThreeTranspose) {
+  auto model_uri = MODEL_FOLDER "fusion/transpose_matmul_4d_fusion_3_transpose.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Transpose"] == 0);
+  ASSERT_TRUE(op_to_count["MatMul"] == 0);
+  ASSERT_TRUE(op_to_count["TransposeMatMul"] == 1);
+
+  auto& node = *graph.Nodes().begin();
+  ASSERT_TRUE(node.OpType() == "TransposeMatMul");
+  ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transA").i()));
+  ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transB").i()));
+}
+
+TEST_F(GraphTransformationTests, TransposeMatmulNoFusionOnInvalidPerm) {
+  auto model_uri = MODEL_FOLDER "fusion/transpose_matmul_4d_fusion_invalid_perm.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Transpose"] == 1);
+  ASSERT_TRUE(op_to_count["MatMul"] == 1);
+  ASSERT_TRUE(op_to_count["TransposeMatMul"] == 0);
+}
+
 TEST_F(GraphTransformationTests, Gemm_LeakyRelu_Fusion) {
   auto model_uri = MODEL_FOLDER "gemm_activation_fusion/gemm_activation_fusion.onnx";
 
@@ -963,12 +1041,12 @@ TEST_F(GraphTransformationTests, ReshapeFusionOneConstTest) {
 TEST_F(GraphTransformationTests, ReshapeFusionInternalNodeIsOutput) {
   auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_internal_node_is_graph_output.onnx";
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -1000,12 +1078,12 @@ TEST_F(GraphTransformationTests, ReshapeFusionInternalNodeIsOutput) {
 TEST_F(GraphTransformationTests, ReshapeFusionInternalReuseTest) {
   auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_internal_nodes_reused.onnx";
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -1036,6 +1114,42 @@ TEST_F(GraphTransformationTests, ReshapeFusionInternalReuseTest) {
       EXPECT_EQ(node.Name(), "gather3");
     }
   }
+}
+
+TEST_F(GraphTransformationTests, ExpandElimination) {
+  auto model_uri = MODEL_FOLDER "expand_elimination.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr, *logger_).IsOK());
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Expand"] == 6);
+
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<ExpandElimination>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_).IsOK());
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Expand"] == 3);
+}
+
+TEST_F(GraphTransformationTests, CastElimination) {
+  auto model_uri = MODEL_FOLDER "cast_elimination.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr, *logger_).IsOK());
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Cast"] == 7);
+
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<CastElimination>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_).IsOK());
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Cast"] == 4);
 }
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -1634,7 +1748,11 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusion_Input_Output_Check) {
 
       // check outputs
       std::vector<NodeArg*>& output_defs = node.MutableOutputDefs();
+#ifdef ENABLE_TRAINING
+      EXPECT_EQ(node.OutputDefs().size(), 3u) << "SkipLayerNormalization number of outputs does not equal to 3. Got:" << node.OutputDefs().size();
+#else     
       EXPECT_EQ(node.OutputDefs().size(), 1u) << "SkipLayerNormalization number of outputs does not equal to 1. Got:" << node.OutputDefs().size();
+#endif     
       EXPECT_EQ(output_defs[0]->Name(), "19");
     } else {
       EXPECT_EQ(node.OpType(), "MatMul") << "Unexpected node: " << node.OpType() << "," << node.Name();
