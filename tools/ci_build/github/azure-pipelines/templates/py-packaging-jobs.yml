@@ -237,17 +237,17 @@ jobs:
         workingFolder: '$(Build.BinariesDirectory)'
 
     - script: |
-      python -m pip install -q pyopenssl setuptools wheel numpy==1.16.6
+        python -m pip install -q pyopenssl setuptools wheel numpy==1.16.6
 
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Install python modules'
 
     - powershell: |
-      $Env:USE_MSVC_STATIC_RUNTIME=1
-      $Env:ONNX_ML=1
-      $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
-      python setup.py bdist_wheel
-      Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
+        $Env:USE_MSVC_STATIC_RUNTIME=1
+        $Env:ONNX_ML=1
+        $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
+        python setup.py bdist_wheel
+        Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}
       workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
       displayName: 'Install ONNX'
 
@@ -256,16 +256,16 @@ jobs:
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
         arguments: >
-        --config RelWithDebInfo
-        --enable_lto
-        --build_dir $(Build.BinariesDirectory)
-        --skip_submodule_sync
-        --cmake_generator "Visual Studio 16 2019"
-        --build_wheel
-        --use_openmp
-        --enable_onnx_tests
-        --parallel
-        ${{ parameters.build_py_parameters }}
+          --config RelWithDebInfo
+          --enable_lto
+          --build_dir $(Build.BinariesDirectory)
+          --skip_submodule_sync
+          --cmake_generator "Visual Studio 16 2019"
+          --build_wheel
+          --use_openmp
+          --enable_onnx_tests
+          --parallel
+          ${{ parameters.build_py_parameters }}
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - task: CopyFiles@2
@@ -323,16 +323,16 @@ jobs:
           workingFolder: '$(Build.BinariesDirectory)'
 
       - script: |
-        python -m pip install -q pyopenssl setuptools wheel numpy==1.16.6
+          python -m pip install -q pyopenssl setuptools wheel numpy==1.16.6
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Install python modules'
 
       - powershell: |
-        $Env:USE_MSVC_STATIC_RUNTIME=1
-        $Env:ONNX_ML=1
-        $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
-        python setup.py bdist_wheel
-        Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
+          $Env:USE_MSVC_STATIC_RUNTIME=1
+          $Env:ONNX_ML=1
+          $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
+          python setup.py bdist_wheel
+          Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}
         workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
         displayName: 'Install ONNX'
 
