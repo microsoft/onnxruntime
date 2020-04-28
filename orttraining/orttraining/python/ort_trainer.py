@@ -967,6 +967,9 @@ class ORTModel():
         self.world_size = world_size
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.opset_version = _opset_version
+    
+        # Adding to not break checkpointing functions for ORTModel
+        self.partition_optimizer_ = False
 
         model = convert_model_loss_fn_to_onnx(self.model_, self.loss_fn_, self.model_desc_, torch.device(
             'cpu'), opset_version=self.opset_version)
