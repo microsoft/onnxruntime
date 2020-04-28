@@ -18,6 +18,7 @@ class RandomValueGenerator {
  public:
   RandomValueGenerator();
 
+  // Random values generated are in the range [a, b).
   template <class T>
   inline std::vector<T> Uniform(const std::vector<int64_t>& dims, float min, float max) {
     int64_t size = std::accumulate(dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
@@ -29,6 +30,7 @@ class RandomValueGenerator {
     return val;
   }
 
+  // Random values generated are in the range [a, b].
   template <class T>
   inline std::vector<T> Uniform(const std::vector<int64_t>& dims, int64_t min, int64_t max) {
     int64_t size = std::accumulate(dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
