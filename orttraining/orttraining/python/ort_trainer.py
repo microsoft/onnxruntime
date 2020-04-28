@@ -85,18 +85,11 @@ def get_group_accumulated_gradients_output_node_arg_name(session):
 
     return accumulated_gradients_output_node_args[0].name
 
-def ort_training_session_run_helper(session, iobinding, inputs, input_descs, output_descs, device, run_options=None, additional_feeds=None):
+def ort_training_session_run_helper(session, iobinding, inputs, input_descs, output_descs, device, run_options=None):
     for input, input_desc in zip(inputs, input_descs):
         device_index = input_get_device_index(input)
         iobinding.bind_input(input_desc.name_, input.device.type, device_index, dtype_torch_to_numpy(input.dtype),
                              list(input.size()), input.data_ptr())
-
-    if additional_feeds:
-        for name in additional_feeds:
-            value = additional_feeds[name]
-            device_index = input_get_device_index(value)
-            iobinding.bind_input(name, value.device.type, device_index, dtype_torch_to_numpy(value.dtype),
-                                 list(value.size()), value.data_ptr())
            
     output_descs_resolved = resolve_symbolic_dimensions(inputs, input_descs, output_descs)
     torch_outputs = {}
@@ -605,11 +598,10 @@ class ORTTrainer():
         self.frozen_weights_ = frozen_weights
         self.opset_version_ = _opset_version
         self.loss_scale_input_name = ''
-        self.eval_feed_names_ = set()
         self.state_dict_ = None
 
         self._init_session()
-            
+
     def _init_session(self):
         if self.onnx_model_ is None:
             return
@@ -625,8 +617,6 @@ class ORTTrainer():
                 partition_optimizer=self.partition_optimizer_,
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
                 frozen_weights=self.frozen_weights_, opset_version=self.opset_version_)
-
-        self.eval_feed_names_ |= self.session.get_dropout_eval_feeds()
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
@@ -796,6 +786,7 @@ class ORTTrainer():
         elif self.current_step % self.gradient_accumulation_steps != 0:
             run_options = ort.RunOptions()
             run_options.only_execute_path_to_fetches = True
+            run_options.training_mode = True
             output_desc = self.output_desc_with_group_accumulated_gradients
         elif self.use_mixed_precision:
             has_if_all_finite = True
@@ -873,19 +864,13 @@ class ORTTrainer():
 
         run_options = ort.RunOptions()
         run_options.only_execute_path_to_fetches = True
-
-        eval_feeds = {}
-        if self.eval_feed_names_:
-            for eval_feed_name in self.eval_feed_names_:
-                # Dropout ratio input name starts with 'dropout_node_ratio'
-                if eval_feed_name.find('dropout_node_ratio') == 0:
-                    eval_feeds[eval_feed_name] = torch.tensor([0], dtype=torch.float32)
+        run_options.training_mode = False
 
         session_run_results = ort_training_session_run_helper(self.session, self.eval_io_binding, input,
                                                               input_desc,
                                                               output_desc,
                                                               self.device_,
-                                                              run_options, additional_feeds=eval_feeds)
+                                                              run_options)
 
         if len(session_run_results) == 1:
             return session_run_results[list(session_run_results.keys())[0]]

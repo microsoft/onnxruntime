@@ -5,6 +5,8 @@
 
 #include "core/framework/data_transfer_utils.h"
 #include "core/graph/model.h"
+#include "core/session/IOBinding.h"
+#include "core/providers/cpu/controlflow/utils.h"
 #include "orttraining/core/graph/loss_function_builder.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/framework/checkpointing.h"
@@ -679,6 +681,33 @@ bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) cons
   return IsFP32Node(output_producer_node);
 }
 
+common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io_binding) {
+  // Override initializers in eval mode.
+  if (!run_options.training_mode) {
+    // override all dropout raiots to 0
+    for (auto& drop_ratio : dropout_eval_feeds_) {
+      OrtValue feed_value;
+      // We allocate on CPU first, copy will be taken care off downstream.
+      auto cpu_allocator = session_state_->GetExecutionProviders()
+                           .Get(onnxruntime::kCpuExecutionProvider)
+                           ->GetAllocator(0, OrtMemTypeDefault);
+      feed_value = onnxruntime::MakeScalarMLValue<float>(cpu_allocator, 0.f, true /*is_1d*/);
+      // Bind new feed to graph input.
+      ORT_RETURN_IF_ERROR(io_binding.BindInput(drop_ratio, feed_value));
+    }
+  }
+
+  // Call Run in inferenceSession
+  return InferenceSession::Run(run_options, io_binding);
+}
+
+common::Status TrainingSession::Run(IOBinding& io_binding) {
+  RunOptions run_options;
+  // Set training_mode to true in training session by default.
+  run_options.training_mode = true;
+  return Run(run_options, io_binding);
+}
+
 static const std::unordered_set<std::string> Dropout_Nodes = {
     "TrainableDropout",
 };
@@ -694,6 +723,8 @@ Status TrainingSession::SetDropoutEvalFeedNames() {
     if(it != Dropout_Nodes.cend()) {
       auto& ratio_name = node.InputDefs()[1]->Name();
       dropout_eval_feeds_.insert(ratio_name);
+      ORT_ENFORCE(model_->MainGraph().GetProducerNode(ratio_name) == nullptr,
+      "Input: " + ratio_name + " should not have any producer node.");
       defs.AddGraphInputs({ratio_name});
     }
   }
