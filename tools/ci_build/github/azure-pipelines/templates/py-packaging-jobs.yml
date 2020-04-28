@@ -80,9 +80,9 @@ jobs:
       inputs:
         ArtifactName: onnxruntime
 
-    - template: templates/component-governance-component-detection-steps.yml
+    - template: component-governance-component-detection-steps.yml
 
-    - template: templates/clean-agent-build-directory-step.yml
+    - template: clean-agent-build-directory-step.yml
 
 - job: Manylinux2010_py_GPU_Wheels
   timeoutInMinutes: 90
@@ -161,9 +161,9 @@ jobs:
       inputs:
         ArtifactName: onnxruntime_gpu
 
-    - template: templates/component-governance-component-detection-steps.yml
+    - template: component-governance-component-detection-steps.yml
 
-    - template: templates/clean-agent-build-directory-step.yml
+    - template: clean-agent-build-directory-step.yml
 
 - job: Windows_py_Wheels
   pool: 'Win-CPU-2019'
@@ -251,11 +251,11 @@ jobs:
     inputs:
       ArtifactName: onnxruntime
 
-  - template: templates/component-governance-component-detection-steps.yml
+  - template: component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - template: clean-agent-build-directory-step.yml
 
 - job:  Windows_py_GPU_Wheels
   workspace:
@@ -334,9 +334,9 @@ jobs:
       inputs:
         ArtifactName: onnxruntime_gpu
 
-    - template: templates/component-governance-component-detection-steps.yml
+    - template: component-governance-component-detection-steps.yml
 
-    - template: templates/clean-agent-build-directory-step.yml
+    - template: clean-agent-build-directory-step.yml
 
 - job: MacOS_py_Wheels
   workspace:
@@ -387,4 +387,4 @@ jobs:
       inputs:
         ArtifactName: onnxruntime
 
-    - template: templates/component-governance-component-detection-steps.yml
+    - template: component-governance-component-detection-steps.yml
