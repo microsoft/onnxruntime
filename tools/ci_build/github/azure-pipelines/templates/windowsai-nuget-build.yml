@@ -110,7 +110,7 @@ steps:
        copy $(Build.SourcesDirectory)\winml\test\scenario\models\*.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
        copy $(Build.SourcesDirectory)\winml\test\common\testdata\squeezenet\* $(Build.ArtifactStagingDirectory)\test_artifact\
        copy $(Build.SourcesDirectory)\winml\test\collateral\models\*.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
-       xcopy $(Build.SourcesDirectory)\winml\test\collateral\models\ModelSubdirectory $(Build.ArtifactStagingDirectory)\test_artifact\ModelSubdirectory
+       xcopy $(Build.SourcesDirectory)\winml\test\collateral\models\ModelSubdirectory $(Build.ArtifactStagingDirectory)\test_artifact\ModelSubdirectory\ /i
        copy $(Build.SourcesDirectory)\winml\test\collateral\images\*.png $(Build.ArtifactStagingDirectory)\test_artifact\
        copy $(Build.SourcesDirectory)\winml\test\collateral\images\*.jpg $(Build.ArtifactStagingDirectory)\test_artifact\
       displayName: 'Create NuGet Package'
