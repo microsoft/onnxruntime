@@ -76,8 +76,8 @@ class CombineZeroCheckpoint(object):
         weight_offset = dict()
         for i in range(self.world_size):
             checkpoint_name = get_checkpoint_name(checkpoint_prefix, True, i, self.world_size)
-            print("Loading Pretrained Bert state dict from: {}".format(os.path.join(checkpoint_dir, checkpoint_name)))
-            rank_state_dict = torch.load(os.path.join(checkpoint_dir, checkpoint_name), map_location=torch.device("cpu"))
+            print("Loading state dict from: {}".format(checkpoint_name))
+            rank_state_dict = torch.load(checkpoint_name, map_location=torch.device("cpu"))
             if 'model' in rank_state_dict:
                 rank_state_dict = rank_state_dict['model']
             

@@ -730,7 +730,6 @@ class ORTTrainer():
 
     def _load_multi_checkpoint(self, checkpoint_dir, checkpoint_prefix, strict):
         checkpoint_files = list_checkpoint_files(checkpoint_dir, checkpoint_prefix)
-        assert len(checkpoint_files) > 0, "No checkpoint files found with prefix \"{}\" in directory {}.".format(checkpoint_prefix, checkpoint_dir)
 
         ckpt_agg = CombineZeroCheckpoint(checkpoint_files)
         aggregate_state_dict = ckpt_agg.aggregate_checkpoints()
@@ -746,7 +745,13 @@ class ORTTrainer():
             all_checkpoint_states.update(checkpoint_state)            
         return all_checkpoint_states
 
-    def load_checkpoint(self, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", is_partitioned=False, strict=False):
+    def load_checkpoint(self, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", strict=False):
+        checkpoint_files = list_checkpoint_files(checkpoint_dir, checkpoint_prefix)
+        is_partitioned = False
+        if len(checkpoint_files) > 1:
+            print(f"WARNING: Found more than one file with prefix {checkpoint_prefix} in directory {checkpoint_dir}." +
+                "Attempting to load ZeRO checkpoint.")
+            is_partitioned = True
         if (not self.partition_optimizer_) and is_partitioned:
             return self._load_multi_checkpoint(checkpoint_dir, checkpoint_prefix, strict) 
         else:

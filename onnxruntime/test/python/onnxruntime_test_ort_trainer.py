@@ -407,7 +407,7 @@ class TestOrtTrainer(unittest.TestCase):
         model.load_state_dict(sd)
 
         ckpt_dir = get_name("ort_ckpt")
-        model.save_checkpoint(ckpt_dir, 'bert_toy_save')
+        model.save_checkpoint(ckpt_dir, 'bert_toy_save_test')
         del model
 
         # create new model
@@ -418,7 +418,7 @@ class TestOrtTrainer(unittest.TestCase):
                         loss_scaler=None)
 
         # load changed checkpoint
-        model2.load_checkpoint(ckpt_dir, 'bert_toy_save')
+        model2.load_checkpoint(ckpt_dir, 'bert_toy_save_test')
         loaded_sd = model2.state_dict()
 
         for k,v in loaded_sd.items():
