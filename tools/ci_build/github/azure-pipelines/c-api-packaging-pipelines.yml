@@ -94,6 +94,8 @@ jobs:
         buildparameter:
 
   steps:
+    - template: templates/enable-telemetry.yml
+    
     - task: UsePythonVersion@0
       inputs: 
         versionSpec: '3.7' 
