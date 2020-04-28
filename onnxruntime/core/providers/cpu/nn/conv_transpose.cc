@@ -49,6 +49,11 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
   ORT_RETURN_IF_ERROR(conv_transpose_attrs_.PrepareForCompute(context, has_bias, p, dynamic_padding));
 
+  // Bail out early if one of the dimensions is zero.
+  if (p.Y->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
   const int64_t input_image_size = p.input_shape.Size();
   const int64_t X_offset = p.num_input_channels / conv_transpose_attrs_.group * input_image_size;
   const int64_t Y_offset = p.Y->Shape().Size() / p.Y->Shape()[0] / conv_transpose_attrs_.group;

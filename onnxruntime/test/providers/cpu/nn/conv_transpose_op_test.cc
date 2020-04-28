@@ -552,5 +552,27 @@ TEST(ConvTransposeTest, ConvTranspose_2D_NonDefaultStridesAndDilations) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
+TEST(ConvTransposeTest, DimWithZero) {
+  ConvTransposeOpAttributes attrs = {
+      vector<int64_t>{3, 3},        // kernel_shape
+      vector<int64_t>{1, 1},        // output_padding
+      {},                           // output_shape
+      vector<int64_t>{1, 1, 1, 1},  // pads
+      vector<int64_t>{2, 2},        // strides
+      vector<int64_t>{1, 1},        // dilations
+      1                             // group
+  };
+  vector<float> X = {};
+  vector<int64_t> X_shape = {0, 1, 3, 3};
+  vector<float> W = {-0.06230065f, 0.37932432f, -0.25388849f,
+                     0.33878803f, 0.43709868f, -0.22477469f,
+                     0.04118127f, -0.44696793f, 0.06373066f};
+  vector<int64_t> W_shape = {1, 1, 3, 3};
+  vector<int64_t> Y_shape = {0, 1, 6, 6};
+  initializer_list<float> expected_vals = {};
+
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
