@@ -37,7 +37,6 @@
 
 #if USE_DNNL
 #define BACKEND_DNNL "-DNNL"
-#include "core/providers/dnnl/dnnl_execution_provider.h"
 #else
 #define BACKEND_DNNL ""
 #endif
