@@ -1,0 +1,6 @@
+trigger: none
+
+jobs:
+- template: templates/py-packaging-jobs.yml
+  parameters:
+    build_py_parameters: --enable_training
