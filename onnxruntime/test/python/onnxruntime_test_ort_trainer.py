@@ -16,7 +16,7 @@ from torchvision import datasets, transforms
 
 from helper import get_name
 import onnxruntime
-from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample
+from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample, save_checkpoint, load_checkpoint
 
 def ort_trainer_learning_rate_description():
     return IODescription('Learning_Rate', [1, ], torch.float32)
@@ -407,7 +407,7 @@ class TestOrtTrainer(unittest.TestCase):
         model.load_state_dict(sd)
 
         ckpt_dir = get_name("ort_ckpt")
-        model.save_checkpoint(ckpt_dir, 'bert_toy_save_test')
+        save_checkpoint(model, ckpt_dir, 'bert_toy_save_test')
         del model
 
         # create new model
@@ -418,7 +418,7 @@ class TestOrtTrainer(unittest.TestCase):
                         loss_scaler=None)
 
         # load changed checkpoint
-        model2.load_checkpoint(ckpt_dir, 'bert_toy_save_test')
+        load_checkpoint(model2, ckpt_dir, 'bert_toy_save_test')
         loaded_sd = model2.state_dict()
 
         for k,v in loaded_sd.items():
@@ -434,7 +434,7 @@ class TestOrtTrainer(unittest.TestCase):
                         loss_scaler=None)
 
         ckpt_dir = get_name("ort_ckpt")
-        model.load_checkpoint(ckpt_dir, 'bert_toy_lamb')
+        load_checkpoint(model, ckpt_dir, 'bert_toy_lamb')
                 
         expected_eval_loss = [10.997552871]
 
