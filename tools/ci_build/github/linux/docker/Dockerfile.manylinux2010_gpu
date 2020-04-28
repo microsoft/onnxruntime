@@ -62,6 +62,15 @@ RUN CUDNN_DOWNLOAD_SUM=7eaec8039a2c30ab0bc758d303588767693def6bf49b22485a2c00bf2
     rm cudnn-10.1-linux-x64-v7.6.5.32.tgz && \
     ldconfig
 
+# install MPI
+RUN wget https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz && \
+    tar zxf openmpi-4.0.0.tar.gz && \
+    cd openmpi-4.0.0 && \
+    ./configure --enable-orterun-prefix-by-default && \
+    make -j $(nproc) all && \
+    make install && \
+    ldconfig
+
 
 ARG BUILD_UID=1000
 ARG BUILD_USER=onnxruntimedev
