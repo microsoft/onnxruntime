@@ -86,10 +86,19 @@ core_ops_files = [
                 'tensor/unsqueeze.h'
 ]
 
-training_ops_files = ['cuda_training_kernels.cc',
+training_ops_files = [#'cuda_training_kernels.cc',
                     'cuda_training_kernels.h',
                     'activation/activations_grad_impl.cu',
                     'activation/activations_grad_impl.h',
+                    #'collective/horovod_kernels.cc',
+                    #'collective/horovod_kernels.h',
+                    'collective/megatron.cc',
+                    'collective/nccl_common.cc',
+                    'collective/nccl_common.h',
+                    'collective/nccl_kernels.cc',
+                    'collective/nccl_kernels.h',
+                    #'collective/ready_event.cc',
+                    #'collective/ready_event.h',
                     #'activation/activations_grad.cc',
                     'activation/activations_grad.h',
                     'communication/common.h',
@@ -128,7 +137,7 @@ training_ops_files = ['cuda_training_kernels.cc',
                     'optimizer/gradient_control.cc',
                     'optimizer/gradient_control.cu',
                     'optimizer/gradient_control.h',
-                    'optimizer/lamb.cc',
+                    #'optimizer/lamb.cc',
                     'optimizer/lamb.cu',
                     'optimizer/lamb.h',
                     'optimizer/sg.cc',
@@ -183,6 +192,8 @@ def hipify(src_file_path, dst_file_path):
         s = s.replace('std::log', 'logf')
         s = s.replace('#include <cub/device/device_radix_sort.cuh>', '#include <hipcub/hipcub.hpp>')
         s = s.replace('#include <cub/iterator/counting_input_iterator.cuh>', '')
+        s = s.replace('NCCL_CALL', 'RCCL_CALL')
+        s = s.replace('#include <nccl.h>', '#include <rccl.h>')
     with open(dst_file_path, 'w') as f:
         f.write(s)
 

@@ -13,6 +13,10 @@
 #include <miopen/miopen.h>
 //#include <hiprand/hiprand.h>
 
+#ifdef USE_RCCL
+#include <rccl.h>
+#endif
+
 #include "core/common/common.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
@@ -69,13 +73,13 @@ const char* HipErrString<miopenStatus_t >(miopenStatus_t  e) {
   return miopenGetErrorString(e);
 }
 
-// #ifdef USE_NCCL
-// template <>
-// const char* HipErrString<ncclResult_t>(ncclResult_t e) {
-//   hipDeviceSynchronize();
-//   return ncclGetErrorString(e);
-// }
-// #endif
+#ifdef USE_RCCL
+template <>
+const char* HipErrString<ncclResult_t>(ncclResult_t e) {
+  hipDeviceSynchronize();
+  return ncclGetErrorString(e);
+}
+#endif
 
 template <typename ERRTYPE, bool THRW>
 bool HipCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
@@ -130,7 +134,7 @@ template bool HipCall<miopenStatus_t , false>(miopenStatus_t  retCode, const cha
 template bool HipCall<miopenStatus_t , true>(miopenStatus_t  retCode, const char* exprString, const char* libName, miopenStatus_t  successCode, const char* msg);
 // template bool HipCall<hiprandStatus_t, false>(hiprandStatus_t retCode, const char* exprString, const char* libName, hiprandStatus_t successCode, const char* msg);
 // template bool HipCall<hiprandStatus_t, true>(hiprandStatus_t retCode, const char* exprString, const char* libName, hiprandStatus_t successCode, const char* msg);
-// #ifdef USE_NCCL
-// template bool HipCall<ncclResult_t, false>(ncclResult_t retCode, const char* exprString, const char* libName, ncclResult_t successCode, const char* msg);
-// #endif
+#ifdef USE_RCCL
+template bool HipCall<ncclResult_t, false>(ncclResult_t retCode, const char* exprString, const char* libName, ncclResult_t successCode, const char* msg);
+#endif
 }  // namespace onnxruntime
