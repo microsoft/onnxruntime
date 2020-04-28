@@ -141,6 +141,9 @@ class TrainingSession : public InferenceSession {
       size_t num_pipeline_stages;
       // Id of stage handled by this process. Currently, it matches the MPI's rank.
       size_t pipeline_stage_id;
+      // Tensors to fetch as specified by the user.
+      // Each pipeline stage should pick up some strings from this field..
+      std::vector<std::string> fetch_names;
       // [TODO] Add cut information.
     };
 
@@ -175,6 +178,9 @@ class TrainingSession : public InferenceSession {
       std::string forward_recorded_event_name;
       std::string backward_waited_event_name;
       std::string backward_recorded_event_name;
+      // Tensors to fetch at this pipeline stage.
+      // It's a subset of PipelineConfiguration.fetch_names.
+      std::vector<std::string> fetch_names;
     };
 
     // The pipeline configuration output.

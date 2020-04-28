@@ -149,7 +149,7 @@ Status TrainingRunner::Initialize() {
     TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
     pipe.num_pipeline_stages = params_.num_pipeline_stages;
     pipe.pipeline_stage_id = params_.mpi_context.world_rank;
-
+    pipe.fetch_names = params_.fetch_names;
     config.pipeline_config = pipe;
   }
 
@@ -171,8 +171,13 @@ Status TrainingRunner::Initialize() {
 
   opt_graph_outputs_ = config_result.opt_config_result.value().output_key_to_graph_output_name;
 
+  VectorString fetch_names;
+  if (params_.use_pipeline) {
+    fetch_names = config_result.pipeline_config_result.value().fetch_names;
+  } else {
+    fetch_names = params_.fetch_names;
+  }
   // Expose all fetches as graph outputs
-  VectorString fetch_names = params_.fetch_names;
   for (const auto& it : opt_graph_outputs_) {
     fetch_names.push_back(it.second);
   }

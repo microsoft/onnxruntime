@@ -135,8 +135,6 @@ Status TrainingSession::ConfigureForTraining(
     // if use pipeline, first check if model contains send op. If it does, set the
     // send node's output as the start tensor to build gradient graph
     GetPipelineSendOutput(model_->MainGraph(), loss_name);
-
-    std::cout << "Find loss @ " << config.distributed_config.world_rank << ": " << loss_name << std::endl;
   }
 
   if (loss_name.empty()) {
@@ -147,18 +145,6 @@ Status TrainingSession::ConfigureForTraining(
     ORT_RETURN_IF_ERROR(ConfigureLossFunction(
         config.loss_name, loss_function_info,
         loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
-  }
-
-  std::cout << "Final loss @ " << config.distributed_config.world_rank << ": " << loss_name << std::endl;
-  if (config.distributed_config.world_rank == 0) {
-    ORT_IGNORE_RETURN_VALUE(Save(
-        "/bert_ort/wechi/stage_0.onnx", SaveOption::NO_RELOAD));
-  } else if (config.distributed_config.world_rank == 1) {
-    ORT_IGNORE_RETURN_VALUE(Save(
-        "/bert_ort/wechi/stage_1.onnx", SaveOption::NO_RELOAD));
-  } else if (config.distributed_config.world_rank == 2) {
-    ORT_IGNORE_RETURN_VALUE(Save(
-        "/bert_ort/wechi/stage_2.onnx", SaveOption::NO_RELOAD));
   }
 
   ORT_ENFORCE(
@@ -211,6 +197,17 @@ Status TrainingSession::ConfigureForTraining(
                                           pipeline_result.forward_recorded_event_name,
                                           pipeline_result.backward_waited_event_name,
                                           pipeline_result.backward_recorded_event_name));
+    // The following loop is for not to fetch tensors not in this pipeline stage.
+    for (size_t i = 0; i < config.pipeline_config.value().fetch_names.size(); ++i) {
+      auto name = config.pipeline_config.value().fetch_names[i];
+      const auto* node_arg = model_->MainGraph().GetNodeArg(name);
+      if (!node_arg) {
+        // This pipelie stage doesn't contain this name.
+        // Let's not to fetch it.
+        continue;
+      }
+      pipeline_result.fetch_names.push_back(name);
+    }
     config_result.pipeline_config_result = pipeline_result;
   }
 
@@ -293,6 +290,17 @@ Status TrainingSession::ConfigureForTraining(
 
   config_result_out = std::move(config_result);
   is_configured_ = true;
+
+  if (config.distributed_config.world_rank == 0) {
+    ORT_IGNORE_RETURN_VALUE(Save(
+        "/bert_ort/wechi/stage_0_after_config.onnx", SaveOption::NO_RELOAD));
+  } else if (config.distributed_config.world_rank == 1) {
+    ORT_IGNORE_RETURN_VALUE(Save(
+        "/bert_ort/wechi/stage_1_after_config.onnx", SaveOption::NO_RELOAD));
+  } else if (config.distributed_config.world_rank == 2) {
+    ORT_IGNORE_RETURN_VALUE(Save(
+        "/bert_ort/wechi/stage_2_after_config.onnx", SaveOption::NO_RELOAD));
+  }
 
   return Status::OK();
 }
