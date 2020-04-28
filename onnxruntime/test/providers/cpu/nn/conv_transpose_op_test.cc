@@ -571,7 +571,9 @@ TEST(ConvTransposeTest, DimWithZero) {
   vector<int64_t> Y_shape = {0, 1, 6, 6};
   initializer_list<float> expected_vals = {};
 
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
+                      OpTester::ExpectResult::kExpectSuccess, "",
+                      {kTensorrtExecutionProvider, kNGraphExecutionProvider, kAclExecutionProvider});
 }
 
 }  // namespace test
