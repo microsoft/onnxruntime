@@ -294,7 +294,7 @@ struct Prov_KernelRegistry_Impl : Prov_KernelRegistry {
 
   Status Register(Prov_KernelCreateInfo&& create_info) override {
     KernelCreateInfo info_real(std::move(static_cast<Prov_KernelDef_Impl*>(create_info.kernel_def.get())->p_),
-                               [](const OpKernelInfo& /*info*/) -> OpKernel* {
+                               [](const OpKernelInfo & /*info*/) -> OpKernel* {
 //      PROVIDER_NOT_IMPLEMENTED // So far providers use the function API, not creating kernels this way
       return nullptr;  /*create_info.kernel_create_func);*/ });
 
@@ -418,10 +418,9 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::make_unique<Prov_IExecutionProvider_Router_Impl>(outer, type);
   };
 
-  void SessionOptions_AddProviderFactory(OrtSessionOptions& /*options*/, std::shared_ptr<Prov_IExecutionProviderFactory> /*provider*/) override {
-    // options.provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena));
-    PROVIDER_NOT_IMPLEMENTED
-  }
+  void SessionOptions_AddProviderFactory(OrtSessionOptions& /*options*/, std::shared_ptr<Prov_IExecutionProviderFactory> /*provider*/) override{
+      // options.provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena));
+      PROVIDER_NOT_IMPLEMENTED}
 
   logging::Logger* LoggingManager_GetDefaultLogger() override {
     return const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
@@ -451,8 +450,8 @@ struct ProviderLibrary {
     if (!handle_)
       return;
 
-      Provider* (*PGetProvider)();
-      Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
+    Provider* (*PGetProvider)();
+    Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
 
     provider_ = PGetProvider();
     provider_->SetProviderHost(provider_host_);
