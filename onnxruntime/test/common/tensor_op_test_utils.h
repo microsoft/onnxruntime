@@ -55,20 +55,6 @@ inline std::vector<T> FillZeros(const std::vector<int64_t>& dims) {
   return val;
 }
 
-// Returns a vector of `count` values which start at `start` and change by increments of `step`.
-template <typename T>
-inline std::vector<T> ValueRange(
-    size_t count, T start = static_cast<T>(0), T step = static_cast<T>(1)) {
-  std::vector<T> result;
-  result.reserve(count);
-  T curr = start;
-  for (size_t i = 0; i < count; ++i) {
-    result.emplace_back(curr);
-    curr += step;
-  }
-  return result;
-}
-
 inline std::pair<float, float> MeanStdev(std::vector<float>& v) {
   float sum = std::accumulate(v.begin(), v.end(), 0.0f);
   float mean = sum / v.size();
