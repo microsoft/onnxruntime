@@ -465,15 +465,17 @@ See more information on the RKNPU Execution Provider [here](./docs/execution_pro
 
 #### Build Instructions
 ##### Linux
-1. Build ONNX Runtime library and test:
+1. Download [rknpu_ddk](#https://github.com/airockchip/rknpu_ddk.git) to any directory.
+
+2. Build ONNX Runtime library and test:
     ```
-    ./build.sh --arm --use_rknpu --parallel --build_shared_lib --build_dir build_arm --config MinSizeRel --cmake_extra_defines CMAKE_TOOLCHAIN_FILE=<Path To tool.cmake> --cmake_extra_defines ONNX_CUSTOM_PROTOC_EXECUTABLE=<Path To protoc>
+    ./build.sh --arm --use_rknpu --parallel --build_shared_lib --build_dir build_arm --config MinSizeRel --cmake_extra_defines RKNPU_DDK_PATH=<Path To rknpu_ddk> CMAKE_TOOLCHAIN_FILE=<Path To tool.cmake> ONNX_CUSTOM_PROTOC_EXECUTABLE=<Path To protoc>
     ```
-2. Deploy ONNX runtime and librknpu_ddk.so on the RK1808 board
+3. Deploy ONNX runtime and librknpu_ddk.so on the RK1808 board:
     ```
     libonnxruntime.so.1.2.0
     onnxruntime_test_all
-    cmake/external/rknpu_ddk/lib64/librknpu_ddk.so
+    rknpu_ddk/lib64/librknpu_ddk.so
     ```
 ---
 
