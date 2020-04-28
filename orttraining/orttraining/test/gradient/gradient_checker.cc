@@ -125,7 +125,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
       continue;
     }
 
-    const size_t dy_size = y_infos[y_idx].shape.Size();
+    const int dy_size = static_cast<int>(y_infos[y_idx].shape.Size());
 
     // Compute the theoretical Jacobians one row at a time by back propagating
     // '1.0' for each element of 'dy', while holding all other elements of 'dy' at zero.
@@ -211,19 +211,36 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGraph(
     if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<int64_t>()) {
       std::vector<int64_t> int64_data(data.size());
       std::transform(data.begin(), data.end(), int64_data.begin(), [](X_T x) { return static_cast<int64_t>(x); });
-      op_session.AddInput<int64_t>(name.c_str(), x_infos[data_index].shape.GetDims(), int64_data);
+      op_session.AddInput<int64_t>(name.c_str(),
+                                   x_infos[data_index].shape.GetDims(),
+                                   int64_data,
+                                   false,
+                                   &x_infos[data_index].dim_params);
     } else if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<int32_t>()) {
       std::vector<int32_t> int32_data(data.size());
       std::transform(data.begin(), data.end(), int32_data.begin(), [](X_T x) { return static_cast<int32_t>(x); });
-      op_session.AddInput<int32_t>(name.c_str(), x_infos[data_index].shape.GetDims(), int32_data);
+      op_session.AddInput<int32_t>(name.c_str(),
+                                   x_infos[data_index].shape.GetDims(),
+                                   int32_data,
+                                   false,
+                                   &x_infos[data_index].dim_params);
     } else if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<bool>()) {
       std::unique_ptr<bool[]> p_data(new bool[data.size()]);
       for (size_t i = 0; i < data.size(); ++i) {
         p_data[i] = static_cast<bool>(data[i]);
       }
-      op_session.AddInput<bool>(name.c_str(), x_infos[data_index].shape.GetDims(), p_data.get(), data.size());
+      op_session.AddInput<bool>(name.c_str(),
+                                x_infos[data_index].shape.GetDims(),
+                                p_data.get(),
+                                data.size(),
+                                false,
+                                &x_infos[data_index].dim_params);
     } else {
-      op_session.AddInput<X_T>(name.c_str(), x_infos[data_index].shape.GetDims(), data);
+      op_session.AddInput<X_T>(name.c_str(),
+                               x_infos[data_index].shape.GetDims(),
+                               data,
+                               false,
+                               &x_infos[data_index].dim_params);
     }
   }
 
@@ -457,8 +474,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
         // TODO: These 4 test failed at following ORT_ENFORCE. need investigate before enable it.
         //GradientCheckerTest.MatMulGrad
         //GradientCheckerTest.GemmGrad
-        //GradientCheckerTest.GatherNDGrad_repeat_float_data
-        //GradientCheckerTest.GatherNDGrad_unique_float_data
+        //GradientCheckerTest.GatherNDGrad_int64_indice_repeat_float_data
+        //GradientCheckerTest.GatherNDGrad_int64_indice_unique_float_data
         //auto jac_t = jacobian_ts[j];
         //ORT_ENFORCE(std::all_of(
         //    &jac_t[0], &jac_t[0] + x_info.shape.Size(), [](auto dx) { return dx == 0; }));
