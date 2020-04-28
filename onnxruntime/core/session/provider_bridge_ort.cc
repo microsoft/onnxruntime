@@ -295,7 +295,7 @@ struct Prov_KernelRegistry_Impl : Prov_KernelRegistry {
   Status Register(Prov_KernelCreateInfo&& create_info) override {
     KernelCreateInfo info_real(std::move(static_cast<Prov_KernelDef_Impl*>(create_info.kernel_def.get())->p_),
                                [](const OpKernelInfo& /*info*/) -> OpKernel* {
-      PROVIDER_NOT_IMPLEMENTED // So far providers use the function API, not creating kernels this way
+//      PROVIDER_NOT_IMPLEMENTED // So far providers use the function API, not creating kernels this way
       return nullptr;  /*create_info.kernel_create_func);*/ });
 
     return p_->Register(std::move(info_real));
@@ -445,12 +445,30 @@ struct ProviderHostImpl : ProviderHost {
 }  // namespace onnxruntime
 provider_host_;
 
-struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
-  IExecutionProviderFactory_Translator(std::shared_ptr<Prov_IExecutionProviderFactory> p, void* handle) : p_{p}, handle_{handle} {}
-  ~IExecutionProviderFactory_Translator() override {
-    p_ = nullptr;  // Release before we unload
+struct ProviderLibrary {
+  ProviderLibrary(const char* filename) {
+    Env::Default().LoadDynamicLibrary(filename, &handle_);
+    if (!handle_)
+      return;
+
+      Provider* (*PGetProvider)();
+      Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
+
+    provider_ = PGetProvider();
+    provider_->SetProviderHost(provider_host_);
+  }
+
+  ~ProviderLibrary() {
     Env::Default().UnloadDynamicLibrary(handle_);
   }
+
+  Provider* provider_{};
+  void* handle_{};
+};
+
+// This class translates the IExecutionProviderFactory interface to work with the interface providers implement
+struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
+  IExecutionProviderFactory_Translator(std::shared_ptr<Prov_IExecutionProviderFactory> p) : p_{p} {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     auto provider = p_->CreateProvider();
@@ -458,25 +476,16 @@ struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
   }
 
   std::shared_ptr<Prov_IExecutionProviderFactory> p_;
-  void* handle_;
 };
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int device_id) {
-  void* handle;
-  Env::Default().LoadDynamicLibrary("C:\\code\\github\\onnxrt\\build\\windows\\debug\\debug\\onnxruntime_providers_dnnl.dll", &handle);
-  if (!handle)
+  static ProviderLibrary library("C:\\code\\github\\onnxrt\\build\\windows\\debug\\debug\\onnxruntime_providers_dnnl.dll");
+  if (!library.provider_)
     return nullptr;
 
-  Provider* (*PGetProvider)();
-
-  Env::Default().GetSymbolFromLibrary(handle, "GetProvider", (void**)&PGetProvider);
   //return std::make_shared<onnxruntime::MkldnnProviderFactory>(device_id);
   //TODO: This is apparently a bug. The constructor parameter is create-arena-flag, not the device-id
-
-  Provider* provider = PGetProvider();
-  provider->SetProviderHost(provider_host_);
-
-  return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory(device_id), handle);
+  return std::make_shared<IExecutionProviderFactory_Translator>(library.provider_->CreateExecutionProviderFactory(device_id));
 }
 
 }  // namespace onnxruntime

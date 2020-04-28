@@ -288,6 +288,8 @@ if (onnxruntime_USE_DNNL)
   set_target_properties(onnxruntime_providers_dnnl PROPERTIES LINKER_LANGUAGE CXX)
   if(WIN32)
     set_property(TARGET onnxruntime_providers_dnnl APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/dnnl/symbols.def")
+  else()
+    target_link_libraries(onnxruntime_providers_dnnl PRIVATE nsync_cpp)
   endif()
 endif()
 
