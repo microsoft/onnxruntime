@@ -348,7 +348,10 @@ add_dependencies(winml_lib_image winml_api_native)
 add_dependencies(winml_lib_image winml_api_native_internal)
 
 # Link libraries
-target_link_libraries(winml_lib_image PRIVATE wil winml_lib_common)
+target_link_libraries(winml_lib_image PRIVATE dxgi d3d11 d3d12 wil winml_lib_common)
+
+get_target_property(winml_lib_image_include_directories winml_lib_image INCLUDE_DIRECTORIES)
+
 if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_image)
 endif(onnxruntime_USE_DML)
@@ -587,13 +590,11 @@ set_target_properties(winml_dll
   PROPERTIES
   OUTPUT_NAME ${output_name})
 
-if (onnxruntime_USE_DML)
-  set(delayload_dml "/DELAYLOAD:directml.dll")
-endif(onnxruntime_USE_DML)
-
 set(os_component_link_flags_list ${os_component_link_flags})
 separate_arguments(os_component_link_flags_list)
-target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/winml.def ${os_component_link_flags_list} /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-threadpool-legacy-l1-1-0.dll /DELAYLOAD:api-ms-win-core-processtopology-obsolete-l1-1-0.dll /DELAYLOAD:api-ms-win-core-kernel32-legacy-l1-1-0.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll ${delayload_dml})
+
+target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/winml.def ${os_component_link_flags_list} /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-threadpool-legacy-l1-1-0.dll /DELAYLOAD:api-ms-win-core-processtopology-obsolete-l1-1-0.dll /DELAYLOAD:api-ms-win-core-kernel32-legacy-l1-1-0.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll)
+
 
 if (EXISTS ${dxcore_header})
   target_link_options(winml_dll PRIVATE /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll)
@@ -617,11 +618,16 @@ target_link_libraries(winml_dll PRIVATE winml_lib_api)
 target_link_libraries(winml_dll PRIVATE winml_lib_image)
 target_link_libraries(winml_dll PRIVATE winml_lib_ort)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
+
+target_link_libraries(winml_dll PRIVATE RuntimeObject.lib)
+target_link_libraries(winml_dll PRIVATE windowsapp.lib)
+
 if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
   target_link_libraries(winml_dll PRIVATE dloadhelper.lib)
 else()
   target_link_libraries(winml_dll PRIVATE delayimp.lib)
 endif()
+
 
 # Any project that links in debug_alloc.obj needs this lib.
 # unresolved external symbol __imp_SymSetOptions

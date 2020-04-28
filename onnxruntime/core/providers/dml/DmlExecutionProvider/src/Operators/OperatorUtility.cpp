@@ -348,6 +348,16 @@ namespace Dml
         return dmlAxis;
     }
 
+    void GetDmlAdjustedAxes(gsl::span<const int32_t> onnxAxes, uint32_t onnxDimCount, uint32_t dmlDimCount, std::vector<uint32_t>& dmlAxes)
+    {
+        dmlAxes.clear();
+        dmlAxes.reserve(onnxAxes.size());
+        for (auto& axis : onnxAxes)
+        {
+            dmlAxes.push_back(GetDmlAdjustedAxis(axis, onnxDimCount, dmlDimCount));
+        }
+    }
+
     DML_INTERPOLATION_MODE MapStringToInteropolationMode(std::string_view mode)
     {
         // The ONNX modes are "nearest" and "linear."  Other modes exist for compatibility,
@@ -362,6 +372,22 @@ namespace Dml
         else
         {
             ML_INVALID_ARGUMENT("Unknown sampling interpolation mode.");
+        }
+    }
+
+    DML_DEPTH_SPACE_ORDER MapStringToDepthSpaceMode(std::string_view mode)
+    {
+        if (mode == "DCR")
+        {
+            return DML_DEPTH_SPACE_ORDER_DEPTH_COLUMN_ROW;
+        }
+        else if (mode == "CRD")
+        {
+            return DML_DEPTH_SPACE_ORDER_COLUMN_ROW_DEPTH;
+        }
+        else
+        {
+            ML_INVALID_ARGUMENT("Unknown depth space mode.");
         }
     }
 
