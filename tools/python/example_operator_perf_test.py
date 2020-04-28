@@ -62,16 +62,6 @@ def create_test_input(n, num_items, k):
 
 
 #
-# Example code to create a test directory for usage with onnx_test_runner or onnxruntime_perf_test.
-#
-def create_test_dir(model_path, output_dir, n, num_items, k):
-
-    name = f'{n}x{num_items}.k{k}'
-    name_input_map = create_test_input(n, num_items, k)
-    ort_test_dir_utils.create_test_dir(model_path, output_dir, name, name_input_map, None)
-
-
-#
 # Example code that tests various combinations of input sizes.
 #
 def run_perf_tests(model_path, num_threads=1):
@@ -128,12 +118,29 @@ def run_perf_tests(model_path, num_threads=1):
                     timeit.timeit(lambda: run_test(), number=1)
 
 
+#
+# example for creating a test directory for use with onnx_test_runner or onnxruntime_perf_test
+# so that the model can be easily run directly or from a debugger.
+#
+def create_example_test_directory():
+
+    # fill in the inputs that we want to use specific values for
+    input_data = {}
+    input_data['K'] = np.asarray([64]).astype(np.int64)
+
+    # provide symbolic dim values as needed
+    symbolic_dim_values = {'batch': 25, 'items': 256}
+
+    # create the directory. random input will be created for any missing inputs.
+    # the model will be run and the output will be saved as expected output for future runs
+    ort_test_dir_utils.create_test_dir('topk.onnx', 'PerfTests', 'test1', input_data, symbolic_dim_values)
+
+
 # this will create the model file in the current directory
 create_model('topk.onnx')
 
-# this can be used to create a test directory for use with onnx_test_runner or onnxruntime_perf_test
-# so that the model can be easily run directly or from a debugger.
-create_test_dir('topk.onnx', 'TopKPerfTests', 25, 256, 64)
+# this will create a test directory that can be used with onnx_test_runner or onnxruntime_perf_test
+create_example_test_directory()
 
 # this can loop over various combinations of input, using the specified number of threads
 run_perf_tests('topk.onnx', 1)
