@@ -170,7 +170,7 @@ if (onnxruntime_USE_DML)
     ${winml_lib_api_ort_dir}/OnnxruntimeDmlSessionBuilder.h
     ${winml_lib_api_ort_dir}/OnnxruntimeDmlSessionBuilder.cpp
     )
-endif(onnxruntime_USE_DML)
+endif()
 
 # Add static library that will be archived/linked for both static/dynamic library
 add_library(winml_lib_ort STATIC ${winml_lib_api_ort_files})
@@ -218,7 +218,8 @@ if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_ort)
 endif()
 target_link_libraries(winml_lib_ort PRIVATE wil)
-
+target_link_libraries(winml_lib_ort INTERFACE winml_lib_api)
+target_link_libraries(winml_lib_ort INTERFACE winml_lib_telemetry)
 
 ###########################
 # Add winml_adapter
@@ -242,7 +243,7 @@ if (onnxruntime_USE_DML)
     ${winml_adapter_dir}/abi_custom_registry_impl.cpp
     ${winml_adapter_dir}/abi_custom_registry_impl.h
     )
-endif(onnxruntime_USE_DML)
+endif()
 
 add_library(winml_adapter ${winml_adapter_files})
 
@@ -271,7 +272,7 @@ set_target_properties(winml_adapter
 target_link_libraries(winml_adapter PRIVATE wil)
 if (onnxruntime_USE_DML)
   target_add_dml(winml_adapter)
-endif(onnxruntime_USE_DML)
+endif()
 
 # add it to the onnxruntime shared library
 set(onnxruntime_winml winml_adapter)
@@ -436,6 +437,7 @@ target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/eig
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/onnx)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
+target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
 
 # Properties
 set_target_properties(winml_lib_api
@@ -578,6 +580,7 @@ target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/onnx)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/eigen)
+target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
 
 # Properties
 set_target_properties(winml_dll
@@ -614,7 +617,11 @@ target_link_libraries(winml_dll PRIVATE winml_lib_api)
 target_link_libraries(winml_dll PRIVATE winml_lib_image)
 target_link_libraries(winml_dll PRIVATE winml_lib_ort)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
-target_link_libraries(winml_dll PRIVATE delayimp.lib)
+if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
+  target_link_libraries(winml_dll PRIVATE dloadhelper.lib)
+else()
+  target_link_libraries(winml_dll PRIVATE delayimp.lib)
+endif()
 
 # Any project that links in debug_alloc.obj needs this lib.
 # unresolved external symbol __imp_SymSetOptions

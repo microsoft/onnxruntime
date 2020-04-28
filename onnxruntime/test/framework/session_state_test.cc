@@ -42,7 +42,7 @@ class SessionStateAddGetKernelTest : public testing::TestWithParam<int> {};
 TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   OrtThreadPoolParams to;
   to.thread_pool_size = GetParam();
-  auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to);
+  auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
   ONNX_OPERATOR_SCHEMA(Variable)
       .SetDoc("Input variable.")
       .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
@@ -96,8 +96,7 @@ class TestParam {
   bool enable_mem_pattern;
   int thread_count;
 };
-TestParam param_list[] = {{3, true, 0}, {4, true, 0}, {3, false, 0}, {4, false, 0},
-                          {3, true, 1}, {4, true, 1}, {3, false, 1}, {4, false, 1}};
+TestParam param_list[] = {{3, true, 0}, {4, true, 0}, {3, false, 0}, {4, false, 0}, {3, true, 1}, {4, true, 1}, {3, false, 1}, {4, false, 1}};
 }  // namespace
 class SessionStateTestP : public testing::TestWithParam<TestParam> {};
 // Test that we separate out constant and non-constant initializers correctly
@@ -105,7 +104,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   const TestParam& param = GetParam();
   OrtThreadPoolParams to;
   to.thread_pool_size = to.thread_pool_size;
-  auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to);
+  auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
 
   std::basic_ostringstream<ORTCHAR_T> oss;
   oss << ORT_TSTR("testdata/optional_inputs_ir") << param.ir_version << ORT_TSTR(".onnx");

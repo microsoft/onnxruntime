@@ -7,6 +7,7 @@ struct LearningModelApiTestsApi
   SetupClass LearningModelAPITestsClassSetup;
   SetupTest LearningModelAPITestsGpuMethodSetup;
   VoidTest CreateModelFromFilePath;
+  VoidTest CreateModelFileNotFound;
   VoidTest CreateModelFromIStorage;
   VoidTest CreateModelFromIStorageOutsideCwd;
   VoidTest CreateModelFromIStream;
@@ -20,6 +21,7 @@ struct LearningModelApiTestsApi
   VoidTest CloseModelCheckMetadata;
   VoidTest CloseModelCheckEval;
   VoidTest CloseModelNoNewSessions;
+  VoidTest CheckMetadataCaseInsensitive;
 };
 const LearningModelApiTestsApi& getapi();
 
@@ -27,6 +29,7 @@ WINML_TEST_CLASS_BEGIN(LearningModelAPITests)
 WINML_TEST_CLASS_SETUP_CLASS(LearningModelAPITestsClassSetup)
 WINML_TEST_CLASS_BEGIN_TESTS
 WINML_TEST(LearningModelAPITests, CreateModelFromFilePath)
+WINML_TEST(LearningModelAPITests, CreateModelFileNotFound)
 WINML_TEST(LearningModelAPITests, CreateModelFromIStorage)
 WINML_TEST(LearningModelAPITests, CreateModelFromIStorageOutsideCwd)
 WINML_TEST(LearningModelAPITests, CreateModelFromIStream)
@@ -39,6 +42,7 @@ WINML_TEST(LearningModelAPITests, EnumerateInputs)
 WINML_TEST(LearningModelAPITests, EnumerateOutputs)
 WINML_TEST(LearningModelAPITests, CloseModelCheckMetadata)
 WINML_TEST(LearningModelAPITests, CloseModelNoNewSessions)
+WINML_TEST(LearningModelAPITests, CheckMetadataCaseInsensitive)
 WINML_TEST_CLASS_END()
 
 WINML_TEST_CLASS_BEGIN(LearningModelAPITestsGpu)

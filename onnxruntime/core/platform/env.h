@@ -24,10 +24,10 @@ limitations under the License.
 #include <gsl/gsl>
 
 #include "core/common/common.h"
+#include "core/common/path_string.h"
 #include "core/framework/callback.h"
 #include "core/platform/env_time.h"
 #include "core/platform/telemetry.h"
-#include "core/session/onnxruntime_c_api.h"  // for ORTCHAR_T
 
 #ifndef _WIN32
 #include <sys/types.h>
@@ -113,6 +113,9 @@ class Env {
 
   virtual int GetNumCpuCores() const = 0;
 
+  // This function doesn't support systems with more than 64 logical processors
+  virtual std::vector<size_t> GetThreadAffinityMasks() const = 0;
+
   /// \brief Returns the number of micro-seconds since the Unix epoch.
   virtual uint64_t NowMicros() const {
     return env_time_->NowMicros();
@@ -158,17 +161,34 @@ class Env {
                                            MappedMemoryPtr& mapped_memory) const = 0;
 
 #ifdef _WIN32
+  /// \brief Returns true if the directory exists.
+  virtual bool FolderExists(const std::wstring& path) const = 0;
+  /// \brief Recursively creates the directory, if it doesn't exist.
+  virtual common::Status CreateFolder(const std::wstring& path) const = 0;
   // Mainly for use with protobuf library
   virtual common::Status FileOpenRd(const std::wstring& path, /*out*/ int& fd) const = 0;
   // Mainly for use with protobuf library
   virtual common::Status FileOpenWr(const std::wstring& path, /*out*/ int& fd) const = 0;
 #endif
+  /// \brief Returns true if the directory exists.
+  virtual bool FolderExists(const std::string& path) const = 0;
+  /// \brief Recursively creates the directory, if it doesn't exist.
+  virtual common::Status CreateFolder(const std::string& path) const = 0;
+  // Recursively deletes the directory and its contents.
+  // Note: This function is not thread safe!
+  virtual common::Status DeleteFolder(const PathString& path) const = 0;
   // Mainly for use with protobuf library
   virtual common::Status FileOpenRd(const std::string& path, /*out*/ int& fd) const = 0;
   // Mainly for use with protobuf library
   virtual common::Status FileOpenWr(const std::string& path, /*out*/ int& fd) const = 0;
   // Mainly for use with protobuf library
   virtual common::Status FileClose(int fd) const = 0;
+
+  /** Gets the canonical form of a file path (symlinks resolved). */
+  virtual common::Status GetCanonicalPath(
+      const PathString& path,
+      PathString& canonical_path) const = 0;
+
   // This functions is always successful. It can't fail.
   virtual PIDType GetSelfPid() const = 0;
 

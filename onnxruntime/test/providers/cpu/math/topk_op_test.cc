@@ -425,54 +425,17 @@ TEST(TopKOperator, Top1ExplicitAxisMultiDInputSmallestElements) {
   top_1_explicit_axis_MultiD_input_smallest(11, 0);  //unsorted
 }
 
-TEST(TopKOperator, SelectFirstSortNext) {
-  // in this test, we will select the top 5 elements first then sort the chosen 5 elements
-  // Select + Sort  = O(n + k * ln(k)) = 50 + 5 * ln(5) = 58.047
-  // Sorted selection: O(n * ln(k)) = 50 * ln(5) = 80.47
-  // The algorithm used will be Select + Sort
-  std::vector<float> input_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0,
-                                   11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f, 19.0f, 20.0,
-                                   21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f, 29.0f, 30.0,
-                                   31.0f, 32.0f, 33.0f, 34.0f, 35.0f, 36.0f, 37.0f, 38.0f, 39.0f, 40.0,
-                                   41.0f, 42.0f, 43.0f, 44.0f, 45.0f, 46.0f, 47.0f, 48.0f, 49.0f, 50.0};
-  std::vector<int64_t> input_dimensions = {50};
-  std::vector<float> expected_vals = {50.0f, 49.0f, 48.0f, 47.0f, 46.0f};
-  std::vector<int64_t> expected_indices = {49, 48, 47, 46, 45};
-  std::vector<int64_t> expected_dimensions = {5};
-  int64_t axis = 0;
-  RunTest(11, 5, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis);  // largest values
-}
-
-TEST(TopKOperator, SelectFirstSortNextInt64) {
-  // in this test, we will select the top 5 elements first then sort the chosen 5 elements
-  // Select + Sort  = O(n + k * ln(k)) = 50 + 5 * ln(5) = 58.047
-  // Sorted selection: O(n * ln(k)) = 50 * ln(5) = 80.47
-  // The algorithm used will be Select + Sort
-  std::vector<int64_t> input_vals = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-                                     11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-                                     21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
-                                     31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
-                                     41, 42, 43, 44, 45, 46, 47, 48, 49, 50};
-  std::vector<int64_t> input_dimensions = {50};
-  std::vector<int64_t> expected_vals = {50, 49, 48, 47, 46};
-  std::vector<int64_t> expected_indices = {49, 48, 47, 46, 45};
-  std::vector<int64_t> expected_dimensions = {5};
-  int64_t axis = 0;
-  RunTest(11, 5, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis);  // largest values
-}
-
-TEST(TopKOperator, SortedSelection) {
-  // in this test, we will use sorted selection (using heap)
-  // Select + Sort  = O(n + k * ln(k)) = 10 + 5 * ln(5) = 18.04
-  // Sorted selection: O(n * ln(k)) = 10 * ln(5) = 16.09
-  // The algorithm used will be Sorted selection
-  std::vector<float> input_vals = {10.0f, 8.0f, 7.0f, 4.0f, 5.0f, 6.0f, 1.0f, 2.0f, 9.0f, 3.0};
-  std::vector<int64_t> input_dimensions = {10};
-  std::vector<float> expected_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
-  std::vector<int64_t> expected_indices = {6, 7, 9, 3, 4};
-  std::vector<int64_t> expected_dimensions = {5};
-  int64_t axis = 0;
-  RunTest(11, 5, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 0);  // smallest values
+// test path where SelectTopK is used (select using std::nth_element)
+// we use a custom path for n=1, and priority queue based implementation if
+//   bool use_priority_queue = k != 1 && (k < 4 || (std::log2(k) / std::log2(n)) < 0.725);
+// so easiest way to test is for k to be 4 and n to be a little larger
+TEST(TopKOperator, NthElement) {
+  std::vector<float> input_vals = {10.0f, 8.0f, 7.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<int64_t> input_dimensions = {6};
+  std::vector<float> expected_vals = {10.0f, 8.0f, 7.0f, 6.0f};
+  std::vector<int64_t> expected_indices = {0, 1, 2, 5};
+  std::vector<int64_t> expected_dimensions = {4};
+  RunTest(11, 4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
 }
 
 // test dimension in range (GridDim::maxThreadsPerBlock, GridDim::maxThreadsPerBlock * 2], ie. [257, 512]
@@ -530,6 +493,67 @@ TEST(TopKOperator, BigArrayBigTopKSorted) {
   std::reverse(expected_indices.begin(), expected_indices.end());
   std::vector<int64_t> expected_dimensions = {9000};
   RunTest(11, 9000, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, 0, 1, 1);
+}
+
+static void top_3_all_same(int opset_version, int64_t largest = 1) {
+  // whether it's largest or smallest we should pick the first instance/s of a number if there are multiple
+  std::vector<float> input_vals = {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f};
+  std::vector<int64_t> input_dimensions = {2, 4};
+  std::vector<float> expected_vals = {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f};
+  std::vector<int64_t> expected_indices = {0, 1, 2, 0, 1, 2};
+  std::vector<int64_t> expected_dimensions = {2, 3};
+  RunTest(opset_version, 3, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, -1, largest);
+}
+
+TEST(TopKOperator, Top3AllSame) {
+  top_3_all_same(10);
+  top_3_all_same(11);
+  top_3_all_same(10, 0);  // smallest
+  top_3_explicit_axis(11, 0);
+}
+
+static void TestThreaded(int64_t k, int64_t n, int64_t batch_size) {
+  std::vector<float> input_vals(n * batch_size, 0.0f);
+  std::iota(input_vals.begin(), input_vals.end(), 0.0f);
+
+  std::vector<int64_t> input_dimensions = {n, batch_size};
+
+  std::vector<float> expected_vals(n * k, 0.0f);
+  std::vector<int64_t> expected_indices(n * k, 0);
+  std::vector<int64_t> expected_dimensions = {n, k};
+
+  for (int64_t i = 0; i < n; ++i) {
+    auto begin_batch_output = expected_vals.begin() + i * k;
+    std::iota(begin_batch_output, begin_batch_output + k, static_cast<float>(((i + 1) * batch_size) - k));
+    std::reverse(begin_batch_output, begin_batch_output + k);
+
+    // indices are within the axis so don't need adjusting by the batch number
+    auto begin_indices_output = expected_indices.begin() + i * k;
+    std::iota(begin_indices_output, begin_indices_output + k, batch_size - k);
+    std::reverse(begin_indices_output, begin_indices_output + k);
+  }
+
+  RunTest(11, k, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
+}
+
+// create input of 2x1000 and select 200 so 2 threads are needed based on there being 2 rows
+// and sufficient items to process given this calculation:
+//   int64_t threads_needed = static_cast<int64_t>(std::floor(input_shape.Size() * k / (128 * 1024)));
+TEST(TopKOperator, PriorityQueueThreaded) {
+  const int64_t k = 200;
+  const int64_t n = 2;
+  const int64_t batch_size = 1000;
+  TestThreaded(k, n, batch_size);
+}
+
+// create input of 2x500 and select 400 so 2 threads are needed based on there being 2 rows
+// and sufficient items to process given this calculation:
+//   int64_t threads_needed = static_cast<int64_t>(std::floor(input_shape.Size() * k / (128 * 1024)));
+TEST(TopKOperator, SelectTopKThreaded) {
+  const int64_t k = 400;
+  const int64_t n = 2;
+  const int64_t batch_size = 500;
+  TestThreaded(k, n, batch_size);
 }
 
 }  // namespace test

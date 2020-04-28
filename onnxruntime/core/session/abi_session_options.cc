@@ -141,7 +141,15 @@ ORT_API_STATUS_IMPL(OrtApis::SetSessionGraphOptimizationLevel, _In_ OrtSessionOp
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SetIntraOpNumThreads, _Inout_ OrtSessionOptions* options, int intra_op_num_threads) {
+#ifdef _OPENMP
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(intra_op_num_threads);
+  LOGS_DEFAULT(WARNING) << "Since openmp is enabled in this build, this API cannot be used to configure"
+                           " intra op num threads. Please use the openmp environment variables to control"
+                           " the number of threads.";
+#else
   options->value.intra_op_param.thread_pool_size = intra_op_num_threads;
+#endif
   return nullptr;
 }
 
