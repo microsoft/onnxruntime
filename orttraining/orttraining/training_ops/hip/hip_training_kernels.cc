@@ -131,7 +131,7 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, Send)
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, Recv);
 #endif
 
-#ifdef USE_NCCL
+#ifdef USE_RCCL
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, NcclAllReduce);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, NcclAllGather);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, NcclReduceScatter);
@@ -263,7 +263,7 @@ Status RegisterHipTrainingKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, Recv)>,
 #endif
 
-#ifdef USE_NCCL
+#ifdef USE_RCCL
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, NcclAllReduce)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, NcclAllGather)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, NcclReduceScatter)>,
