@@ -34,7 +34,9 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy     
+     python -m pip install --upgrade pip
+     python -m pip uninstall -y -q onnxruntime 2>pip.log  
+     python -m pip install -q pyopenssl setuptools wheel numpy scipy
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
