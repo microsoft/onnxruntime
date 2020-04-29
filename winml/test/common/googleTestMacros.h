@@ -100,8 +100,10 @@
       _no_gpu_tests == RuntimeParameters::Parameters.end() || _no_gpu_tests->second == "0"
 #endif
 
-#define SKIP_EDGECORE                                                                   \
-  if (auto isEdgeCore = RuntimeParameters::Parameters.find("EdgeCore");                 \
-      isEdgeCore != RuntimeParameters::Parameters.end() && isEdgeCore->second != "0") { \
-    WINML_SKIP_TEST("Test can't be run in EdgeCore");                                   \
-  }
+#define SKIP_EDGECORE                                                                         \
+  do {                                                                                        \
+    if (auto is_edge_core = RuntimeParameters::Parameters.find("EdgeCore");                   \
+        is_edge_core != RuntimeParameters::Parameters.end() && is_edge_core->second != "0") { \
+      WINML_SKIP_TEST("Test can't be run in EdgeCore");                                       \
+    }                                                                                         \
+  } while (0)

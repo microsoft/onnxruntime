@@ -25,12 +25,22 @@ ONNX_OPERATOR_KERNEL_EX(GatherND, kMSDomain, 1, kCpuExecutionProvider,
 
 #endif
 
-ONNX_CPU_OPERATOR_KERNEL(GatherND, 11,
-                         KernelDefBuilder()
-                             .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-                             // official ONNX spec only supports `int64_t` for indices
-                             .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
-                         GatherND);
+ONNX_CPU_OPERATOR_KERNEL(
+    GatherND, 
+    11,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        // official ONNX spec only supports `int64_t` for indices
+        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
+    GatherND);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    GatherND,
+    12,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
+    GatherND);
 
 template <typename Tind>
 Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
@@ -44,7 +54,7 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices tensor must has rank larger than 0");
   }
 
-  int64_t last_indices_dimension = indices_shape[indices_shape.NumDimensions() - 1];
+  int64_t last_indices_dimension = indices_shape[indices_shape.NumDimensions() - 1] + batch_dims_;
   if (last_indices_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "last dimension of indices must not be larger than rank of input tensor");
@@ -53,7 +63,7 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
   std::vector<int64_t> shape(indices_shape.GetDims().begin(), indices_shape.GetDims().end() - 1);
   shape.insert(shape.end(), input_shape.GetDims().begin() + last_indices_dimension, input_shape.GetDims().end());
   auto* output_tensor = context->Output(0, TensorShape(std::move(shape)));
-  std::vector<int64_t> element_counts(last_indices_dimension,
+  std::vector<int64_t> element_counts(last_indices_dimension + batch_dims_,
                                       0LL);  // Number of elements for each input dimension
 
 #ifdef _OPENMP
@@ -63,12 +73,20 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
     element_counts[i] = input_shape.SizeFromDimension(i + 1);
   }
 
+  auto last_dim_size = indices_shape.SizeFromDimension(indices_shape.NumDimensions() - 1);
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+  for (int64_t i = batch_dims_ - 1; i >= 0; --i) {
+    element_counts[last_indices_dimension + i] = indices_shape.SizeFromDimension(i + 1) / last_dim_size;
+  }
+
   int64_t err_index = 0;
   p.element_bytes = input_tensor->DataType()->Size();
   p.element_to_copy = input_shape.SizeFromDimension(last_indices_dimension);
   p.bytes_to_copy = p.element_bytes * p.element_to_copy;
-  const auto* indices_data = indices_tensor->Data<Tind>();
-  const int64_t offset_count = indices_shape.Size() / last_indices_dimension;  // Times to copy
+  const auto* indice_offset = indices_tensor->Data<Tind>();
+  const int64_t offset_count = indices_shape.Size() / (last_indices_dimension - batch_dims_);  // Times to copy
   p.element_offsets.assign(offset_count, 0LL);
 
   if (input_tensor->IsDataTypeString()) {
@@ -79,12 +97,19 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
     p.output_base = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
   }
 
+  //Compute the element_offset
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
   for (int64_t i = 0; i < offset_count; ++i) {
-    for (int64_t j = 0; j < last_indices_dimension; ++j) {
-      auto index = *(indices_data + i * last_indices_dimension + j);
+    int64_t reminder = i;
+    for (int64_t j = 0; j < batch_dims_; ++j) {
+      int64_t idx = reminder / element_counts[last_indices_dimension + j];
+      p.element_offsets[i] += idx * element_counts[j];
+      reminder -= (idx * element_counts[last_indices_dimension + j]);
+    }
+    for (int64_t j = batch_dims_; j < last_indices_dimension; ++j) {
+      auto index = *(indice_offset + i * (last_indices_dimension - batch_dims_) + (j - batch_dims_));
       auto upper_limit = input_shape[j];
       auto lower_limit = -upper_limit;
       if (index < lower_limit || index >= upper_limit) {

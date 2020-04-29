@@ -141,7 +141,11 @@ bool IsAttributeWithExpectedValues(const Node& node, const std::string& attr_nam
   return true;
 }
 
-bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data) {
+bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data, bool require_constant) {
+  if (require_constant && !graph_utils::IsConstantInitializer(graph, input_arg.Name(), true)) {
+    return false;
+  }
+
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
   if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
     return false;
