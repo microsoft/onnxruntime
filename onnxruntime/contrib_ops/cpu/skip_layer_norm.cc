@@ -27,6 +27,7 @@ REGISTER_KERNEL_TYPED(double)
 template <typename T>
 SkipLayerNorm<T>::SkipLayerNorm(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info) {
+  ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
 }
 
 template <typename T>
@@ -114,7 +115,7 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
                                                  }
 
                                                  mean = mean / hidden_size;
-                                                 mean_square = sqrt(mean_square / hidden_size - mean * mean + float(1e-12));
+                                                 mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon_);
 
                                                  for (int64_t h = 0; h < hidden_size; h++) {
                                                    p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h] + beta_data[h];
