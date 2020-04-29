@@ -192,7 +192,7 @@ def hipify(src_file_path, dst_file_path):
         s = s.replace('std::log', 'logf')
         s = s.replace('#include <cub/device/device_radix_sort.cuh>', '#include <hipcub/hipcub.hpp>')
         s = s.replace('#include <cub/iterator/counting_input_iterator.cuh>', '')
-        s = s.replace('NCCL_CALL', 'RCCL_CALL')
+        #s = s.replace('NCCL_CALL', 'RCCL_CALL')
         s = s.replace('#include <nccl.h>', '#include <rccl.h>')
     with open(dst_file_path, 'w') as f:
         f.write(s)
