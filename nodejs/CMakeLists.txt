@@ -8,8 +8,7 @@ add_compile_definitions(NAPI_VERSION=${napi_build_version})
 add_compile_definitions(NAPI_EXPERIMENTAL)
 
 include_directories(${CMAKE_JS_INC})
-include_directories(${CMAKE_SOURCE_DIR}/../../include/onnxruntime)
-# include_directories(${CMAKE_SOURCE_DIR}/../../include/onnxruntime/core/session)
+include_directories(${CMAKE_SOURCE_DIR}/../include/onnxruntime)
 include_directories(${CMAKE_SOURCE_DIR}/node_modules/node-addon-api)
 
 file(GLOB SOURCE_FILES ${CMAKE_SOURCE_DIR}/src/*.cc)
@@ -26,14 +25,14 @@ target_link_libraries(onnxruntime_binding PRIVATE ${CMAKE_JS_LIB})
 
 if (WIN32)
   target_link_libraries(onnxruntime_binding PRIVATE
-    ${CMAKE_SOURCE_DIR}/../../build/Windows/${CMAKE_BUILD_TYPE}/${CMAKE_BUILD_TYPE}/onnxruntime.lib)
+    ${CMAKE_SOURCE_DIR}/../build/Windows/${CMAKE_BUILD_TYPE}/${CMAKE_BUILD_TYPE}/onnxruntime.lib)
 elseif (APPLE)
   target_link_libraries(onnxruntime_binding PRIVATE
-    ${CMAKE_SOURCE_DIR}/../../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.1.2.0.dylib)
+    ${CMAKE_SOURCE_DIR}/../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.1.2.0.dylib)
   set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "@loader_path")
 else()
   target_link_libraries(onnxruntime_binding PRIVATE
-    ${CMAKE_SOURCE_DIR}/../../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.so.1.2.0)
+    ${CMAKE_SOURCE_DIR}/../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.so.1.2.0)
   set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "$ORIGIN/")
 endif()
 
@@ -56,14 +55,14 @@ if (WIN32)
   add_custom_command(
     TARGET onnxruntime_binding POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
-      ${CMAKE_SOURCE_DIR}/../../build/Windows/${CMAKE_BUILD_TYPE}/${CMAKE_BUILD_TYPE}/onnxruntime.dll
+      ${CMAKE_SOURCE_DIR}/../build/Windows/${CMAKE_BUILD_TYPE}/${CMAKE_BUILD_TYPE}/onnxruntime.dll
       ${CMAKE_SOURCE_DIR}/bin/
   )
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_custom_command(
       TARGET onnxruntime_binding POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
-        ${CMAKE_SOURCE_DIR}/../../build/Windows/${CMAKE_BUILD_TYPE}/${CMAKE_BUILD_TYPE}/onnxruntime.pdb
+        ${CMAKE_SOURCE_DIR}/../build/Windows/${CMAKE_BUILD_TYPE}/${CMAKE_BUILD_TYPE}/onnxruntime.pdb
         ${CMAKE_SOURCE_DIR}/bin/
       COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE_DIR:onnxruntime_binding>/onnxruntime_binding.pdb ${CMAKE_SOURCE_DIR}/bin/
     )
@@ -72,14 +71,14 @@ elseif (APPLE)
   add_custom_command(
     TARGET onnxruntime_binding POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
-      ${CMAKE_SOURCE_DIR}/../../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.1.2.0.dylib
+      ${CMAKE_SOURCE_DIR}/../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.1.2.0.dylib
       ${CMAKE_SOURCE_DIR}/bin/
   )
 elseif (UNIX)
   add_custom_command(
     TARGET onnxruntime_binding POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
-      ${CMAKE_SOURCE_DIR}/../../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.so.1.2.0
+      ${CMAKE_SOURCE_DIR}/../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.so.1.2.0
       ${CMAKE_SOURCE_DIR}/bin/
   )
 else()
