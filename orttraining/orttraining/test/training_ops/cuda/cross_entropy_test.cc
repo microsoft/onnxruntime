@@ -310,7 +310,7 @@ static void TestSoftmaxCrossEntropyLoss(const std::vector<int64_t>* X_dims,
   test.CompareWithCPU(kCudaExecutionProvider);
 }
 
-TEST(CudaKernelTest, DISABLED_SoftmaxCrossEntropyLoss_TinySizeTensor) {
+TEST(CudaKernelTest, SoftmaxCrossEntropyLoss_TinySizeTensor) {
   std::vector<int64_t> X_dims{8, 2};
   std::vector<int64_t> index_dims{8};
   std::vector<int64_t> weight_dims{2};
@@ -333,7 +333,7 @@ TEST(CudaKernelTest, DISABLED_SoftmaxCrossEntropyLoss_TinySizeTensor) {
   TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims_none, &log_prob_dims, "none", 0);
 }
 
-TEST(CudaKernelTest, DISABLED_SoftmaxCrossEntropyLoss_SmallSizeTensor) {
+TEST(CudaKernelTest, SoftmaxCrossEntropyLoss_SmallSizeTensor) {
   std::vector<int64_t> X_dims{8, 20, 10};
   std::vector<int64_t> index_dims{8, 10};
   std::vector<int64_t> weight_dims{20};
@@ -348,7 +348,7 @@ TEST(CudaKernelTest, DISABLED_SoftmaxCrossEntropyLoss_SmallSizeTensor) {
   TestSoftmaxCrossEntropyLoss(&X_dims, &index_dims, nullptr, &Y_dims_none, &log_prob_dims, "none");
 }
 
-TEST(CudaKernelTest, DISABLED_SoftmaxCrossEntropyLoss_MediumSizeTensor) {
+TEST(CudaKernelTest, SoftmaxCrossEntropyLoss_MediumSizeTensor) {
   std::vector<int64_t> X_dims{8, 1024};
   std::vector<int64_t> index_dims{8};
   std::vector<int64_t> weight_dims{1024};
@@ -365,7 +365,7 @@ TEST(CudaKernelTest, DISABLED_SoftmaxCrossEntropyLoss_MediumSizeTensor) {
 
 // TODO fix flaky test
 // failing random seed: 2873512643
-TEST(CudaKernelTest, DISABLED_SoftmaxCrossEntropyLoss_LargeSizeTensor) {
+TEST(CudaKernelTest, SoftmaxCrossEntropyLoss_LargeSizeTensor) {
   std::vector<int64_t> X_dims{4, 512, 30528};
   std::vector<int64_t> index_dims{4, 30528};
   std::vector<int64_t> weight_dims{512};
