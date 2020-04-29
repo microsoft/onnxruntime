@@ -65,7 +65,7 @@ UniqueOrtSession CreateDmlSession() {
   command_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
   WINML_EXPECT_HRESULT_SUCCEEDED(device->CreateCommandQueue(&command_queue_desc, IID_PPV_ARGS(queue.put())));
 
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get()), ort_api);
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get(), false), ort_api);
   return CreateUniqueOrtSession(FileHelpers::GetModulePath() + L"fns-candy.onnx", session_options);
 }
 
@@ -86,13 +86,6 @@ void DmlExecutionProviderFlushContext() {
   OrtExecutionProvider* ort_provider;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
   THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlExecutionProviderFlushContext(ort_provider), ort_api);
-}
-
-void DmlExecutionProviderTrimUploadHeap() {
-  auto session = CreateDmlSession();
-  OrtExecutionProvider* ort_provider;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlExecutionProviderTrimUploadHeap(ort_provider), ort_api);
 }
 
 void DmlExecutionProviderReleaseCompletedReferences() {
@@ -234,7 +227,7 @@ void DmlCopyTensor() {
   command_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
   WINML_EXPECT_HRESULT_SUCCEEDED(device->CreateCommandQueue(&command_queue_desc, IID_PPV_ARGS(queue.put())));
 
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get()), ort_api);
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get(), false), ort_api);
   auto session = CreateUniqueOrtSession(FileHelpers::GetModulePath() + L"fns-candy.onnx", session_options);
 
   OrtExecutionProvider* dml_provider;
@@ -325,7 +318,6 @@ const AdapterDmlEpTestApi& getapi() {
     AdapterDmlEpTestTeardown,
     DmlExecutionProviderSetDefaultRoundingMode,
     DmlExecutionProviderFlushContext,
-    DmlExecutionProviderTrimUploadHeap,
     DmlExecutionProviderReleaseCompletedReferences,
     DmlCreateAndFreeGPUAllocationFromD3DResource,
     DmlGetD3D12ResourceFromAllocation,

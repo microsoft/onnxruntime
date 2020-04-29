@@ -8,7 +8,6 @@ struct AdapterDmlEpTestApi
   TeardownClass AdapterDmlEpTestTeardown;
   VoidTest DmlExecutionProviderSetDefaultRoundingMode;
   VoidTest DmlExecutionProviderFlushContext;
-  VoidTest DmlExecutionProviderTrimUploadHeap;
   VoidTest DmlExecutionProviderReleaseCompletedReferences;
   VoidTest DmlCreateGPUAllocationFromD3DResource;
   VoidTest DmlCreateAndFreeGPUAllocationFromD3DResource;
@@ -29,7 +28,6 @@ WINML_TEST_CLASS_TEARDOWN_METHOD(AdapterDmlEpTestTeardown)
 WINML_TEST_CLASS_BEGIN_TESTS
 WINML_TEST(AdapterDmlEpTest, DmlExecutionProviderSetDefaultRoundingMode)
 WINML_TEST(AdapterDmlEpTest, DmlExecutionProviderFlushContext)
-WINML_TEST(AdapterDmlEpTest, DmlExecutionProviderTrimUploadHeap)
 WINML_TEST(AdapterDmlEpTest, DmlExecutionProviderReleaseCompletedReferences)
 WINML_TEST(AdapterDmlEpTest, DmlCreateGPUAllocationFromD3DResource)
 WINML_TEST(AdapterDmlEpTest, DmlCreateAndFreeGPUAllocationFromD3DResource)
