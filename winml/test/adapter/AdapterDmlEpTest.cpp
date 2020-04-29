@@ -54,18 +54,11 @@ UniqueOrtSession CreateUniqueOrtSession(const UniqueOrtSessionOptions& session_o
   return UniqueOrtSession(session, ort_api->ReleaseSession);
 }
 
-UniqueOrtSession CreateUniqueOrtSession(const std::string& model_path, const UniqueOrtSessionOptions& session_options) {
-//  auto session = CreateUniqueOrtSession(session_options);
-//  OrtModel* ort_model;
-//  THROW_IF_NOT_OK_MSG(winml_adapter_api->CreateModelFromPath(model_path.c_str(), model_path.size(), &ort_model), ort_api);
-//  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionLoadAndPurloinModel(session.get(), ort_model), ort_api);
-//  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionInitialize(session.get()), ort_api);
-//  return session;
-
+UniqueOrtSession CreateUniqueOrtSession(const std::wstring& model_path, const UniqueOrtSessionOptions& session_options) {
   THROW_IF_NOT_OK_MSG(ort_api->SetIntraOpNumThreads(session_options.get(), 1), ort_api);
   THROW_IF_NOT_OK_MSG(ort_api->SetSessionGraphOptimizationLevel(session_options.get(), ORT_ENABLE_BASIC), ort_api);
   OrtSession *session;
-  THROW_IF_NOT_OK_MSG(ort_api->CreateSession(ort_env, (FileHelpers::GetModulePath() + L"fns-candy.onnx").c_str(), session_options.get(), &session), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_api->CreateSession(ort_env, model_path.c_str(), session_options.get(), &session), ort_api);
   return UniqueOrtSession(session, ort_api->ReleaseSession);
 }
 
@@ -82,14 +75,12 @@ UniqueOrtSession CreateDmlSession() {
   WINML_EXPECT_HRESULT_SUCCEEDED(device->CreateCommandQueue(&command_queue_desc, IID_PPV_ARGS(queue.put())));
 
   THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get()), ort_api);
-  const auto module_path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(FileHelpers::GetModulePath());
-  return CreateUniqueOrtSession(module_path + "fns-candy.onnx", session_options);
+  return CreateUniqueOrtSession(FileHelpers::GetModulePath() + L"fns-candy.onnx", session_options);
 }
 
 UniqueOrtSession CreateCpuSession() {
   const auto session_options = CreateUniqueOrtSessionOptions();
-  const auto module_path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(FileHelpers::GetModulePath());
-  return CreateUniqueOrtSession(module_path + "fns-candy.onnx", session_options);
+  return CreateUniqueOrtSession(FileHelpers::GetModulePath() + L"fns-candy.onnx", session_options);
 }
 
 void DmlExecutionProviderSetDefaultRoundingMode() {
@@ -197,9 +188,9 @@ void GetProviderMemoryInfo() {
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
   OrtMemoryInfo *memory_info;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->GetProviderMemoryInfo(ort_provider, &memory_info), ort_api);
+  auto unique_memory_info = UniqueOrtMemoryInfo(memory_info, ort_api->ReleaseMemoryInfo);
   // Ensure tensor can be created with the provided OrtMemoryInfo
-  CreateTensorFromMemoryInfo(memory_info);
-  ort_api->ReleaseMemoryInfo(memory_info);
+  CreateTensorFromMemoryInfo(unique_memory_info.get());
 }
 
 void GetAndFreeProviderAllocator() {
@@ -208,30 +199,29 @@ void GetAndFreeProviderAllocator() {
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
   OrtAllocator *allocator;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->GetProviderAllocator(ort_provider, &allocator), ort_api);
+  auto unique_allocator = UniqueOrtAllocator(allocator, winml_adapter_api->FreeProviderAllocator);
 
   // Ensure allocation works
   void *data = nullptr;
-  THROW_IF_NOT_OK_MSG(ort_api->AllocatorAlloc(allocator, 1024, &data), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_api->AllocatorAlloc(unique_allocator.get(), 1024, &data), ort_api);
   WINML_EXPECT_NOT_EQUAL(nullptr, data);
-  THROW_IF_NOT_OK_MSG(ort_api->AllocatorFree(allocator, data), ort_api);
-
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->FreeProviderAllocator(allocator), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_api->AllocatorFree(unique_allocator.get(), data), ort_api);
 }
 
 void GetValueMemoryInfo() {
   auto session = CreateDmlSession();
   OrtExecutionProvider* ort_provider;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
+
   OrtMemoryInfo *memory_info;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->GetProviderMemoryInfo(ort_provider, &memory_info), ort_api);
-  auto tensor = CreateTensorFromMemoryInfo(memory_info);
+  auto unique_memory_info = UniqueOrtMemoryInfo(memory_info, ort_api->ReleaseMemoryInfo);
+  auto tensor = CreateTensorFromMemoryInfo(unique_memory_info.get());
 
   OrtMemoryInfo *value_memory_info;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->GetValueMemoryInfo(tensor.get(), &value_memory_info), ort_api);
-  CreateTensorFromMemoryInfo(value_memory_info);
-
-  ort_api->ReleaseMemoryInfo(value_memory_info);
-  ort_api->ReleaseMemoryInfo(memory_info);
+  auto unique_value_memory_info = UniqueOrtMemoryInfo(value_memory_info, ort_api->ReleaseMemoryInfo);
+  CreateTensorFromMemoryInfo(unique_value_memory_info.get());
 }
 
 void ExecutionProviderSync() {
@@ -326,8 +316,7 @@ void DmlCopyTensor() {
   WINML_EXPECT_HRESULT_SUCCEEDED(device->CreateCommandQueue(&command_queue_desc, IID_PPV_ARGS(queue.put())));
 
   THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get()), ort_api);
-  const auto module_path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(FileHelpers::GetModulePath());
-  auto session = CreateUniqueOrtSession(module_path + "fns-candy.onnx", session_options);
+  auto session = CreateUniqueOrtSession(FileHelpers::GetModulePath() + L"fns-candy.onnx", session_options);
 
 
 //  auto session = CreateDmlSession();
