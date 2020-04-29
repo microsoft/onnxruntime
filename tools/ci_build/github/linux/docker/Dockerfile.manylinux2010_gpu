@@ -13,7 +13,7 @@ SHELL ["/bin/bash", "-c"]
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && \
     /tmp/scripts/install_centos.sh && \
-    /tmp/scripts/install_deps.sh -p $PYTHON_VERSION ${ENABLE_TRAINING:+"-x --enable_training"} && \
+    /tmp/scripts/install_deps.sh -d gpu -p $PYTHON_VERSION -x "${ENABLE_TRAINING:+"--enable_training"}" && \
     yum remove -y devtoolset-\* && \
     yum install -y devtoolset-7-binutils devtoolset-7-gcc devtoolset-7-gcc-c++ devtoolset-7-gcc-gfortran devtoolset-7-libquadmath-devel devtoolset-7-libstdc++-devel devtoolset-7-runtime && \
     rm -rf /tmp/scripts

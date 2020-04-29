@@ -2,7 +2,7 @@
 set -e
 
 
-while getopts p:d: parameter_Option
+while getopts p:d:x: parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
