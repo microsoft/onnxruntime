@@ -18,6 +18,8 @@ namespace Dml
     size_t ComputeByteSizeFromDimensions(gsl::span<const DimensionType> dimensions, MLOperatorTensorDataType tensorDataType);
     size_t ComputeByteSizeFromTensor(IMLOperatorTensor& tensor);
 
+    bool IsSigned(DML_TENSOR_DATA_TYPE dataType);
+
     /** Calculates the minimum number of bytes required to store a buffer tensor with the specified type, sizes, and
         strides. The formula can be expressed as the following:
 

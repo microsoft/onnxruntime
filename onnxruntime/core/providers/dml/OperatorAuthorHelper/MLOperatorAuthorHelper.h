@@ -563,6 +563,20 @@ public:
         return m_impl->GetOutputCount();
     }
 
+    // Returns true if an input to the operator is valid.
+    // This returns false for optional omitted inputs and invalid indices.
+    bool IsInputValid(uint32_t inputIndex) const noexcept
+    {
+        return m_impl->IsInputValid(inputIndex);
+    }
+
+    // Returns true if an output to the operator is valid.
+    // This returns false for optional omitted inputs and invalid indices.
+    bool IsOutputValid(uint32_t inputIndex) const noexcept
+    {
+        return m_impl->IsOutputValid(inputIndex);
+    }
+
     MLOperatorEdgeDescription GetInputEdgeDescription(uint32_t inputIndex) const
     {
         MLOperatorEdgeDescription ret;

@@ -46,7 +46,7 @@ each of which is a constant initializer or a Shape->Gather->Unsqueeze chain with
 index corresponding to the index of the argument.)
 
 Before fusion:
-   [Sub-graph    Root    Node ]
+   [Sub-graph    Root]
     |        /                  \
     |    Shape                   Shape
     |       |                      |
@@ -61,13 +61,14 @@ Before fusion:
          Reshape
 
 After fusion:
-    [Sub-graph Root Node]   (Constant Initializer)
+    [Sub-graph Root]   (Constant Initializer)
                   \         [0, a, 0, b]
                    \        /
                     Reshape
 */
 bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::Logger& logger) {
-  const Node* p_root = graph_utils::GetInputNode(reshape, 0);
+  // The root could be either a graph input or a node so use node arg to compare.
+  const NodeArg& root_input = *(reshape.InputDefs()[0]);
 
   const Node* p_concat = graph_utils::GetInputNode(reshape, 1);
   if (nullptr == p_concat) {
@@ -90,11 +91,8 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
   enum class NodeType { Unsqueeze, Gather, Shape };
   std::set<std::pair<NodeType, NodeIndex>> candidates_for_removal;
   for (int i = 0; i < concat_input_count; ++i) {
-    // First check if the i-th argument is an initializer.
-    // We do not check whether the initializer is constant.
-    // Some model uses constant initializer and some does not.
-    // Here we assume that no one will override the initializer using graph input.
-    if (optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[i]), shape_value)) {
+    // First check if the i-th argument is a constant initializer.
+    if (optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[i]), shape_value, true)) {
       continue;
     }
 
@@ -113,7 +111,8 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
     const Node& gather = edges[1]->GetNode();
     const Node& shape = edges[2]->GetNode();
 
-    if (graph_utils::GetInputNode(shape, 0) != p_root) {
+    const NodeArg& shape_input = *(shape.InputDefs()[0]);
+    if (shape_input.Name() != root_input.Name()) {
       return false;
     }
 
