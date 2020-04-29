@@ -1,6 +1,6 @@
 trigger: none
 
-jobs:
+stages:
 - template: templates/py-packaging-jobs.yml
   parameters:
     enable_training: true
