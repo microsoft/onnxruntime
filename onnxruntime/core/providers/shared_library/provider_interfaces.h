@@ -171,15 +171,72 @@ struct Prov_DeviceAllocatorRegistrationInfo {
   size_t max_mem;
 };
 
-class OpKernel;      // TODO
-class OpKernelInfo;  // TODO
+class TensorShape;
 
-struct Prov_KernelDef {
-  virtual ~Prov_KernelDef() {}
+struct Prov_Tensor {
+  virtual float* MutableData_float() = 0;
+  virtual const float* Data_float() const = 0;
+
+  template <typename T>
+  T* MutableData();
+
+  template <>
+  float* MutableData() { return MutableData_float(); }
+
+  template <typename T>
+  const T* Data() const;
+
+  template <>
+  const float* Data() const { return Data_float(); }
+
+  virtual const TensorShape& Shape() const = 0;
 };
 
-using Prov_KernelCreateFn = std::function<OpKernel*(const OpKernelInfo& info)>;
-using Prov_KernelCreatePtrFn = std::add_pointer<OpKernel*(const OpKernelInfo& info)>::type;
+struct Prov_OpKernelInfo {
+  virtual Status GetAttr(const std::string& name, int64_t* value) const = 0;
+  virtual Status GetAttr(const std::string& name, float* value) const = 0;
+
+  template <typename T>
+  Status GetAttr(const std::string& name, T* value) const;
+
+  template <>
+  Status GetAttr<int64_t>(const std::string& name, int64_t* value) const {
+    return GetAttr(name, value);
+  }
+
+  template <>
+  Status GetAttr<float>(const std::string& name, float* value) const {
+    return GetAttr(name, value);
+  }
+};
+
+struct Prov_OpKernelContext {
+  virtual const Prov_Tensor* Input_Tensor(int index) const = 0;
+
+  template <typename T>
+  const T* Input(int index) const;
+
+  template <>
+  const Prov_Tensor* Input(int index) const {
+    return Input_Tensor(index);
+  }
+
+  virtual Prov_Tensor* Output(int index, const TensorShape& shape) = 0;
+};
+
+struct Prov_OpKernel {
+  Prov_OpKernel(const Prov_OpKernelInfo& /*info*/) {}
+  virtual ~Prov_OpKernel() = default;
+
+  virtual Status Compute(Prov_OpKernelContext* context) const = 0;
+};
+
+struct Prov_KernelDef {
+  virtual ~Prov_KernelDef() = default;
+};
+
+using Prov_KernelCreateFn = std::function<Prov_OpKernel*(const Prov_OpKernelInfo& info)>;
+using Prov_KernelCreatePtrFn = std::add_pointer<Prov_OpKernel*(const Prov_OpKernelInfo& info)>::type;
 
 struct Prov_KernelCreateInfo {
   std::unique_ptr<Prov_KernelDef> kernel_def;  // Owned and stored in the global kernel registry.

@@ -287,6 +287,66 @@ struct Prov_GraphViewer_Impl : Prov_GraphViewer {
   mutable Prov_InitializedTensorSet initialized_tensor_set_;
 };
 
+struct Prov_OpKernelInfo_Impl : Prov_OpKernelInfo {
+  Prov_OpKernelInfo_Impl(const OpKernelInfo& info) : info_(info) {}
+
+  Status GetAttr(const std::string& name, int64_t* value) const override {
+    return info_.GetAttr<int64_t>(name, value);
+  }
+
+  Status GetAttr(const std::string& name, float* value) const override {
+    return info_.GetAttr<float>(name, value);
+  }
+
+  const OpKernelInfo& info_;
+};
+
+struct Prov_Tensor_Impl : Prov_Tensor {
+  Prov_Tensor_Impl(const Tensor* p) : p_(const_cast<Tensor*>(p)) {}
+
+  float* MutableData_float() override { return p_->MutableData<float>(); }
+  const float* Data_float() const override { return p_->Data<float>(); }
+
+  const TensorShape& Shape() const override { return p_->Shape(); }
+
+  Tensor* p_;
+};
+
+struct Prov_OpKernelContext_Impl : Prov_OpKernelContext {
+  Prov_OpKernelContext_Impl(OpKernelContext* context) : p_(context) {}
+
+  const Prov_Tensor* Input_Tensor(int index) const override {
+    tensors_.push_back(onnxruntime::make_unique<Prov_Tensor_Impl>(p_->Input<Tensor>(index)));
+    return tensors_.back().get();
+  }
+
+  Prov_Tensor* Output(int index, const TensorShape& shape) override {
+    tensors_.push_back(onnxruntime::make_unique<Prov_Tensor_Impl>(p_->Output(index, shape)));
+    return tensors_.back().get();
+  }
+
+  OpKernelContext* p_;
+  mutable std::vector<std::unique_ptr<Prov_Tensor_Impl>> tensors_;
+};
+
+struct Prov_OpKernel_Impl : Prov_OpKernel {
+  OpKernelInfo op_kernel_info_;
+};
+
+struct OpKernel_Translator : OpKernel {
+  OpKernel_Translator(Prov_OpKernelInfo_Impl& info, Prov_OpKernel* p) : OpKernel(info.info_), p_(p) {}
+  ~OpKernel_Translator() {
+    delete p_;
+  }
+
+  Status Compute(OpKernelContext* context) const override {
+    Prov_OpKernelContext_Impl prov_context(context);
+    return p_->Compute(&prov_context);
+  }
+
+  Prov_OpKernel* p_;
+};
+
 struct Prov_KernelRegistry_Impl : Prov_KernelRegistry {
   Prov_KernelRegistry_Impl(std::shared_ptr<KernelRegistry> p) : p_owned_(p) {}
   Prov_KernelRegistry_Impl(KernelRegistry* p) : p_(p) {}
@@ -294,9 +354,10 @@ struct Prov_KernelRegistry_Impl : Prov_KernelRegistry {
 
   Status Register(Prov_KernelCreateInfo&& create_info) override {
     KernelCreateInfo info_real(std::move(static_cast<Prov_KernelDef_Impl*>(create_info.kernel_def.get())->p_),
-                               [](const OpKernelInfo & /*info*/) -> OpKernel* {
-//      PROVIDER_NOT_IMPLEMENTED // So far providers use the function API, not creating kernels this way
-      return nullptr;  /*create_info.kernel_create_func);*/ });
+                               [kernel_create_func = create_info.kernel_create_func](const OpKernelInfo& info) -> OpKernel* {
+                                 Prov_OpKernelInfo_Impl prov_info(info);
+                                 return new OpKernel_Translator(prov_info, kernel_create_func(prov_info));
+                               });
 
     return p_->Register(std::move(info_real));
   }

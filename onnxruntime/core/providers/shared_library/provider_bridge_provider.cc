@@ -35,7 +35,7 @@ RunOnUnload::RunOnUnload(std::function<void()> deleter) {
 }
 
 RunOnUnload::~RunOnUnload() {
-  *enabled_ = false; // If the thread_local gets destroyed, then disalble the delete function
+  *enabled_ = false;  // If the thread_local gets destroyed, then disalble the delete function
 }
 
 struct OnUnload {
@@ -44,8 +44,8 @@ struct OnUnload {
       return;
 
     for (auto& function : *s_run_on_unload_) {
-      if(function->enabled_)
-		  function->function_();
+      if (function->enabled_)
+        function->function_();
     }
 
     s_run_on_unload_.reset();
@@ -93,12 +93,12 @@ std::unique_ptr<Prov_IndexedSubGraph> Prov_IndexedSubGraph::Create() {
 	MLDataType DataTypeImpl::GetType<bool>() {
 		return nullptr;
 	}
-#endif
 
 template <>
 MLDataType DataTypeImpl::GetType<Tensor>() {
   return g_host->DataTypeImpl_GetType_Tensor();
 }
+#endif
 
 template <>
 MLDataType DataTypeImpl::GetType<float>() {
@@ -278,23 +278,6 @@ TensorShape TensorShape::Slice(size_t dimstart) const {
 std::string TensorShape::ToString() const {
   PROVIDER_NOT_IMPLEMENTED
   return "";
-}
-
-const TensorShape& Tensor::Shape() const noexcept {
-  PROVIDER_NOT_IMPLEMENTED
-  return *(TensorShape*)nullptr;
-}
-
-OpKernel::OpKernel(const OpKernelInfo& info) {
-  PROVIDER_NOT_IMPLEMENTED
-  ORT_UNUSED_PARAMETER(info);
-}
-
-Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
-  PROVIDER_NOT_IMPLEMENTED
-  ORT_UNUSED_PARAMETER(index);
-  ORT_UNUSED_PARAMETER(shape);
-  return nullptr;
 }
 
 CPUIDInfo g_info;
