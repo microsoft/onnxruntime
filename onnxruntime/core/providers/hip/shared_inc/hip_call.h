@@ -32,7 +32,7 @@ bool HipCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTY
 #define MIOPEN_CALL_THROW(expr) (HipCall<miopenStatus_t , true>((expr), #expr, "MIOPEN",  miopenStatusSuccess))
 #define MIOPEN_CALL_THROW2(expr, m) (HipCall<miopenStatus_t , true>((expr), #expr, "MIOPEN",  miopenStatusSuccess, m))
 
-#ifdef USE_RCCL
+#ifdef USE_NCCL
 #define RCCL_CALL(expr) (HipCall<ncclResult_t, false>((expr), #expr, "RCCL", ncclSuccess))
 #define RCCL_CALL_THROW(expr) (HipCall<ncclResult_t, true>((expr), #expr, "RCCL", ncclSuccess))
 #endif
