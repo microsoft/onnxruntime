@@ -118,7 +118,8 @@ jobs:
        $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
        python setup.py bdist_wheel
        Get-ChildItem -Path dist/*.whl | foreach {python -m pip install -q --upgrade $_.fullname}
-      workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'      
+      workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+      failOnStderr: false
       displayName: 'Install python modules'    
 
     - template: templates/set-test-data-variables-step.yml
@@ -185,20 +186,18 @@ jobs:
         modifyEnvironment: true
         workingFolder: '$(Build.BinariesDirectory)'
 
-    - script: |
+    - powershell: |
        python -m pip install --user --upgrade pip
        python -m pip uninstall -y -q onnxruntime 2>$null
        python -m pip install -q pyopenssl setuptools wheel numpy scipy
-      workingDirectory: '$(Build.BinariesDirectory)'
-      displayName: 'Install python modules' 
-    - powershell: |
        $Env:USE_MSVC_STATIC_RUNTIME=1
        $Env:ONNX_ML=1
        $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
        python setup.py bdist_wheel
        Get-ChildItem -Path dist/*.whl | foreach {python -m pip install -q --upgrade $_.fullname}
       workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
-      displayName: 'Install ONNX'
+      failOnStderr: false
+      displayName: 'Install python modules'
 
     - template: templates/set-test-data-variables-step.yml
     - template: templates/set-version-number-variables-step.yml

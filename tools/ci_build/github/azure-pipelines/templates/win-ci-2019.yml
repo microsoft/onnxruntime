@@ -74,6 +74,7 @@ jobs:
        python -m pip uninstall -y -q onnxruntime 2>$null
        python -m pip install -q pyopenssl setuptools wheel numpy scipy
       workingDirectory: '$(Build.BinariesDirectory)'
+      failOnStderr: false
       displayName: 'Install python modules'
 
     - powershell: |

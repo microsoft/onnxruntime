@@ -37,6 +37,7 @@ jobs:
      echo "$(Build.BinariesDirectory)\models"
      mklink /D /J $(Build.BinariesDirectory)\models C:\local\models
     workingDirectory: '$(Build.BinariesDirectory)'
+    failOnStderr: false
     displayName: 'Install python modules'
 
   - task: NuGetToolInstaller@0

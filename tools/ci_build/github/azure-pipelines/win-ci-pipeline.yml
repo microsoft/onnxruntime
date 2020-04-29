@@ -43,6 +43,7 @@ jobs:
      python setup.py bdist_wheel
      Get-ChildItem -Path dist/*.whl | foreach {python -m pip install -q --upgrade $_.fullname}
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+    failOnStderr: false
     displayName: 'Install python modules'
 
   - task: NuGetToolInstaller@0
@@ -174,6 +175,7 @@ jobs:
      python setup.py bdist_wheel
      Get-ChildItem -Path dist/*.whl | foreach {python -m pip install -q --upgrade $_.fullname}
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+    failOnStderr: false
     displayName: 'Install python modules'
 
   - task: CMake@1
@@ -244,6 +246,7 @@ jobs:
      python setup.py bdist_wheel
      Get-ChildItem -Path dist/*.whl | foreach {python -m pip install -q --upgrade $_.fullname}
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+    failOnStderr: false
     displayName: 'Install python modules'
 
   - task: PythonScript@0
@@ -370,6 +373,7 @@ jobs:
      python setup.py bdist_wheel
      Get-ChildItem -Path dist/*.whl | foreach {python -m pip install -q --upgrade $_.fullname}
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+    failOnStderr: false
     displayName: 'Install python modules'
 
   - task: PythonScript@0
@@ -485,6 +489,7 @@ jobs:
      python setup.py bdist_wheel
      Get-ChildItem -Path dist/*.whl | foreach {python -m pip install -q --upgrade $_.fullname}
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+    failOnStderr: false
     displayName: 'Install python modules'
 
   - task: PythonScript@0
