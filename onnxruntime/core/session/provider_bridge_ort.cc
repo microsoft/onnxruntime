@@ -301,7 +301,7 @@ struct Prov_OpKernelInfo_Impl : Prov_OpKernelInfo {
   const OpKernelInfo& info_;
 };
 
-struct Prov_Tensor_Impl : Prov_Tensor {
+struct Prov_Tensor_Impl final : Prov_Tensor {
   Prov_Tensor_Impl(const Tensor* p) : p_(const_cast<Tensor*>(p)) {}
 
   float* MutableData_float() override { return p_->MutableData<float>(); }
