@@ -7,15 +7,11 @@ file(GLOB_RECURSE onnxruntime_providers_srcs CONFIGURE_DEPENDS
 )
 
 file(GLOB_RECURSE onnxruntime_cpu_contrib_ops_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu_contrib_kernels.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu_contrib_kernels.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.cc"
 )
 
 file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_contrib_kernels.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_contrib_kernels.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
 )
@@ -26,8 +22,6 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
 )
 
 file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu_featurizers_kernels.h"
-  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu_featurizers_kernels.cc"
   "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.cc"
 )
@@ -99,8 +93,6 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu_training_kernels.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu_training_kernels.cc"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.cc"
   )
@@ -178,8 +170,6 @@ if (onnxruntime_USE_CUDA)
 
   if (onnxruntime_ENABLE_TRAINING)
     file(GLOB_RECURSE onnxruntime_cuda_training_ops_cc_srcs CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda_training_kernels.h"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda_training_kernels.cc"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.h"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cc"
     )
@@ -496,6 +486,8 @@ if (onnxruntime_USE_DML)
   add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dml PRIVATE ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/../cmake/external/wil/include)
 
+  add_definitions(-DDML_TARGET_VERSION_USE_LATEST=1)
+
   if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
     if(NOT onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_target_platform STREQUAL "x64")
       message(FATAL_ERROR "Target platform ${onnxruntime_target_platform} is not supported by DML")
@@ -510,9 +502,12 @@ if (onnxruntime_USE_DML)
   endif()
 
   function(target_add_dml target)
-    if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
-      target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/DirectML.lib")
+    if (onnxruntime_USE_CUSTOM_DIRECTML)
+      target_link_libraries(${target} PRIVATE DirectML)
+    else()
       add_dependencies(${target} RESTORE_PACKAGES)
+      target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/DirectML.lib")
+	  target_compile_definitions(${target} PRIVATE DML_TARGET_VERSION_USE_LATEST)
     endif()
   endfunction()
 
@@ -525,7 +520,7 @@ if (onnxruntime_USE_DML)
     target_link_libraries(onnxruntime_providers_dml PRIVATE delayimp.lib)
   endif()
 
-  set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll")
+  set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /ignore:4199")
 
   # The DML EP requires C++17
   set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD 17)

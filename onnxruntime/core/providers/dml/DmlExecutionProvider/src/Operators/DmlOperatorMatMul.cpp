@@ -23,26 +23,7 @@ public:
         std::vector<DimensionType> inputShape1 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(1);
         std::vector<DimensionType> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
 
-        // Get the padded input shapes and undo the effect of padding removal from the output shape
-        if (inputShape1.size() == 1)
-        {
-            inputShape1.push_back(1);
-            outputShape.push_back(1);
-        }
-
-        if (inputShape0.size() == 1)
-        {
-            inputShape0.insert(inputShape0.begin(), 1);
-            outputShape.insert(outputShape.end() - 1, 1);
-        }
-
-        // Remove the batch dimensions from each input, then re-add the broadcasted batch dimensions
-        // based on the output shape
-        inputShape0.erase(inputShape0.begin(), inputShape0.end() - 2);
-        inputShape1.erase(inputShape1.begin(), inputShape1.end() - 2);
-
-        inputShape0.insert(inputShape0.begin(), outputShape.begin(), outputShape.end() - 2);
-        inputShape1.insert(inputShape1.begin(), outputShape.begin(), outputShape.end() - 2);
+        OperatorHelper::MatMulShapeMapping(inputShape0, inputShape1, outputShape);
 
         // Initialize the input descriptions with broadcasting
         m_inputTensorDescs[0] = CreateTensorDescFromInput(kernelInfo, 0, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape0);

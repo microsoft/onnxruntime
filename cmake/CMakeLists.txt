@@ -937,7 +937,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
 endif()
 
 if(WIN32)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES Shlwapi)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SYS_PATH_LIB} Shlwapi)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES debug Dbghelp)
 else()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)

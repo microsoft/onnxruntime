@@ -1,9 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// needs to be included first to get around onnxruntime\cmake\external\onnx\onnx/common/constants.h(14): error C2513: 'bool': no variable declared before '='
-#include "core/framework/tensorprotoutils.h"
-
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_state_common.h"
@@ -14,6 +11,7 @@
 
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
@@ -743,7 +741,9 @@ Applies to a particular Run() invocation. Default is 0.)pbdoc")
                      R"pbdoc(Set to True to terminate any currently executing calls that are using this
 RunOptions instance. The individual calls will exit gracefully and return an error status.)pbdoc")
       .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
-                     R"pbdoc(Only execute the nodes needed by fetch list)pbdoc");
+                     R"pbdoc(Only execute the nodes needed by fetch list)pbdoc")
+      .def_readwrite("training_mode", &RunOptions::training_mode,
+                     R"pbdoc(Choose to run in training or inferencing mode)pbdoc");
 
   py::class_<ModelMetadata>(m, "ModelMetadata", R"pbdoc(Pre-defined and custom metadata about the model.
 It is usually used to identify the model used to run the prediction and
