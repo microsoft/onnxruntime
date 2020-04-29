@@ -3,7 +3,7 @@ trigger: none
 jobs:
 - template: templates/py-packaging-jobs.yml
   parameters:
-    build_py_parameters: --enable_training
+    enable_training: true
     enable_linux_cpu: false
     enable_linux_gpu: true
     enable_windows_cpu: false
