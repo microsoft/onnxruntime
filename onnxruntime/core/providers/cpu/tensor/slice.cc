@@ -215,26 +215,21 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
 }
 
 // Slice V10 & DynamicSlice
-void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
+void SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
+                                     const Tensor& ends_tensor,
+                                     const Tensor* axes_tensor,
+                                     const Tensor* steps_tensor,
                                      std::vector<int64_t>& input_starts,
                                      std::vector<int64_t>& input_ends,
                                      std::vector<int64_t>& input_axes,
                                      std::vector<int64_t>& input_steps) const {
-  const auto* start_tensor = context->Input<Tensor>(1);
-  const auto* ends_tensor = context->Input<Tensor>(2);
-  const auto* axes_tensor = context->Input<Tensor>(3);
-  const Tensor* steps_tensor = nullptr;
-  // check if this is Slice V10 - only Slice V10 has this optional input
-  if (context->InputCount() == 5)
-    steps_tensor = context->Input<Tensor>(4);
+  ORT_ENFORCE(start_tensor.Shape().NumDimensions() == 1, "Starts must be a 1-D array");
+  ORT_ENFORCE(ends_tensor.Shape().NumDimensions() == 1, "Ends must be a 1-D array");
+  ORT_ENFORCE(start_tensor.Shape() == ends_tensor.Shape(), "Starts and ends shape mismatch");
+  ORT_ENFORCE(nullptr == axes_tensor || start_tensor.Shape() == axes_tensor->Shape(), "Starts and axes shape mismatch");
+  ORT_ENFORCE(nullptr == steps_tensor || start_tensor.Shape() == steps_tensor->Shape(), "Starts and steps shape mismatch");
 
-  ORT_ENFORCE(nullptr != start_tensor && start_tensor->Shape().NumDimensions() == 1, "Starts must be a 1-D array");
-  ORT_ENFORCE(nullptr != ends_tensor && ends_tensor->Shape().NumDimensions() == 1, "Ends must be a 1-D array");
-  ORT_ENFORCE(start_tensor->Shape() == ends_tensor->Shape(), "Starts and ends shape mismatch");
-  ORT_ENFORCE(nullptr == axes_tensor || start_tensor->Shape() == axes_tensor->Shape(), "Starts and axes shape mismatch");
-  ORT_ENFORCE(nullptr == steps_tensor || start_tensor->Shape() == steps_tensor->Shape(), "Starts and steps shape mismatch");
-
-  const auto& size = start_tensor->Shape().Size();
+  const auto& size = start_tensor.Shape().Size();
   input_starts.resize(size);
   input_ends.resize(size);
   if (nullptr != axes_tensor)
@@ -243,9 +238,9 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
   if (nullptr != steps_tensor)
     input_steps.resize(size);
 
-  if (start_tensor->IsDataType<int32_t>()) {
-    std::copy(start_tensor->Data<int32_t>(), start_tensor->Data<int32_t>() + size, input_starts.begin());
-    std::copy(ends_tensor->Data<int32_t>(), ends_tensor->Data<int32_t>() + size, input_ends.begin());
+  if (start_tensor.IsDataType<int32_t>()) {
+    std::copy(start_tensor.Data<int32_t>(), start_tensor.Data<int32_t>() + size, input_starts.begin());
+    std::copy(ends_tensor.Data<int32_t>(), ends_tensor.Data<int32_t>() + size, input_ends.begin());
     if (nullptr != axes_tensor)
       std::copy(axes_tensor->Data<int32_t>(), axes_tensor->Data<int32_t>() + size, input_axes.begin());
     // Slice V10
@@ -253,9 +248,9 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
       std::copy(steps_tensor->Data<int32_t>(), steps_tensor->Data<int32_t>() + size, input_steps.begin());
   }
 
-  else if (start_tensor->IsDataType<int64_t>()) {
-    std::copy(start_tensor->Data<int64_t>(), start_tensor->Data<int64_t>() + size, input_starts.begin());
-    std::copy(ends_tensor->Data<int64_t>(), ends_tensor->Data<int64_t>() + size, input_ends.begin());
+  else if (start_tensor.IsDataType<int64_t>()) {
+    std::copy(start_tensor.Data<int64_t>(), start_tensor.Data<int64_t>() + size, input_starts.begin());
+    std::copy(ends_tensor.Data<int64_t>(), ends_tensor.Data<int64_t>() + size, input_ends.begin());
     if (nullptr != axes_tensor)
       std::copy(axes_tensor->Data<int64_t>(), axes_tensor->Data<int64_t>() + size, input_axes.begin());
     // Slice V10
@@ -265,7 +260,7 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
 
   // should not reach this as no kernel is registered for this condition to be triggered - just an additional safety check
   else {
-    ORT_THROW("Data type for starts and ends inputs' need to be int32_t or int64_t, but instead got ", start_tensor->DataType());
+    ORT_THROW("Data type for starts and ends inputs' need to be int32_t or int64_t, but instead got ", start_tensor.DataType());
   }
 }
 
@@ -339,7 +334,9 @@ Status SliceBase::Compute(OpKernelContext* ctx) const {
     std::vector<int64_t> input_ends;
     std::vector<int64_t> input_axes;
     std::vector<int64_t> input_steps;
-    FillVectorsFromInput(ctx, input_starts, input_ends, input_axes, input_steps);
+    FillVectorsFromInput(*ctx->Input<Tensor>(1), *ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
+                         ctx->Input<Tensor>(4), input_starts, input_ends, input_axes, input_steps);
+
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps,
                                           input_dimensions, starts, steps, output_dims,
                                           p_flattened_output_dims));

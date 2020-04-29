@@ -25,6 +25,14 @@
 #include "core/platform/tracing.h"
 #endif
 
+#ifdef ENABLE_TRAINING
+#include "orttraining/core/graph/gradient_schema_defs.h"
+#include "orttraining/core/graph/gradient_builder_registry.h"
+#include "orttraining/core/graph/loss_function_registry.h"
+#include "orttraining/core/graph/optimizer_builder.h"
+#include "orttraining/core/graph/optimizer_graph_builder_registry.h"
+#endif
+
 namespace onnxruntime {
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
@@ -71,8 +79,8 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 #ifdef USE_DML
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
 #endif
-      // Register contributed schemas.
-      // The corresponding kernels are registered inside the appropriate execution provider.
+// Register contributed schemas.
+// The corresponding kernels are registered inside the appropriate execution provider.
 #ifndef DISABLE_CONTRIB_OPS
       contrib::RegisterContribSchemas();
 #endif
@@ -85,6 +93,15 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       RegisterOnnxOperatorSetSchema();
       RegisterOnnxMLOperatorSetSchema();
       RegisterOnnxTrainingOperatorSetSchema();
+
+#ifdef ENABLE_TRAINING
+      // preserve this order: this depends on operatorsetschema registration.
+      training::RegisterGradientSchemas();
+      training::GradientBuilderRegistry::GetInstance().RegisterGradientBuilders();
+      training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();
+      training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
+      training::OptimizerGraphBuilderRegistry::GetInstance().RegisterGraphBuilders();
+#endif
     });
 
     // Register MemCpy schema;

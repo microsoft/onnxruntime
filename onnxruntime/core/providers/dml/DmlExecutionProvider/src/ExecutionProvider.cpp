@@ -181,7 +181,7 @@ namespace Dml
         // CPU Allocator used to create buffers for the MemcpyFromHost operator.
         m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
         m_cpuOutputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUOutput);
-		
+
         CreateDmlKernelRegistry(&m_kernelRegistry, &m_internalRegInfoMap);
     }
 
@@ -500,13 +500,20 @@ namespace Dml
         std::string partitionKernelPrefix = std::to_string(m_partitionKernelPrefixVal++) + "_";
         uint32_t deviceDataTypeMask = GetSuppportedDeviceDataTypeMask();
 
-        return PartitionGraph(graph, 
+        return PartitionGraph(
+            graph,
             *m_internalRegInfoMap,
-            registries, 
-            deviceDataTypeMask, 
-            m_kernelRegistry.get(), 
+            registries,
+            deviceDataTypeMask,
+            m_kernelRegistry.get(),
             partitionKernelPrefix
         );
+    }
+    
+    bool IsGpuTensor(const onnxruntime::Tensor& tensor) 
+    {
+        return strcmp(tensor.Location().name, onnxruntime::CPU) && 
+            !(tensor.Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput || tensor.Location().mem_type == ::OrtMemType::OrtMemTypeCPUInput);
     }
 
     Status ExecutionProviderImpl::CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const
@@ -517,13 +524,13 @@ namespace Dml
 
         TensorWrapper destInternal(
             &dst, 
-            strcmp(dst.Location().name, onnxruntime::CPU) && !(dst.Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput || dst.Location().mem_type == ::OrtMemType::OrtMemTypeCPUInput), 
+            IsGpuTensor(dst), 
             provider,
             true);
 
         TensorWrapper srcInternal(
             const_cast<onnxruntime::Tensor*>(&src), 
-            strcmp(src.Location().name, onnxruntime::CPU) && !(src.Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput || src.Location().mem_type == ::OrtMemType::OrtMemTypeCPUInput),
+            IsGpuTensor(src), 
             provider,
             true);
 
@@ -532,15 +539,62 @@ namespace Dml
         return onnxruntime::common::Status::OK();
     }
 
-    Status ExecutionProviderImpl::WaitForGpuCompletion()
+    Status ExecutionProviderImpl::CopyTensors(const std::vector<onnxruntime::IDataTransfer::SrcDstPair>& src_dst_pairs) const
     {
+        // Source and destination for batched GPU -> CPU copies
+        std::vector<ID3D12Resource*> srcDatas;
+        std::vector<void*> dstDatas;
+        std::vector<uint32_t> dataSizesInBytes;
+
         assert(!m_closed);
+        auto provider = const_cast<ExecutionProviderImpl*>(this);
 
-        Flush();
-        m_context->GetCurrentCompletionEvent().WaitForSignal();
-        m_context->ReleaseCompletedReferences();
+        for (uint32_t i = 0; i < src_dst_pairs.size(); ++i)
+        {
+            // This batching implementation only handles GPU -> CPU copies.  Other copies do not require synchronization
+            // and are batched across multiple calls to CopyTensor.
+            if (!IsGpuTensor(src_dst_pairs[i].src) || IsGpuTensor(src_dst_pairs[i].dst)) 
+            {
+                ORT_RETURN_IF_ERROR(CopyTensor(src_dst_pairs[i].src, src_dst_pairs[i].dst));
+                continue;
+            }
+            
+            TensorWrapper srcWrapper = TensorWrapper(
+                const_cast<onnxruntime::Tensor*>(&src_dst_pairs[i].src.get()), 
+                true,
+                provider,
+                true);
 
-        return Status::OK();
+            TensorWrapper dstWrapper = TensorWrapper(
+                &src_dst_pairs[i].dst.get(), 
+                false, 
+                provider,
+                true);
+
+            const size_t dataSizeInBytes = ComputeByteSizeFromTensor(dstWrapper);
+            THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != ComputeByteSizeFromTensor(srcWrapper)); // Tensors must be the same size
+
+            if (dataSizeInBytes == 0)
+            {
+                return onnxruntime::common::Status::OK();
+            }
+
+            dataSizesInBytes.push_back(static_cast<uint32_t>(ComputeByteSizeFromTensor(dstWrapper)));
+            THROW_HR_IF(E_INVALIDARG, dataSizesInBytes[i] != ComputeByteSizeFromTensor(srcWrapper)); // Tensors must be the same size
+
+            dstDatas.push_back(dstWrapper.GetData());
+            const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(&srcWrapper).GetDataInterface().Get());
+
+            srcDatas.push_back(srcAllocInfo->GetResource());
+        }
+
+        const uint64_t srcOffset = 0;
+        const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
+
+        // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
+        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcState);
+        
+        return onnxruntime::common::Status::OK();
     }
 
     void __stdcall ExecutionProviderImpl::Flush() const
@@ -557,11 +611,6 @@ namespace Dml
     void ExecutionProviderImpl::ReleaseCompletedReferences()
     {
          m_context->ReleaseCompletedReferences();
-    }
-    
-    void ExecutionProviderImpl::TrimUploadHeap()
-    {
-        m_uploadHeap->Trim();
     }
 
     void ExecutionProviderImpl::QueueReference(IUnknown* object) 
@@ -701,6 +750,20 @@ namespace Dml
         return m_cpuOutputAllocator;
     }
 
+    
+    onnxruntime::common::Status ExecutionProviderImpl::OnSessionInitializationEnd() 
+    {
+        // Flush and trim resources, including staging memory used to upload weights.
+        // This reduces memory usage immediately after session creation, and avoids
+        // performance impact of deallocation during first evaluation.
+        Flush();
+        m_context->GetCurrentCompletionEvent().WaitForSignal();
+        m_context->ReleaseCompletedReferences();
+        m_uploadHeap->Trim();
+
+        return onnxruntime::common::Status::OK();
+    }
+
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
@@ -731,18 +794,6 @@ namespace Dml
     {
         ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
         dmlexecutionprovider->ReleaseCompletedReferences();
-    }
-
-    void TrimUploadHeap(onnxruntime::IExecutionProvider * provider)
-    {
-        ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
-        dmlexecutionprovider->TrimUploadHeap();
-    }
-
-    void WaitForGpuCompletion(onnxruntime::IExecutionProvider * provider)
-    {
-        ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
-        dmlexecutionprovider->WaitForGpuCompletion();
     }
 
     onnxruntime::common::Status CopyTensor(

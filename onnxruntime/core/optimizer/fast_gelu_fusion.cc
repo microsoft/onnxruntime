@@ -108,7 +108,7 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
 MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
                                                std::vector<std::reference_wrapper<Node>>& nodes_to_fuse) const {
   MatchResult matchResult{false, nullptr, nullptr};
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow1_node, "Pow", {7}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow1_node, "Pow", {7, 12}) ||
       !graph_utils::IsSupportedProvider(pow1_node, GetCompatibleExecutionProviders()) ||
       pow1_node.GetOutputEdgesCount() != 1 ||
       !IsSupportedDataType(pow1_node)) {

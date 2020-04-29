@@ -25,6 +25,7 @@ limitations under the License.
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <dlfcn.h>
+#include <ftw.h>
 #include <string.h>
 #include <thread>
 #include <utility>  // for std::forward
@@ -83,6 +84,26 @@ long int TempFailureRetry(TFunc retriable_operation, TFuncArgs&&... args) {
   } while (result == -1 && errno == EINTR);
   return result;
 }
+
+// nftw() callback to remove a file
+int nftw_remove(
+    const char* fpath, const struct stat* /*sb*/,
+    int /*typeflag*/, struct FTW* /*ftwbuf*/) {
+  const auto result = remove(fpath);
+  if (result != 0) {
+    const int err = errno;
+    LOGS_DEFAULT(WARNING) << "remove() failed. Error code: " << err
+                          << ", path: " << fpath;
+  }
+  return result;
+}
+
+template <typename T>
+struct Freer {
+  void operator()(T* p) { ::free(p); }
+};
+
+using MallocdStringPtr = std::unique_ptr<char, Freer<char> >;
 
 class PosixThread : public EnvThread {
  private:
@@ -208,7 +229,7 @@ class PosixEnv : public Env {
     return getpid();
   }
 
-  Status GetFileLength(const ORTCHAR_T* file_path, size_t& length) const override {
+  Status GetFileLength(const PathChar* file_path, size_t& length) const override {
     ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
     if (file_descriptor.Get() < 0) {
       return ReportSystemError("open", file_path);
@@ -326,6 +347,37 @@ class PosixEnv : public Env {
     return common::Status(common::SYSTEM, e, oss.str());
   }
 
+  bool FolderExists(const std::string& path) const override {
+    struct stat sb;
+    if (stat(path.c_str(), &sb)) {
+      return false;
+    }
+    return S_ISDIR(sb.st_mode);
+  }
+
+  common::Status CreateFolder(const std::string& path) const override {
+    size_t pos = 0;
+    do {
+      pos = path.find_first_of("\\/", pos + 1);
+      std::string directory = path.substr(0, pos);
+      if (FolderExists(directory.c_str())) {
+        continue;
+      }
+      if (mkdir(directory.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) {
+        return common::Status(common::SYSTEM, errno);
+      }
+    } while (pos != std::string::npos);
+    return Status::OK();
+  }
+
+  common::Status DeleteFolder(const PathString& path) const override {
+    const auto result = nftw(
+        path.c_str(), &nftw_remove, 32, FTW_DEPTH | FTW_PHYS);
+    ORT_RETURN_IF_NOT(
+        result == 0, "DeleteFolder(): nftw() failed with error: ", result);
+    return Status::OK();
+  }
+
   common::Status FileOpenRd(const std::string& path, /*out*/ int& fd) const override {
     fd = open(path.c_str(), O_RDONLY);
     if (0 > fd) {
@@ -347,6 +399,17 @@ class PosixEnv : public Env {
     if (0 != ret) {
       return ReportSystemError("close", "");
     }
+    return Status::OK();
+  }
+
+  common::Status GetCanonicalPath(
+      const PathString& path,
+      PathString& canonical_path) const override {
+    MallocdStringPtr canonical_path_cstr{realpath(path.c_str(), nullptr)};
+    if (!canonical_path_cstr) {
+      return ReportSystemError("realpath", path);
+    }
+    canonical_path.assign(canonical_path_cstr.get());
     return Status::OK();
   }
 

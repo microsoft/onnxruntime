@@ -178,7 +178,7 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy==1.18
+     python -m pip install -q pyopenssl setuptools wheel numpy==1.16.6
 
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
@@ -253,7 +253,7 @@ jobs:
         workingFolder: '$(Build.BinariesDirectory)'
 
     - script: |
-       python -m pip install -q pyopenssl setuptools wheel numpy==1.18
+       python -m pip install -q pyopenssl setuptools wheel numpy==1.16.6
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Install python modules'
 

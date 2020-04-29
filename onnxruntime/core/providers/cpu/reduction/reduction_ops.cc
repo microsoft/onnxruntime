@@ -597,7 +597,9 @@ static void ReduceSumCore(const T* input_data, T* output_data, bool no_transpose
                           concurrency::ThreadPool* tp) {
   if (no_transpose) {
     auto lambda = [input_data, blocks, output_data](ptrdiff_t i) {
-      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).sum();
+
+      // The ConstEigenMatrixMap type is expanded to work around a MS compiler issue
+      output_data[i] = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(input_data + (i * blocks), blocks).sum();
     };
     concurrency::ThreadPool::TryBatchParallelFor(tp, block_size, lambda, 0);
   } else {
