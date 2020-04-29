@@ -18,11 +18,24 @@ class RandomValueGenerator {
  public:
   RandomValueGenerator();
 
+  // Random values generated are in the range [a, b).
   template <class T>
   inline std::vector<T> Uniform(const std::vector<int64_t>& dims, float min, float max) {
     int64_t size = std::accumulate(dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
     std::vector<T> val(size);
     std::uniform_real_distribution<float> distribution(min, max);
+    for (size_t i = 0; i < val.size(); ++i) {
+      val[i] = T(distribution(generator_));
+    }
+    return val;
+  }
+
+  // Random values generated are in the range [a, b].
+  template <class T>
+  inline std::vector<T> Uniform(const std::vector<int64_t>& dims, int64_t min, int64_t max) {
+    int64_t size = std::accumulate(dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+    std::vector<T> val(size);
+    std::uniform_int_distribution<int64_t> distribution(min, max);
     for (size_t i = 0; i < val.size(); ++i) {
       val[i] = T(distribution(generator_));
     }
@@ -53,6 +66,20 @@ inline std::vector<T> FillZeros(const std::vector<int64_t>& dims) {
   int64_t size = std::accumulate(dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
   std::vector<T> val(size, T(0));
   return val;
+}
+
+// Returns a vector of `count` values which start at `start` and change by increments of `step`.
+template <typename T>
+inline std::vector<T> ValueRange(
+    size_t count, T start = static_cast<T>(0), T step = static_cast<T>(1)) {
+  std::vector<T> result;
+  result.reserve(count);
+  T curr = start;
+  for (size_t i = 0; i < count; ++i) {
+    result.emplace_back(curr);
+    curr += step;
+  }
+  return result;
 }
 
 inline std::pair<float, float> MeanStdev(std::vector<float>& v) {

@@ -3,6 +3,8 @@
 
 #include "pch.h"
 
+#include <thread>
+
 #include "OnnxruntimeCpuSessionBuilder.h"
 #include "OnnxruntimeEngine.h"
 #include "OnnxruntimeErrors.h"

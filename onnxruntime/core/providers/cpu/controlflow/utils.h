@@ -13,6 +13,21 @@
 namespace onnxruntime {
 class Graph;
 
+// Creates a scalar MLValue based on given value and allocator.
+template <typename T>
+OrtValue MakeScalarMLValue(const AllocatorPtr& allocator, T value, bool is_1d) {
+  auto* data_type = DataTypeImpl::GetType<T>();
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(data_type,
+                                                                      is_1d ? TensorShape({1}) : TensorShape({}),
+                                                                      allocator);
+
+  *p_tensor->MutableData<T>() = value;
+
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  return OrtValue{p_tensor.release(), ml_tensor,
+                  ml_tensor->GetDeleteFunc()};
+}
+
 namespace controlflow {
 
 /** Interface for control flow kernels    */
