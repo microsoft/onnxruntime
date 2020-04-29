@@ -272,8 +272,9 @@ ONNX_OPERATOR_KERNEL_EX(
 
 namespace pow12_internal {
 template <class T>
-void DispatchOnFirstArg(const BinaryElementwisePreparation& prepare) {
+Status DispatchOnFirstArg(const BinaryElementwisePreparation& prepare) {
   namespace on = ONNX_NAMESPACE;
+  Status s;
   switch (prepare.rhs_tensor->GetElementType()) {
     case on::TensorProto_DataType_INT32:
       ImplT1_Pow<typename ToCudaType<T>::MappedType, typename ToCudaType<int32_t>::MappedType>(
@@ -328,8 +329,10 @@ void DispatchOnFirstArg(const BinaryElementwisePreparation& prepare) {
           prepare.output_tensor->Shape().Size());
       break;
     default:
-      assert(false);
+      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported Y type: ",
+                          DataTypeImpl::ToString(prepare.rhs_tensor->DataType()));
   }
+  return s;
 }
 }  // namespace pow12_internal
 
@@ -339,24 +342,26 @@ Status Pow::ComputeInternal(OpKernelContext* context) const {
   namespace on = ONNX_NAMESPACE;
   using namespace pow12_internal;
 
+  Status s;
+
   switch (prepare.lhs_tensor->GetElementType()) {
     case on::TensorProto_DataType_INT32:
-      DispatchOnFirstArg<int32_t>(prepare);
+      s = DispatchOnFirstArg<int32_t>(prepare);
       break;
     case on::TensorProto_DataType_INT64:
-      DispatchOnFirstArg<int64_t>(prepare);
+      s = DispatchOnFirstArg<int64_t>(prepare);
       break;
     case on::TensorProto_DataType_FLOAT:
-      DispatchOnFirstArg<float>(prepare);
+      s = DispatchOnFirstArg<float>(prepare);
       break;
     case on::TensorProto_DataType_DOUBLE:
-      DispatchOnFirstArg<double>(prepare);
+      s = DispatchOnFirstArg<double>(prepare);
       break;
     default:
-      assert(false);
+      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported X type: ",
+                          DataTypeImpl::ToString(prepare.lhs_tensor->DataType()));
   }
-
-  return Status::OK();
+  return s;
 }
 
 template <typename T, typename CudaT>

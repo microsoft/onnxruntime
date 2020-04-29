@@ -284,19 +284,42 @@ void PowImpl(OpKernelContext* context, const Tensor& X, const Tensor& Y) {
   TBroadcastOutput<T> output{bc.GetSpanSize(), *output_tensor};
 
   // Scalar base
-  auto input0scalar = [](gsl::span<T> output, const T& X, gsl::span<const E> Y) {
+  auto input0scalar = [](gsl::span<T> output, T X, gsl::span<const E> Y) {
     std::transform(Y.cbegin(), Y.cend(), output.begin(),
                    [X](E y) {
                      return static_cast<T>(std::pow(X, y));
                    });
   };
 
-  auto input1scalar = [](gsl::span<T> output, gsl::span<const T> X, const E& Y) {
-    std::transform(X.cbegin(), X.cend(), output.begin(),
-                   [Y](T x) {
-                     return static_cast<T>(std::pow(x, Y));
-                   });
-  };
+  // Scalar exponent switch to possibly available optimizations
+  std::function<void(gsl::span<T>, gsl::span<const T> X, E Y)> input1scalar;
+
+  if (Y.Shape().Size() == 1) {
+    auto exp = *Y.template Data<E>();
+    if (exp == E{2}) {
+      input1scalar = [](gsl::span<T> output, gsl::span<const T> X, E) {
+        std::transform(X.cbegin(), X.cend(), output.begin(),
+                       [](T x) {
+                         return static_cast<T>(x * x);
+                       });
+      };
+    } else if (exp == E{3}) {
+      input1scalar = [](gsl::span<T> output, gsl::span<const T> X, E) {
+            std::transform(X.cbegin(), X.cend(), output.begin(),
+                           [](T x) {
+                             return static_cast<T>(x * x * x);
+                           });
+          };
+    } else {
+      input1scalar =
+          [](gsl::span<T> output, gsl::span<const T> X, E Y) {
+            std::transform(X.cbegin(), X.cend(), output.begin(),
+                           [Y](T x) {
+                             return static_cast<T>(std::pow(x, Y));
+                           });
+          };
+    }
+  }
 
   auto general = [](gsl::span<T> output, gsl::span<const T> X, gsl::span<const E> Y) {
     std::transform(
@@ -310,8 +333,9 @@ void PowImpl(OpKernelContext* context, const Tensor& X, const Tensor& Y) {
 }
 
 template <typename B>
-void DispatchOnBase(OpKernelContext* context, const Tensor& X, const Tensor& Y) {
+Status DispatchOnBase(OpKernelContext* context, const Tensor& X, const Tensor& Y) {
   namespace on = ONNX_NAMESPACE;
+  Status s;
   switch (Y.GetElementType()) {
     case on::TensorProto_DataType_INT32:
       PowImpl<B, int32_t>(context, X, Y);
@@ -326,8 +350,10 @@ void DispatchOnBase(OpKernelContext* context, const Tensor& X, const Tensor& Y) 
       PowImpl<B, double>(context, X, Y);
       break;
     default:
-      assert(false);
+      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported Y type: ",
+                          DataTypeImpl::ToString(Y.DataType()));
   }
+  return s;
 }
 
 }  // namespace pow_internal
@@ -340,24 +366,26 @@ Pow::Compute(OpKernelContext* context) const {
   namespace on = ONNX_NAMESPACE;
   using namespace pow_internal;
 
+  Status s;
   // Switch on base type first
   switch (X.GetElementType()) {
     case on::TensorProto_DataType_INT32:
-      DispatchOnBase<int32_t>(context, X, Y);
+      s = DispatchOnBase<int32_t>(context, X, Y);
       break;
     case on::TensorProto_DataType_INT64:
-      DispatchOnBase<int64_t>(context, X, Y);
+      s = DispatchOnBase<int64_t>(context, X, Y);
       break;
     case on::TensorProto_DataType_FLOAT:
-      DispatchOnBase<float>(context, X, Y);
+      s = DispatchOnBase<float>(context, X, Y);
       break;
     case on::TensorProto_DataType_DOUBLE:
-      DispatchOnBase<double>(context, X, Y);
+      s = DispatchOnBase<double>(context, X, Y);
       break;
     default:
-      assert(false);
+      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported X type: ",
+                          DataTypeImpl::ToString(X.DataType()));
   }
-  return Status::OK();
+  return s;
 }
 
 template <typename T>
