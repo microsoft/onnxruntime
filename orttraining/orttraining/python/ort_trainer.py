@@ -90,7 +90,7 @@ def ort_training_session_run_helper(session, iobinding, inputs, input_descs, out
         device_index = input_get_device_index(input)
         iobinding.bind_input(input_desc.name_, input.device.type, device_index, dtype_torch_to_numpy(input.dtype),
                              list(input.size()), input.data_ptr())
-
+           
     output_descs_resolved = resolve_symbolic_dimensions(inputs, input_descs, output_descs)
     torch_outputs = {}
     for output_desc in output_descs_resolved:
@@ -787,6 +787,7 @@ class ORTTrainer():
         elif self.current_step % self.gradient_accumulation_steps != 0:
             run_options = ort.RunOptions()
             run_options.only_execute_path_to_fetches = True
+            run_options.training_mode = True
             output_desc = self.output_desc_with_group_accumulated_gradients
         elif self.use_mixed_precision:
             has_if_all_finite = True
@@ -864,6 +865,7 @@ class ORTTrainer():
 
         run_options = ort.RunOptions()
         run_options.only_execute_path_to_fetches = True
+        run_options.training_mode = False
 
         session_run_results = ort_training_session_run_helper(self.session, self.eval_io_binding, input,
                                                               input_desc,
