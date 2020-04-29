@@ -39,6 +39,7 @@ namespace onnxruntime {
 namespace transformer_utils {
 
 std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(TransformerLevel level,
+                                                                               const std::unordered_set<std::string>& weights_to_train,
                                                                                const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
@@ -55,13 +56,13 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
       rule_transformer->Register(make_unique<InsertMaxPoolOutput>());
       rule_transformer->Register(make_unique<AdjustBatchNormOutputs>());
       rule_transformer->Register(make_unique<UnsqueezeElimination>());
-      rule_transformer->Register(make_unique<ExpandElimination>());
       rule_transformer->Register(make_unique<CastElimination>());
       rule_transformer->Register(make_unique<InsertSoftmaxCrossEntropyLossOutput>());
 
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(compatible_eps));
+      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(compatible_eps, weights_to_train));
       auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
       if (horizontal_parallel_size > 1) {
         LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
@@ -87,6 +88,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
 
   // if the custom list to enable transformers\rules is empty then return the default generated transformers and rules
   // otherwise generate a filtered list based on the provided custom list.
+  // Note that some rule-based transformers are depending on some custom transformers,
+  // e.g., ExpandElimination and CastElimination are depending on ConstantFolding to fold the constant first,
+  // so we should always push the rule-based transformer to the end, this is expecially important when transformation step is 1.
   if (transformers_and_rules_to_enable.empty()) {
     if (rule_transformer != nullptr) {
       transformers.emplace_back(std::move(rule_transformer));
@@ -94,10 +98,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
     return transformers;
   }
   std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
-  // If the rule-based transformer is not empty, it should be included in the custom transformer list below.
-  if (rule_transformer != nullptr) {
-    filtered_list.emplace_back(std::move(rule_transformer));
-  }
   // pick custom transformers enabled for this session
   for (const auto& t_name : transformers_and_rules_to_enable) {
     std::for_each(transformers.begin(), transformers.end(),
@@ -106,6 +106,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
                       filtered_list.push_back(std::move(item));
                     }
                   });
+  }
+  // If the rule-based transformer is not empty, it should be included in the custom transformer list below.
+  if (rule_transformer != nullptr) {
+    filtered_list.emplace_back(std::move(rule_transformer));
   }
   return filtered_list;
 }

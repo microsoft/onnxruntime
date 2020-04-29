@@ -1644,6 +1644,16 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
   return Status::OK();
 }
 
+Status Graph::UpdateShapeInference(Node& node) {
+  // We only use this during constant folding, and we don't constant fold control flow nodes.
+  ORT_ENFORCE(node.GetAttributeNameToMutableSubgraphMap().empty(),
+              "UpdateTypeShapeInference is not intended to be used with control flow nodes containing subgraphs");
+
+  // Whilst the type inferencing will run again we don't allow type overrides due to using the default
+  // ResolveOptions settings, so essentially this can only change the shape information.
+  return InferAndVerifyTypeMatch(node, *node.Op(), {});
+}
+
 // Implementation of type-inference and type-checking for a single node
 GSL_SUPPRESS(f .23)  // spurious warning about inferred_type never being checked for null
 Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const ResolveOptions& options) {
