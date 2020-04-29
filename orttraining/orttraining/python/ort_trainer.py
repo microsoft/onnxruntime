@@ -90,7 +90,7 @@ def ort_training_session_run_helper(session, iobinding, inputs, input_descs, out
         device_index = input_get_device_index(input)
         iobinding.bind_input(input_desc.name_, input.device.type, device_index, dtype_torch_to_numpy(input.dtype),
                              list(input.size()), input.data_ptr())
-
+           
     output_descs_resolved = resolve_symbolic_dimensions(inputs, input_descs, output_descs)
     torch_outputs = {}
     for output_desc in output_descs_resolved:
@@ -602,9 +602,9 @@ class ORTTrainer():
         self.opset_version_ = _opset_version
         self.state_dict_ = None
 
-        # use this special string to workaround a corner case that external loss_scale is passed into train_step as kargs.
+        # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
         # see prepare_input_and_fetches for more details.
-        self.loss_scale_input_name = 'unset_loss_scale_input_name'
+        self.loss_scale_input_name = 'default_loss_scale_input_name'
 
         self._init_session()
 
@@ -734,10 +734,10 @@ class ORTTrainer():
             #   kwargs[model.loss_scale_input_name] = loss_scale
             #   outputs = model.train_step(*args, **kwargs)
             # However, when first time train_step is called model.loss_scale_input_name is not set.
-            # To workaround this problem, we use the special name 'unset_loss_scale_input_name' to indicate 
+            # To workaround this problem, we use the special name 'default_loss_scale_input_name' to indicate 
             # the loss_scale.
-            if 'unset_loss_scale_input_name' in kwargs.keys():
-                input = input + (kwargs['unset_loss_scale_input_name'],)
+            if 'default_loss_scale_input_name' in kwargs.keys():
+                input = input + (kwargs['default_loss_scale_input_name'],)
 
         fetches = None
         if 'fetches' in kwargs:
@@ -801,6 +801,7 @@ class ORTTrainer():
         elif self.current_step % self.gradient_accumulation_steps != 0:
             run_options = ort.RunOptions()
             run_options.only_execute_path_to_fetches = True
+            run_options.training_mode = True
             output_desc = self.output_desc_with_group_accumulated_gradients
         elif self.use_mixed_precision:
             has_if_all_finite = True
@@ -878,6 +879,7 @@ class ORTTrainer():
 
         run_options = ort.RunOptions()
         run_options.only_execute_path_to_fetches = True
+        run_options.training_mode = False
 
         session_run_results = ort_training_session_run_helper(self.session, self.eval_io_binding, input,
                                                               input_desc,

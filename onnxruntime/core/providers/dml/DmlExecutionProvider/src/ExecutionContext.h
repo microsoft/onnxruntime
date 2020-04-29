@@ -68,9 +68,6 @@ namespace Dml
 
         void GetCommandListForRecording(ID3D12GraphicsCommandList** commandList);
 
-        // See ID3D12CommandQueue::Wait
-        void Wait(ID3D12Fence* fence, uint64_t value);
-
         // Forces all queued work to begin executing on the GPU. This method returns immediately and does not wait
         // for the submitted work to complete execution on the GPU.
         void Flush();
