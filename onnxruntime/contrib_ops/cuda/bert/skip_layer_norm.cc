@@ -99,9 +99,9 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
           gamma->template Data<T>(),
           beta->template Data<T>(),
           bias != nullptr ? bias->template Data<T>() : nullptr,
+          epsilon_,
           hidden_size,
           static_cast<int>(element_count),  //TODO: check range
-          epsilon_,
           element_size)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());

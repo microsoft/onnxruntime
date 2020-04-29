@@ -79,10 +79,10 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
           word_embedding->template Data<T>(),
           position_embedding->template Data<T>(),
           segment_embedding->template Data<T>(),
-          static_cast<int>(hidden_size),
+          static_cast<int>(hidden_size),          
+          epsilon_,
           batch_size,
           sequence_length,
-          epsilon_,
           element_size)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());

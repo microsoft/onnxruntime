@@ -30,7 +30,7 @@ namespace cuda {
 template <typename T, unsigned TPB>
 __global__ void SkipLayerNormKernelSmall(
     const int ld, const T* input, const T* skip, const T* beta, const T* gamma, const T* bias, 
-    const T* epsilon, T* output) {
+    const T epsilon, T* output) {
   const T reverse_ld = T(1.f / ld);
   const int offset = blockIdx.x * ld;
 
@@ -52,7 +52,7 @@ __global__ void SkipLayerNormKernelSmall(
 template <typename T, unsigned TPB>
 __global__ void SkipLayerNormKernel(
     const int ld, const T* input, const T* skip, const T* beta, const T* gamma, const T* bias, 
-    const T* epsilon, T* output) {
+    const T epsilon, T* output) {
   const T reverse_ld = T(1.f / ld);
   const int offset = blockIdx.x * ld;
 
@@ -74,7 +74,7 @@ __global__ void SkipLayerNormKernel(
 template <typename T>
 bool ComputeSkipLayerNorm(
     cudaStream_t stream, const int ld, const int n, const T* input, const T* skip,
-    const T* beta, const T* gamma, const T* bias, const T* epsilon, T* output) {
+    const T* beta, const T* gamma, const T* bias, const T epsilon, T* output) {
   // this must be true because n is the total size of the tensor
   assert(n % ld == 0);
   const int grid_size = n / ld;
@@ -104,10 +104,10 @@ bool LaunchSkipLayerNormKernel(
     const void* skip,
     const void* gamma,
     const void* beta,
-    const void* bias,
+    const void* bias,    
+    const double epsilon,
     int hidden_size,
     int element_count,
-    double epsilon,
     size_t element_size) {
   // use default stream
   const cudaStream_t stream = nullptr;
@@ -122,7 +122,7 @@ bool LaunchSkipLayerNormKernel(
         reinterpret_cast<const half*>(beta),
         reinterpret_cast<const half*>(gamma),
         reinterpret_cast<const half*>(bias),
-        reinterpret_cast<const half*>(epsilon),
+        reinterpret_cast<const half>(epsilon),
         reinterpret_cast<half*>(output));
   } else {
     return ComputeSkipLayerNorm(
@@ -134,7 +134,7 @@ bool LaunchSkipLayerNormKernel(
         reinterpret_cast<const float*>(beta),
         reinterpret_cast<const float*>(gamma),
         reinterpret_cast<const float*>(bias),
-        reinterpret_cast<const float*>(epsilon),
+        reinterpret_cast<const float>(epsilon),
         reinterpret_cast<float*>(output));
   }
 }

@@ -14,9 +14,9 @@ bool LaunchSkipLayerNormKernel(
     const void* gamma,   // Layer normalization gamma tensor
     const void* beta,    // Layer normalization beta tensor
     const void* bias,    // Layer normalization beta tensor
+    const double epsilon,      // Layer normalization epsilon
     int hidden_size,     // hidden size, it is the leading dimension (ld)
     int element_count,   // number of elements in input tensor
-    double epsilon,      // Layer normalization epsilon
     size_t element_size  // element size of input tensor
 );
 
