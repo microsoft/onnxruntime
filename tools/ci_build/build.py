@@ -1266,7 +1266,7 @@ def openvino_run_onnx_tests(build_dir, configs, onnx_test_data_dir,
             model_dir_opset8, "test_*"))
         model_dir_opset10 = os.path.join(model_dir, "opset10")
         model_dir_opset10 = glob.glob(os.path.join(
-            model_dir_opset10, "tf_*"))
+            model_dir_opset10, "*v1*"))
         for dir_path in itertools.chain(model_dir_opset8,
                                         model_dir_opset10):
           model_test_cmd = cmd + [dir_path]
