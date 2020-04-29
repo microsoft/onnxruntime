@@ -269,8 +269,8 @@ class InferenceSession {
   */
   common::Status NewIOBinding(std::unique_ptr<IOBinding>* io_binding) ORT_MUST_USE_RESULT;
 
-  common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
-  common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
+  virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
+  virtual common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
 
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
