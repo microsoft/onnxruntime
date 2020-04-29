@@ -17,7 +17,7 @@ file(GLOB SOURCE_FILES ${CMAKE_SOURCE_DIR}/src/*.cc)
 #
 # CPU
 #
-add_library(onnxruntime_binding SHARED ${SOURCE_FILES})
+add_library(onnxruntime_binding SHARED ${SOURCE_FILES} ${CMAKE_JS_SRC})
 set_target_properties(onnxruntime_binding PROPERTIES
   PREFIX "" SUFFIX ".node"
   BUILD_WITH_INSTALL_RPATH TRUE
