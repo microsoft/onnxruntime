@@ -132,14 +132,6 @@ namespace Dml
         m_dmlRecorder.GetCommandList().CopyTo(commandList);
     }
 
-    void ExecutionContext::Wait(ID3D12Fence* fence, uint64_t value)
-    {
-        assert(!m_closed);
-        Flush();
-        m_queue->Wait(fence, value);
-        ReleaseCompletedReferences();
-    }
-
     void ExecutionContext::SetCommandRecorder(ICommandRecorder* newRecorder)
     {
         assert(!m_closed);
@@ -162,7 +154,7 @@ namespace Dml
     {
         assert(!m_closed);
 
-        if (!m_currentRecorder)
+        if (!m_currentRecorder || !m_currentRecorder->HasUnsubmittedWork())
         {
             // Nothing to flush
             return;
@@ -171,8 +163,11 @@ namespace Dml
         m_currentRecorder->CloseAndExecute();
         ReleaseCompletedReferences();
 
-        // Just submitted our command list, so we have neither DML or D3D12 work recorded on any of our command lists.
+        // Pre-emptively set the DML command recorder.  It's the only command recorder right now,
+        // and doing this here causes work and allocations resetting the command list to occur at
+        // a point where it's going to be parallelized with GPU work.
         m_currentRecorder = nullptr;
+        SetCommandRecorder(&m_dmlRecorder);
     }
     
     void ExecutionContext::QueueReference(IUnknown* object) 
@@ -203,7 +198,7 @@ namespace Dml
 
         // If something has been recorded into a command list but not submitted yet, it means that the *next* fence
         // value is the one to signal completion.
-        const bool unflushedWorkExists = (m_currentRecorder != nullptr);
+        const bool unflushedWorkExists = (m_currentRecorder != nullptr) && m_currentRecorder->HasUnsubmittedWork();
         if (unflushedWorkExists)
         {
             ++event.fenceValue;

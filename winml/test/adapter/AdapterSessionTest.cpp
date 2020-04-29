@@ -89,7 +89,7 @@ void AppendExecutionProvider_DML() {
 
   const auto device = CreateD3DDevice();
   const auto queue = CreateD3DQueue(device.get());
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get()), ort_api);
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get(), true), ort_api);
 }
 
 void CreateWithoutModel() {
@@ -112,7 +112,7 @@ void GetExecutionProvider_DML() {
   THROW_IF_NOT_OK_MSG(ort_api->DisableMemPattern(session_options.get()), ort_api);
   const auto device = CreateD3DDevice();
   const auto queue = CreateD3DQueue(device.get());
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get()), ort_api);
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get(), true), ort_api);
 
   const auto model_path = FileHelpers::GetModulePath() + L"fns-candy.onnx";
   auto session = CreateUniqueOrtSession(model_path, session_options);
@@ -256,7 +256,7 @@ void CopyInputAcrossDevices_DML() {
   THROW_IF_NOT_OK_MSG(ort_api->DisableMemPattern(session_options.get()), ort_api);
   const auto device = CreateD3DDevice();
   const auto queue = CreateD3DQueue(device.get());
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get()), ort_api);
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get(), true), ort_api);
   auto session = CreateUniqueOrtSession(session_options);
 
   LoadAndPurloinModel(session, "fns-candy.onnx");
