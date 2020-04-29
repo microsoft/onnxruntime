@@ -35,7 +35,7 @@ jobs:
 
   - powershell: |
      python -m pip install --user --upgrade pip
-     python -m pip uninstall -y -q onnxruntime > nul 2>&1
+     python -m pip uninstall -y -q onnxruntime 2>$null
      python -m pip install -q pyopenssl setuptools wheel numpy scipy
      $Env:USE_MSVC_STATIC_RUNTIME=1
      $Env:ONNX_ML=1
@@ -165,7 +165,7 @@ jobs:
 
   - powershell: |
      python -m pip install --user --upgrade pip
-     python -m pip uninstall -y -q onnxruntime > nul 2>&1
+     python -m pip uninstall -y -q onnxruntime 2>$null
      python -m pip install -q pyopenssl setuptools wheel numpy scipy
      mkdir $(Build.SourcesDirectory)\$(BuildConfig)
      $Env:USE_MSVC_STATIC_RUNTIME=1
@@ -236,7 +236,7 @@ jobs:
 
   - powershell: |
      python -m pip install --user --upgrade pip
-     python -m pip uninstall -y -q onnxruntime > nul 2>&1
+     python -m pip uninstall -y -q onnxruntime 2>$null
      python -m pip install -q pyopenssl setuptools wheel numpy scipy
      $Env:USE_MSVC_STATIC_RUNTIME=1
      $Env:ONNX_ML=1
@@ -362,7 +362,7 @@ jobs:
 
   - powershell: |
      python -m pip install --user --upgrade pip
-     python -m pip uninstall -y -q onnxruntime > nul 2>&1
+     python -m pip uninstall -y -q onnxruntime 2>$null
      python -m pip install -q pyopenssl setuptools wheel numpy scipy
      $Env:USE_MSVC_STATIC_RUNTIME=1
      $Env:ONNX_ML=1
@@ -477,7 +477,7 @@ jobs:
 
   - powershell: |
      python -m pip install --user --upgrade pip
-     python -m pip uninstall -y -q onnxruntime > nul 2>&1
+     python -m pip uninstall -y -q onnxruntime 2>$null
      python -m pip install -q pyopenssl setuptools wheel numpy scipy
      $Env:USE_MSVC_STATIC_RUNTIME=1
      $Env:ONNX_ML=1
