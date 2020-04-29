@@ -277,7 +277,7 @@ Status TrainingSession::ConfigureForTraining(
         tensorboard_config.histogram_node_names, tensorboard_config.norm_node_names,
         tensorboard_config.dump_convergence_metrics));
   }
-
+    
   // add GIST encoding
   if (config.gist_config.has_value()) {
     ORT_RETURN_IF_ERROR(AddGistEncoding());
@@ -288,19 +288,17 @@ Status TrainingSession::ConfigureForTraining(
         config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
   }
 
+  // After pipeline partition, we need to return the inputs allowed in this partition.
+  const auto& allowed_inputs = model_->MainGraph().GetInputsIncludingInitializers();
+  if (config.use_pipeline) {
+    for (size_t i = 0; i < allowed_inputs.size(); ++i) {
+      const auto name = allowed_inputs[i]->Name();
+      config_result.pipeline_config_result.value().feed_names.push_back(name);
+    }
+  }
+
   config_result_out = std::move(config_result);
   is_configured_ = true;
-
-  if (config.distributed_config.world_rank == 0) {
-    ORT_IGNORE_RETURN_VALUE(Save(
-        "/bert_ort/wechi/stage_0_after_config.onnx", SaveOption::NO_RELOAD));
-  } else if (config.distributed_config.world_rank == 1) {
-    ORT_IGNORE_RETURN_VALUE(Save(
-        "/bert_ort/wechi/stage_1_after_config.onnx", SaveOption::NO_RELOAD));
-  } else if (config.distributed_config.world_rank == 2) {
-    ORT_IGNORE_RETURN_VALUE(Save(
-        "/bert_ort/wechi/stage_2_after_config.onnx", SaveOption::NO_RELOAD));
-  }
 
   return Status::OK();
 }

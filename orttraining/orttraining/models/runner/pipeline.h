@@ -110,6 +110,8 @@ struct PipelineContext {
   std::string forward_recorded_event_name;
   std::string backward_waited_event_name;
   std::string backward_recorded_event_name;
+
+  std::vector<std::string> feed_names;
 }; 
 
 }  // namespace pipeline

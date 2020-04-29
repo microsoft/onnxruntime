@@ -178,6 +178,8 @@ class TrainingSession : public InferenceSession {
       std::string forward_recorded_event_name;
       std::string backward_waited_event_name;
       std::string backward_recorded_event_name;
+      // Tensors to feed at this pipeline stage.
+      std::vector<std::string> feed_names;
       // Tensors to fetch at this pipeline stage.
       // It's a subset of PipelineConfiguration.fetch_names.
       std::vector<std::string> fetch_names;

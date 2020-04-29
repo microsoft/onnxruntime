@@ -177,6 +177,11 @@ class TrainingRunner {
   TrainingSession& GetSession() { return session_; }
 
  private:
+  Status PrepareFeedNamesAndFeeds(IDataLoader& training_data_loader,
+                                  LearningRateScheduler& lr_scheduler,
+                                  const size_t batch_index,
+                                  std::vector<std::string>& feed_names,
+                                  std::vector<MLValue>& feeds);
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader);
   Status Evaluate(InferenceSession& session, IDataLoader& data_loader);
 
