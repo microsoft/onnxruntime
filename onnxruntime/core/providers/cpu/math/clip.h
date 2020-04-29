@@ -5,7 +5,6 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 
@@ -33,15 +32,7 @@ class Clip_6 final : public clip_internal::Clip_6Base<T>, public OpKernel {
   explicit Clip_6(const OpKernelInfo& info) : clip_internal::Clip_6Base<T>(info), OpKernel(info) {
   }
 
-  Status Compute(OpKernelContext* ctx) const override {
-    const auto* X = ctx->Input<Tensor>(0);
-    Tensor* Y = ctx->Output(0, X->Shape());
-    EigenVectorMap<T>(Y->template MutableData<T>(), Y->Shape().Size()) =
-        ConstEigenVectorMap<T>(X->template Data<T>(), X->Shape().Size())
-            .cwiseMax(this->min_)
-            .cwiseMin(this->max_);
-    return Status::OK();
-  }
+  Status Compute(OpKernelContext* ctx) const override;
 };
 
 // Since version 11. Min and Max are inputs
