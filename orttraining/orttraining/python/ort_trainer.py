@@ -286,6 +286,9 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     else:
         raise RuntimeError("Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
 
+    if loss_fn:
+        model = model_loss_cls(model, loss_fn)
+
     # pytorch onnx exporter/trace does not try to match argument names.
     # e.g. for models with optional inputs, it requires all inputs be present.
     # this is a problem because the model graph depends on inputs provided.
@@ -302,12 +305,13 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
 
     f = io.BytesIO()
 
-    if loss_fn:
-        model = model_loss_cls(model, loss_fn)
-
+    # Other export options to use(this is for backward compatibility).
+    other_export_options = {}
+    
     # This option was added after 1.4 release.
     if LooseVersion(torch.__version__) > LooseVersion('1.4.0'):
         other_export_options['enable_onnx_checker'] = False
+
     torch.onnx._export(model, tuple(sample_inputs), f,
                        input_names=input_names,
                        output_names=output_names,
