@@ -43,8 +43,10 @@ stages:
         ${{ parameters.build_py_parameters }}
         --enable_training --wheel_name_suffix training
       actual_extra_linux_docker_build_parameters: '--build-arg ENABLE_TRAINING=1'
+      docker_image_prefix: 'onnxruntime-training'
     ${{ if ne(parameters.enable_training, true) }}:
       actual_extra_build_py_parameters: '${{ parameters.build_py_parameters }}'
+      docker_image_prefix: 'onnxruntime'
 
   jobs:
   - ${{ if eq(parameters.enable_linux_cpu, true) }}:
@@ -81,7 +83,7 @@ stages:
             script: >
               docker build
               --pull
-              -t onnxruntime-manylinux-$(python.version)
+              -t ${{ variables.docker_image_prefix }}-manylinux-$(python.version)
               --build-arg BUILD_USER=onnxruntimedev
               --build-arg BUILD_UID=$(id -u)
               --build-arg PYTHON_VERSION=$(python.version)
@@ -100,7 +102,7 @@ stages:
               --volume /data/models:/build/models:ro
               -e NIGHTLY_BUILD
               -e BUILD_BUILDNUMBER
-              onnxruntime-manylinux-$(python.version)
+              ${{ variables.docker_image_prefix }}-manylinux-$(python.version)
               $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py
               --build_dir /build
               --config Release
@@ -162,7 +164,7 @@ stages:
             script: >
               docker build
               --pull
-              -t onnxruntime-manylinux-gpu-$(python.version)
+              -t ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version)
               --build-arg BUILD_USER=onnxruntimedev
               --build-arg BUILD_UID=$(id -u)
               --build-arg PYTHON_VERSION=$(python.version)
@@ -183,7 +185,7 @@ stages:
               -e NVIDIA_VISIBLE_DEVICES=all
               -e NIGHTLY_BUILD
               -e BUILD_BUILDNUMBER
-              onnxruntime-manylinux-gpu-$(python.version)
+              ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version)
               $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py
               --build_dir /build
               --config Release
