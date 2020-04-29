@@ -1360,9 +1360,9 @@ def build_python_wheel(
             args.append('--use_nuphar')
         if wheel_name_suffix:
             args.append('--wheel_name_suffix={}'.format(wheel_name_suffix))
-        elif use_acl:
+        if use_acl:
             args.append('--use_acl')
-        elif featurizers_build:
+        if featurizers_build:
             args.append("--use_featurizers")
 
         run_subprocess(args, cwd=cwd)
