@@ -9,7 +9,7 @@ import {assertTensorEqual} from '../../test-utils';
 const SQUEEZENET_INPUT0_DATA = require(path.join(__dirname, '../../testdata/squeezenet.input0.json'));
 const SQUEEZENET_OUTPUT0_DATA = require(path.join(__dirname, '../../testdata/squeezenet.output0.json'));
 
-describe('UnitTests - InferenceSession.create()', async () => {
+describe('UnitTests - InferenceSession.create()', () => {
   const modelPath = path.join(__dirname, '../../testdata/squeezenet.onnx');
   const modelBuffer = fs.readFileSync(modelPath);
   const createAny: any = InferenceSession.create;
@@ -78,7 +78,7 @@ describe('UnitTests - InferenceSession.create()', async () => {
   });
 });
 
-describe('UnitTests - InferenceSession.run()', async () => {
+describe('UnitTests - InferenceSession.run()', () => {
   let session: InferenceSession|null = null;
   let sessionAny: any;
   const input0 = new Tensor('float32', SQUEEZENET_INPUT0_DATA, [1, 3, 224, 224]);
@@ -180,5 +180,171 @@ describe('UnitTests - InferenceSession.run()', async () => {
     await assert.rejects(async () => {
       await sessionAny.run({'data_0': input0}, ['softmaxout_1'], 1);
     }, {name: 'TypeError', message: /'options'/});
+  });
+});
+
+describe('UnitTests - InferenceSession.SessionOptions', () => {
+  const modelPath = path.join(__dirname, '../../testdata/test_types_FLOAT.pb');
+  const createAny: any = InferenceSession.create;
+
+  it('BAD CALL - type mismatch', async () => {
+    await assert.rejects(async () => {
+      await createAny(modelPath, 'cpu');
+    }, {name: 'TypeError', message: /'options'/});
+  });
+
+  describe('executionProviders', () => {
+    it('BAD CALL - type mismatch', async () => {
+      await assert.rejects(async () => {
+        await createAny(modelPath, {executionProviders: 'bad-EP-name'});
+      }, {name: 'TypeError', message: /executionProviders/});
+    });
+    it('EXPECTED FAILURE - invalid EP name, string list', async () => {
+      await assert.rejects(async () => {
+        await createAny(modelPath, {executionProviders: ['bad-EP-name']});
+      }, {name: 'Error', message: /executionProviders.+bad-EP-name/});
+    });
+    it('EXPECTED FAILURE - invalid EP name, object list', async () => {
+      await assert.rejects(async () => {
+        await createAny(modelPath, {executionProviders: [{name: 'bad-EP-name'}]});
+      }, {name: 'Error', message: /executionProviders.+bad-EP-name/});
+    });
+    it('string list (CPU)', async () => {
+      await InferenceSession.create(modelPath, {executionProviders: ['cpu']});
+    });
+    it('object list (CPU)', async () => {
+      await InferenceSession.create(modelPath, {executionProviders: [{name: 'cpu'}]});
+    });
+  });
+
+  describe('intraOpNumThreads', () => {
+    it('BAD CALL - type mismatch', async () => {
+      await assert.rejects(async () => {
+        await createAny(modelPath, {intraOpNumThreads: 'bad-value'});
+      }, {name: 'TypeError', message: /intraOpNumThreads/});
+    });
+    it('BAD CALL - non-integer', async () => {
+      await assert.rejects(async () => {
+        await createAny(modelPath, {intraOpNumThreads: 1.5});
+      }, {name: 'RangeError', message: /intraOpNumThreads/});
+    });
+    it('BAD CALL - negative integer', async () => {
+      await assert.rejects(async () => {
+        await createAny(modelPath, {intraOpNumThreads: -1});
+      }, {name: 'RangeError', message: /intraOpNumThreads/});
+    });
+    it('intraOpNumThreads = 1', async () => {
+      await InferenceSession.create(modelPath, {intraOpNumThreads: 1});
+    });
+  });
+
+  describe('interOpNumThreads', () => {
+    it('BAD CALL - type mismatch', async () => {
+      await assert.rejects(async () => {
+        await createAny(modelPath, {interOpNumThreads: 'bad-value'});
+      }, {name: 'TypeError', message: /interOpNumThreads/});
+    });
+    it('BAD CALL - non-integer', async () => {
+      await assert.rejects(async () => {
+        await createAny(modelPath, {interOpNumThreads: 1.5});
+      }, {name: 'RangeError', message: /interOpNumThreads/});
+    });
+    it('BAD CALL - negative integer', async () => {
+      await assert.rejects(async () => {
+        await createAny(modelPath, {interOpNumThreads: -1});
+      }, {name: 'RangeError', message: /interOpNumThreads/});
+    });
+    it('interOpNumThreads = 1', async () => {
+      await InferenceSession.create(modelPath, {interOpNumThreads: 1});
+    });
+  });
+
+  describe('graphOptimizationLevel', () => {
+    it('BAD CALL - type mismatch', async () => {
+      await assert.rejects(async () => {
+        await createAny(modelPath, {graphOptimizationLevel: 0});
+      }, {name: 'TypeError', message: /graphOptimizationLevel/});
+    });
+    it('BAD CALL - invalid config', async () => {
+      await assert.rejects(async () => {
+        await createAny(modelPath, {graphOptimizationLevel: 'bad-value'});
+      }, {name: 'TypeError', message: /graphOptimizationLevel/});
+    });
+    it('graphOptimizationLevel = basic', async () => {
+      await InferenceSession.create(modelPath, {graphOptimizationLevel: 'basic'});
+    });
+  });
+
+  describe('enableCpuMemArena', () => {
+    it('BAD CALL - type mismatch', async () => {
+      await assert.rejects(async () => {
+        await createAny(modelPath, {enableCpuMemArena: 0});
+      }, {name: 'TypeError', message: /enableCpuMemArena/});
+    });
+    it('enableCpuMemArena = true', async () => {
+      await InferenceSession.create(modelPath, {enableCpuMemArena: true});
+    });
+  });
+
+  describe('enableMemPattern', () => {
+    it('BAD CALL - type mismatch', async () => {
+      await assert.rejects(async () => {
+        await createAny(modelPath, {enableMemPattern: 0});
+      }, {name: 'TypeError', message: /enableMemPattern/});
+    });
+    it('enableMemPattern = true', async () => {
+      await InferenceSession.create(modelPath, {enableMemPattern: true});
+    });
+  });
+
+  describe('executionMode', () => {
+    it('BAD CALL - type mismatch', async () => {
+      await assert.rejects(async () => {
+        await createAny(modelPath, {executionMode: 0});
+      }, {name: 'TypeError', message: /executionMode/});
+    });
+    it('BAD CALL - invalid config', async () => {
+      await assert.rejects(async () => {
+        await createAny(modelPath, {executionMode: 'bad-value'});
+      }, {name: 'TypeError', message: /executionMode/});
+    });
+    it('executionMode = sequential', async () => {
+      await InferenceSession.create(modelPath, {executionMode: 'sequential'});
+    });
+  });
+});
+
+describe('UnitTests - InferenceSession.RunOptions', () => {
+  let session: InferenceSession|null = null;
+  let sessionAny: any;
+  const input0 = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+  const expectedOutput0 = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+
+  before(async () => {
+    const modelPath = path.join(__dirname, '../../testdata/test_types_FLOAT.pb');
+    session = await InferenceSession.create(modelPath);
+    sessionAny = session;
+  });
+
+  describe('logSeverityLevel', () => {
+    it('BAD CALL - type mismatch', async () => {
+      await assert.rejects(async () => {
+        await sessionAny.run({input: input0}, {logSeverityLevel: 'error'});
+      }, {name: 'TypeError', message: /logSeverityLevel/});
+    });
+    it('BAD CALL - out of range', async () => {
+      await assert.rejects(async () => {
+        await sessionAny.run({input: input0}, {logSeverityLevel: 8});
+      }, {name: 'RangeError', message: /logSeverityLevel/});
+    });
+    it('BAD CALL - out of range', async () => {
+      await assert.rejects(async () => {
+        await sessionAny.run({input: input0}, {logSeverityLevel: 8});
+      }, {name: 'RangeError', message: /logSeverityLevel/});
+    });
+    it('logSeverityLevel = 4', async () => {
+      const result = await sessionAny.run({input: input0}, {logSeverityLevel: 4});
+      assertTensorEqual(result.output, expectedOutput0);
+    });
   });
 });

@@ -60,7 +60,6 @@ private:
 
   // session objects
   bool initialized_;
-  std::unique_ptr<Ort::SessionOptions> sessionOptions_;
   std::unique_ptr<Ort::Session> session_;
   std::unique_ptr<Ort::RunOptions> defaultRunOptions_;
 

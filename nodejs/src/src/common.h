@@ -30,6 +30,7 @@ template <typename... Args> std::string MakeString(const Args &... args) {
   } while (false)
 #define ORT_NAPI_THROW_ERROR(ENV, ...) ORT_NAPI_THROW(Error, ENV, __VA_ARGS__)
 #define ORT_NAPI_THROW_TYPEERROR(ENV, ...) ORT_NAPI_THROW(TypeError, ENV, __VA_ARGS__)
+#define ORT_NAPI_THROW_RANGEERROR(ENV, ...) ORT_NAPI_THROW(RangeError, ENV, __VA_ARGS__)
 
 #define ORT_NAPI_THROW_IF(COND, ERROR, ENV, ...)                                                                       \
   if (COND) {                                                                                                          \
@@ -37,6 +38,7 @@ template <typename... Args> std::string MakeString(const Args &... args) {
   }
 #define ORT_NAPI_THROW_ERROR_IF(COND, ENV, ...) ORT_NAPI_THROW_IF(COND, Error, ENV, __VA_ARGS__)
 #define ORT_NAPI_THROW_TYPEERROR_IF(COND, ENV, ...) ORT_NAPI_THROW_IF(COND, TypeError, ENV, __VA_ARGS__)
+#define ORT_NAPI_THROW_RANGEERROR_IF(COND, ENV, ...) ORT_NAPI_THROW_IF(COND, RangeError, ENV, __VA_ARGS__)
 
 template <typename T> Napi::Value CreateNapiArrayFrom(napi_env env, const std::vector<T> &vec) {
   Napi::EscapableHandleScope scope(env);

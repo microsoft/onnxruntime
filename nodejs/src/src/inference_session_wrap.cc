@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include "inference_session_wrap.h"
+#include "run_options_helper.h"
 #include "session_options_helper.h"
 #include "tensor_helper.h"
 
@@ -36,12 +37,7 @@ Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
 
 InferenceSessionWrap::InferenceSessionWrap(const Napi::CallbackInfo &info)
     : Napi::ObjectWrap<InferenceSessionWrap>(info), initialized_(false), session_(nullptr),
-      sessionOptions_(new Ort::SessionOptions{}), defaultRunOptions_(new Ort::RunOptions{}) {
-  // parse session options
-  if (info.Length() >= 1 && info[0].IsObject()) {
-    ParseSessionOptions(info[0].As<Napi::Object>(), *sessionOptions_.get());
-  }
-}
+      defaultRunOptions_(nullptr) {}
 
 Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
@@ -53,30 +49,34 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
   ORT_NAPI_THROW_TYPEERROR_IF(argsLength == 0, env, "Expect argument: model file path or buffer.");
 
   try {
-    if (argsLength == 1 && info[0].IsString()) {
+    defaultRunOptions_.reset(new Ort::RunOptions{});
+    Ort::SessionOptions sessionOptions;
+
+    if (argsLength == 2 && info[0].IsString() && info[1].IsObject()) {
       Napi::String value = info[0].As<Napi::String>();
 
-      std::unique_ptr<Ort::SessionOptions> sessionOptions(std::move(sessionOptions_));
+      ParseSessionOptions(info[1].As<Napi::Object>(), sessionOptions);
       this->session_.reset(new Ort::Session(OrtEnv(),
 #ifdef _WIN32
                                             reinterpret_cast<const wchar_t *>(value.Utf16Value().c_str()),
 #else
                                             value.Utf8Value().c_str(),
 #endif
-                                            *sessionOptions.get()));
+                                            sessionOptions));
 
-    } else if (argsLength == 3 && info[0].IsArrayBuffer() && info[1].IsNumber() && info[2].IsNumber()) {
+    } else if (argsLength == 4 && info[0].IsArrayBuffer() && info[1].IsNumber() && info[2].IsNumber() &&
+               info[3].IsObject()) {
       void *buffer = info[0].As<Napi::ArrayBuffer>().Data();
       int64_t bytesOffset = info[1].As<Napi::Number>().Int64Value();
       int64_t bytesLength = info[2].As<Napi::Number>().Int64Value();
 
-      std::unique_ptr<Ort::SessionOptions> sessionOptions(std::move(sessionOptions_));
-      this->session_.reset(new Ort::Session(OrtEnv(), reinterpret_cast<char *>(buffer) + bytesOffset, bytesLength,
-                                            *sessionOptions.get()));
+      ParseSessionOptions(info[1].As<Napi::Object>(), sessionOptions);
+      this->session_.reset(
+          new Ort::Session(OrtEnv(), reinterpret_cast<char *>(buffer) + bytesOffset, bytesLength, sessionOptions));
     } else {
       ORT_NAPI_THROW_TYPEERROR(
           env,
-          "Invalid argument: args has to be either model file path (string) or buffer (ArrayBuffer, number, number).");
+          "Invalid argument: args has to be either (modelPath, options) or (buffer, byteOffset, byteLength, options).");
     }
 
     // cache input/output names and types
@@ -136,6 +136,8 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
   ORT_NAPI_THROW_TYPEERROR_IF(info.Length() < 2, env, "Expect argument: inputs(feed) and outputs(fetch).");
   ORT_NAPI_THROW_TYPEERROR_IF(!info[0].IsObject() || !info[1].IsObject(), env,
                               "Expect inputs(feed) and outputs(fetch) to be objects.");
+  ORT_NAPI_THROW_TYPEERROR_IF(info.Length() > 2 && (!info[2].IsObject() || info[2].IsNull()), env,
+                              "'runOptions' must be an object.");
 
   Napi::EscapableHandleScope scope(env);
 
@@ -169,10 +171,16 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
       }
     }
 
-    session_->Run(*defaultRunOptions_.get(), inputIndex == 0 ? nullptr : &inputNames_cstr[0],
-                  inputIndex == 0 ? nullptr : &inputValues[0], inputIndex,
-                  outputIndex == 0 ? nullptr : &outputNames_cstr[0], outputIndex == 0 ? nullptr : &outputValues[0],
-                  outputIndex);
+    Ort::RunOptions runOptions{nullptr};
+    if (info.Length() > 2) {
+      runOptions = Ort::RunOptions{};
+      ParseRunOptions(info[2].As<Napi::Object>(), runOptions);
+    }
+
+    session_->Run(runOptions == nullptr ? *defaultRunOptions_.get() : runOptions,
+                  inputIndex == 0 ? nullptr : &inputNames_cstr[0], inputIndex == 0 ? nullptr : &inputValues[0],
+                  inputIndex, outputIndex == 0 ? nullptr : &outputNames_cstr[0],
+                  outputIndex == 0 ? nullptr : &outputValues[0], outputIndex);
 
     Napi::Object result = Napi::Object::New(env);
 

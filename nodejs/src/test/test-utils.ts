@@ -61,8 +61,8 @@ export function createTestTensor(type: Tensor.Type, lengthOrDims?: number|number
 export function warmup(): void {
   // we have test cases to verify correctness in other place, so do no check here.
   try {
-    const session = new binding.InferenceSession({});
-    session.loadModel(path.join(TEST_DATA_ROOT, 'test_types_INT32.pb'));
+    const session = new binding.InferenceSession();
+    session.loadModel(path.join(TEST_DATA_ROOT, 'test_types_INT32.pb'), {});
     session.run({input: new Tensor(new Float32Array(5), [1, 5])}, {output: null}, {});
   } catch (e) {
   }

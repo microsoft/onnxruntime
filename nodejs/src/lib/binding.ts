@@ -6,8 +6,10 @@ import {OnnxValue} from './onnx-value';
  */
 export declare namespace Binding {
   export interface InferenceSession {
-    loadModel(modelPath: string): void;
-    loadModel(buffer: ArrayBuffer, byteOffset: number, byteLength: number): void;
+    loadModel(modelPath: string, options: InferenceSessionInterface.SessionOptions): void;
+    loadModel(
+        buffer: ArrayBuffer, byteOffset: number, byteLength: number,
+        options: InferenceSessionInterface.SessionOptions): void;
 
     readonly inputNames: string[];
     readonly outputNames: string[];
@@ -24,7 +26,7 @@ export declare namespace Binding {
   }
 
   export interface InferenceSessionConstructor {
-    new(options: InferenceSessionInterface.SessionOptions): InferenceSession;
+    new(): InferenceSession;
   }
 }
 

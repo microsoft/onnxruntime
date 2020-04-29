@@ -53,7 +53,7 @@ class InferenceSession implements InferenceSessionInterface {
           fetches[name] = null;
         }
 
-        if (typeof arg2 === 'object') {
+        if (typeof arg2 === 'object' && arg2 !== null) {
           options = arg2;
         } else if (typeof arg2 !== 'undefined') {
           throw new TypeError('\'options\' must be an object.');
@@ -75,7 +75,7 @@ class InferenceSession implements InferenceSessionInterface {
         }
 
         if (isFetches) {
-          if (typeof arg2 === 'object') {
+          if (typeof arg2 === 'object' && arg2 !== null) {
             options = arg2;
           } else if (typeof arg2 !== 'undefined') {
             throw new TypeError('\'options\' must be an object.');
@@ -144,7 +144,7 @@ export const impl: InferenceSessionFactory = {
         if (typeof arg0 === 'string') {
           loadFromFilePath = true;
           filePath = arg0;
-          if (typeof arg1 === 'object') {
+          if (typeof arg1 === 'object' && arg1 !== null) {
             options = arg1;
           } else if (typeof arg1 !== 'undefined') {
             throw new TypeError('\'options\' must be an object.');
@@ -153,7 +153,7 @@ export const impl: InferenceSessionFactory = {
           buffer = arg0.buffer;
           byteOffset = arg0.byteOffset;
           byteLength = arg0.byteLength;
-          if (typeof arg1 === 'object') {
+          if (typeof arg1 === 'object' && arg1 !== null) {
             options = arg1;
           } else if (typeof arg1 !== 'undefined') {
             throw new TypeError('\'options\' must be an object.');
@@ -162,7 +162,7 @@ export const impl: InferenceSessionFactory = {
           buffer = arg0;
           byteOffset = 0;
           byteLength = arg0.byteLength;
-          if (typeof arg1 === 'object') {
+          if (typeof arg1 === 'object' && arg1 !== null) {
             options = arg1;
           } else if (typeof arg1 === 'number') {
             byteOffset = arg1;
@@ -181,7 +181,7 @@ export const impl: InferenceSessionFactory = {
               if (byteLength <= 0 || byteOffset + byteLength > buffer.byteLength) {
                 throw new RangeError(`'byteLength' is out of range (0, ${buffer.byteLength - byteOffset}].`);
               }
-              if (typeof arg3 === 'object') {
+              if (typeof arg3 === 'object' && arg3 !== null) {
                 options = arg3;
               } else if (typeof arg3 !== 'undefined') {
                 throw new TypeError('\'options\' must be an object.');
@@ -203,12 +203,12 @@ export const impl: InferenceSessionFactory = {
           process.nextTick(() => {
             try {
               // create native session wrapper
-              const sessionWrapper = new binding.InferenceSession(options);
+              const sessionWrapper = new binding.InferenceSession();
               // load model
               if (loadFromFilePath) {
-                sessionWrapper.loadModel(filePath);
+                sessionWrapper.loadModel(filePath, options);
               } else {
-                sessionWrapper.loadModel(buffer, byteOffset, byteLength);
+                sessionWrapper.loadModel(buffer, byteOffset, byteLength, options);
               }
               // resolve promise if created successfully
               resolve(new InferenceSession(sessionWrapper));

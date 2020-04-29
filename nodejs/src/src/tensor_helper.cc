@@ -121,8 +121,8 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value) {
       ORT_NAPI_THROW_TYPEERROR_IF(!dimValue.IsNumber(), env, "Tensor.dims[", i, "] is not a number.");
       auto dimNumber = dimValue.As<Napi::Number>();
       double dimDouble = dimNumber.DoubleValue();
-      ORT_NAPI_THROW_TYPEERROR_IF(std::floor(dimDouble) != dimDouble || dimDouble < 0 || dimDouble > 4294967295, env,
-                                  "Tensor.dims[", i, "] is invalid: ", dimDouble);
+      ORT_NAPI_THROW_RANGEERROR_IF(std::floor(dimDouble) != dimDouble || dimDouble < 0 || dimDouble > 4294967295, env,
+                                   "Tensor.dims[", i, "] is invalid: ", dimDouble);
       int64_t dim = static_cast<int64_t>(dimDouble);
       dims.push_back(dim);
     }

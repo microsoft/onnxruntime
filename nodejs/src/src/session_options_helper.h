@@ -10,6 +10,6 @@ struct SessionOptions;
 }
 
 // parse a Javascript session options object and fill the native SessionOptions object.
-void ParseSessionOptions(const Napi::Value value, Ort::SessionOptions &sessionOptions);
+void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions &sessionOptions);
 
 #endif
