@@ -1342,10 +1342,19 @@ def build_python_wheel(
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
             cwd = os.path.join(cwd, config)
+
         args = [sys.executable, os.path.join(source_dir, 'setup.py'),
                 'bdist_wheel']
+
+        # Any combination of the following arguments can be applied
         if nightly_build:
             args.append('--nightly_build')
+        if featurizers_build:
+            args.append("--use_featurizers")
+        if wheel_name_suffix:
+            args.append('--wheel_name_suffix={}'.format(wheel_name_suffix))
+
+        # The following arguments are mutually exclusive
         if use_tensorrt:
             args.append('--use_tensorrt')
         elif use_cuda:
@@ -1358,12 +1367,8 @@ def build_python_wheel(
             args.append('--use_dnnl')
         elif use_nuphar:
             args.append('--use_nuphar')
-        if wheel_name_suffix:
-            args.append('--wheel_name_suffix={}'.format(wheel_name_suffix))
-        if use_acl:
+        elif use_acl:
             args.append('--use_acl')
-        if featurizers_build:
-            args.append("--use_featurizers")
 
         run_subprocess(args, cwd=cwd)
 
