@@ -1,0 +1,12 @@
+{
+  "name": "01_hello-world",
+  "version": "1.0.0",
+  "description": "This example is a demonstration of basic usage of ONNX Runtime Node.js binding.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "onnxruntime": "0.0.1-dev.20200429.1"
+  }
+}
