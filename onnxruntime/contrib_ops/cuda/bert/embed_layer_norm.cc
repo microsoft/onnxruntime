@@ -79,8 +79,8 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
           word_embedding->template Data<T>(),
           position_embedding->template Data<T>(),
           segment_embedding->template Data<T>(),
-          static_cast<int>(hidden_size),          
           epsilon_,
+          static_cast<int>(hidden_size),          
           batch_size,
           sequence_length,
           element_size)) {
