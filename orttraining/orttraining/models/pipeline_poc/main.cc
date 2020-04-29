@@ -106,7 +106,8 @@ int main(int argc, char* argv[]) {
   InferenceSession session_object{so, *env};
 
   CUDAExecutionProviderInfo xp_info{static_cast<OrtDevice::DeviceId>(world_rank)};
-  session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));
+  auto ret = session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));
+  ORT_ENFORCE(ret == Status::OK(), "Fail to register execution provider.");
 
   std::string model_at_rank;
   Status st;
