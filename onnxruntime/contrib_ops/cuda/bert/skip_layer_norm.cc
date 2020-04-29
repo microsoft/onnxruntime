@@ -30,6 +30,9 @@ using namespace ONNX_NAMESPACE;
 
 template <typename T>
 SkipLayerNorm<T>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
+  float tmp_epsilon;
+  ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
+  epsilon_ = tmp_epsilon;
 }
 
 template <typename T>
