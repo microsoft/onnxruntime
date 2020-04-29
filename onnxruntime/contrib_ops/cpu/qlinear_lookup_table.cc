@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "qlinear_lookup_table.h"
-#include <limits>
-#include <cmath>
+#include "core/providers/common.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -34,39 +34,53 @@ static void QLinearLookupTableTransform(const uint8_t* x, const uint8_t table[25
 }
 
 template <typename T>
-static void BuildQLinearLookupTable(
-    uint8_t table[256], const float X_scale, const T X_zero_point, const float Y_scale, const T Y_zero_point, float alpha) {
-  constexpr int qmin = std::numeric_limits<T>::min();
-  constexpr int qmax = std::numeric_limits<T>::max();
+static void BuildQLinearLeakyReluLookupTable(uint8_t table[256],
+                                             const Tensor* tensor_x_scale,
+                                             const Tensor* tensor_x_zero_point,
+                                             const Tensor* tensor_y_scale,
+                                             const Tensor* tensor_y_zero_point,
+                                             float alpha) {
+  ORT_ENFORCE(IsScalarOr1ElementVector(tensor_x_scale),
+              "QLinearLeakyRelu : input X_scale must be a scalar or 1D tensor of size 1");
+  ORT_ENFORCE(IsScalarOr1ElementVector(tensor_x_zero_point),
+              "QLinearLeakyRelu : input X_zero_point must be a scalar or 1D tensor of size 1");
+  ORT_ENFORCE(IsScalarOr1ElementVector(tensor_y_scale),
+              "QLinearLeakyRelu : input Y_scale must be a scalar or 1D tensor of size 1");
+  ORT_ENFORCE(IsScalarOr1ElementVector(tensor_y_zero_point),
+              "QLinearLeakyRelu : input Y_zero_point must be a scalar or 1D tensor of size 1");
+
+  const float X_scale = *(tensor_x_scale->Data<float>());
+  const T X_zero_point = (tensor_x_zero_point == nullptr) ? static_cast<T>(0) : *(tensor_x_zero_point->template Data<T>());
+  const float Y_scale = *(tensor_y_scale->Data<float>());
+  const T Y_zero_point = (tensor_y_zero_point == nullptr) ? static_cast<T>(0) : *(tensor_y_zero_point->template Data<T>());
+
+  float dequantized_vector[256];
   for (int i = 0; i < 256; ++i) {
     T x = static_cast<T>(i);
     float x_dequantized = X_scale * (static_cast<int>(x) - static_cast<int>(X_zero_point));
-    float y = x_dequantized >= 0.0f ? x_dequantized : alpha * x_dequantized;
-    int y_quantized = static_cast<int>(std::round(y / Y_scale)) + static_cast<int>(Y_zero_point);
-    table[i] = static_cast<uint8_t>(static_cast<T>(std::min(qmax, std::max(qmin, y_quantized))));
+    dequantized_vector[i] = x_dequantized >= 0.0f ? x_dequantized : alpha * x_dequantized;
   }
+  MlasQuantizeLinear(dequantized_vector, (T*)table, 256, Y_scale, Y_zero_point);
 }
 
 template <typename T>
 QLinearLeakyRelu<T>::QLinearLeakyRelu(const OpKernelInfo& info)
     : OpKernel(info), alpha_(info.GetAttrOrDefault("alpha", 0.01f)) {
-  const Tensor* X_scale_tensor = nullptr;
-  const Tensor* X_zero_point_tensor = nullptr;
-  const Tensor* Y_scale_tensor = nullptr;
-  const Tensor* Y_zero_point_tensor = nullptr;
+  const Tensor* tensor_x_scale = nullptr;
+  const Tensor* tensor_x_zero_point = nullptr;
+  const Tensor* tensor_y_scale = nullptr;
+  const Tensor* tensor_y_zero_point = nullptr;
 
-  bool X_scale_get = info.TryGetConstantInput(1, &X_scale_tensor);
-  bool X_zero_point_get = info.TryGetConstantInput(2, &X_zero_point_tensor);
-  bool Y_scale_get = info.TryGetConstantInput(3, &Y_scale_tensor);
-  bool Y_zero_point_get = info.TryGetConstantInput(4, &Y_zero_point_tensor);
-  is_fixed_parameters_ = X_scale_get && X_zero_point_get && Y_scale_get && Y_zero_point_get;
+  bool get_x_scale = info.TryGetConstantInput(1, &tensor_x_scale);
+  bool get_x_zero_point = info.TryGetConstantInput(2, &tensor_x_zero_point);
+  bool get_y_scale = info.TryGetConstantInput(3, &tensor_y_scale);
+  bool get_y_zero_point = info.TryGetConstantInput(4, &tensor_y_zero_point);
+  is_fixed_parameters_ = get_x_scale && get_x_zero_point && get_y_scale && get_y_zero_point;
 
   if (is_fixed_parameters_) {
-    const float X_scale = *(X_scale_tensor->Data<float>());
-    const T X_zero_point = (X_zero_point_tensor == nullptr) ? static_cast<T>(0) : *(X_zero_point_tensor->template Data<T>());
-    const float Y_scale = *(Y_scale_tensor->Data<float>());
-    const T Y_zero_point = (Y_zero_point_tensor == nullptr) ? static_cast<T>(0) : *(Y_zero_point_tensor->template Data<T>());
-    BuildQLinearLookupTable(fixed_lookup_table_, X_scale, X_zero_point, Y_scale, Y_zero_point, alpha_);
+    BuildQLinearLeakyReluLookupTable<T>(
+        fixed_lookup_table_, tensor_x_scale, tensor_x_zero_point,
+        tensor_y_scale, tensor_y_zero_point, alpha_);
   }
 }
 
@@ -79,11 +93,9 @@ Status QLinearLeakyRelu<T>::Compute(OpKernelContext* context) const {
 
   uint8_t table[256];
   if (!is_fixed_parameters_) {
-    const float X_scale = *(context->Input<Tensor>(1)->Data<float>());
-    const T X_zero_point = (nullptr == context->Input<Tensor>(2)) ? static_cast<T>(0) : *(context->Input<Tensor>(2)->template Data<T>());
-    const float Y_scale = *(context->Input<Tensor>(3)->Data<float>());
-    const T Y_zero_point = (nullptr == context->Input<Tensor>(4)) ? static_cast<T>(0) : *(context->Input<Tensor>(4)->template Data<T>());
-    BuildQLinearLookupTable(table, X_scale, X_zero_point, Y_scale, Y_zero_point, alpha_);
+    BuildQLinearLeakyReluLookupTable<T>(
+        table, context->Input<Tensor>(1), context->Input<Tensor>(2),
+        context->Input<Tensor>(3), context->Input<Tensor>(4), alpha_);
   }
 
   QLinearLookupTableTransform(
