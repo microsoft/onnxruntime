@@ -283,15 +283,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_OPENVINO
       //Setting default optimization level for OpenVINO can be overriden with -o option
       sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
-      if(p_models != 1){
+      if (p_models != 1) {
         fprintf(stderr, "OpenVINO doesn't support more than 1 model running simultaneously default value of 1 will be set \n");
         p_models = 1;
       }
-      if(concurrent_session_runs != 1){
+      if (concurrent_session_runs != 1) {
         fprintf(stderr, "OpenVINO doesn't support more than 1 session running simultaneously default value of 1 will be set \n");
         concurrent_session_runs = 1;
       }
-      if(execution_mode == ExecutionMode::ORT_PARALLEL){
+      if (execution_mode == ExecutionMode::ORT_PARALLEL) {
         fprintf(stderr, "OpenVINO doesn't support parallel executor switching to sequential executor\n");
         sf.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
       }
@@ -405,7 +405,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             ORT_TSTR("operator_mm"),
             ORT_TSTR("operator_non_float_params"),
             ORT_TSTR("operator_params"),
-            ORT_TSTR("operator_pow")};
+            ORT_TSTR("operator_pow"),
+        };
 
     static const ORTCHAR_T* cuda_flaky_tests[] = {
         ORT_TSTR("fp16_inception_v1"),
@@ -526,7 +527,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
   }
 
-  if (enable_openvino){
+  if (enable_openvino) {
     broken_tests.insert({"operator_permute2", "Disabled temporariliy"});
     broken_tests.insert({"operator_repeat", "Disabled temporariliy"});
     broken_tests.insert({"operator_repeat_dim_overflow", "Disabled temporariliy"});
@@ -631,7 +632,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"resize_upsample_sizes_nearest", "DML uses pixel centers for nearest, which makes more sense (the 3rd row mismatches)"});
     broken_tests.insert({"unsqueeze_three_axes", "DML does not support 6D tensors"});
     broken_tests.insert({"unsqueeze_unsorted_axes", "DMLdoes not support 6D tensors"});
-
   }
 
 #if defined(_WIN32) && !defined(_WIN64)
