@@ -4,38 +4,84 @@ This directory contains the Node.js binding for the ONNX runtime.
 
 ## Installation
 
-TBD: Use the following command to install:
+Install the latest stable version:
 
 ```
 npm install onnxruntime
 ```
 
-### Building
+Install the latest dev version:
 
-TBD: Use the main project's [build instructions](../BUILD.md) with the `--build_nodejs` option.
+```
+npm install onnxruntime@dev
+```
+
+## Supported Platforms
+
+- Windows x64 CPU NAPI_v3
+- Linux x64 CPU NAPI_v3
+- MacOS x64 CPU NAPI_v3
+
+## Get Started
+
+Refer to [examples](./examples/README.md) for usage and instructions.
+
+## Building
+
+### Pre-Requisites
+
+1.  Node.js 12.x
+
+### Build Instructions
 
 Currently it takes 4 steps to build Node.js binding:
 
-1.  Build ONNX Runtime with flag `--build_shared` in repo root.
+1.  Build ONNX Runtime with flag `--build_shared` in repo root. See [Build](../BUILD.md) for more info.
 
-2.  In current folder, Install NPM packages:
-
-    ```
-    npm install
-    ```
-
-    This will pull dev dependencies.
+2.  In current folder, run `npm install`. This will pull dev dependencies.
 
 3.  Run `npm run build` to build binding.
 
 4.  Run `npm test` run tests.
 
+To consume the local built Node.js binding in a Node.js project:
+
+```
+npm install <onnxruntime-repo-root-folder>/nodejs
+```
+
 ### Publish
 
-Currently we can use command `npm pack` to pack the whole binding project into one `.tar.gz` file. This file can be used in `npm install <file path>` to install the package locally, with the same behavior of installing from a NPM registery.
+Publishing a NPM package with addon requires 2 steps: publish NPM package itself, and publish prebuild binaries.
 
-TODO: publish to official NPM registery.
+#### Publish NPM package
 
-## Examples
+To publish a release:
 
-Check [examples](../examples) for the proposed API usage.
+```
+npm publish
+```
+
+To publish a @dev release:
+
+```
+npm publish --tag dev
+```
+
+To create a npm package (for local use or debug purpose):
+
+```
+npm pack
+```
+
+NOTE: Need to publish the package from a clean build, otherwise extra files may be packed.
+
+#### Publish prebuild binaries
+
+Currently, prebuild binaries only support 3 platforms on x64: win32/linux/macos.
+
+Prebuilds are currently uploaded manually.
+
+## License
+
+[MIT License](https://github.com/Microsoft/onnxruntime/blob/master/LICENSE)
