@@ -1,7 +1,7 @@
 trigger: none
 
 stages:
-- template: templates/py-packaging-jobs.yml
+- template: templates/py-packaging-stage.yml
   parameters:
     enable_training: true
     enable_linux_cpu: false
