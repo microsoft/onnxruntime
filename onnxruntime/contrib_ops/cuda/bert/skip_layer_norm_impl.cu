@@ -122,7 +122,7 @@ bool LaunchSkipLayerNormKernel(
         reinterpret_cast<const half*>(beta),
         reinterpret_cast<const half*>(gamma),
         reinterpret_cast<const half*>(bias),
-        reinterpret_cast<const half>(epsilon),
+        epsilon,
         reinterpret_cast<half*>(output));
   } else {
     return ComputeSkipLayerNorm(
@@ -134,7 +134,7 @@ bool LaunchSkipLayerNormKernel(
         reinterpret_cast<const float*>(beta),
         reinterpret_cast<const float*>(gamma),
         reinterpret_cast<const float*>(bias),
-        reinterpret_cast<const float>(epsilon),
+        epsilon,
         reinterpret_cast<float*>(output));
   }
 }
