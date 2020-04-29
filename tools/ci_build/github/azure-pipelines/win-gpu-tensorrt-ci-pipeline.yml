@@ -33,11 +33,16 @@ jobs:
       modifyEnvironment: true
       workingFolder: '$(Build.BinariesDirectory)'
 
-  - script: |
+  - powershell: |
      python -m pip install --user --upgrade pip
-     python -m pip uninstall -y -q onnxruntime 2>pip.log  
+     python -m pip uninstall -y -q onnxruntime > nul 2>&1
      python -m pip install -q pyopenssl setuptools wheel numpy scipy
-    workingDirectory: '$(Build.BinariesDirectory)'
+     $Env:USE_MSVC_STATIC_RUNTIME=1
+     $Env:ONNX_ML=1
+     $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
+     python setup.py bdist_wheel
+     Get-ChildItem -Path dist/*.whl | foreach {python -m pip install -q --upgrade $_.fullname}
+    workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
     displayName: 'Install python modules'
 
   - task: PythonScript@0
