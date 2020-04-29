@@ -292,7 +292,13 @@ void PowImpl(OpKernelContext* context, const Tensor& X, const Tensor& Y) {
   };
 
   // Scalar exponent switch to possibly available optimizations
-  std::function<void(gsl::span<T>, gsl::span<const T> X, E Y)> input1scalar;
+  std::function<void(gsl::span<T>, gsl::span<const T> X, E Y)> input1scalar =
+      [](gsl::span<T> output, gsl::span<const T> X, E Y) {
+        std::transform(X.cbegin(), X.cend(), output.begin(),
+                       [Y](T x) {
+                         return static_cast<T>(std::pow(x, Y));
+                       });
+      };
 
   if (Y.Shape().Size() == 1) {
     auto exp = *Y.template Data<E>();
@@ -305,19 +311,11 @@ void PowImpl(OpKernelContext* context, const Tensor& X, const Tensor& Y) {
       };
     } else if (exp == E{3}) {
       input1scalar = [](gsl::span<T> output, gsl::span<const T> X, E) {
-            std::transform(X.cbegin(), X.cend(), output.begin(),
-                           [](T x) {
-                             return static_cast<T>(x * x * x);
-                           });
-          };
-    } else {
-      input1scalar =
-          [](gsl::span<T> output, gsl::span<const T> X, E Y) {
-            std::transform(X.cbegin(), X.cend(), output.begin(),
-                           [Y](T x) {
-                             return static_cast<T>(std::pow(x, Y));
-                           });
-          };
+        std::transform(X.cbegin(), X.cend(), output.begin(),
+                       [](T x) {
+                         return static_cast<T>(x * x * x);
+                       });
+      };
     }
   }
 
