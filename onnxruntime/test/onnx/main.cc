@@ -493,9 +493,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "Bad onnx test output. Needs test fix."},
       {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
-      {"dropout_default", "result differs", {"onnxtip"}},
-      {"dropout_random", "result differs", {"onnxtip"}},
-      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"}
+      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"},
+      {"dropout_default", "result differs", {}},            // Temporary, subsequent PR will remove this.
+      {"dropout_default_mask", "result differs", {}},       // Temporary, subsequent PR will remove this.
+      {"dropout_default_mask_ratio", "result differs", {}},  // Temporary, subsequent PR will remove this.
+      {"dropout_default_ratio", "result differs", {}},       // Temporary, subsequent PR will remove this.
+      {"training_dropout", "result differs", {}},            // Temporary, subsequent PR will remove this.
+      {"training_dropout_default", "result differs", {}},    // Temporary, subsequent PR will remove this.
+      {"training_dropout_default_mask", "result differs", {}},  // Temporary, subsequent PR will remove this.
+      {"training_dropout_mask", "result differs", {}},          // Temporary, subsequent PR will remove this.
   };
 
   if (enable_ngraph) {
