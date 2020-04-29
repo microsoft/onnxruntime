@@ -283,15 +283,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_OPENVINO
       //Setting default optimization level for OpenVINO can be overriden with -o option
       sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
-      if(p_models != 1){
+      if (p_models != 1) {
         fprintf(stderr, "OpenVINO doesn't support more than 1 model running simultaneously default value of 1 will be set \n");
         p_models = 1;
       }
-      if(concurrent_session_runs != 1){
+      if (concurrent_session_runs != 1) {
         fprintf(stderr, "OpenVINO doesn't support more than 1 session running simultaneously default value of 1 will be set \n");
         concurrent_session_runs = 1;
       }
-      if(execution_mode == ExecutionMode::ORT_PARALLEL){
+      if (execution_mode == ExecutionMode::ORT_PARALLEL) {
         fprintf(stderr, "OpenVINO doesn't support parallel executor switching to sequential executor\n");
         sf.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
       }
@@ -405,7 +405,26 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             ORT_TSTR("operator_mm"),
             ORT_TSTR("operator_non_float_params"),
             ORT_TSTR("operator_params"),
-            ORT_TSTR("operator_pow")};
+            ORT_TSTR("operator_pow"),
+            // Temporary because function expansion is executing the functions for SoftmaxCrossEntropyLoss now but since
+            // functions are not correctly written it is failing, https://github.com/microsoft/onnxruntime/pull/3745 will
+            // uncomment these tests.
+            // NOTE: THESE TEST CAUSE SEG FAULTS AND SHOULD NOT BE RUN. THEY CAN TAKE DOWN THE WHOLE PROCESS.
+            ORT_TSTR("softmax_cross_entropy_mean"),
+            ORT_TSTR("softmax_cross_entropy_mean_3d"),
+            ORT_TSTR("softmax_cross_entropy_mean_3d_expanded"),
+            ORT_TSTR("softmax_cross_entropy_mean_expanded"),
+            ORT_TSTR("softmax_cross_entropy_mean_weight"),
+            ORT_TSTR("softmax_cross_entropy_mean_weight_expanded"),
+            ORT_TSTR("softmax_cross_entropy_mean_weight_ignore_index"),
+            ORT_TSTR("softmax_cross_entropy_mean_weight_ignore_index_expanded"),
+            ORT_TSTR("softmax_cross_entropy_none"),
+            ORT_TSTR("softmax_cross_entropy_none_expanded"),
+            ORT_TSTR("softmax_cross_entropy_none_weights"),
+            ORT_TSTR("softmax_cross_entropy_none_weights_expanded"),
+            ORT_TSTR("softmax_cross_entropy_sum"),
+            ORT_TSTR("softmax_cross_entropy_sum_expanded")
+        };
 
     static const ORTCHAR_T* cuda_flaky_tests[] = {
         ORT_TSTR("fp16_inception_v1"),
@@ -496,23 +515,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"dropout_default", "result differs", {"onnxtip"}},
       {"dropout_random", "result differs", {"onnxtip"}},
       {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"},
-      // Temporary because function expansion is executing the functions for SoftmaxCrossEntropyLoss now but since 
-      // functions are not correctly written it is failing, https://github.com/microsoft/onnxruntime/pull/3745 will 
-      // uncomment these tests.
-      {"softmax_cross_entropy_mean", "result differs", {}}, 
-      {"softmax_cross_entropy_mean_3d", "result differs", {}},
-      {"softmax_cross_entropy_mean_3d_expanded", "result differs", {}},
-      {"softmax_cross_entropy_mean_expanded", "result differs", {}},
-      {"softmax_cross_entropy_mean_weight", "result differs", {}},
-      {"softmax_cross_entropy_mean_weight_expanded", "result differs", {}},
-      {"softmax_cross_entropy_mean_weight_ignore_index", "result differs", {}},
-      {"softmax_cross_entropy_mean_weight_ignore_index_expanded", "result differs", {}},
-      {"softmax_cross_entropy_none", "result differs", {}},
-      {"softmax_cross_entropy_none_expanded", "result differs", {}},
-      {"softmax_cross_entropy_none_weights", "result differs", {}},
-      {"softmax_cross_entropy_none_weights_expanded", "result differs", {}},
-      {"softmax_cross_entropy_sum", "result differs", {"onnxtip"}},
-      {"softmax_cross_entropy_sum_expanded", "result differs", {}},
   };
 
   if (enable_ngraph) {
@@ -537,7 +539,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
   }
 
-  if (enable_openvino){
+  if (enable_openvino) {
     broken_tests.insert({"operator_permute2", "Disabled temporariliy"});
     broken_tests.insert({"operator_repeat", "Disabled temporariliy"});
     broken_tests.insert({"operator_repeat_dim_overflow", "Disabled temporariliy"});
@@ -642,7 +644,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"resize_upsample_sizes_nearest", "DML uses pixel centers for nearest, which makes more sense (the 3rd row mismatches)"});
     broken_tests.insert({"unsqueeze_three_axes", "DML does not support 6D tensors"});
     broken_tests.insert({"unsqueeze_unsorted_axes", "DMLdoes not support 6D tensors"});
-
   }
 
 #if defined(_WIN32) && !defined(_WIN64)
