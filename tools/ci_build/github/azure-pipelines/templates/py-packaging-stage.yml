@@ -37,14 +37,14 @@ parameters:
 
 stages:
 - stage: 'Python_Packaging'
-
   variables:
     ${{ if eq(parameters.enable_training, true) }}:
-      actual_extra_build_py_parameters: '${{ parameters.build_py_parameters }} --enable_training'
+      actual_extra_build_py_parameters: >
+        ${{ parameters.build_py_parameters }}
+        --enable_training --wheel_name_suffix training
       actual_extra_linux_docker_build_parameters: '--build-arg ENABLE_TRAINING=1'
     ${{ if ne(parameters.enable_training, true) }}:
       actual_extra_build_py_parameters: '${{ parameters.build_py_parameters }}'
-
 
   jobs:
   - ${{ if eq(parameters.enable_linux_cpu, true) }}:
