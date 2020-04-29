@@ -135,16 +135,36 @@ TEST(Einsum, ExplicitEinsumAsOuterProductWithTransposeOp_2D_input) {
   test.Run();
 }
 
-// Implicit
-TEST(Einsum, ImplicitEinsumAsOuterProductOp_2D_input) {
+TEST(Einsum, ExplicitEinsumAsOuterProductWithTransposeOp_Multi_Input) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
-  test.AddAttribute<std::string>("equation", "i,j");
+  test.AddAttribute<std::string>("equation", "i,j,k->jik");
   test.AddInput<float>("x", {2}, {1.f, 2.f});
   test.AddInput<float>("y", {2}, {3.f, 4.f});
-  test.AddOutput<float>("o", {2, 2}, {3.f, 4.f, 6.f, 8.f});
+  test.AddInput<float>("z", {2}, {5.f, 6.f});
+  test.AddOutput<float>("o", {2, 2, 2}, {15.f, 18.f, 30.f, 36.f, 20.f, 24.f, 40.f, 48.f});
   test.Run();
 }
 
+// Implicit
+TEST(Einsum, ImplicitEinsumAsOuterProductOp_2D_input) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "i,j,k");
+  test.AddInput<float>("x", {2}, {1.f, 2.f});
+  test.AddInput<float>("y", {2}, {3.f, 4.f});
+  test.AddInput<float>("z", {2}, {5.f, 6.f});
+  test.AddOutput<float>("o", {2, 2, 2}, {15.f, 18.f, 20.f, 24.f, 30.f, 36.f, 40.f, 48.f});
+  test.Run();
+}
+
+TEST(Einsum, ImplicitEinsumAsOuterProductOp_Multi_Input) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "i,j,k");
+  test.AddInput<float>("x", {2}, {1.f, 2.f});
+  test.AddInput<float>("y", {2}, {3.f, 4.f});
+  test.AddInput<float>("z", {2}, {5.f, 6.f});
+  test.AddOutput<float>("o", {2, 2, 2}, {15.f, 18.f, 20.f, 24.f, 30.f, 36.f, 40.f, 48.f});
+  test.Run();
+}
 // Theme: MatMul
 
 // Explicit
@@ -154,6 +174,16 @@ TEST(Einsum, ExplicitEinsumAsMatmul) {
   test.AddInput<float>("x", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2, 2}, {7.f, 10.f, 15.f, 22.f});
+  test.Run();
+}
+
+TEST(Einsum, ExplicitEinsumAsMatmul_Multi_Input) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "ij,jk,kl->li");
+  test.AddInput<float>("x", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("z", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddOutput<float>("o", {2, 2}, {37.f, 81.f, 54.f, 118.f});
   test.Run();
 }
 
@@ -212,6 +242,15 @@ TEST(Einsum, ImplicitEinsumAsMatmul) {
   test.Run();
 }
 
+TEST(Einsum, ImplicitEinsumAsMatmul_Multi_Input) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "ij,jk,kl");
+  test.AddInput<float>("x", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("z", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddOutput<float>("o", {2, 2}, {37.f, 54.f, 81.f, 118.f});
+  test.Run();
+}
 TEST(Einsum, ImplicitEinsumAsBatchedMatmul) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "bij,bjk");
@@ -236,6 +275,15 @@ TEST(Einsum, ImplicitEinsumAsMatmul_2) {
   test.AddInput<float>("x", {2, 1}, {2.f, 3.f});
   test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2, 2}, {8.f, 12.f, 12.f, 18.f});
+  test.Run();
+}
+
+TEST(Einsum, DiagonalWithMatmul) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "iij, jk");
+  test.AddInput<float>("x", {2, 2, 3}, {1.f, 2.f, 3.f, 1.f, 2.f, 3.f, 1.f, 2.f, 3.f, 1.f, 2.f, 3.f});
+  test.AddInput<float>("y", {3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f});
+  test.AddOutput<float>("o", {3}, {60.f, 72.f, 84.f});
   test.Run();
 }
 
@@ -374,6 +422,15 @@ TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithOneScalar) {
   test.Run();
 }
 
+TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithTwoScalars_Multi_Input) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", ",...i,->...i");
+  test.AddInput<float>("x", {}, {10.f});
+  test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("z", {}, {10.f});
+  test.AddOutput<float>("o", {2, 2}, {100.f, 200.f, 300.f, 400.f});
+  test.Run();
+}
 TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithAllScalars) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", ",->");
@@ -401,6 +458,16 @@ TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithOneScalar) {
   test.Run();
 }
 
+TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithThreeScalars_Multi_Input) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", ",...i,,");
+  test.AddInput<float>("a", {}, {10.f});
+  test.AddInput<float>("b", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("c", {}, {10.f});
+  test.AddInput<float>("d", {}, {10.f});
+  test.AddOutput<float>("o", {2, 2}, {1000.f, 2000.f, 3000.f, 4000.f});
+  test.Run();
+}
 TEST(Einsum, ImplicitEinsumAsElementwiseMulOpWithAllScalars) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", ",");

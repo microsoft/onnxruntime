@@ -3,12 +3,12 @@
 
 // This module hosts 3 abstractions -
 
-// 1) EinsumEquationPreprocessor - 
+// 1) EinsumEquationPreprocessor -
 // Holds logic to statically pre-process the equation string (i.e.) without input shapes being known
 // These need not be repeated at Compute() time again
 
-// 2) EinsumComputePreprocessor - 
-// Holds logic to process the data from  EinsumEquationPreprocessor using known input shapes to parse data required 
+// 2) EinsumComputePreprocessor -
+// Holds logic to process the data from  EinsumEquationPreprocessor using known input shapes to parse data required
 // during Einsum Compute(). For example, mapping subscript labels to a dimension value, etc.
 
 // 3) EinsumTypedComputeProcessor - The core logic of the Einsum operator. Invoked from Einsum Compute().
@@ -92,11 +92,26 @@ class EinsumComputePreprocessor final {
                                      const std::vector<const Tensor*>& inputs,
                                      AllocatorPtr allocator);
 
+  // The main method that does all the pre-processing - must be invoked before other methods are called
+  // to get relevant metadata
+  Status Run();
+
   // Get the output dims of the op's output
   const std::vector<int64_t>& GetOutputDims() const;
 
-  // Process all input tensors so that they are all of the same rank and easy to perfrom MatMul and reduction on
-  std::vector<Tensor>& GetPreprocessedTensors();
+  // Pre-process inputs if needed - preprocessing includes -
+  // 1) Parsing diagonals from raw inputs
+  // 2) Transposing some axes to match a chosen fixed ordering
+  // This must be used in conjunction with its corresponding entry in homogenized_input_dims_
+  // (returned by GetHomogenizedInputDims()).
+  // If a particular entry is null, use raw inputs in conjunction with homogenized_input_dims_.
+  std::vector<std::unique_ptr<Tensor>>& GetPreprocessedInputTensors();
+
+  // Get raw inputs to the op
+  const std::vector<const Tensor*>& GetRawInputTensors();
+
+  // Get the "homogenized input dims" for each preprocessed/raw input
+  const std::vector<TensorShape>& GetHomogenizedInputDims();
 
   // For each subscript index, hold the last input the subscript index was seen in
   const std::vector<int64_t>& GetMappedSubscriptIndicesToLastInputIndex() const;
@@ -109,20 +124,20 @@ class EinsumComputePreprocessor final {
 
  private:
   // Process subscripts of each input and collect metadata along the way
-  void ProcessSubscripts();
+  Status ProcessSubscripts();
 
-  // A function to process bradcasted dims (ellipsis) of inputs that they occur in
-  void PostProcessBroadcastedDims();
+  // A function to process broadcasted dims (ellipsis) of inputs that they occur in
+  Status PostProcessBroadcastedDims();
 
   // Check if the Einsum equation has an explicit form (equation string contains "->")
   // If it is of explicit form, parse the output subscript (substring following "->")
   // If it is of implicit form (equation string does not contain "->"), compose the output subscript
   // If the output subscript is an empty string, the result is a scalar
-  void ParseOrCreateOutputSubscript();
+  Status ParseOrCreateOutputSubscript();
 
-  void CalculateOutputShape();
+  Status CalculateOutputShape();
 
-  void PreprocessInputs();
+  Status PreprocessInputs();
 
   // private members
   // Instance of EinsumEquationPreprocessor
@@ -135,7 +150,10 @@ class EinsumComputePreprocessor final {
   const std::vector<const Tensor*>& inputs_;
 
   // All preprocessed inputs
-  std::vector<Tensor> preprocessed_inputs_;
+  std::vector<std::unique_ptr<Tensor>> preprocessed_inputs_;
+
+  // Holds the preprocessed inputs' homogenized dims
+  std::vector<TensorShape> homogenized_input_dims_;
 
   // Count of unique subscript labels (subscript indices)
   // E.g. 1 : With equation -> 'ij, jk -> ik'
@@ -152,11 +170,11 @@ class EinsumComputePreprocessor final {
   // `-1` means the corresponding letter wasn't seen at all
   std::array<int64_t, EinsumOp::num_of_letters> letter_to_index_;
 
-  // Holds the input index of the last input to have the index correpesponding to the subscript label
+  // Holds the input index of the last input to have the index corresponding to the subscript label
   // If the value is `-1`, then the subscript label is never seen (or) it appears in the output
   std::vector<int64_t> subscript_indices_to_last_input_;
 
-  // Hold the dim value of the index correpesponding to the subscript label
+  // Hold the dim value of the index corresponding to the subscript label
   // `-1` means the corresponding label wasn't seen at all
   std::vector<int64_t> subscript_indices_to_dim_value_;
 
@@ -167,7 +185,7 @@ class EinsumComputePreprocessor final {
   std::vector<std::vector<int64_t>> input_subscript_indices_;
 
   // Index corresponding to each output dim corresponding to each subscript index
-  // A value of -1 means the corresponding subscript index is not founf in the output
+  // A value of -1 means the corresponding subscript index is not found in the output
   std::vector<int64_t> subscript_indices_to_output_indices_;
 
   // Allocator to use for ad-hoc tensor buffer allocation
@@ -176,7 +194,7 @@ class EinsumComputePreprocessor final {
 
 // This method does the heavy-lifting compute portion of Einsum Compute()
 template <typename T>
-Status EinsumTypedComputeProcessor(OpKernelContext* context, AllocatorPtr allocator, 
+Status EinsumTypedComputeProcessor(OpKernelContext* context, AllocatorPtr allocator,
                                    EinsumComputePreprocessor& einsum_compute_preprocessor);
 
 }  // namespace onnxruntime

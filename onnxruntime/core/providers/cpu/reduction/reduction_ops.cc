@@ -136,13 +136,9 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSum, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSum, 11);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceSum, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceSum, 11);
-REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceSum, 1, 10);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSum, 11);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSumSquare, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSumSquare, 11);
-REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceSumSquare, 1, 10);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSumSquare, 11);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMax, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMax, 11, 11);
@@ -157,6 +153,7 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 12);
 // return value: true means transposedInputData is not created/copied, input tensor data could
 // be directly used as row major matrix [block_size, blocks], where blocks is the
 // size of each reduce.
+// `input_shape_override` overrides the shape of `input` for compute purposes.
 template <typename T>
 bool PrepareForReduce(const Tensor* input_tensor_ptr,
                       FastAllocVector<T>& transposed_input_data,
@@ -165,16 +162,24 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
                       const std::vector<int64_t>& axes_,
                       bool keepdims_,
                       /*out*/ std::vector<int64_t>& reduced_dims,
-                      bool check_no_transpose = false) {
+                      bool check_no_transpose = false,
+                      const TensorShape* input_shape_override = nullptr) {
   ORT_ENFORCE(input_tensor_ptr != nullptr, "Input to be reduced is null");
-  const Tensor& input = *input_tensor_ptr;
 
-  size_t ndim = input.Shape().NumDimensions();
+  if (input_shape_override) {
+    ORT_ENFORCE(input_tensor_ptr->Shape().Size() == input_shape_override->Size(),
+                "The input shape override's size does not match the input tensor's shape size");
+  }
+
+  const Tensor& input = *input_tensor_ptr;
+  const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
+
+  size_t ndim = input_shape.NumDimensions();
 
   // Scalar tensor
   if (ndim == 0) {
     if (!check_no_transpose) {
-      auto size = input.Shape().Size();
+      auto size = input_shape.Size();
       assert(size == 1);
       transposed_input_data.resize(size, 0);
       T* to_data = &transposed_input_data[0];
@@ -222,11 +227,11 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
 
   std::vector<int64_t> new_dims(transposed_axes.size());
   for (size_t i = 0; i < transposed_axes.size(); ++i) {
-    new_dims[i] = input.Shape().GetDims().at(transposed_axes[i]);
+    new_dims[i] = input_shape.GetDims().at(transposed_axes[i]);
   }
 
   int num_axes = static_cast<int>(transposed_axes.size());
-  auto in_dims = input.Shape().GetDims();
+  auto in_dims = input_shape.GetDims();
 
   // Measure amount of contiguous data we can copy at once
   int64_t blocksize = 1;
@@ -241,7 +246,7 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
   }
 
   const T* from_data = input.template Data<T>();
-  size_t count = input.Shape().Size();
+  size_t count = input_shape.Size();
 
   //set to-be-reduced axes to one. squeeze is keepdims_ is false
   int64_t first_dim = 1;
@@ -264,12 +269,12 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
         ORT_ENFORCE(in_dim != 0,
                     "Can't reduce on dim with value of 0 if 'keepdims' is false. "
                     "Invalid output shape would be produced. input_shape:",
-                    input.Shape());
+                    input_shape);
       }
     }
   }
 
-  auto num_elements = input.Shape().Size();
+  auto num_elements = input_shape.Size();
 
   // edge case. one or more input dims with value of 0.
   if (num_elements == 0) {
@@ -284,7 +289,7 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
     return true;
   }
 
-  transposed_input_data.resize(input.Shape().Size(), 0);
+  transposed_input_data.resize(input_shape.Size(), 0);
   T* to_data = &transposed_input_data[0];
   if (num_axes < 2 || n_shared_idxs == num_axes) {
     memcpy(to_data, from_data, count * sizeof(T));
@@ -584,10 +589,10 @@ Status ReduceProd<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 static void ReduceSumCore(const T* input_data, T* output_data, bool no_transpose,
-                          int64_t blocks, int64_t block_size, FastAllocVector<T>& transposed_input_data, 
+                          int64_t blocks, int64_t block_size, FastAllocVector<T>& transposed_input_data,
                           concurrency::ThreadPool* tp) {
   if (no_transpose) {
-      auto lambda = [input_data, blocks, output_data](ptrdiff_t i) {
+    auto lambda = [input_data, blocks, output_data](ptrdiff_t i) {
       output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).sum();
     };
     concurrency::ThreadPool::TryBatchParallelFor(tp, block_size, lambda, 0);
@@ -599,17 +604,19 @@ static void ReduceSumCore(const T* input_data, T* output_data, bool no_transpose
 
 template <typename T>
 Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
-                          AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims) {
+                          AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
+                          const TensorShape* input_shape_override) {
   FastAllocVector<T> transposed_input_data(allocator);
   int64_t block_size;
   int64_t blocks;
   std::vector<int64_t> reduced_dims;
 
-  bool no_transpose = PrepareForReduce<T>(&input, transposed_input_data, block_size, blocks, reduce_axes, keep_dims, reduced_dims, true);
+  bool no_transpose = PrepareForReduce<T>(&input, transposed_input_data, block_size, blocks,
+                                          reduce_axes, keep_dims, reduced_dims, true, input_shape_override);
 
   Tensor output(input.DataType(), reduced_dims, allocator);
 
-  ReduceSumCore(input.template Data<T>(), output.template MutableData<T>(), 
+  ReduceSumCore(input.template Data<T>(), output.template MutableData<T>(),
                 no_transpose, blocks, block_size, transposed_input_data, tp);
 
   return output;
@@ -627,7 +634,7 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
 
   auto* output = ctx->Output(0, reduced_dims);
 
-  ReduceSumCore(input->template Data<T>(), output->template MutableData<T>(), 
+  ReduceSumCore(input->template Data<T>(), output->template MutableData<T>(),
                 no_transpose, blocks, block_size, transposed_input_data, ctx->GetOperatorThreadPool());
 
   return Status::OK();
@@ -789,7 +796,10 @@ Status ArgMin<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-// Explicit template instantiation
+// Explicit template instantiation -
+// Even though there are kernels registered for ReduceSum op for these types,
+// these are needed because we seem to get linker errors without these when the linker
+// tries to resolve symbols in the einsum_auxiliary_ops obj file
 template class ReduceSum<float>;
 template class ReduceSum<int32_t>;
 template class ReduceSum<double>;

@@ -19,28 +19,21 @@ namespace onnxruntime {
 namespace EinsumOp {
 
 // Thin wrapper over the Transpose op
-Tensor Transpose(const Tensor& input, const std::vector<size_t>& permutation, AllocatorPtr allocator);
-
-// Creates a "reshaped view" for the same tensor (i.e.) mutates the shape for the same tensor
-// We will use it to introduce some "unsqueezed" dims (i.e.) extra dims with dim value as 1
-inline void CreateReshapedView(Tensor& input, const std::vector<int64_t>& new_dims) {
-  input.Reshape(new_dims);
-}
+std::unique_ptr<Tensor> Transpose(const Tensor& input, const std::vector<int64_t>& input_shape_override,
+                                  const std::vector<size_t>& permutation, AllocatorPtr allocator);
 
 // Thin wrapper over the MatMul op
 // Not using the MatMulHelper to compute output dims as it adds a lot of checking overhead involving transposes of the inputs
 // In our case, we have a more simplistic version which doesn't need to have those checks
 template <typename T>
-Tensor MatMul(const Tensor& input_1, const Tensor& input_2, AllocatorPtr allocator, concurrency::ThreadPool* tp);
+std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const std::vector<int64_t>& input_1_shape_override,
+                               const Tensor& input_2, const std::vector<int64_t>& input_2_shape_override,
+                               AllocatorPtr allocator, concurrency::ThreadPool* tp);
 
 // Thin wrapper over the ReduceSum op
 template <typename T>
-Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes, 
-                 AllocatorPtr allocator, concurrency::ThreadPool* tp);
-
-// Thin wrapper over the ReduceSum op (single axis overload)
-template <typename T>
-Tensor ReduceSum(const Tensor& input, int64_t axis, AllocatorPtr allocator, concurrency::ThreadPool* tp);
+std::unique_ptr<Tensor> ReduceSum(const Tensor& input, const std::vector<int64_t>& input_shape_override,
+                                  const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp);
 
 // Diagonal - A specialized implementation somewhat similar to Torch's Diagonal op
 // but is specific enough to what is just required for the Einsum op.
@@ -50,7 +43,7 @@ Tensor ReduceSum(const Tensor& input, int64_t axis, AllocatorPtr allocator, conc
 
 // Eg. input_shape = [2, 3, 5, 3] and dim_1 = 1 and dim_2 = 3
 // The output_shape will be [2, 3, 5] and dim_1 will contain the diagonal elements
-Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator);
+std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator);
 
 }  // namespace EinsumOp
 

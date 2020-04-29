@@ -7,43 +7,42 @@ namespace onnxruntime {
 
 namespace EinsumOp {
 
-Tensor Transpose(const Tensor& input, const std::vector<size_t>& permutation, AllocatorPtr allocator) {
-  const auto& input_dims = input.Shape().GetDims();
-  auto input_rank = input_dims.size();
-
+std::unique_ptr<Tensor> Transpose(const Tensor& input, const std::vector<int64_t>& input_shape_override,
+                                  const std::vector<size_t>& permutation, AllocatorPtr allocator) {
+  auto input_rank = input_shape_override.size();
   ORT_ENFORCE(input_rank == permutation.size(), "Length of permutation must match the rank of the input to be permutated");
 
   std::vector<int64_t> output_dims;
   output_dims.reserve(input_rank);
 
   for (const auto& dim : permutation) {
-    output_dims.push_back(input_dims.at(dim));
+    output_dims.push_back(input_shape_override.at(dim));
   }
 
   // Pass in allocator as that will be used as an allocator deleter by the framework
   // and it will de-allocate the memory for this intermediate tensor when it goes out of scope
-  Tensor output(input.DataType(), output_dims, allocator);
+  std::unique_ptr<Tensor> output = onnxruntime::make_unique<Tensor>(input.DataType(), output_dims, allocator);
 
-  TransposeBase::DoTranspose(permutation, input, output);
+  TensorShape overriden_shape(input_shape_override);
+  TransposeBase::DoTranspose(permutation, input, *output, &overriden_shape);
 
-  return output;
+  return std::move(output);
 }
 
 template <typename T>
-Tensor MatMul(const Tensor& input_1, const Tensor& input_2, AllocatorPtr allocator, concurrency::ThreadPool* tp) {
-  const auto& input1_dims = input_1.Shape().GetDims();
-  const auto& input2_dims = input_2.Shape().GetDims();
-
+std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
+                               const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+                               AllocatorPtr allocator, concurrency::ThreadPool* tp) {
   // Sanity checks before the actual MatMul
   ORT_ENFORCE(input_1.DataType() == input_2.DataType(), "Data types of the inputs must match for MatMul");
-  ORT_ENFORCE(input1_dims.size() == 3 && input2_dims.size() == 3, "Only 1 batch dimension is allowed for MatMul");
-  ORT_ENFORCE(input1_dims[0] == input2_dims[0], "Batch dimension should match for MatMul;");
-  ORT_ENFORCE(input1_dims[2] == input2_dims[1], "Incompatible matrix dimensions for matMul");
+  ORT_ENFORCE(input_shape_1_override.size() == 3 && input_shape_2_override.size() == 3, "Only 1 batch dimension is allowed for MatMul");
+  ORT_ENFORCE(input_shape_1_override[0] == input_shape_2_override[0], "Batch dimension should match for MatMul;");
+  ORT_ENFORCE(input_shape_1_override[2] == input_shape_2_override[1], "Incompatible matrix dimensions for matMul");
 
-  size_t batches = static_cast<size_t>(input1_dims[0]);
-  size_t M = static_cast<size_t>(input1_dims[1]);
-  size_t K = static_cast<size_t>(input1_dims[2]);
-  size_t N = static_cast<size_t>(input2_dims[2]);
+  size_t batches = static_cast<size_t>(input_shape_1_override[0]);
+  size_t M = static_cast<size_t>(input_shape_1_override[1]);
+  size_t K = static_cast<size_t>(input_shape_1_override[2]);
+  size_t N = static_cast<size_t>(input_shape_2_override[2]);
 
   size_t left_offset = M * K;
   size_t right_offset = K * N;
@@ -57,13 +56,15 @@ Tensor MatMul(const Tensor& input_1, const Tensor& input_2, AllocatorPtr allocat
 
   // Pass in allocator as that will be used as an allocator deleter by the framework
   // and it will de-allocate the memory for this intermediate tensor when it goes out of scope
-  Tensor output(input_1.DataType(), output_dims, allocator);
+  std::unique_ptr<Tensor> output = onnxruntime::make_unique<Tensor>(input_1.DataType(), output_dims, allocator);
 
   const T* input_1_data = input_1.template Data<T>();
   const T* input_2_data = input_2.template Data<T>();
-  T* output_data = output.template MutableData<T>();
+  T* output_data = output->template MutableData<T>();
 
   // Process each batch
+  // TODO: Currently we parallelize a single MatMul operation, add logic to determine if
+  // we can parallelizing on batches would be more optimal
   for (size_t i = 0; i < batches; ++i) {
     math::MatMul<T>(
         static_cast<int>(M),
@@ -74,19 +75,15 @@ Tensor MatMul(const Tensor& input_1, const Tensor& input_2, AllocatorPtr allocat
         output_data + i * output_offset, tp);
   }
 
-  return output;
+  return std::move(output);
 }
 
 template <typename T>
-Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes, 
-                 AllocatorPtr allocator, concurrency::ThreadPool* tp) {
-  return onnxruntime::ReduceSum<T>::Impl(input, reduce_axes, allocator, tp, true);
-}
-
-template <typename T>
-Tensor ReduceSum(const Tensor& input, int64_t axis, AllocatorPtr allocator, concurrency::ThreadPool* tp) {
-  std::vector<int64_t> reduce_axes(1, axis);
-  return ReduceSum<T>(input, reduce_axes, allocator, tp);
+std::unique_ptr<Tensor> ReduceSum(const Tensor& input, const std::vector<int64_t>& input_shape_override,
+                                  const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp) {
+  TensorShape overriden_shape(input_shape_override);
+  auto output = onnxruntime::ReduceSum<T>::Impl(input, reduce_axes, allocator, tp, true, &overriden_shape);
+  return std::move(onnxruntime::make_unique<Tensor>(std::move(output)));
 }
 
 // A specific helper just for the Diagonal op
@@ -104,19 +101,33 @@ static inline bool IsTransposeRequiredForDiagonal(int64_t dim_1, int64_t dim_2, 
   return true;
 }
 
-// Parse diagnoal elements along the 2 innermost dimensions
-// eg: input_shape = [1, 2, 3, 3]
+template <typename T>
+static void DiagonalDataAssignment(const T* input_data, T* output_data, int64_t batch_size, int64_t base_stride, int64_t inner_stride) {
+  int64_t output_iter = 0;
+  // TODO: Parallelize this operation
+  for (int64_t i = 0; i < batch_size; ++i) {
+    auto base_offset = i * base_stride;
+    for (int64_t j = 0; j < inner_stride; ++j) {
+      output_data[output_iter] = input_data[base_offset + j * inner_stride + j];
+      output_iter++;
+    }
+  }
+}
 
-// This implementation provides flexibility as to which of the 2 innermost dim values is preserved 
-// via `preserve_innermost_dim_val` param
+// Parse diagonal elements along the 2 innermost dimensions
+// E.g.: input_shape = [1, 2, 3, 3]
+
+// This implementation provides flexibility as to which of the 2 innermost dim values is preserved
+// via the `preserve_innermost_dim_val` parameter
 
 // preserve_innermost_dim_val == true,
 //       output_shape = [1, 2, 1, 3] => the diagonal contains 3 elements and the dim value of the innermost dim is preserved
 
 // preserve_innermost_dim_val == false,
 //       output_shape = [1, 2, 3, 1] => the diagonal contains 3 elements and the dim value of the non-innermost dim is preserved
-static Tensor DiagonalInnermostDims(const Tensor& input, bool preserve_innermost_dim_val, AllocatorPtr allocator) {
-  const char* input_data = reinterpret_cast<const char*>(input.DataRaw());
+
+static std::unique_ptr<Tensor> DiagonalInnermostDims(const Tensor& input,
+                                                     bool preserve_innermost_dim_val, AllocatorPtr allocator) {
   const auto& input_dims = input.Shape().GetDims();
   auto rank = input_dims.size();
   const size_t element_size_in_bytes = input.DataType()->Size();
@@ -132,10 +143,10 @@ static Tensor DiagonalInnermostDims(const Tensor& input, bool preserve_innermost
   std::vector<int64_t> output_dims;
   output_dims.reserve(rank);
 
-  int64_t num_iterations = 1;  // Flatten the outermost dims - this will be the number of iterations
+  int64_t batch_size = 1;  // Flatten the outermost dims - this will be the number of iterations
   for (size_t i = 0; i < rank - 2; ++i) {
     auto input_dim_value = input_dims[i];
-    num_iterations *= input_dim_value;
+    batch_size *= input_dim_value;
     output_dims.push_back(input_dim_value);
   }
 
@@ -152,34 +163,35 @@ static Tensor DiagonalInnermostDims(const Tensor& input, bool preserve_innermost
 
   // Pass in allocator as that will be used as an allocator deleter by the framework
   // and it will de-allocate the memory for this intermediate tensor when it goes out of scope
-  Tensor output(input.DataType(), output_dims, allocator);
-  char* output_data = reinterpret_cast<char*>(output.MutableDataRaw());
+  std::unique_ptr<Tensor> output = onnxruntime::make_unique<Tensor>(input.DataType(), output_dims, allocator);
 
-  int64_t output_iter = 0;
-  // TODO: Parallelize this operation
-  for (int64_t i = 0; i < num_iterations; ++i) {
-    auto base_offset = i * base_stride;
-    for (int64_t j = 0; j < inner_stride; ++j) {
-      memcpy(output_data + output_iter * element_size_in_bytes,
-             input_data + (base_offset + j * inner_stride + j) * element_size_in_bytes,
-             element_size_in_bytes);
-      output_iter++;
-    }
+  switch (element_size_in_bytes) {
+    case 4:
+      DiagonalDataAssignment<float>(reinterpret_cast<const float*>(input.DataRaw()), reinterpret_cast<float*>(output->MutableDataRaw()),
+                                    batch_size, base_stride, inner_stride);
+      break;
+    case 8:
+      DiagonalDataAssignment<double>(reinterpret_cast<const double*>(input.DataRaw()), reinterpret_cast<double*>(output->MutableDataRaw()),
+                                     batch_size, base_stride, inner_stride);
+      break;
+
+    default:
+      ORT_THROW("Einsum op: Unsupported data type for Diagonal ", input.DataType());
   }
 
-  return output;
+  return std::move(output);
 }
 
-Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator) {
-  const auto& dims = input.Shape().GetDims();
-  auto rank = static_cast<int64_t>(dims.size());
+std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator) {
+  const auto& input_shape = input.Shape();
+  const auto& input_dims = input_shape.GetDims();
+  auto rank = static_cast<int64_t>(input_dims.size());
 
-  ORT_ENFORCE(rank >= 2 && dim_1 >= 0 && dim_2 >= 0 && dim_1 < rank &&
-                  dim_2 < rank && dim_1 != dim_2 && dims[dim_1] == dims[dim_2],
-              "Cannot parse the diagonal elements along dims ", dim_1, " and ", dim_2, " for input shape ", input.Shape());
+  ORT_ENFORCE(rank >= 2 && dim_1 != dim_2 && input_dims[dim_1] == input_dims[dim_2],
+              "Cannot parse the diagonal elements along dims ", dim_1, " and ", dim_2, " for input shape ", input_shape);
 
-  int64_t first_dim = -1;  // first_dim holds the lesser of dim_1 and dim_2
-  int64_t second_dim = -1; // second_dim holds the greater of dim_1 and dim_2
+  int64_t first_dim = -1;   // first_dim holds the lesser of dim_1 and dim_2
+  int64_t second_dim = -1;  // second_dim holds the greater of dim_1 and dim_2
   if (dim_1 < dim_2) {
     first_dim = dim_1;
     second_dim = dim_2;
@@ -188,7 +200,7 @@ Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr 
     second_dim = dim_1;
   }
 
-  Tensor output;
+  std::unique_ptr<Tensor> output;
   bool preserve_innermost_dim_val = false;
 
   bool is_transpose_required = IsTransposeRequiredForDiagonal(dim_1, dim_2, rank);
@@ -198,7 +210,7 @@ Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr 
 
     // If one of the diagonal dimensions is one of the 2 innermost dims, then leave it as such
     // so as to avoid transpose overhead
-    if (first_dim == rank - 2) { // If rank - 2 is occupied by first_dim, keep it there
+    if (first_dim == rank - 2) {  // If rank - 2 is occupied by first_dim, keep it there
       permutation[rank - 2] = first_dim;
       first_dim_axis = rank - 2;
     } else {
@@ -208,7 +220,7 @@ Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr 
       } else {  // If rank - 2 is occupied by second_dim, then put first_dim in rank - 1
         permutation[rank - 1] = first_dim;
         first_dim_axis = rank - 1;
-        preserve_innermost_dim_val = true; // We always want to preserve the dim value of the first_dim
+        preserve_innermost_dim_val = true;  // We always want to preserve the dim value of the first_dim
       }
     }
 
@@ -225,13 +237,12 @@ Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr 
         permutation[iter++] = i;
       }
     }
-    ORT_ENFORCE(iter == rank - 2);
 
-    // Permuatate the input so that the dims from which we need the diagonal forms the innermost dims
-    auto transposed = Transpose(input, permutation, allocator);
+    // Permutate the input so that the dims from which we need the diagonal forms the innermost dims
+    auto transposed = Transpose(input, input_dims, permutation, allocator);
 
     // Parse the diagonal from the innermost dims
-    output = DiagonalInnermostDims(transposed, preserve_innermost_dim_val, allocator);
+    output = DiagonalInnermostDims(*transposed, preserve_innermost_dim_val, allocator);
 
     // Swap back the dimensions to the original axes ordering using a "reverse permutation"
 
@@ -243,54 +254,52 @@ Tensor Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr 
     }
 
     // Permutate using the reverse permutation to get back the original axes ordering
-    output = Transpose(output, reverse_permutation, allocator);
+    output = Transpose(*output, output->Shape().GetDims(), reverse_permutation, allocator);
   } else {
     // No transposing required
     output = DiagonalInnermostDims(input, preserve_innermost_dim_val, allocator);
   }
 
-  // Make copy of the transposed output
-  auto output_dims = output.Shape().GetDims();
+  // Make copy of the output dims
+  auto output_dims = output->Shape().GetDims();
 
   // Unsqueeze the reduced dim
   auto iter = output_dims.begin() + second_dim;
   output_dims.erase(iter);
 
-  // Reshape to output_dims
-  CreateReshapedView(output, output_dims);
-
-  return output;
+  output->Reshape(output_dims);
+  return std::move(output);
 }
 
 // Explicit template instantiation
 
 // float
-template Tensor MatMul<float>(const Tensor& input_1, const Tensor& input_2, 
-    AllocatorPtr allocator, concurrency::ThreadPool* tp);
-template Tensor ReduceSum<float>(const Tensor& input, const std::vector<int64_t>& reduce_axes, 
-    AllocatorPtr allocator, concurrency::ThreadPool* tp);
-template Tensor ReduceSum<float>(const Tensor& input, int64_t axis, AllocatorPtr allocator, concurrency::ThreadPool* tp);
+template std::unique_ptr<Tensor> MatMul<float>(const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
+                                               const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+                                               AllocatorPtr allocator, concurrency::ThreadPool* tp);
+template std::unique_ptr<Tensor> ReduceSum<float>(const Tensor& input, const std::vector<int64_t>& input_shape_override,
+                                                  const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp);
 
 // int32_t
-template Tensor MatMul<int32_t>(const Tensor& input_1, const Tensor& input_2,
-                              AllocatorPtr allocator, concurrency::ThreadPool* tp);
-template Tensor ReduceSum<int32_t>(const Tensor& input, const std::vector<int64_t>& reduce_axes,
-                                 AllocatorPtr allocator, concurrency::ThreadPool* tp);
-template Tensor ReduceSum<int32_t>(const Tensor& input, int64_t axis, AllocatorPtr allocator, concurrency::ThreadPool* tp);
+template std::unique_ptr<Tensor> MatMul<int32_t>(const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
+                                                 const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+                                                 AllocatorPtr allocator, concurrency::ThreadPool* tp);
+template std::unique_ptr<Tensor> ReduceSum<int32_t>(const Tensor& input, const std::vector<int64_t>& input_shape_override,
+                                                    const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp);
 
 // double
-template Tensor MatMul<double>(const Tensor& input_1, const Tensor& input_2,
-                              AllocatorPtr allocator, concurrency::ThreadPool* tp);
-template Tensor ReduceSum<double>(const Tensor& input, const std::vector<int64_t>& reduce_axes,
-                                 AllocatorPtr allocator, concurrency::ThreadPool* tp);
-template Tensor ReduceSum<double>(const Tensor& input, int64_t axis, AllocatorPtr allocator, concurrency::ThreadPool* tp);
+template std::unique_ptr<Tensor> MatMul<double>(const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
+                                                const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+                                                AllocatorPtr allocator, concurrency::ThreadPool* tp);
+template std::unique_ptr<Tensor> ReduceSum<double>(const Tensor& input, const std::vector<int64_t>& input_shape_override,
+                                                   const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp);
 
 // int64_t
-template Tensor MatMul<int64_t>(const Tensor& input_1, const Tensor& input_2,
-                              AllocatorPtr allocator, concurrency::ThreadPool* tp);
-template Tensor ReduceSum<int64_t>(const Tensor& input, const std::vector<int64_t>& reduce_axes,
-                                 AllocatorPtr allocator, concurrency::ThreadPool* tp);
-template Tensor ReduceSum<int64_t>(const Tensor& input, int64_t axis, AllocatorPtr allocator, concurrency::ThreadPool* tp);
+template std::unique_ptr<Tensor> MatMul<int64_t>(const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
+                                                 const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+                                                 AllocatorPtr allocator, concurrency::ThreadPool* tp);
+template std::unique_ptr<Tensor> ReduceSum<int64_t>(const Tensor& input, const std::vector<int64_t>& input_shape_override,
+                                                    const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp);
 
 }  // namespace EinsumOp
 }  // namespace onnxruntime
