@@ -326,6 +326,7 @@ will be calculated.)DOC";
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(EmbedLayerNormalization_ver1_doc)
+      .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-13f)
       .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
       .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1")
       .Input(2, "word_embedding", "2D with shape (,hidden_size)", "T")

@@ -19,6 +19,7 @@ bool LaunchEmbedLayerNormKernel(void* output,                     // output tens
                                 const int hidden_size,            // hidden size (that is head_size * num_heads)
                                 int batch_size,                   // batch size
                                 int sequence_length,              // sequence length
+                                double epsilon,                   // epsilon for layer normalization
                                 const size_t element_size);       // size of element in output tensor. 2 for half, 4 for float.
 
 }  // namespace cuda

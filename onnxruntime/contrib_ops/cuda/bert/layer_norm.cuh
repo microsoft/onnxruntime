@@ -80,7 +80,7 @@ struct KeyValuePairSum {
 template <typename T, int TPB>
 __device__ inline void LayerNorm(
     const cub::KeyValuePair<T, T>& thread_data, const int ld, const int offset, const T* beta, 
-    const T* epsilon, const T* gamma, T* output) {
+    const T* gamma, const T* epsilon, T* output) {
   // Assuming thread_data is already divided by ld
 
   using BlockReduce = cub::BlockReduce<cub::KeyValuePair<T, T>, TPB>;

@@ -25,7 +25,9 @@ namespace contrib {
 REGISTER_KERNEL_TYPED(float)
 
 template <typename T>
-EmbedLayerNorm<T>::EmbedLayerNorm(const OpKernelInfo& info) : OpKernel(info) {}
+EmbedLayerNorm<T>::EmbedLayerNorm(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
+  ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
+}
 
 template <typename T>
 Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
@@ -112,7 +114,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
         y[i] = a;
         sum += a * a;
       }
-      T e = sqrt(sum / hidden_size + static_cast<T>(1.0e-13));
+      T e = sqrt(sum / hidden_size + epsilon_);
       for (int i = 0; i < hidden_size; i++) {
         y[i] = y[i] / e * gamma_data[i] + beta_data[i];
       }

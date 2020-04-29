@@ -30,6 +30,9 @@ using namespace ONNX_NAMESPACE;
 
 template <typename T>
 EmbedLayerNorm<T>::EmbedLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
+  float tmp_epsilon;
+  ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
+  epsilon_ = tmp_epsilon;
 }
 
 template <typename T>
@@ -79,6 +82,7 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
           static_cast<int>(hidden_size),
           batch_size,
           sequence_length,
+          epsilon_,
           element_size)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());

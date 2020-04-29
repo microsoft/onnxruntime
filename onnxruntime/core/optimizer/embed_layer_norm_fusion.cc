@@ -699,6 +699,14 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
                                                 {layer_norm_node.MutableOutputDefs()[0], reduce_sum_node.MutableOutputDefs()[0]},
                                                 {}, kMSDomain);
 
+    // Get attribute "epsilon" from "LayerNormalization" node if available. Else, default value
+    // will be used.
+    NodeAttributes ln_attrs = layer_norm_node.GetAttributes();
+    NodeAttributes::const_iterator epsilon = ln_attrs.find("epsilon");
+    if (epsilon != ln_attrs.end()) {
+      embed_layer_norm_node.AddAttribute("epsilon", epsilon->second);
+    }
+
     // Assign provider to this new node. Provider should be same as the provider for old node.
     embed_layer_norm_node.SetExecutionProviderType(layer_norm_node.GetExecutionProviderType());
 
