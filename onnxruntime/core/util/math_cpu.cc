@@ -26,6 +26,7 @@
 #pragma warning(push)
 #pragma warning(disable : 4267)
 #pragma warning(disable : 4127)
+#pragma warning(disable : 4805)
 #pragma warning(disable : 6255)
 #endif
 #include "Eigen/src/Core/arch/Default/Half.h"
@@ -117,33 +118,46 @@ void GemmEx<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPO
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
 }
 
-template <>
-void Gemv<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const float* A, const float* x,
-                              float beta, float* y, CPUMathUtil* /*provider*/) {
-  EigenVectorMap<float> y_vec(y, TransA == CblasNoTrans ? M : N);
+template <typename T, class Provider>
+void Gemv(CBLAS_TRANSPOSE TransA,
+    int M,
+    int N,
+    float alpha,
+    const T* A,
+    const T* x,
+    float beta,
+    T* y,
+    Provider* /*provider*/) {
+  EigenVectorMap<T> y_vec(y, TransA == CblasNoTrans ? M : N);
   if (beta == 0) {
     // In Caffe2 we often do a lazy initialization, which may contain NaNs in
-    // the float values. As a result, if beta is 0, we explicitly do a setzero.
+    // the float-pointing values. As a result, if beta is 0, we explicitly do a setzero.
     y_vec.setZero();
   } else {
     y_vec *= beta;
   }
   switch (TransA) {
     case CblasNoTrans: {
-      y_vec.noalias() += alpha * (ConstEigenMatrixMap<float>(A, N, M).transpose() *
-                                  ConstEigenVectorMap<float>(x, N));
+      y_vec.noalias() += alpha * (ConstEigenMatrixMap<T>(A, N, M).transpose() *
+                                  ConstEigenVectorMap<T>(x, N));
       return;
     }
     case CblasTrans: {
-      y_vec.noalias() += alpha * (ConstEigenMatrixMap<float>(A, N, M) *
-                                  ConstEigenVectorMap<float>(x, M));
+      y_vec.noalias() += alpha * (ConstEigenMatrixMap<T>(A, N, M) *
+                                  ConstEigenVectorMap<T>(x, M));
       return;
     }
     default:
-      ORT_THROW("Gemv float found an unexpected CBLAS_TRANSPOSE input of", TransA);
+      ORT_THROW("Gemv found an unexpected CBLAS_TRANSPOSE input of", TransA);
   }
 }
 
+template 
+void Gemv<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const float* A, const float* x,
+                              float beta, float* y, CPUMathUtil* );
+template 
+void Gemv<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const double* A, const double* x,
+                              float beta, double* y, CPUMathUtil* );
 #define SPECIALIZED_AXPY(T)                                                                       \
   template <>                                                                                     \
   void Axpy<T, CPUMathUtil>(int N, const T alpha, const T* x, T* Y, CPUMathUtil* /*provider*/) {  \
@@ -230,6 +244,7 @@ CAFFE2_SPECIALIZED_AXPY(float, s)
     EigenVectorMap<T>(y, N) = ConstEigenVectorMap<T>(x, N).array().expr(); \
   }
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Exp, exp)
+DELEGATE_SIMPLE_UNARY_FUNCTION(double, Exp, exp)
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Log, log)
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Sqr, square)
 #undef DELEGATE_SIMPLE_UNARY_FUNCTION
@@ -273,6 +288,7 @@ DEFINE_SIMPLE_BINARY_FUNCTION(Div, / )
     EigenVectorMap<T>(y, N) = ConstEigenMatrixMap<T>(x, D, N).colwise().maxCoeff(); \
   }
 SPECIALIZED_ROWWISEMAX(float)
+SPECIALIZED_ROWWISEMAX(double)
 #undef SPECIALIZED_ROWWISEMAX
 
 #define SPECIALIZED_SET(T)                                                       \

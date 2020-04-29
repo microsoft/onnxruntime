@@ -14,9 +14,9 @@
 
 namespace onnxruntime {
 template <typename T>
-class Softmax final : public OpKernel {
+class LogSoftmax final : public OpKernel {
  public:
-  Softmax(const OpKernelInfo& info) : OpKernel{info}, axis_{1} {
+  LogSoftmax(const OpKernelInfo& info) : OpKernel{info}, axis_{1} {
     int64_t axis;
     Status status = info.GetAttr<int64_t>("axis", &axis);
 
@@ -33,8 +33,6 @@ class Softmax final : public OpKernel {
     const Tensor& X = *tensor_pointer;
     const TensorShape& input_shape{X.Shape()};
 
-    VLOGS(ctx->Logger(), 2) << "Input tensor shape: " << input_shape;
-
     Tensor* Y = ctx->Output(0, input_shape);
 
     const int64_t axis = HandleNegativeAxis(axis_, input_shape.NumDimensions());
@@ -48,9 +46,11 @@ class Softmax final : public OpKernel {
     std::vector<T> rowmax_(N);
     std::vector<T> sum_multiplier_(D, 1.f);  // initialize all multiplier values to 1.0
 
-    const bool logarithmic = false;
-    return SoftmaxCPU(N, D, X.template Data<T>(), Ydata,
+    const bool logarithmic = true;
+    auto status = SoftmaxCPU(N, D, X.template Data<T>(), Ydata,
                              scale_.data(), sum_multiplier_.data(), logarithmic, rowmax_.data(), tp);
+
+    return status;
   }
 
  private:
