@@ -26,7 +26,7 @@ std::unique_ptr<Tensor> Transpose(const Tensor& input, const std::vector<int64_t
   TensorShape overriden_shape(input_shape_override);
   TransposeBase::DoTranspose(permutation, input, *output, &overriden_shape);
 
-  return std::move(output);
+  return output;
 }
 
 template <typename T>
@@ -75,7 +75,7 @@ std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const std::vector<int64_t>
         output_data + i * output_offset, tp);
   }
 
-  return std::move(output);
+  return output;
 }
 
 template <typename T>
@@ -83,7 +83,7 @@ std::unique_ptr<Tensor> ReduceSum(const Tensor& input, const std::vector<int64_t
                                   const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp) {
   TensorShape overriden_shape(input_shape_override);
   auto output = onnxruntime::ReduceSum<T>::Impl(input, reduce_axes, allocator, tp, true, &overriden_shape);
-  return std::move(onnxruntime::make_unique<Tensor>(std::move(output)));
+  return onnxruntime::make_unique<Tensor>(std::move(output));
 }
 
 // A specific helper just for the Diagonal op
@@ -179,7 +179,7 @@ static std::unique_ptr<Tensor> DiagonalInnermostDims(const Tensor& input,
       ORT_THROW("Einsum op: Unsupported data type for Diagonal ", input.DataType());
   }
 
-  return std::move(output);
+  return output;
 }
 
 std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator) {
@@ -268,7 +268,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   output_dims.erase(iter);
 
   output->Reshape(output_dims);
-  return std::move(output);
+  return output;
 }
 
 // Explicit template instantiation
