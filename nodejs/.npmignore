@@ -1,6 +1,7 @@
 /.vscode/
 /bin/
 /build/
+/examples/
 /prebuilds/
 /script/
 /src/
