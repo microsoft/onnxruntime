@@ -1253,7 +1253,7 @@ if (onnxruntime_ENABLE_TRAINING)
       message(WARNING "RCCL is not supported on Windows GPU Build." )
     elseif (UNIX)
       message( "RCCL is enabled in Linux GPU Build." )
-      add_definitions(-DUSE_RCCL=1)
+      add_definitions(-DUSE_NCCL=1)
     endif()
   endif()
 
