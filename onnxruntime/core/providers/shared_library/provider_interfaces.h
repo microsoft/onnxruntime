@@ -180,17 +180,17 @@ struct Prov_Tensor {
   template <typename T>
   T* MutableData();
 
-  template <>
-  float* MutableData() { return MutableData_float(); }
-
   template <typename T>
   const T* Data() const;
 
-  template <>
-  const float* Data() const { return Data_float(); }
-
   virtual const TensorShape& Shape() const = 0;
 };
+
+template <>
+inline float* Prov_Tensor::MutableData<float>() { return MutableData_float(); }
+
+template <>
+inline const float* Prov_Tensor::Data<float>() const { return Data_float(); }
 
 struct Prov_OpKernelInfo {
   virtual Status GetAttr(const std::string& name, int64_t* value) const = 0;
@@ -198,17 +198,17 @@ struct Prov_OpKernelInfo {
 
   template <typename T>
   Status GetAttr(const std::string& name, T* value) const;
-
-  template <>
-  Status GetAttr<int64_t>(const std::string& name, int64_t* value) const {
-    return GetAttr(name, value);
-  }
-
-  template <>
-  Status GetAttr<float>(const std::string& name, float* value) const {
-    return GetAttr(name, value);
-  }
 };
+
+template <>
+inline Status Prov_OpKernelInfo::GetAttr<int64_t>(const std::string& name, int64_t* value) const {
+  return GetAttr(name, value);
+}
+
+template <>
+inline Status Prov_OpKernelInfo::GetAttr<float>(const std::string& name, float* value) const {
+  return GetAttr(name, value);
+}
 
 struct Prov_OpKernelContext {
   virtual const Prov_Tensor* Input_Tensor(int index) const = 0;
@@ -216,13 +216,13 @@ struct Prov_OpKernelContext {
   template <typename T>
   const T* Input(int index) const;
 
-  template <>
-  const Prov_Tensor* Input(int index) const {
-    return Input_Tensor(index);
-  }
-
   virtual Prov_Tensor* Output(int index, const TensorShape& shape) = 0;
 };
+
+template <>
+inline const Prov_Tensor* Prov_OpKernelContext::Input<Prov_Tensor>(int index) const {
+  return Input_Tensor(index);
+}
 
 struct Prov_OpKernel {
   Prov_OpKernel(const Prov_OpKernelInfo& /*info*/) {}
