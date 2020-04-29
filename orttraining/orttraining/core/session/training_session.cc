@@ -289,11 +289,16 @@ Status TrainingSession::ConfigureForTraining(
   }
 
   // After pipeline partition, we need to return the inputs allowed in this partition.
-  const auto& allowed_inputs = model_->MainGraph().GetInputsIncludingInitializers();
   if (config.use_pipeline) {
+    const auto& allowed_inputs = model_->MainGraph().GetInputsIncludingInitializers();
+    const auto& allowed_outputs = model_->MainGraph().GetInputsIncludingInitializers();
     for (size_t i = 0; i < allowed_inputs.size(); ++i) {
       const auto name = allowed_inputs[i]->Name();
       config_result.pipeline_config_result.value().feed_names.push_back(name);
+    }
+    for (size_t i = 0; i < allowed_outputs.size(); ++i) {
+      const auto name = allowed_outputs[i]->Name();
+      config_result.pipeline_config_result.value().fetch_names.push_back(name);
     }
   }
 

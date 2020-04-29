@@ -183,19 +183,32 @@ Status TrainingRunner::Initialize() {
   VectorString fetch_names;
   if (params_.use_pipeline) {
     fetch_names = config_result.pipeline_config_result.value().fetch_names;
+    // Exposes forward waited event tensor ID name to TrainingRunner.
+    // It's an input of a graph.
     pipeline_context_.forward_waited_event_name = config_result.pipeline_config_result.value().forward_waited_event_name;
+    // Exposes forward recorded event tensor ID name to TrainingRunner.
+    // It's an input of a graph.
     pipeline_context_.forward_recorded_event_name = config_result.pipeline_config_result.value().forward_recorded_event_name;
+    // Exposes backward waited event tensor ID name to TrainingRunner.
+    // It's an input of a graph.
     pipeline_context_.backward_waited_event_name = config_result.pipeline_config_result.value().backward_waited_event_name;
+    // Exposes backward recorded event tensor ID name to TrainingRunner.
+    // It's an input of a graph.
     pipeline_context_.backward_recorded_event_name = config_result.pipeline_config_result.value().backward_recorded_event_name;
-    // Names of allowed inputs.
+    // Names of allowed inputs after pipeline partition.
     pipeline_context_.feed_names = config_result.pipeline_config_result.value().feed_names;
+    // Names of allowed outputs after pipeline partition.
+    pipeline_context_.fetch_names = config_result.pipeline_config_result.value().fetch_names;
   } else {
     fetch_names = params_.fetch_names;
   }
-  // Expose all fetches as graph outputs
+
+  // Expose all optimizer outputs as graph outputs.
   for (const auto& it : opt_graph_outputs_) {
     fetch_names.push_back(it.second);
   }
+
+  // Expose all optimizer outputs and pipeline outputs and as graph outputs.
   ORT_RETURN_IF_ERROR(session_.OverrideGraphOutputs(fetch_names));
 
   for (const auto& factory : params_.providers) {
@@ -254,8 +267,10 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
                                                 const size_t batch_index,
                                                 std::vector<std::string>& feed_names,
                                                 std::vector<MLValue>& feeds) {
+  // Initialize outputs of this function.
   feed_names = std::vector<std::string>();
   feeds = std::vector<MLValue>();
+
   auto allowed_feed_begin = pipeline_context_.feed_names.begin();
   auto allowed_feed_end = pipeline_context_.feed_names.end();
 
@@ -352,29 +367,60 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
   return Status::OK();
 }
 
-Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader) {
-  const bool enable_checkpoint_saving =
-      params_.mpi_context.world_rank == 0 &&
-      checkpoint_registry_ && params_.checkpoint_period > 0;
+Status TrainingRunner::PrepareFetchNamesAndFetches(const bool do_weight_update,
+                                                   std::vector<std::string>& fetch_names,
+                                                   std::vector<MLValue>& fetches) {
+  // Initialize outputs of this function.
+  fetch_names = std::vector<std::string>();
+  fetches = std::vector<MLValue>();
 
-  VectorString fetch_names = params_.fetch_names;
-  if (params_.use_mixed_precision) {
-    auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAllIsFinite);
-    ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient norm's IsFinite output is missing in the optimizer output");
-    fetch_names.push_back(it->second);
-    if (params_.use_adasum) {
-      it = opt_graph_outputs_.find(OptimizerOutputKey::DeltaAllIsFinite);
-      ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Adasum delta's IsFinite output is missing in the optimizer output");
+  const auto& allowed_fetch_names = pipeline_context_.fetch_names;
+
+  if (do_weight_update) {
+    // Set up tensor to be fetched when doing model update. 
+
+    for (size_t i = 0; i < params_.fetch_names.size(); ++i) {
+      const auto name = params_.fetch_names[i];
+      auto it = std::find(allowed_fetch_names.begin(), allowed_fetch_names.end(), name);
+      if (it == allowed_fetch_names.end()) {
+        continue;
+      }
+      fetch_names.push_back(name);
+    }
+
+    if (params_.use_mixed_precision) {
+      auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAllIsFinite);
+      ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient norm's IsFinite output is missing in the optimizer output");
+      fetch_names.push_back(it->second);
+      if (params_.use_adasum) {
+        it = opt_graph_outputs_.find(OptimizerOutputKey::DeltaAllIsFinite);
+        ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Adasum delta's IsFinite output is missing in the optimizer output");
+        fetch_names.push_back(it->second);
+      }
+    }
+  } else {
+    // Set up tensor to be fetched when doing gradient accumulation. 
+
+    if (params_.gradient_accumulation_steps > 1) {
+      auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAccumulation);
+      ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient accumulation output is missing in the optimizer output");
       fetch_names.push_back(it->second);
     }
   }
 
-  VectorString fetch_grad_accumulator_output;
-  if (params_.gradient_accumulation_steps > 1) {
-    auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAccumulation);
-    ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient accumulation output is missing in the optimizer output");
-    fetch_grad_accumulator_output.push_back(it->second);
+  // We need to fetch at least one variable.
+  // If there is nothing to fetch, we fetch all model outputs.
+  if (fetch_names.empty()) {
+    fetch_names = allowed_fetch_names;
   }
+
+  return Status::OK();
+}
+
+Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader) {
+  const bool enable_checkpoint_saving =
+      params_.mpi_context.world_rank == 0 &&
+      checkpoint_registry_ && params_.checkpoint_period > 0;
 
   if (test_data_loader) {
     ORT_RETURN_IF_ERROR(test_data_loader->InitializeDataSetIndex(0));
@@ -410,13 +456,15 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       // loop through the data
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
+        const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
+
         VectorString feed_names;
+        VectorString fetch_names;
         std::vector<MLValue> feeds;
         std::vector<MLValue> fetches;
-
         PrepareFeedNamesAndFeeds(training_data_loader, *lr_scheduler, batch, feed_names, feeds);
+        PrepareFetchNamesAndFetches(is_weight_update_step, fetch_names, fetches);
 
-        const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
         auto start = std::chrono::high_resolution_clock::now();
 
         if (is_weight_update_step) {
@@ -452,7 +500,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           ORT_RETURN_IF_ERROR(session_.Run(run_options,
                                            feed_names,
                                            feeds,
-                                           fetch_grad_accumulator_output,
+                                           fetch_names,
                                            &fetches));
           gradient_accumulation_step_count++;
         }

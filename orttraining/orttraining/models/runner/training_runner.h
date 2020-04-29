@@ -182,6 +182,9 @@ class TrainingRunner {
                                   const size_t batch_index,
                                   std::vector<std::string>& feed_names,
                                   std::vector<MLValue>& feeds);
+  Status PrepareFetchNamesAndFetches(const bool do_weight_update,
+                                     std::vector<std::string>& fetch_names,
+                                     std::vector<MLValue>& fetches);
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader);
   Status Evaluate(InferenceSession& session, IDataLoader& data_loader);
 

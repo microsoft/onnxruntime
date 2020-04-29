@@ -111,7 +111,12 @@ struct PipelineContext {
   std::string backward_waited_event_name;
   std::string backward_recorded_event_name;
 
+  // Allowed feed names.
+  // It stands for inputs of a graph partition at this stage.
   std::vector<std::string> feed_names;
+  // Allowed feed names.
+  // Values can be fetched at this pipeline stage.
+  std::vector<std::string> fetch_names;
 }; 
 
 }  // namespace pipeline
