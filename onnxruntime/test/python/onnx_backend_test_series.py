@@ -136,6 +136,7 @@ def create_backend_test(testname=None):
             '^test_training_dropout.*',  # NOT_IMPLEMENTED : Could not find an implementation for the node Dropout(12)
             '^test_negative_log_likelihood.*',  # NOT_IMPLEMENTED : Could not find an implementation for the node NegativeLogLikelihoodLoss(12))
             '^test_softmax_cross_entropy.*',  # NOT_IMPLEMENTED : Could not find an implementation for the node SoftmaxCrossEntropyLoss(12)
+            '^test_mean_square_distance.*',  # Some mean squared "expanded" tests were not deleted hence it is showing up, will clean up in the next commit.
         ]
         if platform.architecture()[0] == '32bit':
             current_failing_tests += ['^test_vgg19', '^test_zfnet512', '^test_bvlc_alexnet_cpu']
