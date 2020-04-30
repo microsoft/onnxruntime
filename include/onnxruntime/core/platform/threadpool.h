@@ -190,11 +190,11 @@ class ThreadPool {
 
   // Similar to ParallelFor above, but takes the specified scheduling strategy
   // into account.
-  void
-  ParallelFor(std::ptrdiff_t total, const SchedulingParams& scheduling_params,
-              const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
+  void ParallelFor(std::ptrdiff_t total, const SchedulingParams& scheduling_params,
+                   const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
 
-  static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const SchedulingParams& scheduling_params,
+  static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total,
+                             const SchedulingParams& scheduling_params,
                              const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
 #ifdef _OPENMP
     ORT_UNUSED_PARAMETER(scheduling_params);
@@ -216,7 +216,7 @@ class ThreadPool {
     }
     tp->ParallelFor(total, scheduling_params, fn);
 #endif
-  }  // namespace concurrency
+  }
 
   // Prefer using this API to get the number of threads unless you know what you're doing.
   // This API takes into account if openmp is enabled/disabled and if the thread pool ptr is nullptr.
@@ -236,7 +236,27 @@ class ThreadPool {
 
   // Directly schedule the 'total' tasks to the underlying threadpool, without
   // cutting them by halves
-  void SimpleParallelFor(std::ptrdiff_t total, std::function<void(std::ptrdiff_t)> fn);
+  void SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn);
+
+  inline static void TrySimpleParallelFor(ThreadPool* tp, std::ptrdiff_t total,
+                                          const std::function<void(std::ptrdiff_t)>& fn) {
+#ifdef _OPENMP
+    ORT_UNUSED_PARAMETER(tp);
+#pragma omp parallel for
+    for (std::ptrdiff_t i = 0; i < total; ++i) {
+      fn(i);
+    }
+#else
+    if (tp != nullptr) {
+      tp->SimpleParallelFor(total, fn);
+    } else {
+      for (std::ptrdiff_t i = 0; i < total; ++i) {
+        // In many cases, fn can be inlined here.
+        fn(i);
+      }
+    }
+#endif
+  }
 
   /**
    * Tries to call the given function in parallel, with calls split into (num_batches) batches.
