@@ -18,20 +18,29 @@
 // Generalize library calls to be use in template functions
 
 // gemm
-inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k, const float* alpha, const float* A, int lda, const float* B, int ldb, const float* beta, float* C, int ldc) {
+inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+                                       int m, int n, int k, const float* alpha, const float* A, int lda,
+                                       const float* B, int ldb, const float* beta, float* C, int ldc,
+                                       const cudaDeviceProp& /*prop*/) {
   return cublasSgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 }
-inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k, const double* alpha, const double* A, int lda, const double* B, int ldb, const double* beta, double* C, int ldc) {
+inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+                                       int m, int n, int k, const double* alpha, const double* A, int lda,
+                                       const double* B, int ldb, const double* beta, double* C, int ldc,
+                                       const cudaDeviceProp& /*prop*/) {
   return cublasDgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 }
-inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k, const half* alpha, const half* A, int lda, const half* B, int ldb, const half* beta, half* C, int ldc) {
-  // Disable below to make sure merged result is on par with before-merge.
+inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+                                       int m, int n, int k, const half* alpha, const half* A, int lda,
+                                       const half* B, int ldb, const half* beta, half* C, int ldc,
+                                       const cudaDeviceProp& prop) {
   // This does true FP16 computation which is slow for non-Volta GPUs
-  //if (onnxruntime::cuda::DeviceProp().GetDeviceProps().major >= 7) {
-  //   onnxruntime::cuda::CublasMathModeSetter math_mode_setter( handle, CUBLAS_TENSOR_OP_MATH );
-  //  return cublasHgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
-  //}
-  // This does pseudo FP16 computation (input/output in fp16, computation in fp32)
+  if (prop.major >= 7) {
+    onnxruntime::cuda::CublasMathModeSetter math_mode_setter(handle, CUBLAS_TENSOR_OP_MATH);
+    return cublasHgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+  }
+
+  //This does pseudo FP16 computation (input/output in fp16, computation in fp32)
   float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
   float h_b = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(beta));
   cublasSetMathMode(handle, CUBLAS_TENSOR_OP_MATH);
@@ -79,7 +88,7 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
                                                      const double* beta,
                                                      double* C, int ldc,
                                                      long long int strideC,
-                                                     int batch_count){
+                                                     int batch_count) {
   return cublasDgemmStridedBatched(handle, transa, transb, m, n, k, alpha, A, lda, strideA, B, ldb, strideB, beta, C, ldc, strideC, batch_count);
 }
 
