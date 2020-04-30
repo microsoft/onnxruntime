@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/tensor/gather_nd_impl.h"
-
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/atomic/common.cuh"
 
