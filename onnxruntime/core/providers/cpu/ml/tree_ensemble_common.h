@@ -348,27 +348,26 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
           ORT_ENFORCE((int64_t)scores.size() == n_targets_or_classes_);
         }
       } else {
-        auto nth = N * 2 / concurrency::ThreadPool::NumThreads(ttp);
-        if (N % nth != 0)
-          ++nth;
-        concurrency::ThreadPool::TryBatchParallelFor(
+        // split the work into one block per thread so we can re-use the 'scores' vector as much as possible
+        auto num_threads = concurrency::ThreadPool::NumThreads(ttp);
+        concurrency::ThreadPool::TrySimpleParallelFor(
             ttp,
-            static_cast<int32_t>(nth),
-            [&](ptrdiff_t th) {
+            num_threads,
+            [this, &num_threads, &agg, &x_data, &z_data, &label_data, N, stride](ptrdiff_t batch_num) {
               size_t j;
               std::vector<ScoreValue<OTYPE>> scores(n_targets_or_classes_);
-              auto end = nth * (th + 1);
-              end = end < N ? end : N;
-              for (int64_t i = nth * th; i < end; ++i) {
+              int64_t i = batch_num * N / num_threads;
+              int64_t end = (batch_num + 1) * N / num_threads;
+              for (; i < end; ++i) {
                 std::fill(scores.begin(), scores.end(), ScoreValue<OTYPE>({0, 0}));
                 for (j = 0; j < roots_.size(); ++j)
                   agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
+
                 agg.FinalizeScores(scores,
                                    z_data + i * n_targets_or_classes_, -1,
                                    label_data == NULL ? NULL : (label_data + i));
               }
-            },
-            0);
+            });
       }
     }
   }
