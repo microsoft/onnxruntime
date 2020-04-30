@@ -128,4 +128,17 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions &sessio
     auto logIdString = logIdValue.As<Napi::String>().Utf8Value();
     sessionOptions.SetLogId(logIdString.c_str());
   }
+
+  // Log severity level
+  if (options.Has("logSeverityLevel")) {
+    auto logLevelValue = options.Get("logSeverityLevel");
+    ORT_NAPI_THROW_TYPEERROR_IF(!logLevelValue.IsNumber(), options.Env(),
+                                "Invalid argument: sessionOptions.logSeverityLevel must be a number.");
+    double logLevelNumber = logLevelValue.As<Napi::Number>().DoubleValue();
+    ORT_NAPI_THROW_RANGEERROR_IF(
+        std::floor(logLevelNumber) != logLevelNumber || logLevelNumber < 0 || logLevelNumber > 4, options.Env(),
+        "Invalid argument: sessionOptions.logSeverityLevel must be one of the following: 0, 1, 2, 3, 4.");
+
+    sessionOptions.SetLogSeverityLevel(static_cast<int>(logLevelNumber));
+  }
 }

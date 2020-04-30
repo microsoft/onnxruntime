@@ -8,7 +8,7 @@ This folder contains several examples that demonstrate how to use onnxruntime No
 
 This example is a demonstration of basic usage of ONNX Runtime Node.js binding.
 
-### [02 Create Tensor](./01_create-tensor/README.md)
+### [02 Create Tensor](./02_create-tensor/README.md)
 
 This example is a demonstration of basic usage of creating tensors.
 

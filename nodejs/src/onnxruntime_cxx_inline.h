@@ -215,6 +215,12 @@ inline SessionOptions &SessionOptions::SetLogId(const char *logid) {
   ThrowOnError(GetApi().SetSessionLogId(p_, logid));
   return *this;
 }
+
+inline SessionOptions &SessionOptions::SetLogSeverityLevel(int level) {
+  ThrowOnError(GetApi().SetSessionLogSeverityLevel(p_, level));
+  return *this;
+}
+
 inline SessionOptions &SessionOptions::Add(OrtCustomOpDomain *custom_op_domain) {
   ThrowOnError(GetApi().AddCustomOpDomain(p_, custom_op_domain));
   return *this;

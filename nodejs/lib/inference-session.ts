@@ -130,6 +130,12 @@ export declare namespace InferenceSession {
      * Log ID.
      */
     logId?: string;
+
+    /**
+     * Log severity level. See
+     * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
+     */
+    logSeverityLevel?: 0|1|2|3|4;
   }
 
   export namespace SessionOptions {
