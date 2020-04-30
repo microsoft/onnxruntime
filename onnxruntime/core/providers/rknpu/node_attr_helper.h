@@ -16,15 +16,15 @@ namespace rknpu {
  */
 class NodeAttrHelper {
  public:
-  NodeAttrHelper(ONNX_NAMESPACE::NodeProto proto);
+  explicit NodeAttrHelper(ONNX_NAMESPACE::NodeProto proto);
 
-  float get(const std::string& key, float def_val);
-  int get(const std::string& key, int def_val);
-  std::vector<float> get(const std::string& key, std::vector<float> def_val);
-  std::vector<int> get(const std::string& key, std::vector<int> def_val);
-  std::string get(const std::string& key, std::string def_val);
+  float get(const std::string& key, float def_val) const;
+  int get(const std::string& key, int def_val) const;
+  std::vector<float> get(const std::string& key, std::vector<float> def_val) const;
+  std::vector<int> get(const std::string& key, std::vector<int> def_val) const;
+  std::string get(const std::string& key, std::string def_val) const;
 
-  bool has_attr(const std::string& key);
+  bool has_attr(const std::string& key) const;
 
  private:
   ONNX_NAMESPACE::NodeProto node_;
@@ -32,4 +32,3 @@ class NodeAttrHelper {
 
 }  // namespace rknpu
 }  // namespace onnxruntime
-

@@ -8,18 +8,14 @@
 #include <string>
 #include <vector>
 
-using std::string;
-using std::vector;
-
 namespace onnxruntime {
 namespace rknpu {
 
 NodeAttrHelper::NodeAttrHelper(ONNX_NAMESPACE::NodeProto proto) : node_(proto) {
 }
 
-float NodeAttrHelper::get(const std::string& key, float def_val) {
-  for (int i = 0; i < node_.attribute_size(); i++) {
-    const ONNX_NAMESPACE::AttributeProto& attr = node_.attribute(i);
+float NodeAttrHelper::get(const std::string& key, float def_val) const {
+  for (const auto& attr : node_.attribute()) {
     if (attr.name() == key) {
       return attr.f();
     }
@@ -28,9 +24,8 @@ float NodeAttrHelper::get(const std::string& key, float def_val) {
   return def_val;
 }
 
-int NodeAttrHelper::get(const std::string& key, int def_val) {
-  for (int i = 0; i < node_.attribute_size(); i++) {
-    const ONNX_NAMESPACE::AttributeProto& attr = node_.attribute(i);
+int NodeAttrHelper::get(const std::string& key, int def_val) const {
+  for (const auto& attr : node_.attribute()) {
     if (attr.name() == key) {
       return static_cast<int>(attr.i());
     }
@@ -39,9 +34,8 @@ int NodeAttrHelper::get(const std::string& key, int def_val) {
   return def_val;
 }
 
-string NodeAttrHelper::get(const std::string& key, string def_val) {
-  for (int i = 0; i < node_.attribute_size(); i++) {
-    const ONNX_NAMESPACE::AttributeProto& attr = node_.attribute(i);
+std::string NodeAttrHelper::get(const std::string& key, std::string def_val) const {
+  for (const auto& attr : node_.attribute()) {
     if (attr.name() == key) {
       return attr.s();
     }
@@ -50,14 +44,13 @@ string NodeAttrHelper::get(const std::string& key, string def_val) {
   return def_val;
 }
 
-vector<int> NodeAttrHelper::get(const std::string& key, vector<int> def_val) {
+std::vector<int> NodeAttrHelper::get(const std::string& key, std::vector<int> def_val) const {
   if (!has_attr(key)) {
     return def_val;
   }
   std::vector<int> v;
 
-  for (int i = 0; i < node_.attribute_size(); i++) {
-    const ONNX_NAMESPACE::AttributeProto& attr = node_.attribute(i);
+  for (const auto& attr : node_.attribute()) {
     if (attr.name() == key) {
       v.reserve(static_cast<size_t>(attr.ints_size()));
       for (int j = 0; j < attr.ints_size(); j++) {
@@ -75,15 +68,14 @@ vector<int> NodeAttrHelper::get(const std::string& key, vector<int> def_val) {
   return v;
 }
 
-vector<float> NodeAttrHelper::get(const std::string& key,
-                                  vector<float> def_val) {
+std::vector<float> NodeAttrHelper::get(const std::string& key,
+                                       std::vector<float> def_val) const {
   if (!has_attr(key)) {
     return def_val;
   }
   std::vector<float> v;
 
-  for (int i = 0; i < node_.attribute_size(); i++) {
-    const ONNX_NAMESPACE::AttributeProto& attr = node_.attribute(i);
+  for (const auto& attr : node_.attribute()) {
     if (attr.name() == key) {
       v.reserve(static_cast<size_t>(attr.floats_size()));
       for (int j = 0; j < attr.floats_size(); j++) {
@@ -101,9 +93,8 @@ vector<float> NodeAttrHelper::get(const std::string& key,
   return v;
 }
 
-bool NodeAttrHelper::has_attr(const std::string& key) {
-  for (int i = 0; i < node_.attribute_size(); i++) {
-    const ONNX_NAMESPACE::AttributeProto& attr = node_.attribute(i);
+bool NodeAttrHelper::has_attr(const std::string& key) const {
+  for (const auto& attr : node_.attribute()) {
     if (attr.name() == key) {
       return true;
     }
