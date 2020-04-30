@@ -11,10 +11,12 @@
 namespace onnxruntime {
 namespace rknpu {
 
-NodeAttrHelper::NodeAttrHelper(ONNX_NAMESPACE::NodeProto proto) : node_(proto) {
+NodeAttrHelper::NodeAttrHelper(ONNX_NAMESPACE::NodeProto proto)
+    : node_(proto) {
 }
 
-float NodeAttrHelper::get(const std::string& key, float def_val) const {
+float NodeAttrHelper::get(const std::string& key,
+                          const float def_val) const {
   for (const auto& attr : node_.attribute()) {
     if (attr.name() == key) {
       return attr.f();
@@ -24,7 +26,8 @@ float NodeAttrHelper::get(const std::string& key, float def_val) const {
   return def_val;
 }
 
-int NodeAttrHelper::get(const std::string& key, int def_val) const {
+int NodeAttrHelper::get(const std::string& key,
+                        const int def_val) const {
   for (const auto& attr : node_.attribute()) {
     if (attr.name() == key) {
       return static_cast<int>(attr.i());
@@ -34,7 +37,8 @@ int NodeAttrHelper::get(const std::string& key, int def_val) const {
   return def_val;
 }
 
-std::string NodeAttrHelper::get(const std::string& key, std::string def_val) const {
+std::string NodeAttrHelper::get(const std::string& key,
+                                const std::string& def_val) const {
   for (const auto& attr : node_.attribute()) {
     if (attr.name() == key) {
       return attr.s();
@@ -44,7 +48,8 @@ std::string NodeAttrHelper::get(const std::string& key, std::string def_val) con
   return def_val;
 }
 
-std::vector<int> NodeAttrHelper::get(const std::string& key, std::vector<int> def_val) const {
+std::vector<int> NodeAttrHelper::get(const std::string& key,
+                                     const std::vector<int>& def_val) const {
   if (!has_attr(key)) {
     return def_val;
   }
@@ -69,7 +74,7 @@ std::vector<int> NodeAttrHelper::get(const std::string& key, std::vector<int> de
 }
 
 std::vector<float> NodeAttrHelper::get(const std::string& key,
-                                       std::vector<float> def_val) const {
+                                       const std::vector<float>& def_val) const {
   if (!has_attr(key)) {
     return def_val;
   }

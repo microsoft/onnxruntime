@@ -68,12 +68,12 @@ std::string OnnxConverter::m(const std::string& str) const {
 
 std::pair<std::pair<int, ONNX_NAMESPACE::NodeProto>, OnnxConverter::FuseCode>
 OnnxConverter::FindActivation(const ONNX_NAMESPACE::ModelProto& model_proto,
-                              const std::string& output_name) {
+                              const std::string& output) {
   std::pair<std::pair<int, ONNX_NAMESPACE::NodeProto>, FuseCode>
       activation{{}, FuseCode::FUSED_NONE};
   int i = 0;
   for (const auto& _node : model_proto.graph().node()) {
-    if (!_node.input().empty() && output_name == _node.input(0) &&
+    if (!_node.input().empty() && output == _node.input(0) &&
         _node.op_type() == "Relu") {
       // If there are two branches after a conv/pool and both branches has
       // a relu on the top, we have to add two normal relu layers
@@ -87,7 +87,7 @@ OnnxConverter::FindActivation(const ONNX_NAMESPACE::ModelProto& model_proto,
   }
   if (activation.first.first != 0) {
     skipped_act_.push_back(activation.first.first);
-    name_map_[activation.first.second.output(0)] = output_name;
+    name_map_[activation.first.second.output(0)] = output;
   }
   return activation;
 }
@@ -349,9 +349,9 @@ std::pair<bool, std::string> OnnxConverter::IsNodeSupported(
     if (dilations != vector<int>{1, 1} && strides != vector<int>{1, 1}) {
       return {false, "Both dilations and strides > 1 is not supported for now"};
     }
-    const auto weight_name = m(node.input(1));
-    if (HAS(tensor_dims_, weight_name)) {
-      const auto& dims = tensor_dims_.at(weight_name);
+    const auto weight = m(node.input(1));
+    if (HAS(tensor_dims_, weight)) {
+      const auto& dims = tensor_dims_.at(weight);
       if (group != 1 && dims[1] != 1) {
         return {false, "group != 1 is not supported"};
       }
@@ -393,9 +393,9 @@ std::pair<bool, std::string> OnnxConverter::IsNodeSupported(
       return {false, "Only rank-4 tensor is supported"};
     }
   } else if (op == "PRelu") {
-    const auto slope_name = m(node.input(1));
-    if (HAS(tensor_dims_, slope_name)) {
-      if (tensor_dims_.at(slope_name) != Shaper::Shape{1}) {
+    const auto slope = m(node.input(1));
+    if (HAS(tensor_dims_, slope)) {
+      if (tensor_dims_.at(slope) != Shaper::Shape{1}) {
         // TODO: support it
         return {false, "PRelu only support one element slope."};
       }
@@ -418,20 +418,20 @@ std::pair<bool, std::string> OnnxConverter::IsNodeSupported(
               "Your onnx model may be in training mode, please export "
               "it in test mode."};
     }
-    const auto scale_name = m(node.input(1));
-    const auto b_name = m(node.input(2));
-    const auto mean_name = m(node.input(3));
-    const auto var_name = m(node.input(4));
-    if (!HAS(tensor_dims_, scale_name)) {
+    const auto scale = m(node.input(1));
+    const auto b = m(node.input(2));
+    const auto mean = m(node.input(3));
+    const auto var = m(node.input(4));
+    if (!HAS(tensor_dims_, scale)) {
       return {false, "Scale of BN must be known"};
     }
-    if (!HAS(tensor_dims_, b_name)) {
+    if (!HAS(tensor_dims_, b)) {
       return {false, "B of BN must be known"};
     }
-    if (!HAS(tensor_dims_, mean_name)) {
+    if (!HAS(tensor_dims_, mean)) {
       return {false, "Mean of BN must be known"};
     }
-    if (!HAS(tensor_dims_, var_name)) {
+    if (!HAS(tensor_dims_, var)) {
       return {false, "Var of BN must be known"};
     }
   } else if (op == "LRN") {
@@ -440,10 +440,10 @@ std::pair<bool, std::string> OnnxConverter::IsNodeSupported(
       return {false, "NNAPI only support odd size for LRN"};
     }
   } else if (op == "Reshape") {
-    const auto output_name = node.output(0);
+    const auto output = node.output(0);
     for (const auto& another_node : model_proto_.graph().node()) {
-      for (const auto& input_name : another_node.input()) {
-        if (input_name == output_name &&
+      for (const auto& input : another_node.input()) {
+        if (input == output &&
             another_node.op_type() != "Gemm") {
           return {false,
                   "Reshape can only be the last layer or precede a "
@@ -610,34 +610,34 @@ void OnnxConverter::Convert(const ONNX_NAMESPACE::ModelProto& model_proto,
       const auto pads = helper.get("pads", vector<int>{0, 0, 0, 0});
       const auto dilations = helper.get("dilations", vector<int>{1, 1});
       const auto group = helper.get("group", 1);
-      std::string bias_name;
+      std::string bias;
       if (node.input_size() >= 3) {
-        bias_name = m(node.input(2));
+        bias = m(node.input(2));
       }
       const auto auto_pad = helper.get("auto_pad", "NOTSET");
 
-      const auto ori_weight_name = m(node.input(1));
+      const auto ori_weight = m(node.input(1));
       AddConv(m(node.input(0)), strides, pads, dilations, group,
-              ori_weight_name, bias_name, auto_pad, m(node.output(0)));
+              ori_weight, bias, auto_pad, m(node.output(0)));
     } else if (op == "QLinearConv") {
       const auto strides = helper.get("strides", vector<int>{1, 1});
       const auto pads = helper.get("pads", vector<int>{0, 0, 0, 0});
       const auto dilations = helper.get("dilations", vector<int>{1, 1});
       const auto group = helper.get("group", 1);
       const auto auto_pad = helper.get("auto_pad", "NOTSET");
-      std::string bias_name;
+      std::string bias;
       if (node.input_size() >= 9) {
-        bias_name = m(node.input(8));
+        bias = m(node.input(8));
       }
       AddQLinearConv(m(node.input(0)), m(node.input(1)), m(node.input(2)),
                      strides, pads, dilations, group, auto_pad,
                      m(node.input(3)), m(node.input(4)), m(node.input(5)),
-                     bias_name, m(node.output(0)), m(node.input(6)),
+                     bias, m(node.output(0)), m(node.input(6)),
                      m(node.input(7)));
     } else if (op == "AveragePool" || op == "MaxPool" ||
                op == "GlobalAveragePool" || op == "GlobalMaxPool") {
-      const auto input_name = m(node.input(0));
-      const auto output_name = m(node.output(0));
+      const auto input = m(node.input(0));
+      const auto output = m(node.output(0));
       vector<int> strides, pads, kernel_shape;
       int ceil_mode;
       if (op == "AveragePool" || op == "MaxPool") {
@@ -665,42 +665,42 @@ void OnnxConverter::Convert(const ONNX_NAMESPACE::ModelProto& model_proto,
         kernel_shape = {-1, -1};  // -1 for global
         ceil_mode = 0;
       }
-      AddLayerPool(op, input_name, kernel_shape, pads, strides, ceil_mode,
-                   output_name);
+      AddLayerPool(op, input, kernel_shape, pads, strides, ceil_mode,
+                   output);
     } else if (op == "Relu") {
-      const auto input_name = m(node.input(0));
-      const auto output_name = m(node.output(0));
-      AddLayerReLU(input_name, output_name);
+      const auto input = m(node.input(0));
+      const auto output = m(node.output(0));
+      AddLayerReLU(input, output);
     } else if (op == "PRelu") {
     } else if (op == "Add") {
-      const auto input1_name = m(node.input(0));
-      const auto input2_name = m(node.input(1));
-      const auto output_name = m(node.output(0));
-      AddLayerAdd(input1_name, input2_name, output_name);
+      const auto input1 = m(node.input(0));
+      const auto input2 = m(node.input(1));
+      const auto output = m(node.output(0));
+      AddLayerAdd(input1, input2, output);
     } else if (op == "Sub") {
-      const auto input1_name = m(node.input(0));
-      const auto input2_name = m(node.input(1));
-      const auto output_name = m(node.output(0));
-      AddLayerSub(input1_name, input2_name, output_name);
+      const auto input1 = m(node.input(0));
+      const auto input2 = m(node.input(1));
+      const auto output = m(node.output(0));
+      AddLayerSub(input1, input2, output);
     } else if (op == "Mul") {
-      const auto input1_name = m(node.input(0));
-      const auto input2_name = m(node.input(1));
-      const auto output_name = m(node.output(0));
-      AddLayerMul(input1_name, input2_name, output_name);
+      const auto input1 = m(node.input(0));
+      const auto input2 = m(node.input(1));
+      const auto output = m(node.output(0));
+      AddLayerMul(input1, input2, output);
     } else if (op == "Gemm") {
-      const auto input_name = m(node.input(0));
-      const auto weight_name = m(node.input(1));
-      const auto output_name = m(node.output(0));
-      string bias_name;
+      const auto input = m(node.input(0));
+      const auto weight = m(node.input(1));
+      const auto output = m(node.output(0));
+      string bias;
       if (node.input_size() >= 3) {
-        bias_name = m(node.input(2));
+        bias = m(node.input(2));
       }
       const auto transA = helper.get("transA", 0);
       const auto transB = helper.get("transB", 0);
       const auto alpha = helper.get("alpha", 1.0f);
       const auto beta = helper.get("beta", 1.0f);
       if (transA == 0 && transB == 1 && alpha == 1.f && beta == 1.f) {
-        AddLayerFC(input_name, weight_name, bias_name, output_name);
+        AddLayerFC(input, weight, bias, output);
       } else {
         throw std::invalid_argument(
             "Only transA == 0, transB == 1, alpha == 1.0 and beta == "
@@ -708,95 +708,95 @@ void OnnxConverter::Convert(const ONNX_NAMESPACE::ModelProto& model_proto,
             "supported.");
       }
     } else if (op == "Softmax") {
-      const auto input_name = m(node.input(0));
-      const auto output_name = m(node.output(0));
-      AddLayerSoftmax(input_name, output_name);
+      const auto input = m(node.input(0));
+      const auto output = m(node.output(0));
+      AddLayerSoftmax(input, output);
     } else if (op == "Concat") {
       vector<std::string> concat_inputs_str;
       for (const auto& onnx_input : node.input()) {
         concat_inputs_str.push_back(m(onnx_input));
       }
       const auto axis = helper.get("axis", 1);
-      const auto output_name = m(node.output(0));
-      AddLayerConcat(concat_inputs_str, axis, output_name);
+      const auto output = m(node.output(0));
+      AddLayerConcat(concat_inputs_str, axis, output);
     } else if (op == "Dropout") {
     } else if (op == "BatchNormalization") {
-      const auto input_name = m(node.input(0));
-      const auto scale_name = m(node.input(1));
-      const auto bias_name = m(node.input(2));
-      const auto mean_name = m(node.input(3));
-      const auto var_name = m(node.input(4));
+      const auto input = m(node.input(0));
+      const auto scale = m(node.input(1));
+      const auto bias = m(node.input(2));
+      const auto mean = m(node.input(3));
+      const auto var = m(node.input(4));
       const auto eps = helper.get("epsilon", 1e-5f);
-      const auto output_name = m(node.output(0));
-      AddLayerBatchNorm(input_name, scale_name, bias_name, mean_name,
-                        var_name, eps, output_name);
+      const auto output = m(node.output(0));
+      AddLayerBatchNorm(input, scale, bias, mean,
+                        var, eps, output);
     } else if (op == "Reshape") {
-      const auto input_name = m(node.input(0));
-      const auto shape_name = m(node.input(1));
-      const auto output_name = m(node.output(0));
-      AddLayerReshape(input_name, shape_name, output_name);
+      const auto input = m(node.input(0));
+      const auto shape = m(node.input(1));
+      const auto output = m(node.output(0));
+      AddLayerReshape(input, shape, output);
     } else if (op == "LRN") {
     } else if (op == "Tanh") {
     } else if (op == "Floor") {
     } else if (op == "Sigmoid") {
     } else if (op == "Flatten") {
-      const auto input_name = m(node.input(0));
+      const auto input = m(node.input(0));
       const auto axis = helper.get("axis", 1);
-      const auto output_name = m(node.output(0));
-      AddLayerFlatten(input_name, axis, output_name);
+      const auto output = m(node.output(0));
+      AddLayerFlatten(input, axis, output);
     } else if (op == "Transpose") {
-      const auto input_name = m(node.input(0));
+      const auto input = m(node.input(0));
       const auto perm = helper.get("perm", vector<int>{0, 1, 2});
-      const auto output_name = m(node.output(0));
-      AddLayerTranspose(input_name, perm, output_name);
+      const auto output = m(node.output(0));
+      AddLayerTranspose(input, perm, output);
     } else if (op == "Slice") {
-      const auto input_name = m(node.input(0));
-      const auto starts_name = m(node.input(1));
-      const auto ends_name = m(node.input(2));
-      const auto axes_name = m(node.input(3));
-      const auto steps_name = m(node.input(4));
-      const auto output_name = m(node.output(0));
-      AddLayerSlice(input_name, starts_name, ends_name, axes_name,
-                    steps_name, output_name);
+      const auto input = m(node.input(0));
+      const auto starts = m(node.input(1));
+      const auto ends = m(node.input(2));
+      const auto axes = m(node.input(3));
+      const auto steps = m(node.input(4));
+      const auto output = m(node.output(0));
+      AddLayerSlice(input, starts, ends, axes,
+                    steps, output);
     } else if (op == "Squeeze") {
-      const auto input_name = m(node.input(0));
+      const auto input = m(node.input(0));
       const auto axes = helper.get("axes", std::vector<int>{});
-      const auto output_name = m(node.output(0));
-      AddLayerSqueeze(input_name, axes, output_name);
+      const auto output = m(node.output(0));
+      AddLayerSqueeze(input, axes, output);
     } else if (op == "Unsqueeze") {
-      const auto input_name = m(node.input(0));
+      const auto input = m(node.input(0));
       const auto axes = helper.get("axes", std::vector<int>{});
-      const auto output_name = m(node.output(0));
-      AddLayerUnsqueeze(input_name, axes, output_name);
+      const auto output = m(node.output(0));
+      AddLayerUnsqueeze(input, axes, output);
     } else if (op == "Gather") {
-      const auto input_name = m(node.input(0));
-      const auto indices_name = m(node.input(1));
+      const auto input = m(node.input(0));
+      const auto indices = m(node.input(1));
       const auto axis = helper.get("axis", 0);
-      const auto output_name = m(node.output(0));
-      AddLayerGather(input_name, indices_name, axis, output_name);
+      const auto output = m(node.output(0));
+      AddLayerGather(input, indices, axis, output);
     } else if (op == "LeakyRelu") {
-      const auto input_name = m(node.input(0));
+      const auto input = m(node.input(0));
       const auto alpha = helper.get("alpha", (float)0.0);
-      const auto output_name = m(node.output(0));
-      AddLayerLeakyRelu(input_name, alpha, output_name);
+      const auto output = m(node.output(0));
+      AddLayerLeakyRelu(input, alpha, output);
     } else if (op == "Clip") {
-      const auto input_name = m(node.input(0));
+      const auto input = m(node.input(0));
       const auto min = helper.get("axis", 0);
       const auto max = helper.get("axis", 6);
-      const auto output_name = m(node.output(0));
-      AddLayerClip(input_name, min, max, output_name);
+      const auto output = m(node.output(0));
+      AddLayerClip(input, min, max, output);
     } else if (op == "QuantizeLinear") {
-      const auto input_name = m(node.input(0));
+      const auto input = m(node.input(0));
       const auto output_scale = m(node.input(1));
       const auto output_zp = m(node.input(2));
-      const auto output_name = m(node.output(0));
-      AddLayerQuantizeLinear(input_name, output_scale, output_zp, output_name);
+      const auto output = m(node.output(0));
+      AddLayerQuantizeLinear(input, output_scale, output_zp, output);
     } else if (op == "DequantizeLinear") {
-      const auto input_name = m(node.input(0));
+      const auto input = m(node.input(0));
       const auto input_scale = m(node.input(1));
       const auto input_zp = m(node.input(2));
-      const auto output_name = m(node.output(0));
-      AddLayerDequantizeLinear(input_name, input_scale, input_zp, output_name);
+      const auto output = m(node.output(0));
+      AddLayerDequantizeLinear(input, input_scale, input_zp, output);
     } else {
       throw std::invalid_argument("Unsupported operator " + op);
     }
@@ -820,95 +820,94 @@ void OnnxConverter::Clear() {
   free_list_.clear();
 }
 
-void OnnxConverter::AddConv(const string& input_name,
+void OnnxConverter::AddConv(const string& input,
                             const std::vector<int>& strides,
                             const std::vector<int>& pads,
                             const std::vector<int>& dilations,
                             const int group,
-                            const string& ori_weight_name,
-                            const string& bias_name,
+                            const string& ori_weight,
+                            const string& bias,
                             const string& auto_pad,
-                            const string& output_name) {
+                            const string& output) {
   if (dilations != vector<int>{1, 1}) {
     // TODO
     throw std::invalid_argument("dilations != 1 is not supported yet");
   }
 
-  if (!HAS(rk_tensors_, ori_weight_name)) {
+  if (!HAS(rk_tensors_, ori_weight)) {
     throw std::invalid_argument("The weight of convolution must be known");
   }
-  const auto& weight = rk_tensors_.at(ori_weight_name);
+  const auto& weight = rk_tensors_.at(ori_weight);
   if (group == 1) {
     LOGS_DEFAULT(VERBOSE) << "Vanilla conv";
-    AddLayerConvImpl(input_name, ori_weight_name, bias_name, pads, strides,
-                     1, auto_pad, output_name);
+    AddLayerConvImpl(input, ori_weight, bias, pads, strides,
+                     1, auto_pad, output);
   } else if (weight->GetDims()[1] == 1) {  // depthwise
     LOGS_DEFAULT(VERBOSE) << "Depthwise conv";
-    AddLayerDepthwiseConvImpl(input_name, ori_weight_name, bias_name, pads,
+    AddLayerDepthwiseConvImpl(input, ori_weight, bias, pads,
                               strides, weight->GetDims()[0] / group, group,
-                              output_name);
+                              output);
   } else {
     LOGS_DEFAULT(VERBOSE) << "Group conv";
-    AddLayerConvImpl(input_name, ori_weight_name, bias_name, pads, strides,
-                     group, auto_pad, output_name);
+    AddLayerConvImpl(input, ori_weight, bias, pads, strides,
+                     group, auto_pad, output);
   }
 }
 
-void OnnxConverter::AddQLinearConv(const string& input_name,
-                                   const string& input_scale_name,
-                                   const string& input_zp_name,
+void OnnxConverter::AddQLinearConv(const string& input,
+                                   const string& input_scale,
+                                   const string& input_zp,
                                    const std::vector<int>& strides,
                                    const std::vector<int>& pads,
                                    const std::vector<int>& dilations,
                                    const int group,
                                    const string& auto_pad,
-                                   const string& weight_name,
-                                   const string& weight_scale_name,
-                                   const string& weight_zp_name,
-                                   const string& bias_name,
-                                   const string& output_name,
-                                   const string& output_scale_name,
-                                   const string& output_zp_name) {
+                                   const string& weight,
+                                   const string& weight_scale,
+                                   const string& weight_zp,
+                                   const string& bias,
+                                   const string& output,
+                                   const string& output_scale,
+                                   const string& output_zp) {
   if (dilations != vector<int>{1, 1}) {
     return;
   }
 
-  if (!HAS(rk_tensors_, weight_name)) {
+  if (!HAS(rk_tensors_, weight)) {
     throw std::invalid_argument("The weight of convolution must be known");
   }
-  const auto& weight = rk_tensors_.at(weight_name);
   if (group == 1) {
     LOGS_DEFAULT(VERBOSE) << "Vanilla QLinearConv";
-    AddLayerQLinearConvImpl(input_name, input_scale_name, input_zp_name,
-                            weight_name, weight_scale_name, weight_zp_name,
-                            bias_name, pads, strides, 1, auto_pad,
-                            output_name, output_scale_name, output_zp_name);
-  } else if (weight->GetDims()[1] == 1) {  // depthwise
+    AddLayerQLinearConvImpl(input, input_scale, input_zp,
+                            weight, weight_scale, weight_zp,
+                            bias, pads, strides, 1, auto_pad,
+                            output, output_scale, output_zp);
+  } else if (rk_tensors_.at(weight)->GetDims()[1] == 1) {  // depthwise
     LOGS_DEFAULT(VERBOSE) << "Depthwise QLinearConv";
     // TODO
     throw std::invalid_argument("Depthwise QLinearConv is not supported yet");
   } else {
     LOGS_DEFAULT(VERBOSE) << "Group QLinearConv";
-    AddLayerQLinearConvImpl(input_name, input_scale_name, input_zp_name,
-                            weight_name, weight_scale_name, weight_zp_name,
-                            bias_name, pads, strides, group, auto_pad,
-                            output_name, output_scale_name, output_zp_name);
+    AddLayerQLinearConvImpl(input, input_scale, input_zp,
+                            weight, weight_scale, weight_zp,
+                            bias, pads, strides, group, auto_pad,
+                            output, output_scale, output_zp);
   }
 }
 
 void OnnxConverter::AddLayerPool(const std::string& op,
-                                 const std::string& input_name,
+                                 const std::string& input,
                                  const std::vector<int>& kernel_shape,
                                  const std::vector<int>& pads,
                                  const std::vector<int>& strides,
                                  const int32_t ceil_mode,
-                                 const std::string& output_name) {
+                                 const std::string& output) {
   if (op == "AveragePool" || op == "GlobalAveragePool") {
-    AddLayerAvePoolImpl(input_name, kernel_shape, pads, strides,
-                        ceil_mode, output_name);
+    AddLayerAvePoolImpl(input, kernel_shape, pads, strides,
+                        ceil_mode, output);
   } else {
-    AddLayerMaxPoolImpl(input_name, kernel_shape, pads, strides,
-                        ceil_mode, output_name);
+    AddLayerMaxPoolImpl(input, kernel_shape, pads, strides,
+                        ceil_mode, output);
   }
 }
 
@@ -928,7 +927,7 @@ void OnnxConverter::AddLayerConvImpl(const std::string& input,
     ADD_SHAPE(bias);
   }
 
-  shaper_.Conv(m(input), m(weight), pads, strides, auto_pad, output);
+  shaper_.Conv(input, weight, pads, strides, auto_pad, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   std::vector<uint32_t> weight_dims;
@@ -1016,7 +1015,7 @@ void OnnxConverter::AddLayerQLinearConvImpl(const string& input,
     ADD_SHAPE(bias);
   }
 
-  shaper_.Conv(m(input), m(weight), pads, strides, auto_pad, output);
+  shaper_.Conv(input, weight, pads, strides, auto_pad, output);
 
   GET_ATTR(in_s, input_scale, float);
   GET_ATTR(in_zp, input_zp, uint8_t);
@@ -1126,7 +1125,7 @@ void OnnxConverter::AddLayerDepthwiseConvImpl(
   if (bias != "") {
     ADD_SHAPE(bias);
   }
-  shaper_.DepthwiseConv(m(input), m(weight), pads, strides, output);
+  shaper_.DepthwiseConv(input, weight, pads, strides, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   std::vector<uint32_t> weight_dims;
@@ -1221,7 +1220,7 @@ void OnnxConverter::AddLayerAvePoolImpl(
     const int32_t ceil_mode,
     const std::string& output) {
   ADD_SHAPE(input);
-  shaper_.Pool(m(input), kernel_shape, pads, strides, output);
+  shaper_.Pool(input, kernel_shape, pads, strides, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   if (HAS(rk_tensors_, input)) {
@@ -1248,7 +1247,8 @@ void OnnxConverter::AddLayerAvePoolImpl(
   attr.pad[3] = pads[3];
   attr.pad_type = rk::nn::PadType::AUTO;
   attr.pool_type = rk::nn::PoolType::POOLING_AVG;
-  attr.round_type = (ceil_mode == 1) ? rk::nn::RoundType::ROUND_CEIL : rk::nn::RoundType::ROUND_FLOOR;
+  attr.round_type =
+      (ceil_mode == 1) ? rk::nn::RoundType::ROUND_CEIL : rk::nn::RoundType::ROUND_FLOOR;
   attr.global_pooling = (kernel_shape[0] == -1 && kernel_shape[1] == -1);
 
   graph_->AddOperator(rk::nn::OperatorType::POOL,
@@ -1263,7 +1263,7 @@ void OnnxConverter::AddLayerMaxPoolImpl(
     const int32_t ceil_mode,
     const std::string& output) {
   ADD_SHAPE(input);
-  shaper_.Pool(m(input), kernel_shape, pads, strides, output);
+  shaper_.Pool(input, kernel_shape, pads, strides, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   if (HAS(rk_tensors_, input)) {
@@ -1290,7 +1290,8 @@ void OnnxConverter::AddLayerMaxPoolImpl(
   attr.pad[3] = pads[3];
   attr.pad_type = rk::nn::PadType::AUTO;
   attr.pool_type = rk::nn::PoolType::POOLING_MAX;
-  attr.round_type = (ceil_mode == 1) ? rk::nn::RoundType::ROUND_CEIL : rk::nn::RoundType::ROUND_FLOOR;
+  attr.round_type =
+      (ceil_mode == 1) ? rk::nn::RoundType::ROUND_CEIL : rk::nn::RoundType::ROUND_FLOOR;
   attr.global_pooling = (kernel_shape[0] == -1 && kernel_shape[1] == -1);
 
   graph_->AddOperator(rk::nn::OperatorType::POOL,
@@ -1300,7 +1301,7 @@ void OnnxConverter::AddLayerMaxPoolImpl(
 void OnnxConverter::AddLayerReLU(const std::string& input,
                                  const std::string& output) {
   ADD_SHAPE(input);
-  shaper_.Relu(m(input), output);
+  shaper_.Relu(input, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   if (HAS(rk_tensors_, input)) {
@@ -1322,7 +1323,7 @@ void OnnxConverter::AddLayerReLU(const std::string& input,
 void OnnxConverter::AddLayerSoftmax(const std::string& input,
                                     const std::string& output) {
   ADD_SHAPE(input);
-  shaper_.Softmax(m(input), output);
+  shaper_.Softmax(input, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   if (HAS(rk_tensors_, input)) {
@@ -1358,7 +1359,7 @@ void OnnxConverter::AddLayerFC(const std::string& input,
     ADD_SHAPE(bias);
   }
 
-  shaper_.FC(m(input), m(weight), output);
+  shaper_.FC(input, weight, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   std::vector<uint32_t> weight_dims;
@@ -1407,7 +1408,7 @@ void OnnxConverter::AddLayerAdd(const std::string& input1,
                                 const std::string& output) {
   ADD_SHAPE(input1);
   ADD_SHAPE(input2);
-  shaper_.Eltwise(m(input1), m(input2), output);
+  shaper_.Eltwise(input1, input2, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   if (HAS(rk_tensors_, input1)) {
@@ -1434,7 +1435,7 @@ void OnnxConverter::AddLayerSub(const std::string& input1,
                                 const std::string& output) {
   ADD_SHAPE(input1);
   ADD_SHAPE(input2);
-  shaper_.Eltwise(m(input1), m(input2), output);
+  shaper_.Eltwise(input1, input2, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   if (HAS(rk_tensors_, input1)) {
@@ -1461,7 +1462,7 @@ void OnnxConverter::AddLayerMul(const std::string& input1,
                                 const std::string& output) {
   ADD_SHAPE(input1);
   ADD_SHAPE(input2);
-  shaper_.Eltwise(m(input1), m(input2), output);
+  shaper_.Eltwise(input1, input2, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   if (HAS(rk_tensors_, input1)) {
@@ -1484,30 +1485,30 @@ void OnnxConverter::AddLayerMul(const std::string& input1,
 }
 
 void OnnxConverter::AddLayerBatchNorm(const string& input,
-                                      const string& scale_name,
-                                      const string& bias_name,
-                                      const string& mean_name,
-                                      const string& var_name,
+                                      const string& scale,
+                                      const string& bias,
+                                      const string& mean,
+                                      const string& var,
                                       const float eps,
                                       const string& output) {
   ADD_SHAPE(input);
-  shaper_.BatchNorm(m(input), output);
+  shaper_.BatchNorm(input, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   if (HAS(rk_tensors_, input)) {
     inputs.push_back(rk_tensors_.at(input));
   }
-  if (HAS(rk_tensors_, mean_name)) {
-    inputs.push_back(rk_tensors_.at(mean_name));
+  if (HAS(rk_tensors_, mean)) {
+    inputs.push_back(rk_tensors_.at(mean));
   }
-  if (HAS(rk_tensors_, var_name)) {
-    inputs.push_back(rk_tensors_.at(var_name));
+  if (HAS(rk_tensors_, var)) {
+    inputs.push_back(rk_tensors_.at(var));
   }
-  if (HAS(rk_tensors_, scale_name)) {
-    inputs.push_back(rk_tensors_.at(scale_name));
+  if (HAS(rk_tensors_, scale)) {
+    inputs.push_back(rk_tensors_.at(scale));
   }
-  if (HAS(rk_tensors_, bias_name)) {
-    inputs.push_back(rk_tensors_.at(bias_name));
+  if (HAS(rk_tensors_, bias)) {
+    inputs.push_back(rk_tensors_.at(bias));
   }
   if (HAS(rk_tensors_, output)) {
     outputs.push_back(rk_tensors_.at(output));
@@ -1527,13 +1528,13 @@ void OnnxConverter::AddLayerBatchNorm(const string& input,
 }
 
 void OnnxConverter::AddLayerReshape(const string& input,
-                                    const string& shape_name,
+                                    const string& shape,
                                     const string& output) {
   ADD_SHAPE(input);
 
-  GET_ATTR(shape, shape_name, int32_t);
+  GET_ATTR(v_shape, shape, int32_t);
 
-  shaper_.Reshape(m(input), shape, output);
+  shaper_.Reshape(input, v_shape, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   if (HAS(rk_tensors_, input)) {
@@ -1566,13 +1567,13 @@ void OnnxConverter::AddLayerFlatten(const string& input,
 
   std::vector<int32_t> shape = {1, -1};  // axis = 0
   if (axis > 0) {
-    const auto in_shape = shaper_[m(input)];
+    const auto in_shape = shaper_[input];
     shape[0] = (int32_t)std::accumulate(in_shape.begin(),
                                         in_shape.begin() + axis, 1,
                                         std::multiplies<uint32_t>());
   }
 
-  shaper_.Reshape(m(input), shape, output);
+  shaper_.Reshape(input, shape, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   if (HAS(rk_tensors_, input)) {
@@ -1601,7 +1602,7 @@ void OnnxConverter::AddLayerTranspose(const string& input,
                                       const string& output) {
   ADD_SHAPE(input);
 
-  shaper_.Transpose(m(input), perm, output);
+  shaper_.Transpose(input, perm, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   if (HAS(rk_tensors_, input)) {
@@ -1626,26 +1627,26 @@ void OnnxConverter::AddLayerTranspose(const string& input,
 }
 
 void OnnxConverter::AddLayerSlice(const string& input,
-                                  const string& starts_name,
-                                  const string& ends_name,
-                                  const string& axes_name,
-                                  const string& steps_name,
+                                  const string& starts,
+                                  const string& ends,
+                                  const string& axes,
+                                  const string& steps,
                                   const string& output) {
   ADD_SHAPE(input);
 
-  GET_ATTR(starts, starts_name, int32_t);
-  GET_ATTR(ends, ends_name, int32_t);
-  GET_ATTR(axes, axes_name, int32_t);
-  GET_ATTR(steps, steps_name, int32_t);
+  GET_ATTR(v_starts, starts, int32_t);
+  GET_ATTR(v_ends, ends, int32_t);
+  GET_ATTR(v_axes, axes, int32_t);
+  GET_ATTR(v_steps, steps, int32_t);
 
-  for (const auto step : steps) {
+  for (const auto step : v_steps) {
     if (step != 1) {
       LOGS_DEFAULT(FATAL) << "the steps of Slice must be 1!";
       return;
     }
   }
 
-  shaper_.Slice(m(input), starts, ends, axes, steps, output);
+  shaper_.Slice(input, v_starts, v_ends, v_axes, v_steps, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   if (HAS(rk_tensors_, input)) {
@@ -1669,11 +1670,11 @@ void OnnxConverter::AddLayerSlice(const string& input,
   }
 
   const auto input_dims = shaper_[input];
-  for (size_t i = 0; i < axes.size(); i++) {
-    int32_t dim = input_dims[axes[i]];
+  for (size_t i = 0; i < v_axes.size(); i++) {
+    int32_t dim = input_dims[v_axes[i]];
     if (dim > 0) {
-      int32_t start = starts[i] < 0 ? (starts[i] + dim) : starts[i];
-      attr.start[axes[i]] = std::max(start, 0);
+      int32_t start = v_starts[i] < 0 ? (v_starts[i] + dim) : v_starts[i];
+      attr.start[v_axes[i]] = std::max(start, 0);
     }
   }
 
@@ -1686,7 +1687,7 @@ void OnnxConverter::AddLayerSqueeze(const string& input,
                                     const string& output) {
   ADD_SHAPE(input);
 
-  shaper_.Squeeze(m(input), axes, output);
+  shaper_.Squeeze(input, axes, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   if (HAS(rk_tensors_, input)) {
@@ -1715,7 +1716,7 @@ void OnnxConverter::AddLayerUnsqueeze(const string& input,
                                       const string& output) {
   ADD_SHAPE(input);
 
-  shaper_.Unsqueeze(m(input), axes, output);
+  shaper_.Unsqueeze(input, axes, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   if (HAS(rk_tensors_, input)) {
@@ -1740,13 +1741,13 @@ void OnnxConverter::AddLayerUnsqueeze(const string& input,
 }
 
 void OnnxConverter::AddLayerGather(const string& input,
-                                   const string& indices_name,
+                                   const string& indices,
                                    const int32_t axis,
                                    const string& output) {
   ADD_SHAPE(input);
-  ADD_SHAPE(indices_name);
+  ADD_SHAPE(indices);
 
-  shaper_.Gather(m(input), indices_name, (int32_t)axis, output);
+  shaper_.Gather(input, indices, (int32_t)axis, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   if (HAS(rk_tensors_, input)) {
@@ -1772,7 +1773,7 @@ void OnnxConverter::AddLayerLeakyRelu(const std::string& input,
                                       const float alpha,
                                       const std::string& output) {
   ADD_SHAPE(input);
-  shaper_.Relu(m(input), output);
+  shaper_.Relu(input, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   if (HAS(rk_tensors_, input)) {
@@ -1799,7 +1800,7 @@ void OnnxConverter::AddLayerClip(const std::string& input,
                                  const int32_t max,
                                  const std::string& output) {
   ADD_SHAPE(input);
-  shaper_.Relu(m(input), output);
+  shaper_.Relu(input, output);
 
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs, outputs;
   if (HAS(rk_tensors_, input)) {
@@ -1834,7 +1835,7 @@ void OnnxConverter::AddLayerQuantizeLinear(const string& input,
                                            const string& output_zp,
                                            const string& output) {
   ADD_SHAPE(input);
-  shaper_.Identity(m(input), output);
+  shaper_.Identity(input, output);
 
   GET_ATTR(out_s, output_scale, float);
   GET_ATTR(out_zp, output_zp, uint8_t);
@@ -1865,7 +1866,7 @@ void OnnxConverter::AddLayerDequantizeLinear(const string& input,
                                              const string& input_zp,
                                              const string& output) {
   ADD_SHAPE(input);
-  shaper_.Identity(m(input), output);
+  shaper_.Identity(input, output);
 
   GET_ATTR(in_s, input_scale, float);
   GET_ATTR(in_zp, input_zp, uint8_t);

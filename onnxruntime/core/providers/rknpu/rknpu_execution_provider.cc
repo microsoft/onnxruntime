@@ -44,22 +44,20 @@ RknpuExecutionProvider::RknpuExecutionProvider()
     return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
   };
   DeviceAllocatorRegistrationInfo default_memory_info{
-    OrtMemTypeDefault,
-    std::move(default_allocator_factory),
-    std::numeric_limits<size_t>::max()
-  };
+      OrtMemTypeDefault,
+      std::move(default_allocator_factory),
+      std::numeric_limits<size_t>::max()};
   InsertAllocator(CreateAllocator(default_memory_info));
 
   auto cpu_allocator_factory = [](int) {
     auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(
-      RKNPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
+        RKNPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
     return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
   };
   DeviceAllocatorRegistrationInfo cpu_memory_info{
-    OrtMemTypeCPUOutput,
-    std::move(cpu_allocator_factory),
-    std::numeric_limits<size_t>::max()
-  };
+      OrtMemTypeCPUOutput,
+      std::move(cpu_allocator_factory),
+      std::numeric_limits<size_t>::max()};
   InsertAllocator(CreateAllocator(cpu_memory_info));
 }
 
@@ -332,7 +330,7 @@ common::Status RknpuExecutionProvider::Compile(
                                    const OrtCustomOpApi* api,
                                    OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
-      RknpuFuncState* s = reinterpret_cast<RknpuFuncState*>(state);
+      RknpuFuncState* rk_state = reinterpret_cast<RknpuFuncState*>(state);
       const size_t n_inputs = ort.KernelContext_GetInputCount(context);
       const size_t n_outputs = ort.KernelContext_GetOutputCount(context);
 
@@ -352,8 +350,8 @@ common::Status RknpuExecutionProvider::Compile(
 
       bool rebuild = false;
       std::vector<const void*> input_bufs(n_inputs);
-      if (s->uniq_input_shape == "") {
-        auto graph_proto = s->model_proto.mutable_graph();
+      if (rk_state->uniq_input_shape == "") {
+        auto graph_proto = rk_state->model_proto.mutable_graph();
         for (size_t i = 0; i < n_inputs; i++) {
           const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
           input_bufs[i] = const_cast<const void*>(
@@ -369,51 +367,51 @@ common::Status RknpuExecutionProvider::Compile(
             g_in_shape->add_dim()->set_dim_value(tensor_shape[dim]);
           }
         }
-        s->uniq_input_shape = input_shape;
+        rk_state->uniq_input_shape = input_shape;
         rebuild = true;
-      } else if (s->uniq_input_shape != input_shape) {
+      } else if (rk_state->uniq_input_shape != input_shape) {
         // TODO
         throw std::invalid_argument(
             "The input_shape is not match"
-            " the s->uniq_input_shape!");
+            " the rk_state->uniq_input_shape!");
       } else {
-        LOGS_DEFAULT(INFO) << "input_shape equal to s->uniq_input_shape,"
+        LOGS_DEFAULT(INFO) << "input_shape equal to rk_state->uniq_input_shape,"
                               " skip rebuild!";
       }
 
-      rk::nn::Graph* graph = s->exector->GetGraph();
+      rk::nn::Graph* graph = rk_state->exector->GetGraph();
       if (rebuild) {
         rknpu::OnnxConverter converter;
-        converter.Convert(s->model_proto, graph, input_bufs, s->input_map);
+        converter.Convert(rk_state->model_proto, graph, input_bufs, rk_state->input_map);
 
-        s->exector->Build();
+        rk_state->exector->Build();
 
-        auto input_map = s->input_map;
-        auto output_map = s->output_map;
+        auto input_map = rk_state->input_map;
+        auto output_map = rk_state->output_map;
         for (auto it = output_map.begin(); it != output_map.end(); it++) {
           if (converter.m(it->first) != it->first)
             output_map[converter.m(it->first)] = output_map[it->first];
         }
 
         int n_inputs = graph->GetInputs().size();
-        s->input_indexes.resize(n_inputs);
+        rk_state->input_indexes.resize(n_inputs);
         for (int i = 0; i < n_inputs; ++i) {
           const auto input = graph->GetInputs()[i];
           const std::string& name = input->GetName();
           auto iter = input_map.find(name);
           if (iter != input_map.end()) {
-            s->input_indexes[i] = iter->second;
+            rk_state->input_indexes[i] = iter->second;
           }
         }
 
         int n_outputs = graph->GetOutputs().size();
-        s->output_indexes.resize(n_outputs);
+        rk_state->output_indexes.resize(n_outputs);
         for (int i = 0; i < n_outputs; ++i) {
           const auto output = graph->GetOutputs()[i];
           const std::string& name = output->GetName();
           auto iter = output_map.find(name);
           if (iter != output_map.end()) {
-            s->output_indexes[i] = iter->second;
+            rk_state->output_indexes[i] = iter->second;
           }
         }
       }
@@ -427,7 +425,7 @@ common::Status RknpuExecutionProvider::Compile(
       inputs.resize(graph->GetInputs().size());
       for (size_t i = 0; i < graph->GetInputs().size(); i++) {
         const OrtValue* input_tensor =
-            ort.KernelContext_GetInput(context, s->input_indexes[i]);
+            ort.KernelContext_GetInput(context, rk_state->input_indexes[i]);
         float* input_buf =
             const_cast<float*>(ort.GetTensorData<float>(input_tensor));
 
@@ -475,7 +473,7 @@ common::Status RknpuExecutionProvider::Compile(
         std::vector<int64_t>
             int64_output_shape(output_shape.begin(), output_shape.end());
         const auto* output_tensor = ort.KernelContext_GetOutput(
-            context, s->output_indexes[i],
+            context, rk_state->output_indexes[i],
             int64_output_shape.data(),
             int64_output_shape.size());
         float* output_buf =
@@ -514,9 +512,9 @@ common::Status RknpuExecutionProvider::Compile(
         outputs[i].want_float = false;
       }
 
-      s->exector->SetInputs(inputs);
-      s->exector->Run();
-      s->exector->GetOutputs(outputs);
+      rk_state->exector->SetInputs(inputs);
+      rk_state->exector->Run();
+      rk_state->exector->GetOutputs(outputs);
 
       return Status::OK();
     };
