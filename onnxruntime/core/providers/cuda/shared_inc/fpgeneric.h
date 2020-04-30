@@ -30,6 +30,13 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle, cublasOperation_t 
                                        const cudaDeviceProp& /*prop*/) {
   return cublasDgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 }
+
+#ifdef ENABLE_TRAINING
+inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+                                       int m, int n, int k, const half* alpha, const half* A, int lda,
+                                       const half* B, int ldb, const half* beta, half* C, int ldc,
+                                       const cudaDeviceProp& /*prop*/) {
+#else
 inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
                                        int m, int n, int k, const half* alpha, const half* A, int lda,
                                        const half* B, int ldb, const half* beta, half* C, int ldc,
@@ -39,6 +46,7 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle, cublasOperation_t 
     onnxruntime::cuda::CublasMathModeSetter math_mode_setter(handle, CUBLAS_TENSOR_OP_MATH);
     return cublasHgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
   }
+#endif
 
   //This does pseudo FP16 computation (input/output in fp16, computation in fp32)
   float h_a = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
