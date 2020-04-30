@@ -43,7 +43,6 @@ enum class ThreadPoolType : uint8_t {
   INTER_OP
 };
 std::unique_ptr<ThreadPool> CreateThreadPool(Env* env, OrtThreadPoolParams options,
-                                             ThreadPoolType tpool_type,
-                                             Eigen::Allocator* allocator = nullptr);
+                                             ThreadPoolType tpool_type);
 }  // namespace concurrency
 }  // namespace onnxruntime
