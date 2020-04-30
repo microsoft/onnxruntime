@@ -41,7 +41,9 @@ stages:
     ${{ if eq(parameters.enable_training, true) }}:
       actual_extra_build_py_parameters: >
         ${{ parameters.build_py_parameters }}
-        --enable_training --wheel_name_suffix training
+        --enable_training
+        --skip_python_training_tests
+        --wheel_name_suffix training
       actual_extra_linux_docker_build_parameters: '--build-arg ENABLE_TRAINING=1'
       docker_image_prefix: 'onnxruntime-training'
     ${{ if ne(parameters.enable_training, true) }}:
