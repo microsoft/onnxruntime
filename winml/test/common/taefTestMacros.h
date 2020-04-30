@@ -1,8 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
-#define INLINE_TEST_METHOD_MARKUP
-
 #include "WexTestClass.h"
 
 using namespace WEX::Logging;
@@ -77,9 +74,9 @@ using namespace WEX::TestExecution;
 #else
 #define GPUTEST                                                                               \
   do {                                                                                        \
-    bool noGPUTests;                                                                          \
-    if (SUCCEEDED(RuntimeParameters::TryGetValue(L"noGPUtests", noGPUTests)) && noGPUTests) { \
-      WINML_SKIP_TEST("This test is disabled by the noGPUTests runtime parameter.");          \
+    bool no_gpu_tests;                                                                          \
+    if (SUCCEEDED(RuntimeParameters::TryGetValue(L"noGPUtests", no_gpu_tests)) && no_gpu_tests) { \
+      WINML_SKIP_TEST("This test is disabled by the no_gpu_tests runtime parameter.");          \
       return;                                                                                 \
     }                                                                                         \
   } while (0)

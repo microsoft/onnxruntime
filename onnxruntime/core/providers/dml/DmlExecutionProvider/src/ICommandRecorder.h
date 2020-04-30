@@ -15,6 +15,8 @@ namespace Dml
         // Forces all queued work to begin executing on the GPU. This method returns immediately and does not wait
         // for the submitted work to complete execution on the GPU.
         virtual void CloseAndExecute() = 0;
+
+        virtual bool HasUnsubmittedWork() = 0;
     };
 
 } // namespace Dml
