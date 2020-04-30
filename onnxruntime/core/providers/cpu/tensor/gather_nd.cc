@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gather_nd.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 
