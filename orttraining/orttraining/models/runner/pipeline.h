@@ -7,6 +7,8 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <thread>
+// #include <optional>
+#include "core/common/optional.h"
 
 #include "gsl/gsl"
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
@@ -18,12 +20,12 @@ namespace pipeline {
 
 struct Slot {
   enum Type { Empty, Forward, Backward };
-  
-  Slot(); 
-  bool IsEmpty() const; 
-  bool IsForward() const; 
-  bool IsBackward() const; 
-  void show() const; 
+
+  Slot();
+  bool IsEmpty() const;
+  bool IsForward() const;
+  bool IsBackward() const;
+  void show() const;
 
   Type type;
   int batch_id;
@@ -53,12 +55,12 @@ private:
   //   3. table_[1][0].batch_id is 1 and table_[1][0].type is Forward.
   std::vector<std::vector<Slot>> table_;
   // Number of active batches per time slot. batch_count_[i] is the number of active
-  // batches at the i-th time slot. 
+  // batches at the i-th time slot.
   std::vector<int> batch_count_;
-  // Total number of stages of this pipeline. 
+  // Total number of stages of this pipeline.
   // It equals to table_.size().
   int num_stages_;
-  // Total number of batches scheduled in this pipeline. 
+  // Total number of batches scheduled in this pipeline.
   // It equals to table_[i].size(), for i = 0, ..., num_stages_.
   int num_batches_;
 };
@@ -82,7 +84,7 @@ struct PipelineWorkerPool {
 };
 
 struct PipelineContext {
-  // Total number of pipeline stages. 
+  // Total number of pipeline stages.
   size_t num_pipeline_stages;
 
   // Id of stage handled by this process. Currently, it matches the MPI's rank.
@@ -91,8 +93,18 @@ struct PipelineContext {
   // num_gradient_accumulation_steps - 1
   size_t num_pipeline_batches;
   // We only run pipeline on the first num_gradient_accumulation_steps - 1 batches.
-  // The last batch runs optimizer and update the weights. 
+  // The last batch runs optimizer and update the weights.
   size_t num_gradient_accumulation_steps;
+
+  struct CutEdge{
+    std::string node_arg_name;
+    optional<std::string> consumer_node;
+
+    CutEdge(std::string edge): node_arg_name(edge) {};
+    CutEdge(std::string edge, std::string node): node_arg_name(edge), consumer_node(node) {};
+  };
+  using CutInfo = std::vector<CutEdge>;
+  std::vector<CutInfo> cut_list;
 
   // Name of scheduling event in graph's input list.
   // If an event name is an empty string, it means no event
@@ -112,7 +124,7 @@ struct PipelineContext {
   std::string backward_recorded_event_name;
 
   std::vector<std::string> feed_names;
-}; 
+};
 
 }  // namespace pipeline
 }  // namespace training

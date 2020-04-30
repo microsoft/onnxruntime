@@ -107,6 +107,14 @@ bool IsRootNode(const TrainingSession::TrainingConfiguration& config) {
 }
 }  // namespace
 
+using CutInfo = std::vector<pipeline::PipelineContext::CutEdge>;
+Status GetSplitGraphForPipeline(std::vector<CutInfo> cut_info,
+                                size_t pipeline_stage_id,
+                                const std::string& input_file_name,
+                                std::string& pipeline_partition_file_name) {
+  ORT_RETURN_IF_ERROR(SplitGraphForPipeline(model_->MainGraph(), cut_info, pipeline_stage_id, pipeline_partition_file_name));
+}
+
 Status TrainingSession::ConfigureForTraining(
     const TrainingConfiguration& config, TrainingConfigurationResult& config_result_out) {
   ORT_RETURN_IF(
@@ -277,7 +285,7 @@ Status TrainingSession::ConfigureForTraining(
         tensorboard_config.histogram_node_names, tensorboard_config.norm_node_names,
         tensorboard_config.dump_convergence_metrics));
   }
-    
+
   // add GIST encoding
   if (config.gist_config.has_value()) {
     ORT_RETURN_IF_ERROR(AddGistEncoding());

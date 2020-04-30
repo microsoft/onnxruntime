@@ -61,24 +61,45 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
   ORT_ENFORCE(!params_.training_optimizer_name.empty());
   if (params.partition_optimizer)
     ORT_ENFORCE(params.use_nccl, "Optimizer partitioning is only supported with NCCL distributed training.");
-  
+
   if (params.use_pipeline) {
     pipeline_context_.pipeline_stage_id = params_.mpi_context.world_rank;
     pipeline_context_.num_pipeline_stages = params_.num_pipeline_stages;
     pipeline_context_.num_pipeline_batches = params_.gradient_accumulation_steps - 1;
     pipeline_context_.num_gradient_accumulation_steps = params_.gradient_accumulation_steps;
+
+    using CutInfo = std::vector<pipeline::PipelineContext::CutEdge>;
+    CutInfo cut0 = {pipeline::PipelineContext::CutEdge("186"), pipeline::PipelineContext::CutEdge("71", "273")};
+    CutInfo cut1 = {pipeline::PipelineContext::CutEdge("308"), pipeline::PipelineContext::CutEdge("71", "395")};
+  //   struct CutEdge{
+  //   std::string node_arg_name;
+  //   std::optional<std::string> consumer_node;
+  // };
+  // using CutInfo = std::vector<CutEdge>;
+  // std::vector<CutInfo> cut_list;
+
+    pipeline_context_.cut_list={cut0, cut1};
+    // //     cut0_input = {CutEdge('186'), CutEdge('71', {'273', '395'})}
+    // // cut1_input = {CutEdge('308'), CutEdge('71', {'395'})}
     pipeline_schedule_.add(0, pipeline_context_.num_pipeline_batches);
+
   }
 }
 
 Status TrainingRunner::Initialize() {
-  if (pipeline_context_.pipeline_stage_id == 0) {
-    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/xuzhu/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_0.onnx"));
-  } else if (pipeline_context_.pipeline_stage_id == 1) {
-    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/xuzhu/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_1.onnx"));
-  } else if (pipeline_context_.pipeline_stage_id == 2) {
-    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/xuzhu/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_2.onnx"));
-  }
+  // if (pipeline_context_.pipeline_stage_id == 0) {
+  //   ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/xuzhu/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_0.onnx"));
+  // } else if (pipeline_context_.pipeline_stage_id == 1) {
+  //   ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/xuzhu/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_1.onnx"));
+  // } else if (pipeline_context_.pipeline_stage_id == 2) {
+  //   ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/xuzhu/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_2.onnx"));
+  // }
+
+  // throw if faile
+  // std::string pipeline_partition_file_name;
+  ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/xuzhu/pipe/bert-tiny-shaped.onnx"));
+  ORT_RETURN_IF_ERROR(session_.GetSplitGraphForPipeline(pipeline_context_.cut_list, pipeline_context_.pipeline_stage_id, pipeline_partition_file_name));
+
   /*
   ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
   */

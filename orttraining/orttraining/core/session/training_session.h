@@ -137,7 +137,7 @@ class TrainingSession : public InferenceSession {
     bool use_pipeline{false};
 
     struct PipelineConfiguration {
-      // Total number of pipeline stages. 
+      // Total number of pipeline stages.
       size_t num_pipeline_stages;
       // Id of stage handled by this process. Currently, it matches the MPI's rank.
       size_t pipeline_stage_id;
@@ -350,6 +350,9 @@ class TrainingSession : public InferenceSession {
                                       std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg);
 
   std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights) const;
+
+  using CutInfo = std::vector<pipeline::PipelineContext::CutEdge>;
+  common::Status GetSplitGraphForPipeline(std::vector<CutInfo> cut_info, size_t pipeline_stage_id, const std::string& input_file_name,std::string& pipeline_partition_file_name);
 
   std::unordered_set<std::string> GetStateTensorNames() const;
 

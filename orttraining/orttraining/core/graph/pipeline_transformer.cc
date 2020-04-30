@@ -310,5 +310,12 @@ Status TransformGraphForPipeline(
   return graph.Resolve();
 }
 
+common::Status SplitGraphForPipeline(const Graph& graph,
+                                     std::vector<CutInfo> cut_info,
+                                     size_t pipeline_stage_id,
+                                     const std::string& input_file_name,
+                                     std::string& pipeline_partition_file_name) {
+  return Status::OK();
+}
 }  // namespace training
 }  // namespace onnxruntime
