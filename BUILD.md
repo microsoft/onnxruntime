@@ -578,7 +578,7 @@ You can get all these information from the previous output, please be sure they 
    
    Below are some examples.
    
-   If the target OS is raspbian-buster, please download the RAW image from their website then run:
+   If the target OS is raspbian-buster, please download the RAW image from [their website](https://www.raspberrypi.org/downloads/raspbian/) then run:
 ```bash   
 $ fdisk -l 2020-02-13-raspbian-buster.img   
 ```   
