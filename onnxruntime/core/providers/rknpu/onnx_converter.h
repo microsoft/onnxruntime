@@ -17,7 +17,31 @@
 
 namespace onnxruntime {
 namespace rknpu {
+
+/**
+ *  For convert from onnx::ModelProto to rk::nn::Graph.
+ */
 class OnnxConverter {
+ public:
+  OnnxConverter() {}
+  ~OnnxConverter() { Clear(); }
+
+  /** Get the supported subgraph.
+  */
+  std::vector<std::vector<int>> GetSupportedNodes(
+      const ONNX_NAMESPACE::ModelProto& model_proto);
+
+  /** Convert onnx::ModelProto to rk::nn::Graph.
+   *  Because some attributes of rk::nn::Tensor are used as input in onnx and these attributes
+   *  can't be found in onnx::ModelProto, so additional input-related information is required.
+  */
+  void Convert(const ONNX_NAMESPACE::ModelProto& model,
+               rk::nn::Graph* graph,
+               const std::vector<const void*>& input_bufs,
+               const std::unordered_map<std::string, int>& input_maps);
+
+  std::string m(const std::string& str) const;
+
  private:
   Shaper shaper_;
 
@@ -46,16 +70,13 @@ class OnnxConverter {
                  const std::string& output_name);
 
   std::shared_ptr<rk::nn::Tensor>
-  CreateRknnTensor(const std::string name,
-                   const std::vector<uint32_t> dims,
+  CreateRknnTensor(const std::string& name,
+                   const std::vector<uint32_t>& dims,
                    const void* data = NULL,
                    const rk::nn::TensorRole role = rk::nn::TensorRole::VAR,
-                   const rk::nn::PrecisionType precision =
-                       rk::nn::PrecisionType::FLOAT32,
-                   const rk::nn::DataLayoutType layout =
-                       rk::nn::DataLayoutType::NCHW,
-                   const rk::nn::QuantizationType qntType =
-                       rk::nn::QuantizationType::NONE,
+                   const rk::nn::PrecisionType precision = rk::nn::PrecisionType::FLOAT32,
+                   const rk::nn::DataLayoutType layout = rk::nn::DataLayoutType::NCHW,
+                   const rk::nn::QuantizationType qntType = rk::nn::QuantizationType::NONE,
                    const uint8_t bits = 8,
                    const float scale = 1.0,
                    const uint32_t zero_point = 0,
@@ -63,17 +84,19 @@ class OnnxConverter {
 
   void HandleInitializer();
   std::vector<std::shared_ptr<rk::nn::Tensor>> GetInputOfOnnxModel(
-      std::vector<const void*> input_bufs,
-      std::unordered_map<std::string, int> input_maps);
+      const std::vector<const void*>& input_bufs,
+      const std::unordered_map<std::string, int>& input_maps);
   std::vector<std::shared_ptr<rk::nn::Tensor>> GetOutputOfOnnxModel();
 
   std::pair<bool, std::string> IsNodeSupported(
       const ONNX_NAMESPACE::ModelProto& model_proto,
       const ONNX_NAMESPACE::NodeProto& node_proto) const;
 
-  void AddConv(const std::string& input_name, const std::vector<int>& strides,
+  void AddConv(const std::string& input_name,
+               const std::vector<int>& strides,
                const std::vector<int>& pads,
-               const std::vector<int>& dilations, int32_t group,
+               const std::vector<int>& dilations,
+               const int32_t group,
                const std::string& ori_weight_name,
                const std::string& bias_name,
                const std::string& auto_pad,
@@ -83,7 +106,8 @@ class OnnxConverter {
                       const std::string& input_zp_name,
                       const std::vector<int>& strides,
                       const std::vector<int>& pads,
-                      const std::vector<int>& dilations, int group,
+                      const std::vector<int>& dilations,
+                      const int group,
                       const std::string& auto_pad,
                       const std::string& weight_name,
                       const std::string& weight_scale_name,
@@ -92,7 +116,8 @@ class OnnxConverter {
                       const std::string& output_name,
                       const std::string& output_scale_name,
                       const std::string& output_zp_name);
-  void AddLayerPool(const std::string& op, const std::string& input_name,
+  void AddLayerPool(const std::string& op,
+                    const std::string& input_name,
                     const std::vector<int>& kernel_shape,
                     const std::vector<int>& pads,
                     const std::vector<int>& strides,
@@ -100,7 +125,8 @@ class OnnxConverter {
                     const std::string& output_name);
   void SetIdentity(const std::string& input_name,
                    const std::string& output_name);
-  void AddLayerConvImpl(const std::string& input, const std::string& weight,
+  void AddLayerConvImpl(const std::string& input,
+                        const std::string& weight,
                         const std::string& bias,
                         const std::vector<int32_t>& pads,
                         const std::vector<int32_t>& strides,
@@ -116,7 +142,7 @@ class OnnxConverter {
                                const std::string& bias,
                                const std::vector<int>& pads,
                                const std::vector<int>& strides,
-                               int group,
+                               const int group,
                                const std::string& auto_pad,
                                const std::string& output,
                                const std::string& output_scale,
@@ -133,24 +159,30 @@ class OnnxConverter {
                            const std::vector<int32_t>& strides,
                            const int32_t ceil_mode,
                            const std::string& output);
-  void AddLayerReLU(const std::string& input, const std::string& output);
-  void AddLayerSoftmax(const std::string& input, const std::string& output);
-  void AddLayerFC(const std::string& input, const std::string& weight,
+  void AddLayerReLU(const std::string& input,
+                    const std::string& output);
+  void AddLayerSoftmax(const std::string& input,
+                       const std::string& output);
+  void AddLayerFC(const std::string& input,
+                  const std::string& weight,
                   const std::string& bias,
                   const std::string& output);
-  void AddLayerAdd(const std::string& input1, const std::string& input2,
+  void AddLayerAdd(const std::string& input1,
+                   const std::string& input2,
                    const std::string& output);
-  void AddLayerSub(const std::string& input1, const std::string& input2,
+  void AddLayerSub(const std::string& input1,
+                   const std::string& input2,
                    const std::string& output);
-  void AddLayerConcat(const std::vector<std::string>& inputs, int32_t axis,
+  void AddLayerConcat(const std::vector<std::string>& inputs,
+                      const int32_t axis,
                       const std::string& output);
   void AddLayerDepthwiseConvImpl(const std::string& input,
                                  const std::string& weight,
                                  const std::string& bias,
                                  const std::vector<int32_t>& pads,
                                  const std::vector<int32_t>& strides,
-                                 int32_t depth_multiplier,
-                                 int32_t group,
+                                 const int32_t depth_multiplier,
+                                 const int32_t group,
                                  const std::string& output);
   void AddLayerBatchToSpaceND(const std::string& input,
                               const std::vector<int32_t>& block_sizes,
@@ -159,30 +191,43 @@ class OnnxConverter {
                               const std::vector<int32_t>& block_sizes,
                               const std::vector<int32_t>& pads,
                               const std::string& output);
-  void AddLayerSlice(const std::string& input, const std::string& starts_name,
-                     const std::string& ends_name, const std::string& axes_name,
-                     const std::string& steps_name, const std::string& output);
+  void AddLayerSlice(const std::string& input,
+                     const std::string& starts_name,
+                     const std::string& ends_name,
+                     const std::string& axes_name,
+                     const std::string& steps_name,
+                     const std::string& output);
   void AddLayerStridedSlice(const std::string& input,
                             const std::vector<int32_t>& starts,
                             const std::vector<int32_t>& ends,
                             const std::vector<int32_t>& strides,
-                            int32_t begin_mask, int32_t end_mask,
-                            int32_t shrink_axis_mask,
+                            const int32_t begin_mask,
+                            const int32_t end_mask,
+                            const int32_t shrink_axis_mask,
                             const std::string& output);
-  void AddLayerMul(const std::string& input1, const std::string& input2,
+  void AddLayerMul(const std::string& input1,
+                   const std::string& input2,
                    const std::string& output);
-  void AddLayerAdd(const std::string& input, float scalar,
+  void AddLayerAdd(const std::string& input,
+                   const float scalar,
                    const std::string& output);
-  void AddLayerMul(const std::string& input, float scalar,
+  void AddLayerMul(const std::string& input,
+                   const float scalar,
                    const std::string& output);
   void AddLayerDequantize(const std::string& input,
                           const std::string& output);
-  void AddLayerLRN(const std::string& input, int32_t radius, float bias,
-                   float alpha, float beta, const std::string& output);
-  void AddLayerTanh(const std::string& input, const std::string& output);
-  void AddLayerFloor(const std::string& input, const std::string& output);
-  void AddLayerLogistic(const std::string& input, const std::string& output);
-
+  void AddLayerLRN(const std::string& input,
+                   const int32_t radius,
+                   const float bias,
+                   const float alpha,
+                   const float beta,
+                   const std::string& output);
+  void AddLayerTanh(const std::string& input,
+                    const std::string& output);
+  void AddLayerFloor(const std::string& input,
+                     const std::string& output);
+  void AddLayerLogistic(const std::string& input,
+                        const std::string& output);
   void AddLayerBatchNorm(const std::string& input,
                          const std::string& scale_name,
                          const std::string& bias_name,
@@ -190,9 +235,11 @@ class OnnxConverter {
                          const std::string& var_name,
                          const float eps,
                          const std::string& output);
-  void AddLayerReshape(const std::string& input, const std::string& shape_name,
+  void AddLayerReshape(const std::string& input,
+                       const std::string& shape_name,
                        const std::string& output);
-  void AddLayerFlatten(const std::string& input, const int32_t axis,
+  void AddLayerFlatten(const std::string& input,
+                       const int32_t axis,
                        const std::string& output);
   void AddLayerTranspose(const std::string& input,
                          const std::vector<int32_t>& perm,
@@ -203,9 +250,12 @@ class OnnxConverter {
   void AddLayerUnsqueeze(const std::string& input,
                          const std::vector<int32_t>& axes,
                          const std::string& output);
-  void AddLayerGather(const std::string& input, const std::string& indices_name,
-                      const int32_t axis, const std::string& output);
-  void AddLayerLeakyRelu(const std::string& input, const float alpha,
+  void AddLayerGather(const std::string& input,
+                      const std::string& indices_name,
+                      const int32_t axis,
+                      const std::string& output);
+  void AddLayerLeakyRelu(const std::string& input,
+                         const float alpha,
                          const std::string& output);
   void AddLayerClip(const std::string& input,
                     const int32_t min,
@@ -222,17 +272,8 @@ class OnnxConverter {
 
   void Clear();
 
- public:
-  OnnxConverter() {}
-  virtual ~OnnxConverter() { Clear(); }
-
-  std::vector<std::vector<int>> GetSupportedNodes(
-      ONNX_NAMESPACE::ModelProto model_proto);
-  void Convert(const ONNX_NAMESPACE::ModelProto& model,
-               rk::nn::Graph* graph,
-               std::vector<const void*> input_bufs,
-               std::unordered_map<std::string, int> input_maps);
-  std::string m(const std::string& str) const;
+  OnnxConverter(const OnnxConverter&);
+  OnnxConverter& operator=(const OnnxConverter&);
 };
 
 }  // namespace rknpu

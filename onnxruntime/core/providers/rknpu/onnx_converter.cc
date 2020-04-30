@@ -93,8 +93,8 @@ OnnxConverter::FindActivation(const ONNX_NAMESPACE::ModelProto& model_proto,
 }
 
 std::shared_ptr<rk::nn::Tensor>
-OnnxConverter::CreateRknnTensor(const std::string name,
-                                const std::vector<uint32_t> dims,
+OnnxConverter::CreateRknnTensor(const std::string& name,
+                                const std::vector<uint32_t>& dims,
                                 const void* data,
                                 const rk::nn::TensorRole role,
                                 const rk::nn::PrecisionType precision,
@@ -172,8 +172,8 @@ void OnnxConverter::HandleInitializer() {
 }
 
 std::vector<std::shared_ptr<rk::nn::Tensor>> OnnxConverter::GetInputOfOnnxModel(
-    std::vector<const void*> input_bufs,
-    std::unordered_map<std::string, int> input_maps) {
+    const std::vector<const void*>& input_bufs,
+    const std::unordered_map<std::string, int>& input_maps) {
   std::vector<std::shared_ptr<rk::nn::Tensor>> inputs;
 
   for (const auto& input : model_proto_.graph().input()) {
@@ -441,8 +441,8 @@ std::pair<bool, std::string> OnnxConverter::IsNodeSupported(
     }
   } else if (op == "Reshape") {
     const auto output_name = node.output(0);
-    for (const auto another_node : model_proto_.graph().node()) {
-      for (const auto input_name : another_node.input()) {
+    for (const auto& another_node : model_proto_.graph().node()) {
+      for (const auto& input_name : another_node.input()) {
         if (input_name == output_name &&
             another_node.op_type() != "Gemm") {
           return {false,
@@ -543,7 +543,7 @@ std::pair<bool, std::string> OnnxConverter::IsNodeSupported(
 }
 
 std::vector<std::vector<int>> OnnxConverter::GetSupportedNodes(
-    ONNX_NAMESPACE::ModelProto model_proto) {
+    const ONNX_NAMESPACE::ModelProto& model_proto) {
   for (const auto& tensor : model_proto.graph().initializer()) {
     const std::string name = tensor.name();
     std::vector<uint32_t> dims;
@@ -584,8 +584,8 @@ std::vector<std::vector<int>> OnnxConverter::GetSupportedNodes(
 
 void OnnxConverter::Convert(const ONNX_NAMESPACE::ModelProto& model_proto,
                             rk::nn::Graph* graph,
-                            std::vector<const void*> input_bufs,
-                            std::unordered_map<std::string, int> input_maps) {
+                            const std::vector<const void*>& input_bufs,
+                            const std::unordered_map<std::string, int>& input_maps) {
   model_proto_ = model_proto;
   graph_ = graph;
 
@@ -823,7 +823,8 @@ void OnnxConverter::Clear() {
 void OnnxConverter::AddConv(const string& input_name,
                             const std::vector<int>& strides,
                             const std::vector<int>& pads,
-                            const std::vector<int>& dilations, int group,
+                            const std::vector<int>& dilations,
+                            const int group,
                             const string& ori_weight_name,
                             const string& bias_name,
                             const string& auto_pad,
@@ -859,7 +860,7 @@ void OnnxConverter::AddQLinearConv(const string& input_name,
                                    const std::vector<int>& strides,
                                    const std::vector<int>& pads,
                                    const std::vector<int>& dilations,
-                                   int group,
+                                   const int group,
                                    const string& auto_pad,
                                    const string& weight_name,
                                    const string& weight_scale_name,
@@ -1002,7 +1003,7 @@ void OnnxConverter::AddLayerQLinearConvImpl(const string& input,
                                             const string& bias,
                                             const std::vector<int>& pads,
                                             const std::vector<int>& strides,
-                                            int group,
+                                            const int group,
                                             const string& auto_pad,
                                             const string& output,
                                             const string& output_scale,
@@ -1110,10 +1111,14 @@ void OnnxConverter::AddLayerQLinearConvImpl(const string& input,
 }
 
 void OnnxConverter::AddLayerDepthwiseConvImpl(
-    const std::string& input, const std::string& weight,
-    const std::string& bias, const std::vector<int32_t>& pads,
-    const std::vector<int32_t>& strides, int32_t depth_multiplier,
-    int32_t group, const std::string& output) {
+    const std::string& input,
+    const std::string& weight,
+    const std::string& bias,
+    const std::vector<int32_t>& pads,
+    const std::vector<int32_t>& strides,
+    const int32_t depth_multiplier,
+    const int32_t group,
+    const std::string& output) {
   const auto activation = FindActivation(model_proto_, output);
 
   ADD_SHAPE(input);
@@ -1179,7 +1184,8 @@ void OnnxConverter::AddLayerDepthwiseConvImpl(
 }
 
 void OnnxConverter::AddLayerConcat(const std::vector<std::string>& input,
-                                   int32_t axis, const std::string& output) {
+                                   const int32_t axis,
+                                   const std::string& output) {
   for (const auto& name : input) {
     ADD_SHAPE(name);
   }
@@ -1208,9 +1214,12 @@ void OnnxConverter::AddLayerConcat(const std::vector<std::string>& input,
 }
 
 void OnnxConverter::AddLayerAvePoolImpl(
-    const std::string& input, const std::vector<int32_t>& kernel_shape,
-    const std::vector<int32_t>& pads, const std::vector<int32_t>& strides,
-    const int32_t ceil_mode, const std::string& output) {
+    const std::string& input,
+    const std::vector<int32_t>& kernel_shape,
+    const std::vector<int32_t>& pads,
+    const std::vector<int32_t>& strides,
+    const int32_t ceil_mode,
+    const std::string& output) {
   ADD_SHAPE(input);
   shaper_.Pool(m(input), kernel_shape, pads, strides, output);
 
@@ -1247,9 +1256,12 @@ void OnnxConverter::AddLayerAvePoolImpl(
 }
 
 void OnnxConverter::AddLayerMaxPoolImpl(
-    const std::string& input, const std::vector<int32_t>& kernel_shape,
-    const std::vector<int32_t>& pads, const std::vector<int32_t>& strides,
-    const int32_t ceil_mode, const std::string& output) {
+    const std::string& input,
+    const std::vector<int32_t>& kernel_shape,
+    const std::vector<int32_t>& pads,
+    const std::vector<int32_t>& strides,
+    const int32_t ceil_mode,
+    const std::string& output) {
   ADD_SHAPE(input);
   shaper_.Pool(m(input), kernel_shape, pads, strides, output);
 
@@ -1649,14 +1661,14 @@ void OnnxConverter::AddLayerSlice(const string& input,
     rk_tensors_[output] = rk_output;
   }
 
-  const auto input_dims = shaper_[input];
-  const auto output_dims = shaper_[output];
-
   rk::nn::SliceAttr attr;
-  for (size_t i = 0; i < output_dims.size(); i++) {
+
+  for (const auto dim : shaper_[output]) {
     attr.start.push_back(0);
-    attr.length.push_back(static_cast<uint32_t>(output_dims[i]));
+    attr.length.push_back(static_cast<uint32_t>(dim));
   }
+
+  const auto input_dims = shaper_[input];
   for (size_t i = 0; i < axes.size(); i++) {
     int32_t dim = input_dims[axes[i]];
     if (dim > 0) {
