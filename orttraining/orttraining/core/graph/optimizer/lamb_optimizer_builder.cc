@@ -208,7 +208,7 @@ Status LambOptimizerBuilder::Build(
       // m1 & m2 & m1_new & m2_new
       const std::vector<std::string> moments_prefixes({"Moment_1_", "Moment_2_"});
       for (const auto& moment_prefix : moments_prefixes) {
-        const std::string gradient_moment_name = moment_prefix + gradient_name;
+        const std::string gradient_moment_name = moment_prefix + weight_name;
 
         // Construct type of momentum tensor.
         TensorProto moment_tensor_proto;
