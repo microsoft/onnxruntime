@@ -1,6 +1,6 @@
 jobs:
 - job: Linux_OpenVINO_CI_Dev
-  timeoutInMinutes: 240
+  timeoutInMinutes: 360
   pool: OpenVINO
   steps:
     - task: CmdLine@2
