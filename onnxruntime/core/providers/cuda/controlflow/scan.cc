@@ -30,7 +30,7 @@ Scan<9>::Scan(const OpKernelInfo& info) : onnxruntime::Scan<9>(info) {
   scan::detail::DeviceHelpers helpers;
 
   helpers.transpose_func = [this](const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
-                                  const TensorShape* input_shape_override = nullptr) {
+                                  const TensorShape* /*input_shape_override*/) {
     // TODO: We construct a Transpose kernel on each call as doing so is fairly lightweight.
     // We could potentially keep a single instance and reuse it if that isn't performant enough.
     const OpKernelInfo& info = OpKernel::Info();
