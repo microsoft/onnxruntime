@@ -47,11 +47,6 @@ struct Dnnl_Provider : Provider {
 
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
-  g_host->SessionOptions_AddProviderFactory(*options, onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena));
-  return nullptr;
-}
-
 extern "C" {
 
 ORT_API(onnxruntime::Provider*, GetProvider) {

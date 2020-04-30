@@ -468,7 +468,7 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::make_unique<Prov_IDeviceAllocator_Impl>(onnxruntime::make_unique<CPUAllocator>(std::move(static_cast<Prov_OrtMemoryInfo_Impl*>(memory_info.get())->info_)));
   };
 
-  Prov_AllocatorPtr 
+  Prov_AllocatorPtr
   CreateDummyArenaAllocator(std::unique_ptr<Prov_IDeviceAllocator> resource_allocator) override {
     return std::make_shared<Prov_IAllocator_Impl>(onnxruntime::make_unique<DummyArena>(std::move(static_cast<Prov_IDeviceAllocator_Impl*>(resource_allocator.get())->p_)));
   };
@@ -476,10 +476,6 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<Prov_IExecutionProvider_Router> Create_IExecutionProvider_Router(Prov_IExecutionProvider* outer, const std::string& type) override {
     return onnxruntime::make_unique<Prov_IExecutionProvider_Router_Impl>(outer, type);
   };
-
-  void SessionOptions_AddProviderFactory(OrtSessionOptions& /*options*/, std::shared_ptr<Prov_IExecutionProviderFactory> /*provider*/) override{
-      // options.provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena));
-      PROVIDER_NOT_IMPLEMENTED}
 
   logging::Logger* LoggingManager_GetDefaultLogger() override {
     return const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
@@ -549,6 +545,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena));
+  //  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena));
   return nullptr;
 }
