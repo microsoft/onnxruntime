@@ -34,11 +34,6 @@ struct Prov_IAllocator_Impl : Prov_IAllocator {
 
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
-  const Prov_OrtMemoryInfo& Info() const override {
-    PROVIDER_NOT_IMPLEMENTED
-    return *(Prov_OrtMemoryInfo*)nullptr;
-    //return p_->Info();
-  }
 
   AllocatorPtr p_;
 };
@@ -48,11 +43,6 @@ struct Prov_IDeviceAllocator_Impl : Prov_IDeviceAllocator {
 
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
-  const Prov_OrtMemoryInfo& Info() const override {
-    PROVIDER_NOT_IMPLEMENTED
-    return *(Prov_OrtMemoryInfo*)nullptr;
-    //return p_->Info();
-  }
 
   bool AllowsArena() const override { return p_->AllowsArena(); }
 
@@ -257,13 +247,16 @@ struct Prov_GraphViewer_Impl : Prov_GraphViewer {
   }
 
   const std::string& Name() const noexcept override { return v_.Name(); }
+
   const Prov_Node* GetNode(NodeIndex node_index) const override {
     auto& node = prov_nodes_[node_index];
     if (node.p_)
       return &node;
     return nullptr;
   }
+
   int MaxNodeIndex() const noexcept override { return v_.MaxNodeIndex(); }
+
   const Prov_InitializedTensorSet& GetAllInitializedTensors() const noexcept override {
     if (initialized_tensor_set_.empty()) {
       initialized_tensors_.reserve(v_.GetAllInitializedTensors().size());
@@ -473,6 +466,11 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<Prov_IDeviceAllocator>
   CreateCPUAllocator(std::unique_ptr<Prov_OrtMemoryInfo> memory_info) override {
     return onnxruntime::make_unique<Prov_IDeviceAllocator_Impl>(onnxruntime::make_unique<CPUAllocator>(std::move(static_cast<Prov_OrtMemoryInfo_Impl*>(memory_info.get())->info_)));
+  };
+
+  Prov_AllocatorPtr 
+  CreateDummyArenaAllocator(std::unique_ptr<Prov_IDeviceAllocator> resource_allocator) override {
+    return std::make_shared<Prov_IAllocator_Impl>(onnxruntime::make_unique<DummyArena>(std::move(static_cast<Prov_IDeviceAllocator_Impl*>(resource_allocator.get())->p_)));
   };
 
   std::unique_ptr<Prov_IExecutionProvider_Router> Create_IExecutionProvider_Router(Prov_IExecutionProvider* outer, const std::string& type) override {

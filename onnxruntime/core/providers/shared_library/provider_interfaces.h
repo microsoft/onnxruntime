@@ -104,7 +104,6 @@ struct Prov_IAllocator {
 
   virtual void* Alloc(size_t size) = 0;
   virtual void Free(void* p) = 0;
-  virtual const Prov_OrtMemoryInfo& Info() const = 0;
 
   static bool CalcMemSizeForArray(size_t nmemb, size_t size, size_t* out) noexcept {
     return CalcMemSizeForArrayWithAlignment<0>(nmemb, size, out);
@@ -498,6 +497,7 @@ struct ProviderHost {
   virtual std::unique_ptr<Prov_IndexedSubGraph> IndexedSubGraph_Create() = 0;
 
   virtual std::unique_ptr<Prov_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Prov_OrtMemoryInfo> memory_info) = 0;
+  virtual Prov_AllocatorPtr CreateDummyArenaAllocator(std::unique_ptr<Prov_IDeviceAllocator> resource_allocator) = 0;
   virtual std::unique_ptr<Prov_IExecutionProvider_Router> Create_IExecutionProvider_Router(Prov_IExecutionProvider* outer, const std::string& type) = 0;
 
   virtual void SessionOptions_AddProviderFactory(OrtSessionOptions& options, std::shared_ptr<Prov_IExecutionProviderFactory> provider) = 0;

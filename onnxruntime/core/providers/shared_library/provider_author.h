@@ -158,7 +158,7 @@ template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
 std::unique_ptr<Prov_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Prov_OrtMemoryInfo> memory_info);
-Prov_AllocatorPtr CreateDummyArenaAllocator(Prov_AllocatorPtr resource_allocator);
+Prov_AllocatorPtr CreateDummyArenaAllocator(std::unique_ptr<Prov_IDeviceAllocator> resource_allocator);
 Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, int16_t device_id = 0);
 
 class CPUIDInfo {

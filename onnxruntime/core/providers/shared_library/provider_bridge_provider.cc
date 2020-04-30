@@ -6,6 +6,7 @@
 #include "provider_author.h"
 #include <assert.h>
 #include <mutex>
+#include <iostream>  // For std::cout used in a stub
 
 onnxruntime::ProviderHost* g_host{};
 
@@ -302,10 +303,8 @@ std::unique_ptr<Prov_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Prov_O
   return g_host->CreateCPUAllocator(std::move(info));
 }
 
-Prov_AllocatorPtr CreateDummyArenaAllocator(Prov_AllocatorPtr resource_allocator) {
-  PROVIDER_NOT_IMPLEMENTED
-  ORT_UNUSED_PARAMETER(resource_allocator);
-  return nullptr;
+Prov_AllocatorPtr CreateDummyArenaAllocator(std::unique_ptr<Prov_IDeviceAllocator> resource_allocator) {
+  return g_host->CreateDummyArenaAllocator(std::move(resource_allocator));
 }
 
 Prov_IExecutionProvider::Prov_IExecutionProvider(const std::string& type) {
@@ -339,7 +338,7 @@ Capture::Capture(const Logger& logger, logging::Severity severity, const char* c
 
 std::ostream& Capture::Stream() noexcept {
   PROVIDER_NOT_IMPLEMENTED
-  return *(std::ostream*)nullptr;
+  return std::cout;
 }
 
 const char* Category::onnxruntime = "foo";
