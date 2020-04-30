@@ -62,7 +62,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // Updating a node may allow shape inferencing to infer output shapes of following nodes,
     // so re-run the shape inferencing. use have_updated_nodes as that only applies to this Graph
     // (vs. 'modified' which is passed into subgraphs and applies to the main graph and all subgraphs)
-    if (have_updated_nodes) {
+    // Ignore any control flow node containing subgraphs as UpdateShapeInference is not intended to be used on it.
+    if (have_updated_nodes && !node->ContainsSubgraph()) {
       ORT_RETURN_IF_ERROR(graph.UpdateShapeInference(*node));
     }
 
