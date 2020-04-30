@@ -316,11 +316,8 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
   if (!pipeline_context_.forward_waited_event_name.empty()) {
     feed_names.push_back(pipeline_context_.forward_waited_event_name);
     OrtValue event_id;
-    /*
     const int64_t id = pipeline_schedule_.get_forward_waited_event_id(
       pipeline_context_.pipeline_stage_id, step_ % pipeline_context_.num_gradient_accumulation_steps);
-    */
-    const int64_t id = -1;
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -332,11 +329,8 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
   if (!pipeline_context_.forward_recorded_event_name.empty()) {
     feed_names.push_back(pipeline_context_.forward_recorded_event_name);
     OrtValue event_id;
-    /*
     const int64_t id = pipeline_schedule_.get_forward_recorded_event_id(
       pipeline_context_.pipeline_stage_id, step_ % pipeline_context_.num_gradient_accumulation_steps);
-    */
-    const int64_t id = -1;
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -348,11 +342,8 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
   if (!pipeline_context_.backward_waited_event_name.empty()) {
     feed_names.push_back(pipeline_context_.backward_waited_event_name);
     OrtValue event_id;
-    /*
     const int64_t id = pipeline_schedule_.get_backward_waited_event_id(
       pipeline_context_.pipeline_stage_id, step_ % pipeline_context_.num_gradient_accumulation_steps);
-    */
-    const int64_t id = -1;
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -364,11 +355,8 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
   if (!pipeline_context_.backward_recorded_event_name.empty()) {
     feed_names.push_back(pipeline_context_.backward_recorded_event_name);
     OrtValue event_id;
-    /*
     int64_t id = pipeline_schedule_.get_backward_recorded_event_id(
       pipeline_context_.pipeline_stage_id, step_ % pipeline_context_.num_gradient_accumulation_steps);
-    */
-    const int64_t id = -1;
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -480,6 +468,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         auto start = std::chrono::high_resolution_clock::now();
 
         if (is_weight_update_step) {
+          pipeline_worker_pool_.join_all();
           ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
                                            feed_names,
                                            feeds,
@@ -507,13 +496,24 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
           weight_update_step_count_++;
         } else {
-          RunOptions run_options;
-          run_options.only_execute_path_to_fetches = true;
-          ORT_RETURN_IF_ERROR(session_.Run(run_options,
-                                           feed_names,
-                                           feeds,
-                                           fetch_names,
-                                           &fetches));
+          const size_t worker_id = step_ % pipeline_context_.num_pipeline_stages;
+          pipeline_worker_pool_.join(worker_id);
+          pipeline_worker_pool_.worker_states[worker_id].feeds = feeds;
+          pipeline_worker_pool_.worker_states[worker_id].feed_names = feed_names;
+          pipeline_worker_pool_.worker_states[worker_id].fetch_names = fetch_names;
+          pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
+
+          pipeline_worker_pool_.workers[worker_id] = std::thread([&](
+            const size_t worker_id, const size_t batch_id, const size_t stage_id) {
+            RunOptions run_options;
+            run_options.only_execute_path_to_fetches = true;
+            session_.Run(
+              run_options,
+              pipeline_worker_pool_.worker_states[worker_id].feed_names,
+              pipeline_worker_pool_.worker_states[worker_id].feeds,
+              pipeline_worker_pool_.worker_states[worker_id].fetch_names,
+              &(pipeline_worker_pool_.worker_states[worker_id].fetches));
+          }, worker_id, batch, pipeline_context_.pipeline_stage_id);
           gradient_accumulation_step_count++;
         }
         step_++;
@@ -568,6 +568,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         }
       }  // end of one file/shard
 
+      pipeline_worker_pool_.join_all();
       if (step_ < params_.num_train_steps) {
         training_data_loader.MoveToNextDataSet();
       }
@@ -600,7 +601,7 @@ Status TrainingRunner::EndTraining(IDataLoader* data_loader) {
     return Status::OK();
   }
 
-  if (data_loader) {
+  if (!params_.use_pipeline && data_loader) {
     // Test the in-memory model before saving.
     printf("\nEvaluating the final model on the test set.\n");
     ORT_RETURN_IF_ERROR(Evaluate(session_, *data_loader));
