@@ -95,6 +95,50 @@ void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOS
   int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
 }
+#else
+template <>
+void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                              const int64_t N, const int64_t K, double alpha, const double* A, const double* B, double beta,
+                              double* C, ThreadPool*) {
+  auto C_mat = EigenMatrixMap<double>(C, N, M);
+  if (beta == 0) {
+    C_mat.setZero();
+  } else {
+    C_mat *= beta;
+  }
+  switch (TransA) {
+    case CblasNoTrans: {
+      switch (TransB) {
+        case CblasNoTrans:
+          C_mat.noalias() += alpha * (ConstEigenMatrixMap<double>(B, N, K) *
+                                      ConstEigenMatrixMap<double>(A, K, M));
+          return;
+        case CblasTrans:
+          C_mat.noalias() += alpha * (ConstEigenMatrixMap<double>(B, K, N).transpose() *
+                                      ConstEigenMatrixMap<double>(A, K, M));
+          return;
+        default:
+          ORT_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+      }
+    }
+    case CblasTrans: {
+      switch (TransB) {
+        case CblasNoTrans:
+          C_mat.noalias() += alpha * (ConstEigenMatrixMap<double>(B, N, K) *
+                                      ConstEigenMatrixMap<double>(A, M, K).transpose());
+          return;
+        case CblasTrans:
+          C_mat.noalias() += alpha * (ConstEigenMatrixMap<double>(B, K, N).transpose() *
+                                      ConstEigenMatrixMap<double>(A, M, K).transpose());
+          return;
+        default:
+          ORT_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+      }
+    }
+    default:
+      ORT_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
+  }
+}
 #endif
 
 template <>
@@ -120,14 +164,14 @@ void GemmEx<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPO
 
 template <typename T, class Provider>
 void Gemv(CBLAS_TRANSPOSE TransA,
-    int M,
-    int N,
-    float alpha,
-    const T* A,
-    const T* x,
-    float beta,
-    T* y,
-    Provider* /*provider*/) {
+          int M,
+          int N,
+          float alpha,
+          const T* A,
+          const T* x,
+          float beta,
+          T* y,
+          Provider* /*provider*/) {
   EigenVectorMap<T> y_vec(y, TransA == CblasNoTrans ? M : N);
   if (beta == 0) {
     // In Caffe2 we often do a lazy initialization, which may contain NaNs in
@@ -152,12 +196,10 @@ void Gemv(CBLAS_TRANSPOSE TransA,
   }
 }
 
-template 
-void Gemv<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const float* A, const float* x,
-                              float beta, float* y, CPUMathUtil* );
-template 
-void Gemv<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const double* A, const double* x,
-                              float beta, double* y, CPUMathUtil* );
+template void Gemv<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const float* A, const float* x,
+                                       float beta, float* y, CPUMathUtil*);
+template void Gemv<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const double* A, const double* x,
+                                        float beta, double* y, CPUMathUtil*);
 #define SPECIALIZED_AXPY(T)                                                                       \
   template <>                                                                                     \
   void Axpy<T, CPUMathUtil>(int N, const T alpha, const T* x, T* Y, CPUMathUtil* /*provider*/) {  \
@@ -226,7 +268,7 @@ void Gemv<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float 
 
 template <>
 void Gemv<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const double* A, const double* x,
-                              float beta, double* y, CPUMathUtil* /*context*/) {
+                               float beta, double* y, CPUMathUtil* /*context*/) {
   cblas_dgemv(CblasRowMajor, TransA, M, N, alpha, A, N, x, 1, beta, y, 1);
 }
 
@@ -277,7 +319,7 @@ DELEGATE_POWX_FUNCTION(float)
 DEFINE_SIMPLE_BINARY_FUNCTION(Add, +)
 DEFINE_SIMPLE_BINARY_FUNCTION(Sub, -)
 DEFINE_SIMPLE_BINARY_FUNCTION(Mul, *)
-DEFINE_SIMPLE_BINARY_FUNCTION(Div, / )
+DEFINE_SIMPLE_BINARY_FUNCTION(Div, /)
 
 #undef EIGEN_SIMPLE_BINARY_FUNCTION
 #undef DEFINE_FLOAT_BINARY_FUNCTION
