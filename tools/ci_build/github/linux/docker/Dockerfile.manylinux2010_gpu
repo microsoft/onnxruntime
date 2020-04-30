@@ -2,9 +2,6 @@ FROM quay.io/pypa/manylinux2010_x86_64:latest
 
 ARG PYTHON_VERSION=3.5
 
-# enable training dependencies by setting build argument ENABLE_TRAINING to a non-empty value
-ARG ENABLE_TRAINING
-
 ENV NVIDIA_VISIBLE_DEVICES all
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
 
@@ -13,7 +10,7 @@ SHELL ["/bin/bash", "-c"]
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && \
     /tmp/scripts/install_centos.sh && \
-    /tmp/scripts/install_deps.sh -d gpu -p $PYTHON_VERSION -x "${ENABLE_TRAINING:+"--enable_training"}" && \
+    /tmp/scripts/install_deps.sh -d gpu -p $PYTHON_VERSION && \
     yum remove -y devtoolset-\* && \
     yum install -y devtoolset-7-binutils devtoolset-7-gcc devtoolset-7-gcc-c++ devtoolset-7-gcc-gfortran devtoolset-7-libquadmath-devel devtoolset-7-libstdc++-devel devtoolset-7-runtime && \
     rm -rf /tmp/scripts
@@ -70,6 +67,9 @@ RUN CUDNN_DOWNLOAD_SUM=7eaec8039a2c30ab0bc758d303588767693def6bf49b22485a2c00bf2
 
 
 # -- training dependencies --
+
+# enable training dependencies by setting build argument ENABLE_TRAINING to a non-empty value
+ARG ENABLE_TRAINING
 
 # install MPI 4.0.0
 RUN test -z $ENABLE_TRAINING || ( \
