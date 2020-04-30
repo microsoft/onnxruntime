@@ -287,7 +287,7 @@ static void TestSoftmaxCrossEntropyLoss(const std::vector<int64_t>* X_dims,
   // create rand inputs
   RandomValueGenerator random{};
   std::vector<float> X_data = random.Uniform<float>(*X_dims, -200.0f, 200.0f);
-  std::vector<int64_t> index_data = random.Uniform<int64_t>(*index_dims, 0.0f, static_cast<float>((*X_dims)[1]));
+  std::vector<int64_t> index_data = random.Uniform<int64_t>(*index_dims, 0, ((*X_dims)[1]) - 1);
   //Add one data point that has ignore_index.
   if (index_data.size() > 0) {
     index_data[0] = ignore_index;
@@ -313,7 +313,7 @@ static void TestSoftmaxCrossEntropyLoss(const std::vector<int64_t>* X_dims,
 TEST(CudaKernelTest, SoftmaxCrossEntropyLoss_TinySizeTensor) {
   std::vector<int64_t> X_dims{8, 2};
   std::vector<int64_t> index_dims{8};
-  std::vector<int64_t> weight_dims{8};
+  std::vector<int64_t> weight_dims{2};
   std::vector<int64_t> Y_dims{};
   std::vector<int64_t> Y_dims_none{8};
   std::vector<int64_t> log_prob_dims{8, 2};
@@ -394,7 +394,7 @@ static void TestSoftmaxCrossEntropyLossGrad(const std::vector<int64_t>& dY_dims,
   RandomValueGenerator random{};
   std::vector<float> dY_data = random.Uniform<float>(dY_dims, -10.0f, 10.0f);
   std::vector<float> log_prob_data = random.Uniform<float>(log_prob_dims, -10.0f, 10.0f);
-  std::vector<int64_t> index_data = random.Uniform<int64_t>(index_dims, 0.0f, static_cast<float>(dX_dims[1]));
+  std::vector<int64_t> index_data = random.Uniform<int64_t>(index_dims, 0, dX_dims[1] - 1);
   //Add one data point that has ignore_index.
   if (index_data.size() > 0) {
     index_data[0] = ignore_index;

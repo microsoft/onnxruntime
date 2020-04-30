@@ -50,6 +50,11 @@ namespace SchemaHelpers
         return value;
     }
 
+    inline OperatorFieldTypes::UInt64 ToOperatorFieldType(uint64_t value)
+    {
+        return value;
+    }
+
     inline OperatorFieldTypes::Int ToOperatorFieldType(int32_t value)
     {
         return value;
@@ -63,6 +68,17 @@ namespace SchemaHelpers
     inline OperatorFieldTypes::UIntArray ToOperatorFieldType(const uint32_t* values, uint32_t count)
     {
         OperatorFieldTypes::UIntArray field;
+        if (values && count != 0)
+        {
+            field.emplace(count);
+            std::copy_n(values, count, field->begin());
+        }
+        return field;
+    }
+
+    inline OperatorFieldTypes::IntArray ToOperatorFieldType(const int32_t* values, uint32_t count)
+    {
+        OperatorFieldTypes::IntArray field;
         if (values && count != 0)
         {
             field.emplace(count);
@@ -92,6 +108,10 @@ namespace SchemaHelpers
         return value;
     }
 
+    inline OperatorFieldTypes::ScalarUnion ToOperatorFieldType(DML_SCALAR_UNION value)
+    {
+        return value;
+    }
 
     class StructFieldWriter
     {
@@ -250,6 +270,12 @@ namespace SchemaHelpers
             dst->Write(value);
         } break;
 
+        case DML_SCHEMA_FIELD_TYPE_UINT64:
+        {
+            uint64_t value = field.AsUInt64();
+            dst->Write(value);
+        } break;
+
         case DML_SCHEMA_FIELD_TYPE_INT:
         {
             int32_t value = field.AsInt();
@@ -270,6 +296,20 @@ namespace SchemaHelpers
             if (values)
             {
                 arrayPtr = allocator->Allocate<uint32_t>(values->size());
+                std::copy(values->begin(), values->end(), arrayPtr);
+            }
+
+            dst->Write(arrayPtr);
+        } break;
+
+        case DML_SCHEMA_FIELD_TYPE_INT_ARRAY:
+        {
+            int32_t* arrayPtr = nullptr;
+
+            const auto& values = field.AsIntArray();
+            if (values)
+            {
+                arrayPtr = allocator->Allocate<int32_t>(values->size());
                 std::copy(values->begin(), values->end(), arrayPtr);
             }
 
@@ -307,6 +347,12 @@ namespace SchemaHelpers
         case DML_SCHEMA_FIELD_TYPE_SIZE_2D:
         {
             DML_SIZE_2D value = field.AsSize2D();
+            dst->Write(value);
+        } break;
+
+        case DML_SCHEMA_FIELD_TYPE_SCALAR_UNION:
+        {
+            uint64_t value = field.AsScalarUnion().UInt64;
             dst->Write(value);
         } break;
 
