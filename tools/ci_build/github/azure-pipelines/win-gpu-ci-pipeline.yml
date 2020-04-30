@@ -35,7 +35,7 @@ jobs:
 
   - powershell: |
      python -m pip install --user --upgrade pip
-     python -m pip uninstall -y -q onnxruntime 2>$null
+     python -m pip uninstall -y -q onnxruntime 2>pip.log
      python -m pip install -q pyopenssl setuptools wheel numpy scipy
      $Env:USE_MSVC_STATIC_RUNTIME=1
      $Env:ONNX_ML=1
