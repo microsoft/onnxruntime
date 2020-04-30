@@ -17,7 +17,7 @@ sess = onnxruntime.InferenceSession(<path_to_model_file>, options)
 
 2. C++ API
 ```
-SessionOptions::SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+SessionOptions::SetGraphOptimizationLevel(ORT_DISABLE_ALL); 
 ```
 
 ## Dynamic device selection
@@ -71,6 +71,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | MaxPool | Yes | Yes | Yes |
 | Min | Yes | Yes | Yes |
 | Mul | Yes | Yes | Yes |
+| NonMaxSuppression | Yes | Yes | Yes |
 | Pad | Yes | Yes | Yes |
 | Pow | Yes | Yes | Yes |
 | PRelu | Yes | Yes | Yes |
