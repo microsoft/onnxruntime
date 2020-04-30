@@ -178,11 +178,12 @@ inline OrtFileType DTToFileType(DWORD dwFileAttributes) {
   return OrtFileType::TYPE_REG;
 }
 inline std::string FormatErrorCode(DWORD dw) {
-  static const DWORD bufferLength = 1024;
-  char lpMsgBuf[bufferLength * sizeof(TCHAR)];
+  static const DWORD bufferLength = 64 * 1024;
+  char * lpMsgBuf = new char[bufferLength];
   FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dw,
-                 MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&lpMsgBuf, bufferLength, NULL);
+                 MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)lpMsgBuf, bufferLength / sizeof(TCHAR), NULL);
   std::string s(lpMsgBuf);
+  delete[] lpMsgBuf;
   return s;
 }
 template <typename T>
