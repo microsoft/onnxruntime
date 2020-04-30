@@ -316,8 +316,11 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
   if (!pipeline_context_.forward_waited_event_name.empty()) {
     feed_names.push_back(pipeline_context_.forward_waited_event_name);
     OrtValue event_id;
+    /*
     const int64_t id = pipeline_schedule_.get_forward_waited_event_id(
       pipeline_context_.pipeline_stage_id, step_ % pipeline_context_.num_gradient_accumulation_steps);
+    */
+    const int64_t id = -1;
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -329,8 +332,11 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
   if (!pipeline_context_.forward_recorded_event_name.empty()) {
     feed_names.push_back(pipeline_context_.forward_recorded_event_name);
     OrtValue event_id;
+    /*
     const int64_t id = pipeline_schedule_.get_forward_recorded_event_id(
       pipeline_context_.pipeline_stage_id, step_ % pipeline_context_.num_gradient_accumulation_steps);
+    */
+    const int64_t id = -1;
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -342,8 +348,11 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
   if (!pipeline_context_.backward_waited_event_name.empty()) {
     feed_names.push_back(pipeline_context_.backward_waited_event_name);
     OrtValue event_id;
+    /*
     const int64_t id = pipeline_schedule_.get_backward_waited_event_id(
       pipeline_context_.pipeline_stage_id, step_ % pipeline_context_.num_gradient_accumulation_steps);
+    */
+    const int64_t id = -1;
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -355,8 +364,11 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
   if (!pipeline_context_.backward_recorded_event_name.empty()) {
     feed_names.push_back(pipeline_context_.backward_recorded_event_name);
     OrtValue event_id;
+    /*
     int64_t id = pipeline_schedule_.get_backward_recorded_event_id(
       pipeline_context_.pipeline_stage_id, step_ % pipeline_context_.num_gradient_accumulation_steps);
+    */
+    const int64_t id = -1;
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
