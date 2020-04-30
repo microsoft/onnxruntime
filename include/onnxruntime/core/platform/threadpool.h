@@ -32,7 +32,6 @@ limitations under the License.
 namespace Eigen {
 class Allocator;
 class ThreadPoolInterface;
-struct ThreadPoolDevice;
 }  // namespace Eigen
 
 namespace onnxruntime {
@@ -125,12 +124,12 @@ class ThreadPool {
   // REQUIRES: num_threads > 0
   // The allocator parameter is only used for creating a Eigen::ThreadPoolDevice to be used with Eigen Tensor classes.
   ThreadPool(Env* env, const ThreadOptions& thread_options, const NAME_CHAR_TYPE* name, int num_threads,
-             bool low_latency_hint, Eigen::Allocator* allocator = nullptr);
+             bool low_latency_hint);
   // Constructs a pool that wraps around the thread::ThreadPoolInterface
   // instance provided by the caller. Caller retains ownership of
   // `user_threadpool` and must ensure its lifetime is longer than the
   // ThreadPool instance.
-  ThreadPool(Eigen::ThreadPoolInterface* user_threadpool, Eigen::Allocator* allocator);
+  ThreadPool(Eigen::ThreadPoolInterface* user_threadpool);
 
   // Waits until all scheduled work has finished and then destroy the
   // set of threads.
@@ -315,12 +314,6 @@ class ThreadPool {
 #endif
   }
 
-#ifndef _OPENMP
-  //Deprecated. Please avoid using Eigen Tensor because it will blow up binary size quickly.
-  Eigen::ThreadPoolDevice& Device() {
-    return *threadpool_device_;
-  }
-#endif
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ThreadPool);
 
  private:
@@ -340,9 +333,7 @@ class ThreadPool {
   // eigen_threadpool_ is instantiated and owned by thread::ThreadPool if
   // user_threadpool is not in the constructor.
   std::unique_ptr<ThreadPoolTempl<Env> > eigen_threadpool_;
-#ifndef _OPENMP
-  std::unique_ptr<Eigen::ThreadPoolDevice> threadpool_device_;
-#endif
+
   // Copied from MlasPartitionWork
   static void PartitionWork(std::ptrdiff_t ThreadId, std::ptrdiff_t ThreadCount, std::ptrdiff_t TotalWork,
                             std::ptrdiff_t* WorkIndex, std::ptrdiff_t* WorkRemaining) {
