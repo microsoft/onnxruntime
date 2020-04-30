@@ -107,6 +107,7 @@ void LearningModelSession::Initialize() {
 
   if (device_impl->IsCpuDevice() == false) {
     engine_builder->SetD3D12Resources(device_impl->GetD3DDevice(), device_impl->GetDeviceQueue());
+    engine_builder->SetMetacommandsEnabled(device_impl->MetacommandsEnabled());
   }
 
   // Make onnxruntime apply the batch size override, if any
@@ -276,16 +277,6 @@ LearningModelSession::GetResults(
   // This isn't the best we are holding the lock while we wait for detensorize on the GPU.
   // Update output providers
   auto outputs = binding_impl->UpdateProviders();
-
-  // Once the first evaluation following initialization is complete, and therefore the
-  // initialization work is also complete, trim the upload heap. This is only done once
-  // to avoid requiring the extra allocation during each evaluation.
-  if (is_first_evaluate_) {
-    if (is_gpu_evaluation) {
-      engine_->TrimUploadHeap();
-    }
-    is_first_evaluate_ = false;
-  }
 
   // Create the return status object
   auto result = winrt::make<LearningModelEvaluationResult>();

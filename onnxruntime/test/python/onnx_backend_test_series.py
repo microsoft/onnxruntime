@@ -91,7 +91,6 @@ def create_backend_test(testname=None):
             '^test_batchnorm_epsilon_training_mode_cpu',
             '^test_batchnorm_example_old_cpu',
             '^test_batchnorm_example_training_mode_cpu',
-            '^test_celu_cpu',
             '^test_dropout_default_cpu',
             '^test_dropout_random_cpu',
             '^test_einsum_batch_diagonal_cpu',
