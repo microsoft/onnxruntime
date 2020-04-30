@@ -1103,7 +1103,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       for (std::size_t i = 0; i < output_names.size(); ++i)
       {
         auto out_len = prog_output_shapes[i].lengths();
-        options.add_parameter_shape(output_names[i], out_len);
+        options.set_input_parameter_shape(output_names[i], out_len);
       }
     }
 
@@ -1152,7 +1152,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
           auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
           const auto& tensor_shape = ort.GetTensorShape(tensor_info);
           std::vector<std::size_t> ort_lens(tensor_shape.begin(), tensor_shape.end());
-          cmp_options.add_parameter_shape(name, ort_lens);
+          cmp_options.set_input_parameter_shape(name, ort_lens);
           input_shape_match = false;
         }
       }
@@ -1178,7 +1178,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
               auto mgx_lens = mgx_s.lengths();
               if (mgx_lens != ort_lens)
               {
-                cmp_options.add_parameter_shape(name, ort_lens);
+                cmp_options.set_input_parameter_shape(name, ort_lens);
                 input_shape_match = false;
               }
             }
