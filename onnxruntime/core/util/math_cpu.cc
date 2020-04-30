@@ -224,6 +224,12 @@ void Gemv<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float 
   cblas_sgemv(CblasRowMajor, TransA, M, N, alpha, A, N, x, 1, beta, y, 1);
 }
 
+template <>
+void Gemv<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const double* A, const double* x,
+                              float beta, double* y, CPUMathUtil* /*context*/) {
+  cblas_dgemv(CblasRowMajor, TransA, M, N, alpha, A, N, x, 1, beta, y, 1);
+}
+
 #define CAFFE2_SPECIALIZED_AXPY(T, prefix)                                           \
   template <>                                                                        \
   void Axpy<T, CPUMathUtil>(int N, const T alpha, const T* x, T* y, CPUMathUtil*) {  \
