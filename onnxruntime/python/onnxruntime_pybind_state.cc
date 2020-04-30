@@ -35,7 +35,6 @@
 
 #if USE_DNNL
 #define BACKEND_DNNL "-DNNL"
-#include "core/providers/dnnl/dnnl_execution_provider.h"
 #else
 #define BACKEND_DNNL ""
 #endif
@@ -102,9 +101,6 @@ onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExten
 #endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
-#endif
-#ifdef USE_DNNL
-#include "core/providers/dnnl/dnnl_provider_factory.h"
 #endif
 #ifdef USE_NGRAPH
 #include "core/providers/ngraph/ngraph_provider_factory.h"
