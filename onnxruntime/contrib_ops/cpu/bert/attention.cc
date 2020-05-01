@@ -4,7 +4,6 @@
 #include "attention.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
-#include "core/util/eigen_common_wrapper.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/cpu/math/gemm_helper.h"
