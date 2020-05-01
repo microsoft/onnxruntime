@@ -10,13 +10,6 @@ Default CPU:
 python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --build_server --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER
 ```
 
-Openvino EP:
-
-```
-python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --use_openvino $DEVICE --build_server --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)
-```
-
-where $DEVICE can be CPU_FP32,GPU_FP32,VAD-M_FP16 or MYRIAD_FP16 as per the execution provider
 # How to Use ONNX Runtime Server for Prediction
 
  The CLI command to start the server is shown below:
