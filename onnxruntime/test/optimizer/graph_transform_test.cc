@@ -601,6 +601,25 @@ TEST_F(GraphTransformationTests, MatMulAddFusion_negitive_case) {
   ASSERT_TRUE(op_to_count["Gemm"] == 0);
 }
 
+// Matmul+Add with shape [M,k]*[k,N]+[1,4], won't do the fusion
+// 1,4 is not uni-directionally broadcast
+TEST_F(GraphTransformationTests, MatMulAddFusion_NotBroadcastable) {
+  auto model_uri = MODEL_FOLDER "matmul_add_fusion/matmul_add_not_broadcastable.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MatMulAddFusion>(), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["MatMul"] == 1);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+  ASSERT_TRUE(op_to_count["Gemm"] == 0);
+}
+
 #ifndef DISABLE_CONTRIB_OPS
 TEST_F(GraphTransformationTests, Gemm_Relu_three_input) {
   auto model_uri = MODEL_FOLDER "matmul_add_fusion/3Input/gemm_relu.onnx";
@@ -1116,7 +1135,6 @@ TEST_F(GraphTransformationTests, ReshapeFusionInternalReuseTest) {
   }
 }
 
-
 TEST_F(GraphTransformationTests, ReshapeFusionGraphInputsTest) {
   auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_with_graph_inputs.onnx";
   std::shared_ptr<Model> p_model;
@@ -1135,7 +1153,6 @@ TEST_F(GraphTransformationTests, ReshapeFusionGraphInputsTest) {
   ASSERT_EQ(op_to_count["Concat"], 1);
   ASSERT_EQ(op_to_count["Reshape"], 1);
 }
-
 
 TEST_F(GraphTransformationTests, ExpandElimination) {
   auto model_uri = MODEL_FOLDER "expand_elimination.onnx";
@@ -1771,9 +1788,9 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusion_Input_Output_Check) {
       std::vector<NodeArg*>& output_defs = node.MutableOutputDefs();
 #ifdef ENABLE_TRAINING
       EXPECT_EQ(node.OutputDefs().size(), 3u) << "SkipLayerNormalization number of outputs does not equal to 3. Got:" << node.OutputDefs().size();
-#else     
+#else
       EXPECT_EQ(node.OutputDefs().size(), 1u) << "SkipLayerNormalization number of outputs does not equal to 1. Got:" << node.OutputDefs().size();
-#endif     
+#endif
       EXPECT_EQ(output_defs[0]->Name(), "19");
     } else {
       EXPECT_EQ(node.OpType(), "MatMul") << "Unexpected node: " << node.OpType() << "," << node.Name();
