@@ -3,14 +3,14 @@
 
 #include "attention.h"
 #include "core/framework/tensorprotoutils.h"
-#include "onnx/defs/schema.h"
-#include "core/util/eigen_common_wrapper.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/providers/cpu/math/softmax.h"
 #include "core/providers/cpu/tensor/transpose.h"
 #include "core/common/safeint.h"
+#include "core/platform/threadpool.h"
 
 using onnxruntime::concurrency::ThreadPool;
 
@@ -319,7 +319,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     for (std::ptrdiff_t i = begin; i != end; ++i) {
       T* current_tmp_data = reinterpret_cast<T*>(out_tmp_data) + sequence_length_mul_head_size * i;
       math::MatMul<T>(sequence_length, head_size, sequence_length,
-                      reinterpret_cast<T*>(scratch_data) + sequence_length_mul_head_size * i,
+                      reinterpret_cast<T*>(scratch_data) + sequence_length * sequence_length * i,
                       V + sequence_length_mul_head_size * i, current_tmp_data, nullptr);
 
       // transpose: out(B, S, N, H) = transpose out_tmp(B, N, S, H)

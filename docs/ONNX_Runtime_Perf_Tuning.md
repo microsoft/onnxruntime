@@ -91,6 +91,7 @@ so.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
 session = rt.InferenceSession(model, sess_options=so)
 session.set_providers(['CUDAExecutionProvider'])
 ```
+
 ## Which Execution Provider will provide the best performance? 
 Performance is dependent on the specific model you're trying to run, the session and run options you've selected, and of course, your specific hardware target. Below you'll find some more information that may be helpful to select the right Execution Provider.
 
@@ -106,6 +107,12 @@ TensorRT and CUDA are separate execution providers for ONNX Runtime. On the same
 DirectML is the hardware-accelerated DirectX 12 library for machine learning on Windows and supports all DirectX 12 capable devices (Nvidia, Intel, AMD). This means that if you are targeting Windows GPUs, using the DirectML Execution Provider is likely your best bet. This can be used with both the ONNX Runtime as well as [WinML APIs](./WinRT_API.md).
 
 ## Tuning performance for specific Execution Providers
+
+### How to tune performance for a specific execution provider
+* If ORT is built with OpenMP, use the OpenMP env variable to control the number of intra op num threads.
+* If ORT is not built with OpenMP, use the appropriate ORT API to control intra op num threads.
+* Inter op num threads (used only when parallel execution is enabled) is not affected by OpenMP settings and should
+always be set using the ORT APIs.
 
 ### Default CPU Execution Provider (MLAS)
 The default execution provider uses different knobs to control the thread number.
