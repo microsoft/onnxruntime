@@ -7,8 +7,13 @@
 namespace onnxruntime {
 namespace training {
 
-DistributedRunContext::DistributedRunContext(int32_t world_rank, int32_t world_size, int32_t local_rank,
-                                             int32_t local_size, int32_t data_parallel_size, int32_t horizontal_parallel_size) {
+DistributedRunContext::DistributedRunContext(int32_t world_rank,
+                                             int32_t world_size,
+                                             int32_t local_rank,
+                                             int32_t local_size,
+                                             int32_t data_parallel_size,
+                                             int32_t horizontal_parallel_size,
+                                             int32_t pipeline_stage_size) {
   // We only check world_size and world_rank since local_size and local_rank might not be set if using NCCL.
   // TODO tix, refactor the mpi related code to populate all fields correctly by default.
   ORT_ENFORCE(world_rank >= 0 && world_size > 0,
@@ -22,10 +27,10 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank, int32_t world_s
   ORT_ENFORCE(world_size % horizontal_parallel_size == 0, "world size is not divisible by horizontal model parallel size.");
   ORT_ENFORCE(world_size % data_parallel_size == 0, "world size is not divisible by data parallel size.");
 
-  // Be noted: this check and subsequent logic should be udpated when we introduce pipeline group
+  // Be noted: this check and subsequent logic should be updated when we introduce pipeline group
   // depending how to split the pipeline groups.
-  ORT_ENFORCE(data_parallel_size * horizontal_parallel_size == world_size,
-              "total worker number != data_parallel_size * horizontal_parallel_size");
+  ORT_ENFORCE(data_parallel_size * horizontal_parallel_size * pipeline_stage_size == world_size,
+              "total worker number != data_parallel_size * horizontal_parallel_size * pipeline_stage_size");
 
   params_.world_rank = world_rank;
   params_.world_size = world_size;
@@ -33,6 +38,7 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank, int32_t world_s
   params_.local_size = local_size;
   params_.data_parallel_size = data_parallel_size;
   params_.horizontal_parallel_size = horizontal_parallel_size;
+  params_.pipeline_stage_size = pipeline_stage_size;
   groups_.resize(2);
 
   // Initialize Data Parallel Group
