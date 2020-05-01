@@ -309,6 +309,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
 
     # Other export options to use(this is for backward compatibility).
     other_export_options = {}
+    
     # This option was added after 1.4 release.
     if LooseVersion(torch.__version__) > LooseVersion('1.4.0'):
         other_export_options['enable_onnx_checker'] = False
@@ -630,6 +631,7 @@ class ORTTrainer():
             if loss_fn is not None:
                 print("loss_fn is not used when creating ORTTrainer because an ONNX model is provided.")
             # TODO: accept loss_fn as an onnx model. build self.onnx_model_ with model and loss_fn
+            self.loss_fn_ = None
 
         self.model_desc_ = model_desc
         self.input_desc_with_lr = [*self.model_desc_.inputs_, learning_rate_description]
@@ -664,8 +666,11 @@ class ORTTrainer():
         self.enable_grad_norm_clip_ = enable_grad_norm_clip
         self.frozen_weights_ = frozen_weights
         self.opset_version_ = _opset_version
-        self.loss_scale_input_name = ''
         self.state_dict_ = None
+
+        # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
+        # see prepare_input_and_fetches for more details.
+        self.loss_scale_input_name = 'default_loss_scale_input_name'
 
         self._init_session()
 
@@ -790,6 +795,15 @@ class ORTTrainer():
             input = input + (internal_learning_rate,)
         if internal_loss_scale is not None:
             input = input + (internal_loss_scale,)
+        elif self.use_mixed_precision:
+            # loss_scale input name is needed to call train_step, for example:
+            #   kwargs[model.loss_scale_input_name] = loss_scale
+            #   outputs = model.train_step(*args, **kwargs)
+            # However, when first time train_step is called model.loss_scale_input_name is not set.
+            # To workaround this problem, we use the special name 'default_loss_scale_input_name' to indicate 
+            # the loss_scale.
+            if 'default_loss_scale_input_name' in kwargs.keys():
+                input = input + (kwargs['default_loss_scale_input_name'],)
 
         fetches = None
         if 'fetches' in kwargs:
