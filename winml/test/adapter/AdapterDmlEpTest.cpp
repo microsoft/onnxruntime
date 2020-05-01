@@ -30,6 +30,7 @@ void AdapterDmlEpTestSetup() {
 }
 
 void AdapterDmlEpTestTeardown() {
+  GPUTEST;
   ort_api->ReleaseEnv(ort_env);
 }
 
@@ -75,6 +76,7 @@ UniqueOrtSession CreateCpuSession() {
 }
 
 void DmlExecutionProviderSetDefaultRoundingMode() {
+  GPUTEST;
   auto session = CreateDmlSession();
   OrtExecutionProvider* ort_provider;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
@@ -82,6 +84,7 @@ void DmlExecutionProviderSetDefaultRoundingMode() {
 }
 
 void DmlExecutionProviderFlushContext() {
+  GPUTEST;
   auto session = CreateDmlSession();
   OrtExecutionProvider* ort_provider;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
@@ -89,6 +92,7 @@ void DmlExecutionProviderFlushContext() {
 }
 
 void DmlExecutionProviderReleaseCompletedReferences() {
+  GPUTEST;
   auto session = CreateDmlSession();
   OrtExecutionProvider* ort_provider;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
@@ -128,6 +132,7 @@ winrt::com_ptr<ID3D12Resource> CreateD3D12Resource(ID3D12Device& device) {
 }
 
 void DmlCreateAndFreeGPUAllocationFromD3DResource() {
+  GPUTEST;
   winrt::com_ptr<ID3D12Device> device;
   WINML_EXPECT_NO_THROW(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device.put())));
 
@@ -138,6 +143,7 @@ void DmlCreateAndFreeGPUAllocationFromD3DResource() {
 }
 
 void DmlGetD3D12ResourceFromAllocation() {
+  GPUTEST;
   winrt::com_ptr<ID3D12Device> device;
   WINML_EXPECT_NO_THROW(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device.put())));
 
@@ -167,6 +173,7 @@ UniqueOrtValue CreateTensorFromMemoryInfo(OrtMemoryInfo* memory_info) {
 }
 
 void GetProviderMemoryInfo() {
+  GPUTEST;
   auto session = CreateDmlSession();
   OrtExecutionProvider* ort_provider;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
@@ -178,6 +185,7 @@ void GetProviderMemoryInfo() {
 }
 
 void GetAndFreeProviderAllocator() {
+  GPUTEST;
   auto session = CreateDmlSession();
   OrtExecutionProvider* ort_provider;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
@@ -193,6 +201,7 @@ void GetAndFreeProviderAllocator() {
 }
 
 void GetValueMemoryInfo() {
+  GPUTEST;
   auto session = CreateDmlSession();
   OrtExecutionProvider* ort_provider;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
@@ -209,6 +218,7 @@ void GetValueMemoryInfo() {
 }
 
 void ExecutionProviderSync() {
+  GPUTEST;
   auto session = CreateDmlSession();
   OrtExecutionProvider* ort_provider;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
@@ -216,6 +226,7 @@ void ExecutionProviderSync() {
 }
 
 void DmlCopyTensor() {
+  GPUTEST;
   const auto session_options = CreateUniqueOrtSessionOptions();
   THROW_IF_NOT_OK_MSG(ort_api->DisableMemPattern(session_options.get()), ort_api);
 
@@ -276,12 +287,14 @@ void DmlCopyTensor() {
 }
 
 void CreateCustomRegistry() {
+  GPUTEST;
   IMLOperatorRegistry* registry;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->CreateCustomRegistry(&registry), ort_api);
   WINML_EXPECT_NOT_EQUAL(nullptr, registry);
 }
 
 void ValueGetDeviceId() {
+  GPUTEST;
   auto session = CreateDmlSession();
   OrtExecutionProvider* ort_provider;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
@@ -301,6 +314,7 @@ void ValueGetDeviceId() {
 }
 
 void SessionGetInputRequiredDeviceId() {
+  GPUTEST;
   auto session = CreateDmlSession();
   int16_t device_id;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetInputRequiredDeviceId(session.get(), "inputImage", &device_id), ort_api);
