@@ -16,4 +16,4 @@ steps:
     targetPath: '$(Pipeline.Workspace)/artifacts'
 
 - script: |
-    echo "file is $( find $(Pipeline.Workspace)/artifacts )"
+    echo "file is $( find $(Pipeline.Workspace)/artifacts -name "*.whl" | head -n 1 )"
