@@ -9,3 +9,42 @@ stages:
     enable_windows_cpu: false
     enable_windows_gpu: false
     enable_mac_cpu: false
+
+- stage: Test_Wheel
+  jobs:
+  - job: Test_Wheel_Ubuntu
+    pool: Linux-GPU-CUDA10
+
+    steps:
+    - checkout: self
+      clean: true
+      submodules: false
+
+    - task: DownloadPipelineArtifact@2
+      source: current
+      artifact: onnxruntime_gpu
+      patterns: '**/*-cp36-cp36m-manylinux2010_x86_64.whl'
+      allowPartiallySucceededBuilds: true
+      path: $(Pipeline.Workspace)/artifacts
+
+    - script: >
+        docker build
+        --pull
+        -t onnxruntime-training-ubuntu-gpu-3.6-test
+        --build-arg BUILD_USER=onnxruntimedev
+        --build-arg BUILD_UID=$(id -u)
+        --build-arg PYTHON_VERSION=3.6
+        -f Dockerfile.ubuntu_gpu
+        .
+      displayName: 'Build docker image'
+      workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+
+    - script: >
+        docker run
+        --rm
+        --gpus all
+        --volume $(Build.SourcesDirectory):/onnxruntime_src
+        --volume $(Pipeline.Workspace)/artifacts:/artifacts
+        onnxruntime-training-ubuntu-gpu-3.6-test
+        python3 /onnxruntime_src/tools/ci_build/run_python_tests_with_wheel.py
+        --wheel-path $( find /artifacts/ -name "*-cp36-cp36m-manylinux2010_x86_64.whl" | tail -n 1 )
