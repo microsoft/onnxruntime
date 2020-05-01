@@ -125,11 +125,11 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
       continue;
     }
 
-    const int dy_size = static_cast<int>(y_infos[y_idx].shape.Size());
+    const size_t dy_size = y_infos[y_idx].shape.Size();
 
     // Compute the theoretical Jacobians one row at a time by back propagating
     // '1.0' for each element of 'dy', while holding all other elements of 'dy' at zero.
-    for (int c = 0; c < dy_size; ++c) {  // for each value in the dy input vector
+    for (size_t c = 0; c < dy_size; ++c) {  // for each value in the dy input vector
       // clear OpTester input/output/initializer
       op_session.ClearData();
 
@@ -167,7 +167,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
       // inputs is treated as a vector of vectors. The parameters of the function call below, y_idx and c
       // corresponding to which input (dy1, dy2..etc) and which value of the input (dy_flattened_vector[c]]
       // to pertrub to 1.
-      op_session.Run(y_idx, c);
+      op_session.Run(y_idx, static_cast<int>(c));
       auto gradients = op_session.GetFetches();
 
       for (int x_idx = 0, grad_idx = 0; x_idx < static_cast<int>(x_num); x_idx++) {
@@ -186,7 +186,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
               r,
               y_infos,
               y_idx,
-              c);
+              static_cast<int>(c));
           (*jacobian_ts)[calc_index.first][calc_index.second] = dx_flat[r];
         }
       }

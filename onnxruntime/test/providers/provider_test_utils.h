@@ -506,7 +506,7 @@ class OpTester {
   template <typename T>
   void AddData(std::vector<Data>& data, const char* name, const std::vector<int64_t>& dims, const T* values,
                int64_t values_count, bool is_initializer = false, bool sort_output = false,
-               const std::vector<std::string>* p_dim_params = nullptr) {
+               const std::vector<std::string>* dim_params = nullptr) {
     try {
       TensorShape shape{dims};
       ORT_ENFORCE(shape.Size() == values_count, values_count, " input values doesn't match tensor size of ",
@@ -531,21 +531,21 @@ class OpTester {
       value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
       auto node_arg = NodeArg(name, &type_proto);
-      if (p_dim_params && !(p_dim_params->empty())){
-        // If p_dim_params presents, configure node_arg's dim value based on p_dim_params, which supports symbolic dim and dim broadcast.
-        auto& dim_params=*p_dim_params;
+      if (dim_params && !(dim_params->empty())) {
+        // If dim_params presents, configure node_arg's dim value based on dim_params, which supports symbolic dim and dim broadcast.
+        auto& dim_params_data = *dim_params;
         onnx::TensorShapeProto new_shape;
 
         // currently hard-code the reserved symbolic names.
         // TODO: when the list grows longer, consider move it to a better place.
-        const static std::vector<std::string> reserved_symbolic{"batch", "seq"};
+        const static std::unordered_set<std::string> reserved_symbolic{"batch", "seq"};
 
-        for(size_t i=0;i<dim_params.size();++i){
-          if(std::find(std::begin(reserved_symbolic), std::end(reserved_symbolic), dim_params[i]) != std::end(reserved_symbolic)) {
-            new_shape.add_dim()->set_dim_param(dim_params[i]);
-          }
-          else{
-            new_shape.add_dim()->set_dim_value(std::stoi(dim_params[i]));
+        for (size_t i = 0; i < dim_params_data.size(); ++i) {
+          if (reserved_symbolic.find(dim_params_data[i])!= reserved_symbolic.end()) {
+            new_shape.add_dim()->set_dim_param(dim_params_data[i]);
+          } else {
+            ASSERT_TRUE(std::stoi(dim_params_data[i]) == dims[i]);
+            new_shape.add_dim()->set_dim_value(dims[i]);
           }
         }
         node_arg.SetShape(new_shape);

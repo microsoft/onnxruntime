@@ -27,7 +27,7 @@ struct TensorInfo {
              bool has_gradient = true,
              std::function<float(float)>* transformer = nullptr,
              MLDataType data_type = DataTypeImpl::GetTensorType<float>(),
-             std::vector<std::string> dim_params = std::vector<std::string>{})
+             const std::vector<std::string>& dim_params = std::vector<std::string>{})
       : shape(shape),
         has_gradient(has_gradient),
         transformer(transformer),
