@@ -119,10 +119,8 @@ def create_backend_test(testname=None):
             '^test_resize_downsample_scales_linear_align_corners_cpu',  # results mismatch with onnx tests
             '^test_adam_cpu',  # NOT_IMPLEMENTED : Could not find an implementation for the node Adam(1)
             '^test_adam_multiple_cpu',  # NOT_IMPLEMENTED : Could not find an implementation for the node Adam(1)
-            '^test_dropout.*',  # NOT_IMPLEMENTED : Could not find an implementation for the node Dropout(12)
-            '^test_training_dropout.*',  # NOT_IMPLEMENTED : Could not find an implementation for the node Dropout(12)
-            '^test_negative_log_likelihood.*',  # NOT_IMPLEMENTED : Could not find an implementation for the node NegativeLogLikelihoodLoss(12))
-            '^test_softmax_cross_entropy.*',  # NOT_IMPLEMENTED : Could not find an implementation for the node SoftmaxCrossEntropyLoss(12)
+            '^test_dropout.*',  # NOT_IMPLEMENTED : Could not find an implementation for the node Dropout(12) (Temporary, subsequent PR will add this -- we need training_mode change in the kernel)
+            '^test_training_dropout.*'  # NOT_IMPLEMENTED : Could not find an implementation for the node Dropout(12) (Temporary, subsequent PR will add this -- we need training_mode change in the kernel)
         ]
         if platform.architecture()[0] == '32bit':
             current_failing_tests += ['^test_vgg19', '^test_zfnet512', '^test_bvlc_alexnet_cpu']
@@ -147,12 +145,16 @@ def create_backend_test(testname=None):
                 '^test_range_float_type_positive_delta_expanded_cpu',
                 '^test_range_int32_type_negative_delta_expanded_cpu', '^test_averagepool_2d_ceil_cpu',
                 '^test_maxpool_2d_ceil_cpu', '^test_maxpool_2d_dilations_cpu',
-                '^test_maxpool_2d_uint8'
+                '^test_maxpool_2d_uint8',
+                '^test_negative_log_likelihood.*',  # Does not support 5-D or above tensors for SUB op.
+                '^test_softmax_cross_entropy.*',  # Does not support 5-D or above tensors for SUB op.
             ]
 
         if c2.supports_device('NNAPI'):
             current_failing_tests += [
-              '^test_maxpool_2d_uint8'
+              '^test_maxpool_2d_uint8',
+              '^test_negative_log_likelihood.*',
+              '^test_softmax_cross_entropy.*'
             ]
 
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
@@ -160,12 +162,16 @@ def create_backend_test(testname=None):
             # temporarily exclude vgg19 test which comsumes too much memory, run out of memory on Upsquared device.
             # single test pass for vgg19, need furture investigation
             current_failing_tests.append('^test_vgg19_cpu')
-
+            current_failing_tests.append('^test_negative_log_likelihood.*') # Does not support 5-D or above tensors for SUB op.
+            current_failing_tests.append('^test_softmax_cross_entropy.*') # Does not support 5-D or above tensors for SUB op.
+            
         if c2.supports_device('OPENVINO_CPU_FP32'):
             current_failing_tests += [
                 '^test_operator_permute2_cpu',
                 '^test_operator_repeat_cpu',
-                '^test_operator_repeat_dim_overflow_cpu'
+                '^test_operator_repeat_dim_overflow_cpu',
+                '^test_negative_log_likelihood.*', # Does not support 5-D or above tensors for SUB op.
+                '^test_softmax_cross_entropy.*' # Does not support 5-D or above tensors for SUB op.
             ]
         if c2.supports_device('OPENVINO_GPU_FP32'):
             current_failing_tests += [
@@ -183,7 +189,9 @@ def create_backend_test(testname=None):
                 '^test_resize_upsample_sizes_nearest_ceil_half_pixel_cpu',
                 '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu',
                 '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu',
-                '^test_unique_not_sorted_without_axis_cpu'
+                '^test_unique_not_sorted_without_axis_cpu',
+                '^test_negative_log_likelihood.*', # Does not support 5-D or above tensors for SUB op.
+                '^test_softmax_cross_entropy.*' # Does not support 5-D or above tensors for SUB op.
             ]
 
 
