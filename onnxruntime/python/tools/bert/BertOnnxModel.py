@@ -863,6 +863,13 @@ class BertOnnxModel(OnnxModel):
 
         embed_node.domain = "com.microsoft"
 
+        # Pass attribute "epsilon" from normalize node to EmbedLayerNormalization.
+        for att in normalize_node.attribute:
+            if att.name == 'epsilon':
+                embed_node.attribute.extend([att])
+        # Set default value to 1e-5 if no attribute is found.
+        if len(embed_node.attribute) == 0:
+            embed_node.attribute.extend([onnx.helper.make_attribute("epsilon", 1.0E-5)])
         self.replace_input_of_all_nodes(normalize_node.output[0], 'embed_output')
 
         self.remove_nodes(nodes_to_remove)
@@ -1116,6 +1123,13 @@ class BertOnnxModel(OnnxModel):
                         outputs=[node.output[0]],
                         name=self.create_node_name("SkipLayerNormalization", name_prefix="SkipLayerNorm"))
                     normalize_node.domain = "com.microsoft"
+                    # Pass attribute "epsilon" from layernorm node to SkipLayerNormalization
+                    for att in node.attribute:
+                        if att.name == 'epsilon':
+                            normalize_node.attribute.extend([att])
+                    # Set default epsilon if no epsilon exists from layernorm
+                    if len(normalize_node.attribute) == 0:
+                        normalize_node.attribute.extend([onnx.helper.make_attribute("epsilon", 1.0E-5)])
                     skip_layernorm_nodes.extend([normalize_node])
 
         self.remove_nodes(nodes_to_remove)

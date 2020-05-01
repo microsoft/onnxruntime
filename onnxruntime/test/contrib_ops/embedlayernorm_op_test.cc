@@ -8,6 +8,8 @@
 
 namespace onnxruntime {
 namespace test {
+constexpr float epsilon_ = 1e-5f;
+
 static void RunTest(
     const std::vector<int32_t>& input_ids_data,
     const std::vector<int32_t>& segment_ids_data,
@@ -19,6 +21,7 @@ static void RunTest(
     const std::vector<float>& beta_data,
     const std::vector<float>& output_data,
     const std::vector<int32_t>& mask_index_data,
+    float epsilon,
     int batch_size,
     int sequence_length,
     int hidden_size,
@@ -69,6 +72,7 @@ static void RunTest(
       tester.AddInput<MLFloat16>("segment_embedding", segment_embedding_dims, ToFloat16(segment_embedding_data));
       tester.AddInput<MLFloat16>("gamma", gamma_dims, ToFloat16(gamma_data));
       tester.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(beta_data));
+      tester.AddAttribute("epsilon", epsilon);
       if (has_mask) {
         tester.AddInput<int32_t>("mask", mask_dims, mask_data);
       }
@@ -79,6 +83,7 @@ static void RunTest(
       tester.AddInput<float>("segment_embedding", segment_embedding_dims, segment_embedding_data);
       tester.AddInput<float>("gamma", gamma_dims, gamma_data);
       tester.AddInput<float>("beta", beta_dims, beta_data);
+      tester.AddAttribute("epsilon", epsilon);
       if (has_mask) {
         tester.AddInput<int32_t>("mask", mask_dims, mask_data);
       }
@@ -143,6 +148,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1) {
           beta_data,
           output_data,
           mask_index_data,
+          epsilon_,
           batch_size,
           sequence_length,
           hidden_size);
@@ -202,6 +208,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_Float16) {
           beta_data,
           output_data,
           mask_index_data,
+          epsilon_,
           batch_size,
           sequence_length,
           hidden_size,
@@ -272,6 +279,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch2) {
           beta_data,
           output_data,
           mask_index_data,
+          epsilon_,
           batch_size,
           sequence_length,
           hidden_size);
@@ -337,6 +345,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch2_NoMask) {
           beta_data,
           output_data,
           mask_index_data,
+          epsilon_,
           batch_size,
           sequence_length,
           hidden_size,
@@ -419,6 +428,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormLargeBatchSmallHiddenSize) {
           beta_data,
           output_data,
           mask_index_data,
+          epsilon_,
           batch_size,
           sequence_length,
           hidden_size);
