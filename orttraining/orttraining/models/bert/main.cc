@@ -366,10 +366,11 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
 
     params.use_pipeline = flags["use_pipeline"].as<bool>();
     params.num_pipeline_stages = flags["num_pipeline_stages"].as<int>();
+    ORT_RETURN_IF_NOT(params.num_pipeline_stages > 0, "pipeline_stage_size must > 0");
     params.pipeline_stage_paths = flags["pipeline_stage_paths"].as<std::vector<std::string>>();
 
     if (params.use_pipeline && params.pipeline_stage_paths.size() != 0) {
-      ORT_RETURN_IF_NOT(params.pipeline_stage_paths.size() != params.num_pipeline_stages,
+      ORT_RETURN_IF_NOT(params.pipeline_stage_paths.size() == params.num_pipeline_stages,
         "The numer of pipeline stage files does not match the number of specified stages.");
     }
 
@@ -441,8 +442,8 @@ void setup_training_params(BertParameters& params) {
     return;
   }
 
-  auto data_group_size = params.mpi_context.world_size / params.horizontal_parallel_size;
-  if (!params.use_pipeline && data_group_size != params.data_parallel_size) {
+  auto data_group_size = params.mpi_context.world_size / (params.horizontal_parallel_size * static_cast<int>(params.num_pipeline_stages));
+  if (data_group_size != params.data_parallel_size) {
     LOGS_DEFAULT(WARNING) << "WARNING: data_parallel_size is not correct, tuned automatically to "
                           << data_group_size << std::endl;
     params.data_parallel_size = data_group_size;

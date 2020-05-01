@@ -164,7 +164,7 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
   const int64_t num_blocks = input_shape[axis_parsed];
   const int64_t block_slice = reduced_cols / k;
 
-  int64_t tp_threads = threadpool != nullptr ? threadpool->NumThreads() : 1;
+  int64_t tp_threads = concurrency::ThreadPool::NumThreads(threadpool);
   int64_t num_threads = std::min(tp_threads, rows);  // split on rows so can't have more threads than rows
 
   // rough attempt to make sure there's enough work for each thread. if there's insufficient work the usage of
@@ -326,7 +326,8 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
     // we want to re-use the storage variables in each lambda as much as possible to minimize allocations
     // on each iteration, so the lambda does multiple rows. e.g. the data_holder and indices_data vectors.
     // the alternative would be to use TryBatchParallelFor with the lambda doing one row.
-    threadpool->SimpleParallelFor(num_threads, find_top_k);
+    // Use TrySimpleParallelFor so openmp is supported correctly
+    concurrency::ThreadPool::TrySimpleParallelFor(threadpool, num_threads, find_top_k);
   }
 }
 

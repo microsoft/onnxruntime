@@ -61,6 +61,8 @@ class TrainingSession : public InferenceSession {
       int data_parallel_size{1};
       // The number of ranks for horizontal model parallel group
       int horizontal_parallel_size{1};
+      // The number of stages for pipeline model parallel group
+      int pipeline_stage_size{1};
     };
     // The distributed training configuration.
     DistributedConfiguration distributed_config{};
@@ -266,7 +268,6 @@ class TrainingSession : public InferenceSession {
    * @return The list of feed names.
    */
   std::unordered_set<std::string> GetDropoutEvalFeeds() const { return dropout_eval_feeds_; }
-  
   /** Override Run function in InferenceSession to inject some training-specific logics **/
   using InferenceSession::Run; // For overload resolution.
   common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
