@@ -1,4 +1,4 @@
-FROM quay.io/pypa/manylinux2010_x86_64:latest
+FROM quay.io/pypa/manylinux2010_x86_64:2020-04-04-f427f46
 
 ARG PYTHON_VERSION=3.5
 

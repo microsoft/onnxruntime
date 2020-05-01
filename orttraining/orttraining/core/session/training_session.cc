@@ -124,7 +124,8 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.local_rank,
                                          config.distributed_config.local_size,
                                          config.distributed_config.data_parallel_size,
-                                         config.distributed_config.horizontal_parallel_size});
+                                         config.distributed_config.horizontal_parallel_size,
+                                         config.distributed_config.pipeline_stage_size});
 
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph());
 
@@ -668,7 +669,8 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
 }
 
 common::Status TrainingSession::GetStateTensors(NameMLValMap& state_tensors) {
-  return session_state_->GetInitializedTensors(GetStateTensorNames(), false, state_tensors);
+  bool allow_missing = opt_graph_config_.partition_optimizer;
+  return session_state_->GetInitializedTensors(GetStateTensorNames(), allow_missing, state_tensors);
 }
 
 const DataTransferManager& TrainingSession::GetDataTransferManager() const {

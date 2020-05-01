@@ -3,14 +3,14 @@
 
 #include "attention.h"
 #include "core/framework/tensorprotoutils.h"
-#include "onnx/defs/schema.h"
-#include "core/util/eigen_common_wrapper.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/providers/cpu/math/softmax.h"
 #include "core/providers/cpu/tensor/transpose.h"
 #include "core/common/safeint.h"
+#include "core/platform/threadpool.h"
 
 using onnxruntime::concurrency::ThreadPool;
 

@@ -66,6 +66,10 @@ session = rt.InferenceSession(model, sess_options=so)
 session.set_providers(['CUDAExecutionProvider'])
 ```
 ## How to tune performance for a specific execution provider?
+* In general if ORT is built with OpenMP, use the OpenMP env variables to control the number of intra op num threads.
+* If ORT is not built with OpenMP, use the appropriate ORT API to control intra op num threads.
+* Inter op num threads (used only when parallel execution is enabled) is not affected by OpenMP settings and should
+always be set using the ORT APIs.
 
 ### Default CPU Execution Provider (MLAS)
 The default execution provider uses different knobs to control the thread number.
