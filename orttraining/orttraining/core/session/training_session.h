@@ -137,6 +137,9 @@ class TrainingSession : public InferenceSession {
     bool use_pipeline{false};
 
     struct PipelineConfiguration {
+      // If model partition happens outside ORT, this flag should be false.
+      // Otherwise, use true to trigger ORT's pipeline partition.
+      bool do_partition;
       // Total number of pipeline stages. 
       size_t num_pipeline_stages;
       // Id of stage handled by this process. Currently, it matches the MPI's rank.
@@ -178,6 +181,12 @@ class TrainingSession : public InferenceSession {
       std::string forward_recorded_event_name;
       std::string backward_waited_event_name;
       std::string backward_recorded_event_name;
+
+      std::string forward_waited_output_name;
+      std::string forward_recorded_output_name;
+      std::string backward_waited_output_name;
+      std::string backward_recorded_output_name;
+
       // Tensors to feed at this pipeline stage.
       std::vector<std::string> feed_names;
       // Tensors to fetch at this pipeline stage.
@@ -322,7 +331,11 @@ class TrainingSession : public InferenceSession {
   common::Status InsertPipelineOps(std::string& forward_waited_event_name,
                                    std::string& forward_recorded_event_name,
                                    std::string& backward_waited_event_name,
-                                   std::string& backward_recorded_event_name);
+                                   std::string& backward_recorded_event_name,
+                                   std::string& forward_waited_output_name,
+                                   std::string& forward_recorded_output_name,
+                                   std::string& backward_waited_output_name,
+                                   std::string& backward_recorded_output_name);
 
   common::Status ApplyTransformationsToMainGraph();
 

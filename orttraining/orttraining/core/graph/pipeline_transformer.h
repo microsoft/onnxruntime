@@ -14,7 +14,11 @@ common::Status TransformGraphForPipeline(
     std::string& forward_waited_event_name,
     std::string& forward_recorded_event_name,
     std::string& backward_waited_event_name,
-    std::string& backward_recorded_event_name);
+    std::string& backward_recorded_event_name,
+    std::string& forward_waited_output_name,
+    std::string& forward_recorded_output_name,
+    std::string& backward_waited_output_name,
+    std::string& backward_recorded_output_name);
 
 }  // namespace training
 }  // namespace onnxruntime

@@ -67,21 +67,19 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
     pipeline_context_.num_pipeline_stages = params_.num_pipeline_stages;
     pipeline_context_.num_pipeline_batches = params_.gradient_accumulation_steps - 1;
     pipeline_context_.num_gradient_accumulation_steps = params_.gradient_accumulation_steps;
+    pipeline_context_.pipeline_stage_paths = params_.pipeline_stage_paths;
     pipeline_schedule_.add(0, pipeline_context_.num_pipeline_batches);
   }
 }
 
 Status TrainingRunner::Initialize() {
-  if (pipeline_context_.pipeline_stage_id == 0) {
-    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/xuzhu/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_0.onnx"));
-  } else if (pipeline_context_.pipeline_stage_id == 1) {
-    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/xuzhu/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_1.onnx"));
-  } else if (pipeline_context_.pipeline_stage_id == 2) {
-    ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/xuzhu/pipe/bert-tiny-uncased_L_3_H_128_A_2_V_30528_S_512_Dp_0.1_2.onnx"));
+  if (!pipeline_context_.pipeline_stage_paths.empty()) {
+    // Pipeline partition happens outside ORT. We just load the result of partitioning forward graph.
+    // Backward graph will be generated using ORT's graph transformers.
+    ORT_RETURN_IF_ERROR(session_.Load(pipeline_context_.pipeline_stage_paths[pipeline_context_.pipeline_stage_id]));
+  } else {
+    ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
   }
-  /*
-  ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
-  */
 
   TrainingSession::TrainingConfiguration config{};
   config.model_with_loss_function_path = params_.model_with_loss_func_path;
@@ -195,6 +193,28 @@ Status TrainingRunner::Initialize() {
     // Exposes backward recorded event tensor ID name to TrainingRunner.
     // It's an input of a graph.
     pipeline_context_.backward_recorded_event_name = config_result.pipeline_config_result.value().backward_recorded_event_name;
+
+    pipeline_context_.forward_waited_output_name = config_result.pipeline_config_result.value().forward_waited_output_name;
+    pipeline_context_.forward_recorded_output_name = config_result.pipeline_config_result.value().forward_recorded_output_name;
+    pipeline_context_.backward_waited_output_name = config_result.pipeline_config_result.value().backward_waited_output_name;
+    pipeline_context_.backward_recorded_output_name = config_result.pipeline_config_result.value().backward_recorded_output_name;
+
+    if (!pipeline_context_.forward_waited_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.forward_waited_output_name);
+    }
+
+    if (!pipeline_context_.forward_recorded_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.forward_recorded_output_name);
+    }
+
+    if (!pipeline_context_.backward_waited_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.backward_waited_output_name);
+    }
+
+    if (!pipeline_context_.backward_recorded_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.backward_recorded_output_name);
+    }
+
     // Names of allowed inputs after pipeline partition.
     pipeline_context_.feed_names = config_result.pipeline_config_result.value().feed_names;
     // Names of allowed outputs after pipeline partition.
@@ -398,6 +418,7 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const bool do_weight_update,
         fetch_names.push_back(it->second);
       }
     }
+
   } else {
     // Set up tensor to be fetched when doing gradient accumulation. 
 
@@ -405,6 +426,23 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const bool do_weight_update,
       auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAccumulation);
       ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient accumulation output is missing in the optimizer output");
       fetch_names.push_back(it->second);
+    }
+
+    // Always execute event operators to avoid deadlock if pipeline is used.
+    // TODO: create a list of must-to-fetch tensors and pass it to all graph transformer.
+    if (params_.use_pipeline) {
+        if (!pipeline_context_.forward_waited_output_name.empty()) {
+          fetch_names.push_back(pipeline_context_.forward_waited_output_name);
+        }
+        if (!pipeline_context_.forward_recorded_output_name.empty()) {
+          fetch_names.push_back(pipeline_context_.forward_recorded_output_name);
+        }
+        if (!pipeline_context_.backward_waited_output_name.empty()) {
+          fetch_names.push_back(pipeline_context_.backward_waited_output_name);
+        }
+        if (!pipeline_context_.backward_recorded_output_name.empty()) {
+          fetch_names.push_back(pipeline_context_.backward_recorded_output_name);
+        }
     }
   }
 
@@ -504,7 +542,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
 
           pipeline_worker_pool_.workers[worker_id] = std::thread([&](
-            const size_t worker_id, const size_t batch_id, const size_t stage_id) {
+            const size_t worker_id) {
             RunOptions run_options;
             run_options.only_execute_path_to_fetches = true;
             session_.Run(
@@ -513,7 +551,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
               pipeline_worker_pool_.worker_states[worker_id].feeds,
               pipeline_worker_pool_.worker_states[worker_id].fetch_names,
               &(pipeline_worker_pool_.worker_states[worker_id].fetches));
-          }, worker_id, batch, pipeline_context_.pipeline_stage_id);
+          }, worker_id);
           gradient_accumulation_step_count++;
         }
         step_++;

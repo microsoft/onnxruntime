@@ -156,7 +156,12 @@ class TrainingRunner {
     bool enable_grad_norm_clip=true;
 
     // Pipeline configuration.
+
     bool use_pipeline;
+    // model_paths[i] is the name of the i-th pipeline stage's forward model.
+    // The i-th stage is run by the i-th MPI rank. 
+    // If model_paths is not empty, model partition transformation may not be invoked.
+    VectorString pipeline_stage_paths;
     size_t num_pipeline_stages;
   };
 

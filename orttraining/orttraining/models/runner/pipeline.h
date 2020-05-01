@@ -85,6 +85,11 @@ struct PipelineContext {
   // Total number of pipeline stages. 
   size_t num_pipeline_stages;
 
+  // Pipeline stage files, pipeline_stage_paths[i] is the forward model at the i-th stage.
+  // It's used when forward model is partitioned oustide ORT.
+  // ORT will apply all graph transforms but graph partition.
+  std::vector<std::string> pipeline_stage_paths;
+
   // Id of stage handled by this process. Currently, it matches the MPI's rank.
   size_t pipeline_stage_id;
   // The number of batches per pipeline run. Its value is
@@ -110,6 +115,11 @@ struct PipelineContext {
   std::string forward_recorded_event_name;
   std::string backward_waited_event_name;
   std::string backward_recorded_event_name;
+
+  std::string forward_waited_output_name;
+  std::string forward_recorded_output_name;
+  std::string backward_waited_output_name;
+  std::string backward_recorded_output_name;
 
   // Allowed feed names.
   // It stands for inputs of a graph partition at this stage.

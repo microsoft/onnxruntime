@@ -153,6 +153,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("use_pipeline", "Enable pipeline.", cxxopts::value<bool>()->default_value("false"))
       ("num_pipeline_stages", "Number of pipeline stages.", cxxopts::value<int>()->default_value("1"))
+      ("pipeline_stage_paths", "Specify the forward ONNX files for pipeline evaluation.", cxxopts::value<std::vector<std::string>>()->default_value(""))
       ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
         cxxopts::value<bool>()->default_value("true"));
   options
@@ -365,6 +366,12 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
 
     params.use_pipeline = flags["use_pipeline"].as<bool>();
     params.num_pipeline_stages = flags["num_pipeline_stages"].as<int>();
+    params.pipeline_stage_paths = flags["pipeline_stage_paths"].as<std::vector<std::string>>();
+
+    if (params.use_pipeline && params.pipeline_stage_paths.size() != 0) {
+      ORT_RETURN_IF_NOT(params.pipeline_stage_paths.size() != params.num_pipeline_stages,
+        "The numer of pipeline stage files does not match the number of specified stages.");
+    }
 
     int64_t seed = flags["seed"].as<int64_t>();
     if (params.horizontal_parallel_size > 1 && seed <= 0) {
@@ -435,7 +442,7 @@ void setup_training_params(BertParameters& params) {
   }
 
   auto data_group_size = params.mpi_context.world_size / params.horizontal_parallel_size;
-  if (data_group_size != params.data_parallel_size) {
+  if (!params.use_pipeline && data_group_size != params.data_parallel_size) {
     LOGS_DEFAULT(WARNING) << "WARNING: data_parallel_size is not correct, tuned automatically to "
                           << data_group_size << std::endl;
     params.data_parallel_size = data_group_size;
