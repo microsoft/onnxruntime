@@ -1,11 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-file(GLOB_RECURSE onnxruntime_shared_library_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
-  "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
-)
-
 file(GLOB_RECURSE onnxruntime_providers_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.cc"
@@ -269,7 +264,7 @@ if (onnxruntime_USE_DNNL)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dnnl_cc_srcs})
   add_library(onnxruntime_providers_dnnl SHARED ${onnxruntime_providers_dnnl_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_dnnl onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  onnxruntime_add_include_to_target(onnxruntime_providers_dnnl onnxruntime_common onnx) # onnx needed for stl_backports.h
   add_dependencies(onnxruntime_providers_dnnl ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_dnnl PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_dnnl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${DNNL_INCLUDE_DIR})
