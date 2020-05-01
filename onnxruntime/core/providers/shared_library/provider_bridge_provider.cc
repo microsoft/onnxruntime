@@ -277,8 +277,21 @@ TensorShape TensorShape::Slice(size_t dimstart) const {
 }
 
 std::string TensorShape::ToString() const {
-  PROVIDER_NOT_IMPLEMENTED
-  return "";
+  std::string result;
+
+  result.append("{");
+  bool first = true;
+  for (auto dim : (*this)) {
+    if (!first) {
+      result.append(",");
+    }
+
+    result.append(std::to_string(dim));
+    first = false;
+  }
+  result.append("}");
+
+  return result;
 }
 
 CPUIDInfo g_info;
@@ -348,17 +361,17 @@ const char* Category::onnxruntime = "foo";
 namespace common {
 
 Status::Status(StatusCategory category, int code, const std::string& msg) {
-  PROVIDER_NOT_IMPLEMENTED
-  ORT_UNUSED_PARAMETER(category);
-  ORT_UNUSED_PARAMETER(code);
-  ORT_UNUSED_PARAMETER(msg);
+  // state_ will be allocated here causing the status to be treated as a failure
+  ORT_ENFORCE(code != static_cast<int>(common::OK));
+
+  state_ = onnxruntime::make_unique<State>(category, code, msg);
 }
 
 Status::Status(StatusCategory category, int code, const char* msg) {
-  PROVIDER_NOT_IMPLEMENTED
-  ORT_UNUSED_PARAMETER(category);
-  ORT_UNUSED_PARAMETER(code);
-  ORT_UNUSED_PARAMETER(msg);
+  // state_ will be allocated here causing the status to be treated as a failure
+  ORT_ENFORCE(code != static_cast<int>(common::OK));
+
+  state_ = onnxruntime::make_unique<State>(category, code, msg);
 }
 
 std::string Status::ToString() const {
