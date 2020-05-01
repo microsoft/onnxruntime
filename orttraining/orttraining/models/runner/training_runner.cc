@@ -253,6 +253,11 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   const auto step_start = step_;
   const auto weight_update_step_count_start = weight_update_step_count_;
 
+  // how many steps at last we used for stabilized perf benchmarking.
+  const size_t stabilized_perf_total_step_count = std::min(static_cast<size_t>(128), params_.num_train_steps);
+  const size_t stabilized_perf_start_step = params_.num_train_steps - stabilized_perf_total_step_count;
+  double stabilized_total_time{0};
+
   while (step_ < params_.num_train_steps) {
     for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
       auto training_data = training_data_loader.CurrentDataSet();
@@ -333,6 +338,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> duration_seconds = end - start;
         total_time += duration_seconds.count();
+        if (step_ >= stabilized_perf_start_step) {
+          stabilized_total_time += duration_seconds.count();
+        }
 
         // Print some info when reaching the end of the batch.
         printf("Round %d, Step: %d, epoch: %d, batch: %d/%d, shard_iteration: %d/%d, time: %.2f ms, throughput: %.2f ex/sec \n",
@@ -395,7 +403,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Weight Update Steps: " << (weight_update_step_count_ - weight_update_step_count_start) << "\n"
             << "Total Running Time: " << total_time << " Seconds \n"
             << "Average Running Time Per Batch: " << total_time / (step_ - step_start) * 1000 << " ms\n"
-            << "Throughput: " << params_.batch_size * (step_ - step_start) / total_time << " Examples / Second\n";
+            << "Throughput: " << params_.batch_size * (step_ - step_start) / total_time << " Examples / Second\n"
+            << "Stabilized Throughput: " << params_.batch_size / (stabilized_total_time / stabilized_perf_total_step_count)
+            << " Examples / Second\n";
   return Status::OK();
 }
 
