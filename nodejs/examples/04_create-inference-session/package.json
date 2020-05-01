@@ -1,7 +1,7 @@
 {
-  "name": "01_basic-usage",
+  "name": "04_create-inference-session",
   "version": "1.0.0",
-  "description": "This example is a demonstration of basic usage of ONNX Runtime Node.js binding.",
+  "description": "This example shows how to create `InferenceSession` in different ways.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

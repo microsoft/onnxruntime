@@ -12,6 +12,14 @@ This example is a demonstration of basic usage of ONNX Runtime Node.js binding.
 
 This example is a demonstration of basic usage of creating tensors.
 
+<!--
+### [03 Create Tensor (Advanced)](./03_create-tensor-advanced/README.md)
+
+This example is a demonstration of advanced usage of creating tensors.
+-->
+
+### [04 Create InferenceSession](./04_create-inference-session/README.md)
+
 ## Usage
 
 In each example's implementation subdirectory, run
