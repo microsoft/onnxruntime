@@ -84,6 +84,9 @@ std::string GetDateTimeTransformerDataDir(void) {
             // Search relative to the executable
             dirname + "lib",
 
+            // The python executable might be in a 'bin' dir that is a sibling with 'lib'
+            dirname + "../lib",
+
             // Search in the user's local path
             [](void) -> std::string {
               char const * const var(std::getenv("HOME"));
@@ -92,7 +95,9 @@ std::string GetDateTimeTransformerDataDir(void) {
                 return var;
 
               return "";
-            }() + "/.local/lib"
+            }() + "/.local/lib",
+
+            "/usr/local/lib"
       };
 
       for(auto const &potentialDir : potentialDirs) {
