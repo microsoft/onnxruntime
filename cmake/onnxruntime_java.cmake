@@ -11,7 +11,6 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
     find_package(JNI REQUIRED)
     include_directories(${JNI_INCLUDE_DIRS})
 endif()
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11")
 
 set(JAVA_ROOT ${REPO_ROOT}/java)
 set(JAVA_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/java)
@@ -52,6 +51,7 @@ file(GLOB onnxruntime4j_native_src
     )
 # Build the JNI library
 add_library(onnxruntime4j_jni SHARED ${onnxruntime4j_native_src})
+set_property(TARGET onnxruntime4j_jni PROPERTY CXX_STANDARD 11)
 
 # Tell the JNI code about the requested providers
 if (onnxruntime_USE_CUDA)
