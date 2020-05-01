@@ -177,7 +177,7 @@ bool LaunchEmbedLayerNormKernel(
     const void* word_embedding,
     const void* position_embedding,
     const void* segment_embedding,
-    const float epsilon,
+    float epsilon,
     const int hidden_size,
     int batch_size,
     int sequence_length,

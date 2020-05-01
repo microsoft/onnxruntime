@@ -106,7 +106,7 @@ bool LaunchSkipLayerNormKernel(
     const void* gamma,
     const void* beta,
     const void* bias,    
-    const float epsilon,
+    float epsilon,
     int hidden_size,
     int element_count,
     size_t element_size) {
