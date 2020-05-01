@@ -115,7 +115,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.loss_name = parameters.loss_output_name;
 
   if (!parameters.training_optimizer_name.empty()) {
-    config.set_gradients_as_graph_outputs = true;
+    config.set_gradients_as_graph_outputs = false;
     training::TrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
     opt.name = parameters.training_optimizer_name;
     opt.learning_rate_input_name = parameters.lr_params_feed_name;
