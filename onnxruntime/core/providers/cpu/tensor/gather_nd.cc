@@ -115,7 +115,7 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p, con
     p.slice_offsets[slice_idx] = input_base_offset + relative_slice_offset;
   };
   concurrency::ThreadPool::TryParallelFor(tp, num_slices, static_cast<double>(num_slice_dims),
-                                          [lambda](ptrdiff_t first, ptrdiff_t last) {
+                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
                                             for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
                                               lambda(slice_idx);
                                             }
@@ -144,7 +144,7 @@ Status GatherND::GatherNumber(const Prepare& p, concurrency::ThreadPool* tp) con
            p.bytes_per_slice);
   };
   concurrency::ThreadPool::TryParallelFor(tp, p.slice_offsets.size(), static_cast<double>(p.bytes_per_slice),
-                                          [lambda](ptrdiff_t first, ptrdiff_t last) {
+                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
                                             for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
                                               lambda(slice_idx);
                                             }
@@ -160,7 +160,7 @@ Status GatherND::GatherString(const Prepare& p, concurrency::ThreadPool* tp) con
     }
   };
   concurrency::ThreadPool::TryParallelFor(tp, p.slice_offsets.size(), static_cast<double>(p.element_count_per_slice),
-                                          [lambda](ptrdiff_t first, ptrdiff_t last) {
+                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
                                             for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
                                               lambda(slice_idx);
                                             }

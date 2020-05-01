@@ -33,7 +33,7 @@ class ScatterNDBase {
   };  // struct Prepare
 
   template <typename Tind>
-  Status PrepareForCompute(OpKernelContext* context, Prepare& p, concurrency::ThreadPool* tp) const;
+  Status PrepareForCompute(OpKernelContext* context, Prepare& p) const;
 };  // class ScatterNDBase
 
 class ScatterND final : public OpKernel, protected ScatterNDBase {

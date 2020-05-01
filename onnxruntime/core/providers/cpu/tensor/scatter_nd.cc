@@ -15,7 +15,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     ScatterND);
 
 template <typename Tind>
-Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p, concurrency::ThreadPool* tp) const {
+Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
   auto input_tensor = context->Input<Tensor>(0);
   auto indice_tensor = context->Input<Tensor>(1);
   auto update_tensor = context->Input<Tensor>(2);
@@ -103,7 +103,7 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p, co
     p.output_base = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
   }
 
-  auto lambda = [&](int64_t i) {
+  for (int64_t i = 0; i < offset_count; ++i) {
     for (int64_t j = 0; j < last_indice_dimension; ++j) {
       auto indice = *(indice_offset + i * last_indice_dimension + j);
       if (indice < 0 || indice >= input_shape[j]) {
@@ -111,22 +111,16 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p, co
       }
       p.element_offsets[i] += indice * element_counts[j];
     }
-  };
-  concurrency::ThreadPool::TryParallelFor(tp, offset_count, static_cast<double>(last_indice_dimension),
-                                          [lambda](ptrdiff_t first, ptrdiff_t last) {
-                                            for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
-                                              lambda(i);
-                                            }
-                                          });
+  }
   return err_indice == 0 ? Status::OK() : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", err_indice);
 }
 
-template Status ScatterNDBase::PrepareForCompute<int64_t>(OpKernelContext*, Prepare&, concurrency::ThreadPool*) const;
+template Status ScatterNDBase::PrepareForCompute<int64_t>(OpKernelContext*, Prepare&) const;
 
 Status ScatterND::Compute(OpKernelContext* context) const {
   Prepare p;
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
-  ORT_RETURN_IF_ERROR(PrepareForCompute<int64_t>(context, p, tp));
+  ORT_RETURN_IF_ERROR(PrepareForCompute<int64_t>(context, p));
   return nullptr == p.input_str_base ? ScatterNumber(p, tp) : ScatterString(p, tp);
 }
 
@@ -137,7 +131,7 @@ Status ScatterND::ScatterNumber(const Prepare& p, concurrency::ThreadPool* tp) c
            p.bytes_to_copy);
   };
   concurrency::ThreadPool::TryParallelFor(tp, p.element_offsets.size(), static_cast<double>(p.bytes_to_copy),
-                                          [lambda](ptrdiff_t first, ptrdiff_t last) {
+                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
                                             for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
                                               lambda(i);
                                             }
@@ -152,7 +146,7 @@ Status ScatterND::ScatterString(const Prepare& p, concurrency::ThreadPool* tp) c
     }
   };
   concurrency::ThreadPool::TryParallelFor(tp, p.element_offsets.size(), static_cast<double>(p.element_to_copy),
-                                          [lambda](ptrdiff_t first, ptrdiff_t last) {
+                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
                                             for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
                                               lambda(i);
                                             }

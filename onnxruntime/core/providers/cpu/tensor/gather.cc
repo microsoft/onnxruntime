@@ -92,7 +92,7 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
     }
   };
   concurrency::ThreadPool::TryParallelFor(tp, M * N, static_cast<double>(block_size),
-                                          [lambda](ptrdiff_t first, ptrdiff_t last) {
+                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
                                             for (int index = static_cast<int>(first), end = static_cast<int>(last); index < end; ++index) {
                                               lambda(index);
                                             }
