@@ -61,8 +61,8 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
   CudaT* y_data = nullptr;
   if (x_dimensions == 3) {
-    x_dims.insert(x_dims.begin() + 2,  1);
-    w_dims.insert(w_dims.begin() + 2,  1);
+    x_dims.insert(x_dims.begin() + 2, 1);
+    w_dims.insert(w_dims.begin() + 2, 1);
   }
 
   {
@@ -82,14 +82,19 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       ConvTransposeAttributes::Prepare p;
       ORT_RETURN_IF_ERROR(conv_transpose_attrs_.PrepareForCompute(context, has_bias, p, dynamic_padding));
 
+      // Bail out early if one of the dimensions is zero.
+      if (p.Y->Shape().Size() == 0) {
+        return Status::OK();
+      }
+
       auto y_dims = p.Y->Shape().GetDims();
       if (x_dimensions == 3) {
-        y_dims.insert(y_dims.begin() + 2,  1);
-        p.kernel_shape.insert(p.kernel_shape.begin(),  1);
-        p.pads.insert(p.pads.begin(),  0);
-        p.pads.insert(p.pads.begin() + 2,  0);
+        y_dims.insert(y_dims.begin() + 2, 1);
+        p.kernel_shape.insert(p.kernel_shape.begin(), 1);
+        p.pads.insert(p.pads.begin(), 0);
+        p.pads.insert(p.pads.begin() + 2, 0);
         p.strides.insert(p.strides.begin(), 1);
-        p.dilations.insert(p.dilations.begin(),  1);
+        p.dilations.insert(p.dilations.begin(), 1);
       }
       s_.y_dims = y_dims;
 

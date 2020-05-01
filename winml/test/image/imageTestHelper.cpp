@@ -188,10 +188,11 @@ namespace ImageTestHelper {
 
         // Create the GPU upload buffer.
         auto heap_properties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+        auto buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(bufferbytesize);
         WINML_EXPECT_NO_THROW(pD3D12Device->CreateCommittedResource(
             &heap_properties,
             D3D12_HEAP_FLAG_NONE,
-            &CD3DX12_RESOURCE_DESC::Buffer(bufferbytesize),
+            &buffer_desc,
             D3D12_RESOURCE_STATE_GENERIC_READ,
             nullptr,
             __uuidof(ID3D12Resource),

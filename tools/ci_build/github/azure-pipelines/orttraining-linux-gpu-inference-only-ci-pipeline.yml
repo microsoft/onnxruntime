@@ -1,0 +1,18 @@
+# TODO remove this CI build when ort_training is merged to master
+
+trigger: none
+
+jobs:
+- template: templates/linux-ci.yml
+  parameters:
+    AgentPool : 'Linux-GPU-CUDA10'
+    JobName: 'Onnxruntime_Linux_GPU_Inference'
+    SubmoduleCheckoutMode: 'recursive'
+    BuildCommand: >
+      tools/ci_build/github/linux/run_dockerbuild.sh
+      -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)
+      -x "
+      "
+    DoNugetPack: 'false'
+    ArtifactName: 'drop-linux'
+    TimeoutInMinutes: 90
