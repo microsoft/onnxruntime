@@ -141,7 +141,7 @@ export declare namespace InferenceSession {
   export namespace SessionOptions {
     //#region execution providers
 
-    // currently we only have CPU, DNNL and CUDA EP. in future to support more.
+    // currently we only have CPU and CUDA EP support. in future to support more.
     interface ExecutionProviderOptionMap {
       cpu: CpuExecutionProviderOption;
       cuda: CudaExecutionProviderOption;

@@ -13,9 +13,6 @@ include_directories(${CMAKE_SOURCE_DIR}/node_modules/node-addon-api)
 
 file(GLOB SOURCE_FILES ${CMAKE_SOURCE_DIR}/src/*.cc)
 
-#
-# CPU
-#
 add_library(onnxruntime_binding SHARED ${SOURCE_FILES} ${CMAKE_JS_SRC})
 set_target_properties(onnxruntime_binding PROPERTIES
   PREFIX "" SUFFIX ".node"
@@ -36,15 +33,7 @@ else()
   set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "$ORIGIN/")
 endif()
 
-
-# # GPU
-# add_library(onnxruntime_gpu SHARED ${SOURCE_FILES})
-# set_target_properties(onnxruntime_gpu PROPERTIES PREFIX "" SUFFIX ".node")
-# target_link_libraries(onnxruntime_gpu ${CMAKE_JS_LIB})
-# if (WIN32)
-#   target_link_libraries(onnxruntime_gpu ${CMAKE_SOURCE_DIR}/onnxruntime/bin/win_gpu-x64/onnxruntime.lib)
-# endif()
-
+# post build
 add_custom_command(
   TARGET onnxruntime_binding POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bin
