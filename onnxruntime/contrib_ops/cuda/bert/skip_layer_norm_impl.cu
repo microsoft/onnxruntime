@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "layer_norm.cuh"
 #include "skip_layer_norm_impl.h"
+#include <cuda_fp16.h>
 
 namespace onnxruntime {
 namespace contrib {
@@ -52,7 +53,7 @@ __global__ void SkipLayerNormKernelSmall(
 template <typename T, unsigned TPB>
 __global__ void SkipLayerNormKernel(
     const int ld, const T* input, const T* skip, const T* beta, const T* gamma, const T* bias, 
-    const double epsilon, T* output) {
+    const T epsilon, T* output) {
   const T reverse_ld = T(1.f / ld);
   const int offset = blockIdx.x * ld;
 
@@ -74,7 +75,7 @@ __global__ void SkipLayerNormKernel(
 template <typename T>
 bool ComputeSkipLayerNorm(
     cudaStream_t stream, const int ld, const int n, const T* input, const T* skip,
-    const T* beta, const T* gamma, const T* bias, const double epsilon, T* output) {
+    const T* beta, const T* gamma, const T* bias, const T epsilon, T* output) {
   // this must be true because n is the total size of the tensor
   assert(n % ld == 0);
   const int grid_size = n / ld;
@@ -105,7 +106,7 @@ bool LaunchSkipLayerNormKernel(
     const void* gamma,
     const void* beta,
     const void* bias,    
-    const double epsilon,
+    const float epsilon,
     int hidden_size,
     int element_count,
     size_t element_size) {
@@ -113,6 +114,11 @@ bool LaunchSkipLayerNormKernel(
   const cudaStream_t stream = nullptr;
 
   if (element_size == 2) {
+    if (epsilon < 6e-8f) {
+      LOGS_DEFAULT(WARNING) << "Rounding up SkipLayerNormalization attribute epsilon=" << epsilon 
+        << " to nearest even. ";
+      epsilon = 6e-8f;
+    }
     return ComputeSkipLayerNorm(
         stream,
         hidden_size,
@@ -122,7 +128,7 @@ bool LaunchSkipLayerNormKernel(
         reinterpret_cast<const half*>(beta),
         reinterpret_cast<const half*>(gamma),
         reinterpret_cast<const half*>(bias),
-        epsilon,
+        __float2half_rn(epsilon),
         reinterpret_cast<half*>(output));
   } else {
     return ComputeSkipLayerNorm(

@@ -30,9 +30,7 @@ using namespace ONNX_NAMESPACE;
 
 template <typename T>
 EmbedLayerNorm<T>::EmbedLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
-  float tmp_epsilon;
-  ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
-  epsilon_ = tmp_epsilon;
+  ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
 }
 
 template <typename T>
@@ -51,6 +49,10 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   const auto input_dims = input_ids->Shape().GetDims();
   int64_t hidden_size = word_embedding->Shape()[1];
 
+  if (epsilon_ < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Epsilon is expected to be positive, got ", epsilon_);
+  }
   std::vector<int64_t> out_dims;
   out_dims.reserve(3);
   out_dims.push_back(input_dims[0]);

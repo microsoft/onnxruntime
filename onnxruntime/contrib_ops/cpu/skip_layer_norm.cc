@@ -70,6 +70,10 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
                            "Last dimension of beta and input does not match");
   }
 
+  if (epsilon_ < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Epsilon is expected to be positive, got ", epsilon_);
+  }
   if (nullptr != bias) {
     const auto bias_dims = bias->Shape().GetDims();
     if (bias_dims.size() != 1) {

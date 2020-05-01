@@ -18,7 +18,7 @@ class EmbedLayerNorm final : public CudaKernel {
   EmbedLayerNorm(const OpKernelInfo& op_kernel_info);
   Status ComputeInternal(OpKernelContext* ctx) const override;
  private:
-  double epsilon_;
+  float epsilon_;
 };
 
 }  // namespace cuda

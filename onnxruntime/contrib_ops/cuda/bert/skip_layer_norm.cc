@@ -30,9 +30,7 @@ using namespace ONNX_NAMESPACE;
 
 template <typename T>
 SkipLayerNorm<T>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
-  float tmp_epsilon;
-  ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
-  epsilon_ = tmp_epsilon;
+  ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
 }
 
 template <typename T>
@@ -86,6 +84,11 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Last dimension of bias and input does not match");
     }
+  }
+
+  if (epsilon_ < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Epsilon is expected to be positive, got ", epsilon_);
   }
   int sequence_length = static_cast<int>(input_dims[1]);
   int hidden_size = static_cast<int>(input_dims[2]);

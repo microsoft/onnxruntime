@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "layer_norm.cuh"
 #include "embed_layer_norm_impl.h"
+#include <cuda_fp16.h>
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -154,7 +155,7 @@ bool EmbedSkipLayerNorm(
     cudaStream_t stream, int hidden_size, int batch_size, int sequence_length,
     const int* input_ids, const int* segment_ids, const T* beta, const T* gamma,
     const T* word_embedding, const T* position_embedding, const T* segment_embedding,
-    const double epsilon, T* output) {
+    const T epsilon, T* output) {
   constexpr int tpb = 256;
   const dim3 grid(sequence_length, batch_size, 1);
   const dim3 block(tpb, 1, 1);
@@ -176,7 +177,7 @@ bool LaunchEmbedLayerNormKernel(
     const void* word_embedding,
     const void* position_embedding,
     const void* segment_embedding,
-    const double epsilon,
+    const float epsilon,
     const int hidden_size,
     int batch_size,
     int sequence_length,
@@ -191,11 +192,16 @@ bool LaunchEmbedLayerNormKernel(
   }
 
   if (element_size == 2) {
+    if (epsilon < 6e-8f) {
+      LOGS_DEFAULT(WARNING) << "Rounding up EmbedLayerNormalization attribute epsilon=" << epsilon 
+        << " to nearest even. ";
+      epsilon = 6e-8f;
+    }
     return EmbedSkipLayerNorm<half>(
         stream, hidden_size, batch_size, sequence_length, input_ids, segment_ids,
         reinterpret_cast<const half*>(beta), reinterpret_cast<const half*>(gamma),
         reinterpret_cast<const half*>(word_embedding), reinterpret_cast<const half*>(position_embedding), 
-        reinterpret_cast<const half*>(segment_embedding), epsilon,
+        reinterpret_cast<const half*>(segment_embedding), __float2half_rn(epsilon),
         reinterpret_cast<half*>(output));
   } else {
     return EmbedSkipLayerNorm<float>(
