@@ -877,7 +877,9 @@ public class InferenceTest {
       String customLibraryName = "";
       String osName = System.getProperty("os.name").toLowerCase();
       if (osName.contains("windows")) {
-        customLibraryName = "custom_op_library.dll";
+        // In windows we start in the wrong working directory relative to the custom_op_library.dll
+        // So we look it up as a classpath resource and resolve it to a real path
+        customLibraryName = getResourcePath("/custom_op_library.dll").toString();
       } else if (osName.contains("mac")) {
         customLibraryName = "libcustom_op_library.dylib";
       } else if (osName.contains("linux")) {
@@ -885,7 +887,8 @@ public class InferenceTest {
       } else {
         fail("Unknown os/platform '" + osName + "'");
       }
-      String customOpLibraryTestModel = "testdata/custom_op_library/custom_op_test.onnx";
+      String customOpLibraryTestModel =
+          getResourcePath("/custom_op_library/custom_op_test.onnx").toString();
 
       try (OrtEnvironment env = OrtEnvironment.getEnvironment("testLoadCustomLibrary");
           SessionOptions options = new SessionOptions()) {
