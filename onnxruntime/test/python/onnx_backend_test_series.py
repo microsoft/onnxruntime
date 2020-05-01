@@ -108,20 +108,8 @@ def create_backend_test(testname=None):
             '^test_momentum_cpu',
             '^test_momentum_multiple_cpu',
             '^test_nesterov_momentum_cpu',
-            '^test_pow_bcast_array_cpu',
-            '^test_pow_bcast_scalar_cpu',
-            '^test_pow_cpu',
-            '^test_pow_example_cpu',
-            '^test_pow_types_float32_int32_cpu',
-            '^test_pow_types_float32_int64_cpu',
             '^test_pow_types_float32_uint32_cpu',
             '^test_pow_types_float32_uint64_cpu',
-            '^test_pow_types_float_cpu',
-            '^test_pow_types_int32_float32_cpu',
-            '^test_pow_types_int32_int32_cpu',
-            '^test_pow_types_int64_float32_cpu',
-            '^test_pow_types_int64_int64_cpu',
-            '^test_pow_types_int_cpu',
             '^test_gradient_of_add_and_mul_cpu',
             '^test_gradient_of_add_cpu',
             '^test_batchnorm_example_training_mode_cpu',
@@ -148,7 +136,11 @@ def create_backend_test(testname=None):
                 '^test_argmin_negative_axis.*', '^test_hardmax_negative_axis.*', '^test_gemm_default_no_bias_cpu',
                 '^test_flatten_negative_axis.*', '^test_reduce_[a-z1-9_]*_negative_axes_.*',
                 'test_squeeze_negative_axes_cpu', 'test_unsqueeze_negative_axes_cpu', 'test_constant_pad_cpu',
-                'test_edge_pad_cpu', 'test_reflect_pad_cpu', '^test_split_zero_size_splits_.*','^test_argmax_keepdims_example_select_last_index_.*', '^test_argmax_no_keepdims_example_select_last_index_.*','^test_argmin_no_keepdims_example_select_last_index_.*','^test_argmin_keepdims_example_select_last_index_.*'
+                'test_edge_pad_cpu', 'test_reflect_pad_cpu', '^test_split_zero_size_splits_.*',
+                '^test_argmax_keepdims_example_select_last_index_cpu', '^test_argmax_no_keepdims_example_select_last_index_cpu',
+                '^test_argmin_no_keepdims_example_select_last_index_cpu','^test_argmin_keepdims_example_select_last_index_cpu',
+                '^test_pow_types_float32_int32_*', '^test_pow_types_float32_int64_*', '^test_pow_types_float_*',
+                '^test_pow_types_int32_float32_*', '^test_pow_types_int_*', '^test_pow_types_int64_float32_*'
             ]
 
         if c2.supports_device('DNNL'):
