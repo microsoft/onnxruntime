@@ -126,7 +126,10 @@ struct Prov_KernelDefBuilder_Impl : Prov_KernelDefBuilder {
 };
 
 struct Prov_NodeArg_Impl : Prov_NodeArg {
-  Prov_NodeArg_Impl(const NodeArg* p) : p_{p}, tensor_shape_proto_{p_->Shape()->dim_size()} {}
+  Prov_NodeArg_Impl(const NodeArg* p) : p_{p} {
+    if (p_->Shape())
+      tensor_shape_proto_.dim_size_ = p_->Shape()->dim_size();
+  }
 
   const std::string& Name() const noexcept override { return p_->Name(); }
   const ONNX_NAMESPACE::Prov_TensorShapeProto* Shape() const override { return &tensor_shape_proto_; }
@@ -545,9 +548,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(use_arena);
-
-  //  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena));
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena));
   return nullptr;
 }

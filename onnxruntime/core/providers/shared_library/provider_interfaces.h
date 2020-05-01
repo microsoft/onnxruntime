@@ -65,7 +65,7 @@ struct Prov_AttributeProto_Copyable {
 struct Prov_TensorShapeProto {
   int dim_size() const { return dim_size_; }
 
-  int dim_size_;
+  int dim_size_{};
 };
 
 }  // namespace ONNX_NAMESPACE
