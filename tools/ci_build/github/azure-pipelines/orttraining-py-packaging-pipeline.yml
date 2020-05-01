@@ -21,11 +21,13 @@ stages:
       submodules: false
 
     - task: DownloadPipelineArtifact@2
-      source: current
-      artifact: onnxruntime_gpu
-      patterns: '**/*-cp36-cp36m-manylinux2010_x86_64.whl'
-      allowPartiallySucceededBuilds: true
-      path: $(Pipeline.Workspace)/artifacts
+      inputs:
+        source: current
+        artifact: onnxruntime_gpu
+        patterns: '**/*-cp36-cp36m-manylinux2010_x86_64.whl'
+        allowPartiallySucceededBuilds: true
+        path: $(Pipeline.Workspace)/artifacts
+      displayName: 'Download wheel'
 
     - script: >
         docker build
@@ -48,3 +50,4 @@ stages:
         onnxruntime-training-ubuntu-gpu-3.6-test
         python3 /onnxruntime_src/tools/ci_build/run_python_tests_with_wheel.py
         --wheel-path $( find /artifacts/ -name "*-cp36-cp36m-manylinux2010_x86_64.whl" | tail -n 1 )
+      displayName: 'Run Python tests with wheel'
