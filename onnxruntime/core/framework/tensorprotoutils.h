@@ -18,12 +18,16 @@
 namespace ONNX_NAMESPACE {
 class TensorProto;
 class TensorShapeProto;
+
+/** Test if two TensorShapeProto dimensions are equal. */
+bool operator==(const TensorShapeProto_Dimension& l, const TensorShapeProto_Dimension& r);
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
 class Tensor;
 namespace utils {
 TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto);
+
 /**
  * deserialize a TensorProto into a preallocated memory buffer.
  * \param tensor_proto_path A local file path of where the 'input' was loaded from. Can be NULL if the tensor proto doesn't
