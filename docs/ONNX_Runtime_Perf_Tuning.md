@@ -108,7 +108,7 @@ DirectML is the hardware-accelerated DirectX 12 library for machine learning on 
 
 ## Tuning performance for specific Execution Providers
 
-### How to tune performance for a specific execution provider
+### Thread management
 * If ORT is built with OpenMP, use the OpenMP env variable to control the number of intra op num threads.
 * If ORT is not built with OpenMP, use the appropriate ORT API to control intra op num threads.
 * Inter op num threads (used only when parallel execution is enabled) is not affected by OpenMP settings and should
@@ -175,6 +175,3 @@ Depending on which execution provider you're using, it may not have full support
 NCHW and NHWC are two different memory layout for 4-D tensors.
 
 Most TensorFlow operations used by a CNN support both NHWC and NCHW data format. The Tensorflow team suggests that on GPU NCHW is faster but on CPU NHWC is sometimes faster in Tensorflow. However, ONNX only supports NCHW. As a result, if the original model is in NHWC format, when the model is converted extra transposes may be added. The [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx) and [keras-onnx](https://github.com/onnx/keras-onnx) converters do remove many of these transposes, but if this doesn't help sufficiently, consider retraining the model using NCHW.
-
-### I'm using the Python APIs on GPU and my model is slower than PyTorch.
-This is likely not an execution latency issue with ONNX Runtime. When using the GPU provider, inputs and outputs need to be copied from CPU to GPU and vice-versa. The current version of the ORT Python API makes this copy during execution, while PyTorch allows these to be set up on the GPU prior to execution. Work is in progress to add support of IOBinding in the Python API that allows copying of inputs to the GPU prior to calling Run.
