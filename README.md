@@ -66,6 +66,9 @@ The list of currently supported accelerators (termed [Execution Providers](./doc
 * [ARM Compute Library](./docs/execution_providers/ACL-ExecutionProvider.md) (*preview*)
 * [Android Neural Networks API](./docs/execution_providers/NNAPI-ExecutionProvider.md) (*preview*)
 
+#### FPGA
+ * [Xilinx Vitis-AI](./docs/execution_providers/Vitis-AI-ExecutionProvider.md)
+
 #### Other
 * [Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md)
 

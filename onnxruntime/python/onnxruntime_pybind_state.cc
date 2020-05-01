@@ -138,7 +138,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VitisAI(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char *backend_type, int device_id);
 
 }  // namespace onnxruntime
 
@@ -350,7 +350,7 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #endif
     } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_VitisAI("DPU", 0));
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI("DPU", 0));
 #endif
     } else {
       // unknown provider

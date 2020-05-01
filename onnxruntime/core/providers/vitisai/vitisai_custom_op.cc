@@ -37,7 +37,7 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
               fused_node->Name());
 
   const Graph& node_subgraph = node_function->Body();
-  onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{},
+  onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{}, PathString{},
                            IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap(),
                            std::vector<ONNX_NAMESPACE::FunctionProto>(), logger};
 
@@ -51,10 +51,8 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 
 VitisAICustomOp::VitisAICustomOp(const ComputeContext* context,
                          const onnxruntime::Node* fused_node,
-                         const logging::Logger* logger
-                               /*const ONNX_NAMESPACE::ModelProto& model_proto,
-                               const std::shared_ptr<ngraph::runtime::Backend>& ng_backend*/) 
-/*: ng_backend_{ng_backend}, model_proto_{model_proto} */ {
+                         const logging::Logger* logger) 
+{
   SetLogger(logger);
 
   allocate_func_ = context->allocate_func;
@@ -65,13 +63,9 @@ VitisAICustomOp::VitisAICustomOp(const ComputeContext* context,
   ONNX_NAMESPACE::ModelProto model_proto = GetModelProtoFromFusedNode(fused_node, *GetLogger());
   model_proto_ = model_proto;
 
-  // Serialize fused node model_proto
-  std::string file_name = name_ + ".onnx";
-  std::fstream dump(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
-  model_proto_.SerializeToOstream(&dump);
-  dump.flush();
+  std::istringstream model_stream{model_proto_.SerializeAsString()};
 
-  xg_ = pyxir::onnx::import_onnx_model(file_name);
+  xg_ = pyxir::onnx::import_onnx_model(model_stream);
 
   auto input_defs = fused_node->InputDefs();
   for (auto idef : input_defs) {
@@ -154,7 +148,7 @@ Status VitisAICustomOp::Compute(const OrtApi* api, OrtKernelContext* context) co
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, name_ + ": Unknown exception while creating Pyxir output Tensor");
   }
 
-  // Run the graph through nGraph.
+  // Run the graph through Vitis-AI Pyxir
   try {
     // std::lock_guard<std::mutex> lock(compute_lock_);
     rt_mod_->execute(in_tensors, out_tensors);

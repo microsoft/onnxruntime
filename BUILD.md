@@ -104,6 +104,7 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 * [Nuphar Model Compiler](#Nuphar)
 * [DirectML](#DirectML)
 * [ARM Compute Library](#ARM-Compute-Library)
+* [Xilinx Vitis-AI](#Vitis-AI)
 
 **Options**
 * [OpenMP](#OpenMP)
@@ -446,6 +447,21 @@ export LD_LIBRARY_PATH=~/ComputeLibrary/build/
 ```
 ./build.sh --use_acl
 ```
+
+---
+
+### Vitis-AI
+See more information on the Xilinx Vitis-AI execution provider [here](./docs/execution_providers/Vitis-AI-ExecutionProvider.md).
+
+For instructions to setup the hardware environment: [Hardware setup](./docs/execution_providers/Vitis-AI-ExecutionProvider.md#Hardware-setup)
+
+#### Linux
+
+```
+./build.sh --use_vitisai
+```
+#### Notes
+The Vitis-AI execution provider is only supported on Linux.
 
 ---
 

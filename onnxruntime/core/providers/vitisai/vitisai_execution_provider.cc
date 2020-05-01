@@ -1,6 +1,7 @@
 // Copyright (c) Xilinx Inc. All rights reserved.
 // Licensed under the MIT License.
 
+#include <istream>
 #include <fstream>
 
 #include <pyxir/pyxir.hpp>
@@ -248,7 +249,7 @@ VitisAIExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
   const Graph& node_graph = graph.GetGraph();
   const std::string& name_ = node_graph.Name();
-  onnxruntime::Model model{name_, true, ModelMetaData{},
+  onnxruntime::Model model{name_, true, ModelMetaData{}, PathString{},
                            IOnnxRuntimeOpSchemaRegistryList{},
                            node_graph.DomainToVersionMap(),
                            std::vector<ONNX_NAMESPACE::FunctionProto>(),
@@ -259,14 +260,10 @@ VitisAIExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
   *(model_proto.mutable_graph()) = node_graph.ToGraphProto();
 
-  std::string file_path = name_ + ".onnx";
-  std::fstream dump(file_path,
-                    std::ios::out | std::ios::trunc | std::ios::binary);
-  model_proto.SerializeToOstream(&dump);
-  dump.flush();
+  std::istringstream model_stream{model_proto.SerializeAsString()};
 
   // Transform ONNX into Pyxir XGraph data structure 
-  XGraphHolder xg = pyxir::onnx::import_onnx_model(file_path);
+  XGraphHolder xg = pyxir::onnx::import_onnx_model(model_stream);
 
   // Annotate the subgraph layers in the XGraph that can be executed on the
   //  `dpuv1` target
@@ -308,9 +305,8 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<onnxruntime::
   for (const auto& fused_node : fused_nodes) 
   {
     NodeComputeInfo compute_info;
-    // model_proto = GetModelProtoFromFusedNode(fused_node, *GetLogger())
     compute_info.create_state_func = [fused_node, logger=GetLogger()](ComputeContext* context, FunctionState* state) {
-      auto* p = new vitisai_ep::VitisAICustomOp(context, fused_node, logger); // model_proto
+      auto* p = new vitisai_ep::VitisAICustomOp(context, fused_node, logger);
       *state = p;
       return 0;
     };
