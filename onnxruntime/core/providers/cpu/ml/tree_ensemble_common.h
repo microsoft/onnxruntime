@@ -332,9 +332,8 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
             num_threads,
             [this, &agg, &scores, &merge_mutex, num_threads, x_data](ptrdiff_t batch_num) {
               std::vector<ScoreValue<OTYPE>> private_scores(n_targets_or_classes_, {0, 0});
-              int64_t j = batch_num * n_trees_ / num_threads;
-              int64_t end = (batch_num + 1) * n_trees_ / num_threads;
-              for (; j < end; ++j) {
+              auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, n_trees_);
+              for (auto j = work.start; j < work.end; ++j) {
                 agg.ProcessTreeNodePrediction(private_scores, *ProcessTreeNodeLeave(roots_[j], x_data));
               }
 
@@ -368,9 +367,9 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
             [this, &agg, num_threads, x_data, z_data, label_data, N, stride](ptrdiff_t batch_num) {
               size_t j;
               std::vector<ScoreValue<OTYPE>> scores(n_targets_or_classes_);
-              int64_t i = batch_num * N / num_threads;
-              int64_t end = (batch_num + 1) * N / num_threads;
-              for (; i < end; ++i) {
+              auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, N);
+
+              for (auto i = work.start; i < work.end; ++i) {
                 std::fill(scores.begin(), scores.end(), ScoreValue<OTYPE>({0, 0}));
                 for (j = 0; j < roots_.size(); ++j) {
                   agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
