@@ -15,5 +15,8 @@ steps:
     artifactName: 'onnxruntime_gpu'
     targetPath: '$(Pipeline.Workspace)/artifacts'
 
-- script: |
-    echo "file is $( find $(Pipeline.Workspace)/artifacts/ -name "*.whl" | head -n 1 )"
+- script: >
+    echo "file is $( find $(Pipeline.Workspace)/artifacts/ -name "*.whl" | head -n 1 )" &&
+    echo hello
+      there &&
+    echo :)
