@@ -28,4 +28,5 @@ steps:
 #     targetPath: '$(Pipeline.Workspace)/artifacts'
 
 - script: |
-    echo ${{ variables.val }}
+    echo template expansion ${{ variables.val }}
+    echo variable expansion $(val)
