@@ -467,6 +467,80 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const bool do_weight_update,
   return Status::OK();
 }
 
+Status TrainingRunner::RunWithUpdate(VectorString& feed_names,
+                                     VectorString& fetch_names,
+                                     std::vector<MLValue>& feeds,
+                                     std::vector<MLValue>& fetches) {
+  pipeline_worker_pool_.join_all();
+
+  ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
+                                    feed_names,
+                                    feeds,
+                                    fetch_names,
+                                    &fetches));
+
+  if (loss_scaler_) {
+    auto it = std::find(fetch_names.begin(), fetch_names.end(), opt_graph_outputs_[OptimizerOutputKey::GradientAllIsFinite]);
+    if (it != fetch_names.end()) {
+      const size_t index = static_cast<size_t>(std::distance(fetch_names.begin(), it));
+      const Tensor& all_is_finite_t = fetches[index].Get<Tensor>();
+      const bool is_all_finite = *(all_is_finite_t.template Data<bool>());
+      loss_scaler_->UpdateLossScale(is_all_finite);
+    }
+  }
+
+  // Assume that only the last pipeline stage can see loss, predicted value, and so on.
+  // Thus, the error function should only be called when we are at the last stage.
+  if (pipeline_context_.pipeline_stage_id == pipeline_context_.num_pipeline_stages - 1 &&
+      !params_.is_perf_test &&
+      weight_update_step_count_ % params_.display_loss_steps == 0) {
+    if (params_.error_function) {
+      params_.error_function(feed_names, feeds, fetch_names, fetches, weight_update_step_count_);
+    }
+    if (params_.post_evaluation_callback) {
+      params_.post_evaluation_callback(params_.batch_size, weight_update_step_count_, "train");
+    }
+  }
+
+  // Add one after process one batch.
+  ++step_;
+  // Add one after update the model once.
+  ++weight_update_step_count_;
+
+  return Status::OK();
+}
+
+Status TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
+                                        VectorString& fetch_names,
+                                        std::vector<MLValue>& feeds,
+                                        size_t& gradient_accumulation_step_count) {
+  const size_t worker_id = step_ % pipeline_context_.num_pipeline_stages;
+  pipeline_worker_pool_.join(worker_id);
+  pipeline_worker_pool_.worker_states[worker_id].feeds = feeds;
+  pipeline_worker_pool_.worker_states[worker_id].feed_names = feed_names;
+  pipeline_worker_pool_.worker_states[worker_id].fetch_names = fetch_names;
+  pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
+
+  pipeline_worker_pool_.workers[worker_id] = std::thread([&](
+    const size_t worker_id) {
+    RunOptions run_options;
+    run_options.only_execute_path_to_fetches = true;
+    session_.Run(
+      run_options,
+      pipeline_worker_pool_.worker_states[worker_id].feed_names,
+      pipeline_worker_pool_.worker_states[worker_id].feeds,
+      pipeline_worker_pool_.worker_states[worker_id].fetch_names,
+      &(pipeline_worker_pool_.worker_states[worker_id].fetches));
+  }, worker_id);
+
+  // Add one after process one batch.
+  ++step_;
+  // Add one after comuting one forward-backward path without applying optimizer.
+  ++gradient_accumulation_step_count;
+
+  return Status::OK();
+}
+
 Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader) {
   const bool enable_checkpoint_saving =
       params_.mpi_context.world_rank == 0 &&
@@ -517,65 +591,18 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         VectorString fetch_names;
         std::vector<MLValue> feeds;
         std::vector<MLValue> fetches;
+
         PrepareFeedNamesAndFeeds(training_data_loader, *lr_scheduler, batch, feed_names, feeds);
+
         PrepareFetchNamesAndFetches(is_weight_update_step, fetch_names, fetches);
 
         auto start = std::chrono::high_resolution_clock::now();
 
         if (is_weight_update_step) {
-          pipeline_worker_pool_.join_all();
-          ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
-                                           feed_names,
-                                           feeds,
-                                           fetch_names,
-                                           &fetches));
-
-          if (loss_scaler_) {
-            auto it = std::find(fetch_names.begin(), fetch_names.end(), opt_graph_outputs_[OptimizerOutputKey::GradientAllIsFinite]);
-            if (it != fetch_names.end()) {
-              const size_t index = static_cast<size_t>(std::distance(fetch_names.begin(), it));
-              const Tensor& all_is_finite_t = fetches[index].Get<Tensor>();
-              const bool is_all_finite = *(all_is_finite_t.template Data<bool>());
-              loss_scaler_->UpdateLossScale(is_all_finite);
-            }
-          }
-
-          // Assume that only the last pipeline stage can see loss, predicted value, and so on.
-          // Thus, the error function should only be called when we are at the last stage.
-          if (pipeline_context_.pipeline_stage_id == pipeline_context_.num_pipeline_stages - 1 &&
-              !params_.is_perf_test &&
-              weight_update_step_count_ % params_.display_loss_steps == 0) {
-            if (params_.error_function) {
-              params_.error_function(feed_names, feeds, fetch_names, fetches, weight_update_step_count_);
-            }
-            if (params_.post_evaluation_callback) {
-              params_.post_evaluation_callback(params_.batch_size, weight_update_step_count_, "train");
-            }
-          }
-
-          weight_update_step_count_++;
+          RunWithUpdate(feed_names, fetch_names, feeds, fetches);
         } else {
-          const size_t worker_id = step_ % pipeline_context_.num_pipeline_stages;
-          pipeline_worker_pool_.join(worker_id);
-          pipeline_worker_pool_.worker_states[worker_id].feeds = feeds;
-          pipeline_worker_pool_.worker_states[worker_id].feed_names = feed_names;
-          pipeline_worker_pool_.worker_states[worker_id].fetch_names = fetch_names;
-          pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
-
-          pipeline_worker_pool_.workers[worker_id] = std::thread([&](
-            const size_t worker_id) {
-            RunOptions run_options;
-            run_options.only_execute_path_to_fetches = true;
-            session_.Run(
-              run_options,
-              pipeline_worker_pool_.worker_states[worker_id].feed_names,
-              pipeline_worker_pool_.worker_states[worker_id].feeds,
-              pipeline_worker_pool_.worker_states[worker_id].fetch_names,
-              &(pipeline_worker_pool_.worker_states[worker_id].fetches));
-          }, worker_id);
-          gradient_accumulation_step_count++;
+          RunWithoutUpdate(feed_names, fetch_names, feeds, gradient_accumulation_step_count); 
         }
-        step_++;
 
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> duration_seconds = end - start;
