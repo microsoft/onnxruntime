@@ -19,7 +19,7 @@ namespace detail {
 struct DeviceHelpers {
   using ZeroData = std::function<common::Status(void* data, size_t size_in_bytes)>;
   using Transpose = std::function<common::Status(const std::vector<size_t>& permutations,
-                                                 const Tensor& input, Tensor& output, const TensorShape* input_shape_override)>;
+                                                 const Tensor& input, Tensor& output)>;
   using CreateConstSlicer = std::function<OrtValueTensorSlicer<const OrtValue>(const OrtValue& ort_value,
                                                                                int64_t slice_dimension /*=0*/,
                                                                                int64_t dim0_offset /*=0*/)>;

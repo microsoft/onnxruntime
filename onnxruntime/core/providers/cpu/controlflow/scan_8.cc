@@ -148,7 +148,7 @@ Scan<8>::Scan(const OpKernelInfo& info) : OpKernel(info) {
 
   ReadDirections(info, "directions", input_directions_, num_scan_inputs_);
 
-  device_helpers_.transpose_func = [](const std::vector<size_t>&, const Tensor&, Tensor&, const TensorShape*) -> Status {
+  device_helpers_.transpose_func = [](const std::vector<size_t>&, const Tensor&, Tensor&) -> Status {
     ORT_NOT_IMPLEMENTED("Scan<8> spec does not support transpose of output. This should never be called.");
   };
 

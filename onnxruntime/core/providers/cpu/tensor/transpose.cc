@@ -533,7 +533,7 @@ static bool IsMovingSingleAxis(const std::vector<size_t>& permutations, size_t& 
 
 //`input_shape_override` overrides the shape of `input` for compute purposes.
 Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
-                                  const TensorShape* input_shape_override /* = nullptr */) {
+                                  const TensorShape* input_shape_override) {
   Status status = Status::OK();
 
   auto input_type = input.DataType();
