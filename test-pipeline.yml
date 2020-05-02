@@ -21,4 +21,4 @@ steps:
 #     targetPath: '$(Pipeline.Workspace)/artifacts'
 
 - script: |
-    echo $[variables.${{variables.id}}_value]
+    echo $(variables.${{variables.id}}_value)
