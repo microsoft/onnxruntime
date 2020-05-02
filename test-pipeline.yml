@@ -5,6 +5,13 @@ variables:
   b_value: 2
   id: a
 
+strategy:
+  matrix:
+    a:
+      val: a
+    b:
+      val: b
+
 steps:
 - checkout: none
   submodules: false
@@ -21,4 +28,4 @@ steps:
 #     targetPath: '$(Pipeline.Workspace)/artifacts'
 
 - script: |
-    echo $(variables.${{variables.id}}_value)
+    echo ${{ variables.val }}
