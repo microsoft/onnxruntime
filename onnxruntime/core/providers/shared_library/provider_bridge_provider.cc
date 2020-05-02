@@ -10,6 +10,8 @@
 
 onnxruntime::ProviderHost* g_host{};
 
+#define PROVIDER_NOT_IMPLEMENTED ORT_THROW("Unimplemented shared library provider method");
+
 namespace onnxruntime {
 
 void SetProviderHost(ProviderHost& host) {
@@ -350,7 +352,7 @@ Capture::Capture(const Logger& logger, logging::Severity severity, const char* c
 }
 
 std::ostream& Capture::Stream() noexcept {
-  PROVIDER_NOT_IMPLEMENTED
+  // PROVIDER_NOT_IMPLEMENTED
   return std::cout;
 }
 
@@ -374,21 +376,47 @@ Status::Status(StatusCategory category, int code, const char* msg) {
   state_ = onnxruntime::make_unique<State>(category, code, msg);
 }
 
-std::string Status::ToString() const {
-  PROVIDER_NOT_IMPLEMENTED
-  return "";
+int Status::Code() const noexcept {
+  return IsOK() ? static_cast<int>(common::OK) : state_->code;
 }
 
 const std::string& Status::ErrorMessage() const noexcept {
-  PROVIDER_NOT_IMPLEMENTED
-  static std::string dummy;
-  return dummy;
+  return IsOK() ? EmptyString() : state_->msg;
+}
+
+std::string Status::ToString() const {
+  if (state_ == nullptr) {
+    return std::string("OK");
+  }
+
+  std::string result;
+
+  if (common::SYSTEM == state_->category) {
+    result += "SystemError";
+    result += " : ";
+    result += std::to_string(errno);
+  } else if (common::ONNXRUNTIME == state_->category) {
+    result += "[ONNXRuntimeError]";
+    result += " : ";
+    result += std::to_string(Code());
+    result += " : ";
+    result += StatusCodeToString(static_cast<StatusCode>(Code()));
+    result += " : ";
+    result += state_->msg;
+  }
+
+  return result;
+}
+
+const std::string& Status::EmptyString() noexcept {
+  static std::string s_empty;
+  return s_empty;
 }
 
 }  // namespace common
 
 std::vector<std::string> GetStackTrace() {
-  PROVIDER_NOT_IMPLEMENTED
+  // PROVIDER_NOT_IMPLEMENTED
   return {};
 }
 
