@@ -1165,9 +1165,6 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider,
         else:
             exe = os.path.join(cwd, 'onnx_test_runner')
             model_dir = os.path.join(build_dir, "models")
-        # Temporarily disable optimizers because some
-        # of them are failing
-        cmd = ["-o", "0"]
         if provider:
             cmd += ["-e", provider]
         if num_parallel_tests != 0:
@@ -1202,7 +1199,6 @@ def tensorrt_run_onnx_tests(args, build_dir, configs, onnx_test_data_dir,
             exe = os.path.join(cwd, 'onnx_test_runner')
             model_dir = os.path.join(build_dir, "models")
 
-        cmd_base = ['-o', '0']
         if provider:
             cmd_base += ["-e", provider]
 
@@ -1290,7 +1286,7 @@ def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
         else:
             exe = os.path.join(cwd, 'onnx_test_runner')
             model_dir = os.path.join(build_dir, "models")
-        cmd_base = ['-o', '0', '-e', 'dnnl', '-c', '1', '-j', '1']
+        cmd_base = ['-e', 'dnnl', '-c', '1', '-j', '1']
         if os.path.exists(onnx_test_data_dir):
             onnxdata_cmd = cmd_base + [onnx_test_data_dir]
             # /data/onnx
