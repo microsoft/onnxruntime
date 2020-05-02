@@ -33,6 +33,8 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/src/ThreadPool/ThreadPoolInterface.h"
 #include <wil/Resource.h>
 
+#include "core/platform/path_lib.h"  // for LoopDir()
+
 namespace onnxruntime {
 
 namespace {
@@ -240,6 +242,90 @@ class WindowsEnv : public Env {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "MapFileIntoMemory is not implemented on Windows.");
   }
 
+  bool FolderExists(const std::wstring& path) const override {
+    DWORD attributes = GetFileAttributesW(path.c_str());
+    return (attributes != INVALID_FILE_ATTRIBUTES) && (attributes & FILE_ATTRIBUTE_DIRECTORY);
+  }
+
+  bool FolderExists(const std::string& path) const override {
+    DWORD attributes = GetFileAttributesA(path.c_str());
+    return (attributes != INVALID_FILE_ATTRIBUTES) && (attributes & FILE_ATTRIBUTE_DIRECTORY);
+  }
+
+  common::Status CreateFolder(const std::wstring& path) const override {
+    size_t pos = 0;
+    do {
+      pos = path.find_first_of(L"\\/", pos + 1);
+      std::wstring directory = path.substr(0, pos);
+      if (FolderExists(directory)) {
+        continue;
+      }
+      if (CreateDirectoryW(directory.c_str(), NULL) == 0) {
+        return common::Status(common::SYSTEM, errno);
+      }
+    } while (pos != std::string::npos);
+    return Status::OK();
+  }
+
+  common::Status CreateFolder(const std::string& path) const override {
+    size_t pos = 0;
+    do {
+      pos = path.find_first_of("\\/", pos + 1);
+      std::string directory = path.substr(0, pos);
+      if (FolderExists(directory)) {
+        continue;
+      }
+      if (CreateDirectoryA(directory.c_str(), NULL) == 0) {
+        return common::Status(common::SYSTEM, errno);
+      }
+    } while (pos != std::string::npos);
+    return Status::OK();
+  }
+
+  common::Status DeleteFolder(const PathString& path) const override {
+    Status final_status = Status::OK();
+    LoopDir(
+        path,
+        [this, &path, &final_status](
+            const PathString& child_basename, OrtFileType file_type) {
+          // ignore . and ..
+          if (child_basename == ORT_TSTR(".") || child_basename == ORT_TSTR("..")) {
+            return true;
+          }
+
+          const PathString child_path = path + GetPathSep<PathChar>() + child_basename;
+
+          if (file_type == OrtFileType::TYPE_DIR) {
+            const auto delete_dir_status = DeleteFolder(child_path);
+            if (!delete_dir_status.IsOK()) {
+              final_status = delete_dir_status;
+            }
+          } else {  // not directory
+            if (!DeleteFileW(child_path.c_str())) {
+              const auto err = GetLastError();
+              final_status = ORT_MAKE_STATUS(
+                  ONNXRUNTIME, FAIL,
+                  "DeleteFile() failed - path: ", ToMBString(child_path),
+                  ", error code: ", err);
+            }
+          }
+
+          return final_status.IsOK();
+        });
+
+    ORT_RETURN_IF_ERROR(final_status);
+
+    if (!RemoveDirectoryW(path.c_str())) {
+      const auto err = GetLastError();
+      final_status = ORT_MAKE_STATUS(
+          ONNXRUNTIME, FAIL,
+          "RemoveDirectory() failed - path: ", ToMBString(path),
+          ", error code: ", err);
+    }
+
+    return final_status;
+  }
+
   common::Status FileOpenRd(const std::wstring& path, /*out*/ int& fd) const override {
     _wsopen_s(&fd, path.c_str(), _O_RDONLY | _O_SEQUENTIAL | _O_BINARY, _SH_DENYWR, _S_IREAD | _S_IWRITE);
     if (0 > fd) {
@@ -279,6 +365,66 @@ class WindowsEnv : public Env {
     if (0 != ret) {
       return common::Status(common::SYSTEM, errno);
     }
+    return Status::OK();
+  }
+
+  common::Status GetCanonicalPath(
+      const PathString& path,
+      PathString& canonical_path) const override {
+    // adapted from MSVC STL std::filesystem::canonical() implementation
+    // https://github.com/microsoft/STL/blob/ed3cbf36416a385828e7a5987ca52cb42882d84b/stl/inc/filesystem#L2986
+
+    wil::unique_hfile file_handle{CreateFileW(
+        path.c_str(),
+        FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS,
+        nullptr)};
+
+    if (file_handle.get() == INVALID_HANDLE_VALUE) {
+      const int err = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(path), " fail, errcode = ", err);
+    }
+
+    constexpr DWORD initial_buffer_size = MAX_PATH;
+    std::vector<PathChar> result_buffer{};
+    result_buffer.resize(initial_buffer_size);
+
+    while (true) {
+      const DWORD result_length = GetFinalPathNameByHandleW(
+          file_handle.get(),
+          result_buffer.data(),
+          static_cast<DWORD>(result_buffer.size()),
+          0);
+
+      ORT_RETURN_IF_NOT(
+          result_length > 0, "GetFinalPathNameByHandle() failed: ", GetLastError());
+
+      if (result_length < result_buffer.size()) {  // buffer is large enough
+        canonical_path.assign(result_buffer.data(), result_length);
+        break;
+      }
+
+      // need larger buffer
+      result_buffer.resize(result_length);
+    }
+
+    // update prefixes
+    if (canonical_path.find(ORT_TSTR(R"(\\?\)")) == 0) {
+      if (canonical_path.size() > 6 &&
+          (ORT_TSTR('A') <= canonical_path[4] && canonical_path[4] <= ORT_TSTR('Z') ||
+           ORT_TSTR('a') <= canonical_path[4] && canonical_path[4] <= ORT_TSTR('z')) &&
+          canonical_path[5] == ORT_TSTR(':')) {
+        // "\\?\<drive>:" -> "<drive>:"
+        canonical_path.erase(0, 4);
+      } else if (canonical_path.find(ORT_TSTR(R"(UNC\)"), 4) == 4) {
+        // "\\?\UNC\" -> "\\"
+        canonical_path.erase(2, 6);
+      }
+    }
+
     return Status::OK();
   }
 

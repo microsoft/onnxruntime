@@ -2,12 +2,15 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <iostream>
+
+#include <atomic>
 #include <fstream>
-#include <tuple>
 #include <initializer_list>
-#include "core/platform/ort_mutex.h"
+#include <iostream>
+#include <tuple>
+
 #include "core/common/logging/logging.h"
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 
@@ -63,7 +66,7 @@ class Profiler {
   */
   void EndTimeAndRecordEvent(EventCategory category,
                              const std::string& event_name,
-                             TimePoint& start_time,
+                             const TimePoint& start_time,
                              const std::initializer_list<std::pair<std::string, std::string>>& event_args = {},
                              bool sync_gpu = false);
 
@@ -82,8 +85,30 @@ class Profiler {
 #endif
   }
 
+  /*
+  Gets the maximum event count to set for new profiler instances.
+  */
+  static size_t GetGlobalMaxNumEvents() {
+    return global_max_num_events_.load();
+  }
+
+  /*
+  Sets the maximum event count to set for new profiler instances.
+  Existing profiler instances will not be affected.
+  */
+  static void SetGlobalMaxNumEvents(size_t new_max_num_events) {
+    global_max_num_events_.store(new_max_num_events);
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
+
+  /**
+   * The maximum number of profiler records to collect.
+   * This value is used to initialize the per-profiler maximum.
+   * It can be set, but won't affect existing profilers.
+   */
+  static std::atomic<size_t> global_max_num_events_;
 
   // Mutex controlling access to profiler data
   OrtMutex mutex_;
@@ -95,8 +120,8 @@ class Profiler {
   TimePoint profiling_start_time_;
   std::vector<EventRecord> events_;
   bool max_events_reached{false};
-  static constexpr size_t max_num_events_ = 1000000;
   bool profile_with_logger_{false};
+  const size_t max_num_events_{global_max_num_events_.load()};
 
 #ifdef ENABLE_STATIC_PROFILER_INSTANCE
   static Profiler* instance_;

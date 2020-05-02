@@ -1939,7 +1939,7 @@ public:
                 Buffer[i].u = TestData[i][0].u;
             }
 
-            MlasActivation(&Activation, &Buffer[0].f, nullptr, _countof(Buffer), 1, 1);
+            MlasActivation(&Activation, &Buffer[0].f, nullptr, 1, _countof(Buffer), _countof(Buffer));
 
             for (unsigned i = 0; i < _countof(TestData); i++) {
                 // Sensitive to comparing positive/negative zero and NaNs.
@@ -2111,7 +2111,7 @@ main(
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
         if (threadpool != nullptr)
           threadpool = new onnxruntime::concurrency::ThreadPool(
-              &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 2, true, nullptr);
+              &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 2, true);
 #else
         break;
 #endif

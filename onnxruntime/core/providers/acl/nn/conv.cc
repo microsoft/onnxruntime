@@ -208,7 +208,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       if(optimizable) {
         //optimized depthwise convolution
 #if defined(ACL_1902) || defined(ACL_1905)
-        auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayer>();
+        auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayer3x3>();
 #endif
 #ifdef ACL_1908
         auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayerOptimized>();

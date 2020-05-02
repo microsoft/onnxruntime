@@ -97,6 +97,11 @@ class IExecutionProvider {
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const;
 
   /**
+     Get the device id of current execution provider
+  */
+  virtual int GetDeviceId() const { return -1; };
+
+  /**
      Returns an opaque handle whose exact type varies based on the provider
      and is interpreted accordingly by the corresponding kernel implementation.
      For Direct3D operator kernels, this may return an IUnknown supporting
@@ -135,6 +140,13 @@ class IExecutionProvider {
      that all commands of current Run has been submmited by CPU
   */
   virtual common::Status OnRunEnd();
+
+  /**
+     Called when session creation is complete
+     This provides an opportunity for execution providers to optionally synchronize and
+     clean up its temporary resources to reduce memory and ensure the first run is fast.
+  */
+  virtual common::Status OnSessionInitializationEnd();
 
   void InsertAllocator(AllocatorPtr allocator);
 

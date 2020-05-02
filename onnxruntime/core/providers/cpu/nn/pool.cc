@@ -4,7 +4,6 @@
 #include "core/providers/cpu/nn/pool.h"
 #include "core/framework/data_types_internal.h"
 #include "core/platform/threadpool.h"
-#include "core/util/eigen_common_wrapper.h"
 #include "pool_functors.h"
 
 using namespace ::onnxruntime::common;
@@ -12,7 +11,7 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 template <typename T>
-inline static void RunLoop(concurrency::ThreadPool* tp, Eigen::Index total_channels, T&& task) {
+inline static void RunLoop(concurrency::ThreadPool* tp, std::ptrdiff_t total_channels, T&& task) {
   concurrency::ThreadPool::TryParallelFor(tp, total_channels, task.Cost(), task);
 }
 
