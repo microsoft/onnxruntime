@@ -8,76 +8,75 @@
 #include "inc/ILotusValueProviderPrivate.h"
 #include "core/providers/winml/winml_provider_factory.h"
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 
 struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearningModelBindingNative> {
   struct ProviderInfo {
-    Windows::Foundation::IInspectable CallerSpecifiedFeatureValue = nullptr;
-    winrt::com_ptr<WinML::ILotusValueProviderPrivate> Provider = nullptr;
-    WinML::BindingContext Context = {};
+    wf::IInspectable CallerSpecifiedFeatureValue = nullptr;
+    winrt::com_ptr<_winml::ILotusValueProviderPrivate> Provider = nullptr;
+    _winml::BindingContext Context = {};
   };
 
  public:
-  using KeyValuePair =
-      Windows::Foundation::Collections::IKeyValuePair<hstring, Windows::Foundation::IInspectable>;
+  using KeyValuePair = wfc::IKeyValuePair<hstring, wf::IInspectable>;
 
   ~LearningModelBinding();
   
   LearningModelBinding() = delete;
-  LearningModelBinding(Windows::AI::MachineLearning::LearningModelSession const& session);
+  LearningModelBinding(winml::LearningModelSession const& session);
 
-  void Bind(hstring const& name, Windows::Foundation::IInspectable const& value);
-  void Bind(hstring const& name, Windows::Foundation::IInspectable const& value, Windows::Foundation::Collections::IPropertySet const& properties);
+  void Bind(hstring const& name, wf::IInspectable const& value);
+  void Bind(hstring const& name, wf::IInspectable const& value, wfc::IPropertySet const& properties);
   STDMETHOD(Bind)(const wchar_t* name, UINT32 cchName, IUnknown* value);
 
   void Clear();
-  Windows::Foundation::Collections::IIterator<KeyValuePair> First();
-  Windows::Foundation::IInspectable Lookup(hstring const& key);
+  wfc::IIterator<KeyValuePair> First();
+  wf::IInspectable Lookup(hstring const& key);
   uint32_t Size();
   bool HasKey(hstring const& key);
   void Split(
-      Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& first,
-      Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& second);
+      wfc::IMapView<hstring, wf::IInspectable>& first,
+      wfc::IMapView<hstring, wf::IInspectable>& second);
 
-  std::tuple<std::string, winrt::com_ptr<WinML::IValue>, WinML::BindingType> CreateBinding(
+  std::tuple<std::string, winrt::com_ptr<_winml::IValue>, _winml::BindingType> CreateBinding(
       const std::string& name,
-      const Windows::Foundation::IInspectable& value,
-      Windows::Foundation::Collections::IPropertySet const& properties);
+      const wf::IInspectable& value,
+      wfc::IPropertySet const& properties);
 
-  std::unordered_map<std::string, Windows::Foundation::IInspectable> UpdateProviders();
+  std::unordered_map<std::string, wf::IInspectable> UpdateProviders();
 
-  const Windows::AI::MachineLearning::LearningModelSession& GetSession() { return m_session; }
+  const winml::LearningModelSession& GetSession() { return m_session; }
 
   const std::vector<std::string>& GetInputNames() const;
   const std::vector<std::string>& GetOutputNames() const;
   
-  const std::vector<winrt::com_ptr<WinML::IValue>>& GetInputs() const;
-  std::vector<winrt::com_ptr<WinML::IValue>>& GetOutputs();
+  const std::vector<winrt::com_ptr<_winml::IValue>>& GetInputs() const;
+  std::vector<winrt::com_ptr<_winml::IValue>>& GetOutputs();
     
-  HRESULT BindOutput(const std::string& name, winrt::com_ptr<WinML::IValue> value);
+  HRESULT BindOutput(const std::string& name, winrt::com_ptr<_winml::IValue> value);
   void BindUnboundOutputs();
 
  private:
   void CacheProvider(std::string name, ProviderInfo& spProvider);
-  Windows::Foundation::IInspectable CreateUnboundOutput(const std::string& name, winrt::com_ptr<WinML::IValue> value);
+  wf::IInspectable CreateUnboundOutput(const std::string& name, winrt::com_ptr<_winml::IValue> value);
   ILearningModelFeatureValue CreateUnboundOuputFeatureValue(
-      const winrt::com_ptr<WinML::IValue> value,
+      const winrt::com_ptr<_winml::IValue> value,
       ILearningModelFeatureDescriptor& descriptor);
-  HRESULT BindInput(const std::string& name, winrt::com_ptr<WinML::IValue> value);
+  HRESULT BindInput(const std::string& name, winrt::com_ptr<_winml::IValue> value);
 
  private:
-  const Windows::AI::MachineLearning::LearningModelSession m_session;
+  const winml::LearningModelSession m_session;
 
   std::unordered_map<std::string, ProviderInfo> m_providers;
 
   std::vector<std::string> input_names_;
-  std::vector<winrt::com_ptr<WinML::IValue>> inputs_;
+  std::vector<winrt::com_ptr<_winml::IValue>> inputs_;
   std::vector<std::string> output_names_;
-  std::vector<winrt::com_ptr<WinML::IValue>> outputs_;
+  std::vector<winrt::com_ptr<_winml::IValue>> outputs_;
 };
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP
 
-namespace winrt::Windows::AI::MachineLearning::factory_implementation {
+namespace WINML::factory_implementation {
 struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, implementation::LearningModelBinding> {
 };
-}  // namespace winrt::Windows::AI::MachineLearning::factory_implementation
+}  // namespace WINML::factory_implementation

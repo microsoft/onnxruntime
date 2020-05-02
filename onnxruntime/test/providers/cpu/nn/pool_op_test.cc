@@ -296,7 +296,11 @@ TEST(PoolTest, MaxPool2D_uint8) {
     21, 22, 23, 24, 25});
 
   test.AddOutput<uint8_t>("Output", output_shape, output);
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+#else
   test.Run();
+#endif
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_1d) {

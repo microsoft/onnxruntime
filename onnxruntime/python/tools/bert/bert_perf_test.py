@@ -240,9 +240,10 @@ def run_perf_tests(perf_results, model_path, batch_size, sequence_length, use_gp
 
 
 def run_performance(perf_results, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, seed,
-                    verbose, inclusive, test_all, no_warmup, opt_level):
-    # Try deduce input names from model.
-    input_ids, segment_ids, input_mask = get_bert_inputs(model_path)
+                    verbose, inclusive, test_all, no_warmup, opt_level, input_ids_name, segment_ids_name,
+                    input_mask_name):
+
+    input_ids, segment_ids, input_mask = get_bert_inputs(model_path, input_ids_name, segment_ids_name, input_mask_name)
 
     # Do not generate random mask for performance test.
     print(f"Generating {test_cases} samples for batch_size={batch_size} sequence_length={sequence_length}")
@@ -347,6 +348,10 @@ def parse_arguments():
     parser.add_argument('--no_warmup', required=False, action='store_true', help="do not use one sample for warm-up.")
     parser.set_defaults(no_warmup=False)
 
+    parser.add_argument('--input_ids', required=False, type=str, default=None, help="input name for input ids")
+    parser.add_argument('--segment_ids', required=False, type=str, default=None, help="input name for segment ids")
+    parser.add_argument('--input_mask', required=False, type=str, default=None, help="input name for attention mask")
+
     args = parser.parse_args()
     return args
 
@@ -367,7 +372,7 @@ def main():
     for batch_size in batch_size_set:
         run_performance(perf_results, args.model, batch_size, args.sequence_length, args.use_gpu, args.samples,
                         args.test_times, args.seed, args.verbose, args.inclusive, args.all, args.no_warmup,
-                        args.opt_level)
+                        args.opt_level, args.input_ids, args.segment_ids, args.input_mask)
 
     # Sort the results so that the first one has smallest latency.
     sorted_results = sorted(perf_results.items(), reverse=False, key=lambda x: x[1])

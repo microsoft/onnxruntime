@@ -8,53 +8,20 @@ import os
 
 from onnxruntime.capi import _pybind_state as C
 
+def get_ort_device_type(device):
+    if device == 'cuda':
+        return C.OrtDevice.cuda()
+    elif device == 'cpu':
+        return C.OrtDevice.cpu()
+    else:
+        raise Exception('Unsupported device type: ' + torch_device.type)
 
-class InferenceSession:
+class Session:
     """
     This is the main class used to run a model.
     """
-
-    def __init__(self, path_or_bytes, sess_options=None, providers=[]):
-        """
-        :param path_or_bytes: filename or serialized model in a byte string
-        :param sess_options: session options
-        :param providers: providers to use for session. If empty, will use
-            all available providers.
-        """
-        self._path_or_bytes = path_or_bytes
-        self._sess_options = sess_options
-        self._load_model(providers)
+    def __init__(self, sess):
         self._enable_fallback = True
-
-    def _load_model(self, providers=[]):
-        if isinstance(self._path_or_bytes, str):
-            self._sess = C.InferenceSession(
-                self._sess_options if self._sess_options else C.get_default_session_options(), self._path_or_bytes,
-                True)
-        elif isinstance(self._path_or_bytes, bytes):
-            self._sess = C.InferenceSession(
-                self._sess_options if self._sess_options else C.get_default_session_options(), self._path_or_bytes,
-                False)
-        # elif isinstance(self._path_or_bytes, tuple):
-        # to remove, hidden trick
-        #   self._sess.load_model_no_init(self._path_or_bytes[0], providers)
-        else:
-            raise TypeError("Unable to load from type '{0}'".format(type(self._path_or_bytes)))
-
-        self._sess.load_model(providers)
-
-        self._session_options = self._sess.session_options
-        self._inputs_meta = self._sess.inputs_meta
-        self._outputs_meta = self._sess.outputs_meta
-        self._overridable_initializers = self._sess.overridable_initializers
-        self._model_meta = self._sess.model_meta
-        self._providers = self._sess.get_providers()
-
-        # Tensorrt can fall back to CUDA. All others fall back to CPU.
-        if 'TensorrtExecutionProvider' in C.get_available_providers():
-            self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-        else:
-            self._fallback_providers = ['CPUExecutionProvider']
 
     def _reset_session(self):
         "release underlying session object."
@@ -69,7 +36,7 @@ class InferenceSession:
 
     def get_session_options(self):
         "Return the session options. See :class:`onnxruntime.SessionOptions`."
-        return self._session_options
+        return self._sess_options
 
     def get_inputs(self):
         "Return the inputs metadata as a list of :class:`onnxruntime.NodeArg`."
@@ -161,3 +128,84 @@ class InferenceSession:
         :meth:`onnxruntime.SessionOptions.enable_profiling`.
         """
         return self._sess.end_profiling()
+
+    def io_binding(self):
+        "Return an onnxruntime.IOBinding object`."
+        return IOBinding(self)
+
+    def run_with_iobinding(self, iobinding, run_options=None):
+        """
+         Compute the predictions.
+
+         :param iobinding: the iobinding object that has graph inputs/outputs bind.
+         :param run_options: See :class:`onnxruntime.RunOptions`.
+        """
+        self._sess.run_with_iobinding(iobinding._iobinding, run_options)
+
+class InferenceSession(Session):
+    """
+    This is the main class used to run a model.
+    """
+    def __init__(self, path_or_bytes, sess_options=None, providers=[]):
+        """
+        :param path_or_bytes: filename or serialized model in a byte string
+        :param sess_options: session options
+        :param providers: providers to use for session. If empty, will use
+            all available providers.
+        """
+        self._path_or_bytes = path_or_bytes
+        self._sess_options = sess_options
+        self._load_model(providers)
+        self._enable_fallback = True
+        Session.__init__(self, self._sess)
+
+    def _load_model(self, providers=[]):
+        if isinstance(self._path_or_bytes, str):
+            self._sess = C.InferenceSession(
+                self._sess_options if self._sess_options else C.get_default_session_options(), self._path_or_bytes,
+                True)
+        elif isinstance(self._path_or_bytes, bytes):
+            self._sess = C.InferenceSession(
+                self._sess_options if self._sess_options else C.get_default_session_options(), self._path_or_bytes,
+                False)
+        # elif isinstance(self._path_or_bytes, tuple):
+        # to remove, hidden trick
+        #   self._sess.load_model_no_init(self._path_or_bytes[0], providers)
+        else:
+            raise TypeError("Unable to load from type '{0}'".format(type(self._path_or_bytes)))
+
+        self._sess.load_model(providers)
+
+        self._sess_options = self._sess.session_options
+        self._inputs_meta = self._sess.inputs_meta
+        self._outputs_meta = self._sess.outputs_meta
+        self._overridable_initializers = self._sess.overridable_initializers
+        self._model_meta = self._sess.model_meta
+        self._providers = self._sess.get_providers()
+
+        # Tensorrt can fall back to CUDA. All others fall back to CPU.
+        if 'TensorrtExecutionProvider' in C.get_available_providers():
+            self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        else:
+            self._fallback_providers = ['CPUExecutionProvider']
+
+
+class IOBinding:
+    def __init__(self, session):
+        self._iobinding = C.SessionIOBinding(session._sess)
+
+    def bind_input(self, name, device_type, device_id, element_type, shape, buffer_ptr):
+        self._iobinding.bind_input(name,
+                                   C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id),
+                                   element_type, shape, buffer_ptr)
+
+    def bind_output(self, name, device_type, device_id, element_type, shape, buffer_ptr):
+        self._iobinding.bind_output(name,
+                                    C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id),
+                                    element_type, shape, buffer_ptr)
+
+    def clear_binding_inputs(self):
+        self._iobinding.clear_binding_inputs()
+
+    def clear_binding_outputs(self):
+        self._iobinding.clear_binding_outputs()

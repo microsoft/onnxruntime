@@ -169,10 +169,10 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
     nodes_to_remove.push_back(reduce_mean2_node);
-
+    
     // Traceback the reduceMean node to find pow --> reduceMean
     Node& pow_node = *graph.GetNode(reduce_mean2_node.InputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12}) ||
         pow_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         pow_node.GetOutputEdgesCount() != 1 ||
         !IsSupportedDataType(pow_node)) {
@@ -271,9 +271,11 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // remove all the other nodes.
     graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
 
+#ifdef ENABLE_TRAINING
     // add two extra output defs, so we have 3 output defs that match what gradient builder expected
     layer_norm_node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_mean"), nullptr));
     layer_norm_node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_inv_std_var"), nullptr));
+#endif
 
     modified = true;
   }

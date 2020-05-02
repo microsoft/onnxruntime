@@ -27,7 +27,7 @@ limitations under the License.
 
 #include "core/common/safeint.h"
 #include "core/util/math_cpuonly.h"
-#include "core/util/eigen_common_wrapper.h"
+#include "core/common/eigen_common_wrapper.h"
 #include "gsl/gsl"
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

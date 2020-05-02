@@ -167,10 +167,12 @@ namespace OperatorHelper
         static const int sc_sinceVer_MatMul = 9;
         static const int sc_sinceVer_Cast = 9;
         static const int sc_sinceVer_Upsample = 9;
+        static const int sc_sinceVer_MeanVarianceNormalization = 9;
     } // namespace OnnxOperatorSet9
 
     namespace OnnxOperatorSet10
     {
+        static const int sc_sinceVer_Crop = 10; // Removed in this version.
         static const int sc_sinceVer_Resize = 10;
         static const int sc_sinceVer_MaxPool = 10;
         static const int sc_sinceVer_QuantizeLinear = 10;
@@ -179,7 +181,69 @@ namespace OperatorHelper
         static const int sc_sinceVer_ThresholdedRelu = 10;
         static const int sc_sinceVer_Upsample = 10;
         static const int sc_sinceVer_Slice = 10;
+        static const int sc_sinceVer_IsInf = 10;
+        static const int sc_sinceVer_Mod = 10;
+        static const int sc_sinceVer_DropOut = 10;
+        static const int sc_sinceVer_RoiAlign = 10;
+        static const int sc_sinceVer_TopK = 10;
+        static const int sc_sinceVer_ReverseSequence = 10;
+        static const int sc_sinceVer_AveragePool = 10;
+        static const int sc_sinceVer_ConvInteger = 10;
+        static const int sc_sinceVer_MatMulInteger = 10;
+        static const int sc_sinceVer_QLinearConv = 10;
+        static const int sc_sinceVer_QLinearMatMul = 10;
     } // namespace OnnxOperatorSet10
+
+    namespace OnnxOperatorSet11
+    {
+        static const int sc_sinceVer_ArgMax = 11;
+        static const int sc_sinceVer_ArgMin = 11;
+        static const int sc_sinceVer_AveragePool = 11;
+        static const int sc_sinceVer_BitShift = 11;
+        static const int sc_sinceVer_Clip = 11;
+        static const int sc_sinceVer_Compress = 11;
+        static const int sc_sinceVer_Concat = 11;
+        static const int sc_sinceVer_Conv = 11;
+        static const int sc_sinceVer_ConvTranspose = 11;
+        static const int sc_sinceVer_CumSum = 11;
+        static const int sc_sinceVer_DepthToSpace = 11;
+        static const int sc_sinceVer_Equal = 11;
+        static const int sc_sinceVer_Flatten = 11;
+        static const int sc_sinceVer_Gather = 11;
+        static const int sc_sinceVer_GatherElements = 11;
+        static const int sc_sinceVer_GatherND = 11;
+        static const int sc_sinceVer_Gemm = 11;
+        static const int sc_sinceVer_Hardmax = 11;
+        static const int sc_sinceVer_LogSoftmax = 11;
+        static const int sc_sinceVer_LpPool = 11;
+        static const int sc_sinceVer_MaxPool = 11;
+        static const int sc_sinceVer_MaxUnpool = 11;
+        static const int sc_sinceVer_OneHot = 11;
+        static const int sc_sinceVer_Pad = 11;
+        static const int sc_sinceVer_Range = 11;
+        static const int sc_sinceVer_ReduceL1 = 11;
+        static const int sc_sinceVer_ReduceL2 = 11;
+        static const int sc_sinceVer_ReduceLogSum = 11;
+        static const int sc_sinceVer_ReduceLogSumExp = 11;
+        static const int sc_sinceVer_ReduceMax = 11;
+        static const int sc_sinceVer_ReduceMean = 11;
+        static const int sc_sinceVer_ReduceMin = 11;
+        static const int sc_sinceVer_ReduceProd = 11;
+        static const int sc_sinceVer_ReduceSum = 11;
+        static const int sc_sinceVer_ReduceSumSquare = 11;
+        static const int sc_sinceVer_Resize = 11;
+        static const int sc_sinceVer_Round = 11;
+        static const int sc_sinceVer_Scan = 11;
+        static const int sc_sinceVer_Scatter = 11; // Deprecated alias
+        static const int sc_sinceVer_ScatterElements = 11;
+        static const int sc_sinceVer_ScatterND = 11;
+        static const int sc_sinceVer_Slice = 11;
+        static const int sc_sinceVer_Softmax = 11;
+        static const int sc_sinceVer_Split = 11;
+        static const int sc_sinceVer_Squeeze = 11;
+        static const int sc_sinceVer_TopK = 11;
+        static const int sc_sinceVer_Unsqueeze = 11;
+    } // namespace OnnxOperatorSet11
 
     namespace MsftOperatorSet1
     {

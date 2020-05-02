@@ -102,7 +102,7 @@ Developers can now choose which API works best for their scenario.
 ||WinRT|C API|
 |--|--|--|
 |Type system| Integration with Windows RT types| Platform neutral types|
-|Lanugage support| Language support via WinRT Projections| Language support via per language projections|
+|Language support| Language support via WinRT Projections| Language support via per language projections|
 |Tensorization| Accepts VideoFrames and converts to tensors (support for CPU and GPU)| Accepts tensors|
 
 ### Distribution choice
@@ -114,5 +114,5 @@ You can also choose to use runtimes included in the Windows OS, or use the redis
 |Disk footprint| Included in the OS| Included in the App|
 |Servicing fixes| Serviced by OS updates| Serviced by the App|
 |Execution Providers| CPU & DirectML EP | App chosen EP|
-|Compatability testing| Tested with OS flights against supported GPU's and CPU's | App performs compatability testing|
+|Compatability testing| Tested with OS flights against supported GPU's and CPU's | App performs compatibility testing|
 |Opset| Refreshed in OS updates| App chooses|

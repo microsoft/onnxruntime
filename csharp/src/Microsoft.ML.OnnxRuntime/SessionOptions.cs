@@ -122,7 +122,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        public void AppendExecutionProvider_OpenVINO(string deviceId)
+        public void AppendExecutionProvider_OpenVINO(string deviceId = "")
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(_nativePtr, deviceId));
         }

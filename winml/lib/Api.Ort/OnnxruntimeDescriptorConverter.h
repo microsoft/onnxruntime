@@ -4,7 +4,7 @@
 
 #include "pch.h"
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 struct OnnxruntimeValueInfoWrapper {
   OnnxruntimeValueInfoWrapper() : type_info_(UniqueOrtTypeInfo(nullptr, nullptr)) {}
@@ -30,4 +30,4 @@ struct OnnxruntimeDescriptorConverter {
   const std::unordered_map<std::string, std::string>& metadata_;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

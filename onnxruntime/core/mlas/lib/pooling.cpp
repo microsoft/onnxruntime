@@ -628,7 +628,7 @@ Return Value:
                         break;
                     }
 
-#if defined(MLAS_NEON_INTRINSICS)
+#if defined(MLAS_NEON_INTRINSICS) || defined(MLAS_VSX_INTRINSICS)
                     MlasStoreLaneFloat32x4<0>(Output, Reduction);
                     MlasStoreLaneFloat32x4<2>(Output + 1, Reduction);
 #elif defined(MLAS_SSE2_INTRINSICS)
@@ -1000,7 +1000,7 @@ Return Value:
                             break;
                         }
 
-#if defined(MLAS_NEON_INTRINSICS)
+#if defined(MLAS_NEON_INTRINSICS) || defined(MLAS_VSX_INTRINSICS)
                         MlasStoreLaneFloat32x4<0>(Output, Reduction);
                         MlasStoreLaneFloat32x4<2>(Output + 1, Reduction);
 #elif defined(MLAS_SSE2_INTRINSICS)
@@ -1101,6 +1101,13 @@ Return Value:
         Reduction = PoolingType::Reduce(Reduction, _mm_shuffle_ps(Reduction, Reduction, _MM_SHUFFLE(1, 1, 1, 1)));
 
         float ReductionValue = _mm_cvtss_f32(Reduction);
+
+#elif defined(MLAS_VSX_INTRINSICS)
+
+        Reduction = PoolingType::Reduce(Reduction, MLAS_FLOAT32X4(vec_splat((__vector int64_t)Reduction, 1)));
+        Reduction = PoolingType::Reduce(Reduction, vec_splat(Reduction, 1));
+
+        float ReductionValue = Reduction[0];
 
 #else
 #error Unsupported architecture.
@@ -1232,7 +1239,7 @@ Return Value:
 
     //TODO: use a safeint here and make sure the result value can fit into int32_t
     size_t TotalChannelCount = size_t(InputShape[0]) * size_t(InputShape[1]);
-    
+
 
     InputShape += 2;
     OutputShape += 2;
@@ -1347,5 +1354,5 @@ Return Value:
       PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize);
     }, 0);
     return;
-#endif    
+#endif
 }

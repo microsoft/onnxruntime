@@ -14,6 +14,8 @@
 * limitations under the License.
 */
 
+/* Modifications Copyright (c) Microsoft. */
+
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
 
 #include "core/providers/cuda/cu_inc/common.cuh"
@@ -30,7 +32,7 @@ namespace cuda {
 // The template arguments have the following meaning:
 // One "WARP" works on one "BATCH". One "BATCH" contains "WARP_BATCH" samples.
 // WARP_BATCH is equal to 1 when element_count is large, and > 1 when element_count is small.
-// A "WARP" contains "CUDA_WARP_SIZE" threads, these treads are guaranteed to belong to the same warp.
+// A "WARP" contains "GPU_WARP_SIZE" threads, these treads are guaranteed to belong to the same warp.
 // This is important because it means only __shfl_ instructions are required for reductions.
 // Note that this means WARP_SIZE must be a power of two and <= architecture warp size.
 // CUDA warp size is 32 for all existing GPU architecures, but there is no guarantee this will not change for future arch.
@@ -46,7 +48,7 @@ template <typename input_t, typename output_t, typename acc_t, int log2_elements
 __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batch_size, int stride, int element_count) {
   // WARP_SIZE and WARP_BATCH must match the return values batches_per_warp and warp_size of method warp_softmax_forward_kernel.
   constexpr int next_power_of_two = 1 << log2_elements;
-  constexpr int WARP_SIZE = (next_power_of_two < CUDA_WARP_SIZE) ? next_power_of_two : CUDA_WARP_SIZE;
+  constexpr int WARP_SIZE = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
   constexpr int WARP_ITERATIONS = next_power_of_two / WARP_SIZE;
   constexpr int WARP_BATCH = (next_power_of_two <= 128) ? 2 : 1;
 
@@ -115,7 +117,7 @@ __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batc
   for (int i = 0; i < WARP_BATCH; ++i) {
     if (i >= local_batches)
       break;
-    //if (is_log_softmax) sum[i] = max_value[i] + std::log(sum[i]);
+    if (is_log_softmax) sum[i] = max_value[i] + std::log((float)(sum[i]));
 #pragma unroll
     for (int it = 0; it < WARP_ITERATIONS; ++it) {
       int element_index = local_idx + it * WARP_SIZE;
@@ -141,7 +143,7 @@ void dispatch_softmax_forward(output_t* dst, const input_t* src, int softmax_ele
     const int next_power_of_two = 1 << log2_elements;
 
     // This value must match the WARP_SIZE constexpr value computed inside softmax_warp_forward.
-    int warp_size = (next_power_of_two < CUDA_WARP_SIZE) ? next_power_of_two : CUDA_WARP_SIZE;
+    int warp_size = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
 
     // This value must match the WARP_BATCH constexpr value computed inside softmax_warp_forward.
     int batches_per_warp = (next_power_of_two <= 128) ? 2 : 1;
@@ -206,7 +208,8 @@ void dispatch_softmax_forward(output_t* dst, const input_t* src, int softmax_ele
 }
 
 #define SPECIALIZED_SOFTMAX_IMPL(input_t, output_t, acc_t) \
-template void dispatch_softmax_forward<input_t, output_t, acc_t, false>(output_t * dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count);
+template void dispatch_softmax_forward<input_t, output_t, acc_t, false>(output_t * dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count); \
+template void dispatch_softmax_forward<input_t, output_t, acc_t, true>(output_t * dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count);
 
 SPECIALIZED_SOFTMAX_IMPL(float, float, float)
 SPECIALIZED_SOFTMAX_IMPL(half, half, float)

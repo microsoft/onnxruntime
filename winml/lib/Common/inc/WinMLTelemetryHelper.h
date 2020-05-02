@@ -44,7 +44,7 @@ class Profiler;
 // WinMLRuntime Telemetry Support
 //
 // {BCAD6AEE-C08D-4F66-828C-4C43461A033D}
-#define WINML_PROVIDER_DESC "Microsoft.Windows.AI.MachineLearning"
+#define WINML_PROVIDER_DESC "Windows AI Machine Learning"
 #define WINML_PROVIDER_GUID (0xbcad6aee, 0xc08d, 0x4f66, 0x82, 0x8c, 0x4c, 0x43, 0x46, 0x1a, 0x3, 0x3d)
 #define WINML_PROVIDER_KEYWORD_DEFAULT 0x1
 #define WINML_PROVIDER_KEYWORD_LOTUS_PROFILING 0x2

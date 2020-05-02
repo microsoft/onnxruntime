@@ -19,7 +19,8 @@ bool LaunchAttentionKernel(
     int head_size,             // Hidden layer size per head (H)
     void* workspace,           // Temporary buffer
     cublasHandle_t& cublas,    // Cublas handle
-    const size_t element_size  // Element size of input tensor
+    const size_t element_size, // Element size of input tensor
+    bool is_unidirectional     // Whether there is unidirecitonal mask.
 );
 
 }  // namespace cuda
