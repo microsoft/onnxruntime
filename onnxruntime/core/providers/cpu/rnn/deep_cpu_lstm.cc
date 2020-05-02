@@ -175,7 +175,7 @@ static inline void ExecuteLambdaInParallel(TLambda lambda, int max, int step, do
   }
 #else
   const int total_tasks = max / (step > 0 ? step : 1) + (max % step > 0 ? 1 : 0);
-  concurrency::ThreadPool::TryParallelFor(ttp, total_tasks, cost, [lambda, step](ptrdiff_t first, ptrdiff_t last) {
+  concurrency::ThreadPool::TryParallelFor(ttp, total_tasks, cost, [&lambda, step](ptrdiff_t first, ptrdiff_t last) {
     for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
       lambda(i * step);
     }
