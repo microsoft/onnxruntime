@@ -19,4 +19,4 @@ steps:
     echo "file is $( find $(Pipeline.Workspace)/artifacts/ -name "*.whl" | head -n 1 )" &&
     echo hello
       there &&
-    echo :)
+    echo world
