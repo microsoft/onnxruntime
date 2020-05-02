@@ -46,7 +46,6 @@ def create_backend_test(testname=None):
             filters_lines = f.readlines()
         filters_lines = [x.split('//')[0] for x in filters_lines] 
         filters = json.loads('\n'.join(filters_lines))
-        print(filters)
 
         current_failing_tests = filters['current_failing_tests']
 
@@ -64,6 +63,9 @@ def create_backend_test(testname=None):
 
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
             current_failing_tests += filters['current_failing_tests_OPENVINO_GPU']
+
+        if c2.supports_device('OPENVINO_GPU_FP32'):
+            current_failing_tests += filters['current_failing_tests_OPENVINO_GPU_FP32']
 
         if c2.supports_device('OPENVINO_CPU_FP32'):
             current_failing_tests += filters['current_failing_tests_OPENVINO_CPU_FP32']
