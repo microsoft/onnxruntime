@@ -1,10 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/platform/path_lib.h"
+#include <string>
 
 #include "gtest/gtest.h"
-#include <string>
+
+#include "core/platform/env.h"
+#include "core/platform/path_lib.h"
+#include "test/framework/test_utils.h"
+
+namespace onnxruntime {
+namespace test {
 
 #define PATH_EXPECT(X, Y)                                            \
   {                                                                  \
@@ -63,3 +69,7 @@ TEST(PathTest, dot_dot) {
   PATH_EXPECT(".", "..");
 }
 
+#undef PATH_EXPECT
+
+}  // namespace test
+}  // namespace onnxruntime

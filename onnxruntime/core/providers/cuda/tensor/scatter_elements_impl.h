@@ -26,4 +26,3 @@ Status ScatterElementsImpl(
 
 }  // namespace cuda
 }  // namespace onnxruntime
-
