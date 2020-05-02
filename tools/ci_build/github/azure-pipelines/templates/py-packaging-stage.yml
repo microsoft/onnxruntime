@@ -36,7 +36,8 @@ parameters:
 
 
 stages:
-- stage: 'Python_Packaging'
+- stage: Python_Packaging
+
   variables:
     ${{ if eq(parameters.enable_training, true) }}:
       actual_extra_build_py_parameters: >
@@ -45,10 +46,11 @@ stages:
         --skip_python_training_tests
         --wheel_name_suffix training
       actual_extra_linux_docker_build_parameters: '--build-arg ENABLE_TRAINING=1'
-      docker_image_prefix: 'onnxruntime-training'
+      docker_image_prefix: onnxruntime-training
+
     ${{ if ne(parameters.enable_training, true) }}:
       actual_extra_build_py_parameters: '${{ parameters.build_py_parameters }}'
-      docker_image_prefix: 'onnxruntime'
+      docker_image_prefix: onnxruntime
 
   jobs:
   - ${{ if eq(parameters.enable_linux_cpu, true) }}:
@@ -61,59 +63,52 @@ stages:
         matrix:
           Python35:
             python.version: '3.5'
-            python.dir: '/opt/python/cp35-cp35m'
-            python.include.dir: '/opt/python/cp35-cp35m/include/python3.5m'
           Python36:
             python.version: '3.6'
-            python.dir: '/opt/python/cp36-cp36m'
-            python.include.dir: '/opt/python/cp36-cp36m/include/python3.6m'
           Python37:
             python.version: '3.7'
-            python.dir: '/opt/python/cp37-cp37m'
-            python.include.dir: '/opt/python/cp37-cp37m/include/python3.7m'
           Python38:
             python.version: '3.8'
-            python.dir: '/opt/python/cp38-cp38'
-            python.include.dir: '/opt/python/cp38-cp38/include/python3.8'
       steps:
         - checkout: self
           clean: true
           submodules: recursive
 
+        - template: set-py-packaging-variables-step.yml
+
         - task: CmdLine@2
           inputs:
-            script: >
-              docker build
-              --pull
-              -t ${{ variables.docker_image_prefix }}-manylinux-$(python.version)
-              --build-arg BUILD_USER=onnxruntimedev
-              --build-arg BUILD_UID=$(id -u)
-              --build-arg PYTHON_VERSION=$(python.version)
-              ${{ variables.actual_extra_linux_docker_build_parameters }}
-              -f Dockerfile.manylinux1
-              .
+            script: |
+              docker build \
+                --pull \
+                -t ${{ variables.docker_image_prefix }}-manylinux-$(python.version) \
+                --build-arg BUILD_USER=onnxruntimedev \
+                --build-arg BUILD_UID=$(id -u) \
+                --build-arg PYTHON_VERSION=$(python.version) \
+                ${{ variables.actual_extra_linux_docker_build_parameters }} \
+                -f Dockerfile.manylinux1 .
             workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
         - task: CmdLine@2
           inputs:
-            script: >
-              docker run
-              --rm
-              --volume $(Build.SourcesDirectory):/onnxruntime_src
-              --volume $(Build.BinariesDirectory):/build
-              --volume /data/models:/build/models:ro
-              -e NIGHTLY_BUILD
-              -e BUILD_BUILDNUMBER
-              ${{ variables.docker_image_prefix }}-manylinux-$(python.version)
-              $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py
-              --build_dir /build
-              --config Release
-              --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
-              --skip_submodule_sync
-              --parallel
-              --build_wheel
-              --use_openmp
-              --enable_onnx_tests
+            script: |
+              docker run \
+                --rm \
+                --volume $(Build.SourcesDirectory):/onnxruntime_src \
+                --volume $(Build.BinariesDirectory):/build \
+                --volume /data/models:/build/models:ro \
+                -e NIGHTLY_BUILD \
+                -e BUILD_BUILDNUMBER \
+                ${{ variables.docker_image_prefix }}-manylinux-$(python.version) \
+                $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                  --build_dir /build \
+                  --config Release \
+                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so \
+                  --skip_submodule_sync \
+                  --parallel \
+                  --build_wheel \
+                  --use_openmp \
+                  --enable_onnx_tests
             workingDirectory: $(Build.SourcesDirectory)
 
         - task: CopyFiles@2
@@ -142,62 +137,55 @@ stages:
         matrix:
           Python35:
             python.version: '3.5'
-            python.dir: '/opt/python/cp35-cp35m'
-            python.include.dir: '/opt/python/cp35-cp35m/include/python3.5m'
           Python36:
             python.version: '3.6'
-            python.dir: '/opt/python/cp36-cp36m'
-            python.include.dir: '/opt/python/cp36-cp36m/include/python3.6m'
           Python37:
             python.version: '3.7'
-            python.dir: '/opt/python/cp37-cp37m'
-            python.include.dir: '/opt/python/cp37-cp37m/include/python3.7m'
           Python38:
             python.version: '3.8'
-            python.dir: '/opt/python/cp38-cp38'
-            python.include.dir: '/opt/python/cp38-cp38/include/python3.8'
       steps:
         - checkout: self
           clean: true
           submodules: recursive
 
+        - template: set-py-packaging-variables-step.yml
+
         - task: CmdLine@2
           inputs:
-            script: >
-              docker build
-              --pull
-              -t ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version)
-              --build-arg BUILD_USER=onnxruntimedev
-              --build-arg BUILD_UID=$(id -u)
-              --build-arg PYTHON_VERSION=$(python.version)
-              ${{ variables.actual_extra_linux_docker_build_parameters }}
-              -f Dockerfile.manylinux2010_gpu
-              .
+            script: |
+              docker build \
+                --pull \
+                -t ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
+                --build-arg BUILD_USER=onnxruntimedev \
+                --build-arg BUILD_UID=$(id -u) \
+                --build-arg PYTHON_VERSION=$(python.version) \
+                ${{ variables.actual_extra_linux_docker_build_parameters }} \
+                -f Dockerfile.manylinux2010_gpu .
             workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
         - task: CmdLine@2
           inputs:
-            script: >
-              docker run
-              --gpus all
-              --rm
-              --volume $(Build.SourcesDirectory):/onnxruntime_src
-              --volume $(Build.BinariesDirectory):/build
-              --volume /data/models:/build/models:ro
-              -e NVIDIA_VISIBLE_DEVICES=all
-              -e NIGHTLY_BUILD
-              -e BUILD_BUILDNUMBER
-              ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version)
-              $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py
-              --build_dir /build
-              --config Release
-              --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
-              --skip_submodule_sync
-              --parallel
-              --build_wheel
-              --enable_onnx_tests
-              --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1
-              ${{ variables.actual_extra_build_py_parameters }}
+            script: |
+              docker run \
+                --gpus all \
+                --rm \
+                --volume $(Build.SourcesDirectory):/onnxruntime_src \
+                --volume $(Build.BinariesDirectory):/build \
+                --volume /data/models:/build/models:ro \
+                -e NVIDIA_VISIBLE_DEVICES=all \
+                -e NIGHTLY_BUILD \
+                -e BUILD_BUILDNUMBER \
+                ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
+                $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                  --build_dir /build \
+                  --config Release \
+                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so \
+                  --skip_submodule_sync \
+                  --parallel \
+                  --build_wheel \
+                  --enable_onnx_tests \
+                  --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
+                  ${{ variables.actual_extra_build_py_parameters }}
             workingDirectory: $(Build.SourcesDirectory)
 
         - task: CopyFiles@2
@@ -417,16 +405,16 @@ stages:
           inputs:
             versionSpec: $(python.version)
 
-        - script: >
-            sudo python -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt' &&
-            sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer &&
-            ./build.sh
-            --config Release
-            --skip_submodule_sync
-            --parallel
-            --build_wheel
-            --use_openmp
-            ${{ variables.actual_extra_build_py_parameters }}
+        - script: |
+            sudo python -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+            sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
+            ./build.sh \
+              --config Release \
+              --skip_submodule_sync \
+              --parallel \
+              --build_wheel \
+              --use_openmp \
+              ${{ variables.actual_extra_build_py_parameters }}
           displayName: 'Command Line Script'
 
         - task: CopyFiles@2
