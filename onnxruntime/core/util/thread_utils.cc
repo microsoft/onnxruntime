@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace concurrency {
 static std::unique_ptr<ThreadPool>
-CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options, Eigen::Allocator* allocator) {
+CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   if (options.thread_pool_size == 1)
     return nullptr;
   std::vector<size_t> cpu_list;
@@ -28,26 +28,25 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options, Eigen::Allocator* 
   }
 
   return onnxruntime::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
-                                              options.allow_spinning, allocator);
+                                              options.allow_spinning);
 }
 
 std::unique_ptr<ThreadPool>
-CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_type, Eigen::Allocator* allocator) {
+CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_type) {
 // If openmp is enabled we don't want to create any additional threadpools for sequential execution.
 // However, parallel execution relies on the existence of a separate threadpool. Hence we allow eigen threadpools
 // to be created for parallel execution.
 #ifdef _OPENMP
   ORT_UNUSED_PARAMETER(env);
   ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(allocator);
   if (tpool_type != ThreadPoolType::INTER_OP) {
     return nullptr;
   } else {
-    return CreateThreadPoolHelper(env, options, allocator);
+    return CreateThreadPoolHelper(env, options);
   }
 #else
   ORT_UNUSED_PARAMETER(tpool_type);
-  return CreateThreadPoolHelper(env, options, allocator);
+  return CreateThreadPoolHelper(env, options);
 #endif
 }
 
