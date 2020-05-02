@@ -4,19 +4,18 @@ steps:
 - checkout: none
   submodules: false
 
-- task: DownloadPipelineArtifact@2
-  inputs:
-    buildType: 'specific'
-    project: '2a773b67-e88b-4c7f-9fc0-87d31fea8ef2'
-    definition: '99'
-    buildVersionToDownload: 'latest'
-    allowPartiallySucceededBuilds: true
-    allowFailedBuilds: true
-    artifactName: 'onnxruntime_gpu'
-    targetPath: '$(Pipeline.Workspace)/artifacts'
+# - task: DownloadPipelineArtifact@2
+#   inputs:
+#     buildType: 'specific'
+#     project: '2a773b67-e88b-4c7f-9fc0-87d31fea8ef2'
+#     definition: '99'
+#     buildVersionToDownload: 'latest'
+#     allowPartiallySucceededBuilds: true
+#     allowFailedBuilds: true
+#     artifactName: 'onnxruntime_gpu'
+#     targetPath: '$(Pipeline.Workspace)/artifacts'
 
-- script: >
-    echo "file is $( find $(Pipeline.Workspace)/artifacts/ -name "*.whl" | head -n 1 )" &&
-    echo hello
+- script: |
+    echo hello \
       there &&
     echo world
