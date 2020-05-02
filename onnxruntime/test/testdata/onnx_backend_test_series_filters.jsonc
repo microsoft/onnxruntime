@@ -112,7 +112,7 @@
         "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
         "^test_softmax_cross_entropy.*" // Does not support 5-D or above tensors for SUB op.
     ],
-    "current_failing_tests_OPENVINO_FP32": [
+    "current_failing_tests_OPENVINO_CPU_FP32": [
         "^test_operator_permute2",
         "^test_operator_repeat",
         "^test_operator_repeat_dim_overflow",
