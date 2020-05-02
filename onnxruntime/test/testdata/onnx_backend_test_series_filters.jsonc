@@ -94,28 +94,28 @@
         "^test_softmax_cross_entropy.*" // Does not support 5-D or above tensors for SUB op.
     ],
     "current_failing_tests_OPENVINO_GPU_FP32": [
-        "^test_operator_permute2_cpu",
-        "^test_operator_repeat_cpu",
-        "^test_operator_repeat_dim_overflow_cpu",
-        "^test_add_bcast_cpu",
-        "^test_batchnorm_epsilon_cpu",
-        "^test_div_bcast_cpu",
-        "^test_mul_bcast_cpu",
-        "^test_pow_bcast_array_cpu",
-        "^test_sub_bcast_cpu",
-        "^test_batchnorm_example_cpu",
-        "^test_clip_default_inbounds_cpu",
-        "^test_resize_upsample_sizes_nearest_ceil_half_pixel_cpu",
-        "^test_resize_upsample_sizes_nearest_floor_align_corners_cpu",
-        "^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu",
-        "^test_unique_not_sorted_without_axis_cpu",
+        "^test_operator_permute2",
+        "^test_operator_repeat",
+        "^test_operator_repeat_dim_overflow",
+        "^test_add_bcast",
+        "^test_batchnorm_epsilon",
+        "^test_div_bcast",
+        "^test_mul_bcast",
+        "^test_pow_bcast_array",
+        "^test_sub_bcast",
+        "^test_batchnorm_example",
+        "^test_clip_default_inbounds",
+        "^test_resize_upsample_sizes_nearest_ceil_half_pixel",
+        "^test_resize_upsample_sizes_nearest_floor_align_corners",
+        "^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric",
+        "^test_unique_not_sorted_without_axis",
         "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
         "^test_softmax_cross_entropy.*" // Does not support 5-D or above tensors for SUB op.
     ],
-    "current_failing_tests_OPENVINO_CPU_FP32": [
-        "^test_operator_permute2_cpu",
-        "^test_operator_repeat_cpu",
-        "^test_operator_repeat_dim_overflow_cpu",
+    "current_failing_tests_OPENVINO_FP32": [
+        "^test_operator_permute2",
+        "^test_operator_repeat",
+        "^test_operator_repeat_dim_overflow",
         "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
         "^test_softmax_cross_entropy.*" // Does not support 5-D or above tensors for SUB op.
     ],
