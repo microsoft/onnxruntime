@@ -128,7 +128,7 @@ void DefaultActivationsSimpleWeightsNoBias(std::string direction,
   std::vector<float> R_data(num_directions * 3 * hidden_size * hidden_size, 0.1f);
 
   RunGruTest(X_data, W_data, R_data, Y_data, Y_h_data, input_size, batch_size, hidden_size, seq_length,
-             nullptr, nullptr, nullptr, direction, 9999.0, /* output_sequence*/ false, linear_before_reset);
+             nullptr, nullptr, nullptr, direction, 9999.0, true, linear_before_reset);
 
   // if Y_h_data is empty that tests Y_h not being returned. we need to have at least one output or
   // the node will get removed, so only test with output_sequence == false (no Y as output) if Y_h is not optional
