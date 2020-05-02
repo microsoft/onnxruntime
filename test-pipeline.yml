@@ -1,5 +1,10 @@
 trigger: none
 
+variables:
+  a_value: 1
+  b_value: 2
+  id: a
+
 steps:
 - checkout: none
   submodules: false
@@ -16,6 +21,4 @@ steps:
 #     targetPath: '$(Pipeline.Workspace)/artifacts'
 
 - script: |
-    echo hello \
-      there &&
-    echo world
+    echo $[variables.${{variables.id}}_value]
