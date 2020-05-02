@@ -84,40 +84,13 @@ class TensorShape : private std::vector<int64_t> {
 
   using std::vector<int64_t>::operator[];
 
-#if 0
-  bool operator==(const TensorShape& other) const noexcept;
-  bool operator!=(const TensorShape& other) const noexcept;
-#endif
   size_t NumDimensions() const noexcept {
     return size();
   }
 
-#if 0
-
-  void CopyDims(int64_t* dims, size_t num_dims) const;
-#endif
-
   const std::vector<int64_t>& GetDims() const { return *this; }
 
   int64_t Size() const;
-
-#if 0
-
-  /**
-     Return the total number of elements up to the specified dimension.
-     If the dimension interval is empty (dimension == 0), return 1.
-     @param dimension Return size up to this dimension. Value must be between 0 and this->NumDimensions(), inclusive.
-  */
-  int64_t SizeToDimension(size_t dimension) const;
-
-  /**
-     Return the total number of elements from the specified dimension to the end of the tensor shape.
-     If the dimension interval is empty (dimension == this->NumDimensions()), return 1.
-     @param dimension Return size from this dimension to the end. Value must be between 0 and this->NumDimensions(),
-                      inclusive.
-  */
-  int64_t SizeFromDimension(size_t dimension) const;
-#endif
 
   /**
      Return a new TensorShape of the dimensions from dimstart to dimend.
@@ -140,15 +113,6 @@ class TensorShape : private std::vector<int64_t> {
      start < end.
   */
   int64_t SizeHelper(size_t start, size_t end) const;
-#if 0
-
-  /**
-     empty shape or 1D shape (1) is regarded as scalar tensor
-  */
-  bool IsScalar() const;
-
-  static const TensorShape& ReinterpretBaseType(const std::vector<int64_t>& dimensions);
-#endif
 };
 
 constexpr const char* kMSDomain = "com.microsoft";

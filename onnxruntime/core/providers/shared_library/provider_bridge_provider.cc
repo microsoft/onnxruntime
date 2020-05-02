@@ -91,155 +91,15 @@ std::unique_ptr<Prov_IndexedSubGraph> Prov_IndexedSubGraph::Create() {
   return g_host->IndexedSubGraph_Create();
 }
 
-#if 0
-	template <>
-	MLDataType DataTypeImpl::GetType<bool>() {
-		return nullptr;
-	}
-
-template <>
-MLDataType DataTypeImpl::GetType<Tensor>() {
-  return g_host->DataTypeImpl_GetType_Tensor();
-}
-#endif
-
 template <>
 MLDataType DataTypeImpl::GetType<float>() {
   return g_host->DataTypeImpl_GetType_float();
 }
 
-#if 0
-
-	template <>
-	MLDataType DataTypeImpl::GetType<double>() {
-		return nullptr;
-	}
-
-	template <>
-	MLDataType DataTypeImpl::GetType<uint8_t>() {
-		return nullptr;
-	}
-
-	template <>
-	MLDataType DataTypeImpl::GetType<int8_t>() {
-		return nullptr;
-	}
-
-	template <>
-	MLDataType DataTypeImpl::GetType<int16_t>() {
-		return nullptr;
-	}
-
-	template <>
-	MLDataType DataTypeImpl::GetType<uint16_t>() {
-		return nullptr;
-	}
-
-	template <>
-	MLDataType DataTypeImpl::GetType<int32_t>() {
-		return nullptr;
-	}
-
-	template <>
-	MLDataType DataTypeImpl::GetType<uint32_t>() {
-		return nullptr;
-	}
-
-	template <>
-	MLDataType DataTypeImpl::GetType<int64_t>() {
-		return nullptr;
-	}
-
-	template <>
-	MLDataType DataTypeImpl::GetType<uint64_t>() {
-		return nullptr;
-	}
-
-	template <>
-	MLDataType DataTypeImpl::GetType<BFloat16>() {
-		return nullptr;
-	}
-
-	template <>
-	MLDataType DataTypeImpl::GetType<MLFloat16>() {
-		return nullptr;
-	}
-
-	template <>
-	MLDataType DataTypeImpl::GetType<std::string>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetType<std::vector<std::map<int64_t, float>>>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetType<std::vector<std::map<std::string, float>>>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetType<std::map<int64_t, double>>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetType<std::map<std::string, double>>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetType<std::map<std::string, float>>() {
-		return nullptr;
-	}
-
-	template <>
-	MLDataType DataTypeImpl::GetType<std::map<std::string, int64_t>>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetType<std::map<int64_t, float>>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetType<std::map<int64_t, std::string>>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetTensorType<bool>() { return nullptr; }
-#endif
-
 template <>
 MLDataType DataTypeImpl::GetTensorType<float>() {
   return g_host->DataTypeImpl_GetTensorType_float();
 }
-
-#if 0
-	template <>
-	MLDataType DataTypeImpl::GetTensorType<double>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetTensorType<int8_t>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetTensorType<uint8_t>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetTensorType<int16_t>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetTensorType<uint16_t>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetTensorType<int32_t>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetTensorType<uint32_t>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetTensorType<int64_t>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetTensorType<uint64_t>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetTensorType<BFloat16>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetTensorType<MLFloat16>() { return nullptr; }
-
-	template <>
-	MLDataType DataTypeImpl::GetTensorType<std::string>() { return nullptr; }
-#endif
 
 TensorShape::TensorShape(const int64_t* dimension_sizes, size_t dimension_count)
     : std::vector<int64_t>(dimension_count) {

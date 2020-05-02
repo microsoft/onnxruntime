@@ -220,7 +220,6 @@ class LoggingManager final {
   const int default_max_vlog_level_;
   bool owns_default_logger_;
 
- public:  // TODO: Made public only for the provider bridge. Should be changed to a method to get this instead
   static Logger* s_default_logger_;
 
   struct Epochs {

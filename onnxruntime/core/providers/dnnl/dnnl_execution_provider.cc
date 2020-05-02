@@ -11,18 +11,6 @@
 #include "dnnl_execution_provider.h"
 #include "dnnl_fwd.h"
 
-const OrtApi* ORT_API_CALL GetApi(uint32_t /*version*/) NO_EXCEPTION { return nullptr; }
-const char* ORT_API_CALL GetVersionString() NO_EXCEPTION { return "invalid"; }
-
-static OrtApiBase ort_api_base = {
-    &GetApi,
-    &GetVersionString,
-};
-
-const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION {
-  return &ort_api_base;
-}
-
 namespace onnxruntime {
 
 struct KernelRegistryAndStatus {
