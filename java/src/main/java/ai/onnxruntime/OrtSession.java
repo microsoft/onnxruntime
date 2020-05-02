@@ -47,6 +47,8 @@ public class OrtSession implements AutoCloseable {
 
   private final Set<String> outputNames;
 
+  private OnnxModelMetadata metadata;
+
   private boolean closed = false;
 
   /**
@@ -201,7 +203,7 @@ public class OrtSession implements AutoCloseable {
   /**
    * Scores an input feed dict, returning the map of requested inferred outputs.
    *
-   * <p>The outputs are sorted based on the supplied set traveral order.
+   * <p>The outputs are sorted based on the supplied set traversal order.
    *
    * @param inputs The inputs to score.
    * @param requestedOutputs The requested outputs.
@@ -261,6 +263,18 @@ public class OrtSession implements AutoCloseable {
     } else {
       throw new IllegalStateException("Trying to score a closed OrtSession.");
     }
+  }
+
+  /**
+   * Gets the metadata for the currently loaded model.
+   *
+   * @return The metadata.
+   */
+  public OnnxModelMetadata getMetadata() throws OrtException {
+    if (metadata == null) {
+      metadata = constructMetadata(OnnxRuntime.ortApiHandle, nativeHandle, allocator.handle);
+    }
+    return metadata;
   }
 
   @Override
@@ -333,6 +347,18 @@ public class OrtSession implements AutoCloseable {
       throws OrtException;
 
   private native void closeSession(long apiHandle, long nativeHandle) throws OrtException;
+
+  /**
+   * Builds the {@link OnnxModelMetadata} for this session.
+   *
+   * @param ortApiHandle The api pointer.
+   * @param nativeHandle The native session pointer.
+   * @param allocatorHandle The OrtAllocator pointer.
+   * @return The metadata.
+   * @throws OrtException If the native runtime failed to access or allocate the metadata.
+   */
+  private native OnnxModelMetadata constructMetadata(
+      long ortApiHandle, long nativeHandle, long allocatorHandle) throws OrtException;
 
   /**
    * Represents the options used to construct this session.

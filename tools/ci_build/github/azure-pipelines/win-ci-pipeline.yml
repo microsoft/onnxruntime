@@ -16,7 +16,7 @@ jobs:
     EnvSetupScript: setup_env.bat
     buildArch: x64
     setVcvars: true    
-  timeoutInMinutes: 90
+  timeoutInMinutes: 120
   workspace:
     clean: all
   steps:    
@@ -43,7 +43,7 @@ jobs:
      $Env:ONNX_ML=1
      $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
      python setup.py bdist_wheel
-     Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
+     Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
     displayName: 'Install ONNX'
 
@@ -89,13 +89,6 @@ jobs:
       workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
 
   - template: templates/set-test-data-variables-step.yml
-
-  - task: PythonScript@0
-    displayName: 'Download test data'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-      arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-      workingDirectory: $(Build.BinariesDirectory)
 
   - task: DotNetCoreCLI@2
     displayName: 'Restore nuget packages'
@@ -155,7 +148,7 @@ jobs:
     buildArch: x64
     BuildConfig: 'Debug'
     setVcvars: true
-  timeoutInMinutes: 90
+  timeoutInMinutes: 60
   workspace:
     clean: all
   steps:
@@ -183,7 +176,7 @@ jobs:
      $Env:ONNX_ML=1
      $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
      python setup.py bdist_wheel
-     Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
+     Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
     displayName: 'Install ONNX'
 
@@ -228,7 +221,7 @@ jobs:
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     setVcvars: true    
-  timeoutInMinutes: 90
+  timeoutInMinutes: 120
   workspace:
     clean: all
   steps:    
@@ -255,7 +248,7 @@ jobs:
      $Env:ONNX_ML=1
      $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
      python setup.py bdist_wheel
-     Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
+     Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
     displayName: 'Install ONNX'
 
@@ -293,14 +286,6 @@ jobs:
     inputs:
       versionSpec: 4.9.4  
 
-   
-
-  - task: PythonScript@0
-    displayName: 'Download test data'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-      arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-      workingDirectory: $(Build.BinariesDirectory)
 
   - task: DotNetCoreCLI@2
     displayName: 'Restore nuget packages'
@@ -364,7 +349,7 @@ jobs:
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     setVcvars: true    
-  timeoutInMinutes: 60
+  timeoutInMinutes: 120
   workspace:
     clean: all
   steps:    
@@ -391,7 +376,7 @@ jobs:
      $Env:ONNX_ML=1
      $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
      python setup.py bdist_wheel
-     Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
+     Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
     displayName: 'Install ONNX'
 
@@ -428,16 +413,7 @@ jobs:
     displayName: Use Nuget 4.9
     inputs:
       versionSpec: 4.9.4  
-
    
-
-  - task: PythonScript@0
-    displayName: 'Download test data'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-      arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-      workingDirectory: $(Build.BinariesDirectory)
-
   - task: DotNetCoreCLI@2
     displayName: 'Restore nuget packages'
     inputs:
@@ -490,7 +466,7 @@ jobs:
     EnvSetupScript: setup_env.bat
     buildArch: x64
     setVcvars: true    
-  timeoutInMinutes: 60
+  timeoutInMinutes: 120
   workspace:
     clean: all
   steps:    
@@ -517,7 +493,7 @@ jobs:
      $Env:ONNX_ML=1
      $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
      python setup.py bdist_wheel
-     Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
+     Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
     displayName: 'Install ONNX'
 
@@ -556,14 +532,6 @@ jobs:
       versionSpec: 4.9.4  
 
    
-
-  - task: PythonScript@0
-    displayName: 'Download test data'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-      arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-      workingDirectory: $(Build.BinariesDirectory)
-
   - task: DotNetCoreCLI@2
     displayName: 'Restore nuget packages'
     inputs:

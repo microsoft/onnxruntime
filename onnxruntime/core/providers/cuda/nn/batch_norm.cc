@@ -19,11 +19,7 @@ namespace cuda {
       T,                                                             \
       kCudaExecutionProvider,                                        \
       KernelDefBuilder()                                             \
-          .TypeConstraint("X", DataTypeImpl::GetTensorType<T>())     \
-          .TypeConstraint("scale", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("B", DataTypeImpl::GetTensorType<T>())     \
-          .TypeConstraint("mean", DataTypeImpl::GetTensorType<T>())  \
-          .TypeConstraint("var", DataTypeImpl::GetTensorType<T>()),  \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),    \
       BatchNorm<T>);                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
       BatchNormalization,                                            \
@@ -32,11 +28,7 @@ namespace cuda {
       T,                                                             \
       kCudaExecutionProvider,                                        \
       KernelDefBuilder()                                             \
-          .TypeConstraint("X", DataTypeImpl::GetTensorType<T>())     \
-          .TypeConstraint("scale", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("B", DataTypeImpl::GetTensorType<T>())     \
-          .TypeConstraint("mean", DataTypeImpl::GetTensorType<T>())  \
-          .TypeConstraint("var", DataTypeImpl::GetTensorType<T>()),  \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),    \
       BatchNorm<T>);
 
 template <typename T>
@@ -159,7 +151,6 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
         var_data,
         epsilon_));
   }
-
   return Status::OK();
 }
 

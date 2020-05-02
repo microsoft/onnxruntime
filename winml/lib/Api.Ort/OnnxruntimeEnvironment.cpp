@@ -7,7 +7,7 @@
 #include "core/platform/windows/TraceLoggingConfig.h"
 #include <evntrace.h>
 
-using namespace Windows::AI ::MachineLearning;
+using namespace _winml;
 
 static bool debug_output_ = false;
 

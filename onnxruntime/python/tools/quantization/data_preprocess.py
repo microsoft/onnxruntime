@@ -30,7 +30,8 @@ def preprocess_method1(image_filepath, height, width):
         parameter width: image width in pixels
         return: matrix characterizing image
     '''
-    pillow_img = Image.open(image_filepath).resize((width, height))
+    pillow_img = Image.new("RGB", (width, height))
+    pillow_img.paste(Image.open(image_filepath).resize((width, height)))
     input_data = np.float32(pillow_img) / 127.5 - 1.0  # normalization
     input_data -= np.mean(input_data)  # normalization
     nhwc_data = np.expand_dims(input_data, axis=0)
@@ -47,7 +48,8 @@ def preprocess_method2(image_filepath, height, width):
         parameter width: image width in pixels
         return: matrix characterizing image
     '''
-    pillow_img = Image.open(image_filepath).resize((width, height))
+    pillow_img = Image.new("RGB", (width, height))
+    pillow_img.paste(Image.open(image_filepath).resize((width, height)))
     input_data = np.float32(pillow_img) - \
         np.array([123.68, 116.78, 103.94], dtype=np.float32)
     nhwc_data = np.expand_dims(input_data, axis=0)

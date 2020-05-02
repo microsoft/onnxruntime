@@ -11,7 +11,7 @@
     if (!_status.IsOK()) {                                                                                 \
       HRESULT hresult = StatusCodeToHRESULT(static_cast<StatusCode>(_status.Code()));                      \
       telemetry_helper.LogRuntimeError(hresult, _status.ErrorMessage(), __FILE__, __FUNCTION__, __LINE__); \
-      winrt::hstring errorMessage(WinML::Strings::HStringFromUTF8(_status.ErrorMessage()));                \
+      winrt::hstring errorMessage(_winml::Strings::HStringFromUTF8(_status.ErrorMessage()));                \
       throw winrt::hresult_error(hresult, errorMessage);                                                   \
     }                                                                                                      \
   } while (0)
@@ -28,7 +28,7 @@
       char msg[1024];                                                               \
       sprintf_s(msg, message, __VA_ARGS__);                                         \
       telemetry_helper.LogRuntimeError(_hr, msg, __FILE__, __FUNCTION__, __LINE__); \
-      winrt::hstring errorMessage(WinML::Strings::HStringFromUTF8(msg));            \
+      winrt::hstring errorMessage(_winml::Strings::HStringFromUTF8(msg));            \
       throw winrt::hresult_error(_hr, errorMessage);                                \
     }                                                                               \
   } while (0)

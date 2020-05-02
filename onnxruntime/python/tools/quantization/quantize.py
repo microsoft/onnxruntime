@@ -15,6 +15,7 @@ from onnx import shape_inference
 __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
 onnx_domain = "ai.onnx"
+ms_domain = "com.microsoft"
 onnx_op_set_version = 11
 
 type_to_name = {
@@ -314,6 +315,8 @@ class ONNXQuantizer:
                     new_list += self._quantize_matmul(node, new_list)
                 elif node.op_type == 'Gather' and self._is_valid_quantize_value(node.input[0]):
                     new_list += self._quantize_gather_ops(node, new_list)
+                elif node.op_type == 'Add' or node.op_type == 'Mul':
+                    new_list += self._quantize_binary_math_ops(node, new_list)
                 elif node.op_type == 'Relu' or node.op_type == 'Clip':
                     new_list += self._handle_activation_ops(node, new_list)
                 else:
@@ -875,7 +878,6 @@ class ONNXQuantizer:
                      List of scale names used for input quantization,
                      List of new QuantizeLinear nodes created)
         '''
-        assert (node.op_type == "Conv" or node.op_type == "MatMul" or node.op_type == "Gather")
 
         quantized_input_names = []
         zero_point_names = []
@@ -1017,6 +1019,61 @@ class ONNXQuantizer:
         self.quantized_value_map[node.output[0]] = quantized_value
 
         return []
+
+    def _quantize_binary_math_ops(self, node, new_nodes_list):
+        '''
+        Used when self.mode is QuantizationMode.QLinearOps.
+        Quantize the given binary math op, like Add, Mul, etc, to QLinearAdd, QLinearMul...
+
+            parameter node: Current binary math node
+            parameter new_nodes_list: List of new nodes created before processing current node
+            return: List of nodes in topological order that represents quantized binary math node
+        '''
+        if self.mode is not QuantizationMode.QLinearOps:
+            return self._handle_other_ops(node, new_nodes_list)
+
+        data_found, output_scale_name, output_zp_name, _, _ = \
+            self._get_quantization_params(node.output[0])
+        if (not data_found): # only try to quantize when given quantization parameters for it
+            return self._handle_other_ops(node, new_nodes_list)
+
+        (quantized_input_names, zero_point_names, scale_names, nodes) = \
+            self._quantize_inputs(node, [0, 1], new_nodes_list)
+
+        qlinear_binary_math_output = node.output[0] + "_quantized"
+        qlinear_binary_math_name = ""
+        if node.name != "":
+            qlinear_binary_math_name = node.name + "_quant"
+        kwargs = {}
+        for attribute in node.attribute:
+            kwargs.update(_attribute_to_kwarg(attribute))
+        kwargs["domain"]=ms_domain
+
+        qlinear_binary_math_inputs = []
+        # Input 0
+        qlinear_binary_math_inputs.append(quantized_input_names[0])
+        qlinear_binary_math_inputs.append(scale_names[0])
+        qlinear_binary_math_inputs.append(zero_point_names[0])
+        # Input 1
+        qlinear_binary_math_inputs.append(quantized_input_names[1])
+        qlinear_binary_math_inputs.append(scale_names[1])
+        qlinear_binary_math_inputs.append(zero_point_names[1])
+
+        # Output
+        qlinear_binary_math_inputs.append(output_scale_name)
+        qlinear_binary_math_inputs.append(output_zp_name)
+
+        qlinear_binary_math_node = onnx.helper.make_node(
+            "QLinear" + node.op_type, qlinear_binary_math_inputs,
+            [qlinear_binary_math_output], qlinear_binary_math_name, **kwargs)
+        nodes.append(qlinear_binary_math_node)
+
+        # Create an entry for this quantized value
+        q_output = QuantizedValue(node.output[0], qlinear_binary_math_output, output_scale_name,
+                                  output_zp_name, QuantizedValueType.Input)
+        self.quantized_value_map[node.output[0]] = q_output
+
+        return nodes
 
     def _quantize_gather_ops(self, node, new_nodes_list):
         assert (node.op_type == "Gather")

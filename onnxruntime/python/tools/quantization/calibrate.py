@@ -21,21 +21,24 @@ import re
 import subprocess
 import json
 
-
-def augment_graph(model):
+def augment_graph(model, quantization_candidates=['Conv', 'MatMul'], black_nodes=[], white_nodes=[]):
     '''
-    Adds ReduceMin and ReduceMax nodes to all Conv and MatMul nodes in
+    Adds ReduceMin and ReduceMax nodes to all quantization_candidates op type nodes in
     model and ensures their outputs are stored as part of the graph output
         parameter model: loaded FP32 ONNX model to quantize
+        parameter quantization_candidates: node op types for nodes to be quantized.
+                                           Calibraton will be done for them.
+        parameter black_nodes: nodes with these names will be force ignored by this
+                               calibration augmentation, no mather what's their op type.
+        parameter white_nodes: nodes with these names will be force to be calibration augmented.
         return: augmented ONNX model
     '''
-    # Candidate nodes for quantization. Calibration will be done for these nodes only
-    # When more nodes are extended to support quantization, add them to this list
-    quantization_candidates = ['Conv', 'MatMul']
+
     added_nodes = []
     added_outputs = []
     for node in model.graph.node:
-        if node.op_type in quantization_candidates:
+        should_be_calibrate = ((node.op_type in quantization_candidates) and (node.name not in black_nodes)) or (node.name in white_nodes)
+        if should_be_calibrate:
             input_name = node.output[0]
             # Adding ReduceMin nodes
             reduce_min_name = ''
@@ -217,6 +220,15 @@ def main():
     parser = argparse.ArgumentParser(description='parsing model and test data set paths')
     parser.add_argument('--model_path', required=True)
     parser.add_argument('--dataset_path', required=True)
+    parser.add_argument('--force_fusions', default=False, action='store_true')
+    parser.add_argument('--op_types', type=str, default='Conv,MatMul',
+                        help='comma delimited operator types to be calibrated and quantized')
+    parser.add_argument('--black_nodes', type=str, default='',
+                        help='comma delimited operator names that should not be quantized')
+    parser.add_argument('--white_nodes', type=str, default='',
+                        help='comma delimited operator names force to be quantized')
+    parser.add_argument('--augmented_model_path', type=str, default = 'augmented_model.onnx',
+                        help='save augmented model to this file for verification purpose')
     parser.add_argument('--output_model_path', type=str, default='calibrated_quantized_model.onnx')
     parser.add_argument('--dataset_size',
                         type=int,
@@ -228,6 +240,9 @@ def main():
                         choices=['preprocess_method1', 'preprocess_method2', 'None'],
                         help="Refer to Readme.md for guidance on choosing this option.")
     args = parser.parse_args()
+    calibrate_op_types = args.op_types.split(',')
+    black_nodes = args.black_nodes.split(',')
+    white_nodes = args.white_nodes.split(',')
     model_path = args.model_path
     output_model_path = args.output_model_path
     images_folder = args.dataset_path
@@ -235,25 +250,25 @@ def main():
     size_limit = args.dataset_size
 
     # Generating augmented ONNX model
-    augmented_model_path = 'augmented_model.onnx'
     model = onnx.load(model_path)
-    augmented_model = augment_graph(model)
-    onnx.save(augmented_model, augmented_model_path)
+    augmented_model = augment_graph(model, calibrate_op_types, black_nodes, white_nodes)
+    onnx.save(augmented_model, args.augmented_model_path)
 
     # Conducting inference
-    session = onnxruntime.InferenceSession(augmented_model_path, None)
+    session = onnxruntime.InferenceSession(args.augmented_model_path, None)
     (samples, channels, height, width) = session.get_inputs()[0].shape
 
     # Generating inputs for quantization
     if args.data_preprocess == "None":
         inputs = load_pb_file(images_folder, args.dataset_size, samples, channels, height, width)
     else:
-        inputs = load_batch(images_folder, height, width, size_limit, args.data_preprocess)
+        inputs = load_batch(images_folder, height, width, args.data_preprocess, size_limit)
     print(inputs.shape)
     dict_for_quantization = get_intermediate_outputs(model_path, session, inputs, calib_mode)
     quantization_params_dict = calculate_quantization_params(model, quantization_thresholds=dict_for_quantization)
     calibrated_quantized_model = quantize(onnx.load(model_path),
                                           quantization_mode=QuantizationMode.QLinearOps,
+                                          force_fusions=args.force_fusions,
                                           quantization_params=quantization_params_dict)
     onnx.save(calibrated_quantized_model, output_model_path)
 

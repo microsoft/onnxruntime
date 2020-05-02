@@ -6,21 +6,21 @@
 #include "ImageConverter.h"
 #include "ImageConversionTypes.h"
 
-namespace Windows::AI::MachineLearning::Internal {
+namespace _winml {
 class ITensorToVideoFrameConverter {
  public:
   virtual void DX12TensorToVideoFrame(
       _In_ UINT32 batch_index,
-      _In_ winrt::Windows::AI::MachineLearning::LearningModelSession& session,
+      _In_ winml::LearningModelSession& session,
       _In_ ID3D12Resource* input_tensor,
       _In_ const ImageTensorDescription& tensor_description,
-      _Inout_ winrt::Windows::Media::VideoFrame& destination_video_frame) = 0;
+      _Inout_ wm::VideoFrame& destination_video_frame) = 0;
 
   virtual void SoftwareTensorToVideoFrame(
-      _In_ winrt::Windows::AI::MachineLearning::LearningModelSession& session,
+      _In_ winml::LearningModelSession& session,
       _In_ BYTE* CPU_tensor_to_convert,
       _In_ ImageTensorDescription tensor_description,
-      _Inout_ winrt::Windows::Media::VideoFrame& destination_video_frame) = 0;
+      _Inout_ wm::VideoFrame& destination_video_frame) = 0;
 };
 
 class TensorToVideoFrameConverter : ITensorToVideoFrameConverter, public ImageConverter {
@@ -31,18 +31,18 @@ class TensorToVideoFrameConverter : ITensorToVideoFrameConverter, public ImageCo
   // converts it to a VideoFrame backed by either a SoftwareBitmap or D3DSurface
   void DX12TensorToVideoFrame(
       _In_ UINT32 batch_index,
-      _In_ winrt::Windows::AI::MachineLearning::LearningModelSession& session,
+      _In_ winml::LearningModelSession& session,
       _In_ ID3D12Resource* input_tensor,
       _In_ const ImageTensorDescription& tensor_description,
-      _Inout_ winrt::Windows::Media::VideoFrame& destination_video_frame);
+      _Inout_ wm::VideoFrame& destination_video_frame);
 
   // Function takes in a byte pointer to a CPUTensor
   // converts it to VideoFrame backed by either a SoftwareBitmap or D3DSurface,
   void SoftwareTensorToVideoFrame(
-      _In_ winrt::Windows::AI::MachineLearning::LearningModelSession& session,
+      _In_ winml::LearningModelSession& session,
       _In_ BYTE* CPU_tensor_to_convert,
       _In_ ImageTensorDescription tensor_description,
-      _Inout_ winrt::Windows::Media::VideoFrame& destination_video_frame);
+      _Inout_ wm::VideoFrame& destination_video_frame);
 
  private:
   GUID _d3d11TextureGUID = {0x14bf1054, 0x6ce7, 0x4c00, {0xa1, 0x32, 0xb0, 0xf2, 0x11, 0x5D, 0xE0, 0x7f}};  // {14BF1054-6CE7-4C00-A132-B0F2115DE07F}
@@ -58,23 +58,23 @@ class TensorToVideoFrameConverter : ITensorToVideoFrameConverter, public ImageCo
   void ConvertGPUTensorToSoftwareBitmap(
       _In_ UINT32 batch_index,
       _In_ ID3D12Resource* input_tensor,
-      _In_ winrt::Windows::AI::MachineLearning::implementation::D3DDeviceCache& device_cache,
+      _In_ _winml::D3DDeviceCache& device_cache,
       _In_ const ImageTensorDescription& tensor_description,
-      _Inout_ winrt::Windows::Graphics::Imaging::SoftwareBitmap& software_bitmap);
+      _Inout_ wgi::SoftwareBitmap& software_bitmap);
 
   void ConvertGPUTensorToDX12Texture(
       _In_ UINT32 batch_index,
       _In_ ID3D12Resource* input_resource,
-      _In_ winrt::Windows::AI::MachineLearning::implementation::D3DDeviceCache& device_cache,
+      _In_ _winml::D3DDeviceCache& device_cache,
       _In_ const ImageTensorDescription& tensor_description,
       _Inout_ ID3D12Resource* output_resource);
 
   void ConvertDX12TensorToUnsupportedVideoFrameFormat(
       _In_ UINT32 batch_index,
       _In_ ID3D12Resource* input_tensor,
-      _In_ winrt::Windows::AI::MachineLearning::implementation::D3DDeviceCache& device_cache,
+      _In_ _winml::D3DDeviceCache& device_cache,
       _In_ const ImageTensorDescription& tensor_description,
-      _Inout_ winrt::Windows::Media::VideoFrame& unsupported_video_frame);
+      _Inout_ wm::VideoFrame& unsupported_video_frame);
 
   static D3D12_SHADER_RESOURCE_VIEW_DESC TensorToVideoFrameConverter::CreateSRVDescriptor(
       const UINT32 batch_index,
@@ -84,10 +84,10 @@ class TensorToVideoFrameConverter : ITensorToVideoFrameConverter, public ImageCo
   static void ConvertCPUTensorToSoftwareBitmap(
       _In_ void* CPU_tensor,
       _In_ const ImageTensorDescription& tensor_description,
-      _Inout_ winrt::Windows::Graphics::Imaging::SoftwareBitmap& software_bitmap);
+      _Inout_ wgi::SoftwareBitmap& software_bitmap);
 
   static Microsoft::WRL::ComPtr<ID3D12Resource> CreateShareableD3D12Texture(
       const D3D11_TEXTURE2D_DESC& d3d11Desc,
       ID3D12Device* d3d12Device);
 };
-}  // namespace Windows::AI::MachineLearning::Internal
+}  // namespace _winml

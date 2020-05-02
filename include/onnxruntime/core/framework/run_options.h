@@ -22,6 +22,13 @@ struct OrtRunOptions {
   // be forced to terminate with an error status.
   bool terminate = false;
 
+  // Set to 'true' to run only the nodes from feeds to required fetches.
+  // So it is possible that only some of the nodes are executed.
+  bool only_execute_path_to_fetches = false;
+
+  // Set to 'true' to run in training mode.
+  bool training_mode = false;
+
   OrtRunOptions() = default;
   ~OrtRunOptions() = default;
 

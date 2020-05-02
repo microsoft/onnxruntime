@@ -30,6 +30,24 @@ DML_TENSOR_DATA_TYPE GetDmlDataTypeFromMlDataTypeNoThrow(MLOperatorTensorDataTyp
     };
 }
 
+bool IsSigned(DML_TENSOR_DATA_TYPE dataType)
+{
+    switch (dataType)
+    {
+        case DML_TENSOR_DATA_TYPE_FLOAT32: return true;
+        case DML_TENSOR_DATA_TYPE_FLOAT16: return true;
+        case DML_TENSOR_DATA_TYPE_UINT32: return false;
+        case DML_TENSOR_DATA_TYPE_UINT16: return false;
+        case DML_TENSOR_DATA_TYPE_UINT8: return false;
+        case DML_TENSOR_DATA_TYPE_INT32: return true;
+        case DML_TENSOR_DATA_TYPE_INT16: return true;
+        case DML_TENSOR_DATA_TYPE_INT8: return true;
+    }
+
+    assert(false);
+    return false;
+}
+
 DML_TENSOR_DATA_TYPE GetDmlDataTypeFromMlDataType(MLOperatorTensorDataType tensorDataType)
 {
     DML_TENSOR_DATA_TYPE dmlTensorDataType = GetDmlDataTypeFromMlDataTypeNoThrow(tensorDataType);

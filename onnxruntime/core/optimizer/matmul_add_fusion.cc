@@ -4,6 +4,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/graph/graph_utils.h"
+#include "core/framework/tensorprotoutils.h"
 #include <deque>
 
 using namespace ONNX_NAMESPACE;
@@ -26,6 +27,10 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {1, 9}) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
         node.GetOutputEdgesCount() != 1) {
+      continue;
+    }
+
+    if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
       continue;
     }
 
@@ -69,25 +74,32 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
-    auto matmul_output_name = matmul_node.OutputDefs()[0]->Name();
+    const auto& matmul_output = *matmul_node.OutputDefs()[0];
+
+    auto matmul_output_name = matmul_output.Name();
     auto gemm_input_defs = matmul_input_defs;
     if (matmul_output_name == add_input_defs[0]->Name()) {
       // matmul output as Add_A, should use Add_B as input C for gemm
-      // Gemm only support unidirectional broadcast on C
-      if (add_input_defs[1]->Shape()->dim_size() > 2) {
-        continue;
-      }
       gemm_input_defs.push_back(add_input_defs[1]);
     } else {
       // matmul output as Add_B, should use Add_A as input C for gemm
-      // Gemm only support unidirectional broadcast on C
-      if (add_input_defs[0]->Shape()->dim_size() > 2) {
-        continue;
-      }
       gemm_input_defs.push_back(add_input_defs[0]);
     }
 
-    if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
+    // valid bias_shapes are (N) or (1, N) or (M, 1) or (M, N) as
+    // GEMM only supports unidirectional broadcast on the bias input C
+    const auto& bias_shape = *gemm_input_defs.back()->Shape();
+    const auto& M = matmul_output.Shape()->dim()[0];
+    const auto& N = matmul_output.Shape()->dim()[1];
+    auto dim_has_value_1 = [](const TensorShapeProto_Dimension& dim) {
+      return dim.has_dim_value() && dim.dim_value() == 1;
+    };
+
+    bool valid = ((bias_shape.dim_size() == 1 && bias_shape.dim()[0] == N) ||
+                  (bias_shape.dim_size() == 2 && dim_has_value_1(bias_shape.dim()[0]) && bias_shape.dim()[1] == N) ||
+                  (bias_shape.dim_size() == 2 && bias_shape.dim()[0] == M &&
+                   (dim_has_value_1(bias_shape.dim()[1]) || bias_shape.dim()[1] == N)));
+    if (!valid) {
       continue;
     }
 

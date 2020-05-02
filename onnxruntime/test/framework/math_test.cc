@@ -28,12 +28,12 @@ namespace onnxruntime {
 //parameter is thread pool size
 class MathGemmTest : public testing::TestWithParam<int> {
  protected:
-   static OrtThreadPoolParams CreateThreadPoolOptions(int size){
-       OrtThreadPoolParams option;
-       option.thread_pool_size = size;
-       return option;
-   }
-  std::unique_ptr<concurrency::ThreadPool> tp{concurrency::CreateThreadPool(&Env::Default(),CreateThreadPoolOptions(GetParam()))};
+  static OrtThreadPoolParams CreateThreadPoolOptions(int size) {
+    OrtThreadPoolParams option;
+    option.thread_pool_size = size;
+    return option;
+  }
+  std::unique_ptr<concurrency::ThreadPool> tp{concurrency::CreateThreadPool(&Env::Default(), CreateThreadPoolOptions(GetParam()), concurrency::ThreadPoolType::INTRA_OP)};
 };
 
 TEST_P(MathGemmTest, GemmNoTransNoTrans) {
@@ -124,7 +124,7 @@ TEST_P(MathGemmTest, GemmNoTransTrans) {
 }
 
 INSTANTIATE_TEST_SUITE_P(MathGemmTests, MathGemmTest,
-                        testing::Values(1, 0));
+                         testing::Values(1, 0));
 
 TEST(MathTest, GemvNoTrans) {
   auto& provider = CPUMathUtil::Instance();

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include <pybind11/pybind11.h>
 #include <stdexcept>
 #include "core/common/status.h"
@@ -40,7 +43,7 @@ struct EPFail : std::runtime_error {
   explicit EPFail(const std::string& what) : std::runtime_error(what) {}
 };
 
-void RegisterExceptions(pybind11::module& m) {
+inline void RegisterExceptions(pybind11::module& m) {
   pybind11::register_exception<Fail>(m, "Fail");
   pybind11::register_exception<InvalidArgument>(m, "InvalidArgument");
   pybind11::register_exception<NoSuchFile>(m, "NoSuchFile");
