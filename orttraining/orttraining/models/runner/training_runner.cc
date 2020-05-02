@@ -302,7 +302,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
     std::vector<MLValue> data_feeds = training_data->GetKthBatch(params_.batch_size, batch_index, input_allocator_);
     for (size_t i = 0; i < data_feed_names.size(); ++i) {
       const auto name = data_feed_names[i];
-      if (std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
+      if (!params_.use_pipeline || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
         feed_names.push_back(name);
         feeds.push_back(data_feeds[i]);
       }
@@ -312,7 +312,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
   // Pick up feed from loss scaling.
   if (loss_scaler_) {
     const auto name = loss_scaler_->GetLossScaleInputName();
-    if (std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
+    if (!params_.use_pipeline || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
       feed_names.push_back(name);
       const float loss_scale = loss_scaler_->GetLossScale();
       OrtValue loss_scale_val;
@@ -324,7 +324,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
   // Pick up feed from learning rate schedule.
   {
     const auto name = params_.lr_params.feed_name;
-    if (std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
+    if (!params_.use_pipeline || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
       feed_names.push_back(name);
       const float learning_rate = lr_scheduler.GetLearningRate(step_ + 1);
       OrtValue lr_val;
@@ -335,6 +335,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
 
   // Create feed of waited event in forward pass.
   if (!pipeline_context_.forward_waited_event_name.empty()) {
+    ORT_ENFORCE(params_.use_pipeline);
     feed_names.push_back(pipeline_context_.forward_waited_event_name);
     OrtValue event_id;
     const int64_t id = pipeline_schedule_.get_forward_waited_event_id(
@@ -348,6 +349,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
 
   // Create feed of recorded event in forward pass.
   if (!pipeline_context_.forward_recorded_event_name.empty()) {
+    ORT_ENFORCE(params_.use_pipeline);
     feed_names.push_back(pipeline_context_.forward_recorded_event_name);
     OrtValue event_id;
     const int64_t id = pipeline_schedule_.get_forward_recorded_event_id(
@@ -361,6 +363,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
 
   // Create feed of waited event in backward pass.
   if (!pipeline_context_.backward_waited_event_name.empty()) {
+    ORT_ENFORCE(params_.use_pipeline);
     feed_names.push_back(pipeline_context_.backward_waited_event_name);
     OrtValue event_id;
     const int64_t id = pipeline_schedule_.get_backward_waited_event_id(
@@ -374,6 +377,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
 
   // Create feed of recorded event in backward pass.
   if (!pipeline_context_.backward_recorded_event_name.empty()) {
+    ORT_ENFORCE(params_.use_pipeline);
     feed_names.push_back(pipeline_context_.backward_recorded_event_name);
     OrtValue event_id;
     int64_t id = pipeline_schedule_.get_backward_recorded_event_id(
@@ -400,13 +404,20 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const bool do_weight_update,
   if (do_weight_update) {
     // Set up tensor to be fetched when doing model update. 
 
-    for (size_t i = 0; i < params_.fetch_names.size(); ++i) {
-      const auto name = params_.fetch_names[i];
-      auto it = std::find(allowed_fetch_names.begin(), allowed_fetch_names.end(), name);
-      if (it == allowed_fetch_names.end()) {
-        continue;
+    if (params_.use_pipeline) {
+      // If pipeline is used, we need to filter out fetches which are not in this pipeline stage.
+
+      for (size_t i = 0; i < params_.fetch_names.size(); ++i) {
+        const auto name = params_.fetch_names[i];
+        auto it = std::find(allowed_fetch_names.begin(), allowed_fetch_names.end(), name);
+        if (it == allowed_fetch_names.end()) {
+          continue;
+        }
+        fetch_names.push_back(name);
       }
-      fetch_names.push_back(name);
+    } else {
+      // No pipeline. All fetched names should appear in the graph handled by this process.
+      fetch_names = params_.fetch_names;
     }
 
     if (params_.use_mixed_precision) {
@@ -529,7 +540,11 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             }
           }
 
-          if (!params_.is_perf_test && weight_update_step_count_ % params_.display_loss_steps == 0) {
+          // Assume that only the last pipeline stage can see loss, predicted value, and so on.
+          // Thus, the error function should only be called when we are at the last stage.
+          if (pipeline_context_.pipeline_stage_id == pipeline_context_.num_pipeline_stages - 1 &&
+              !params_.is_perf_test &&
+              weight_update_step_count_ % params_.display_loss_steps == 0) {
             if (params_.error_function) {
               params_.error_function(feed_names, feeds, fetch_names, fetches, weight_update_step_count_);
             }
@@ -570,19 +585,22 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         }
 
         // Print some info when reaching the end of the batch.
-        printf("Round %d, Step: %d, epoch: %d, batch: %d/%d, shard_iteration: %d/%d, time: %.2f ms, throughput: %.2f ex/sec \n",
-               static_cast<int>(round_),
-               static_cast<int>(step_),
-               static_cast<int>(epoch),
-               static_cast<int>(batch),
-               static_cast<int>(batch_num_cur_shard),
-               static_cast<int>(shard_it + 1),
-               static_cast<int>(num_shards_to_visit),
-               duration_seconds.count() * 1000,
-               params_.batch_size * (step_ - step_start) / total_time);
-        printf("Training data range: [%d - %d)\n",
-               static_cast<int>(batch * params_.batch_size),
-               static_cast<int>((batch + 1) * params_.batch_size - 1));
+        // For pipeline, the first stage, idexed by 0, computes the start and end of a batch.
+        if (pipeline_context_.pipeline_stage_id == 0) {
+          printf("Round %d, Step: %d, epoch: %d, batch: %d/%d, shard_iteration: %d/%d, time: %.2f ms, throughput: %.2f ex/sec \n",
+                static_cast<int>(round_),
+                static_cast<int>(step_),
+                static_cast<int>(epoch),
+                static_cast<int>(batch),
+                static_cast<int>(batch_num_cur_shard),
+                static_cast<int>(shard_it + 1),
+                static_cast<int>(num_shards_to_visit),
+                duration_seconds.count() * 1000,
+                params_.batch_size * (step_ - step_start) / total_time);
+          printf("Training data range: [%d - %d)\n",
+                static_cast<int>(batch * params_.batch_size),
+                static_cast<int>((batch + 1) * params_.batch_size - 1));
+        }
 
         if (test_data_loader &&
             params_.do_eval && step_ % params_.evaluation_period == 0) {
@@ -624,16 +642,22 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
     epoch++;
   }
 
-  std::cout << "Round: " << round_ << "\n"
-            << "Batch size: " << params_.batch_size << "\n"
-            << "Number of Batches: " << (step_ - step_start) << "\n"
-            << "Gradient Accumulation Steps: " << gradient_accumulation_step_count << "\n"
-            << "Weight Update Steps: " << (weight_update_step_count_ - weight_update_step_count_start) << "\n"
-            << "Total Running Time: " << total_time << " Seconds \n"
-            << "Average Running Time Per Batch: " << total_time / (step_ - step_start) * 1000 << " ms\n"
-            << "Throughput: " << params_.batch_size * (step_ - step_start) / total_time << " Examples / Second\n"
-            << "Stabilized Throughput: " << params_.batch_size / (stabilized_total_time / stabilized_perf_total_step_count)
-            << " Examples / Second\n";
+  // Print some info when reaching the end of the batch.
+  // For pipeline, the first stage, idexed by 0, computes the start and end of each batch.
+  // That is, it computes the start and the end even for the last, and we threfore should
+  // print out timing result at the first stage.
+  if (pipeline_context_.pipeline_stage_id == 0) {
+    std::cout << "Round: " << round_ << "\n"
+              << "Batch size: " << params_.batch_size << "\n"
+              << "Number of Batches: " << (step_ - step_start) << "\n"
+              << "Gradient Accumulation Steps: " << gradient_accumulation_step_count << "\n"
+              << "Weight Update Steps: " << (weight_update_step_count_ - weight_update_step_count_start) << "\n"
+              << "Total Running Time: " << total_time << " Seconds \n"
+              << "Average Running Time Per Batch: " << total_time / (step_ - step_start) * 1000 << " ms\n"
+              << "Throughput: " << params_.batch_size * (step_ - step_start) / total_time << " Examples / Second\n"
+              << "Stabilized Throughput: " << params_.batch_size / (stabilized_total_time / stabilized_perf_total_step_count)
+              << " Examples / Second\n";
+  }
   return Status::OK();
 }
 
