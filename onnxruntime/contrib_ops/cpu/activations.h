@@ -9,32 +9,54 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 #include <unsupported/Eigen/SpecialFunctions>
+#include "core/providers/cpu/activation/element_wise_ranged_transform.h"
 
 namespace onnxruntime {
-namespace contrib {
+namespace functors {
 
 template <typename T>
-class ScaledTanh final : public OpKernel {
- public:
-  ScaledTanh(const OpKernelInfo& info)
-      : OpKernel(info), alpha_(info.GetAttrOrDefault("alpha", 1.0f)), beta_(info.GetAttrOrDefault("beta", 1.0f)) {}
+struct ScaledTanh : public ElementWiseRangedTransform<T> {
+  ORT_GET_ATTR_AND_RETURN_2(alpha, beta);
 
-  Status Compute(OpKernelContext* context) const override {
-    const Tensor* X = context->Input<Tensor>(0);
-    Tensor* Y = context->Output(0, X->Shape());
-    EIGEN_Y = (T)alpha_ * (EIGEN_X * (T)beta_).tanh();
-    return Status::OK();
+  float Cost() const final {
+    return 5.0f;
   }
-
- private:
-  const float alpha_;
-  const float beta_;
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = alpha * (xm * beta).tanh();
+  }
 };
+template <typename T>
+struct ParametricSoftplus : public ElementWiseRangedTransform<T> {
+  ORT_GET_ATTR_AND_RETURN_2(alpha, beta);
+
+  float Cost() const final {
+    return 15.0f;
+  }
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = (T)alpha *
+         (xm * (T)beta > 0)
+             .select(xm * (T)beta + ((-xm * (T)beta).exp() + 1.0f).log(), ((xm * (T)beta).exp() + 1.0f).log());
+  }
+};
+}  // namespace functors
+
+namespace contrib {
+DEFINE_ELE_KERNEL(ScaledTanh);
+DEFINE_ELE_KERNEL(ParametricSoftplus);
 
 template <typename T>
 class Gelu : public OpKernel {
  public:
-  Gelu(const OpKernelInfo& info) : OpKernel(info) {}
+  Gelu(const OpKernelInfo& info) : OpKernel(info) {
+  }
 
   Status Compute(OpKernelContext* context) const override {
     const Tensor* input = context->Input<Tensor>(0);

@@ -307,10 +307,10 @@ namespace Dml
     {
         THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
 
-        const onnxruntime::KernelCreateInfo* createInfo = registry.TryFindKernel(node, onnxruntime::kDmlExecutionProvider);
-        if (!createInfo)
-        {
-            return false;
+        const onnxruntime::KernelCreateInfo* createInfo;
+        Status st = registry.TryFindKernel(node, onnxruntime::kDmlExecutionProvider, &createInfo);
+        if (!st.IsOK() || createInfo == nullptr) {
+          return false;
         }
 
         auto regInfoIter = internalRegInfoMap.find(createInfo->kernel_def.get());
@@ -366,7 +366,9 @@ namespace Dml
 
                 // Ensure that shape information is known statically for the inputs and outputs of the node,
                 // which is required for MLGraph compilation.
-                const onnxruntime::KernelCreateInfo* createInfo = registry->TryFindKernel(node, onnxruntime::kDmlExecutionProvider);
+                const onnxruntime::KernelCreateInfo* createInfo;
+                if (!registry->TryFindKernel(node, onnxruntime::kDmlExecutionProvider, &createInfo).IsOK())
+                  continue;
 
                 auto regInfoIter = internalRegInfoMap.find(createInfo->kernel_def.get());
                 if (regInfoIter != internalRegInfoMap.end())

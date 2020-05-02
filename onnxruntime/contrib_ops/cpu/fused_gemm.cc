@@ -10,8 +10,16 @@ template <typename T>
 class FusedGemm final : public Gemm<T> {
  public:
   FusedGemm(const OpKernelInfo& info) : Gemm<T>(info) {
-    Gemm<T>::activation_ = info.GetAttrOrDefault<std::string>("activation", "");
-    Gemm<T>::leaky_relu_alpha_ = info.GetAttrOrDefault("leaky_relu_alpha", 0.01f);
+    std::string activation = info.GetAttrOrDefault<std::string>("activation", "");
+    NodeAttributes attrs;
+    for (const auto& p : info.node().GetAttributes()) {
+      if (p.first.size() >= 12 && p.first.compare(0, 11, "activation_") == 0) {
+        attrs[p.first.substr(11)] = p.second;
+      }
+    }
+    functors::ElementWiseRangedTransform<T>* p;
+    ORT_THROW_IF_ERROR(functors::ElementWiseRangedTransform<float>::Create(activation, attrs, &p));
+    this->activation_.reset(p);
   }
 };
 

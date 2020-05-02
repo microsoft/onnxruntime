@@ -79,14 +79,11 @@ void KernelRegistryManager::RegisterKernelRegistry(std::shared_ptr<KernelRegistr
   custom_kernel_registries_.push_front(kernel_registry);
 }
 
-bool KernelRegistryManager::HasImplementationOf(const Node& node, const std::string& provider_type) const {
-  auto kernel_registries = GetKernelRegistriesByProviderType(provider_type);
-  for (auto* kernel_registry : kernel_registries) {
-    if (kernel_registry->TryFindKernel(node, provider_type) != nullptr) {
-      return true;
-    }
-  }
-  return false;
+bool KernelRegistryManager::HasImplementationOf(const KernelRegistryManager& r, const Node& node, const std::string& provider_type) {
+  std::vector<const KernelRegistry*> kernel_registries = r.GetKernelRegistriesByProviderType(provider_type);
+  return std::any_of(kernel_registries.begin(), kernel_registries.end(), [&](const KernelRegistry* kernel_registry) {
+    return KernelRegistry::HasImplementationOf(*kernel_registry, node, provider_type);
+  });
 }
 
 Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node,
@@ -98,10 +95,8 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
   Status status;
   {
     for (auto& registry : custom_kernel_registries_) {
-      *kernel_create_info = registry->TryFindKernel(node, "");  // the last argument is ignored
-      if (*kernel_create_info != nullptr) {
-        return Status::OK();
-      }
+      status = registry->TryFindKernel(node, std::string(), kernel_create_info);
+      if (status.IsOK()) return status;
     }
   }
 
@@ -109,16 +104,15 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
   auto iter = provider_type_to_registry_.find(ptype);
   if (iter != provider_type_to_registry_.end()) p = iter->second.get();
   if (p != nullptr) {
-    *kernel_create_info = p->TryFindKernel(node, "");  // the last argument is ignored
-    if (*kernel_create_info != nullptr) {
-      return Status::OK();
-    }
+    status = p->TryFindKernel(node, "", kernel_create_info);
+    if (status.IsOK()) return status;
   }
 
   std::ostringstream errormsg;
   errormsg << "Failed to find kernel for " << node.OpType();
   if (node.Op() != nullptr) errormsg << "(" << node.Op()->since_version() << ")";
-  if (!node.Name().empty()) errormsg << " (node " << node.Name() << ")";
+  if (!node.Name().empty()) errormsg << " (node " << node.Name() << ").";
+  if (!status.IsOK()) errormsg << status.ErrorMessage();
   return Status(ONNXRUNTIME, NOT_IMPLEMENTED, errormsg.str());
 }
 

@@ -1201,7 +1201,17 @@ activation and leaky_relu_alpha.)DOC")
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr(
-          "leaky_relu_alpha",
+          "activation_alpha",
+          "",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_beta",
+          "",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_gamma",
           "",
           AttributeProto::FLOAT,
           OPTIONAL_VALUE)
