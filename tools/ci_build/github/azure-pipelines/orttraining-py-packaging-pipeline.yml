@@ -33,10 +33,12 @@ stages:
     - template: templates/set-py-packaging-variables-step.yml
 
     - task: DownloadPipelineArtifact@2
-      source: current
-      artifact: onnxruntime_gpu
-      patterns: '**/*-$(python.whl.impl.abi.tags)-manylinux2010_x86_64.whl'
-      path: $(Pipeline.Workspace)/artifacts
+      inputs:
+        source: current
+        artifact: onnxruntime_gpu
+        patterns: '**/*-$(python.whl.impl.abi.tags)-manylinux2010_x86_64.whl'
+        path: $(Pipeline.Workspace)/artifacts
+      displayName: 'Download wheel'
 
     - script: |
         docker build \
@@ -49,6 +51,7 @@ stages:
       displayName: 'Build docker image'
       workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
+<<<<<<< HEAD
     - script: |
         HOST_WHEEL_PATH=$( \
           find $(Pipeline.Workspace)/artifacts -name "*-$(python.whl.impl.abi.tags)-manylinux2010_x86_64.whl" \
@@ -61,3 +64,15 @@ stages:
           onnxruntime-training-ubuntu-gpu-$(python.version)-test \
           python3 /onnxruntime_src/tools/ci_build/run_python_tests_with_wheel.py \
             --wheel-path ${HOST_WHEEL_PATH/#"$(Pipeline.Workspace)"/"/artifacts"}
+=======
+    - script: >
+        docker run
+        --rm
+        --gpus all
+        --volume $(Build.SourcesDirectory):/onnxruntime_src
+        --volume $(Pipeline.Workspace)/artifacts:/artifacts
+        onnxruntime-training-ubuntu-gpu-3.6-test
+        python3 /onnxruntime_src/tools/ci_build/run_python_tests_with_wheel.py
+        --wheel-path $( find /artifacts/ -name "*-cp36-cp36m-manylinux2010_x86_64.whl" | tail -n 1 )
+      displayName: 'Run Python tests with wheel'
+>>>>>>> 6a5dc38bbb019d0d983fad6d185708bb11b74344
