@@ -8,6 +8,7 @@
 #include "core/framework/allocatormgr.h"
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/ort_apis.h"
 #include "core/platform/env.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/compute_capability.h"
@@ -548,6 +549,10 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena));
+  auto factory = onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena);
+  if (!factory)
+    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Dnnl: Failed to load provider");
+
+  options->provider_factories.push_back(factory);
   return nullptr;
 }
