@@ -134,7 +134,7 @@ Status TrainingSession::ConfigureForTraining(
   std::string loss_name{};
   optional<std::string> loss_scale_input_name =
         is_mixed_precision_enabled_ ? optional<std::string>{""} : optional<std::string>{};
-  if (config.use_pipeline) {
+  if (config.pipeline_config.has_value()) {
     // if use pipeline, first check if model contains send op. If it does, set the
     // send node's output as the start tensor to build gradient graph
     GetPipelineSendOutput(model_->MainGraph(), loss_name);
@@ -194,7 +194,7 @@ Status TrainingSession::ConfigureForTraining(
         weight_names_to_train, mixed_precision_config.use_fp16_initializers, fp32_weight_name_to_fp16_node_arg));
   }
 
-  if (config.use_pipeline) {
+  if (config.pipeline_config.has_value()) {
     TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
     ORT_RETURN_IF_ERROR(InsertPipelineOps(pipeline_result.forward_waited_event_name,
                                           pipeline_result.forward_recorded_event_name,
@@ -299,7 +299,7 @@ Status TrainingSession::ConfigureForTraining(
   }
 
   // After pipeline partition, we need to return the inputs allowed in this partition.
-  if (config.use_pipeline) {
+  if (config.pipeline_config.has_value()) {
     const auto& allowed_inputs = model_->MainGraph().GetInputsIncludingInitializers();
     const auto& allowed_outputs = model_->MainGraph().GetInputsIncludingInitializers();
     for (size_t i = 0; i < allowed_inputs.size(); ++i) {

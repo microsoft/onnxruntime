@@ -157,11 +157,12 @@ class TrainingRunner {
 
     // Pipeline configuration.
 
-    bool use_pipeline;
     // model_paths[i] is the name of the i-th pipeline stage's forward model.
     // The i-th stage is run by the i-th MPI rank. 
     // If model_paths is not empty, model partition transformation may not be invoked.
     VectorString pipeline_stage_paths;
+   // num_pipeline_stages > 1 means pipeline is enabled.
+   // num_pipeline_stages == 1 means pipeline is not enabled.
     size_t num_pipeline_stages;
   };
 
@@ -221,7 +222,7 @@ class TrainingRunner {
 
   std::unique_ptr<CheckpointRegistry> checkpoint_registry_;
   
-  // Pipeline fields are valid only if params_.use_pipeline_ is true.
+  // Pipeline fields are valid only if params_.num_pipeline_stages > 1.
   // Information for running pipeline.
   pipeline::PipelineContext pipeline_context_;
   // Pipeline schedule for deciding when to run batch, forward, or backward.

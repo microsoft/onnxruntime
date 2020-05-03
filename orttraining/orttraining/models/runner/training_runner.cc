@@ -62,7 +62,7 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
   if (params.partition_optimizer)
     ORT_ENFORCE(params.use_nccl, "Optimizer partitioning is only supported with NCCL distributed training.");
   
-  if (params.use_pipeline) {
+  if (params_.num_pipeline_stages > 1) {
     pipeline_context_.pipeline_stage_id = params_.mpi_context.world_rank;
     pipeline_context_.num_pipeline_stages = params_.num_pipeline_stages;
     pipeline_context_.num_pipeline_batches = params_.gradient_accumulation_steps - 1;
@@ -73,7 +73,7 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
 }
 
 Status TrainingRunner::Initialize() {
-  if (!pipeline_context_.pipeline_stage_paths.empty()) {
+  if (params_.num_pipeline_stages > 1 && !pipeline_context_.pipeline_stage_paths.empty()) {
     // Pipeline partition happens outside ORT. We just load the result of partitioning forward graph.
     // Backward graph will be generated using ORT's graph transformers.
     ORT_RETURN_IF_ERROR(session_.Load(pipeline_context_.pipeline_stage_paths[pipeline_context_.pipeline_stage_id]));
@@ -109,7 +109,7 @@ Status TrainingRunner::Initialize() {
   }
 
   // always configure the loss function
-  if (!params_.use_pipeline || params_.mpi_context.world_rank == params_.mpi_context.world_size - 1) {
+  if (params_.num_pipeline_stages == 1 || params_.mpi_context.world_rank == params_.mpi_context.world_size - 1) {
     TrainingSession::TrainingConfiguration::LossFunctionConfiguration lf{};
     lf.loss_function_info = params_.loss_func_info;
 
@@ -150,13 +150,12 @@ Status TrainingRunner::Initialize() {
   }
 
   // Prepare pipeline information to do configuration.
-  if (params_.use_pipeline) {
-    config.use_pipeline = params_.use_pipeline;
-
+  if (params_.num_pipeline_stages > 1) {
     TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
     pipe.num_pipeline_stages = params_.num_pipeline_stages;
     pipe.pipeline_stage_id = params_.mpi_context.world_rank;
     pipe.fetch_names = params_.fetch_names;
+    // Do not assign value to config.pipeline_config if pipeline is not used.
     config.pipeline_config = pipe;
   }
 
@@ -180,7 +179,7 @@ Status TrainingRunner::Initialize() {
 
   // Retrieve pipeline information from configuration result.
   VectorString fetch_names;
-  if (params_.use_pipeline) {
+  if (params_.num_pipeline_stages > 1) {
     fetch_names = config_result.pipeline_config_result.value().fetch_names;
     // Exposes forward waited event tensor ID name to TrainingRunner.
     // It's an input of a graph.
@@ -302,7 +301,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
     std::vector<MLValue> data_feeds = training_data->GetKthBatch(params_.batch_size, batch_index, input_allocator_);
     for (size_t i = 0; i < data_feed_names.size(); ++i) {
       const auto name = data_feed_names[i];
-      if (!params_.use_pipeline || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
+      if (params_.num_pipeline_stages == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
         feed_names.push_back(name);
         feeds.push_back(data_feeds[i]);
       }
@@ -312,7 +311,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
   // Pick up feed from loss scaling.
   if (loss_scaler_) {
     const auto name = loss_scaler_->GetLossScaleInputName();
-    if (!params_.use_pipeline || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
+    if (params_.num_pipeline_stages == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
       feed_names.push_back(name);
       const float loss_scale = loss_scaler_->GetLossScale();
       OrtValue loss_scale_val;
@@ -324,7 +323,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
   // Pick up feed from learning rate schedule.
   {
     const auto name = params_.lr_params.feed_name;
-    if (!params_.use_pipeline || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
+    if (params_.num_pipeline_stages == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
       feed_names.push_back(name);
       const float learning_rate = lr_scheduler.GetLearningRate(step_ + 1);
       OrtValue lr_val;
@@ -335,7 +334,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
 
   // Create feed of waited event in forward pass.
   if (!pipeline_context_.forward_waited_event_name.empty()) {
-    ORT_ENFORCE(params_.use_pipeline);
+    ORT_ENFORCE(params_.num_pipeline_stages > 1);
     feed_names.push_back(pipeline_context_.forward_waited_event_name);
     OrtValue event_id;
     const int64_t id = pipeline_schedule_.get_forward_waited_event_id(
@@ -349,7 +348,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
 
   // Create feed of recorded event in forward pass.
   if (!pipeline_context_.forward_recorded_event_name.empty()) {
-    ORT_ENFORCE(params_.use_pipeline);
+    ORT_ENFORCE(params_.num_pipeline_stages > 1);
     feed_names.push_back(pipeline_context_.forward_recorded_event_name);
     OrtValue event_id;
     const int64_t id = pipeline_schedule_.get_forward_recorded_event_id(
@@ -363,7 +362,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
 
   // Create feed of waited event in backward pass.
   if (!pipeline_context_.backward_waited_event_name.empty()) {
-    ORT_ENFORCE(params_.use_pipeline);
+    ORT_ENFORCE(params_.num_pipeline_stages > 1);
     feed_names.push_back(pipeline_context_.backward_waited_event_name);
     OrtValue event_id;
     const int64_t id = pipeline_schedule_.get_backward_waited_event_id(
@@ -377,7 +376,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
 
   // Create feed of recorded event in backward pass.
   if (!pipeline_context_.backward_recorded_event_name.empty()) {
-    ORT_ENFORCE(params_.use_pipeline);
+    ORT_ENFORCE(params_.num_pipeline_stages > 1);
     feed_names.push_back(pipeline_context_.backward_recorded_event_name);
     OrtValue event_id;
     int64_t id = pipeline_schedule_.get_backward_recorded_event_id(
@@ -404,7 +403,7 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const bool do_weight_update,
   if (do_weight_update) {
     // Set up tensor to be fetched when doing model update. 
 
-    if (params_.use_pipeline) {
+    if (params_.num_pipeline_stages > 1) {
       // If pipeline is used, we need to filter out fetches which are not in this pipeline stage.
 
       for (size_t i = 0; i < params_.fetch_names.size(); ++i) {
@@ -430,7 +429,6 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const bool do_weight_update,
         fetch_names.push_back(it->second);
       }
     }
-
   } else {
     // Set up tensor to be fetched when doing gradient accumulation. 
 
@@ -442,7 +440,7 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const bool do_weight_update,
 
     // Always execute event operators to avoid deadlock if pipeline is used.
     // TODO: create a list of must-to-fetch tensors and pass it to all graph transformer.
-    if (params_.use_pipeline) {
+    if (params_.num_pipeline_stages) {
         if (!pipeline_context_.forward_waited_output_name.empty()) {
           fetch_names.push_back(pipeline_context_.forward_waited_output_name);
         }
@@ -491,7 +489,8 @@ Status TrainingRunner::RunWithUpdate(VectorString& feed_names,
 
   // Assume that only the last pipeline stage can see loss, predicted value, and so on.
   // Thus, the error function should only be called when we are at the last stage.
-  if (pipeline_context_.pipeline_stage_id == pipeline_context_.num_pipeline_stages - 1 &&
+  if (params_.num_pipeline_stages == 1 ||
+      pipeline_context_.pipeline_stage_id == pipeline_context_.num_pipeline_stages - 1 &&
       !params_.is_perf_test &&
       weight_update_step_count_ % params_.display_loss_steps == 0) {
     if (params_.error_function) {
@@ -612,8 +611,8 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         }
 
         // Print some info when reaching the end of the batch.
-        // For pipeline, the first stage, idexed by 0, computes the start and end of a batch.
-        if (pipeline_context_.pipeline_stage_id == 0) {
+        // When pipeline is enabled, the first stage, idexed by 0, computes the start and end of a batch.
+        if (params_.num_pipeline_stages == 1 || pipeline_context_.pipeline_stage_id == 0) {
           printf("Round %d, Step: %d, epoch: %d, batch: %d/%d, shard_iteration: %d/%d, time: %.2f ms, throughput: %.2f ex/sec \n",
                 static_cast<int>(round_),
                 static_cast<int>(step_),
@@ -701,7 +700,7 @@ Status TrainingRunner::EndTraining(IDataLoader* data_loader) {
     return Status::OK();
   }
 
-  if (!params_.use_pipeline && data_loader) {
+  if (params_.num_pipeline_stages == 1 && data_loader) {
     // Test the in-memory model before saving.
     printf("\nEvaluating the final model on the test set.\n");
     ORT_RETURN_IF_ERROR(Evaluate(session_, *data_loader));

@@ -135,9 +135,6 @@ class TrainingSession : public InferenceSession {
     // If not provided, no optimizer is added.
     optional<OptimizerConfiguration> optimizer_config{};
 
-    // Whether to use pipeline in training.
-    bool use_pipeline{false};
-
     struct PipelineConfiguration {
       // If model partition happens outside ORT, this flag should be false.
       // Otherwise, use true to trigger ORT's pipeline partition.
@@ -152,6 +149,8 @@ class TrainingSession : public InferenceSession {
       // [TODO] Add cut information.
     };
 
+    // If pipeline is enabled, this field's has_value() returns true.
+    // Otherwise, it returns false.
     optional<PipelineConfiguration> pipeline_config{};
   };
 
