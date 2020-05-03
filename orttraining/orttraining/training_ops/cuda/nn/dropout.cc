@@ -44,7 +44,6 @@ REGISTER_KERNEL_TYPED(double, double)
       KernelDefBuilder()                                             \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())    \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T2>())   \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()) \
           .InputMemoryType<OrtMemTypeCPUInput>(1),                   \
       Dropout<T1, T2, true>);
 
