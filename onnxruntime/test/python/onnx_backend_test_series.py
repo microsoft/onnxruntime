@@ -41,41 +41,6 @@ def create_backend_test(testname=None):
     if testname:
         backend_test.include(testname + '.*')
     else:
-        # Tests that are failing temporarily and should be fixed
-        current_failing_tests = [
-            '^test_adagrad_cpu',
-            '^test_adagrad_multiple_cpu',
-            '^test_batchnorm_epsilon_old_cpu',
-            '^test_batchnorm_epsilon_training_mode_cpu',
-            '^test_batchnorm_example_old_cpu',
-            '^test_batchnorm_example_training_mode_cpu',
-            '^test_gathernd_example_int32_batch_dim1_cpu',
-            '^test_max_int16_cpu',
-            '^test_max_int8_cpu',
-            '^test_max_uint16_cpu',
-            '^test_max_uint8_cpu',
-            '^test_min_int16_cpu',
-            '^test_min_int8_cpu',
-            '^test_min_uint16_cpu',
-            '^test_min_uint8_cpu',
-            '^test_momentum_cpu',
-            '^test_momentum_multiple_cpu',
-            '^test_nesterov_momentum_cpu',
-            '^test_pow_types_float32_uint32_cpu',
-            '^test_pow_types_float32_uint64_cpu',
-            '^test_gradient_of_add_and_mul_cpu',
-            '^test_gradient_of_add_cpu',
-            '^test_batchnorm_example_training_mode_cpu',
-            '^test_batchnorm_epsilon_training_mode_cpu',
-            '^test_maxunpool_export_with_output_shape_cpu', #result mismatch
-            '^test_resize_downsample_scales_cubic_align_corners_cpu',  # results mismatch with onnx tests
-            '^test_resize_downsample_scales_linear_align_corners_cpu',  # results mismatch with onnx tests
-            '^test_adam_cpu',  # NOT_IMPLEMENTED : Could not find an implementation for the node Adam(1)
-            '^test_adam_multiple_cpu',  # NOT_IMPLEMENTED : Could not find an implementation for the node Adam(1)
-            '^test_dropout.*',  # NOT_IMPLEMENTED : Could not find an implementation for the node Dropout(12) (Temporary, subsequent PR will add this -- we need training_mode change in the kernel)
-            '^test_training_dropout.*'  # NOT_IMPLEMENTED : Could not find an implementation for the node Dropout(12) (Temporary, subsequent PR will add this -- we need training_mode change in the kernel)
-        ]
-
         # read filters data
         with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'testdata', 'onnx_backend_test_series_filters.jsonc')) as f:
             filters_lines = f.readlines()
