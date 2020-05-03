@@ -49,7 +49,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "f1fcc92d203f54e87a8a7ee06c51640f3f659974",
+               "commitHash": "0b5adab18b81aceb773731353db85ee118c0322a",
                "repositoryUrl": "https://github.com/onnx/onnx.git"
             }
          }

@@ -191,7 +191,11 @@ Scan<9>::Scan(const OpKernelInfo& info) : OpKernel(info) {
     output_axes_ = std::vector<int64_t>(num_scan_outputs, 0);
   }
 
-  device_helpers_.transpose_func = TransposeBase::DoTranspose;
+  device_helpers_.transpose_func = [](const std::vector<size_t>& permutations, const Tensor& input,
+                                      Tensor& output) -> Status {
+    return TransposeBase::DoTranspose(permutations, input, output);
+  };
+
   device_helpers_.set_data_to_zero_func = [](void* data, size_t size_in_bytes) -> Status {
     memset(data, 0, size_in_bytes);
     return Status::OK();
@@ -362,7 +366,7 @@ Status ScanImpl::SetupInputs() {
 
       OrtValue transpose_output = scan::detail::AllocateTensorInMLValue(input_tensor.DataType(), new_shape, alloc);
 
-      status = device_helpers_.transpose_func(permutations, input_tensor, *transpose_output.GetMutable<Tensor>(), nullptr);
+      status = device_helpers_.transpose_func(permutations, input_tensor, *transpose_output.GetMutable<Tensor>());
       ORT_RETURN_IF_ERROR(status);
 
       inputs_.push_back(transpose_output);
@@ -491,7 +495,7 @@ Status ScanImpl::TransposeOutput() {
       Tensor* output = context_.Output(output_index, new_shape);
       ORT_ENFORCE(output, "Outputs from Scan are not optional and should never be null.");
 
-      status = device_helpers_.transpose_func(permutations, temporary_output_tensor, *output, nullptr);
+      status = device_helpers_.transpose_func(permutations, temporary_output_tensor, *output);
       ORT_RETURN_IF_ERROR(status);
     }
   }

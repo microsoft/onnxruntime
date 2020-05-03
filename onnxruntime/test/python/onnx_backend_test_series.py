@@ -85,118 +85,37 @@ def create_backend_test(testname=None):
     else:
         # Tests that are failing temporarily and should be fixed
         current_failing_tests = [
-           '^test_adam_cpu',
-            '^test_adam_multiple_cpu',
             '^test_adagrad_cpu',
             '^test_adagrad_multiple_cpu',
             '^test_batchnorm_epsilon_old_cpu',
             '^test_batchnorm_epsilon_training_mode_cpu',
             '^test_batchnorm_example_old_cpu',
             '^test_batchnorm_example_training_mode_cpu',
-            '^test_dropout_default_cpu',
-            '^test_dropout_random_cpu',
             '^test_gathernd_example_int32_batch_dim1_cpu',
-            '^test_inverse_batched_cpu',
-            '^test_inverse_cpu',
             '^test_max_int16_cpu',
             '^test_max_int8_cpu',
             '^test_max_uint16_cpu',
             '^test_max_uint8_cpu',
-            '^test_mean_square_distance_mean_3d_cpu',
-            '^test_mean_square_distance_mean_3d_expanded_cpu',
-            '^test_mean_square_distance_mean_4d_cpu',
-            '^test_mean_square_distance_mean_4d_expanded_cpu',
-            '^test_mean_square_distance_mean_cpu',
-            '^test_mean_square_distance_mean_expanded_cpu',
-            '^test_mean_square_distance_none_cpu',
-            '^test_mean_square_distance_none_expanded_cpu',
-            '^test_mean_square_distance_none_weights_cpu',
-            '^test_mean_square_distance_none_weights_expanded_cpu',
-            '^test_mean_square_distance_sum_cpu',
-            '^test_mean_square_distance_sum_expanded_cpu',
             '^test_min_int16_cpu',
             '^test_min_int8_cpu',
             '^test_min_uint16_cpu',
             '^test_min_uint8_cpu',
             '^test_momentum_cpu',
             '^test_momentum_multiple_cpu',
-            '^test_negative_log_likelihood_loss_input_shape_is_NC_cpu',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_cpu',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_mean_cpu',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_sum_cpu',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_cpu',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_mean_cpu',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_cpu',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_ignore_index_cpu',
-            '^test_negative_log_likelihood_loss_iinput_shape_is_NCd1_weight_ignore_index_cpu',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1_cpu',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1_ignore_index_cpu',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1_mean_weight_negative_ignore_index_cpu',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1_weight_cpu',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2_no_weight_reduction_mean_ignore_index_cpu',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_cpu',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index_cpu',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight_cpu',
-            '^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight_cpu',
             '^test_nesterov_momentum_cpu',
-            '^test_pow_bcast_array_cpu',
-            '^test_pow_bcast_scalar_cpu',
-            '^test_pow_cpu',
-            '^test_pow_example_cpu',
-            '^test_pow_types_float32_int32_cpu',
-            '^test_pow_types_float32_int64_cpu',
             '^test_pow_types_float32_uint32_cpu',
             '^test_pow_types_float32_uint64_cpu',
-            '^test_pow_types_float_cpu',
-            '^test_pow_types_int32_float32_cpu',
-            '^test_pow_types_int32_int32_cpu',
-            '^test_pow_types_int64_float32_cpu',
-            '^test_pow_types_int64_int64_cpu',
-            '^test_pow_types_int_cpu',
-            '^test_softmax_cross_entropy_mean_3d_cpu',
-            '^test_softmax_cross_entropy_mean_3d_expanded_cpu',
-            '^test_softmax_cross_entropy_mean_cpu',
-            '^test_softmax_cross_entropy_mean_expanded_cpu',
-            '^test_softmax_cross_entropy_mean_weight_cpu',
-            '^test_softmax_cross_entropy_mean_weight_expanded_cpu',
-            '^test_softmax_cross_entropy_mean_weight_ignore_index_cpu',
-            '^test_softmax_cross_entropy_mean_weight_ignore_index_expanded_cpu',
-            '^test_softmax_cross_entropy_none_cpu',
-            '^test_softmax_cross_entropy_none_expanded_cpu',
-            '^test_softmax_cross_entropy_none_weights_cpu',
-            '^test_softmax_cross_entropy_none_weights_expanded_cpu',
-            '^test_softmax_cross_entropy_sum_cpu',
-            '^test_softmax_cross_entropy_sum_expanded_cpu',
-            '^test_unfoldtodepth_with_padding_cpu',
-            '^test_softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index_cpu',
-            '^test_softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index_expanded_cpu',
-            '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_cpu',
-            '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_expanded_cpu',
-            '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index_cpu',
-            '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index_expanded_cpu',
-            '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_cpu',
-            '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_expanded_cpu',
-            '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_cpu',
-            '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded_cpu',
-            '^test_softmax_cross_entropy_mean_no_weight_ignore_index_3d_cpu',
-            '^test_softmax_cross_entropy_mean_no_weight_ignore_index_3d_expanded_cpu',
-            '^test_softmax_cross_entropy_mean_no_weight_ignore_index_4d_cpu',
-            '^test_softmax_cross_entropy_mean_no_weight_ignore_index_4d_expanded_cpu',
-            '^test_softmax_cross_entropy_mean_no_weight_ignore_index_cpu',
-            '^test_softmax_cross_entropy_mean_no_weight_ignore_index_expanded_cpu',
-            '^test_softmax_cross_entropy_mean_weight_ignore_index_3d_cpu',
-            '^test_softmax_cross_entropy_mean_weight_ignore_index_3d_expanded_cpu',
-            '^test_softmax_cross_entropy_mean_weight_ignore_index_4d_cpu',
-            '^test_softmax_cross_entropy_mean_weight_ignore_index_4d_expanded_cpu',
-            '^test_unfoldtodepth_with_padding_stride_cpu',
-            '^test_unfoldtodepth_without_padding_cpu',
             '^test_gradient_of_add_and_mul_cpu',
             '^test_gradient_of_add_cpu',
             '^test_batchnorm_example_training_mode_cpu',
             '^test_batchnorm_epsilon_training_mode_cpu',
             '^test_maxunpool_export_with_output_shape_cpu', #result mismatch
             '^test_resize_downsample_scales_cubic_align_corners_cpu',  # results mismatch with onnx tests
-            '^test_resize_downsample_scales_linear_align_corners_cpu'  # results mismatch with onnx tests
+            '^test_resize_downsample_scales_linear_align_corners_cpu',  # results mismatch with onnx tests
+            '^test_adam_cpu',  # NOT_IMPLEMENTED : Could not find an implementation for the node Adam(1)
+            '^test_adam_multiple_cpu',  # NOT_IMPLEMENTED : Could not find an implementation for the node Adam(1)
+            '^test_dropout.*',  # NOT_IMPLEMENTED : Could not find an implementation for the node Dropout(12) (Temporary, subsequent PR will add this -- we need training_mode change in the kernel)
+            '^test_training_dropout.*'  # NOT_IMPLEMENTED : Could not find an implementation for the node Dropout(12) (Temporary, subsequent PR will add this -- we need training_mode change in the kernel)
         ]
         if platform.architecture()[0] == '32bit':
             current_failing_tests += ['^test_vgg19', '^test_zfnet512', '^test_bvlc_alexnet_cpu']
@@ -209,7 +128,11 @@ def create_backend_test(testname=None):
                 '^test_argmin_negative_axis.*', '^test_hardmax_negative_axis.*', '^test_gemm_default_no_bias_cpu',
                 '^test_flatten_negative_axis.*', '^test_reduce_[a-z1-9_]*_negative_axes_.*',
                 'test_squeeze_negative_axes_cpu', 'test_unsqueeze_negative_axes_cpu', 'test_constant_pad_cpu',
-                'test_edge_pad_cpu', 'test_reflect_pad_cpu', '^test_split_zero_size_splits_.*','^test_argmax_keepdims_example_select_last_index_.*', '^test_argmax_no_keepdims_example_select_last_index_.*','^test_argmin_no_keepdims_example_select_last_index_.*','^test_argmin_keepdims_example_select_last_index_.*'
+                'test_edge_pad_cpu', 'test_reflect_pad_cpu', '^test_split_zero_size_splits_.*',
+                '^test_argmax_keepdims_example_select_last_index_cpu', '^test_argmax_no_keepdims_example_select_last_index_cpu',
+                '^test_argmin_no_keepdims_example_select_last_index_cpu','^test_argmin_keepdims_example_select_last_index_cpu',
+                '^test_pow_types_float32_int32_*', '^test_pow_types_float32_int64_*', '^test_pow_types_float_*',
+                '^test_pow_types_int32_float32_*', '^test_pow_types_int_*', '^test_pow_types_int64_float32_*'
             ]
 
         if c2.supports_device('DNNL'):
@@ -217,12 +140,16 @@ def create_backend_test(testname=None):
                 '^test_range_float_type_positive_delta_expanded_cpu',
                 '^test_range_int32_type_negative_delta_expanded_cpu', '^test_averagepool_2d_ceil_cpu',
                 '^test_maxpool_2d_ceil_cpu', '^test_maxpool_2d_dilations_cpu',
-                '^test_maxpool_2d_uint8'
+                '^test_maxpool_2d_uint8',
+                '^test_negative_log_likelihood.*',  # Does not support 5-D or above tensors for SUB op.
+                '^test_softmax_cross_entropy.*',  # Does not support 5-D or above tensors for SUB op.
             ]
 
         if c2.supports_device('NNAPI'):
             current_failing_tests += [
-              '^test_maxpool_2d_uint8'
+              '^test_maxpool_2d_uint8',
+              '^test_negative_log_likelihood.*',
+              '^test_softmax_cross_entropy.*'
             ]
 
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
@@ -230,12 +157,16 @@ def create_backend_test(testname=None):
             # temporarily exclude vgg19 test which comsumes too much memory, run out of memory on Upsquared device.
             # single test pass for vgg19, need furture investigation
             current_failing_tests.append('^test_vgg19_cpu')
-
+            current_failing_tests.append('^test_negative_log_likelihood.*') # Does not support 5-D or above tensors for SUB op.
+            current_failing_tests.append('^test_softmax_cross_entropy.*') # Does not support 5-D or above tensors for SUB op.
+            
         if c2.supports_device('OPENVINO_CPU_FP32'):
             current_failing_tests += [
                 '^test_operator_permute2_cpu',
                 '^test_operator_repeat_cpu',
-                '^test_operator_repeat_dim_overflow_cpu'
+                '^test_operator_repeat_dim_overflow_cpu',
+                '^test_negative_log_likelihood.*', # Does not support 5-D or above tensors for SUB op.
+                '^test_softmax_cross_entropy.*' # Does not support 5-D or above tensors for SUB op.
             ]
         if c2.supports_device('OPENVINO_GPU_FP32'):
             current_failing_tests += [
@@ -253,7 +184,9 @@ def create_backend_test(testname=None):
                 '^test_resize_upsample_sizes_nearest_ceil_half_pixel_cpu',
                 '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu',
                 '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu',
-                '^test_unique_not_sorted_without_axis_cpu'
+                '^test_unique_not_sorted_without_axis_cpu',
+                '^test_negative_log_likelihood.*', # Does not support 5-D or above tensors for SUB op.
+                '^test_softmax_cross_entropy.*' # Does not support 5-D or above tensors for SUB op.
             ]
 
 
