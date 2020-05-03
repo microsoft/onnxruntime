@@ -104,7 +104,7 @@ Official builds are available for:
 
 Python packages can be found on PyPi, and C#/C/C++ packages on Nuget. Please view the table on [aka.ms/onnxruntime](https://aka.ms/onnxruntime) for instructions for different build combinations. 
 
-For additional build flavors and/or dockerfiles, please carefully read through [BUILD.md](./BUILD.md). If you encounter problems, please provide as much information as possible when filing an Issue. 
+For additional build flavors and/or dockerfiles, please carefully read through [BUILD.md](./BUILD.md). If you encounter problems, please provide as much information as possible when filing an [issue](https://github.com/Microsoft/onnxruntime/issues). 
 
 For production scenarios, it's strongly recommended to build only from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
 
