@@ -28,10 +28,10 @@ float GetRatioOrDefault(const Tensor* ratio_tensor) {
 }  // namespace
 
 // Dropout
-#define REGISTER_KERNEL_TYPED(OpName, Domain, VER, T1, T2)            \
+#define REGISTER_KERNEL_TYPED(OpName, VER, T1, T2, Trainable)         \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
       OpName,                                                         \
-      Domain,                                                         \
+      kOnnxDomain,                                                    \
       VER,                                                            \
       T1##_##T2,                                                      \
       kCpuExecutionProvider,                                          \
@@ -39,7 +39,16 @@ float GetRatioOrDefault(const Tensor* ratio_tensor) {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())     \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T2>())    \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()), \
-      OpName<T1, T2>);
+      Dropout<T1, T2, Trainable>);
+
+// Temporary for backward compatibility, will eventually get rid of TrainableDropout when PyTorch exporter will move to
+// opset-12.
+REGISTER_KERNEL_TYPED(TrainableDropout, 9, float, MLFloat16, true)
+REGISTER_KERNEL_TYPED(TrainableDropout, 9, float, float, true)
+REGISTER_KERNEL_TYPED(TrainableDropout, 9, float, double, true)
+REGISTER_KERNEL_TYPED(TrainableDropout, 9, double, MLFloat16, true)
+REGISTER_KERNEL_TYPED(TrainableDropout, 9, double, float, true)
+REGISTER_KERNEL_TYPED(TrainableDropout, 9, double, double, true)
 
 // REVIEW(mzs): ConstEigenVectorArrayMap.cast<MLFLoat16) does not seem to be supported.
 // However these types work on GPU implementation.
@@ -47,26 +56,22 @@ float GetRatioOrDefault(const Tensor* ratio_tensor) {
 // REGISTER_KERNEL_TYPED(MLFloat16, float)
 // REGISTER_KERNEL_TYPED(MLFloat16, double)
 
-REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, MLFloat16)
-REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, float)
-REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, float, double)
-REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, MLFloat16)
-REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, float)
-REGISTER_KERNEL_TYPED(Dropout, kOnnxDomain, 12, double, double)
+REGISTER_KERNEL_TYPED(Dropout, 12, float, MLFloat16, false)
+REGISTER_KERNEL_TYPED(Dropout, 12, float, float, false)
+REGISTER_KERNEL_TYPED(Dropout, 12, float, double, false)
+REGISTER_KERNEL_TYPED(Dropout, 12, double, MLFloat16, false)
+REGISTER_KERNEL_TYPED(Dropout, 12, double, float, false)
+REGISTER_KERNEL_TYPED(Dropout, 12, double, double, false)
 
-template <typename T1, typename T2>
-Status Dropout<T1, T2>::Compute(OpKernelContext* context) const {
+template <typename T1, typename T2, bool trainable_dropout>
+Status Dropout<T1, T2, trainable_dropout>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   auto X_span = X->DataAsSpan<T1>();
-
   const Tensor* ratio = context->Input<Tensor>(1);  // optional
   const float ratio_value = GetRatioOrDefault<T2>(ratio);
-
   const auto& X_shape = X->Shape();
-
   Tensor* Y = context->Output(0, X_shape);
   auto Y_span = Y->MutableDataAsSpan<T1>();
-
   Tensor* mask = context->Output(1, X_shape);  // optional
   std::unique_ptr<bool[]> temp_mask_buffer{};  // temporary buffer to use if mask input is not provided
   auto mask_span = [&X_shape, mask, &temp_mask_buffer]() {
@@ -75,16 +80,20 @@ Status Dropout<T1, T2>::Compute(OpKernelContext* context) const {
     return gsl::make_span(temp_mask_buffer.get(), X_shape.Size());
   }();
 
-  ORT_ENFORCE(Y->Shape() == X_shape, "X and Y should have the same shape");
   ORT_ENFORCE(!mask || mask->Shape() == X_shape, "X and mask should have the same shape");
 
-  if (ratio_value == 0.0f) {
+  const Tensor* training_mode = context->Input<Tensor>(2);
+  if (!trainable_dropout && (training_mode == nullptr || *(training_mode->Data<bool>()) == false)) {
     // drop none
     if (X_span.data() != Y_span.data()) {
       std::copy(X_span.begin(), X_span.end(), Y_span.begin());
     }
-    std::fill(mask_span.begin(), mask_span.end(), true);
-  } else if (ratio_value < 1.0f) {
+
+    if (mask != nullptr) {
+      std::fill(mask_span.begin(), mask_span.end(), true);
+    }
+
+  } else {
     // drop some
     ConstEigenVectorArrayMap<T1> X_arr(X_span.data(), X_span.size());
     EigenVectorArrayMap<T1> Y_arr(Y_span.data(), Y_span.size());
@@ -106,33 +115,51 @@ Status Dropout<T1, T2>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+#define REGISTER_GRADIENT_KERNEL_TYPED(OpName, T1, T2)                \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
+      OpName,                                                         \
+      kMSDomain,                                                      \
+      1,                                                              \
+      T1##_##T2,                                                      \
+      kCpuExecutionProvider,                                          \
+      KernelDefBuilder()                                              \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())     \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T2>())    \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()), \
+      DropoutGrad<T1, T2>);
+
 // DropoutGrad
-// REVIEW(mzs): ConstEigenVectorArrayMap.cast<MLFLoat16) does not seem to be supported.
+// REVIEW(codemzs): ConstEigenVectorArrayMap.cast<MLFLoat16) does not seem to be supported.
 // However these types work on GPU implementation.
 // REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16, MLFloat16)
 // REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16, float)
 // REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16, double)
 
-REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, MLFloat16)
-REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, float)
-REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, float, double)
-REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, double, MLFloat16)
-REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, double, float)
-REGISTER_KERNEL_TYPED(DropoutGrad, kMSDomain, 1, double, double)
+REGISTER_GRADIENT_KERNEL_TYPED(DropoutGrad, float, MLFloat16)
+REGISTER_GRADIENT_KERNEL_TYPED(DropoutGrad, float, float)
+REGISTER_GRADIENT_KERNEL_TYPED(DropoutGrad, float, double)
+REGISTER_GRADIENT_KERNEL_TYPED(DropoutGrad, double, MLFloat16)
+REGISTER_GRADIENT_KERNEL_TYPED(DropoutGrad, double, float)
+REGISTER_GRADIENT_KERNEL_TYPED(DropoutGrad, double, double)
+
+// Temporary for backward compatibility, will eventually get rid of TrainableDropout when PyTorch exporter will move to
+// opset-12.
+REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad, float, MLFloat16)
+REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad, float, float)
+REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad, float, double)
+REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad, double, MLFloat16)
+REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad, double, float)
+REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad, double, double)
 
 template <typename T1, typename T2>
 Status DropoutGrad<T1, T2>::Compute(OpKernelContext* context) const {
   const Tensor* dY = context->Input<Tensor>(0);
   auto dY_span = dY->DataAsSpan<T1>();
-
   const Tensor* mask = context->Input<Tensor>(1);
   auto mask_span = mask->DataAsSpan<bool>();
-
   const Tensor* ratio = context->Input<Tensor>(2);  // optional
   const float ratio_value = GetRatioOrDefault<T2>(ratio);
-
   const auto& dY_shape = dY->Shape();
-
   Tensor* dX = context->Output(0, dY_shape);
   auto dX_span = dX->MutableDataAsSpan<T1>();
 
