@@ -19,6 +19,26 @@ featurizers_build = False
 package_name = 'onnxruntime'
 wheel_name_suffix = None
 
+# Any combination of the following arguments can be applied
+if '--use_featurizers' in sys.argv:
+    featurizers_build = True
+    sys.argv.remove('--use_featurizers')
+
+if '--nightly_build' in sys.argv:
+    package_name = 'ort-nightly'
+    nightly_build = True
+    sys.argv.remove('--nightly_build')
+
+for arg in sys.argv[1:]:
+    if arg.startswith("--wheel_name_suffix="):
+        wheel_name_suffix = arg[len("--wheel_name_suffix="):]
+        nightly_build = True
+
+        sys.argv.remove(arg)
+
+        break
+
+# The following arguments are mutually exclusive
 if '--use_tensorrt' in sys.argv:
     package_name = 'onnxruntime-gpu-tensorrt'
     sys.argv.remove('--use_tensorrt')
@@ -36,34 +56,17 @@ elif '--use_cuda' in sys.argv:
 elif '--use_ngraph' in sys.argv:
     package_name = 'onnxruntime-ngraph'
     sys.argv.remove('--use_ngraph')
-
+elif '--use_openvino' in sys.argv:
+    package_name = 'onnxruntime-openvino'
+    sys.argv.remove('--use_openvino')
 elif '--use_dnnl' in sys.argv:
     package_name = 'onnxruntime-dnnl'
     sys.argv.remove('--use_dnnl')
 elif '--use_nuphar' in sys.argv:
     package_name = 'onnxruntime-nuphar'
     sys.argv.remove('--use_nuphar')
-elif '--use_openvino' in sys.argv:
-    package_name = 'onnxruntime-openvino'
-    sys.argv.remove('--use_openvino')
+# --use_acl is specified in build.py, but not parsed here
 
-elif '--use_featurizers' in sys.argv:
-    featurizers_build = True
-    sys.argv.remove('--use_featurizers')
-
-if '--nightly_build' in sys.argv:
-    package_name = 'ort-nightly'
-    nightly_build = True
-    sys.argv.remove('--nightly_build')
-
-for arg in sys.argv[1:]:
-    if arg.startswith("--wheel_name_suffix="):
-        wheel_name_suffix = arg[len("--wheel_name_suffix="):]
-        nightly_build = True
-
-        sys.argv.remove(arg)
-
-        break
 
 is_manylinux1 = False
 if environ.get('AUDITWHEEL_PLAT', None) == 'manylinux1_x86_64' or environ.get('AUDITWHEEL_PLAT', None) == 'manylinux2010_x86_64' :
