@@ -113,6 +113,7 @@ Status Dropout<T1, T2, trainable_dropout>::ComputeInternal(OpKernelContext* cont
   } else {
     ratio_data = default_ratio_;
   }
+  ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
 
   PhiloxGenerator& generator = generator_ != nullptr ? *generator_.get() : PhiloxGenerator::Default();
   DropoutKernelImpl(GetDeviceProp(), N, ratio_data, generator, X_data, Y_data, mask_data);
