@@ -536,13 +536,13 @@ struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
   std::shared_ptr<Prov_IExecutionProviderFactory> p_;
 };
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int device_id) {
 #ifdef _WIN32
-  static ProviderLibrary library("onnxruntime_providers_dnnl.dll");
+static ProviderLibrary library("onnxruntime_providers_dnnl.dll");
 #else
-  static ProviderLibrary library("onnxruntime_providers_dnnl.so");
+static ProviderLibrary library("onnxruntime_providers_dnnl.so");
 #endif
 
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int device_id) {
   if (!library.provider_)
     return nullptr;
 
@@ -555,8 +555,11 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
   auto factory = onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena);
-  if (!factory)
-    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Dnnl: Failed to load provider");
+  if (!factory) {
+    if (!library.handle_)
+      return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Dnnl: Failed to load shared library");
+    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Dnnl: Failed to get function export");
+  }
 
   options->provider_factories.push_back(factory);
   return nullptr;
