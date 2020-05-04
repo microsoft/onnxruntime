@@ -150,7 +150,7 @@ def generate_files(list, args):
     if includes_directml:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.pdb') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.0.0.1\\LICENSE.txt') + '" target="DirectML_LICENSE.txt" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.0.0.2\\LICENSE.txt') + '" target="DirectML_LICENSE.txt" />')
 
     if includes_winml:
         # Process microsoft.ai.machinelearning import lib, dll, and pdb
@@ -191,6 +191,9 @@ def generate_files(list, args):
         # Process targets files
         windowsai_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'Microsoft.AI.MachineLearning.targets')
         files_list.append('<file src=' + '"' + windowsai_targets + '" target="build\\native" />')
+        # Process rules files
+        windowsai_rules = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'Microsoft.AI.MachineLearning.Rules.Project.xml')
+        files_list.append('<file src=' + '"' + windowsai_rules + '" target="build\\native" />')
 
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
         # Process props file
