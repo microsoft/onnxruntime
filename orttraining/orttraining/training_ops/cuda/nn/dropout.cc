@@ -34,20 +34,20 @@ REGISTER_KERNEL_TYPED(double, MLFloat16)
 REGISTER_KERNEL_TYPED(double, float)
 REGISTER_KERNEL_TYPED(double, double)
 
-#define REGISTER_TRAINABLE_KERNEL_TYPED(T1, T2)                      \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
-      TrainableDropout,                                              \
-      kOnnxDomain,                                                   \
-      9,                                                             \
-      T1##_##T2,                                                     \
-      kCudaExecutionProvider,                                        \
-      KernelDefBuilder()                                             \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())    \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T2>())   \
-          .InputMemoryType<OrtMemTypeCPUInput>(1),                   \
+#define REGISTER_TRAINABLE_KERNEL_TYPED(T1, T2)                    \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
+      TrainableDropout,                                            \
+      kOnnxDomain,                                                 \
+      9,                                                           \
+      T1##_##T2,                                                   \
+      kCudaExecutionProvider,                                      \
+      KernelDefBuilder()                                           \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())  \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T2>()) \
+          .InputMemoryType<OrtMemTypeCPUInput>(1),                 \
       Dropout<T1, T2, true>);
 
-// Temporary for backward compatibility, will eventually get rid of TrainableDropout when PyTorch exporter will move to 
+// Temporary for backward compatibility, will eventually get rid of TrainableDropout when PyTorch exporter will move to
 // opset-12.
 REGISTER_TRAINABLE_KERNEL_TYPED(MLFloat16, MLFloat16)
 REGISTER_TRAINABLE_KERNEL_TYPED(MLFloat16, float)
@@ -78,9 +78,24 @@ Status Dropout<T1, T2, trainable_dropout>::ComputeInternal(OpKernelContext* cont
   auto mask = context->Output(1, shape);
   ORT_ENFORCE(!mask || mask->Shape().Size() == N);
 
+  //Get the ratio_data
+  float ratio_data;
+  auto ratio = context->Input<Tensor>(1);
+
+  static_assert(std::is_same<T2, MLFloat16>::value || std::is_same<T2, float>::value || std::is_same<T2, double>::value,
+                "T2 must be float16 or float or double");
+
+  if (ratio) {
+    ratio_data = static_cast<float>(*(ratio->template Data<T2>()));
+  } else {
+    ratio_data = default_ratio_;
+  }
+  ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
+
   const Tensor* training_mode = context->Input<Tensor>(2);
   //Check for inference mode.
-  if (!trainable_dropout && (training_mode == nullptr || *(training_mode->Data<bool>()) == false)) {
+  if ((0 == ratio_data /*Backward compat with TrainableDropout*/) ||
+      (!trainable_dropout && (training_mode == nullptr || *(training_mode->Data<bool>()) == false))) {
     if (Y_data != X_data) {
       CUDA_CALL_THROW(cudaMemcpyAsync(Y_data, X_data, N * sizeof(T1), cudaMemcpyDeviceToDevice));
     }
@@ -99,20 +114,6 @@ Status Dropout<T1, T2, trainable_dropout>::ComputeInternal(OpKernelContext* cont
     temp_mask_buffer = GetScratchBuffer<bool>(N);
     return temp_mask_buffer.get();
   }();
-
-  //Get the ratio_data
-  float ratio_data;
-  auto ratio = context->Input<Tensor>(1);
-
-  static_assert(std::is_same<T2, MLFloat16>::value || std::is_same<T2, float>::value || std::is_same<T2, double>::value,
-                "T2 must be float16 or float or double");
-
-  if (ratio) {
-    ratio_data = static_cast<float>(*(ratio->template Data<T2>()));
-  } else {
-    ratio_data = default_ratio_;
-  }
-  ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
 
   PhiloxGenerator& generator = generator_ != nullptr ? *generator_.get() : PhiloxGenerator::Default();
   DropoutKernelImpl(GetDeviceProp(), N, ratio_data, generator, X_data, Y_data, mask_data);

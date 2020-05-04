@@ -83,7 +83,8 @@ Status Dropout<T1, T2, trainable_dropout>::Compute(OpKernelContext* context) con
   ORT_ENFORCE(!mask || mask->Shape() == X_shape, "X and mask should have the same shape");
 
   const Tensor* training_mode = context->Input<Tensor>(2);
-  if (!trainable_dropout && (training_mode == nullptr || *(training_mode->Data<bool>()) == false)) {
+  if ((0 == ratio_value /*Backward compat with TrainableDropout*/) ||
+      !trainable_dropout && (training_mode == nullptr || *(training_mode->Data<bool>()) == false)) {
     // drop none
     if (X_span.data() != Y_span.data()) {
       std::copy(X_span.begin(), X_span.end(), Y_span.begin());
