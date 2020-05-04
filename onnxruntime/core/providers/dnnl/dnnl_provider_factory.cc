@@ -30,13 +30,10 @@ std::unique_ptr<Provider_IExecutionProvider> DnnlProviderFactory::CreateProvider
   return onnxruntime::make_unique<DNNLExecutionProvider>(info);
 }
 
-std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int device_id) {
-  return std::make_shared<onnxruntime::DnnlProviderFactory>(device_id);
-  //TODO: This is apparently a bug. The consructor parameter is create-arena-flag, not the device-id
-}
-
 struct Dnnl_Provider : Provider {
   std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
+    *reinterpret_cast<int*>(1234) = 5;
+    //TODO: This is apparently a bug. The consructor parameter is create-arena-flag, not the device-id
     return std::make_shared<DnnlProviderFactory>(device_id);
   }
 
