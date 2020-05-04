@@ -58,7 +58,7 @@ struct Provider_TensorProto_Impl : ONNX_NAMESPACE::Provider_TensorProto {
   }
 
   ONNX_NAMESPACE::TensorProto* p_{};
-};  // namespace onnxruntime
+};
 
 struct Provider_AttributeProto_Impl : ONNX_NAMESPACE::Provider_AttributeProto {
   Provider_AttributeProto_Impl() = default;
@@ -231,7 +231,7 @@ struct Provider_IndexedSubGraph_Impl : Provider_IndexedSubGraph {
     real->inputs = std::move(def_->inputs);
     real->outputs = std::move(def_->outputs);
 
-    for (auto& v : def_->attributes)
+    for (const auto& v : def_->attributes)
       real->attributes.emplace(v.first, static_cast<Provider_AttributeProto_Impl*>(v.second.p_.get())->v_);
 
     real->doc_string = std::move(def_->doc_string);
@@ -500,8 +500,7 @@ struct ProviderHostImpl : ProviderHost {
     return ::onnxruntime::LogRuntimeError(session_id, status, file, function, line);
   }
 
-}  // namespace onnxruntime
-provider_host_;
+} provider_host_;
 
 struct ProviderLibrary {
   ProviderLibrary(const char* filename) {
