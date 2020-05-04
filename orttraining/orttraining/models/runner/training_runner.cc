@@ -527,12 +527,12 @@ Status TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
     const size_t worker_id) {
     RunOptions run_options;
     run_options.only_execute_path_to_fetches = true;
-    session_.Run(
+    ORT_ENFORCE(session_.Run(
       run_options,
       pipeline_worker_pool_.worker_states[worker_id].feed_names,
       pipeline_worker_pool_.worker_states[worker_id].feeds,
       pipeline_worker_pool_.worker_states[worker_id].fetch_names,
-      &(pipeline_worker_pool_.worker_states[worker_id].fetches));
+      &(pipeline_worker_pool_.worker_states[worker_id].fetches)) == Status::OK());
   }, worker_id);
 
   // Add one after process one batch.
