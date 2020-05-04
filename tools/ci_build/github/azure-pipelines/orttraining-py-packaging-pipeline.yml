@@ -11,6 +11,7 @@ stages:
     enable_mac_cpu: false
 
 - stage: Test_Wheel
+  condition: succeededOrFailed()
   jobs:
   - job: Test_Wheel_Ubuntu_GPU
     pool: Linux-GPU-CUDA10
@@ -38,6 +39,8 @@ stages:
         artifact: onnxruntime_gpu
         patterns: '**/*-$(python.whl.impl.abi.tags)-manylinux2010_x86_64.whl'
         path: $(Pipeline.Workspace)/artifacts
+        allowPartiallySucceededBuilds: true # TODO for testing
+        allowFailedBuilds: true # TODO for testing
       displayName: 'Download wheel'
 
     - script: |
@@ -55,6 +58,7 @@ stages:
         HOST_WHEEL_PATH=$( \
           find "$(Pipeline.Workspace)/artifacts" -name "*-$(python.whl.impl.abi.tags)-manylinux2010_x86_64.whl" \
           | tail -n 1 ) && \
+        ls "${HOST_WHEEL_PATH}" && \
         docker run \
           --rm \
           --gpus all \
