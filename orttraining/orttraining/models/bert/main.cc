@@ -743,10 +743,10 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
     ORT_RETURN_IF_ERROR(runner->ResetLossScaler());
   }
 
-  auto test_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
-                                                               params_for_phase.test_data_dir,
-                                                               max_num_files_preload);
-  ORT_RETURN_IF_ERROR(runner->EndTraining(test_data_loader.get()));
+  // only test and save trained model on device #0
+  if (params_for_phase.mpi_context.world_rank == 0) {
+    ORT_RETURN_IF_ERROR(runner->EndTraining(nullptr));
+  }
 
   return Status::OK();
 }
