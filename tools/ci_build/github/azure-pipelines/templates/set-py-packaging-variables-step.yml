@@ -36,4 +36,5 @@ steps:
         raise ValueError("Unsupported Python version: '{}'".format(version))
 
       for name, value in variables.items():
+        print("Setting variable: {} = '{}'".format(name, value))
         print("##vso[task.setvariable variable={}]{}".format(name, value))

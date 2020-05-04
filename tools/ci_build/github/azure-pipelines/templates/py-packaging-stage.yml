@@ -100,10 +100,10 @@ stages:
                 -e NIGHTLY_BUILD \
                 -e BUILD_BUILDNUMBER \
                 ${{ variables.docker_image_prefix }}-manylinux-$(python.version) \
-                $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build \
                   --config Release \
-                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so \
+                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so \
                   --skip_submodule_sync \
                   --parallel \
                   --build_wheel \
@@ -176,10 +176,10 @@ stages:
                 -e NIGHTLY_BUILD \
                 -e BUILD_BUILDNUMBER \
                 ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
-                $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build \
                   --config Release \
-                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so \
+                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so \
                   --skip_submodule_sync \
                   --parallel \
                   --build_wheel \
