@@ -30,7 +30,7 @@ export declare namespace Tensor {
     int64: BigInt64Array;
     string: string[];
     bool: Uint8Array;
-    float16: never;  // hold on using Uint16Array before we have a concret solution for float 16
+    float16: never;  // hold on using Uint16Array before we have a concrete solution for float 16
     float64: Float64Array;
     uint32: Uint32Array;
     uint64: BigUint64Array;
@@ -46,13 +46,13 @@ export declare namespace Tensor {
     uint16: number;
     int16: number;
     int32: number;
-    int64: number;  // may lose presicion
+    int64: number;  // may lose precision
     string: string;
     bool: boolean;
     float16: never;  // hold on before we have a concret solution for float 16
     float64: number;
     uint32: number;
-    uint64: number;  // may lose presicion
+    uint64: number;  // may lose precision
     // complex64: never;
     // complex128: never;
     // bfloat16: never;
