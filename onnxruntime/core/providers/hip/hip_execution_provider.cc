@@ -1022,6 +1022,12 @@ std::shared_ptr<KernelRegistry> HIPExecutionProvider::GetKernelRegistry() const 
 HIPExecutionProvider::HIPExecutionProvider(const HIPExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kHipExecutionProvider}, device_id_(info.device_id) {
 
+  HIP_CALL_THROW(hipSetDevice(device_id_));
+
+  // must wait GPU idle, otherwise hipGetDeviceProperties might fail
+  HIP_CALL_THROW(hipDeviceSynchronize());
+  HIP_CALL_THROW(hipGetDeviceProperties(&prop_, device_id_));
+
   DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault, [](OrtDevice::DeviceId device_id) { return onnxruntime::make_unique<HIPAllocator>(device_id, CUDA); }, std::numeric_limits<size_t>::max()});
   allocator_ = CreateAllocator(default_memory_info, device_id_);
@@ -1044,11 +1050,6 @@ HIPExecutionProvider::HIPExecutionProvider(const HIPExecutionProviderInfo& info)
                                                                                OrtMemTypeCPUInput)); },
                                                    std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(cpu_memory_info, CPU_ALLOCATOR_DEVICE_ID));
-
-
-  // must wait GPU idle, otherwise hipGetDeviceProperties might fail
-  HIP_CALL_THROW(hipDeviceSynchronize());
-  HIP_CALL_THROW(hipGetDeviceProperties(&prop_, device_id_));
 }
 
 HIPExecutionProvider::~HIPExecutionProvider() {
@@ -1141,6 +1142,8 @@ Status HIPExecutionProvider::Sync() const {
 }
 
 Status HIPExecutionProvider::OnRunStart() {
+  // always set HIP device when session::Run() in case it runs in a worker thread
+  HIP_RETURN_IF_ERROR(hipSetDevice(GetDeviceId()));
   auto cpu_alloc = GetAllocator(0, OrtMemTypeCPU);
   // check if hipEvents has passed for deferred release
   // note that we need to take a mutex in case of multi-threaded Run()
