@@ -23,7 +23,7 @@ class LayerNormFusion : public GraphTransformer {
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
  private:
-  float DEFAULT_LAYERNORM_EPSILON = 1e-5f;
+  static const float DEFAULT_LAYERNORM_EPSILON = 1e-5f;
 };
 
 }  // namespace onnxruntime

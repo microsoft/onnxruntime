@@ -20,7 +20,7 @@ class SkipLayerNormFusion : public GraphTransformer {
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
  private:
-  float DEFAULT_SKIP_EPSILON = 1e-12f;
+  static const float DEFAULT_SKIP_EPSILON = 1e-12f;
 };
 
 }  // namespace onnxruntime
