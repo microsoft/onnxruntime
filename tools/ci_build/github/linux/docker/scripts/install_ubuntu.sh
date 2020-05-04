@@ -93,7 +93,7 @@ else # ubuntu18.04
 fi
 
 if [ $DEVICE_TYPE = "Normal" ]; then
-    PACKAGE_LIST="$PACKAGE_LIST libedit-dev libxml2-dev python3-packaging"
+    PACKAGE_LIST="$PACKAGE_LIST libedit-dev libxml2-dev python3-packaging python3-venv"
 fi
 apt-get update && apt-get install -y --no-install-recommends $PACKAGE_LIST
 
