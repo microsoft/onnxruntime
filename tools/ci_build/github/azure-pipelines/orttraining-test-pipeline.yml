@@ -26,12 +26,15 @@ stages:
 
     - task: DownloadPipelineArtifact@2
       inputs:
-        source: current
-        artifact: onnxruntime_gpu
-        patterns: '**/*-$(python.whl.impl.abi.tags)-manylinux2010_x86_64.whl'
-        path: $(Pipeline.Workspace)/artifacts
-        allowPartiallySucceededBuilds: true # TODO for testing
-        allowFailedBuilds: true # TODO for testing
+        buildType: 'specific'
+        project: '2a773b67-e88b-4c7f-9fc0-87d31fea8ef2'
+        definition: '99'
+        buildVersionToDownload: 'latest'
+        allowPartiallySucceededBuilds: true
+        allowFailedBuilds: true
+        artifactName: 'onnxruntime_gpu'
+        itemPattern: '**/*-$(python.whl.impl.abi.tags)-manylinux2010_x86_64.whl'
+        targetPath: '$(Pipeline.Workspace)/artifacts'
       displayName: 'Download wheel'
 
     - script: |
