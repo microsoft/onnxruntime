@@ -125,7 +125,8 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.local_size,
                                          config.distributed_config.data_parallel_size,
                                          config.distributed_config.horizontal_parallel_size,
-                                         config.distributed_config.pipeline_stage_size});
+                                         config.pipeline_config.has_value() ?
+                                          static_cast<int>(config.pipeline_config.value().num_pipeline_stages) : 1});
 
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph());
 

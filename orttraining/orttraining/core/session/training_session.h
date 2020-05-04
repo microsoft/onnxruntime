@@ -61,8 +61,6 @@ class TrainingSession : public InferenceSession {
       int data_parallel_size{1};
       // The number of ranks for horizontal model parallel group
       int horizontal_parallel_size{1};
-      // The number of stages for pipeline model parallel group
-      int pipeline_stage_size{1};
     };
     // The distributed training configuration.
     DistributedConfiguration distributed_config{};
