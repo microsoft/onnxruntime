@@ -1,6 +1,3 @@
-#ifndef ONNXRUNTIME_NODE_COMMON_H
-#define ONNXRUNTIME_NODE_COMMON_H
-
 #pragma once
 
 #include <napi.h>
@@ -48,5 +45,3 @@ template <typename T> Napi::Value CreateNapiArrayFrom(napi_env env, const std::v
   }
   return scope.Escape(array);
 }
-
-#endif

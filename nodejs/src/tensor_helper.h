@@ -1,6 +1,3 @@
-#ifndef ONNXRUNTIME_NODE_TENSOR_H
-#define ONNXRUNTIME_NODE_TENSOR_H
-
 #pragma once
 
 #include <napi.h>
@@ -13,5 +10,3 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value);
 
 // convert an OrtValue object to a Javascript OnnxValue object
 Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value &value);
-
-#endif

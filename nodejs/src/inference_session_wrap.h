@@ -1,6 +1,3 @@
-#ifndef ONNXRUNTIME_NODE_INFERENCE_SESSION_WRAP_H
-#define ONNXRUNTIME_NODE_INFERENCE_SESSION_WRAP_H
-
 #pragma once
 
 #include "onnxruntime_cxx_api.h"
@@ -71,5 +68,3 @@ private:
   std::vector<ONNXType> outputTypes_;
   std::vector<ONNXTensorElementDataType> outputTensorElementDataTypes_;
 };
-
-#endif
