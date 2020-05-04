@@ -62,7 +62,7 @@ void PipelineSchedule::add(int batch_id) {
 
     // Expand table to accomonadate the new batch.
     const int required_max_time = 2 * num_stages_ + 2 * (num_batches_ - 1);
-    const int current_max_time = table_.size();
+    const int current_max_time = static_cast<int>(table_.size());
 
     for (int t = current_max_time; t < required_max_time; ++t) {
         table_.push_back(std::vector<Slot>(num_stages_));
@@ -103,7 +103,7 @@ void PipelineSchedule::add(int batch_id) {
         for (int t_ = t + 1; t_ < required_max_time; ++t_) {
             if (table_[t_][s].IsEmpty())
             continue;
-            auto events = search_last_recorded_events(t_, s);
+            events = search_last_recorded_events(t_, s);
             table_[t_][s].waited_events = events;
             table_[t_][s].recorded_events = std::vector<int>{ /* max event id */ events[events.size() - 1] + 1 };
         }
@@ -149,7 +149,7 @@ void PipelineSchedule::add(int batch_id) {
         for (int t_ = t + 1; t_ < required_max_time; ++t_) {
             if (table_[t_][s].IsEmpty())
             continue;
-            auto events = search_last_recorded_events(t_, s);
+            events = search_last_recorded_events(t_, s);
             table_[t_][s].waited_events = events;
             table_[t_][s].recorded_events = std::vector<int>{ /* max event id */ events[events.size() - 1] + 1 };
         }
@@ -185,7 +185,6 @@ int PipelineSchedule::get_forward_waited_event_id(int stage_id, int batch_id) co
         }
         events = slot.waited_events;
     }
-    // std::cout << "stage=" << stage_id << ", batch_id=" << batch_id << ", fw_wait=" << events[0] << std::endl;
     return events[0];
 }
 
@@ -201,7 +200,6 @@ int PipelineSchedule::get_forward_recorded_event_id(int stage_id, int batch_id) 
         }
         events = slot.recorded_events;
     }
-    // std::cout << "stage=" << stage_id << ", batch_id=" << batch_id << ", fw_record=" << events[0] << std::endl;
     return events[0];
 }
 
@@ -217,7 +215,6 @@ int PipelineSchedule::get_backward_waited_event_id(int stage_id, int batch_id) c
         }
         events = slot.waited_events;
     }
-    // std::cout << "stage=" << stage_id << ", batch_id=" << batch_id << ", bw_waited=" << events[0] << std::endl;
     return events[0];
 }
 
@@ -233,12 +230,11 @@ int PipelineSchedule::get_backward_recorded_event_id(int stage_id, int batch_id)
         }
         events = slot.recorded_events;
     }
-    // std::cout << "stage=" << stage_id << ", batch_id=" << batch_id << ", bw_recorded=" << events[0] << std::endl;
     return events[0];
 }
 
 void PipelineSchedule::show() const {
-    const int num_slots = table_.size();
+    const int num_slots = static_cast<int>(table_.size());
 
     for (int s = 0; s < num_stages_; ++s) {
         for (int t = 0; t < num_slots; ++t) {
