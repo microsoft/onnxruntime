@@ -1,7 +1,7 @@
 {
   "name": "onnxruntime",
   "description": "Node.js binding of ONNXRuntime",
-  "version": "0.0.1-dev.20200429.2",
+  "version": "0.0.1-dev.20200504.1",
   "main": "./lib/index.js",
   "types": "./types/lib/index.d.ts",
   "scripts": {
@@ -50,6 +50,7 @@
     "eslint-plugin-prefer-arrow": "^1.2.0",
     "fs-extra": "^9.0.0",
     "globby": "^11.0.0",
+    "jsonc": "^2.0.0",
     "mocha": "^7.1.1",
     "node-addon-api": "^2.0.0",
     "node-pre-gyp-github": "^1.4.3",
