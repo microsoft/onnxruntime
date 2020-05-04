@@ -41,6 +41,8 @@ class DataSet {
 
   size_t NumInputs() const { return tensor_names_.size(); }
 
+  std::string GetInputName(size_t input_index) const { return tensor_names_[input_index]; }
+
   common::Status AddData(SampleType&& single_sample);
 
   common::Status AddData(const std::vector<ONNX_NAMESPACE::TensorProto>& features);
@@ -53,6 +55,9 @@ class DataSet {
   virtual std::vector<OrtValue> GetKthBatch(size_t batch_size, size_t k_th, AllocatorPtr allocator = nullptr) const;
 
   void RandomShuffle();
+
+  void DataSet::GetMetrics(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
+                           MapStringToInt64& perf_properties);
 
  private:
   // The names of the tensors.

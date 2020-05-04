@@ -72,6 +72,29 @@ size_t DataSet::TotalBatch(size_t batch_size) const {
   return NumSamples() / batch_size + ((NumSamples() % batch_size > 0) ? 1 : 0);
 }
 
+void DataSet::GetMetrics(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
+                         MapStringToInt64& perf_properties) {
+  if (metrics_map.size() == 0) return; 
+
+  batch_size = min(batch_size, data_.size());
+  for (size_t input_index = 0; input_index < NumInputs(); ++input_index) {
+    std::string input_name = GetInputName(input_index);
+    const auto it = metrics_map.find(input_name);
+    if (it == metrics_map.end()) continue;
+    auto metric = it->second;
+
+    const Tensor& first_tensor = data_[0]->at(input_index).Get<Tensor>();
+    std::vector<int64_t> shape_vector = first_tensor.Shape().GetDims();
+    if (first_tensor.Shape().Size() > 1) {
+      shape_vector.insert(shape_vector.begin(), batch_size);
+    } else {
+      shape_vector.clear();
+      shape_vector.emplace_back(batch_size);
+    }
+    perf_properties.insert({metric.first, shape_vector[metric.second]});
+  }
+}
+
 std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th, AllocatorPtr allocator) const {
   batch_size = min(batch_size, data_.size());
 

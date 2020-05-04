@@ -30,6 +30,8 @@ class TrainingRunner {
     PathString train_data_dir;
     PathString test_data_dir;
     PathString output_dir;  // Output of training, e.g., trained model files.
+    PathString perf_output_dir; // training perf metrics
+    std::string model_type; // bert/gpt2/...
 
     LossFunctionInfo loss_func_info;
 
@@ -54,6 +56,10 @@ class TrainingRunner {
     TrainingSession::ImmutableWeights immutable_weights;
 
     MapStringToString input_name_map;
+
+    // used for collecting perf metrics
+    std::map<std::string, std::pair<std::string, size_t>> metrics_map;
+    MapStringToInt64 perf_properties;
 
     bool is_perf_test;
     bool shuffle_data;
@@ -161,6 +167,10 @@ class TrainingRunner {
   common::Status Initialize();
 
   common::Status Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader);
+
+  common::Status SavePerfMetrics(const size_t number_of_batches, const size_t gradient_accumulation_steps, 
+                                 const size_t weight_update_steps, const double total_time, 
+                                 const double avg_time_per_batch, const double throughput);
 
   common::Status EndTraining(IDataLoader* data_loader);
 

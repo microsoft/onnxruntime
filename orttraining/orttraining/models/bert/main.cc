@@ -67,6 +67,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<std::string>()->default_value(""))
       ("output_dir", "The output directory where the trained model files will be written.",
         cxxopts::value<std::string>()->default_value(""))
+      ("perf_output_dir", "The output directory where the trained perf metrics files will be written.",
+        cxxopts::value<std::string>()->default_value(""))
       ("checkpoints_dir", "The output directory where the checkpoint files will be written.",
         cxxopts::value<std::string>()->default_value(""))
       ("checkpoint_to_load_path",
@@ -236,6 +238,10 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     params.output_dir = ToPathString(flags["output_dir"].as<std::string>());
     if (params.output_dir.empty()) {
       printf("No output directory specified. Trained model files will not be saved.\n");
+    }
+    params.perf_output_dir = ToPathString(flags["perf_output_dir"].as<std::string>());
+    if (params.perf_output_dir.empty()) {
+      printf("No perf output directory specified. Trained perf metrics will not be saved.\n");
     }
     params.checkpoints_dir = ToPathString(flags["checkpoints_dir"].as<std::string>());
     if (params.checkpoints_dir.empty()) {
@@ -489,6 +495,14 @@ void setup_training_params(BertParameters& params) {
       {"masked_lm_ids", "masked_lm_ids"},
       {"masked_lm_weights", "masked_lm_weights"},
       {"next_sentence_label", "next_sentence_labels"}};
+
+  // mapping of max_sequence_length and max_predictions_per_sequence position
+  params.metrics_map = {
+      {"input1", {"sequence", 1}},                          // int64[batch,sequence]
+      {"masked_lm_ids", {"dynamic_prediction_count", 1}}    // int64[batch,dynamic_prediction_count]
+  };
+
+  params.model_type = "bert";
 
   params.skip_evaluation = params.is_perf_test;
 
