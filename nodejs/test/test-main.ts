@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 import {NODE_TESTS_ROOT, warmup} from './test-utils';
 
 // warmup

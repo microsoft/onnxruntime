@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 import * as fs from 'fs-extra';
 import * as onnx_proto from 'onnx-proto';
 import * as path from 'path';

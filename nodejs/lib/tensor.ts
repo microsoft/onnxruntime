@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 import {Tensor as impl} from './tensor-impl';
 import {TypedTensorUtils} from './tensor-utils';
 

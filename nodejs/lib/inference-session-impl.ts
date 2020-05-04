@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 import {binding, Binding} from './binding';
 import {InferenceSession as InferenceSessionInterface, InferenceSessionFactory} from './inference-session';
 import {OnnxValue} from './onnx-value';
