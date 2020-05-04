@@ -795,18 +795,9 @@ set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRU
 if (onnxruntime_BUILD_JAVA)
     message(STATUS "Running Java tests")
     # delegate to gradle's test runner
-    if(WIN32)
-      # On windows ctest requires test to be an .exe(.com) file
-      # so we need cmd to run gradle.
-      # However, ctest does not run cmd well so we outsource it to a separate cmake file.
-      add_test(NAME onnxruntime4j_test COMMAND ${CMAKE_COMMAND}
-        -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
-        -DBIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
-        -DREPO_ROOT=${REPO_ROOT}
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
-    else()
-      add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR}
-               WORKING_DIRECTORY ${REPO_ROOT}/java)
-    endif()
+    # On windows this requires installing gradle from Chocolatey which would target_compile_options(${1:target_name} ${2|INTERFACE|PUBLIC|PRIVATE|} ${3:option})
+    # gradle.exe shim to its bin so ctest could run gradle. Otherwise, you would need cmd to run a batch file.
+    add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR}
+             WORKING_DIRECTORY ${REPO_ROOT}/java)
     set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
 endif()
