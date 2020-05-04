@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
+#include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/graph_utils.h"
 #include "float.h"
 #include <deque>
@@ -12,8 +13,6 @@ namespace onnxruntime {
 
 // LayerNorm supports limited data types.
 static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)"};
-// Default epsilon
-static const float DEFAULT_SKIP_EPSILON = 1e-12f;
 
 static bool IsSupportedDataType(const Node& node) {
   for (const auto& input_arg : node.InputDefs()) {
@@ -245,7 +244,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     if (epsilon != ln_attrs.end()) {
       skip_layer_norm_node.AddAttribute("epsilon", epsilon->second);
     } else {
-      skip_layer_norm_node.AddAttribute("epsilon", DEFAULT_SKIP_EPSILON);
+      skip_layer_norm_node.AddAttribute("epsilon", contrib::kDefaultSkipLayerNormEpsilon);
     }
     // Assign provider to this new node. Provider should be same as the provider for old node.
     skip_layer_norm_node.SetExecutionProviderType(ln_node.GetExecutionProviderType());

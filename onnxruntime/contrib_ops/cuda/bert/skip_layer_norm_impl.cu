@@ -114,10 +114,9 @@ bool LaunchSkipLayerNormKernel(
   const cudaStream_t stream = nullptr;
 
   if (element_size == 2) {
-    if (epsilon < 6e-8f) {
-      LOGS_DEFAULT(WARNING) << "Rounding up SkipLayerNormalization attribute epsilon=" << epsilon 
-        << " to nearest even. ";
-      epsilon = 6e-8f;
+    const half epsilon_half = __float2half_rn(epsilon);
+    if (epsilon_half == 0) {
+      LOGS_DEFAULT(WARNING) << "SkipLayerNormalization attribute epsilon is rounded to zero. ";
     }
     return ComputeSkipLayerNorm(
         stream,
@@ -128,7 +127,7 @@ bool LaunchSkipLayerNormKernel(
         reinterpret_cast<const half*>(beta),
         reinterpret_cast<const half*>(gamma),
         reinterpret_cast<const half*>(bias),
-        __float2half_rn(epsilon),
+        epsilon_half,
         reinterpret_cast<half*>(output));
   } else {
     return ComputeSkipLayerNorm(

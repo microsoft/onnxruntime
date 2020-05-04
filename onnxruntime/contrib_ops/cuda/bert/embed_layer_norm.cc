@@ -35,7 +35,7 @@ EmbedLayerNorm<T>::EmbedLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKern
 
 template <typename T>
 Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
-  ORT_RETURN_IF_ERROR(embed_layer_norm::CheckInputs(context));
+  ORT_RETURN_IF_ERROR(embed_layer_norm::CheckInputs(context, epsilon_));
 
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* segment_ids = context->Input<Tensor>(1);
@@ -49,10 +49,6 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   const auto input_dims = input_ids->Shape().GetDims();
   int64_t hidden_size = word_embedding->Shape()[1];
 
-  if (epsilon_ < 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Epsilon is expected to be positive, got ", epsilon_);
-  }
   std::vector<int64_t> out_dims;
   out_dims.reserve(3);
   out_dims.push_back(input_dims[0]);

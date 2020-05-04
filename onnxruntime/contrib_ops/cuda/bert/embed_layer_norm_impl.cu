@@ -192,16 +192,15 @@ bool LaunchEmbedLayerNormKernel(
   }
 
   if (element_size == 2) {
-    if (epsilon < 6e-8f) {
-      LOGS_DEFAULT(WARNING) << "Rounding up EmbedLayerNormalization attribute epsilon=" << epsilon 
-        << " to nearest even. ";
-      epsilon = 6e-8f;
+    const half epsilon_half = __float2half_rn(epsilon);
+    if (epsilon_half == 0) {
+      LOGS_DEFAULT(WARNING) << "EmbeddingLayerNormalization attribute epsilon is rounded to zero. ";
     }
     return EmbedSkipLayerNorm<half>(
         stream, hidden_size, batch_size, sequence_length, input_ids, segment_ids,
         reinterpret_cast<const half*>(beta), reinterpret_cast<const half*>(gamma),
         reinterpret_cast<const half*>(word_embedding), reinterpret_cast<const half*>(position_embedding), 
-        reinterpret_cast<const half*>(segment_embedding), __float2half_rn(epsilon),
+        reinterpret_cast<const half*>(segment_embedding), epsilon_half,
         reinterpret_cast<half*>(output));
   } else {
     return EmbedSkipLayerNorm<float>(

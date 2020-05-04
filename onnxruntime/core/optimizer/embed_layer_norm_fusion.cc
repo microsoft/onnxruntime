@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
+#include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -12,9 +13,6 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
-// Default epsilon
-static const float DEFAULT_EMBED_EPSILON = 1e-12f;
-
 // Add a Cast to convert Input from int64 to int32.
 static NodeArg* CastToInt32(Graph& graph, NodeArg* input, ProviderType provider_type) {
   auto data_type = input->TypeAsProto()->tensor_type().elem_type();
@@ -708,7 +706,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     if (epsilon != ln_attrs.end()) {
       embed_layer_norm_node.AddAttribute("epsilon", epsilon->second);
     } else {
-      embed_layer_norm_node.AddAttribute("epsilon", DEFAULT_EMBED_EPSILON);
+      embed_layer_norm_node.AddAttribute("epsilon", contrib::kDefaultEmbedLayerNormEpsilon);
     }
 
     // Assign provider to this new node. Provider should be same as the provider for old node.

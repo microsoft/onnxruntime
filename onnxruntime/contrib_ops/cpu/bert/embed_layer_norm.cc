@@ -31,11 +31,7 @@ EmbedLayerNorm<T>::EmbedLayerNorm(const OpKernelInfo& op_kernel_info) : OpKernel
 
 template <typename T>
 Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
-  ORT_RETURN_IF_ERROR(embed_layer_norm::CheckInputs(context));
-  if (epsilon_ < 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-      "Epsilon is expected to be positive, got ", epsilon_);
-  }
+  ORT_RETURN_IF_ERROR(embed_layer_norm::CheckInputs(context, epsilon_));
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* segment_ids = context->Input<Tensor>(1);
   const Tensor* word_embedding = context->Input<Tensor>(2);
