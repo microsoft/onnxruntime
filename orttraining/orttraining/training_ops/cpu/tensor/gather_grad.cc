@@ -81,6 +81,7 @@ Status GatherGrad::ComputeImpl(const TensorShape& data_shape, const Tensor& indi
     const int64_t offset = block_offset % block_size;
     const Tind idx = indices_data[indices_index];
     const int64_t input_index = input_block_index * input_block_size + idx * block_size + offset;
+    //REVIEW(codemzs): This lock can become a performance bottleneck. An area for potential improvement.
     std::lock_guard<std::mutex> lck(mtx);
     output_data[input_index] += grad_data[g];
   };
