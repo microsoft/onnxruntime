@@ -65,7 +65,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --use_featurizers --use_dnnl --use_winml --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --build_java'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --msvc_toolset 14.24 --build_wheel --use_featurizers --use_dnnl --use_winml --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --build_java'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
@@ -256,7 +256,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --use_winml --update --cmake_generator "Visual Studio 16 2019" --build_wheel --use_featurizers --x86 --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --use_winml --update --cmake_generator "Visual Studio 16 2019" --msvc_toolset 14.24 --build_wheel --use_featurizers --x86 --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
@@ -384,7 +384,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_contrib_ops --enable_msvc_static_runtime --enable_onnx_tests --x86'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --msvc_toolset 14.24 --build_wheel --disable_contrib_ops --enable_msvc_static_runtime --enable_onnx_tests --x86'
       workingDirectory: '$(Build.BinariesDirectory)'
      
   - task: VSBuild@1
@@ -501,7 +501,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_contrib_ops --enable_msvc_static_runtime --enable_onnx_tests'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --msvc_toolset 14.24 --build_wheel --disable_contrib_ops --enable_msvc_static_runtime --enable_onnx_tests'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
