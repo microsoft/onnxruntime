@@ -13,7 +13,7 @@ class DnnlPool : public DnnlKernel {
  public:
   DnnlPool(const DnnlNode& node,
            DNNLExecutionProvider* provider,
-           const Prov_NodeAttributes& attributes,
+           const Provider_NodeAttributes& attributes,
            const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     op_name_ = node.name;
     ReadAttributes(attributes, attributes_prefix);
@@ -198,7 +198,7 @@ class DnnlPool : public DnnlKernel {
       }
 
       auto src_size = fwd_primitive_desc_.get()->src_desc().get_size();
-      src_reorder_buffer_ = Prov_IAllocator::MakeUniquePtr<void>(alloc_, src_size);
+      src_reorder_buffer_ = Provider_IAllocator::MakeUniquePtr<void>(alloc_, src_size);
       src_mem_->set_data_handle(src_reorder_buffer_.get());
     } else {
       if (mklnode_ptr_->parent_nodes.empty()) {
@@ -228,7 +228,7 @@ class DnnlPool : public DnnlKernel {
   }
 
  private:
-  void ReadAttributes(const Prov_NodeAttributes& attributes,
+  void ReadAttributes(const Provider_NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");

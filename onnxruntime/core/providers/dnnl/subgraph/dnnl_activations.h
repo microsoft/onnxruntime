@@ -14,7 +14,7 @@ class DnnlRelu : public DnnlKernel {
  public:
   DnnlRelu(const DnnlNode& node,
            DNNLExecutionProvider* provider,
-           const Prov_NodeAttributes& attributes,
+           const Provider_NodeAttributes& attributes,
            const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ORT_UNUSED_PARAMETER(attributes);
     ORT_UNUSED_PARAMETER(attributes_prefix);

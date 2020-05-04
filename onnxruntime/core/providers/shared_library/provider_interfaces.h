@@ -13,19 +13,19 @@ enum OperatorStatus : int;
 // String pointer as unique TypeProto identifier.
 using DataType = const std::string*;
 
-struct Prov_TensorProto {
-  virtual ~Prov_TensorProto() = default;
+struct Provider_TensorProto {
+  virtual ~Provider_TensorProto() = default;
 
-  virtual void CopyFrom(const Prov_TensorProto& v) = 0;
+  virtual void CopyFrom(const Provider_TensorProto& v) = 0;
 
-  void operator=(const Prov_TensorProto& v) { CopyFrom(v); }
+  void operator=(const Provider_TensorProto& v) { CopyFrom(v); }
 };
 
-struct Prov_AttributeProto {
-  static std::unique_ptr<Prov_AttributeProto> Create();
+struct Provider_AttributeProto {
+  static std::unique_ptr<Provider_AttributeProto> Create();
 
-  virtual ~Prov_AttributeProto() = default;
-  virtual std::unique_ptr<Prov_AttributeProto> Clone() const = 0;
+  virtual ~Provider_AttributeProto() = default;
+  virtual std::unique_ptr<Provider_AttributeProto> Clone() const = 0;
 
   virtual ::onnx::AttributeProto_AttributeType type() const = 0;
   virtual int ints_size() const = 0;
@@ -36,27 +36,27 @@ struct Prov_AttributeProto {
   virtual const ::std::string& s() const = 0;
   virtual void set_name(const ::std::string& value) = 0;
   virtual void set_type(::onnx::AttributeProto_AttributeType value) = 0;
-  virtual ::onnx::Prov_TensorProto* add_tensors() = 0;
+  virtual ::onnx::Provider_TensorProto* add_tensors() = 0;
 
-  void operator=(const Prov_AttributeProto& v) = delete;
+  void operator=(const Provider_AttributeProto& v) = delete;
 };
 
-// This is needed since Prov_NodeAttributes is a map of unique_ptr to Prov_AttributeProto and that won't work since unique_ptrs are not copyable
+// This is needed since Provider_NodeAttributes is a map of unique_ptr to Provider_AttributeProto and that won't work since unique_ptrs are not copyable
 // (supposedly this should work in the latest C++ STL but it didn't for me so I used this to make it copyable)
-struct Prov_AttributeProto_Copyable {
-  Prov_AttributeProto_Copyable() = default;
-  Prov_AttributeProto_Copyable(const Prov_AttributeProto_Copyable& copy) : p_{copy->Clone()} {}
+struct Provider_AttributeProto_Copyable {
+  Provider_AttributeProto_Copyable() = default;
+  Provider_AttributeProto_Copyable(const Provider_AttributeProto_Copyable& copy) : p_{copy->Clone()} {}
 
-  void operator=(std::unique_ptr<Prov_AttributeProto>&& p) { p_ = std::move(p); }
-  void operator=(const Prov_AttributeProto_Copyable& p) { p_ = p->Clone(); }
+  void operator=(std::unique_ptr<Provider_AttributeProto>&& p) { p_ = std::move(p); }
+  void operator=(const Provider_AttributeProto_Copyable& p) { p_ = p->Clone(); }
 
-  Prov_AttributeProto& operator*() const { return *p_.get(); }
-  Prov_AttributeProto* operator->() const { return p_.get(); }
+  Provider_AttributeProto& operator*() const { return *p_.get(); }
+  Provider_AttributeProto* operator->() const { return p_.get(); }
 
-  std::unique_ptr<Prov_AttributeProto> p_;
+  std::unique_ptr<Provider_AttributeProto> p_;
 };
 
-struct Prov_TensorShapeProto {
+struct Provider_TensorShapeProto {
   int dim_size() const { return dim_size_; }
 
   int dim_size_{};
@@ -67,11 +67,11 @@ struct Prov_TensorShapeProto {
 namespace onnxruntime {
 
 struct ProviderHost;
-struct Prov_IExecutionProvider;
+struct Provider_IExecutionProvider;
 
-struct Prov_IExecutionProviderFactory {
-  virtual ~Prov_IExecutionProviderFactory() = default;
-  virtual std::unique_ptr<Prov_IExecutionProvider> CreateProvider() = 0;
+struct Provider_IExecutionProviderFactory {
+  virtual ~Provider_IExecutionProviderFactory() = default;
+  virtual std::unique_ptr<Provider_IExecutionProvider> CreateProvider() = 0;
 };
 
 //struct KernelCreateInfo;
@@ -79,22 +79,22 @@ struct Prov_IExecutionProviderFactory {
 class DataTypeImpl;
 using MLDataType = const DataTypeImpl*;
 
-struct Prov_OrtDevice {
-  virtual ~Prov_OrtDevice() {}
+struct Provider_OrtDevice {
+  virtual ~Provider_OrtDevice() {}
 };
 
-struct Prov_OrtMemoryInfo {
-  static std::unique_ptr<Prov_OrtMemoryInfo> Create(const char* name_, OrtAllocatorType type_, Prov_OrtDevice* device_ = nullptr, int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault);
-  virtual ~Prov_OrtMemoryInfo() {}
+struct Provider_OrtMemoryInfo {
+  static std::unique_ptr<Provider_OrtMemoryInfo> Create(const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_ = nullptr, int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault);
+  virtual ~Provider_OrtMemoryInfo() {}
 
-  void operator=(const Prov_OrtMemoryInfo& v) = delete;
+  void operator=(const Provider_OrtMemoryInfo& v) = delete;
 };
 
 template <typename T>
-using Prov_IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
+using Provider_IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
-struct Prov_IAllocator {
-  virtual ~Prov_IAllocator() {}
+struct Provider_IAllocator {
+  virtual ~Provider_IAllocator() {}
 
   virtual void* Alloc(size_t size) = 0;
   virtual void Free(void* p) = 0;
@@ -107,7 +107,7 @@ struct Prov_IAllocator {
   static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept ORT_MUST_USE_RESULT;
 
   template <typename T>
-  static Prov_IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<Prov_IAllocator> allocator, size_t count_or_bytes) {
+  static Provider_IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<Provider_IAllocator> allocator, size_t count_or_bytes) {
     if (allocator == nullptr) return nullptr;
     // for now limit to fundamental types. we could support others, but to do so either we or the caller
     // needs to call the dtor for the objects, for buffers allocated on device we don't have destructor
@@ -122,16 +122,16 @@ struct Prov_IAllocator {
       if (!CalcMemSizeForArray(count_or_bytes, sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type),
                                &alloc_size)) return nullptr;
     }
-    return Prov_IAllocatorUniquePtr<T>{
+    return Provider_IAllocatorUniquePtr<T>{
         static_cast<T*>(allocator->Alloc(alloc_size)),  // allocate
         [=](T* ptr) { allocator->Free(ptr); }};         // capture IAllocator so it's always valid, and use as deleter
   }
 
-  void operator=(const Prov_IAllocator& v) = delete;
+  void operator=(const Provider_IAllocator& v) = delete;
 };
 
 template <size_t alignment>
-bool Prov_IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept {
+bool Provider_IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept {
   static constexpr size_t max_allowed = (static_cast<size_t>(1) << (static_cast<size_t>(std::numeric_limits<size_t>::digits >> 1))) - alignment;
   static constexpr size_t max_size = std::numeric_limits<size_t>::max() - alignment;
   static constexpr size_t alignment_mask = alignment - 1;
@@ -151,22 +151,22 @@ bool Prov_IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size
   return true;
 }
 
-struct Prov_IDeviceAllocator : Prov_IAllocator {
+struct Provider_IDeviceAllocator : Provider_IAllocator {
   virtual bool AllowsArena() const = 0;
 };
 
-using Prov_AllocatorPtr = std::shared_ptr<Prov_IAllocator>;
-using Prov_DeviceAllocatorFactory = std::function<std::unique_ptr<Prov_IDeviceAllocator>(int)>;
+using Provider_AllocatorPtr = std::shared_ptr<Provider_IAllocator>;
+using Provider_DeviceAllocatorFactory = std::function<std::unique_ptr<Provider_IDeviceAllocator>(int)>;
 
-struct Prov_DeviceAllocatorRegistrationInfo {
+struct Provider_DeviceAllocatorRegistrationInfo {
   OrtMemType mem_type;
-  Prov_DeviceAllocatorFactory factory;
+  Provider_DeviceAllocatorFactory factory;
   size_t max_mem;
 };
 
 class TensorShape;
 
-struct Prov_Tensor {
+struct Provider_Tensor {
   virtual float* MutableData_float() = 0;
   virtual const float* Data_float() const = 0;
 
@@ -180,12 +180,12 @@ struct Prov_Tensor {
 };
 
 template <>
-inline float* Prov_Tensor::MutableData<float>() { return MutableData_float(); }
+inline float* Provider_Tensor::MutableData<float>() { return MutableData_float(); }
 
 template <>
-inline const float* Prov_Tensor::Data<float>() const { return Data_float(); }
+inline const float* Provider_Tensor::Data<float>() const { return Data_float(); }
 
-struct Prov_OpKernelInfo {
+struct Provider_OpKernelInfo {
   virtual Status GetAttr(const std::string& name, int64_t* value) const = 0;
   virtual Status GetAttr(const std::string& name, float* value) const = 0;
 
@@ -194,114 +194,111 @@ struct Prov_OpKernelInfo {
 };
 
 template <>
-inline Status Prov_OpKernelInfo::GetAttr<int64_t>(const std::string& name, int64_t* value) const {
+inline Status Provider_OpKernelInfo::GetAttr<int64_t>(const std::string& name, int64_t* value) const {
   return GetAttr(name, value);
 }
 
 template <>
-inline Status Prov_OpKernelInfo::GetAttr<float>(const std::string& name, float* value) const {
+inline Status Provider_OpKernelInfo::GetAttr<float>(const std::string& name, float* value) const {
   return GetAttr(name, value);
 }
 
-struct Prov_OpKernelContext {
-  virtual const Prov_Tensor* Input_Tensor(int index) const = 0;
+struct Provider_OpKernelContext {
+  virtual const Provider_Tensor* Input_Tensor(int index) const = 0;
 
   template <typename T>
   const T* Input(int index) const;
 
-  virtual Prov_Tensor* Output(int index, const TensorShape& shape) = 0;
+  virtual Provider_Tensor* Output(int index, const TensorShape& shape) = 0;
 };
 
 template <>
-inline const Prov_Tensor* Prov_OpKernelContext::Input<Prov_Tensor>(int index) const {
+inline const Provider_Tensor* Provider_OpKernelContext::Input<Provider_Tensor>(int index) const {
   return Input_Tensor(index);
 }
 
-struct Prov_OpKernel {
-  Prov_OpKernel(const Prov_OpKernelInfo& /*info*/) {}
-  virtual ~Prov_OpKernel() = default;
+struct Provider_OpKernel {
+  Provider_OpKernel(const Provider_OpKernelInfo& /*info*/) {}
+  virtual ~Provider_OpKernel() = default;
 
-  virtual Status Compute(Prov_OpKernelContext* context) const = 0;
+  virtual Status Compute(Provider_OpKernelContext* context) const = 0;
 };
 
-struct Prov_KernelDef {
-  virtual ~Prov_KernelDef() = default;
+struct Provider_KernelDef {
+  virtual ~Provider_KernelDef() = default;
 };
 
-using Prov_KernelCreateFn = std::function<Prov_OpKernel*(const Prov_OpKernelInfo& info)>;
-using Prov_KernelCreatePtrFn = std::add_pointer<Prov_OpKernel*(const Prov_OpKernelInfo& info)>::type;
+using Provider_KernelCreateFn = std::function<Provider_OpKernel*(const Provider_OpKernelInfo& info)>;
+using Provider_KernelCreatePtrFn = std::add_pointer<Provider_OpKernel*(const Provider_OpKernelInfo& info)>::type;
 
-struct Prov_KernelCreateInfo {
-  std::unique_ptr<Prov_KernelDef> kernel_def;  // Owned and stored in the global kernel registry.
-  Prov_KernelCreateFn kernel_create_func;
+struct Provider_KernelCreateInfo {
+  std::unique_ptr<Provider_KernelDef> kernel_def;  // Owned and stored in the global kernel registry.
+  Provider_KernelCreateFn kernel_create_func;
 
-  Prov_KernelCreateInfo(std::unique_ptr<Prov_KernelDef> definition,
-                        Prov_KernelCreateFn create_func)
+  Provider_KernelCreateInfo(std::unique_ptr<Provider_KernelDef> definition,
+                            Provider_KernelCreateFn create_func)
       : kernel_def(std::move(definition)),
         kernel_create_func(create_func) {}
 
-  Prov_KernelCreateInfo(Prov_KernelCreateInfo&& other) noexcept
+  Provider_KernelCreateInfo(Provider_KernelCreateInfo&& other) noexcept
       : kernel_def(std::move(other.kernel_def)),
         kernel_create_func(std::move(other.kernel_create_func)) {}
 };
 
-using Prov_BuildKernelCreateInfoFn = Prov_KernelCreateInfo (*)();
+using Provider_BuildKernelCreateInfoFn = Provider_KernelCreateInfo (*)();
 
-struct Prov_KernelDefBuilder {
-  static std::unique_ptr<Prov_KernelDefBuilder> Create();
+struct Provider_KernelDefBuilder {
+  static std::unique_ptr<Provider_KernelDefBuilder> Create();
 
-  virtual ~Prov_KernelDefBuilder() = default;
-  virtual Prov_KernelDefBuilder& SetName(const char* op_name) = 0;
-  virtual Prov_KernelDefBuilder& SetDomain(const char* domain) = 0;
-  virtual Prov_KernelDefBuilder& SinceVersion(int since_version) = 0;
-  virtual Prov_KernelDefBuilder& Provider(const char* provider_type) = 0;
-  virtual Prov_KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType supported_type) = 0;
+  virtual ~Provider_KernelDefBuilder() = default;
+  virtual Provider_KernelDefBuilder& SetName(const char* op_name) = 0;
+  virtual Provider_KernelDefBuilder& SetDomain(const char* domain) = 0;
+  virtual Provider_KernelDefBuilder& SinceVersion(int since_version) = 0;
+  virtual Provider_KernelDefBuilder& Provider(const char* provider_type) = 0;
+  virtual Provider_KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType supported_type) = 0;
 
-  virtual std::unique_ptr<Prov_KernelDef> Build() = 0;
+  virtual std::unique_ptr<Provider_KernelDef> Build() = 0;
 
-  void operator=(const Prov_KernelDefBuilder& v) = delete;
+  void operator=(const Provider_KernelDefBuilder& v) = delete;
 };
 
 using NodeIndex = size_t;
-using Prov_NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::Prov_AttributeProto_Copyable>;
+using Provider_NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::Provider_AttributeProto_Copyable>;
 
-using Prov_InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::Prov_TensorProto*>;
+using Provider_InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::Provider_TensorProto*>;
 
-struct Prov_NodeArg {
-  virtual ~Prov_NodeArg() = default;
+struct Provider_NodeArg {
+  virtual ~Provider_NodeArg() = default;
   virtual const std::string& Name() const noexcept = 0;
-  virtual const ONNX_NAMESPACE::Prov_TensorShapeProto* Shape() const = 0;
+  virtual const ONNX_NAMESPACE::Provider_TensorShapeProto* Shape() const = 0;
   virtual ONNX_NAMESPACE::DataType Type() const noexcept = 0;
 
-  void operator=(const Prov_NodeArg& v) = delete;
+  void operator=(const Provider_NodeArg& v) = delete;
 };
 
-struct Prov_Node {
-  virtual ~Prov_Node() = default;
+struct Provider_Node {
+  virtual ~Provider_Node() = default;
 
   virtual const std::string& OpType() const noexcept = 0;
-#if 0
-  const ONNX_NAMESPACE::OpSchema* Op() const noexcept;
-#endif
 
-  virtual ConstPointerContainer<std::vector<Prov_NodeArg*>> InputDefs() const noexcept = 0;
-  virtual ConstPointerContainer<std::vector<Prov_NodeArg*>> OutputDefs() const noexcept = 0;
+  virtual ConstPointerContainer<std::vector<Provider_NodeArg*>> InputDefs() const noexcept = 0;
+  virtual ConstPointerContainer<std::vector<Provider_NodeArg*>> OutputDefs() const noexcept = 0;
   virtual NodeIndex Index() const noexcept = 0;
 
-  virtual const Prov_NodeAttributes& GetAttributes() const noexcept = 0;
+  virtual const Provider_NodeAttributes& GetAttributes() const noexcept = 0;
   virtual size_t GetInputEdgesCount() const noexcept = 0;
   virtual size_t GetOutputEdgesCount() const noexcept = 0;
 
-  struct Prov_NodeIterator {
-    virtual ~Prov_NodeIterator() {}
-    virtual bool operator!=(const Prov_NodeIterator& p) const = 0;
+  struct Provider_NodeIterator {
+    virtual ~Provider_NodeIterator() {}
+    virtual bool operator!=(const Provider_NodeIterator& p) const = 0;
 
     virtual void operator++() = 0;
-    virtual const Prov_Node& operator*() = 0;
+    virtual const Provider_Node& operator*() = 0;
   };
 
   struct NodeConstIterator {
-    NodeConstIterator(std::unique_ptr<Prov_NodeIterator> p) : impl_{std::move(p)} {}
+    NodeConstIterator(std::unique_ptr<Provider_NodeIterator> p) : impl_{std::move(p)} {}
 
     bool operator==(const NodeConstIterator& p_other) const;
     bool operator!=(const NodeConstIterator& p_other) const {
@@ -313,19 +310,19 @@ struct Prov_Node {
     }
     void operator--();
 
-    const Prov_Node& operator*() const {
+    const Provider_Node& operator*() const {
       return impl_->operator*();
     }
-    const Prov_Node* operator->() const;
+    const Provider_Node* operator->() const;
 
-    std::unique_ptr<Prov_NodeIterator> impl_;
+    std::unique_ptr<Provider_NodeIterator> impl_;
   };
 
   NodeConstIterator InputNodesBegin() const noexcept { return NodeConstIterator(InputNodesBegin_internal()); }
   NodeConstIterator InputNodesEnd() const noexcept { return NodeConstIterator(InputNodesEnd_internal()); }
 
-  virtual std::unique_ptr<Prov_NodeIterator> InputNodesBegin_internal() const noexcept = 0;
-  virtual std::unique_ptr<Prov_NodeIterator> InputNodesEnd_internal() const noexcept = 0;
+  virtual std::unique_ptr<Provider_NodeIterator> InputNodesBegin_internal() const noexcept = 0;
+  virtual std::unique_ptr<Provider_NodeIterator> InputNodesEnd_internal() const noexcept = 0;
 
 };  // namespace onnxruntime
 
@@ -343,51 +340,24 @@ struct NodeComputeInfo {
 };
 #endif
 
-struct Prov_GraphViewer {
-  virtual ~Prov_GraphViewer() = default;
+struct Provider_GraphViewer {
+  virtual ~Provider_GraphViewer() = default;
   virtual const std::string& Name() const noexcept = 0;
 
-#if 0
-  virtual const std::string& Description() const noexcept = 0;
-  bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const;
-  bool CanOverrideInitializer() const noexcept;
-  const std::vector<const NodeArg*>& GetInputs() const noexcept;
-  const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept;
-  const std::vector<const NodeArg*>& GetOutputs() const noexcept;
-  const std::vector<const NodeArg*>& GetValueInfo() const noexcept;
-#endif
-
-  virtual const Prov_Node* GetNode(NodeIndex node_index) const = 0;
-
-#if 0
-  const GraphNodes& Nodes() const noexcept;
-  int NumberOfNodes() const noexcept;
-#endif
+  virtual const Provider_Node* GetNode(NodeIndex node_index) const = 0;
 
   virtual int MaxNodeIndex() const noexcept = 0;
 
-#if 0
-  const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const;
-  const std::vector<NodeIndex>& GetRootNodes() const;
-#endif
-  virtual const Prov_InitializedTensorSet& GetAllInitializedTensors() const noexcept = 0;
-
-#if 0
-  const NodeArg* GetNodeArg(const std::string& name) const;
-#endif
+  virtual const Provider_InitializedTensorSet& GetAllInitializedTensors() const noexcept = 0;
 
   virtual const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept = 0;
-#if 0
-  bool IsSubgraph() const;
-  bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const;
-#endif
 
-  void operator=(const Prov_GraphViewer& v) = delete;
+  void operator=(const Provider_GraphViewer& v) = delete;
 };
 
-struct Prov_IndexedSubGraph {
-  static std::unique_ptr<Prov_IndexedSubGraph> Create();
-  virtual ~Prov_IndexedSubGraph() = default;
+struct Provider_IndexedSubGraph {
+  static std::unique_ptr<Provider_IndexedSubGraph> Create();
+  virtual ~Provider_IndexedSubGraph() = default;
 
   struct MetaDef {
     std::string name;    ///< Name of customized SubGraph/FunctionProto
@@ -396,9 +366,9 @@ struct Prov_IndexedSubGraph {
 
     ONNX_NAMESPACE::OperatorStatus status;  ///< Status of customized SubGraph/FunctionProto.
 
-    std::vector<std::string> inputs;   ///< Inputs of customized SubGraph/FunctionProto.
-    std::vector<std::string> outputs;  ///< Outputs of customized SubGraph/FunctionProto.
-    Prov_NodeAttributes attributes;    ///< Attributes of customized SubGraph/FunctionProto.
+    std::vector<std::string> inputs;     ///< Inputs of customized SubGraph/FunctionProto.
+    std::vector<std::string> outputs;    ///< Outputs of customized SubGraph/FunctionProto.
+    Provider_NodeAttributes attributes;  ///< Attributes of customized SubGraph/FunctionProto.
 
     std::string doc_string;  ///< Doc string of customized SubGraph/FunctionProto.
   };
@@ -408,58 +378,58 @@ struct Prov_IndexedSubGraph {
 
   virtual void SetMetaDef(std::unique_ptr<MetaDef>& meta_def_) = 0;
 
-  void operator=(const Prov_IndexedSubGraph& v) = delete;
+  void operator=(const Provider_IndexedSubGraph& v) = delete;
 };
 
-struct Prov_KernelRegistry {
-  static std::shared_ptr<Prov_KernelRegistry> Create();
+struct Provider_KernelRegistry {
+  static std::shared_ptr<Provider_KernelRegistry> Create();
 
-  virtual ~Prov_KernelRegistry() = default;
-  virtual Status Register(Prov_KernelCreateInfo&& create_info) = 0;
+  virtual ~Provider_KernelRegistry() = default;
+  virtual Status Register(Provider_KernelCreateInfo&& create_info) = 0;
 
-  void operator=(const Prov_KernelRegistry& v) = delete;
+  void operator=(const Provider_KernelRegistry& v) = delete;
 };
 
-struct Prov_ComputeCapability {
-  Prov_ComputeCapability(std::unique_ptr<Prov_IndexedSubGraph> t_sub_graph) : t_sub_graph_{std::move(t_sub_graph)} {}
+struct Provider_ComputeCapability {
+  Provider_ComputeCapability(std::unique_ptr<Provider_IndexedSubGraph> t_sub_graph) : t_sub_graph_{std::move(t_sub_graph)} {}
 
-  std::unique_ptr<Prov_IndexedSubGraph> t_sub_graph_;
+  std::unique_ptr<Provider_IndexedSubGraph> t_sub_graph_;
 
-  void operator=(const Prov_ComputeCapability& v) = delete;
+  void operator=(const Provider_ComputeCapability& v) = delete;
 };
 
-// Provides the base class implementations, since Prov_IExecutionProvider is just an interface. This is to fake the C++ inheritance used by internal IExecutionProvider implementations
-struct Prov_IExecutionProvider_Router {
-  virtual ~Prov_IExecutionProvider_Router() {}
+// Provides the base class implementations, since Provider_IExecutionProvider is just an interface. This is to fake the C++ inheritance used by internal IExecutionProvider implementations
+struct Provider_IExecutionProvider_Router {
+  virtual ~Provider_IExecutionProvider_Router() {}
 
-  virtual std::shared_ptr<Prov_KernelRegistry> Prov_GetKernelRegistry() const = 0;
+  virtual std::shared_ptr<Provider_KernelRegistry> Provider_GetKernelRegistry() const = 0;
 
-  virtual std::vector<std::unique_ptr<Prov_ComputeCapability>> Prov_GetCapability(const onnxruntime::Prov_GraphViewer& graph,
-                                                                                  const std::vector<const Prov_KernelRegistry*>& kernel_registries) const = 0;
+  virtual std::vector<std::unique_ptr<Provider_ComputeCapability>> Provider_GetCapability(const onnxruntime::Provider_GraphViewer& graph,
+                                                                                          const std::vector<const Provider_KernelRegistry*>& kernel_registries) const = 0;
 
-  virtual Prov_AllocatorPtr Prov_GetAllocator(int id, OrtMemType mem_type) const = 0;
-  virtual void Prov_InsertAllocator(Prov_AllocatorPtr allocator) = 0;
+  virtual Provider_AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const = 0;
+  virtual void Provider_InsertAllocator(Provider_AllocatorPtr allocator) = 0;
 
-  void operator=(const Prov_IExecutionProvider_Router& v) = delete;
+  void operator=(const Provider_IExecutionProvider_Router& v) = delete;
 };
 
-struct Prov_IExecutionProvider {
-  Prov_IExecutionProvider(const std::string& type);
-  virtual ~Prov_IExecutionProvider() {}
+struct Provider_IExecutionProvider {
+  Provider_IExecutionProvider(const std::string& type);
+  virtual ~Provider_IExecutionProvider() {}
 
-  virtual std::shared_ptr<Prov_KernelRegistry> Prov_GetKernelRegistry() const { return p_->Prov_GetKernelRegistry(); }
+  virtual std::shared_ptr<Provider_KernelRegistry> Provider_GetKernelRegistry() const { return p_->Provider_GetKernelRegistry(); }
 
-  virtual std::vector<std::unique_ptr<Prov_ComputeCapability>> Prov_GetCapability(const onnxruntime::Prov_GraphViewer& graph,
-                                                                                  const std::vector<const Prov_KernelRegistry*>& kernel_registries) const { return p_->Prov_GetCapability(graph, kernel_registries); }
+  virtual std::vector<std::unique_ptr<Provider_ComputeCapability>> Provider_GetCapability(const onnxruntime::Provider_GraphViewer& graph,
+                                                                                          const std::vector<const Provider_KernelRegistry*>& kernel_registries) const { return p_->Provider_GetCapability(graph, kernel_registries); }
 
-  virtual common::Status Prov_Compile(const std::vector<Prov_Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
+  virtual common::Status Provider_Compile(const std::vector<Provider_Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
 
-  virtual Prov_AllocatorPtr Prov_GetAllocator(int id, OrtMemType mem_type) const { return p_->Prov_GetAllocator(id, mem_type); }
-  virtual void Prov_InsertAllocator(Prov_AllocatorPtr allocator) { return p_->Prov_InsertAllocator(allocator); }
+  virtual Provider_AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const { return p_->Provider_GetAllocator(id, mem_type); }
+  virtual void Provider_InsertAllocator(Provider_AllocatorPtr allocator) { return p_->Provider_InsertAllocator(allocator); }
 
-  Prov_IExecutionProvider_Router* p_;
+  Provider_IExecutionProvider_Router* p_;
 
-  void operator=(const Prov_IExecutionProvider& v) = delete;
+  void operator=(const Provider_IExecutionProvider& v) = delete;
 };
 
 namespace logging {
@@ -467,7 +437,7 @@ class Logger;
 }
 
 struct Provider {
-  virtual std::shared_ptr<Prov_IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) = 0;
+  virtual std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) = 0;
   virtual void SetProviderHost(ProviderHost& host) = 0;
 };
 
@@ -477,22 +447,22 @@ struct Provider {
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
 struct ProviderHost {
-  virtual Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, int16_t device_id = 0) = 0;
+  virtual Provider_AllocatorPtr CreateAllocator(Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id = 0) = 0;
 
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
 
-  virtual std::unique_ptr<ONNX_NAMESPACE::Prov_AttributeProto> AttributeProto_Create() = 0;
+  virtual std::unique_ptr<ONNX_NAMESPACE::Provider_AttributeProto> AttributeProto_Create() = 0;
 
-  virtual std::unique_ptr<Prov_OrtMemoryInfo> OrtMemoryInfo_Create(const char* name_, OrtAllocatorType type_, Prov_OrtDevice* device_, int id_, OrtMemType mem_type_) = 0;
-  virtual std::unique_ptr<Prov_KernelDefBuilder> KernelDefBuilder_Create() = 0;
+  virtual std::unique_ptr<Provider_OrtMemoryInfo> OrtMemoryInfo_Create(const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) = 0;
+  virtual std::unique_ptr<Provider_KernelDefBuilder> KernelDefBuilder_Create() = 0;
 
-  virtual std::shared_ptr<Prov_KernelRegistry> KernelRegistry_Create() = 0;
+  virtual std::shared_ptr<Provider_KernelRegistry> KernelRegistry_Create() = 0;
 
-  virtual std::unique_ptr<Prov_IndexedSubGraph> IndexedSubGraph_Create() = 0;
+  virtual std::unique_ptr<Provider_IndexedSubGraph> IndexedSubGraph_Create() = 0;
 
-  virtual std::unique_ptr<Prov_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Prov_OrtMemoryInfo> memory_info) = 0;
-  virtual Prov_AllocatorPtr CreateDummyArenaAllocator(std::unique_ptr<Prov_IDeviceAllocator> resource_allocator) = 0;
-  virtual std::unique_ptr<Prov_IExecutionProvider_Router> Create_IExecutionProvider_Router(Prov_IExecutionProvider* outer, const std::string& type) = 0;
+  virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> memory_info) = 0;
+  virtual Provider_AllocatorPtr CreateDummyArenaAllocator(std::unique_ptr<Provider_IDeviceAllocator> resource_allocator) = 0;
+  virtual std::unique_ptr<Provider_IExecutionProvider_Router> Create_IExecutionProvider_Router(Provider_IExecutionProvider* outer, const std::string& type) = 0;
 
   MLDataType (*DataTypeImpl_GetType_Tensor)();
   MLDataType (*DataTypeImpl_GetType_float)();

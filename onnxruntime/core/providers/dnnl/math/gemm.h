@@ -6,9 +6,9 @@
 namespace onnxruntime {
 namespace ort_dnnl {
 template <typename T>
-class Gemm final : public Prov_OpKernel {
+class Gemm final : public Provider_OpKernel {
  public:
-  Gemm(const Prov_OpKernelInfo& info) : Prov_OpKernel(info) {
+  Gemm(const Provider_OpKernelInfo& info) : Provider_OpKernel(info) {
     int64_t temp;
     ORT_ENFORCE(info.GetAttr<int64_t>("transA", &temp).IsOK());
     trans_A_ = (temp != 0);
@@ -20,7 +20,7 @@ class Gemm final : public Prov_OpKernel {
     ORT_ENFORCE(info.GetAttr<float>("beta", &beta_).IsOK());
   }
 
-  Status Compute(Prov_OpKernelContext* context) const override;
+  Status Compute(Provider_OpKernelContext* context) const override;
 
  private:
   bool trans_A_;

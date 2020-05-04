@@ -82,11 +82,11 @@ class DnnlBatchNorm : public DnnlKernel {
  public:
   explicit DnnlBatchNorm(const DnnlNode& node,
                          DNNLExecutionProvider* provider,
-                         const Prov_NodeAttributes& attributes,
+                         const Provider_NodeAttributes& attributes,
                          const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }
-  void ReadAttributes(const Prov_NodeAttributes& attributes,
+  void ReadAttributes(const Provider_NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     auto attr = attributes.find(attributes_prefix + "epsilon");
     if (attr != attributes.end() &&

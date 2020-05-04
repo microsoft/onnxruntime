@@ -64,30 +64,30 @@ void operator delete(void* p) { return g_host->HeapFree(p); }
 void operator delete(void* p, size_t /*size*/) { return g_host->HeapFree(p); }
 
 namespace onnx {
-std::unique_ptr<ONNX_NAMESPACE::Prov_AttributeProto> Prov_AttributeProto::Create() {
+std::unique_ptr<ONNX_NAMESPACE::Provider_AttributeProto> Provider_AttributeProto::Create() {
   return g_host->AttributeProto_Create();
 }
 }  // namespace onnx
 
 namespace onnxruntime {
 
-Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo& info, int16_t device_id) {
+Provider_AllocatorPtr CreateAllocator(Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id) {
   return g_host->CreateAllocator(info, device_id);
 }
 
-std::unique_ptr<Prov_KernelDefBuilder> Prov_KernelDefBuilder::Create() {
+std::unique_ptr<Provider_KernelDefBuilder> Provider_KernelDefBuilder::Create() {
   return g_host->KernelDefBuilder_Create();
 }
 
-std::shared_ptr<Prov_KernelRegistry> Prov_KernelRegistry::Create() {
+std::shared_ptr<Provider_KernelRegistry> Provider_KernelRegistry::Create() {
   return g_host->KernelRegistry_Create();
 }
 
-std::unique_ptr<Prov_OrtMemoryInfo> Prov_OrtMemoryInfo::Create(const char* name_, OrtAllocatorType type_, Prov_OrtDevice* device_, int id_, OrtMemType mem_type_) {
+std::unique_ptr<Provider_OrtMemoryInfo> Provider_OrtMemoryInfo::Create(const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) {
   return g_host->OrtMemoryInfo_Create(name_, type_, device_, id_, mem_type_);
 }
 
-std::unique_ptr<Prov_IndexedSubGraph> Prov_IndexedSubGraph::Create() {
+std::unique_ptr<Provider_IndexedSubGraph> Provider_IndexedSubGraph::Create() {
   return g_host->IndexedSubGraph_Create();
 }
 
@@ -170,19 +170,19 @@ bool CPUIDInfo::HasAVX512f() const {
   return g_host->CPU_HasAVX512f();
 }
 
-Prov_AllocatorPtr CreateAllocator(Prov_DeviceAllocatorRegistrationInfo info, int16_t device_id) {
+Provider_AllocatorPtr CreateAllocator(Provider_DeviceAllocatorRegistrationInfo info, int16_t device_id) {
   return g_host->CreateAllocator(info, device_id);
 }
 
-std::unique_ptr<Prov_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Prov_OrtMemoryInfo> info) {
+std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> info) {
   return g_host->CreateCPUAllocator(std::move(info));
 }
 
-Prov_AllocatorPtr CreateDummyArenaAllocator(std::unique_ptr<Prov_IDeviceAllocator> resource_allocator) {
+Provider_AllocatorPtr CreateDummyArenaAllocator(std::unique_ptr<Provider_IDeviceAllocator> resource_allocator) {
   return g_host->CreateDummyArenaAllocator(std::move(resource_allocator));
 }
 
-Prov_IExecutionProvider::Prov_IExecutionProvider(const std::string& type) {
+Provider_IExecutionProvider::Provider_IExecutionProvider(const std::string& type) {
   p_ = g_host->Create_IExecutionProvider_Router(this, type).release();
 }
 

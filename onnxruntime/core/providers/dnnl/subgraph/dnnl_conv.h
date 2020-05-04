@@ -62,7 +62,7 @@ class DnnlConv : public DnnlKernel {
  public:
   DnnlConv(const DnnlNode& node,
            DNNLExecutionProvider* provider,
-           const Prov_NodeAttributes& attributes,
+           const Provider_NodeAttributes& attributes,
            const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }
@@ -387,7 +387,7 @@ class DnnlConv : public DnnlKernel {
       if (filter_dst_mem == nullptr) {
         dnnl::memory src = dnnl::memory({{filter_dims_mkl}, DnnnType<T>(), filter_format_}, cpu_engine, (void*)filter_data);
         IAllocatorUniquePtr<void> filter_reorder_buffer =
-            Prov_IAllocator::MakeUniquePtr<void>(alloc_, filter_size_);
+            Provider_IAllocator::MakeUniquePtr<void>(alloc_, filter_size_);
         filter_dst_mem = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(conv_fwd_pd_->weights_desc(), cpu_engine, filter_reorder_buffer.get()));
 
@@ -437,7 +437,7 @@ class DnnlConv : public DnnlKernel {
       }
 
       auto src_size = conv_fwd_pd_.get()->src_desc().get_size();
-      src_reorder_buffer_ = Prov_IAllocator::MakeUniquePtr<void>(alloc_, src_size);
+      src_reorder_buffer_ = Provider_IAllocator::MakeUniquePtr<void>(alloc_, src_size);
       src_mem_->set_data_handle(src_reorder_buffer_.get());
     } else {
       if (mklnode_ptr_->parent_nodes.empty()) {
@@ -465,7 +465,7 @@ class DnnlConv : public DnnlKernel {
   }
 
  private:
-  void ReadAttributes(const Prov_NodeAttributes& attributes,
+  void ReadAttributes(const Provider_NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     std::string auto_pad;
     auto attr = attributes.find(attributes_prefix + "auto_pad");

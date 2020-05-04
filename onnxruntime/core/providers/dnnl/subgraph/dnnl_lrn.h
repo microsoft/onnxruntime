@@ -14,7 +14,7 @@ class DnnlLrn : public DnnlKernel {
  public:
   DnnlLrn(const DnnlNode& node,
           DNNLExecutionProvider* provider,
-          const Prov_NodeAttributes& attributes,
+          const Provider_NodeAttributes& attributes,
           const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }
@@ -132,7 +132,7 @@ class DnnlLrn : public DnnlKernel {
   }
 
  private:
-  void ReadAttributes(const Prov_NodeAttributes& attributes,
+  void ReadAttributes(const Provider_NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     auto attr = attributes.find(attributes_prefix + "size");
     if (attr != attributes.end() &&
