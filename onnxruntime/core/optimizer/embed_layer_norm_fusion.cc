@@ -13,6 +13,8 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
+static const float DEFAULT_EMBED_EPSILON = 1e-12f;
+
 // Add a Cast to convert Input from int64 to int32.
 static NodeArg* CastToInt32(Graph& graph, NodeArg* input, ProviderType provider_type) {
   auto data_type = input->TypeAsProto()->tensor_type().elem_type();

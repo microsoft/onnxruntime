@@ -12,6 +12,8 @@ namespace onnxruntime {
 
 // LayerNorm supports limited data types.
 static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)"};
+// Default epsilon
+static const float DEFAULT_SKIP_EPSILON = 1e-12f;
 
 static bool IsSupportedDataType(const Node& node) {
   for (const auto& input_arg : node.InputDefs()) {

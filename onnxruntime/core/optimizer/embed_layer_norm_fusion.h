@@ -19,8 +19,6 @@ class EmbedLayerNormFusion : public GraphTransformer {
       : GraphTransformer("EmbedLayerNormFusion", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
- private:
-  static const float DEFAULT_EMBED_EPSILON = 1e-12f;
 };
 
 }  // namespace onnxruntime
