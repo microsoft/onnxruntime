@@ -12,7 +12,7 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
-
+// Default epsilon
 static const float DEFAULT_EMBED_EPSILON = 1e-12f;
 
 // Add a Cast to convert Input from int64 to int32.
