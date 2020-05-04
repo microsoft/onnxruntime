@@ -446,7 +446,7 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
   j["TotalTime"] = total_time;
   j["AvgTimePerBatch"] = avg_time_per_batch;
   j["Throughput"] = throughput;
-  j["MixedPrecision"] = params_.use_mixed_precision ? "fp16" : "fp32";
+  j["Precision"] = params_.use_mixed_precision ? "fp16" : "fp32";
   j["Optimizer"] = params_.training_optimizer_name;
 
   // TODO - add memory/cpu
