@@ -236,7 +236,10 @@ LONG WINAPI UnHandledExceptionFilter(EXCEPTION_POINTERS* exception_pointers) {
     std::cout << "\r\n";
   }
 
+  std::cout << "******  Crash end ******\r\n\r\n";
+
   return EXCEPTION_CONTINUE_SEARCH;
 }
 
-bool InitCrashHandler = (SetUnhandledExceptionFilter(UnHandledExceptionFilter), false);
+bool InitCrashHandler = (AddVectoredExceptionHandler(1, UnHandledExceptionFilter), false);
+//bool InitCrashHandler = (SetUnhandledExceptionFilter(UnHandledExceptionFilter), false);
