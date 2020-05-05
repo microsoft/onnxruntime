@@ -103,6 +103,10 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T1", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
                                                       DataTypeImpl::GetTensorType<uint32_t>(),
+                                                      DataTypeImpl::GetTensorType<int64_t>(),
+                                                      DataTypeImpl::GetTensorType<uint64_t>(),
+                                                      DataTypeImpl::GetTensorType<float>(),
+                                                      DataTypeImpl::GetTensorType<double>(),
                                                       DataTypeImpl::GetTensorType<std::string>()})
         .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
                                                       DataTypeImpl::GetTensorType<uint32_t>()}),
@@ -193,14 +197,14 @@ Status MurmurHash3::Compute(OpKernelContext* ctx) const {
       ++output;
     }
   } else {
-    auto input = reinterpret_cast<const uint32_t*>(keys->DataRaw());
-    const auto input_end = input + input_count;
+    auto input = reinterpret_cast<const unsigned char*>(keys->DataRaw());
+    const auto input_end = input + input_count * static_cast<int>(input_element_bytes);
     while (input != input_end) {
       MurmurHash3_x86_32(input,
                          static_cast<int>(input_element_bytes),
                          seed_,
                          output);
-      ++input;
+      input += static_cast<int>(input_element_bytes);
       ++output;
     }
   }
