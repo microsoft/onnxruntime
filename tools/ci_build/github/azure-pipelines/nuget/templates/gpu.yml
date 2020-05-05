@@ -242,6 +242,7 @@ jobs:
   workspace:
     clean: all
   pool: 'Win-CPU-2019'
+  condition: and (succeeded(), and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
   dependsOn:
   - NuGet_Test_Win
   - NuGet_Test_Linux
