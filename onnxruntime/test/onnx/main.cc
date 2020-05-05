@@ -503,6 +503,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"training_dropout_default", "result differs", {}},       // Temporary, subsequent PR will remove this.
       {"training_dropout_default_mask", "result differs", {}},  // Temporary, subsequent PR will remove this.
       {"training_dropout_mask", "result differs", {}},          // Temporary, subsequent PR will remove this.
+      {"adagrad", "not a registered function/op", {}},          // Op not registered.
+      {"adagrad_multiple", "not a registered function/op", {}}, // Op not registered.
+      {"adam", "not a registered function/op", {}},  // Op not registered.
+      {"adam_multiple", "not a registered function/op", {}}, // Op not registered.
+      {"gradient_of_add", "not a registered function/op", {}}, // Op not registered.
+      {"gradient_of_add_and_mul", "not a registered function/op", {}}, // Op not registered.
+      {"momentum", "not a registered function/op", {}},  // Op not registered.
+      {"momentum_multiple", "not a registered function/op", {}}, // Op not registered.
+      {"nesterov_momentum", "not a registered function/op", {}}, // Op not registered.
   };
 
   if (enable_ngraph) {
