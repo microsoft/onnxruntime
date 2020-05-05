@@ -309,7 +309,7 @@ namespace Dml
 
         const onnxruntime::KernelCreateInfo* createInfo;
         Status st = registry.TryFindKernel(node, onnxruntime::kDmlExecutionProvider, &createInfo);
-        if (!st.IsOK() || createInfo == nullptr) {
+        if (!st.IsOK()) {
           return false;
         }
 
