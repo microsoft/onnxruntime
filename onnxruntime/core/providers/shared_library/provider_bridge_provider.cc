@@ -39,7 +39,7 @@ RunOnUnload::RunOnUnload(std::function<void()> deleter) {
 }
 
 RunOnUnload::~RunOnUnload() {
-  *enabled_ = false;  // If the thread_local gets destroyed, then disable the delete function
+  //  *enabled_ = false;  // If the thread_local gets destroyed, then disable the delete function
 }
 
 struct OnUnload {

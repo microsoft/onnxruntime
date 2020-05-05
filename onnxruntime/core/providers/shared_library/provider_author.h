@@ -52,6 +52,20 @@ struct RunOnUnload {
   bool* enabled_{};
 };
 
+template <typename T>
+struct DeleteOnUnloadPtr {
+  DeleteOnUnloadPtr(T* p) : p_(p) {
+  }
+
+  operator T*() { return p_; }
+
+ private:
+  T* p_;
+  RunOnUnload deleter_{[p = p_]() {
+    delete p;
+  }};
+};
+
 constexpr const char* kOnnxDomain = "";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 
