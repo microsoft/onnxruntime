@@ -17,6 +17,9 @@ class SkipLayerNorm final : public CudaKernel {
  public:
   SkipLayerNorm(const OpKernelInfo& op_kernel_info);
   Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  float epsilon_;
 };
 
 }  // namespace cuda
