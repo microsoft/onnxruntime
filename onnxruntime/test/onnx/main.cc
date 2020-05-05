@@ -851,6 +851,7 @@ int main(int argc, char* argv[]) {
 
 #ifdef _WIN32
 #include <Windows.h>
+#define OPTIONAL
 #include <tchar.h>
 #include <DbgHelp.h>
 #pragma comment(lib, "Dbghelp.lib")
