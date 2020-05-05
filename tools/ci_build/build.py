@@ -1343,7 +1343,7 @@ def nuphar_run_python_tests(build_dir, configs):
 
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
-        use_tensorrt, use_openvino, use_nuphar, wheel_name_suffix, use_dml,
+        use_tensorrt, use_openvino, use_nuphar, use_dml, wheel_name_suffix,
         use_acl,
         nightly_build=False,
         featurizers_build=False):
