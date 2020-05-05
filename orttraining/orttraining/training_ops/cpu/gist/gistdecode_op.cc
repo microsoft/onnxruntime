@@ -17,14 +17,9 @@ Status GistBinarizeDecoderOp::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(1);
   ORT_ENFORCE(X != nullptr);
   const TensorShape& shape = X->Shape();
-
   Tensor* Y = context->Output(0, shape);
-
   const auto* src = X->template Data<bool>();
   auto* dst = Y->template MutableData<float>();
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
   for (int64_t i = 0; i < X->Shape().Size(); ++i) {
     dst[i] = src[i] ? 1.0f : 0.0f;
   }
