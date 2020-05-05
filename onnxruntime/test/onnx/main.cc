@@ -845,10 +845,13 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "%s\n", ex.what());
     retval = -1;
   }
+  std::cout << "*** Before ShutdownProtobufLibrary\r\n";
   ::google::protobuf::ShutdownProtobufLibrary();
+  std::cout << "*** Exiting Test Runner\r\n";
   return retval;
 }
 
+#if 0
 #ifdef _WIN32
 #include <Windows.h>
 #define OPTIONAL
@@ -947,4 +950,5 @@ LONG WINAPI UnHandledExceptionFilter(EXCEPTION_POINTERS* exception_pointers) {
 
 bool InitCrashHandler = (AddVectoredExceptionHandler(1, UnHandledExceptionFilter), false);
 //bool InitCrashHandler = (SetUnhandledExceptionFilter(UnHandledExceptionFilter), false);
+#endif
 #endif
