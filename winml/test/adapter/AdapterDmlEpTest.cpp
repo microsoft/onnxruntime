@@ -121,13 +121,13 @@ winrt::com_ptr<ID3D12Resource> CreateD3D12Resource(ID3D12Device& device) {
       D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
   };
   winrt::com_ptr<ID3D12Resource> d3d12_resource;
-  device.CreateCommittedResource(
+  WINML_EXPECT_HRESULT_SUCCEEDED(device.CreateCommittedResource(
       &heap_properties,
       D3D12_HEAP_FLAG_NONE,
       &resource_desc,
       D3D12_RESOURCE_STATE_COMMON,
       nullptr,
-      IID_PPV_ARGS(d3d12_resource.put()));
+      IID_PPV_ARGS(d3d12_resource.put())));
   return d3d12_resource;
 }
 
@@ -139,7 +139,7 @@ void DmlCreateAndFreeGPUAllocationFromD3DResource() {
   auto d3d12_resource = CreateD3D12Resource(*device);
   void* dml_allocator_resource;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlCreateGPUAllocationFromD3DResource(d3d12_resource.get(), &dml_allocator_resource), ort_api);
-  winml_adapter_api->DmlFreeGPUAllocation(dml_allocator_resource);
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlFreeGPUAllocation(dml_allocator_resource), ort_api);
 }
 
 void DmlGetD3D12ResourceFromAllocation() {
@@ -283,7 +283,7 @@ void DmlCopyTensor() {
 
   // Free the tensor before the allocator
   data_value = nullptr;
-  winml_adapter_api->DmlFreeGPUAllocation(dml_allocator_resource);
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlFreeGPUAllocation(dml_allocator_resource), ort_api);
 }
 
 void CreateCustomRegistry() {
