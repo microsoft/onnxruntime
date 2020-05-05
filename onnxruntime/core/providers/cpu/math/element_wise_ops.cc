@@ -6,6 +6,7 @@
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/util/math.h"
 #include "core/mlas/inc/mlas.h"
+#include "Eigen/src/Core/arch/Default/Half.h"
 
 #include <cmath>
 
@@ -72,12 +73,12 @@ REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, float, Add);
 REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, double, Add);
 REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, int32_t, Add);
 REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, int64_t, Add);
-REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, MLFloat16, Add);
 
 REG_ELEMENTWISE_TYPED_KERNEL(Sub, 7, float, Sub);
 REG_ELEMENTWISE_TYPED_KERNEL(Sub, 7, double, Sub);
 REG_ELEMENTWISE_TYPED_KERNEL(Sub, 7, int32_t, Sub);
 REG_ELEMENTWISE_TYPED_KERNEL(Sub, 7, int64_t, Sub);
+REG_ELEMENTWISE_TYPED_KERNEL(Sub, 7, MLFloat16, Sub);
 
 REG_ELEMENTWISE_TYPED_KERNEL(Mul, 7, float, Mul);
 REG_ELEMENTWISE_TYPED_KERNEL(Mul, 7, double, Mul);
@@ -216,6 +217,43 @@ Status Sub<T>::Compute(OpKernelContext* context) const {
       [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 - input1.array(); },
       [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() - input1; },
       [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0 - input1; });
+}
+
+template <>
+Status Sub<MLFloat16>::Compute(OpKernelContext* context) const {
+  TBroadcaster<MLFloat16, MLFloat16> mod_broadcaster{*context->Input<Tensor>(0), *context->Input<Tensor>(1)};
+  Tensor* output = context->Output(0, mod_broadcaster.GetOutputShape());
+  TBroadcastOutput<MLFloat16> mod_broadcast_output{
+      mod_broadcaster.GetSpanSize(), *output};
+  BroadcastLoopSpan(
+      mod_broadcaster, mod_broadcast_output,
+      [](gsl::span<MLFloat16> output, const MLFloat16& X, gsl::span<const MLFloat16> Y) {
+        auto x_data = Eigen::half(X.val);
+        auto y_data = Eigen::Map<const Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>>(
+            static_cast<const Eigen::half*>(static_cast<const void*>(Y.data())), Y.size());
+        auto output_data = Eigen::Map<Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>>(
+            static_cast<Eigen::half*>(static_cast<void*>(output.data())), output.size());
+        output_data = x_data - y_data.array();
+      },
+      [](gsl::span<MLFloat16> output, gsl::span<const MLFloat16> X, const MLFloat16& Y) {
+        auto x_data = Eigen::Map<const Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>>(
+            static_cast<const Eigen::half*>(static_cast<const void*>(X.data())), X.size());
+        auto y_data = Eigen::half(Y.val);
+        auto output_data = Eigen::Map<Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>>(
+            static_cast<Eigen::half*>(static_cast<void*>(output.data())), output.size());
+        output_data = x_data.array() - y_data;
+      },
+      [](gsl::span<MLFloat16> output, gsl::span<const MLFloat16> X, gsl::span<const MLFloat16> Y) {
+        auto x_data = Eigen::Map<const Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>>(
+            static_cast<const Eigen::half*>(static_cast<const void*>(X.data())), X.size());
+        auto y_data = Eigen::Map<const Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>>(
+            static_cast<const Eigen::half*>(static_cast<const void*>(Y.data())), Y.size());
+        auto output_data = Eigen::Map<Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>>(
+            static_cast<Eigen::half*>(static_cast<void*>(output.data())), output.size());
+        output_data = x_data.array() - y_data.array();
+      });
+
+  return Status::OK();
 }
 
 template <typename T>

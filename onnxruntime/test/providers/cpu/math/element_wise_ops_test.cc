@@ -371,6 +371,29 @@ TEST(MathOpTest, Sub_Broadcast_Scalar) {
   test.Run();
 }
 
+TEST(MathOpTest, Sub_MLFLoat16) {
+  OpTester test("Sub");
+  std::vector<int64_t> dims{2, 2};
+  test.AddInput<MLFloat16>("A", dims,
+                           {
+                               MLFloat16(math::floatToHalf(1.0f)),
+                               MLFloat16(math::floatToHalf(2.0f)),
+                               MLFloat16(math::floatToHalf(3.0f)),
+                               MLFloat16(math::floatToHalf(4.0f))
+                           });
+  test.AddInput<MLFloat16>("B", dims,
+                           {MLFloat16(math::floatToHalf(2.0f)),
+                            MLFloat16(math::floatToHalf(3.0f)),
+                            MLFloat16(math::floatToHalf(4.0f)),
+                            MLFloat16(math::floatToHalf(5.0f))});
+  test.AddOutput<MLFloat16>("C", dims,
+                            {MLFloat16(math::floatToHalf(-1.0f)),
+                             MLFloat16(math::floatToHalf(-1.0f)),
+                             MLFloat16(math::floatToHalf(-1.0f)),
+                             MLFloat16(math::floatToHalf(-1.0f))});
+  test.Run();
+}
+
 TEST(MathOpTest, Mul_int32) {
   OpTester test("Mul");
   test.AddInput<int32_t>("A", {3}, {1, 2, 3});
