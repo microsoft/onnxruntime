@@ -1,0 +1,11 @@
+onnx
+numpy
+coloredlogs
+psutil
+py-cpuinfo
+py3nvml
+transformers
+onnxruntime
+--find-links https://download.pytorch.org/whl/torch_stable.html
+torch==1.5.0+cpu
+torchvision==0.6.0+cpu
