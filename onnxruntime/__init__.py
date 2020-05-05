@@ -13,6 +13,4 @@ from onnxruntime.capi._pybind_state import get_all_providers, get_available_prov
 from onnxruntime.capi.session import InferenceSession, IOBinding
 from onnxruntime.capi import onnxruntime_validation
 
-from onnxruntime.capi.training import *
-
 onnxruntime_validation.check_distro_info()
