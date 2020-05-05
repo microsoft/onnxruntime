@@ -27,6 +27,7 @@ struct OnUnloadFunction {
 
 static std::unique_ptr<std::vector<std::unique_ptr<OnUnloadFunction>>> s_run_on_unload_;
 
+// See
 RunOnUnload::RunOnUnload(std::function<void()> deleter) {
   static std::mutex mutex;
   std::lock_guard<std::mutex> guard{mutex};
@@ -38,7 +39,7 @@ RunOnUnload::RunOnUnload(std::function<void()> deleter) {
 }
 
 RunOnUnload::~RunOnUnload() {
-  *enabled_ = false;  // If the thread_local gets destroyed, then disalble the delete function
+  *enabled_ = false;  // If the thread_local gets destroyed, then disable the delete function
 }
 
 struct OnUnload {

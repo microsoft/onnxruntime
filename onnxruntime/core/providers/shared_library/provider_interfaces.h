@@ -27,7 +27,7 @@ struct Provider_AttributeProto {
   virtual ~Provider_AttributeProto() = default;
   virtual std::unique_ptr<Provider_AttributeProto> Clone() const = 0;
 
-  virtual ::onnx::AttributeProto_AttributeType type() const = 0;
+  virtual AttributeProto_AttributeType type() const = 0;
   virtual int ints_size() const = 0;
   virtual int64_t ints(int i) const = 0;
   virtual int64_t i() const = 0;
@@ -35,8 +35,8 @@ struct Provider_AttributeProto {
   virtual void set_s(const ::std::string& value) = 0;
   virtual const ::std::string& s() const = 0;
   virtual void set_name(const ::std::string& value) = 0;
-  virtual void set_type(::onnx::AttributeProto_AttributeType value) = 0;
-  virtual ::onnx::Provider_TensorProto* add_tensors() = 0;
+  virtual void set_type(AttributeProto_AttributeType value) = 0;
+  virtual Provider_TensorProto* add_tensors() = 0;
 
   void operator=(const Provider_AttributeProto& v) = delete;
 };
@@ -109,9 +109,6 @@ struct Provider_IAllocator {
   template <typename T>
   static Provider_IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<Provider_IAllocator> allocator, size_t count_or_bytes) {
     if (allocator == nullptr) return nullptr;
-    // for now limit to fundamental types. we could support others, but to do so either we or the caller
-    // needs to call the dtor for the objects, for buffers allocated on device we don't have destructor
-    //static_assert(std::is_fundamental<T>::value, "Fundamental type required as no destructors are called.");
 
     size_t alloc_size = count_or_bytes;
 
@@ -323,8 +320,7 @@ struct Provider_Node {
 
   virtual std::unique_ptr<Provider_NodeIterator> InputNodesBegin_internal() const noexcept = 0;
   virtual std::unique_ptr<Provider_NodeIterator> InputNodesEnd_internal() const noexcept = 0;
-
-};  // namespace onnxruntime
+};
 
 #ifndef PROVIDER_BRIDGE_ORT
 // if we are export the fused function to dll, the function will still in the same binary as lotus

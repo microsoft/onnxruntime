@@ -182,6 +182,7 @@ enum class AutoPadType {
   SAME_LOWER = 3,
 };
 
+// TODO(RyanHill): Move this to a host function
 inline AutoPadType StringToAutoPadType(const std::string& str) {
   if (str.empty()) {
     return AutoPadType::NOTSET;
