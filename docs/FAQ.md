@@ -7,12 +7,13 @@ The default CUDA build supports 3 standard quantization operators: QuantizeLinea
 ## How do I change the severity level of the default logger to something other than the default (WARNING)?
 Setting the severity level to VERBOSE is most useful when debugging errors.
 
-For Python, use the following snippet of code. [Valid values for the severity levels](./onnxruntime/python/onnxruntime_pybind_state.cc#L367).
+Refer to the API documentation:
+* Python - [RunOptions.log_severity_level](https://microsoft.github.io/onnxruntime/python/api_summary.html#onnxruntime.RunOptions.log_severity_level)
 ```
 import onnxruntime as ort
 ort.set_default_logger_severity(0)
 ```
-For C, use the following API: SetSessionLogSeverityLevel. [Valid values for the severity levels](./core/session/onnxruntime_c_api.h#L105-L111).
+* C - [SetSessionLogSeverityLevel](./../include/onnxruntime/core/session/onnxruntime_c_api.h)
 
 ## How do I load and run models that have multiple inputs and outputs using the C/C++ API?
 See an example from the 'override initializer' test in [test_inference.cc](./../onnxruntime/test/shared_lib/test_inference.cc) that has 3 inputs and 3 outputs.
@@ -44,7 +45,6 @@ os.environ["OMP_NUM_THREADS"] = "1"
 import onnxruntime
 
 opts = onnxruntime.SessionOptions()
-opts.intra_op_num_threads = 1
 opts.inter_op_num_threads = 1
 opts.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
 ort_session = onnxruntime.InferenceSession('/path/to/model.onnx', sess_options=opts)
@@ -57,7 +57,6 @@ Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
 
 // initialize session options if needed
 Ort::SessionOptions session_options;
-session_options.SetIntraOpNumThreads(1);
 session_options.SetInterOpNumThreads(1);
 #ifdef _WIN32
   const wchar_t* model_path = L"squeezenet.onnx";
@@ -67,6 +66,3 @@ session_options.SetInterOpNumThreads(1);
 
 Ort::Session session(env, model_path, session_options);
 ```
-
-
-
