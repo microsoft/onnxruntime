@@ -53,11 +53,17 @@ The following table lists system requirements for running docker containers as w
         ./install.sh
         ```
       * Power cycle the system.
-5. Build ans start the ONNXRuntime Vitis-AI Docker Container.
+5. Build and start the ONNXRuntime Vitis-AI Docker Container.
    ```
    cd {onnxruntime-root}/dockerfiles
    docker build -t onnxruntime-vitisai -f Dockerfile.vitisai .
-   docker run -it onnxruntime-vitisai
+   ./scripts/docker_run_vitisai.sh
+   ```
+   
+   Setup inside container
+   ```
+   source /opt/xilinx/xrt/setup.sh
+   conda activate vitis-ai-tensorflow
    ```
 
 

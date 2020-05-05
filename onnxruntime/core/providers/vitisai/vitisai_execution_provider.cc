@@ -30,9 +30,8 @@ typedef std::shared_ptr<pyxir::graph::XGraph> XGraphHolder;
 typedef std::shared_ptr<pyxir::graph::XLayer> XLayerHolder;
 
 VitisAIExecutionProvider::VitisAIExecutionProvider(const VitisAIExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, device_id_(info.device_id) {
-  std::cout << "ANDBG backend_type: " << info.backend_type << std::endl;
-  //ORT_ENFORCE(info.backend_type == "CPU", "Vitis-AI Execution Provider for onnxruntime currently is only supported for CPU backend.");
+    : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, backend_type_(info.backend_type),
+      device_id_(info.device_id) {
 
   auto default_allocator_factory = [](int) {
     auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(PREFIX, OrtAllocatorType::OrtDeviceAllocator);
@@ -50,16 +49,15 @@ VitisAIExecutionProvider::VitisAIExecutionProvider(const VitisAIExecutionProvide
 
 
 static std::vector<NodeIndex>
-GetUnsupportedNodeIndices(const XGraphHolder &xg, const std::string &target, 
+GetUnsupportedNodeIndices(const XGraphHolder &xg, const std::string &backend_type, 
                           const GraphViewer& graph_viewer,
                           /*out*/ std::unordered_set<std::string>& required_initializers) {
-  // const auto supported_ops = GetSupportedOps(GetOnnxOpSet(graph_viewer));
 
   // Retrieve 
   std::set<std::string> supported_tensors;
   for (auto &xl_name : xg->get_layer_names()) {
     XLayerHolder xl = xg->get(xl_name);
-    if (xl->target == target)
+    if (xl->target == backend_type)
       supported_tensors.insert(xl->get_attr("onnx_id").get_string());
   }
 
@@ -72,9 +70,7 @@ GetUnsupportedNodeIndices(const XGraphHolder &xg, const std::string &target,
     bool is_node_supported = false;
     for (ConstPointerContainer<std::vector<NodeArg*>>::ConstIterator it = 
          node_args.begin(); it != node_args.end(); ++it) {
-      // std::cout << "Out node arg name: " << (*it)->Name() << std::endl;
       if (supported_tensors.find((*it)->Name()) != supported_tensors.end()) {
-        // std::cout << "Out node arg in supported tensors!" << std::endl;
         is_node_supported = true;
       } else if (is_node_supported) {
         // Some output tensors are supported but not others,
@@ -266,9 +262,8 @@ VitisAIExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   XGraphHolder xg = pyxir::onnx::import_onnx_model(model_stream);
 
   // Annotate the subgraph layers in the XGraph that can be executed on the
-  //  `dpuv1` target
-  std::string target = "dpuv1";
-  pyxir::partition(xg, std::vector<std::string>{target}, "");
+  //  specified `backend_type_` target
+  pyxir::partition(xg, std::vector<std::string>{backend_type_}, "");
 
   // Next stuff
   if (graph.IsSubgraph()) {
@@ -284,7 +279,7 @@ VitisAIExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   }
 
   std::unordered_set<std::string> required_initializers;
-  const auto unsupported_nodes = GetUnsupportedNodeIndices(xg, target, graph, required_initializers);
+  const auto unsupported_nodes = GetUnsupportedNodeIndices(xg, backend_type_, graph, required_initializers);
 
   const auto clusters = GetPartitionedClusters(graph.GetNodesInTopologicalOrder(), unsupported_nodes);
 
@@ -305,8 +300,8 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<onnxruntime::
   for (const auto& fused_node : fused_nodes) 
   {
     NodeComputeInfo compute_info;
-    compute_info.create_state_func = [fused_node, logger=GetLogger()](ComputeContext* context, FunctionState* state) {
-      auto* p = new vitisai_ep::VitisAICustomOp(context, fused_node, logger);
+    compute_info.create_state_func = [this, fused_node, logger=GetLogger()](ComputeContext* context, FunctionState* state) {
+      auto* p = new vitisai_ep::VitisAICustomOp(context, fused_node, backend_type_, logger);
       *state = p;
       return 0;
     };

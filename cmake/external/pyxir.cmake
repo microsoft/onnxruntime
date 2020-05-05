@@ -10,8 +10,6 @@ if(PYTHONINTERP_FOUND)
     OUTPUT_VARIABLE __output
     OUTPUT_STRIP_TRAILING_WHITESPACE)
 
-  message("PYXIR ${__result}")
-
   if(__result MATCHES 0)
     string(REGEX REPLACE ";" "\\\\;" __values ${__output})
     string(REGEX REPLACE "\r?\n" ";"    __values ${__values})
@@ -23,8 +21,8 @@ else()
 endif()
 
 add_library(pyxir SHARED IMPORTED)
-message("Pyxir lib: ${PYXIR_LIB_DIR}/${PYXIR_SHARED_LIB}")
+message("-- Found Pyxir lib: ${PYXIR_LIB_DIR}/${PYXIR_SHARED_LIB}")
 set_property(TARGET pyxir PROPERTY IMPORTED_LOCATION ${PYXIR_LIB_DIR}/${PYXIR_SHARED_LIB})
 
-message("Pyxir include directories: ${PYXIR_INCLUDE_DIR}")
+message("-- Found Pyxir include: ${PYXIR_INCLUDE_DIR}")
 include_directories(${PYXIR_INCLUDE_DIR})

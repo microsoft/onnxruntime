@@ -29,8 +29,9 @@ namespace vitisai_ep {
 class VitisAICustomOp {
  public:
   VitisAICustomOp(const ComputeContext* context,
-              const onnxruntime::Node* fused_node,
-              const logging::Logger* logger);
+                  const onnxruntime::Node* fused_node,
+                  const std::string &backend_type,
+                  const logging::Logger* logger);
 
   Status Compute(const OrtApi* api, OrtKernelContext* context) const;
 
@@ -51,7 +52,7 @@ class VitisAICustomOp {
   std::vector<std::string> out_tensor_names_;
   pyxir::XGraphHolder xg_;
 
-  std::string target_ = "cpu";
+  std::string backend_type_;
 
   pyxir::RtModHolder rt_mod_ = nullptr;
 
@@ -67,7 +68,7 @@ class VitisAICustomOp {
 
   const logging::Logger* logger_ = nullptr;
 
-  mutable ONNX_NAMESPACE::ModelProto model_proto_;
+  ONNX_NAMESPACE::ModelProto model_proto_;
 };
 }  // namespace vitisai_ep
 }  // namespace onnxruntime

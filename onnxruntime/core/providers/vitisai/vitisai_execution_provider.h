@@ -31,6 +31,7 @@ class VitisAIExecutionProvider : public IExecutionProvider {
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
  private:
+  std::string backend_type_; 
   int device_id_;
 };
 

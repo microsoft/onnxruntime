@@ -17,8 +17,11 @@
 #pragma GCC diagnostic pop
 #endif
 
+#include <chrono>
+
 #include <pyxir/common/xbuffer.hpp>
 #include <pyxir/frontend/onnx.hpp>
+#include <pyxir/runtime/run_options.hpp>
 
 #include "vitisai_custom_op.h"
 #include "core/graph/graph_viewer.h"
@@ -50,8 +53,10 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 }
 
 VitisAICustomOp::VitisAICustomOp(const ComputeContext* context,
-                         const onnxruntime::Node* fused_node,
-                         const logging::Logger* logger) 
+                                 const onnxruntime::Node* fused_node,
+                                 const std::string &backend_type,
+                                 const logging::Logger* logger)
+  : backend_type_(backend_type) 
 {
   SetLogger(logger);
 
@@ -60,12 +65,12 @@ VitisAICustomOp::VitisAICustomOp(const ComputeContext* context,
   allocator_ = context->allocator_handle;
   name_ = context->node_name;
 
-  ONNX_NAMESPACE::ModelProto model_proto = GetModelProtoFromFusedNode(fused_node, *GetLogger());
-  model_proto_ = model_proto;
+  model_proto_ = GetModelProtoFromFusedNode(fused_node, *GetLogger());
 
   std::istringstream model_stream{model_proto_.SerializeAsString()};
 
   xg_ = pyxir::onnx::import_onnx_model(model_stream);
+  pyxir::partition(xg_, std::vector<std::string>{backend_type_}, "");
 
   auto input_defs = fused_node->InputDefs();
   for (auto idef : input_defs) {
@@ -78,8 +83,11 @@ VitisAICustomOp::VitisAICustomOp(const ComputeContext* context,
     // std::cout << "DPU output def: " << odef->Name() << std::endl;
     out_tensor_names_.push_back(odef->Name());
   }
-
-  rt_mod_ = pyxir::build_rt(xg_, target_, in_tensor_names_, out_tensor_names_);
+  
+  pyxir::RunOptionsHolder run_options(new pyxir::runtime::RunOptions());
+  run_options->online_quantization = true;
+  rt_mod_ = pyxir::build_rt(xg_, backend_type_, in_tensor_names_, out_tensor_names_,
+                            "vai", run_options);
 }
 
 VitisAICustomOp::~VitisAICustomOp() {}
@@ -87,15 +95,13 @@ VitisAICustomOp::~VitisAICustomOp() {}
 
 Status VitisAICustomOp::Compute(const OrtApi* api, OrtKernelContext* context) const {
   Ort::CustomOpApi ort{*api};
-
   const unsigned num_inputs = (unsigned) xg_->get_nb_inputs();
-  // std::cout << "Nb inputs: " << num_inputs << std::endl;
 
   ssize_t batch_size = 1;
   std::vector<pyxir::XBufferHolder> in_tensors;
   std::vector<pyxir::XBufferHolder> out_tensors;
 
-  // Write ONNXR input data to Pyxir input tensors.
+  // Initialize input tensors.
   try {
     for (unsigned i = 0; i < num_inputs; ++i) {
       // std::cout << "Input name: " << in_tensor_names_[i];
@@ -123,7 +129,6 @@ Status VitisAICustomOp::Compute(const OrtApi* api, OrtKernelContext* context) co
 
   // Initialize output tensors
   try {
-    //TODO: Optimize
     for (unsigned i = 0; i < out_tensor_names_.size(); ++i) {
       auto shape = xg_->get(out_tensor_names_[i])->shapes[0];
       std::vector<ssize_t> out_shape{shape.begin(), shape.end()};

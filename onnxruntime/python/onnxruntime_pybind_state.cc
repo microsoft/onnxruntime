@@ -346,7 +346,7 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #endif
     } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI("DPU", 0));
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI("dpuv1", 0));
 #endif
     } else {
       // unknown provider
