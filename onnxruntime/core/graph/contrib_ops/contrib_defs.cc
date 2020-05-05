@@ -314,6 +314,79 @@ mask_index shall not be provided.)DOC";
       .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QAttention)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Quantization of Multi-Head Self Attention.")
+      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Input(
+          0,
+          "input",
+          "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size",
+          "T1")
+      .Input(
+          1,
+          "weight",
+          "2D input tensor with shape (hidden_size, 3 * hidden_size)",
+          "T2")
+      .Input(
+          2,
+          "bias",
+          "1D input tensor with shape (3 * hidden_size)",
+          "T3")
+      .Input(
+          3,
+          "input_scale",
+          "scale of quantized input tensor. It's a scalar, which means a per-tensor/layer quantization.",
+          "T3")
+      .Input(
+          4,
+          "weight_scale",
+          "scale of weight scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "T3")
+      .Input(
+          5,
+          "mask_index",
+          "Attention mask index with shape (batch_size)",
+          "T4",
+          OpSchema::Optional)
+      .Input(
+          6,
+          "input_zero_point",
+          "zero point of quantized input tensor.It's a scalar, which means a per-tensor/layer quantization.",
+          "T1",
+          OpSchema::Optional)
+      .Input(
+          7,
+          "weight_zero_point",
+          "zero point of quantized weight tensor. It's a scalar, which means a per-tensor/layer quantization.",
+          "T2",
+          OpSchema::Optional)
+      .Output(
+          0,
+          "output",
+          "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
+          "T3")
+      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("T3", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("T4", {"tensor(int32)"}, "Constrain mask index to integer types")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
+
+        // Shape inference
+        // if the input shape doesn't exist, further shape inference is not possible
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+
+        ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
+
+        return;
+      });
+
   static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
 The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
@@ -1201,7 +1274,17 @@ activation and leaky_relu_alpha.)DOC")
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr(
-          "leaky_relu_alpha",
+          "activation_alpha",
+          "",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_beta",
+          "",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_gamma",
           "",
           AttributeProto::FLOAT,
           OPTIONAL_VALUE)
@@ -2058,77 +2141,6 @@ Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
           fail_shape_inference("both data and indices tensor need to have rank larger than zero.");
         }
         auto last_indice_dimension = indices_shape.dim(indices_rank - 1).dim_value();
-        if (last_indice_dimension > data_rank) {
-          fail_shape_inference("last dimension of indices must not be larger and rank of data tensor");
-        }
-        for (int i = 0; i < indices_rank - 1; ++i) {
-          *ctx.getOutputType(0)
-               ->mutable_tensor_type()
-               ->mutable_shape()
-               ->add_dim() = indices_shape.dim(i);
-        }
-        for (int i = static_cast<int>(last_indice_dimension); i < data_rank; ++i) {
-          *ctx.getOutputType(0)
-               ->mutable_tensor_type()
-               ->mutable_shape()
-               ->add_dim() = data_shape.dim(i);
-        }
-      })
-      .SetDoc(R"DOC(
-Given `data` tensor of rank r >= 1, and `indices` tensor of rank q >= 1, gather
-slices of `data` into an output tensor of rank q - 1 + r - indices[-1].
-Example 1:
-  data    = [[0,1],[2,3]]
-  indices = [[0,0],[1,1]]
-  output  = [0,3]
-Example 2:
-  data    = [[0,1],[2,3]]
-  indices = [[1],[0]]
-  output  = [[2,3],[0,1]]
-Example 3:
-  data    = [[[0,1],[2,3]],[[4,5],[6,7]]]
-  indices = [[0,1],[1,0]]
-  output  = [[2,3],[4,5]]
-Example 4:
-  data    = [[[0,1],[2,3]],[[4,5],[6,7]]]
-  indices = [[[0,1]],[[1,0]]]
-  output  = [[[2,3]],[[4,5]]]
-)DOC");
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(1)
-      .Attr(
-          "axis",
-          "The number of batch dims. The gather of indexing starts from dimension of data[axis:]",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Input(0, "data", "Tensor of rank r >= 1.", "T")
-      .Input(1, "indices", "Tensor of rank q >= 1.", "Tind")
-      .Output(0, "output", "Tensor of rank q-1+r-indices[-1].", "T")
-      .TypeConstraint(
-          "T",
-          OpSchema::all_tensor_types(),
-          "Constrain input and output types to any tensor type.")
-      .TypeConstraint(
-          "Tind",
-          {"tensor(int32)", "tensor(int64)"},
-          "Constrain indice type to int32 or int64")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        if (!hasNInputShapes(ctx, 2)) {
-          return;
-        }
-        auto& data_shape = ctx.getInputType(0)->tensor_type().shape();
-        auto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
-        auto data_rank = data_shape.dim_size();
-        auto indices_rank = indices_shape.dim_size();
-        auto axis = ctx.getAttribute("axis");
-        int64_t axis_data = axis ? static_cast<int>(axis->i()) : 0;
-        if (data_rank < 1 || indices_rank < 1) {
-          fail_shape_inference("both data and indices tensor need to have rank larger than zero.");
-        }
-        auto last_indice_dimension = indices_shape.dim(indices_rank - 1).dim_value() + axis_data;
         if (last_indice_dimension > data_rank) {
           fail_shape_inference("last dimension of indices must not be larger and rank of data tensor");
         }

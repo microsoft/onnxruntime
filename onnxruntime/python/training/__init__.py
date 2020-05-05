@@ -4,4 +4,3 @@
 #--------------------------------------------------------------------------
 
 # This is a placeholder file. It is deployed with inference only wheel.
-print("An inference only version of ONNX Runtime is installed. Training functionalities are unavailable.")

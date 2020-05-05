@@ -142,6 +142,8 @@ struct MLAS_ACTIVATION_FUNCTION<MlasLeakyReluActivation>
 #elif defined(MLAS_SSE2_INTRINSICS)
         __m128 Selection = _mm_cmple_ps(ZeroFloat32x4, Value);
         return _mm_or_ps(_mm_and_ps(Value, Selection), _mm_andnot_ps(Selection, ValueTimesAlpha));
+#elif defined(MLAS_VSX_INTRINSICS)
+        return vec_sel(ValueTimesAlpha, Value, vec_cmple(ZeroFloat32x4, Value));
 #else
 #error Unsupported architecture.
 #endif

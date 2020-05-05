@@ -1106,6 +1106,14 @@ class Graph {
   // Graph value_info.
   std::vector<const NodeArg*> value_info_;
 
+  // Strings which have been used as node names.
+  // New node name should not conflict with this set.
+  std::unordered_set<std::string> generated_node_names_;
+
+  // Strings which have been used as node_arg names.
+  // New node_arg name should not conflict this this set.
+  std::unordered_set<std::string> generated_node_arg_names_;
+
   // All node args owned by <*this> graph. Key is node arg name.
   std::unordered_map<std::string, std::unique_ptr<NodeArg>> node_args_;
 
