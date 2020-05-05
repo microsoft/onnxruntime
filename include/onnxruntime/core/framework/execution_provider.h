@@ -24,7 +24,7 @@ class KernelRegistryManager;
 */
 typedef std::map<int, AllocatorPtr> AllocatorMap;
 
-// if we are export the fused function to dll, the function will still in the same binary as lotus
+// if we are export the fused function to dll, the function will still in the same binary as onnxruntime
 // use std function to give execution provider some chance to capture some state.
 using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
 using ComputeFunc = std::function<Status(FunctionState, const OrtApi*, OrtKernelContext*)>;

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/shared_library/provider_author.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "gsl/gsl-lite.hpp"
 #include "dnnl.hpp"
 #include <unordered_map>

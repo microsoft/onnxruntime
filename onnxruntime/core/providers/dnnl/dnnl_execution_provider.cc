@@ -5,19 +5,23 @@
 #pragma warning(disable : 4996)
 #endif
 
-#include "core/providers/shared_library/provider_author.h"
+#include "core/providers/shared_library/provider_api.h"
 #include <unordered_set>
 #include "subgraph/dnnl_func_kernel.h"
 #include "dnnl_execution_provider.h"
 #include "dnnl_fwd.h"
 
-namespace onnxruntime {
+namespace {
 
 struct KernelRegistryAndStatus {
-  std::shared_ptr<onnxruntime::Provider_KernelRegistry> kernel_registry{Provider_KernelRegistry::Create()};
+  std::shared_ptr<onnxruntime::Provider_KernelRegistry> kernel_registry{onnxruntime::Provider_KernelRegistry::Create()};
 
   Status st;
 };
+
+}  // namespace
+
+namespace onnxruntime {
 
 constexpr const char* DNNL = "Dnnl";
 constexpr const char* DNNL_CPU = "DnnlCpu";

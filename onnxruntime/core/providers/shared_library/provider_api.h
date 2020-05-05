@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Provider authors include this file
+// Provider implementations include this file
 
 #pragma once
 

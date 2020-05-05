@@ -3,7 +3,7 @@
 
 // This is the provider DLL side of the provider API to let providers be built as a DLL
 
-#include "provider_author.h"
+#include "provider_api.h"
 #include <assert.h>
 #include <mutex>
 #include <iostream>  // For std::cout used in a stub
@@ -20,7 +20,6 @@ void SetProviderHost(ProviderHost& host) {
 
 static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 
-// See
 void RunOnUnload(std::function<void()> function) {
   static std::mutex mutex;
   std::lock_guard<std::mutex> guard{mutex};
@@ -29,6 +28,7 @@ void RunOnUnload(std::function<void()> function) {
   s_run_on_unload_->push_back(std::move(function));
 }
 
+// This object is destroyed as part of the DLL unloading code and handles running all of the RunOnLoad functions
 struct OnUnload {
   ~OnUnload() {
     if (!s_run_on_unload_)

@@ -2,7 +2,7 @@
 // Licensed under the MIT License
 #pragma once
 
-#include "core/providers/shared_library/provider_author.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/dnnl/dnnl_execution_provider.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "dnnl_kernel.h"

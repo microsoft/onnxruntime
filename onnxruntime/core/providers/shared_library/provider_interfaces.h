@@ -323,8 +323,7 @@ struct Provider_Node {
 };
 
 #ifndef PROVIDER_BRIDGE_ORT
-// if we are export the fused function to dll, the function will still in the same binary as lotus
-// use std function to give execution provider some chance to capture some state.
+// TODO: These are from execution_provider.h and should be factored out in the future into a common header
 using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
 using ComputeFunc = std::function<Status(FunctionState, const OrtApi*, OrtKernelContext*)>;
 using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
