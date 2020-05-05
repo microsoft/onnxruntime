@@ -1,7 +1,7 @@
 // Copyright(C) 2019 Intel Corporation
 // Licensed under the MIT License
 
-#include "core/providers/shared_library/provider_author.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "dnnl_kernel.h"
 
 namespace onnxruntime {
