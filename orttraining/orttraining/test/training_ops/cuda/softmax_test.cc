@@ -56,7 +56,7 @@ static void TestSoftmaxGrad(const std::vector<int64_t>& dY_dims,
 }
 
 // TODO fix flaky test
-// failing random seeds: 3190010571
+// failing random seed: 3190010571
 TEST(CudaKernelTest, DISABLED_SoftmaxGrad_SmallTensor) {
   std::vector<int64_t> dY_dims{8, 2, 128, 128};
   std::vector<int64_t> Y_dims{8, 2, 128, 128};
