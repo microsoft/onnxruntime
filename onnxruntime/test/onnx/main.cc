@@ -283,15 +283,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_OPENVINO
       //Setting default optimization level for OpenVINO can be overriden with -o option
       sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
-      if(p_models != 1){
+      if (p_models != 1) {
         fprintf(stderr, "OpenVINO doesn't support more than 1 model running simultaneously default value of 1 will be set \n");
         p_models = 1;
       }
-      if(concurrent_session_runs != 1){
+      if (concurrent_session_runs != 1) {
         fprintf(stderr, "OpenVINO doesn't support more than 1 session running simultaneously default value of 1 will be set \n");
         concurrent_session_runs = 1;
       }
-      if(execution_mode == ExecutionMode::ORT_PARALLEL){
+      if (execution_mode == ExecutionMode::ORT_PARALLEL) {
         fprintf(stderr, "OpenVINO doesn't support parallel executor switching to sequential executor\n");
         sf.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
       }
@@ -495,8 +495,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"dropout_default", "result differs", {"onnxtip"}},
       {"dropout_random", "result differs", {"onnxtip"}},
-      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"}
-  };
+      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"}};
 
   if (enable_ngraph) {
     broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
@@ -520,7 +519,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
   }
 
-  if (enable_openvino){
+  if (enable_openvino) {
     broken_tests.insert({"operator_permute2", "Disabled temporariliy"});
     broken_tests.insert({"operator_repeat", "Disabled temporariliy"});
     broken_tests.insert({"operator_repeat_dim_overflow", "Disabled temporariliy"});
@@ -625,7 +624,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"resize_upsample_sizes_nearest", "DML uses pixel centers for nearest, which makes more sense (the 3rd row mismatches)"});
     broken_tests.insert({"unsqueeze_three_axes", "DML does not support 6D tensors"});
     broken_tests.insert({"unsqueeze_unsorted_axes", "DMLdoes not support 6D tensors"});
-
   }
 
 #if defined(_WIN32) && !defined(_WIN64)
@@ -714,3 +712,101 @@ int main(int argc, char* argv[]) {
   ::google::protobuf::ShutdownProtobufLibrary();
   return retval;
 }
+
+#ifdef _WIN32
+#include <tchar.h>
+#include <DbgHelp.h>
+#pragma comment(lib, "Dbghelp.lib")
+
+struct SymbolHelper {
+  SymbolHelper() noexcept {
+    SymSetOptions(SymGetOptions() | SYMOPT_DEFERRED_LOADS);
+    SymInitialize(GetCurrentProcess(), nullptr, true);
+  }
+
+  void Lookup(const ULONG_PTR address) {
+    char buffer[2048] = {0};
+    Symbol symbol;
+    if (SymFromAddr(GetCurrentProcess(), address, 0, &symbol) == false) {
+      _snprintf_s(buffer, _TRUNCATE, "0x%08IX (Unknown symbol)", address);
+      std::cout << buffer;
+      return;
+    }
+
+    Line line;
+    DWORD displacement;
+    if (SymGetLineFromAddr(GetCurrentProcess(), address, &displacement, &line) == false) {
+      _snprintf_s(buffer, _TRUNCATE, "(unknown file & line number): %s", symbol.Name);
+      std::cout << buffer;
+      return;
+    }
+
+    _snprintf_s(buffer, _TRUNCATE, "%s(%d): %s", line.FileName, line.LineNumber, symbol.Name);
+    std::cout << buffer;
+  }
+
+  struct Symbol : SYMBOL_INFO {
+    Symbol() noexcept {
+      SizeOfStruct = sizeof(SYMBOL_INFO);
+      MaxNameLen = _countof(buffer);
+    }
+
+    char buffer[1024] = {0};
+  };
+
+  struct Line : IMAGEHLP_LINE {
+    Line() noexcept {
+      SizeOfStruct = sizeof(IMAGEHLP_LINE);
+    }
+  };
+};
+
+LONG WINAPI UnHandledExceptionFilter(EXCEPTION_POINTERS* exception_pointers) {
+  EXCEPTION_RECORD& exception = *(exception_pointers->ExceptionRecord);
+
+  std::cout << "******  Crashed: ";
+
+  switch (exception.ExceptionCode) {
+    case EXCEPTION_ACCESS_VIOLATION:
+      std::cout << "Access violation ";
+      std::cout << (exception.ExceptionInformation[0] == 0 ? "reading from" : "writing to") << " address " << std::hex << exception.ExceptionInformation[1];
+      break;
+    case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
+      std::cout << "Array bounds exceeded";
+      break;
+    case EXCEPTION_DATATYPE_MISALIGNMENT:
+      std::cout << "Data type misalignment";
+      break;
+    case EXCEPTION_ILLEGAL_INSTRUCTION:
+      std::cout << "Illegal instruction";
+      break;
+    case EXCEPTION_INT_DIVIDE_BY_ZERO:
+      std::cout << "Integer divide by zero";
+      break;
+    case EXCEPTION_STACK_OVERFLOW:
+      std::cout << "Stack overflow";
+      break;
+    default:
+      std::cout << "Exception Code:" << std::hex << exception.ExceptionCode;
+  }
+
+  std::cout << " at " << std::hex << exception.ExceptionAddress;
+  std::cout << "\r\n\r\n";
+
+  SymbolHelper symbols;
+  void* traces[64];
+
+  unsigned count = CaptureStackBackTrace(0, _countof(traces), traces, nullptr);
+  for (unsigned i = 0; i < count; i++) {
+    symbols.Lookup(reinterpret_cast<ULONG_PTR>(traces[i]));
+    std::cout << "\r\n";
+  }
+
+  std::cout << "******  Crash end ******\r\n\r\n";
+
+  return EXCEPTION_CONTINUE_SEARCH;
+}
+
+//bool InitCrashHandler = (AddVectoredExceptionHandler(1, UnHandledExceptionFilter), false);
+bool InitCrashHandler = (SetUnhandledExceptionFilter(UnHandledExceptionFilter), false);
+#endif
