@@ -8,7 +8,6 @@ namespace onnxruntime {
 
 Memcpy::Memcpy(const OpKernelInfo& info)
     : OpKernel(info) {
-  provider_ = info.GetExecutionProvider();
 }
 
 Status Memcpy::Compute(OpKernelContext* ctx) const {
