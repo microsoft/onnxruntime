@@ -5,10 +5,11 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
-
+namespace concurrency {
+class ThreadPool;
+}
 class GatherNDBase {
  protected:
   struct Prepare {
@@ -32,7 +33,7 @@ class GatherNDBase {
   };  // struct Prepare
 
   template <typename Tind>
-  Status PrepareForCompute(OpKernelContext* context, Prepare& p) const;
+  Status PrepareForCompute(OpKernelContext* context, Prepare& p, concurrency::ThreadPool* tp) const;
   int64_t batch_dims_;
 };  // class GatherNDBase
 
@@ -44,8 +45,8 @@ class GatherND final : public OpKernel, protected GatherNDBase {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  Status GatherNumber(const Prepare& p) const;
-  Status GatherString(const Prepare& p) const;
+  Status GatherNumber(const Prepare& p, concurrency::ThreadPool* tp) const;
+  Status GatherString(const Prepare& p, concurrency::ThreadPool* tp) const;
 };
 
 }  // namespace onnxruntime

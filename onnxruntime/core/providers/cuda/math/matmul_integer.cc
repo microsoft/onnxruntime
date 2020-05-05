@@ -5,6 +5,7 @@
 #include "matmul_integer.cuh"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "core/providers/cuda/shared_inc/integer_gemm.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/common.h"
 
@@ -24,26 +25,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
     MatMulInteger<int8_t, int8_t>);
-
-template <>
-Status MatMulInteger<int8_t, int8_t>::PadMatrix(
-    int64_t row,
-    int64_t col,
-    int64_t align_size,
-    const int8_t*& src,
-    int64_t& pad_size,
-    IAllocatorUniquePtr<int8_t>& temp_mem_holder) const {
-  pad_size = align_size - col % align_size;
-  if (pad_size != align_size) {
-    temp_mem_holder = GetScratchBuffer<int8_t>(row * (col + pad_size));
-    ORT_RETURN_IF_ERROR(PadMatrixInLeadingDimension(src, temp_mem_holder.get(), row, col, pad_size));
-    src = temp_mem_holder.get();
-  } else {
-    pad_size = 0;
-  }
-
-  return Status::OK();
-}
 
 template <>
 Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) const {
@@ -106,49 +87,19 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
     beta = 1;
   }
 
-  // pad A and B to make their leading dimension be multiples of 32
-  // because cublasGemmEx requires:
-  // 1. leading dimension is multiples of 4
-  // 2. A, B is 32-bit aligned
-  const int64_t align_size = 32;
-  int64_t a_pad_size = 0;
-  int64_t b_pad_size = 0;
-  IAllocatorUniquePtr<int8_t> a_padded;
-  IAllocatorUniquePtr<int8_t> b_padded;
-  ORT_RETURN_IF_ERROR(PadMatrix(a->Shape().Size() / helper.K(),
-                                helper.K(),
-                                align_size,
-                                a_ptr,
-                                a_pad_size,
-                                a_padded));
-  ORT_RETURN_IF_ERROR(PadMatrix(b->Shape().Size() / helper.N(),
-                                helper.N(),
-                                align_size,
-                                b_ptr,
-                                b_pad_size,
-                                b_padded));
-
   for (size_t batch = 0; batch < helper.OutputOffsets().size(); batch++) {
-    CUBLAS_RETURN_IF_ERROR(cublasGemmEx(
-        Base::CublasHandle(),
-        CUBLAS_OP_N,
-        CUBLAS_OP_N,
-        static_cast<int>(helper.N()),
-        static_cast<int>(helper.M()),
-        static_cast<int>(helper.K()),
-        &alpha,
-        b_ptr + helper.RightOffsets()[batch] + helper.RightOffsets()[batch] / helper.N() * b_pad_size,
-        CUDA_R_8I,
-        static_cast<int>(helper.N() + b_pad_size),
-        a_ptr + helper.LeftOffsets()[batch] + helper.LeftOffsets()[batch] / helper.K() * a_pad_size,
-        CUDA_R_8I,
-        static_cast<int>(helper.K() + a_pad_size),
-        &beta,
-        output_ptr + helper.OutputOffsets()[batch],
-        CUDA_R_32I,
-        static_cast<int>(helper.N()),
-        CUDA_R_32I,
-        CUBLAS_GEMM_DFALT));
+    GemmInt8(static_cast<int>(helper.M()),
+             static_cast<int>(helper.N()),
+             static_cast<int>(helper.K()),
+             alpha,
+             beta,
+             a_ptr + helper.LeftOffsets()[batch],
+             static_cast<int>(helper.K()),
+             b_ptr + helper.RightOffsets()[batch],
+             static_cast<int>(helper.N()),
+             output_ptr + helper.OutputOffsets()[batch],
+             static_cast<int>(helper.N()),
+             this);
   }
 
   return Status::OK();

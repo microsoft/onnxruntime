@@ -200,11 +200,13 @@ class PlannerTest : public ::testing::Test {
   }
 
   void BindKernel(onnxruntime::Node* p_node, ::onnxruntime::KernelDef& kernel_def, KernelRegistry* reg) {
-    auto info = onnxruntime::make_unique<OpKernelInfo>(*p_node, kernel_def, *execution_providers_.Get(*p_node),
+    const IExecutionProvider* ep = execution_providers_.Get(*p_node);
+    ASSERT_NE(ep, nullptr);
+    auto info = onnxruntime::make_unique<OpKernelInfo>(*p_node, kernel_def, *ep,
                                                        state_.GetInitializedTensors(), state_.GetOrtValueNameIdxMap(),
                                                        state_.GetFuncMgr(), state_.GetDataTransferMgr());
     op_kernel_infos_.push_back(std::move(info));
-    if (reg->TryFindKernel(*p_node, onnxruntime::kCpuExecutionProvider) == nullptr) {
+    if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider)) {
       auto st = reg->Register(
           KernelCreateInfo(onnxruntime::make_unique<KernelDef>(kernel_def),
                            [](const OpKernelInfo& info) -> OpKernel* { return new DummyOpKernel(info); }));
