@@ -114,10 +114,6 @@ bool LaunchSkipLayerNormKernel(
   const cudaStream_t stream = nullptr;
 
   if (element_size == 2) {
-    const half epsilon_half = __float2half_rn(epsilon);
-    if (__heq(epsilon_half, __int2half_rn(0))) {
-      LOGS_DEFAULT(WARNING) << "SkipLayerNormalization attribute epsilon is rounded to zero. ";
-    }
     return ComputeSkipLayerNorm(
         stream,
         hidden_size,
@@ -127,7 +123,7 @@ bool LaunchSkipLayerNormKernel(
         reinterpret_cast<const half*>(beta),
         reinterpret_cast<const half*>(gamma),
         reinterpret_cast<const half*>(bias),
-        epsilon_half,
+        __float2half_rn(epsilon),
         reinterpret_cast<half*>(output));
   } else {
     return ComputeSkipLayerNorm(
