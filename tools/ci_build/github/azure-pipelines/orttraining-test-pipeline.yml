@@ -59,7 +59,8 @@ stages:
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Pipeline.Workspace)/artifacts:/artifacts \
           onnxruntime-training-ubuntu-gpu-test /bin/bash -c " \
-            /opt/miniconda3/bin/conda init && \
+            PYTHON_VERSION=$(python.version) \
+            CONDA_INSTALL_DIR=/opt/miniconda3 \
             /onnxruntime_src/tools/ci_build/run_in_temp_conda_env.sh \
               python /onnxruntime_src/tools/ci_build/run_python_tests_with_wheel.py \
                 --wheel-path ${HOST_WHEEL_PATH/#"$(Pipeline.Workspace)/artifacts"/"/artifacts"} \
