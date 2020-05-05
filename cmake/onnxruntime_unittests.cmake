@@ -669,6 +669,7 @@ endif()
 target_include_directories(onnxruntime_perf_test PRIVATE ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
         ${eigen_INCLUDE_DIRS} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
         ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx)
+onnxruntime_add_include_to_target(onnxruntime_perf_test onnx onnx_proto)
 if (WIN32)
   target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
   if (NOT DEFINED SYS_PATH_LIB)
@@ -677,8 +678,9 @@ if (WIN32)
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)
-  set(onnxruntime_perf_test_libs onnxruntime_test_utils onnx_test_runner_common onnxruntime_common re2::re2
-          onnx_test_data_proto onnx_proto ${PROTOBUF_LIB} ${GETOPT_LIB_WIDE} onnxruntime ${SYS_PATH_LIB}
+  set(onnxruntime_perf_test_libs onnx_test_runner_common onnxruntime_test_utils onnxruntime_framework onnxruntime_util 
+          onnxruntime_graph onnxruntime_common onnxruntime_mlas onnxruntime re2::re2
+          onnx_test_data_proto onnx onnx_proto ${PROTOBUF_LIB} ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB}
           ${CMAKE_DL_LIBS})
   if(NOT WIN32)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)
