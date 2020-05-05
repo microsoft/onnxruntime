@@ -19,6 +19,8 @@ bool LaunchEmbedLayerNormKernel(void* output,                     // output tens
                                 const int hidden_size,            // hidden size (that is head_size * num_heads)
                                 int batch_size,                   // batch size
                                 int sequence_length,              // sequence length
+                                int max_word_id,                  // maximum word ID according to word embedding table
+                                int max_segment_id,               // maximum segment ID according to segment embedding table
                                 const size_t element_size);       // size of element in output tensor. 2 for half, 4 for float.
 
 }  // namespace cuda

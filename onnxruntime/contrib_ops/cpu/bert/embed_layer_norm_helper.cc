@@ -48,6 +48,11 @@ Status CheckInputs(const OpKernelContext* context) {
                            "position_embedding is expected to have 2 dimensions, got ", position_embedding_dims.size());
   }
 
+  if (input_dims[1] > position_embedding_dims[0]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "sequence length ", input_dims[1], " > max allowed in position embedding ", position_embedding_dims[0]);
+  }
+
   const auto segment_embedding_dims = segment_embedding->Shape().GetDims();
   if (segment_embedding_dims.size() != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

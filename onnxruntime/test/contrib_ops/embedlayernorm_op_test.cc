@@ -23,7 +23,8 @@ static void RunTest(
     int sequence_length,
     int hidden_size,
     bool use_float16 = false,
-    bool has_mask = true) {
+    bool has_mask = true,
+    bool expect_failure = false) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
@@ -85,9 +86,140 @@ static void RunTest(
       tester.AddOutput<float>("output", output_dims, output_data);
     }
     tester.AddOutput<int32_t>("mask_index", mask_index_dims, mask_index_data);
-    tester.Run();
+
+    if (expect_failure) {
+      tester.Run(OpTester::ExpectResult::kExpectFailure);
+    } else {
+      tester.Run();
+    }
   }
 }
+
+TEST(EmbedLayerNormTest, EmbedLayerNormInvalidWordId) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+
+  std::vector<int32_t> input_ids_data = {
+      1, 6}; // max word ID is 5
+
+  std::vector<int32_t> segment_ids_data = {
+      0, 1};
+
+  std::vector<int32_t> mask_data = {
+      1, 1};
+
+  std::vector<float> word_embedding_data = {
+      0.2f, 0.1f, 0.4f, -0.6f,
+      0.3f, 0.2f, 0.5f, 0.6f,
+      0.6f, 0.7f, 0.0f, -0.1f,
+      0.8f, 0.6f, 0.9f, 1.2f,
+      0.1f, 0.3f, 0.5f, 0.9f,
+      1.0f, -2.0f, 1.1f, 0.8f};
+
+  std::vector<float> position_embedding_data = {
+      0.1f, 0.1f, 0.4f, 0.6f,
+      0.6f, 0.0f, 0.8f, 0.6f,
+      0.3f, 0.9f, -2.0f, 0.8f};
+
+  std::vector<float> segment_embedding_data = {
+      0.3f, 0.4f, 0.9f, 0.1f,
+      0.7f, 0.3f, 0.5f, 0.2f};
+
+  std::vector<float> gamma_data = {
+      0.25f, 0.15f, 0.45f, -0.66f};
+
+  std::vector<float> beta_data = {
+      0.6f, 0.2f, 0.5f, -0.6f};
+
+  std::vector<float> output_data = {
+      0.36917170882225037, 0.061503000557422638, 1.1598974466323853, -0.85092413425445557,
+      0.74301940202713013, -0.057434864342212677, 0.84324657917022705, -0.85171419382095337};
+
+  std::vector<int32_t> mask_index_data = {
+      2};
+
+  RunTest(input_ids_data,
+          segment_ids_data,
+          mask_data,
+          word_embedding_data,
+          position_embedding_data,
+          segment_embedding_data,
+          gamma_data,
+          beta_data,
+          output_data,
+          mask_index_data,
+          batch_size,
+          sequence_length,
+          hidden_size,
+          false,
+          true,
+          true
+      );
+}
+
+TEST(EmbedLayerNormTest, EmbedLayerNormInvalidSegmentId) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+
+  std::vector<int32_t> input_ids_data = {
+      1, 3};
+
+  std::vector<int32_t> segment_ids_data = {
+      0, 2}; // max segment ID is 1
+
+  std::vector<int32_t> mask_data = {
+      1, 1};
+
+  std::vector<float> word_embedding_data = {
+      0.2f, 0.1f, 0.4f, -0.6f,
+      0.3f, 0.2f, 0.5f, 0.6f,
+      0.6f, 0.7f, 0.0f, -0.1f,
+      0.8f, 0.6f, 0.9f, 1.2f,
+      0.1f, 0.3f, 0.5f, 0.9f,
+      1.0f, -2.0f, 1.1f, 0.8f};
+
+  std::vector<float> position_embedding_data = {
+      0.1f, 0.1f, 0.4f, 0.6f,
+      0.6f, 0.0f, 0.8f, 0.6f,
+      0.3f, 0.9f, -2.0f, 0.8f};
+
+  std::vector<float> segment_embedding_data = {
+      0.3f, 0.4f, 0.9f, 0.1f,
+      0.7f, 0.3f, 0.5f, 0.2f};
+
+  std::vector<float> gamma_data = {
+      0.25f, 0.15f, 0.45f, -0.66f};
+
+  std::vector<float> beta_data = {
+      0.6f, 0.2f, 0.5f, -0.6f};
+
+  std::vector<float> output_data = {
+      0.36917170882225037, 0.061503000557422638, 1.1598974466323853, -0.85092413425445557,
+      0.74301940202713013, -0.057434864342212677, 0.84324657917022705, -0.85171419382095337};
+
+  std::vector<int32_t> mask_index_data = {
+      2};
+
+  RunTest(input_ids_data,
+          segment_ids_data,
+          mask_data,
+          word_embedding_data,
+          position_embedding_data,
+          segment_embedding_data,
+          gamma_data,
+          beta_data,
+          output_data,
+          mask_index_data,
+          batch_size,
+          sequence_length,
+          hidden_size,
+          false,
+          true,
+          true);
+}
+
 
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch1) {
   int batch_size = 1;

@@ -104,8 +104,11 @@ inline bool ComputeMaskIndex(cudaStream_t stream, const int sequence_length, con
 
 template <typename T, unsigned TPB>
 __global__ void EmbedLayerNormKernel(
-    int hidden_size, const int* input_ids, const int* segment_ids, const T* beta, const T* gamma,
-    const T* word_embedding, const T* position_embedding, const T* segment_embedding,
+    int hidden_size, int max_word_id, int max_segment_id,
+    const int* input_ids, const int* segment_ids, const T* beta, const T* gamma,
+    const T* word_embedding,
+    const T* position_embedding,
+    const T* segment_embedding,
     T* output) {
   KeyValuePairSum pair_sum;
   // 1. lookup word and segment of the block
@@ -121,6 +124,10 @@ __global__ void EmbedLayerNormKernel(
   if (threadIdx.x == 0) {
     word_id = input_ids[sequence_position];
     segment_id = segment_ids[sequence_position];
+    if (word_id > max_word_id || segment_id > max_segment_id) {
+      // https://stackoverflow.com/questions/50755717/triggering-a-runtime-error-within-a-cuda-kernel
+      asm("trap;");
+    }
   }
   __syncthreads();
 
@@ -154,13 +161,14 @@ bool EmbedSkipLayerNorm(
     cudaStream_t stream, int hidden_size, int batch_size, int sequence_length,
     const int* input_ids, const int* segment_ids, const T* beta, const T* gamma,
     const T* word_embedding, const T* position_embedding, const T* segment_embedding,
+    int max_word_id, int max_segment_id,
     T* output) {
   constexpr int tpb = 256;
   const dim3 grid(sequence_length, batch_size, 1);
   const dim3 block(tpb, 1, 1);
 
   EmbedLayerNormKernel<T, tpb>
-      <<<grid, block, 0, stream>>>(hidden_size, input_ids, segment_ids, beta, gamma, word_embedding, position_embedding, segment_embedding, output);
+      <<<grid, block, 0, stream>>>(hidden_size, max_word_id, max_segment_id, input_ids, segment_ids, beta, gamma, word_embedding, position_embedding, segment_embedding, output);
 
   return CUDA_CALL(cudaPeekAtLastError());
 }
@@ -179,6 +187,8 @@ bool LaunchEmbedLayerNormKernel(
     const int hidden_size,
     int batch_size,
     int sequence_length,
+    int max_word_id,
+    int max_segment_id,
     const size_t element_size) {
   const cudaStream_t stream = nullptr;  // default stream
 
@@ -193,13 +203,19 @@ bool LaunchEmbedLayerNormKernel(
     return EmbedSkipLayerNorm<half>(
         stream, hidden_size, batch_size, sequence_length, input_ids, segment_ids,
         reinterpret_cast<const half*>(beta), reinterpret_cast<const half*>(gamma),
-        reinterpret_cast<const half*>(word_embedding), reinterpret_cast<const half*>(position_embedding), reinterpret_cast<const half*>(segment_embedding),
+        reinterpret_cast<const half*>(word_embedding), 
+        reinterpret_cast<const half*>(position_embedding),
+        reinterpret_cast<const half*>(segment_embedding),
+        max_word_id, max_segment_id,
         reinterpret_cast<half*>(output));
   } else {
     return EmbedSkipLayerNorm<float>(
         stream, hidden_size, batch_size, sequence_length, input_ids, segment_ids,
         reinterpret_cast<const float*>(beta), reinterpret_cast<const float*>(gamma),
-        reinterpret_cast<const float*>(word_embedding), reinterpret_cast<const float*>(position_embedding), reinterpret_cast<const float*>(segment_embedding),
+        reinterpret_cast<const float*>(word_embedding),
+        reinterpret_cast<const float*>(position_embedding),
+        reinterpret_cast<const float*>(segment_embedding),
+        max_word_id, max_segment_id,
         reinterpret_cast<float*>(output));
   }
 }
