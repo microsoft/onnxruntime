@@ -115,7 +115,7 @@ bool LaunchSkipLayerNormKernel(
 
   if (element_size == 2) {
     const half epsilon_half = __float2half_rn(epsilon);
-    if (epsilon_half == half_cast<half>(0)) {
+    if (__heq(epsilon_half, __int2half_rn(0))) {
       LOGS_DEFAULT(WARNING) << "SkipLayerNormalization attribute epsilon is rounded to zero. ";
     }
     return ComputeSkipLayerNorm(
