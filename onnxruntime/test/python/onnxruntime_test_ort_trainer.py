@@ -18,6 +18,8 @@ from helper import get_name
 import onnxruntime
 from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample, save_checkpoint, load_checkpoint
 
+SCRIPT_DIR = os.path.realpath(os.path.dirname(__file__))
+
 def ort_trainer_learning_rate_description():
     return IODescription('Learning_Rate', [1, ], torch.float32)
 
@@ -82,7 +84,7 @@ def create_ort_trainer(gradient_accumulation_steps,
                        use_mixed_precision=use_mixed_precision,
                        allreduce_post_accumulation=allreduce_post_accumulation,
                        partition_optimizer = partition_optimizer)
-    
+
     return model, model_desc, device
 
 def runBertTrainingTest(gradient_accumulation_steps,
@@ -92,7 +94,7 @@ def runBertTrainingTest(gradient_accumulation_steps,
                         use_internel_loss_scale=False):
     torch.manual_seed(1)
     onnxruntime.set_seed(1)
-  
+
     loss_scaler = LossScaler("ort_test_input_loss_scalar", True) if use_internel_loss_scale else None
 
     model, model_desc, device = create_ort_trainer(gradient_accumulation_steps,
@@ -236,14 +238,14 @@ class MNISTWrapper():
 
         kwargs = {'num_workers': 0, 'pin_memory': True}
         train_loader = torch.utils.data.DataLoader(
-            datasets.MNIST('../data', train=True, download=True,
-                        transform=transforms.Compose([transforms.ToTensor(), 
-                                                        transforms.Normalize((0.1307,), (0.3081,))])),
+            datasets.MNIST(os.path.join(SCRIPT_DIR, 'data'), train=True, download=True,
+                           transform=transforms.Compose([transforms.ToTensor(),
+                                                         transforms.Normalize((0.1307,), (0.3081,))])),
             batch_size=args_batch_size, shuffle=True, **kwargs)
         test_loader = torch.utils.data.DataLoader(
-            datasets.MNIST('../data', train=False, transform=transforms.Compose([
-                        transforms.ToTensor(),
-                        transforms.Normalize((0.1307,), (0.3081,))])),
+            datasets.MNIST(os.path.join(SCRIPT_DIR, 'data'), train=False, transform=transforms.Compose([
+                           transforms.ToTensor(),
+                           transforms.Normalize((0.1307,), (0.3081,))])),
             batch_size=args_test_batch_size, shuffle=True, **kwargs)
 
         return train_loader, test_loader
@@ -259,7 +261,7 @@ class MNISTWrapper():
         return model, model_desc
 
     def get_trainer(self, model, model_desc, device):
-        return ORTTrainer(model, MNISTWrapper.my_loss, model_desc, "SGDOptimizer", None, IODescription('Learning_Rate', [1, ], 
+        return ORTTrainer(model, MNISTWrapper.my_loss, model_desc, "SGDOptimizer", None, IODescription('Learning_Rate', [1, ],
                                 torch.float32), device, _opset_version=12)
 
 class TestOrtTrainer(unittest.TestCase):
@@ -379,7 +381,7 @@ class TestOrtTrainer(unittest.TestCase):
             11.02906322479248, 11.094074249267578, 11.008995056152344, 11.061283111572266,
             11.029059410095215, 11.04024887084961, 11.04680347442627, 10.993708610534668]
         expected_eval_loss = [10.959011]
-        
+
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=4, use_mixed_precision=False, allreduce_post_accumulation=False)
 
@@ -436,7 +438,7 @@ class TestOrtTrainer(unittest.TestCase):
 
         ckpt_dir = get_name("ort_ckpt")
         load_checkpoint(model, ckpt_dir, 'bert_toy_lamb')
-                
+
         expected_eval_loss = [10.997552871]
 
         input_ids = torch.tensor([[26598],[21379],[19922],[ 5219],[ 5644],[20559],[23777],[25672],[22969],[16824],[16822],[  635],[27399],[20647],[18519],[15546]], device=device)
