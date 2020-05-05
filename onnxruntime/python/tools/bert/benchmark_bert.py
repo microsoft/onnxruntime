@@ -1,3 +1,8 @@
+#-------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.
+#--------------------------------------------------------------------------
+
 """ Benchmarking the inference of BERT models from huggingface transformers
     Example commands:
         Run OnnxRuntime on GPU for all models:
@@ -20,6 +25,11 @@ import os
 import psutil
 import traceback
 
+num_threads = psutil.cpu_count(logical=True)
+# Set OMP environment variable before importing onnxruntime or torch.
+if "OMP_NUM_THREADS" not in os.environ:
+    os.environ["OMP_NUM_THREADS"] = str(num_threads)
+
 from transformers import (
     AutoConfig,
     AutoTokenizer,
@@ -29,10 +39,6 @@ from transformers import (
 if is_torch_available():
     import torch
     from transformers import AutoModel
-
-num_threads = psutil.cpu_count(logical=True)
-if "OMP_NUM_THREADS" not in os.environ:
-    os.environ["OMP_NUM_THREADS"] = str(num_threads)
 
 def create_onnxruntime_session(onnx_model_path, use_gpu):
     import onnxruntime
