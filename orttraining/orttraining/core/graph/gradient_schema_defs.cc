@@ -1440,6 +1440,50 @@ Example 4:
           "be false.",
           "T");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(PassThrough)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Passes input to output as is with a given signal.")
+      .Input(
+          0,
+          "control_signal",
+          "Control signal to pass tensors",
+          "T1")
+      .Input(
+          1,
+          "input_tensor",
+          "Input tensor",
+          "T2",
+          OpSchema::Variadic,
+          /*is_homogeneous*/ false,
+          /*min_arity*/ 1)
+      .Output(
+          0,
+          "output_tensor",
+          "Output tensor",
+          "T2",
+          OpSchema::Variadic,
+          /*is_homogeneous*/ false,
+          /*min_arity*/ 1)
+      .TypeConstraint(
+          "T1",
+          OpSchema::all_tensor_types(),
+          "control_signal can be of any tensor type.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output tensor types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (ctx.getNumInputs() != ctx.getNumOutputs() + 1)
+          fail_shape_inference("Number of input tensors must be the same as number of output tensors for PassThrough");
+
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          propagateElemTypeFromInputToOutput(ctx, i + 1, i);
+          propagateShapeFromInputToOutput(ctx, i + 1, i);
+        }
+      });
+
   static const char* All_doc = R"DOC(
 Return true if all elements are true and false otherwise.
 )DOC";

@@ -10,32 +10,13 @@
 #include "gtest/gtest.h"
 
 #include "test/common/tensor_op_test_utils.h"
-#include "test/providers/provider_test_utils.h"
 #include "test/util/include/test_random_seed.h"
-#include "test/util/include/default_providers.h"
+#include "orttraining/test/gradient/gradient_op_test_utils.h"
 
 #include "onnx/defs/attr_proto_util.h"
 
 namespace onnxruntime {
 namespace test {
-
-// Run GPU op for GPU build. Otherwise, run GPU op.
-void run_provider_specific_optest(OpTester& tester) {
-  RunOptions run_option;
-#ifdef USE_CUDA
-  std::vector<std::unique_ptr<IExecutionProvider>> providers;
-  providers.push_back(DefaultCudaExecutionProvider());
-#else 
-  std::vector<std::unique_ptr<IExecutionProvider>> providers;
-  providers.push_back(DefaultCpuExecutionProvider());
-#endif
-  tester.Run(
-      OpTester::ExpectResult::kExpectSuccess,
-      "",
-      std::unordered_set<std::string>(),
-      &run_option,
-      &providers);
-}
 
 void record_event(int64_t event_id) {
   OpTester test_record("RecordEvent", 1, onnxruntime::kMSDomain);

@@ -8,6 +8,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/environment.h"
 #include "orttraining/models/runner/training_runner.h"
+#include "test/framework/test_utils.h"
 
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
 
@@ -19,6 +20,8 @@
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
 using namespace google::protobuf::util;
+using onnxruntime::test::CountOpsInGraph;
+using onnxruntime::test::GetOpCount;
 
 namespace onnxruntime {
 namespace test {
@@ -26,6 +29,7 @@ namespace test {
 namespace {
 constexpr auto ORIGINAL_MODEL_PATH = ORT_TSTR("testdata/test_training_model.onnx");
 constexpr auto BACKWARD_MODEL_PATH = ORT_TSTR("testdata/temp_backward_model.onnx");
+constexpr const char* const k_pass_through_op_name = "PassThrough";
 
 std::unordered_set<std::string> GetModelOutputNames(const InferenceSession& session) {
   const auto outputs_result = session.GetModelOutputs();
@@ -138,6 +142,9 @@ TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
   EXPECT_TRUE(graph.NumberOfNodes() > 0);
   EXPECT_TRUE(graph.MaxNodeIndex() > 0);
 
+  auto op_counts = CountOpsInGraph(graph, false);
+  EXPECT_TRUE(GetOpCount(op_counts, k_pass_through_op_name) == 1);
+  
   std::cout << "Graph input names = [\n";
   for (const NodeArg* p_node_arg : graph.GetInputs()) {
     std::cout << '\t' << p_node_arg->Name() << '\n';

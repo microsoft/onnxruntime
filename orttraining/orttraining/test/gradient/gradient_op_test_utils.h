@@ -37,5 +37,9 @@ class GradientOpTester : public OpTester {
   std::vector<TensorInfo> input_infos_;
   std::vector<TensorInfo> output_infos_;
 };
+
+// Run GPU op for GPU build. Otherwise, run GPU op.
+void run_provider_specific_optest(OpTester& tester);
+
 }  // namespace test
 }  // namespace onnxruntime

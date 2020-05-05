@@ -70,5 +70,10 @@ std::map<std::string, int> CountOpsInGraph(const Graph& graph, bool recurse_into
   return ops;
 }
 
+int GetOpCount(const std::map<std::string, int>& op_counts, const std::string& op_type) {
+  auto op_count_it = op_counts.find(op_type);
+  return op_count_it != op_counts.end() ? op_count_it->second : 0;
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gradient_op_test_utils.h"
+#include "orttraining/test/gradient/gradient_op_test_utils.h"
 #include "core/session/inference_session.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
@@ -9,6 +9,23 @@
 
 namespace onnxruntime {
 namespace test {
+
+void run_provider_specific_optest(OpTester& tester) {
+  RunOptions run_option;
+#ifdef USE_CUDA
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+#else 
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCpuExecutionProvider());
+#endif
+  tester.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      std::unordered_set<std::string>(),
+      &run_option,
+      &providers);
+}
 
 // TODO: Refactor this so that we dont build gradient graph in every run
 void GradientOpTester::Run(

@@ -24,6 +24,7 @@
 #include "test/test_environment.h"
 
 using onnxruntime::test::CountOpsInGraph;
+using onnxruntime::test::GetOpCount;
 
 namespace onnxruntime {
 namespace training {
@@ -110,12 +111,6 @@ std::unordered_map<std::string, OptimizerNodeConfig> GetOptInfoMap() {
 OptimizerBuilderRegistry& GetOptimizerBuilderRegistry() {
   return OptimizerBuilderRegistry::GetInstance();
 }
-
-int GetOpCount(const std::map<std::string, int>& op_counts, const std::string& op_type) {
-  auto op_count_it = op_counts.find(op_type);
-  return op_count_it != op_counts.end() ? op_count_it->second : 0;
-}
-
 }  // namespace
 
 static void TestDefaultOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {

@@ -97,5 +97,7 @@ void AllocateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, OrtVa
 // Helper function to check that the graph transformations have been successfully applied.
 std::map<std::string, int> CountOpsInGraph(const Graph& graph, bool recurse_into_subgraphs = true);
 
+// Returns the count for a specific op.
+int GetOpCount(const std::map<std::string, int>& op_counts, const std::string& op_type);
 }  // namespace test
 }  // namespace onnxruntime
