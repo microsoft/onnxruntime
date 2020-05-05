@@ -945,6 +945,6 @@ LONG WINAPI UnHandledExceptionFilter(EXCEPTION_POINTERS* exception_pointers) {
   return EXCEPTION_CONTINUE_SEARCH;
 }
 
-//bool InitCrashHandler = (AddVectoredExceptionHandler(1, UnHandledExceptionFilter), false);
-bool InitCrashHandler = (SetUnhandledExceptionFilter(UnHandledExceptionFilter), false);
+bool InitCrashHandler = (AddVectoredExceptionHandler(1, UnHandledExceptionFilter), false);
+//bool InitCrashHandler = (SetUnhandledExceptionFilter(UnHandledExceptionFilter), false);
 #endif
