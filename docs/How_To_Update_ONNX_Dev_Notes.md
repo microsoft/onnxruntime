@@ -29,13 +29,4 @@ Search 'for version2tag', update the commit hashes. The list should contain ever
 
 6. If there is any unitest failure, caught by onnx_test_runner. Please also update
 - [onnxruntime/test/onnx/main.cc](/onnxruntime/test/onnx/main.cc)
-- [onnxruntime/test/python/onnx_backend_test_series.py](/onnxruntime/test/python/onnx_backend_test_series.py)
-
-
-
-
-
-
-
-
-
+- [onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc](/onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc)
