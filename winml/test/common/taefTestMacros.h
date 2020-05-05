@@ -1,8 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
-#define INLINE_TEST_METHOD_MARKUP
-
 #include "WexTestClass.h"
 
 using namespace WEX::Logging;
@@ -11,13 +8,35 @@ using namespace WEX::TestExecution;
 
 #define WINML_EXPECT_NO_THROW(statement) VERIFY_NO_THROW(statement)
 
-#define WINML_TEST_CLASS_BEGIN_WITH_SETUP(test_class_name, setup_method) \
-  class test_class_name {                                                \
-    TEST_CLASS(test_class_name);                                         \
-    TEST_CLASS_SETUP(TestClassSetup) {                                   \
-      getapi().setup_method();                                           \
-      return true;                                                       \
+#define WINML_TEST_CLASS_BEGIN(test_class_name) \
+  class test_class_name {                       \
+    TEST_CLASS(test_class_name);
+
+#define WINML_TEST_CLASS_SETUP_CLASS(setup_class) \
+    TEST_CLASS_SETUP(TestClassSetup) {           \
+      getapi().setup_class();                     \
+      return true;                                \
     }
+
+#define WINML_TEST_CLASS_TEARDOWN_CLASS(teardown_class) \
+    TEST_CLASS_CLEANUP(TestClassCleanup) {              \
+      getapi().teardown_class();                        \
+      return true;                                      \
+    }
+
+#define WINML_TEST_CLASS_SETUP_METHOD(setup_method) \
+    TEST_METHOD_SETUP(TestMethodSetup) {            \
+      getapi().setup_method();                      \
+      return true;                                  \
+    }
+
+#define WINML_TEST_CLASS_TEARDOWN_METHOD(teardown_method) \
+    TEST_METHOD_CLEANUP(TestClassCleanup) {               \
+      getapi().teardown_method();                         \
+      return true;                                        \
+    }
+
+#define WINML_TEST_CLASS_BEGIN_TESTS
 
 #define WINML_TEST_CLASS_END() \
   }                            \
@@ -55,9 +74,9 @@ using namespace WEX::TestExecution;
 #else
 #define GPUTEST                                                                               \
   do {                                                                                        \
-    bool noGPUTests;                                                                          \
-    if (SUCCEEDED(RuntimeParameters::TryGetValue(L"noGPUtests", noGPUTests)) && noGPUTests) { \
-      WINML_SKIP_TEST("This test is disabled by the noGPUTests runtime parameter.");          \
+    bool no_gpu_tests;                                                                          \
+    if (SUCCEEDED(RuntimeParameters::TryGetValue(L"noGPUtests", no_gpu_tests)) && no_gpu_tests) { \
+      WINML_SKIP_TEST("This test is disabled by the no_gpu_tests runtime parameter.");          \
       return;                                                                                 \
     }                                                                                         \
   } while (0)

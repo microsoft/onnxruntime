@@ -88,11 +88,16 @@ if (onnxruntime_USE_MIMALLOC_STL_ALLOCATOR OR onnxruntime_USE_MIMALLOC_ARENA_ALL
     endif()
 endif()
 
-onnxruntime_add_include_to_target(onnxruntime_common date_interface safeint_interface)
-target_include_directories(onnxruntime_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
-        PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
+onnxruntime_add_include_to_target(onnxruntime_common date_interface wil)
+target_include_directories(onnxruntime_common
+    PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}
+    # safeint is part of onnxruntime_common public interface, so we want to propagate its includes
+    PUBLIC $<TARGET_PROPERTY:safeint_interface,INTERFACE_INCLUDE_DIRECTORIES>)
 
-target_include_directories(onnxruntime_common PUBLIC ${eigen_INCLUDE_DIRS})
+if(NOT WIN32)
+  target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
+endif()
+
 if(NOT onnxruntime_USE_OPENMP)
   target_compile_definitions(onnxruntime_common PUBLIC EIGEN_USE_THREADS)
 endif()

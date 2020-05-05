@@ -41,7 +41,42 @@ public:
         opDesc.InputTensor = inputDescs.data();
         opDesc.OutputTensor = outputDescs.data();
 
-        SetDmlOperatorDesc({ ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &opDesc}, kernelInfo);
+        SetDmlOperatorDesc({ ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &opDesc }, kernelInfo);
+    }
+};
+
+template <>
+class DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_ABS_OPERATOR_DESC> : public DmlOperator
+{
+public:
+    DmlOperatorElementwiseUnary(const MLOperatorKernelCreationContext& kernelInfo) : DmlOperator(kernelInfo)
+    {
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 1);
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
+
+        Initialize(kernelInfo, std::nullopt, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
+
+        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
+        assert(inputDescs[0].Type == DML_TENSOR_TYPE_BUFFER);
+        if (IsSigned(reinterpret_cast<const DML_BUFFER_TENSOR_DESC*>(inputDescs[0].Desc)->DataType))
+        {
+            DML_ELEMENT_WISE_ABS_OPERATOR_DESC opDesc = {};
+            opDesc.InputTensor = inputDescs.data();
+            opDesc.OutputTensor = outputDescs.data();
+
+            SetDmlOperatorDesc({ ApiTraits::OperatorDescTraits<DML_ELEMENT_WISE_ABS_OPERATOR_DESC>::Type, &opDesc }, kernelInfo);
+        }
+        else
+        {
+            // DML doesn't support UINT datatypes. So redirect to Identity because Abs doesn't do anything to UINT.
+            DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC opDesc = {};
+            opDesc.InputTensor = inputDescs.data();
+            opDesc.OutputTensor = outputDescs.data();
+
+            SetDmlOperatorDesc({ ApiTraits::OperatorDescTraits<DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC>::Type, &opDesc }, kernelInfo);
+        }
     }
 };
 
@@ -369,10 +404,10 @@ public:
     std::vector<ComPtr<IDMLCompiledOperator>> m_compiledOperators;
 };
 
-class DmlOperatorElementwiseClip : public DmlOperator
+class DmlOperatorElementwiseClip7 : public DmlOperator
 {
 public:
-    DmlOperatorElementwiseClip(const MLOperatorKernelCreationContext& kernelInfo) : DmlOperator(kernelInfo)
+    DmlOperatorElementwiseClip7(const MLOperatorKernelCreationContext& kernelInfo) : DmlOperator(kernelInfo)
     {
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 1);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
@@ -387,6 +422,41 @@ public:
         opDesc.OutputTensor = outputDescs.data();
         opDesc.Min = kernelInfo.GetOptionalAttribute<float>(AttrName::Min, std::numeric_limits<float>::lowest());
         opDesc.Max = kernelInfo.GetOptionalAttribute<float>(AttrName::Max, std::numeric_limits<float>::max());
+
+        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_CLIP, &opDesc}, kernelInfo);
+    }
+};
+
+class DmlOperatorElementwiseClip11 : public DmlOperator
+{
+public:
+    DmlOperatorElementwiseClip11(const MLOperatorKernelCreationContext& kernelInfo) : DmlOperator(kernelInfo)
+    {
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() >= 1 && kernelInfo.GetInputCount() <= 3);
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
+
+        std::vector<std::optional<uint32_t>> inputIndices = {0}; // min and max (1 and 2) are CPU-bound.
+        std::vector<std::optional<uint32_t>> outputIndices = {0};
+        DmlOperator::Initialize(kernelInfo, inputIndices, outputIndices, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
+
+        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
+        float minValue = -FLT_MAX;
+        float maxValue = FLT_MAX;
+        if (kernelInfo.IsInputValid(1))
+        {
+          minValue = static_cast<float>(ReadScalarTensorCastToFloat64(kernelInfo.GetConstantInputTensor(1)));
+        }
+        if (kernelInfo.IsInputValid(2)) {
+          maxValue = static_cast<float>(ReadScalarTensorCastToFloat64(kernelInfo.GetConstantInputTensor(2)));
+        }
+
+        DML_ELEMENT_WISE_CLIP_OPERATOR_DESC opDesc = {};
+        opDesc.InputTensor = inputDescs.data();
+        opDesc.OutputTensor = outputDescs.data();
+        opDesc.Min = minValue;
+        opDesc.Max = maxValue;
 
         SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_CLIP, &opDesc}, kernelInfo);
     }
@@ -499,6 +569,110 @@ public:
     }
 };
 
+class DmlOperatorElementwiseMod : public DmlOperator
+{
+public:
+    DmlOperatorElementwiseMod(const MLOperatorKernelCreationContext& kernelInfo) : DmlOperator(kernelInfo)
+    {
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 2);
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
+
+        Initialize(kernelInfo, std::nullopt, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
+
+        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
+        auto fmod = kernelInfo.GetOptionalAttribute<int>(AttrName::Fmod, 0);
+
+        // Note TRUNCATE and FLOOR modulus operator descriptions are identical.
+        static_assert(sizeof(DML_ELEMENT_WISE_MODULUS_TRUNCATE_OPERATOR_DESC) == sizeof(DML_ELEMENT_WISE_MODULUS_FLOOR_OPERATOR_DESC));
+        DML_ELEMENT_WISE_MODULUS_TRUNCATE_OPERATOR_DESC opDesc = {};
+        opDesc.ATensor = &inputDescs[0];
+        opDesc.BTensor = &inputDescs[1];
+        opDesc.OutputTensor = &outputDescs[0];
+
+        DML_OPERATOR_TYPE type = fmod ? DML_OPERATOR_ELEMENT_WISE_MODULUS_TRUNCATE : DML_OPERATOR_ELEMENT_WISE_MODULUS_FLOOR;
+        SetDmlOperatorDesc({ type, &opDesc}, kernelInfo);
+    }
+};
+
+class DmlOperatorElementwiseBitShift : public DmlOperator
+{
+public:
+    DmlOperatorElementwiseBitShift(const MLOperatorKernelCreationContext& kernelInfo) : DmlOperator(kernelInfo)
+    {
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 2);
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
+
+        Initialize(kernelInfo, std::nullopt, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
+
+        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
+        // Note LEFT and RIGHT shift operator descriptions are identical.
+        static_assert(sizeof(DML_ELEMENT_WISE_BIT_SHIFT_LEFT_OPERATOR_DESC) == sizeof(DML_ELEMENT_WISE_BIT_SHIFT_RIGHT_OPERATOR_DESC));
+        DML_ELEMENT_WISE_BIT_SHIFT_LEFT_OPERATOR_DESC opDesc = {};
+        opDesc.ATensor = &inputDescs[0];
+        opDesc.BTensor = &inputDescs[1];
+        opDesc.OutputTensor = &outputDescs[0];
+
+        std::string mode = kernelInfo.GetOptionalAttribute<std::string>(AttrName::Direction, "");
+        ML_CHECK_VALID_ARGUMENT(mode == "LEFT" || mode == "RIGHT");
+
+        DML_OPERATOR_TYPE type = (mode == "LEFT") ? DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_LEFT : DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_RIGHT;
+        SetDmlOperatorDesc({ type, &opDesc}, kernelInfo);
+    }
+};
+
+class DmlOperatorElementwiseIsInf : public DmlOperator
+{
+public:
+    DmlOperatorElementwiseIsInf(const MLOperatorKernelCreationContext& kernelInfo) : DmlOperator(kernelInfo)
+    {
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 1);
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
+
+        Initialize(kernelInfo, std::nullopt, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
+
+        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
+        auto detectPositive = kernelInfo.GetOptionalAttribute<int>(AttrName::DetectPositive, 1);
+        auto detectNegative = kernelInfo.GetOptionalAttribute<int>(AttrName::DetectNegative, 1);
+
+        DML_ELEMENT_WISE_IS_INFINITY_OPERATOR_DESC opDesc = {};
+        opDesc.InputTensor  = inputDescs.data();
+        opDesc.OutputTensor = outputDescs.data();
+        opDesc.InfinityMode = (detectPositive == detectNegative) ? DML_IS_INFINITY_MODE_EITHER
+                            :  detectPositive                    ? DML_IS_INFINITY_MODE_POSITIVE
+                            :                                      DML_IS_INFINITY_MODE_NEGATIVE;
+
+        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_IS_INFINITY, &opDesc}, kernelInfo);
+    }
+};
+
+class DmlOperatorElementwiseRound : public DmlOperator
+{
+public:
+    DmlOperatorElementwiseRound(const MLOperatorKernelCreationContext& kernelInfo) : DmlOperator(kernelInfo)
+    {
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 1);
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
+
+        Initialize(kernelInfo, std::nullopt, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
+
+        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
+        DML_ELEMENT_WISE_ROUND_OPERATOR_DESC opDesc = {};
+        opDesc.InputTensor = inputDescs.data();
+        opDesc.OutputTensor = outputDescs.data();
+        opDesc.RoundingMode = DML_ROUNDING_MODE_HALVES_TO_NEAREST_EVEN;
+
+        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_ROUND, &opDesc}, kernelInfo);
+    }
+};
+
 // Unary operators:
 DML_OP_DEFINE_CREATION_FUNCTION(Sqrt,             DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_SQRT_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Reciprocal,       DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_RECIP_OPERATOR_DESC>);
@@ -542,11 +716,16 @@ DML_OP_DEFINE_CREATION_FUNCTION(Max,              DmlOperatorElementwiseBinaryLo
 DML_OP_DEFINE_CREATION_FUNCTION(Mean,             DmlOperatorElementwiseMean);
 
 // Operators with extra attributes:
-DML_OP_DEFINE_CREATION_FUNCTION(Clip,             DmlOperatorElementwiseClip);
+DML_OP_DEFINE_CREATION_FUNCTION(Clip7,            DmlOperatorElementwiseClip7);
+DML_OP_DEFINE_CREATION_FUNCTION(Clip11,           DmlOperatorElementwiseClip11);
 DML_OP_DEFINE_CREATION_FUNCTION(Pow,              DmlOperatorElementwisePow);
 DML_OP_DEFINE_CREATION_FUNCTION(QuantizeLinear,   DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_QUANTIZE_LINEAR_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(DequantizeLinear, DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_DEQUANTIZE_LINEAR_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Where,            DmlOperatorElementwiseIf);
+DML_OP_DEFINE_CREATION_FUNCTION(Mod,              DmlOperatorElementwiseMod);
+DML_OP_DEFINE_CREATION_FUNCTION(BitShift,         DmlOperatorElementwiseBitShift);
+DML_OP_DEFINE_CREATION_FUNCTION(IsInf,            DmlOperatorElementwiseIsInf);
+DML_OP_DEFINE_CREATION_FUNCTION(Round,            DmlOperatorElementwiseRound);
 
 // Fused operators:
 DML_OP_DEFINE_CREATION_FUNCTION(FusedAdd,         DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_ADD1_OPERATOR_DESC>);

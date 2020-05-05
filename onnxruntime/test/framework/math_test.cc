@@ -19,6 +19,8 @@
 #include <gtest/gtest.h>
 #include "core/platform/threadpool.h"
 #include "core/util/math_cpuonly.h"
+#include "core/util/thread_utils.h"
+
 namespace onnxruntime {
 
 #define VECTOR_HEAD(x) x.size() > 0 ? &x[0] : NULL
@@ -26,12 +28,12 @@ namespace onnxruntime {
 //parameter is thread pool size
 class MathGemmTest : public testing::TestWithParam<int> {
  protected:
-  static concurrency::ThreadPool* CreateThreadPool(int size) {
-    if (size == 1)
-      return nullptr;
-    return new concurrency::ThreadPool("test", size);
+  static OrtThreadPoolParams CreateThreadPoolOptions(int size) {
+    OrtThreadPoolParams option;
+    option.thread_pool_size = size;
+    return option;
   }
-  std::unique_ptr<concurrency::ThreadPool> tp{CreateThreadPool(GetParam())};
+  std::unique_ptr<concurrency::ThreadPool> tp{concurrency::CreateThreadPool(&Env::Default(), CreateThreadPoolOptions(GetParam()), concurrency::ThreadPoolType::INTRA_OP)};
 };
 
 TEST_P(MathGemmTest, GemmNoTransNoTrans) {
@@ -122,7 +124,7 @@ TEST_P(MathGemmTest, GemmNoTransTrans) {
 }
 
 INSTANTIATE_TEST_SUITE_P(MathGemmTests, MathGemmTest,
-                        testing::Values(1, 4));
+                         testing::Values(1, 0));
 
 TEST(MathTest, GemvNoTrans) {
   auto& provider = CPUMathUtil::Instance();

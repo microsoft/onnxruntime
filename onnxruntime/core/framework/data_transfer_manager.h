@@ -22,6 +22,7 @@ class DataTransferManager {
 
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const;
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const;
+  common::Status CopyTensors(const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DataTransferManager);

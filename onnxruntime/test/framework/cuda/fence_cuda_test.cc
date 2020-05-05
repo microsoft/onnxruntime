@@ -25,6 +25,7 @@
 #include "test/framework/test_utils.h"
 #include "gtest/gtest.h"
 #include "core/util/protobuf_parsing_utils.h"
+#include "asserts.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -120,12 +121,13 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
   FenceCudaTestInferenceSession session(so, GetEnvironment());
   LoadInferenceSessionFromModel(session, *model);
   CUDAExecutionProviderInfo xp_info;
-  session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info));
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
   ASSERT_TRUE(session.Initialize().IsOK());
   ASSERT_TRUE(1 == CountCopyNodes(graph));
 
   vector<OrtValue> outputs;
-  session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Out"}, &outputs);
+  ASSERT_STATUS_OK(
+      session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Out"}, &outputs));
   ASSERT_TRUE(1 == outputs.size());
   const Tensor& output = outputs[0].Get<Tensor>();
   //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
@@ -174,11 +176,12 @@ TEST(CUDAFenceTests, TileWithInitializer) {
   FenceCudaTestInferenceSession session(so, GetEnvironment());
   LoadInferenceSessionFromModel(session, *model);
   CUDAExecutionProviderInfo xp_info;
-  session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info));
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
   ASSERT_TRUE(session.Initialize().IsOK());
 
   vector<OrtValue> outputs;
-  session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Y"}, &outputs);
+  ASSERT_STATUS_OK(
+      session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Y"}, &outputs));
   ASSERT_TRUE(1 == outputs.size());
   const Tensor& output = outputs[0].Get<Tensor>();
   //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
@@ -239,11 +242,12 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
   FenceCudaTestInferenceSession session(so, GetEnvironment());
   LoadInferenceSessionFromModel(session, *model);
   CUDAExecutionProviderInfo xp_info;
-  session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info));
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
   ASSERT_TRUE(session.Initialize().IsOK());
 
   vector<OrtValue> outputs;
-  session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Out"}, &outputs);
+  ASSERT_STATUS_OK(
+      session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Out"}, &outputs));
   ASSERT_TRUE(1 == outputs.size());
   const Tensor& output = outputs[0].Get<Tensor>();
   //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213

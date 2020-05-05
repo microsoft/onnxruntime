@@ -56,9 +56,8 @@ SessionStateInitializer::SessionStateInitializer(bool enable_mem_pattern,
       enable_mem_pattern_(enable_mem_pattern) {}
 
 common::Status SessionStateInitializer::CreatePlan(
-    const Node* parent_node,
-    const ConstPointerContainer<std::vector<NodeArg*>>* outer_scope_node_args,
-    ExecutionMode execution_mode) {
+    _In_opt_ const Node* parent_node,
+    _In_opt_ const ConstPointerContainer<std::vector<NodeArg*>>* outer_scope_node_args, ExecutionMode execution_mode) {
   session_state_.SetGraph(graph_);
   const GraphViewer* graph_viewer = session_state_.GetGraphViewer();
 

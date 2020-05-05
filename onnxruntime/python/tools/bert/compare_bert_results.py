@@ -78,9 +78,11 @@ def compare(baseline_results, treatment_results, verbose, rtol=1e-3, atol=1e-4):
 
 
 def run_test(baseline_model, optimized_model, output_dir, batch_size, sequence_length, use_gpu, test_cases, seed,
-             use_openmp, verbose, rtol, atol):
+             use_openmp, verbose, rtol, atol, input_ids_name, segment_ids_name, input_mask_name):
+
     # Try deduce input names from optimized model.
-    input_ids, segment_ids, input_mask = get_bert_inputs(optimized_model)
+    input_ids, segment_ids, input_mask = get_bert_inputs(optimized_model, input_ids_name, segment_ids_name,
+                                                         input_mask_name)
 
     # Use random mask length for accuracy test. It might introduce slight inflation in latency reported in this script.
     all_inputs = generate_test_data(batch_size,
@@ -161,6 +163,10 @@ def parse_arguments():
     parser.add_argument('--verbose', required=False, action='store_true', help="print verbose information")
     parser.set_defaults(verbose=False)
 
+    parser.add_argument('--input_ids', required=False, type=str, default=None, help="input name for input ids")
+    parser.add_argument('--segment_ids', required=False, type=str, default=None, help="input name for segment ids")
+    parser.add_argument('--input_mask', required=False, type=str, default=None, help="input name for attention mask")
+
     args = parser.parse_args()
     return args
 
@@ -174,7 +180,8 @@ def main():
         path.mkdir(parents=True, exist_ok=True)
 
     run_test(args.baseline_model, args.optimized_model, args.output_dir, args.batch_size, args.sequence_length,
-             args.use_gpu, args.samples, args.seed, args.openmp, args.verbose, args.rtol, args.atol)
+             args.use_gpu, args.samples, args.seed, args.openmp, args.verbose, args.rtol, args.atol, args.input_ids,
+             args.segment_ids, args.input_mask)
 
 
 if __name__ == "__main__":

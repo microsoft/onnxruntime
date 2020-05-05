@@ -17,6 +17,10 @@
           "type": "BOOL"
         },
         {
+          "name": "onnxruntime_WINML_NAMESPACE_OVERRIDE",
+          "value": "Microsoft"
+        },
+        {
           "name": "onnxruntime_USE_DML",
           "value": "True",
           "type": "BOOL"
@@ -44,6 +48,10 @@
           "name": "onnxruntime_USE_WINML",
           "value": "True",
           "type": "BOOL"
+        },
+        {
+          "name": "onnxruntime_WINML_NAMESPACE_OVERRIDE",
+          "value": "Microsoft"
         },
         {
           "name": "onnxruntime_USE_DML",

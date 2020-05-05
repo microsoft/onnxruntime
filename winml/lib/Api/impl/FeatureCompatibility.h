@@ -8,11 +8,11 @@
 #include "IMapFeatureValue.h"
 #include "ISequenceFeatureValue.h"
 #include "TensorFeatureDescriptor.h"
+#include "NamespaceAliases.h"
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 namespace error_strings {
-using namespace winrt::Windows::AI::MachineLearning;
 
 // This must be kept in sync with the TensorKind enum in Windows.AI.MachineLearning.idl
 const char* SzTensorKind[] =
@@ -35,7 +35,7 @@ const char* SzTensorKind[] =
         "Complex128",
 };
 
-static std::string ToString(ILearningModelFeatureDescriptor descriptor);
+static std::string ToString(winml::ILearningModelFeatureDescriptor descriptor);
 
 static std::string ToString(const std::vector<int64_t>& shape) {
   std::ostringstream stream;
@@ -46,36 +46,36 @@ static std::string ToString(const std::vector<int64_t>& shape) {
   return stream.str();
 }
 
-static std::string ToString(winrt::Windows::Foundation::Collections::IVectorView<int64_t> shape) {
+static std::string ToString(wfc::IVectorView<int64_t> shape) {
   auto shapeVec = std::vector<int64_t>(begin(shape), end(shape));
   return ToString(shapeVec);
 }
 
 static std::string ToString(
-    TensorKind kind,
-    winrt::Windows::Foundation::Collections::IVectorView<int64_t> shape) {
-  FAIL_FAST_IF_MSG(kind == TensorKind::Complex128, "Unexpected TensorKind Complex128.");
-  FAIL_FAST_IF_MSG(kind == TensorKind::Complex64, "Unexpected TensorKind Complex64.");
-  FAIL_FAST_IF_MSG(kind == TensorKind::Undefined, "Unexpected TensorKind Undefined.");
+    winml::TensorKind kind,
+    wfc::IVectorView<int64_t> shape) {
+  FAIL_FAST_IF_MSG(kind == winml::TensorKind::Complex128, "Unexpected TensorKind Complex128.");
+  FAIL_FAST_IF_MSG(kind == winml::TensorKind::Complex64, "Unexpected TensorKind Complex64.");
+  FAIL_FAST_IF_MSG(kind == winml::TensorKind::Undefined, "Unexpected TensorKind Undefined.");
 
   std::ostringstream stream;
   stream << SzTensorKind[static_cast<uint32_t>(kind)] << ToString(shape);
   return stream.str();
 }
 
-static std::string ToString(ITensorFeatureDescriptor descriptor) {
+static std::string ToString(winml::ITensorFeatureDescriptor descriptor) {
   return ToString(descriptor.TensorKind(), descriptor.Shape());
 }
 
-static std::string ToString(ITensor value) {
+static std::string ToString(winml::ITensor value) {
   return ToString(value.TensorKind(), value.Shape());
 }
 
-static std::string ToString(IMapFeatureDescriptor descriptor) {
+static std::string ToString(winml::IMapFeatureDescriptor descriptor) {
   auto keyKind = descriptor.KeyKind();
-  FAIL_FAST_IF_MSG(keyKind == TensorKind::Complex128, "Unexpected TensorKind Complex128.");
-  FAIL_FAST_IF_MSG(keyKind == TensorKind::Complex64, "Unexpected TensorKind Complex64.");
-  FAIL_FAST_IF_MSG(keyKind == TensorKind::Undefined, "Unexpected TensorKind Undefined.");
+  FAIL_FAST_IF_MSG(keyKind == winml::TensorKind::Complex128, "Unexpected TensorKind Complex128.");
+  FAIL_FAST_IF_MSG(keyKind == winml::TensorKind::Complex64, "Unexpected TensorKind Complex64.");
+  FAIL_FAST_IF_MSG(keyKind == winml::TensorKind::Undefined, "Unexpected TensorKind Undefined.");
 
   auto valueDescriptor = descriptor.ValueDescriptor();
   std::ostringstream stream;
@@ -83,29 +83,29 @@ static std::string ToString(IMapFeatureDescriptor descriptor) {
   return stream.str();
 }
 
-static std::string ToString(winrt::com_ptr<IMapFeatureValue> value) {
-  TensorKind keyKind;
+static std::string ToString(winrt::com_ptr<_winml::IMapFeatureValue> value) {
+  winml::TensorKind keyKind;
   FAIL_FAST_IF_FAILED(value->get_KeyKind(&keyKind));
-  FAIL_FAST_IF_MSG(keyKind == TensorKind::Complex128, "Unexpected TensorKind Complex128.");
-  FAIL_FAST_IF_MSG(keyKind == TensorKind::Complex64, "Unexpected TensorKind Complex64.");
-  FAIL_FAST_IF_MSG(keyKind == TensorKind::Undefined, "Unexpected TensorKind Undefined.");
+  FAIL_FAST_IF_MSG(keyKind == winml::TensorKind::Complex128, "Unexpected TensorKind Complex128.");
+  FAIL_FAST_IF_MSG(keyKind == winml::TensorKind::Complex64, "Unexpected TensorKind Complex64.");
+  FAIL_FAST_IF_MSG(keyKind == winml::TensorKind::Undefined, "Unexpected TensorKind Undefined.");
 
-  ILearningModelFeatureDescriptor valueDescriptor;
+  winml::ILearningModelFeatureDescriptor valueDescriptor;
   FAIL_FAST_IF_FAILED(value->get_ValueDescriptor(&valueDescriptor));
   std::ostringstream stream;
   stream << "Map<" << SzTensorKind[static_cast<uint32_t>(keyKind)] << "," << ToString(valueDescriptor) << ">";
   return stream.str();
 }
 
-static std::string ToString(ISequenceFeatureDescriptor descriptor) {
+static std::string ToString(winml::ISequenceFeatureDescriptor descriptor) {
   auto elementDescriptor = descriptor.ElementDescriptor();
   std::ostringstream stream;
   stream << "Sequence<" << ToString(elementDescriptor) << ">";
   return stream.str();
 }
 
-static std::string ToString(winrt::com_ptr<ISequenceFeatureValue> value) {
-  ILearningModelFeatureDescriptor elementDescriptor;
+static std::string ToString(winrt::com_ptr<_winml::ISequenceFeatureValue> value) {
+  winml::ILearningModelFeatureDescriptor elementDescriptor;
   FAIL_FAST_IF_FAILED(value->get_ElementDescriptor(&elementDescriptor));
 
   std::ostringstream stream;
@@ -113,49 +113,49 @@ static std::string ToString(winrt::com_ptr<ISequenceFeatureValue> value) {
   return stream.str().c_str();
 }
 
-static std::string ToString(IImageFeatureDescriptor descriptor) {
+static std::string ToString(winml::IImageFeatureDescriptor descriptor) {
   std::ostringstream stream;
   stream << "Image[" << descriptor.Width() << "x" << descriptor.Height() << "]";
   return stream.str();
 }
 
-static std::string ToString(winrt::com_ptr<implementation::ImageFeatureValue> value) {
+static std::string ToString(winrt::com_ptr<winmlp::ImageFeatureValue> value) {
   std::ostringstream stream;
   stream << "Image[" << value->Widths()[0] << "x" << value->Heights()[0] << "]";
   return stream.str();
 }
 
-static std::string ToString(ILearningModelFeatureDescriptor descriptor) {
+static std::string ToString(winml::ILearningModelFeatureDescriptor descriptor) {
   switch (descriptor.Kind()) {
-    case LearningModelFeatureKind::Image:
-      return ToString(descriptor.as<IImageFeatureDescriptor>());
+    case winml::LearningModelFeatureKind::Image:
+      return ToString(descriptor.as<winml::IImageFeatureDescriptor>());
       break;
-    case LearningModelFeatureKind::Map:
-      return ToString(descriptor.as<IMapFeatureDescriptor>());
+    case winml::LearningModelFeatureKind::Map:
+      return ToString(descriptor.as<winml::IMapFeatureDescriptor>());
       break;
-    case LearningModelFeatureKind::Sequence:
-      return ToString(descriptor.as<ISequenceFeatureDescriptor>());
+    case winml::LearningModelFeatureKind::Sequence:
+      return ToString(descriptor.as<winml::ISequenceFeatureDescriptor>());
       break;
-    case LearningModelFeatureKind::Tensor:
-      return ToString(descriptor.as<ITensorFeatureDescriptor>());
+    case winml::LearningModelFeatureKind::Tensor:
+      return ToString(descriptor.as<winml::ITensorFeatureDescriptor>());
     default:
       FAIL_FAST_MSG("Unexpected descriptor LearningModelFeatureKind.");
   }
 }
 
-static std::string ToString(ILearningModelFeatureValue value) {
+static std::string ToString(winml::ILearningModelFeatureValue value) {
   switch (value.Kind()) {
-    case LearningModelFeatureKind::Image:
-      return ToString(value.as<implementation::ImageFeatureValue>());
+    case winml::LearningModelFeatureKind::Image:
+      return ToString(value.as<winmlp::ImageFeatureValue>());
       break;
-    case LearningModelFeatureKind::Map:
-      return ToString(value.as<IMapFeatureValue>());
+    case winml::LearningModelFeatureKind::Map:
+      return ToString(value.as<_winml::IMapFeatureValue>());
       break;
-    case LearningModelFeatureKind::Sequence:
-      return ToString(value.as<ISequenceFeatureValue>());
+    case winml::LearningModelFeatureKind::Sequence:
+      return ToString(value.as<_winml::ISequenceFeatureValue>());
       break;
-    case LearningModelFeatureKind::Tensor:
-      return ToString(value.as<ITensor>());
+    case winml::LearningModelFeatureKind::Tensor:
+      return ToString(value.as<winml::ITensor>());
     default:
       FAIL_FAST_MSG("Unexpected descriptor LearningModelFeatureKind.");
   }
@@ -170,12 +170,12 @@ static std::string ToString(ILearningModelFeatureValue value) {
 // This matrix is indexed by Kind, and is a group of function pointers which accept
 // a feature value and descriptr, and return whether they are compatible.
 namespace compatibility_details {
-using namespace winrt::Windows::AI::MachineLearning;
 
-using K = LearningModelFeatureKind;
+using K = winml::LearningModelFeatureKind;
 
-static void not_compatible_hr(HRESULT hr, ILearningModelFeatureValue value, ILearningModelFeatureDescriptor descriptor) {
-  auto name = WinML::Strings::UTF8FromHString(descriptor.Name());
+static void not_compatible_hr(HRESULT hr, winml::ILearningModelFeatureValue value,
+  winml::ILearningModelFeatureDescriptor descriptor) {
+  auto name = _winml::Strings::UTF8FromHString(descriptor.Name());
 
   WINML_THROW_IF_FAILED_MSG(
       hr,
@@ -185,29 +185,29 @@ static void not_compatible_hr(HRESULT hr, ILearningModelFeatureValue value, ILea
       error_strings::ToString(value).c_str());
 }
 
-static void not_compatible(ILearningModelFeatureValue value, ILearningModelFeatureDescriptor descriptor) {
+static void not_compatible(winml::ILearningModelFeatureValue value, winml::ILearningModelFeatureDescriptor descriptor) {
   not_compatible_hr(WINML_ERR_INVALID_BINDING, value, descriptor);
 }
 
 // This method is used in validating sequeance and map type's internal element, key and value types.
-static HRESULT verify(ILearningModelFeatureDescriptor first, ILearningModelFeatureDescriptor second) {
+static HRESULT verify(winml::ILearningModelFeatureDescriptor first, winml::ILearningModelFeatureDescriptor second) {
   RETURN_HR_IF(WINML_ERR_INVALID_BINDING, first.Kind() != second.Kind());
 
-  if (auto mapFirst = first.try_as<MapFeatureDescriptor>()) {
-    auto mapSecond = second.try_as<MapFeatureDescriptor>();
+  if (auto mapFirst = first.try_as<winml::MapFeatureDescriptor>()) {
+    auto mapSecond = second.try_as<winml::MapFeatureDescriptor>();
     RETURN_HR_IF_NULL(WINML_ERR_INVALID_BINDING, mapSecond);
     RETURN_HR_IF(WINML_ERR_INVALID_BINDING, mapFirst.KeyKind() != mapSecond.KeyKind());
     return verify(mapFirst.ValueDescriptor(), mapSecond.ValueDescriptor());
   }
 
-  if (auto sequenceFirst = first.try_as<SequenceFeatureDescriptor>()) {
-    auto sequenceSecond = second.try_as<SequenceFeatureDescriptor>();
+  if (auto sequenceFirst = first.try_as<winml::SequenceFeatureDescriptor>()) {
+    auto sequenceSecond = second.try_as<winml::SequenceFeatureDescriptor>();
     RETURN_HR_IF_NULL(WINML_ERR_INVALID_BINDING, sequenceSecond);
     return verify(sequenceFirst.ElementDescriptor(), sequenceSecond.ElementDescriptor());
   }
 
-  if (auto tensorFirst = first.try_as<TensorFeatureDescriptor>()) {
-    auto tensorSecond = second.try_as<TensorFeatureDescriptor>();
+  if (auto tensorFirst = first.try_as<winml::TensorFeatureDescriptor>()) {
+    auto tensorSecond = second.try_as<winml::TensorFeatureDescriptor>();
     RETURN_HR_IF_NULL(WINML_ERR_INVALID_BINDING, tensorSecond);
     RETURN_HR_IF(WINML_ERR_INVALID_BINDING, tensorFirst.TensorKind() != tensorSecond.TensorKind());
     return S_OK;
@@ -222,22 +222,22 @@ static HRESULT verify(ILearningModelFeatureDescriptor first, ILearningModelFeatu
         TFeatureDescriptor: feature description from model
     */
 template <K TValue, K TFeatureDescriptor>
-void verify(ILearningModelFeatureValue value, ILearningModelFeatureDescriptor descriptor) {
+void verify(winml::ILearningModelFeatureValue value, winml::ILearningModelFeatureDescriptor descriptor) {
   not_compatible(value, descriptor);
 }
 
 template <>
 void verify<K::Tensor, K::Tensor>(
-    ILearningModelFeatureValue value,
-    ILearningModelFeatureDescriptor descriptor) {
+    winml::ILearningModelFeatureValue value,
+    winml::ILearningModelFeatureDescriptor descriptor) {
   thrower fail = std::bind(not_compatible_hr, std::placeholders::_1, value, descriptor);
   enforce check = std::bind(enforce_not_false, std::placeholders::_1, std::placeholders::_2, fail);
 
-  auto tensorValue = value.as<ITensor>();
-  auto tensorDescriptor = descriptor.as<ITensorFeatureDescriptor>();
+  auto tensorValue = value.as<winml::ITensor>();
+  auto tensorDescriptor = descriptor.as<winml::ITensorFeatureDescriptor>();
   check(WINML_ERR_INVALID_BINDING, tensorValue.TensorKind() == tensorDescriptor.TensorKind());
 
-  auto spValueProvider = tensorValue.as<ILotusValueProviderPrivate>();
+  auto spValueProvider = tensorValue.as<_winml::ILotusValueProviderPrivate>();
 
   bool isPlaceHolder;
   if (SUCCEEDED(spValueProvider->IsPlaceholder(&isPlaceHolder)) && !isPlaceHolder) {
@@ -259,20 +259,20 @@ void verify<K::Tensor, K::Tensor>(
 
 template <>
 void verify<K::Map, K::Map>(
-    ILearningModelFeatureValue value,
-    ILearningModelFeatureDescriptor descriptor) {
+    winml::ILearningModelFeatureValue value,
+    winml::ILearningModelFeatureDescriptor descriptor) {
   thrower fail = std::bind(not_compatible_hr, std::placeholders::_1, value, descriptor);
   enforce check = std::bind(enforce_not_false, std::placeholders::_1, std::placeholders::_2, fail);
   enforce_succeeded check_succeeded = std::bind(enforce_not_failed, std::placeholders::_1, fail);
 
-  auto spMapFeatureValue = value.as<WinML::IMapFeatureValue>();
-  auto mapDescriptor = descriptor.as<IMapFeatureDescriptor>();
+  auto spMapFeatureValue = value.as<_winml::IMapFeatureValue>();
+  auto mapDescriptor = descriptor.as<winml::IMapFeatureDescriptor>();
 
-  TensorKind valueKeyKind;
+  winml::TensorKind valueKeyKind;
   check_succeeded(spMapFeatureValue->get_KeyKind(&valueKeyKind));
   check(WINML_ERR_INVALID_BINDING, valueKeyKind == mapDescriptor.KeyKind());
 
-  ILearningModelFeatureDescriptor valueValueDescriptor;
+  winml::ILearningModelFeatureDescriptor valueValueDescriptor;
   check_succeeded(spMapFeatureValue->get_ValueDescriptor(&valueValueDescriptor));
 
   check_succeeded(verify(valueValueDescriptor, mapDescriptor.ValueDescriptor()));
@@ -280,15 +280,15 @@ void verify<K::Map, K::Map>(
 
 template <>
 void verify<K::Sequence, K::Sequence>(
-    ILearningModelFeatureValue value,
-    ILearningModelFeatureDescriptor descriptor) {
+    winml::ILearningModelFeatureValue value,
+    winml::ILearningModelFeatureDescriptor descriptor) {
   thrower fail = std::bind(not_compatible_hr, std::placeholders::_1, value, descriptor);
   enforce_succeeded check_succeeded = std::bind(enforce_not_failed, std::placeholders::_1, fail);
 
-  auto spSequenceFeatureValue = value.as<WinML::ISequenceFeatureValue>();
-  auto sequenceDescriptor = descriptor.as<ISequenceFeatureDescriptor>();
+  auto spSequenceFeatureValue = value.as<_winml::ISequenceFeatureValue>();
+  auto sequenceDescriptor = descriptor.as<winml::ISequenceFeatureDescriptor>();
 
-  ILearningModelFeatureDescriptor valueElementDescriptor;
+  winml::ILearningModelFeatureDescriptor valueElementDescriptor;
   check_succeeded(spSequenceFeatureValue->get_ElementDescriptor(&valueElementDescriptor));
 
   check_succeeded(verify(valueElementDescriptor, sequenceDescriptor.ElementDescriptor()));
@@ -296,8 +296,8 @@ void verify<K::Sequence, K::Sequence>(
 
 template <>
 void verify<K::Image, K::Image>(
-    ILearningModelFeatureValue value,
-    ILearningModelFeatureDescriptor descriptor) {
+    winml::ILearningModelFeatureValue value,
+    winml::ILearningModelFeatureDescriptor descriptor) {
   // No check is needed here. Because:
   // For batchSize==1, no matter what shape the input has (smaller or larger), we support to bind it.
   // For batchSize > 1,
@@ -310,16 +310,16 @@ void verify<K::Image, K::Image>(
 
 template <>
 void verify<K::Tensor, K::Image>(
-    ILearningModelFeatureValue value,
-    ILearningModelFeatureDescriptor descriptor) {
+    winml::ILearningModelFeatureValue value,
+    winml::ILearningModelFeatureDescriptor descriptor) {
   thrower fail = std::bind(not_compatible_hr, std::placeholders::_1, value, descriptor);
   enforce check = std::bind(enforce_not_false, std::placeholders::_1, std::placeholders::_2, fail);
   enforce_succeeded check_succeeded = std::bind(enforce_not_failed, std::placeholders::_1, fail);
 
-  auto tensorValue = value.as<ITensor>();
-  auto imageDescriptor = descriptor.as<implementation::ImageFeatureDescriptor>();
+  auto tensorValue = value.as<winml::ITensor>();
+  auto imageDescriptor = descriptor.as<winmlp::ImageFeatureDescriptor>();
 
-  check(WINML_ERR_INVALID_BINDING, tensorValue.TensorKind() == TensorKind::Float);
+  check(WINML_ERR_INVALID_BINDING, tensorValue.TensorKind() == winml::TensorKind::Float);
 
   auto spValueProvider = tensorValue.as<ILotusValueProviderPrivate>();
 
@@ -354,13 +354,13 @@ void verify<K::Tensor, K::Image>(
     */
 template <>
 void verify<K::Image, K::Tensor>(
-    ILearningModelFeatureValue value,
-    ILearningModelFeatureDescriptor descriptor) {
+    winml::ILearningModelFeatureValue value,
+    winml::ILearningModelFeatureDescriptor descriptor) {
   thrower fail = std::bind(not_compatible_hr, std::placeholders::_1, value, descriptor);
   enforce check = std::bind(enforce_not_false, std::placeholders::_1, std::placeholders::_2, fail);
 
-  auto imageValue = value.as<implementation::ImageFeatureValue>();
-  auto tensorDescriptor = descriptor.as<implementation::TensorFeatureDescriptor>();
+  auto imageValue = value.as<winmlp::ImageFeatureValue>();
+  auto tensorDescriptor = descriptor.as<winmlp::TensorFeatureDescriptor>();
 
   check(WINML_ERR_INVALID_BINDING, !tensorDescriptor->IsUnsupportedMetaData());
   // NCHW: images must be 4 dimensions
@@ -368,7 +368,7 @@ void verify<K::Image, K::Tensor>(
   check(WINML_ERR_SIZE_MISMATCH, 4 == tensorDescriptorShape.Size());
 }
 
-static void (*FeatureKindCompatibilityMatrix[4][4])(ILearningModelFeatureValue, ILearningModelFeatureDescriptor) =
+static void (*FeatureKindCompatibilityMatrix[4][4])(winml::ILearningModelFeatureValue, winml::ILearningModelFeatureDescriptor) =
     {
         //                 Tensor,                          Sequence,                           Map,                    Image
         /* Tensor */       {verify<K::Tensor, K::Tensor>,   not_compatible,                     not_compatible,         verify<K::Tensor, K::Image>},
@@ -378,8 +378,8 @@ static void (*FeatureKindCompatibilityMatrix[4][4])(ILearningModelFeatureValue, 
 }  // namespace compatibility_details
 
 inline void VerifyFeatureValueCompatibleWithDescriptor(
-    winrt::Windows::AI::MachineLearning::ILearningModelFeatureValue value,
-    winrt::Windows::AI::MachineLearning::ILearningModelFeatureDescriptor descriptor) {
+    winml::ILearningModelFeatureValue value,
+    winml::ILearningModelFeatureDescriptor descriptor) {
   using namespace compatibility_details;
 
   auto pfnAreKindsCompatible =
@@ -389,4 +389,4 @@ inline void VerifyFeatureValueCompatibleWithDescriptor(
   pfnAreKindsCompatible(value, descriptor);
 }
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

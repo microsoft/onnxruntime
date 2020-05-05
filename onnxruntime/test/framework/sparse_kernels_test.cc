@@ -8,12 +8,15 @@
 #include "core/graph/constants.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/tensorprotoutils.h"
 
 #include "core/graph/model.h"
 #include "core/session/inference_session.h"
-#include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test_utils.h"
+
+#include "gtest/gtest.h"
+#include "gmock/gmock.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -490,5 +493,179 @@ TEST_F(SparseTensorTests, Test2) {
   RunTest();
 }
 
+template <typename T>
+static std::vector<T> CreateValues() {
+  return {1, 2, 3, 4};
+}
+
+template <>
+std::vector<std::string> CreateValues<std::string>() {
+  return {"one", "two", "three", "four"};
+}
+
+template <typename T>
+static NodeProto CreateConstantNode(bool indices_1D,
+                                    std::function<void(const std::vector<T>& values, TensorProto& tp)> inserter,
+                                    std::vector<T>& expected_data) {
+  NodeProto constant_node;
+  constant_node.set_op_type("Constant");
+  constant_node.add_output("dense_tensor_output");
+
+  std::vector<T> values = CreateValues<T>();
+  std::vector<int64_t> indices;
+  std::vector<int64_t> shape{2, 3, 2};
+
+  AttributeProto& attrib = *constant_node.mutable_attribute()->Add();
+  attrib.set_name("sparse_value");
+  attrib.set_type(AttributeProto_AttributeType_SPARSE_TENSOR);
+
+  SparseTensorProto& stp = *attrib.mutable_sparse_tensor();
+  TensorProto& indices_tp = *stp.mutable_indices();
+
+  stp.mutable_dims()->Add(shape.cbegin(), shape.cend());
+  for (auto dim : stp.dims())
+    std::cout << dim;
+
+  if (indices_1D) {
+    indices = {2, 5, 6, 10};
+    indices_tp.add_dims(indices.size());
+  } else {
+    // indices are shape {NNZ, rank} so convert flattened values of 2, 5, 6 and 10 to rank 3 values
+    indices_tp.add_dims(values.size());
+    indices_tp.add_dims(shape.size());
+    indices = {
+        0, 1, 0,
+        0, 2, 1,
+        1, 0, 0,
+        1, 2, 0};
+  }
+
+  indices_tp.mutable_int64_data()->Add(indices.cbegin(), indices.cend());
+
+  expected_data.resize(2 * 3 * 2);
+  expected_data[2] = values[0];
+  expected_data[5] = values[1];
+  expected_data[6] = values[2];
+  expected_data[10] = values[3];
+
+  stp.mutable_values()->add_dims(values.size());
+  inserter(values, *stp.mutable_values());
+
+  return constant_node;
+}
+
+template <typename T>
+static void TestConversion(bool use_1D_indices,
+                           std::function<void(const std::vector<T>& values, TensorProto& tp)> inserter,
+                           std::function<void(gsl::span<const T> expected, const TensorProto& actual)> checker) {
+  std::vector<T> expected;
+  auto node = CreateConstantNode<T>(use_1D_indices, inserter, expected);
+
+  TensorProto dense;
+  utils::ConstantNodeProtoToTensorProto(node, dense);
+
+  gsl::span<const T> expected_span = gsl::make_span<const T>(expected.data(), expected.size());
+  checker(expected_span, dense);
+}
+
+template <typename T>
+static void TestConversion(
+    std::function<void(const std::vector<T>& values, TensorProto& tp)> inserter,
+    std::function<void(gsl::span<const T> expected, const TensorProto& actual)> checker) {
+  TestConversion(true, inserter, checker);
+  TestConversion(false, inserter, checker);
+}
+
+template <typename T>
+static void RawDataWriter(const std::vector<T>& values, TensorProto& tp, TensorProto_DataType datatype) {
+  tp.set_data_type(datatype);
+  tp.set_raw_data(values.data(), values.size() * sizeof(T));
+}
+
+template <typename T>
+static void RawDataChecker(gsl::span<const T> expected, const TensorProto& actual) {
+  int64_t actual_size = 1;
+  for (const auto dim : actual.dims()) {
+    actual_size *= dim;
+  }
+
+  const T* raw_data = reinterpret_cast<const T*>(actual.raw_data().data());
+  auto actual_span = gsl::make_span<const T>(raw_data, actual_size);
+
+  EXPECT_THAT(actual_span, testing::ContainerEq(expected));
+}
+
+TEST(SparseTensorConversionTests, TestConstantNodeConversion) {
+  TestConversion<float>(
+      [](const std::vector<float>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_FLOAT);
+        tp.mutable_float_data()->Add(values.cbegin(), values.cend());
+      },
+      RawDataChecker<float>);
+
+  TestConversion<int32_t>(
+      [](const std::vector<int32_t>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_INT32);
+        tp.mutable_int32_data()->Add(values.cbegin(), values.cend());
+      },
+      RawDataChecker<int32_t>);
+
+  TestConversion<int64_t>(
+      [](const std::vector<int64_t>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_INT64);
+        tp.mutable_int64_data()->Add(values.cbegin(), values.cend());
+      },
+      RawDataChecker<int64_t>);
+
+  TestConversion<double>(
+      [](const std::vector<double>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_DOUBLE);
+        tp.mutable_double_data()->Add(values.cbegin(), values.cend());
+      },
+      RawDataChecker<double>);
+
+  TestConversion<uint32_t>(
+      [](const std::vector<uint32_t>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_UINT32);
+        tp.mutable_uint64_data()->Add(values.cbegin(), values.cend());  // stored in uint64_data despite being uint32_t
+      },
+      RawDataChecker<uint32_t>);
+
+  TestConversion<uint64_t>(
+      [](const std::vector<uint64_t>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_UINT64);
+        tp.mutable_uint64_data()->Add(values.cbegin(), values.cend());
+      },
+      RawDataChecker<uint64_t>);
+
+  // test a couple of types with values in raw data field
+  TestConversion<float>(
+      [](const std::vector<float>& values, TensorProto& tp) {
+        RawDataWriter(values, tp, TensorProto_DataType_FLOAT);
+      },
+      RawDataChecker<float>);
+
+  TestConversion<int64_t>(
+      [](const std::vector<int64_t>& values, TensorProto& tp) {
+        RawDataWriter(values, tp, TensorProto_DataType_INT64);
+      },
+      RawDataChecker<int64_t>);
+
+  // strings can't use raw data, and string_data is a RepeatedPtrField (vs. RepeatedField for simple types)
+  // so has to be handled differently
+  TestConversion<std::string>(
+      [](const std::vector<std::string>& values, TensorProto& tp) {
+        tp.set_data_type(TensorProto_DataType_STRING);
+        for (auto cur = values.cbegin(), end = values.cend(); cur < end; ++cur) {
+          tp.mutable_string_data()->Add(std::string(*cur));
+        }
+      },
+      [](gsl::span<const std::string> expected, const TensorProto& actual) {
+        const auto& actual_strings = actual.string_data();
+        for (int64_t i = 0, end = expected.size(); i < end; ++i) {
+          EXPECT_EQ(actual_strings[static_cast<int32_t>(i)], expected[i]);
+        }
+      });
+}
 }  // namespace test
 }  // namespace onnxruntime

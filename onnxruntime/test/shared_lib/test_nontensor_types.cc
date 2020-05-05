@@ -190,7 +190,7 @@ TEST(CApiTest, CreateGetSeqStringTensors) {
     std::vector<int64_t> shape{2};
     auto value = Ort::Value::CreateTensor(Ort::AllocatorWithDefaultOptions(), shape.data(), shape.size(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
-    Ort::GetApi().FillStringTensor(value, string_input_data, 2);
+    Ort::ThrowOnError(Ort::GetApi().FillStringTensor(value, string_input_data, 2));
     in.push_back(std::move(value));
   }
 

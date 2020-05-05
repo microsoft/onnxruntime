@@ -434,6 +434,15 @@ Return Value:
         t1 = _mm_movehl_ps(z2, z0);
         t2 = _mm_movelh_ps(z1, z3);
         t3 = _mm_movehl_ps(z3, z1);
+#elif defined(MLAS_VSX_INTRINSICS)
+        __vector float z0 = vec_mergeh(t0, t2);
+        __vector float z1 = vec_mergel(t0, t2);
+        __vector float z2 = vec_mergeh(t1, t3);
+        __vector float z3 = vec_mergel(t1, t3);
+        t0 = vec_mergeh(z0, z2);
+        t1 = vec_mergel(z0, z2);
+        t2 = vec_mergeh(z1, z3);
+        t3 = vec_mergel(z1, z3);
 #else
 #error Unsupported architecture.
 #endif
@@ -627,10 +636,10 @@ Return Value:
 
             if ((CountY & 2) != 0) {
 
-#if defined(MLAS_NEON_INTRINSICS)
                 MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
                 MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&b[ldb]);
 
+#if defined(MLAS_NEON_INTRINSICS) || defined(MLAS_VSX_INTRINSICS)
                 MlasStoreLaneFloat32x4<0>(&d[0], t0);
                 MlasStoreLaneFloat32x4<0>(&d[1], t1);
                 MlasStoreLaneFloat32x4<1>(&d[16], t0);
@@ -640,9 +649,6 @@ Return Value:
                 MlasStoreLaneFloat32x4<3>(&d[48], t0);
                 MlasStoreLaneFloat32x4<3>(&d[49], t1);
 #elif defined(MLAS_SSE2_INTRINSICS)
-                MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
-                MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&b[ldb]);
-
                 __m128 v0 = _mm_unpacklo_ps(t0, t1);
                 __m128 v1 = _mm_unpackhi_ps(t0, t1);
                 _mm_storel_pi((__m64*)&d[0], v0);
@@ -762,6 +768,85 @@ Return Value:
     }
 }
 
+MLAS_FORCEINLINE
+float*
+MlasSgemmKernelLoop(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t lda,
+    size_t ldc,
+    float alpha,
+    bool ZeroMode
+    )
+/*++
+
+Routine Description:
+
+    This routine steps through the rows of the input and output matrices calling
+    the kernel until all rows have been processed.
+
+Arguments:
+
+    A - Supplies the address of matrix A.
+
+    B - Supplies the address of matrix B. The matrix data has been packed using
+        MlasSgemmCopyPackB or MlasSgemmTransposePackB.
+
+    C - Supplies the address of matrix C.
+
+    CountK - Supplies the number of columns from matrix A and the number of rows
+        from matrix B to iterate over.
+
+    CountM - Supplies the number of rows from matrix A and matrix C to iterate
+        over.
+
+    CountN - Supplies the number of columns from matrix B and matrix C to
+        iterate over.
+
+    lda - Supplies the first dimension of matrix A.
+
+    ldc - Supplies the first dimension of matrix C.
+
+    alpha - Supplies the scalar alpha multiplier (see SGEMM definition).
+
+    ZeroMode - Supplies true if the output matrix must be zero initialized,
+        else false if the output matrix is accumulated into.
+
+Return Value:
+
+    Returns the next address of matrix C.
+
+--*/
+{
+    do {
+
+        size_t RowsHandled;
+
+#if defined(MLAS_TARGET_AMD64_IX86)
+        RowsHandled = MlasPlatform.GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
+#elif defined(MLAS_TARGET_POWER)
+        RowsHandled = MlasSgemmKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
+#else
+        if (ZeroMode) {
+            RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+        } else {
+            RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+        }
+#endif
+
+        C += ldc * RowsHandled;
+        A += lda * RowsHandled;
+        CountM -= RowsHandled;
+
+    } while (CountM > 0);
+
+    return C;
+}
+
 void
 MlasSgemmOperation(
     CBLAS_TRANSPOSE TransA,
@@ -856,6 +941,7 @@ Return Value:
     // Transpose(A*B) = Transpose(B) * Transpose(A), we can apply the same 'small-M'
     // optimization as above, with A and B flipped.
     //
+
     if (N == 1 && ldb == 1 && ldc == 1 && alpha == 1.0f && (beta == 0.0f || beta == 1.0f)) {
 
 #if defined(MLAS_TARGET_AMD64)
@@ -876,7 +962,6 @@ Return Value:
 #endif
 
     }
-
 
     //
     // Compute the strides to step through slices of the input matrices.
@@ -931,9 +1016,9 @@ Return Value:
         // Step through each slice of matrix B along the K dimension.
         //
 
-        for (size_t k = 0; k < K; k += CountK) {
+        bool ZeroMode = (beta == 0.0f);
 
-            bool ZeroMode = (k == 0 && beta == 0.0f);
+        for (size_t k = 0; k < K; k += CountK) {
 
             CountK = StrideK;
 
@@ -957,39 +1042,14 @@ Return Value:
 
             float* c = C + n;
 
-            size_t RowsRemaining = M;
-            size_t RowsHandled;
-
             if (TransA == CblasNoTrans) {
 
-                const float* a = A + k;
-
-                //
-                // Step through the rows of matrix A.
-                //
-
-                do {
-
-#if defined(MLAS_TARGET_AMD64_IX86)
-                    RowsHandled = MlasPlatform.GemmFloatKernel(a, PanelB, c, CountK, RowsRemaining, CountN, lda, ldc, alpha, ZeroMode);
-#else
-                    if (ZeroMode) {
-                        RowsHandled = MlasSgemmKernelZero(a, PanelB, c, CountK, RowsRemaining, CountN, lda, ldc, alpha);
-                    } else {
-                        RowsHandled = MlasSgemmKernelAdd(a, PanelB, c, CountK, RowsRemaining, CountN, lda, ldc, alpha);
-                    }
-#endif
-
-                    c += ldc * RowsHandled;
-                    a += lda * RowsHandled;
-
-                    RowsRemaining -= RowsHandled;
-
-                } while (RowsRemaining > 0);
+                MlasSgemmKernelLoop(A + k, PanelB, c, CountK, M, CountN, lda, ldc, alpha, ZeroMode);
 
             } else {
 
                 const float* a = A + k * lda;
+                size_t RowsRemaining = M;
 
                 do {
 
@@ -1003,39 +1063,21 @@ Return Value:
                         RowsTransposed = MLAS_SGEMM_TRANSA_ROWS;
                     }
 
-                    RowsRemaining -= RowsTransposed;
-
                     MlasSgemmTransposeA(PanelA, a, lda, RowsTransposed, CountK);
 
+                    RowsRemaining -= RowsTransposed;
                     a += RowsTransposed;
 
                     //
                     // Step through the rows of the local buffer.
                     //
 
-                    const float* pa = PanelA;
-
-                    do {
-
-#if defined(MLAS_TARGET_AMD64_IX86)
-                        RowsHandled = MlasPlatform.GemmFloatKernel(pa, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode);
-#else
-                        if (ZeroMode) {
-                            RowsHandled = MlasSgemmKernelZero(pa, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha);
-                        } else {
-                            RowsHandled = MlasSgemmKernelAdd(pa, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha);
-                        }
-#endif
-
-                        c += ldc * RowsHandled;
-                        pa += CountK * RowsHandled;
-
-                        RowsTransposed -= RowsHandled;
-
-                    } while (RowsTransposed > 0);
+                    c = MlasSgemmKernelLoop(PanelA, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode);
 
                 } while (RowsRemaining > 0);
             }
+
+            ZeroMode = false;
         }
     }
 }

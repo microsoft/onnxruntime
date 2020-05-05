@@ -5,7 +5,7 @@
 
 #include "OnnxruntimeSessionBuilder.h"
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 class OnnxruntimeEngineFactory;
 
@@ -29,4 +29,4 @@ class OnnxruntimeCpuSessionBuilder : public Microsoft::WRL::RuntimeClass<
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

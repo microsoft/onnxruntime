@@ -9,8 +9,135 @@
 #include "Featurizers/DateTimeFeaturizer.h"
 #include "Featurizers/../Archive.h"
 
+#ifndef _WIN32
+#   include <dirent.h>
+#   include <unistd.h>
+#endif
+
 namespace onnxruntime {
 namespace featurizers {
+
+std::string GetDateTimeTransformerDataDir(void) {
+  // This code can be run in a variety of different environments, and the data directory could
+  // be impacted by the environment. Attempt to account for those different environments here.
+
+  // Production environment
+  if(Microsoft::Featurizer::Featurizers::IsValidDirectory("./FeaturizersLibrary"))
+    return "./FeaturizersLibrary";
+
+  // Get the direname (as this will be used by the strategies below)
+  std::string const exe(Microsoft::Featurizer::Featurizers::GetExecutable());
+  std::string::size_type const lastSlash(
+    [&exe](void) -> std::string::size_type {
+      std::string::size_type slash;
+
+      // Linux-style
+      slash = exe.find_last_of('/');
+
+      if(slash != std::string::npos)
+        return slash;
+
+      // Windows-style
+      slash = exe.find_last_of('\\');
+      if(slash != std::string::npos)
+        return slash;
+
+      return std::string::npos;
+    }()
+  );
+
+  std::string const dirname(
+    [&exe, &lastSlash](void) -> std::string {
+      if(lastSlash == std::string::npos)
+        return "";
+
+      // Include the slash in the dirname
+      return std::string(exe.c_str(), exe.c_str() + lastSlash + 1);
+    }()
+  );
+
+  if(Microsoft::Featurizer::Featurizers::IsValidDirectory(dirname + "FeaturizersLibrary"))
+    return dirname + "FeaturizersLibrary";
+
+  // Python environment
+  {
+    // Is the executable python?
+    std::string const basename(lastSlash != std::string::npos ? &exe[lastSlash + 1] : exe.c_str());
+
+    if(strncmp(basename.c_str(), "python", 6) == 0) {
+
+#if (defined _WIN32)
+      // Get the directory relative to python's executable
+      std::string const potentialDataDir(dirname + "Lib\\site-packages\\onnxruntime\\FeaturizersLibrary");
+
+      if(Microsoft::Featurizer::Featurizers::IsValidDirectory(potentialDataDir))
+        return potentialDataDir;
+#else
+      // The site packages dir is lib/python<version/site-packages. Because we don't
+      // know the exact version of python, enumerate through the directories under ./lib
+      // and return the first one that begins with python.
+      //
+      // This is a huge HACK, and we should figure out a better way to do this. The python
+      // version number is available in Python.h, but I don't think that that header file
+      // is available for inclusion when this file is compiled.
+      std::vector<std::string> const potentialDirs{
+            // Search relative to the executable
+            dirname + "lib",
+
+            // The python executable might be in a 'bin' dir that is a sibling with 'lib'
+            dirname + "../lib",
+
+            // Search in the user's local path
+            [](void) -> std::string {
+              char const * const var(std::getenv("HOME"));
+
+              if(var)
+                return var;
+
+              return "";
+            }() + "/.local/lib",
+
+            "/usr/local/lib"
+      };
+
+      for(auto const &potentialDir : potentialDirs) {
+        if(Microsoft::Featurizer::Featurizers::IsValidDirectory(potentialDir)) {
+          DIR * dir(opendir(potentialDir.c_str()));
+
+          assert(dir != nullptr);
+
+          // (Ab)Using std::unique_ptr to take advantage of the custom deletion functionality
+          std::unique_ptr<DIR, std::function<void (DIR *)>>   autoCloseDir(dir, [](DIR *d) { closedir(d); });
+
+          dirent * info(nullptr);
+
+          while((info = readdir(dir)) != nullptr) {
+            if(info->d_type != DT_DIR)
+              continue;
+
+            if(strncmp(info->d_name, "python", 6) == 0) {
+              std::string const potentialDataDir(potentialDir + "/" + info->d_name + "/site-packages/onnxruntime/FeaturizersLibrary");
+
+              if(Microsoft::Featurizer::Featurizers::IsValidDirectory(potentialDataDir))
+                return potentialDataDir;
+            }
+          }
+        }
+      }
+#endif
+    }
+  }
+
+  // Dev environment
+  if(Microsoft::Featurizer::Featurizers::IsValidDirectory("./external/FeaturizersLibrary"))
+    return "./external/FeaturizersLibrary";
+
+  if(Microsoft::Featurizer::Featurizers::IsValidDirectory(dirname + "external/FeaturizersLibrary"))
+    return dirname + "external/FeaturizersLibrary";
+
+  // Use the default logic
+  return "";
+}
 
 class DateTimeTransformer final : public OpKernel {
  public:
@@ -24,8 +151,9 @@ class DateTimeTransformer final : public OpKernel {
           const auto* state_tensor(ctx->Input<Tensor>(0));
           const uint8_t* const state_data(state_tensor->Data<uint8_t>());
 
-          Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
-          return Microsoft::Featurizer::Featurizers::DateTimeTransformer(archive);
+          Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().Size());
+
+          return Microsoft::Featurizer::Featurizers::DateTimeTransformer(archive, GetDateTimeTransformerDataDir());
         }());
 
     // Get the input

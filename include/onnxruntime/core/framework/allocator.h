@@ -84,7 +84,7 @@ struct OrtMemoryInfo {
   OrtMemoryInfo() = default;  // to allow default construction of Tensor
 
   // use string for name, so we could have customized allocator in execution provider.
-  const char* name;
+  const char* name = nullptr;
   int id = -1;
   OrtMemType mem_type = OrtMemTypeDefault;
   OrtAllocatorType alloc_type = Invalid;

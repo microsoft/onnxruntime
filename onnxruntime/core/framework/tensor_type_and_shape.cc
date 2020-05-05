@@ -21,7 +21,7 @@ using onnxruntime::MLFloat16;
 using onnxruntime::SparseTensor;
 using onnxruntime::Tensor;
 
-ORT_API_STATUS_IMPL(OrtApis::CreateTensorTypeAndShapeInfo, _Out_ OrtTensorTypeAndShapeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::CreateTensorTypeAndShapeInfo, _Outptr_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
   *out = new OrtTensorTypeAndShapeInfo();
   return nullptr;
@@ -32,7 +32,8 @@ ORT_API(void, OrtApis::ReleaseTensorTypeAndShapeInfo, _Frees_ptr_opt_ OrtTensorT
   delete ptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SetTensorElementType, _In_ OrtTensorTypeAndShapeInfo* this_ptr, enum ONNXTensorElementDataType type) {
+ORT_API_STATUS_IMPL(OrtApis::SetTensorElementType, _Inout_ OrtTensorTypeAndShapeInfo* this_ptr,
+                    enum ONNXTensorElementDataType type) {
   API_IMPL_BEGIN
   this_ptr->type = type;
   return nullptr;
@@ -62,7 +63,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetDimensions, _In_ const struct OrtTensorTypeAndSh
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetSymbolicDimensions, _In_ const struct OrtTensorTypeAndShapeInfo* info,
-                    _Out_ const char** names, size_t dim_params_length) {
+                    _Out_writes_all_(dim_params_length) const char** names, size_t dim_params_length) {
   for (size_t idx = 0, end = std::min(info->dim_params.size(), dim_params_length); idx < end; ++idx) {
     names[idx] = info->dim_params[idx].c_str();
   }
@@ -197,7 +198,7 @@ OrtStatus* OrtTensorTypeAndShapeInfo::Clone(OrtTensorTypeAndShapeInfo** out)
   return GetTensorShapeAndTypeHelper(type, shape, &dim_params, out);
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetTensorTypeAndShape, _In_ const OrtValue* v, _Out_ OrtTensorTypeAndShapeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::GetTensorTypeAndShape, _In_ const OrtValue* v, _Outptr_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
   onnxruntime::MLDataType type = v->Type();
   ORT_ENFORCE(type != nullptr, "OrtValue is not a Tensor");
@@ -238,7 +239,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueType, _In_ const OrtValue* v, _Out_ ONNXTyp
 * \param value
 * \return The returned value should be freed by OrtReleaseTypeInfo after use
 */
-ORT_API_STATUS_IMPL(OrtApis::GetTypeInfo, _In_ const OrtValue* v, struct OrtTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::GetTypeInfo, _In_ const OrtValue* v, _Outptr_result_maybenull_ struct OrtTypeInfo** out) {
   API_IMPL_BEGIN
   // TODO: This is consistent with the previous implementation but inconsistent with GetValueType which returns
   // ONNX_TYPE_UNKNOWN if v->Type() is null. Should we instead just call OrtTypeInfo::FromOrtValue and

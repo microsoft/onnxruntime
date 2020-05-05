@@ -5,6 +5,8 @@
 #include "core/providers/common.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cuda/nn/max_pool_with_index.h"
+#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+
 using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
@@ -53,9 +55,16 @@ POOLING_KERNEL_VERSIONED(MaxPool, MLFloat16, MaxPool<8>, 8, 9)
 POOLING_KERNEL_VERSIONED(MaxPool, float, MaxPool<8>, 10, 10)
 POOLING_KERNEL_VERSIONED(MaxPool, double, MaxPool<8>, 10, 10)
 POOLING_KERNEL_VERSIONED(MaxPool, MLFloat16, MaxPool<8>, 10, 10)
-POOLING_KERNEL(MaxPool, float, MaxPool<8>, 11)
-POOLING_KERNEL(MaxPool, double, MaxPool<8>, 11)
-POOLING_KERNEL(MaxPool, MLFloat16, MaxPool<8>, 11)
+POOLING_KERNEL_VERSIONED(MaxPool, float, MaxPool<8>, 11, 11)
+POOLING_KERNEL_VERSIONED(MaxPool, double, MaxPool<8>, 11, 11)
+POOLING_KERNEL_VERSIONED(MaxPool, MLFloat16, MaxPool<8>, 11, 11)
+POOLING_KERNEL(MaxPool, float, MaxPool<8>, 12)
+POOLING_KERNEL(MaxPool, double, MaxPool<8>, 12)
+POOLING_KERNEL(MaxPool, MLFloat16, MaxPool<8>, 12)
+POOLING_KERNEL(MaxPool, int8_t, MaxPool<8>, 12)
+POOLING_KERNEL(MaxPool, uint8_t, MaxPool<8>, 12)
+
+
 POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 1)
 POOLING_KERNEL(GlobalMaxPool, double, MaxPool<1>, 1)
 POOLING_KERNEL(GlobalMaxPool, MLFloat16, MaxPool<1>, 1)
@@ -71,6 +80,9 @@ class CudnnPoolingDescriptor final {
       desc_ = nullptr;
     }
   }
+
+  CudnnPoolingDescriptor(const CudnnPoolingDescriptor&) = delete;
+  CudnnPoolingDescriptor& operator=(const CudnnPoolingDescriptor&) = delete;
 
   Status Set(cudnnPoolingMode_t mode,
              const std::vector<int64_t>& kernel_shape,
@@ -132,9 +144,10 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
   }
 
   std::vector<int64_t> y_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
-  Tensor* Y = context->Output(0, TensorShape(y_dims));
+  TensorShape y_shape(y_dims);
+  Tensor* Y = context->Output(0, y_shape);
   // special case when there is a dim value of 0 in the shape.
-  if (Y->Shape().Size() == 0)
+  if (y_shape.Size() == 0)
     return Status::OK();
 
   auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
@@ -152,13 +165,6 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
     strides.push_back(1);
   }
 
-  const auto alpha = Consts<CudaT>::One;
-  const auto beta = Consts<CudaT>::Zero;
-  CudnnTensor x_tensor;
-  CudnnTensor y_tensor;
-  ORT_RETURN_IF_ERROR(x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
-  ORT_RETURN_IF_ERROR(y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
-
   cudnnPoolingMode_t mode = CUDNN_POOLING_MAX;
   if (PoolType::type == onnxruntime::PoolType::kAveragePool) {
     mode = pool_attrs_.count_include_pad ? CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING 
@@ -167,7 +173,33 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
   CudnnPoolingDescriptor pooling_desc;
   ORT_RETURN_IF_ERROR(pooling_desc.Set(mode, kernel_shape, pads, strides));
 
-  CUDNN_RETURN_IF_ERROR(cudnnPoolingForward(CudnnHandle(), pooling_desc, &alpha, x_tensor, x_data, &beta, y_tensor, y_data));
+  if (std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value) {
+    // Cast to float back and forth using temp buffer
+    const auto alpha = Consts<float>::One;
+    const auto beta = Consts<float>::Zero;
+    CudnnTensor x_tensor;
+    CudnnTensor y_tensor;
+    ORT_RETURN_IF_ERROR(x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<float>()));
+    ORT_RETURN_IF_ERROR(y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<float>()));
+
+    const auto input_count = x_shape.Size();
+    const auto output_count = y_shape.Size();
+
+    IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count);
+    auto temp_Y = GetScratchBuffer<float>(output_count);
+    Impl_Cast<CudaT, float>(reinterpret_cast<const CudaT*>(x_data), temp_X.get(), input_count);
+    CUDNN_RETURN_IF_ERROR(cudnnPoolingForward(CudnnHandle(), pooling_desc, &alpha, x_tensor, temp_X.get(), &beta, y_tensor, temp_Y.get()));
+    Impl_Cast<float, CudaT>(temp_Y.get(), y_data, output_count);
+  } else {
+    const auto alpha = Consts<CudaT>::One;
+    const auto beta = Consts<CudaT>::Zero;
+    CudnnTensor x_tensor;
+    CudnnTensor y_tensor;
+    ORT_RETURN_IF_ERROR(x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
+    ORT_RETURN_IF_ERROR(y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
+
+    CUDNN_RETURN_IF_ERROR(cudnnPoolingForward(CudnnHandle(), pooling_desc, &alpha, x_tensor, x_data, &beta, y_tensor, y_data));
+  }
 
   return Status::OK();
 }

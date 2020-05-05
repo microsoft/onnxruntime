@@ -54,7 +54,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         int64_t y_step = pooled_height;
         const int64_t total_channels = x_shape[0] * channels;
         const int64_t total_mask_channels = m_shape[0] * m_shape[1];
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp parallel for
 #endif
         for (int64_t c = 0; c < total_channels; ++c) {
@@ -84,7 +84,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         int64_t y_step = pooled_height * pooled_width;
         const int64_t total_channels = x_shape[0] * channels;
         const int64_t total_mask_channels = m_shape[0] * m_shape[1];
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp parallel for
 #endif
         for (int64_t c = 0; c < total_channels; ++c) {
@@ -122,7 +122,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         int64_t y_step = pooled_height * pooled_width * pooled_depth;
         const int64_t total_channels = x_shape[0] * channels;
         const int64_t total_mask_channels = m_shape[0] * m_shape[1];
-#ifdef USE_OPENMP
+#ifdef _OPENMP
 #pragma omp parallel for
 #endif
         for (int64_t c = 0; c < total_channels; ++c) {

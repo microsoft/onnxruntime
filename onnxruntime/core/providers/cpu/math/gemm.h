@@ -8,13 +8,26 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "gemm_helper.h"
+#include "core/providers/cpu/activation/activations.h"
 
 namespace onnxruntime {
 
 template <typename T>
 class Gemm : public OpKernel {
+private:
+    class CallWrapper{
+public:
+    CallWrapper(functors::ElementWiseRangedTransform<T>* b1):b(b1){}
+    void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
+        (*b)(first, last);
+    }
+private:
+    functors::ElementWiseRangedTransform<T>* b;
+};
+
  public:
-  Gemm(const OpKernelInfo& info) : OpKernel(info) {
+  Gemm(const OpKernelInfo& info) : OpKernel(info)
+  {
     int64_t temp;
     ORT_ENFORCE(info.GetAttr<int64_t>("transA", &temp).IsOK());
     trans_A_ = temp == 0 ? CblasNoTrans : CblasTrans;
@@ -102,8 +115,15 @@ class Gemm : public OpKernel {
                 y_data,
                 thread_pool);
 
-    FuseActivation<T>(activation_, y_data, M * N, leaky_relu_alpha_);
-
+    if(activation_){
+      std::unique_ptr<functors::ElementWiseRangedTransform<T>> f(activation_->Copy());
+      f->input = y_data;
+      f->output = y_data;
+      std::ptrdiff_t total_len = static_cast<std::ptrdiff_t>(M * N);
+      double cost = f->Cost();
+      CallWrapper c(f.get());
+      concurrency::ThreadPool::TryParallelFor(thread_pool, total_len, {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), cost}, c);
+    }
     return Status::OK();
   }
 
@@ -114,9 +134,8 @@ class Gemm : public OpKernel {
   float beta_;
 
  protected:
-  // For fused gemm + activation
-  std::string activation_;
-  float leaky_relu_alpha_;
+  // For fused gemm + activation  
+  std::unique_ptr<functors::ElementWiseRangedTransform<T>> activation_;
 };
 
 }  // namespace onnxruntime

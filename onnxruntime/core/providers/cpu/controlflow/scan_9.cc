@@ -191,7 +191,11 @@ Scan<9>::Scan(const OpKernelInfo& info) : OpKernel(info) {
     output_axes_ = std::vector<int64_t>(num_scan_outputs, 0);
   }
 
-  device_helpers_.transpose_func = TransposeBase::DoTranspose;
+  device_helpers_.transpose_func = [](const std::vector<size_t>& permutations, const Tensor& input,
+                                      Tensor& output) -> Status {
+    return TransposeBase::DoTranspose(permutations, input, output);
+  };
+
   device_helpers_.set_data_to_zero_func = [](void* data, size_t size_in_bytes) -> Status {
     memset(data, 0, size_in_bytes);
     return Status::OK();

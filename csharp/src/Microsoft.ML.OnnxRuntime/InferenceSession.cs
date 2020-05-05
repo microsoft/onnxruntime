@@ -102,7 +102,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Runs the loaded model for the given inputs, and fetches all the outputs.
         /// </summary>
-        /// <param name="inputs"></param>
+        /// <param name="inputs">specify a collection of <see cref="NamedOnnxValue"/> that indicates the input values.</param>
         /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs)
         {
@@ -114,62 +114,65 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Runs the loaded model for the given inputs, and fetches the outputs specified in <paramref name="outputNames"/>.
         /// </summary>
-        /// <param name="inputs"></param>
-        /// <param name="outputNames"></param>
+        /// <param name="inputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the input values.</param>
+        /// <param name="outputNames">Specify a collection of string that indicates the output names to fetch.</param>
         /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames)
         {
-            IDisposableReadOnlyCollection<DisposableNamedOnnxValue> result = null;
-            result = Run(inputs, outputNames, _builtInRunOptions);
-            return result;
+            return Run(inputs, outputNames, _builtInRunOptions);
         }
 
         /// <summary>
-        /// Runs the loaded model for the given inputs, and fetches the specified outputs in <paramref name="outputNames". Uses the given RunOptions for this run./>.
+        /// Runs the loaded model for the given inputs, and fetches the specified outputs in <paramref name="outputNames"/>. Uses the given RunOptions for this run.
         /// </summary>
-        /// <param name="inputs"></param>
-        /// <param name="outputNames"></param>
+        /// <param name="inputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the input values.</param>
+        /// <param name="outputNames">Specify a collection of string that indicates the output names to fetch.</param>
         /// <param name="options"></param>
         /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames, RunOptions options)
         {
-            var inputNames = new string[inputs.Count];
-            var inputTensors = new IntPtr[inputs.Count];
-            var pinnedBufferHandles = new System.Buffers.MemoryHandle[inputs.Count];
+            // prepare inputs
+            var inputNamesArray = new string[inputs.Count];
+            var inputValuesArray = new IntPtr[inputs.Count];
+            var pinnedInputBufferHandles = new System.Buffers.MemoryHandle[inputs.Count];
+            var disposeInputs = new bool[inputs.Count];
 
             int inputIndex = 0;
             foreach (var input in inputs)
             {
-                inputNames[inputIndex] = input.Name;
+                inputNamesArray[inputIndex] = input.Name;
 
                 // create Tensor from the input if feasible, else throw notsupported exception for now
-                input.ToNativeOnnxValue(out inputTensors[inputIndex], 
-                                        out pinnedBufferHandles[inputIndex]);
+                input.ToNativeOnnxValue(
+                    out inputValuesArray[inputIndex],
+                    out pinnedInputBufferHandles[inputIndex],
+                    out disposeInputs[inputIndex]);
 
                 inputIndex++;
             }
 
-            string[] outputNamesArray = outputNames.ToArray();
-            IntPtr[] outputValueArray = new IntPtr[outputNames.Count];
+            // prepare outputs
+            string[] outputNamesArray = outputNames as string[] ?? outputNames.ToArray();
+            IntPtr[] outputValuesArray = new IntPtr[outputNames.Count];
 
             IntPtr status = NativeMethods.OrtRun(
-                                                this._nativeHandle,
+                                                _nativeHandle,
                                                 options.Handle,
-                                                inputNames,
-                                                inputTensors,
-                                                (UIntPtr)(inputTensors.Length),
+                                                inputNamesArray,
+                                                inputValuesArray,
+                                                (UIntPtr)inputs.Count,
                                                 outputNamesArray,
                                                 (UIntPtr)outputNames.Count,
-                                                outputValueArray /* An array of output value pointers. Array must be allocated by the caller */
+                                                outputValuesArray /* Empty array is passed in to receive output OrtValue pointers */
                                                 );
 
             try
             {
                 NativeApiStatus.VerifySuccess(status);
-                var result = new DisposableList<DisposableNamedOnnxValue>();
-                for (uint i = 0; i < outputValueArray.Length; i++)
+                var result = new DisposableList<DisposableNamedOnnxValue>(outputValuesArray.Length);
+                for (int i = 0; i < outputValuesArray.Length; i++)
                 {
-                    result.Add(DisposableNamedOnnxValue.CreateFromOnnxValue(outputNamesArray[i], outputValueArray[i]));
+                    result.Add(DisposableNamedOnnxValue.CreateFromOnnxValue(outputNamesArray[i], outputValuesArray[i]));
                 }
 
                 return result;
@@ -177,34 +180,513 @@ namespace Microsoft.ML.OnnxRuntime
             catch (OnnxRuntimeException e)
             {
                 //clean up the individual output tensors if it is not null;
-                for (uint i = 0; i < outputValueArray.Length; i++)
+                for (int i = 0; i < outputValuesArray.Length; i++)
                 {
-                    if (outputValueArray[i] != IntPtr.Zero)
+                    if (outputValuesArray[i] != IntPtr.Zero)
                     {
-                        NativeMethods.OrtReleaseValue(outputValueArray[i]);
+                        NativeMethods.OrtReleaseValue(outputValuesArray[i]);
                     }
                 }
                 throw e;
             }
             finally
             {
-                inputIndex = 0;
-                foreach (var input in inputs)
+                for (int i = 0; i < inputs.Count; i++)
                 {
-                    // For NamedOnnxValue, always unpin the input buffers, and delete the native Onnx value objects
-                    // For DisposableNamedOnnxValue, the user needs to do this by invoking Dispose
-                    if (input.GetType() == typeof(NamedOnnxValue))
+                    if (disposeInputs[i])
                     {
-                        NativeMethods.OrtReleaseValue(inputTensors[inputIndex]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
-                                                                                 // For string tensors, this releases the native memory allocated for the tensor, including the buffer
-                        pinnedBufferHandles[inputIndex].Dispose();
+                        NativeMethods.OrtReleaseValue(inputValuesArray[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
+                                                                            // For string tensors, this releases the native memory allocated for the tensor, including the buffer
+                        pinnedInputBufferHandles[i].Dispose();
                     }
-
-                    inputIndex++;
                 }
             }
 
         }
+
+        /// <summary>
+        /// Runs the loaded model for the given inputs, and fetches all the outputs.
+        /// </summary>
+        /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
+        /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
+        public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(
+            IReadOnlyCollection<string> inputNames,
+            IReadOnlyCollection<FixedBufferOnnxValue> inputValues)
+        {
+            string[] outputNames = new string[_outputMetadata.Count];
+            _outputMetadata.Keys.CopyTo(outputNames, 0);
+            return Run(inputNames, inputValues, outputNames, _builtInRunOptions);
+        }
+
+        /// <summary>
+        /// Runs the loaded model for the given inputs, and fetches the outputs specified in <paramref name="outputNames"/>.
+        /// </summary>
+        /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
+        /// <param name="outputNames">Specify a collection of string that indicates the output names to fetch.</param>
+        /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
+        public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(
+            IReadOnlyCollection<string> inputNames,
+            IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
+            IReadOnlyCollection<string> outputNames)
+        {
+            return Run(inputNames, inputValues, outputNames, _builtInRunOptions);
+        }
+
+        /// <summary>
+        /// Runs the loaded model for the given inputs, and fetches the specified outputs in <paramref name="outputNames"/>. Uses the given RunOptions for this run.
+        /// </summary>
+        /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
+        /// <param name="outputNames">Specify a collection of string that indicates the output names to fetch.</param>
+        /// <param name="options"></param>
+        /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
+        public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(
+            IReadOnlyCollection<string> inputNames,
+            IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
+            IReadOnlyCollection<string> outputNames,
+            RunOptions options)
+        {
+            if (inputNames.Count != inputValues.Count)
+            {
+                throw new ArgumentException($"Length of {nameof(inputNames)} ({inputNames.Count}) must match that of {nameof(inputValues)} ({inputValues.Count}).");
+            }
+
+            // prepare inputs
+            string[] inputNamesArray = inputNames as string[] ?? inputNames.ToArray();
+            IntPtr[] inputValuesArray = new IntPtr[inputNames.Count];
+            int inputIndex = 0;
+            foreach (var input in inputValues)
+            {
+                inputValuesArray[inputIndex] = input.Value;
+
+                inputIndex++;
+            }
+
+            // prepare outputs
+            string[] outputNamesArray = outputNames as string[] ?? outputNames.ToArray();
+            IntPtr[] outputValuesArray = new IntPtr[outputNames.Count];
+
+            IntPtr status = NativeMethods.OrtRun(
+                                                _nativeHandle,
+                                                options.Handle,
+                                                inputNamesArray,
+                                                inputValuesArray,
+                                                (UIntPtr)inputNames.Count,
+                                                outputNamesArray,
+                                                (UIntPtr)outputNames.Count,
+                                                outputValuesArray /* Empty array is passed in to receive output OrtValue pointers */
+                                                );
+
+            try
+            {
+                NativeApiStatus.VerifySuccess(status);
+                var result = new DisposableList<DisposableNamedOnnxValue>(outputValuesArray.Length);
+                for (int i = 0; i < outputValuesArray.Length; i++)
+                {
+                    result.Add(DisposableNamedOnnxValue.CreateFromOnnxValue(outputNamesArray[i], outputValuesArray[i]));
+                }
+
+                return result;
+            }
+            catch (OnnxRuntimeException e)
+            {
+                //clean up the individual output tensors if it is not null;
+                for (uint i = 0; i < outputValuesArray.Length; i++)
+                {
+                    if (outputValuesArray[i] != IntPtr.Zero)
+                    {
+                        NativeMethods.OrtReleaseValue(outputValuesArray[i]);
+                    }
+                }
+                throw e;
+            }
+
+        }
+
+        /// <summary>
+        /// Runs the loaded model for the given inputs and outputs.
+        /// 
+        /// Outputs need to be created with correct type and dimension to accept the fetched data.
+        /// </summary>
+        /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
+        /// <param name="outputNames">Specify a collection of string that indicates the output names. Should match <paramref name="outputValues"/>.</param>
+        /// <param name="outputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the output values.</param>
+        public void Run(
+            IReadOnlyCollection<string> inputNames,
+            IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
+            IReadOnlyCollection<string> outputNames,
+            IReadOnlyCollection<FixedBufferOnnxValue> outputValues)
+        {
+            Run(inputNames, inputValues, outputNames, outputValues, _builtInRunOptions);
+        }
+
+        /// <summary>
+        /// Runs the loaded model for the given inputs and outputs. Uses the given RunOptions for this run.
+        /// 
+        /// Outputs need to be created with correct type and dimension to accept the fetched data.
+        /// </summary>
+        /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
+        /// <param name="outputNames">Specify a collection of string that indicates the output names. Should match <paramref name="outputValues"/>.</param>
+        /// <param name="outputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the output values.</param>
+        /// <param name="options"></param>
+        public void Run(
+            IReadOnlyCollection<string> inputNames,
+            IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
+            IReadOnlyCollection<string> outputNames,
+            IReadOnlyCollection<FixedBufferOnnxValue> outputValues,
+            RunOptions options)
+        {
+            if (inputNames.Count != inputValues.Count)
+            {
+                throw new ArgumentException($"Length of {nameof(inputNames)} ({inputNames.Count}) must match that of {nameof(inputValues)} ({inputValues.Count}).");
+            }
+            if (outputNames.Count != outputValues.Count)
+            {
+                throw new ArgumentException($"Length of {nameof(outputNames)} ({outputNames.Count}) must match that of {nameof(outputValues)} ({outputValues.Count}).");
+            }
+
+            // prepare inputs
+            string[] inputNamesArray = inputNames as string[] ?? inputNames.ToArray();
+            IntPtr[] inputValuesArray = new IntPtr[inputNames.Count];
+            int inputIndex = 0;
+            foreach (var input in inputValues)
+            {
+                inputValuesArray[inputIndex] = input.Value;
+
+                inputIndex++;
+            }
+
+            // prepare outputs
+            string[] outputNamesArray = outputNames as string[] ?? outputNames.ToArray();
+            IntPtr[] outputValuesArray = new IntPtr[outputNames.Count];
+            int outputIndex = 0;
+            foreach (var output in outputValues)
+            {
+                outputValuesArray[outputIndex] = output.Value;
+
+                outputIndex++;
+            }
+
+            IntPtr status = NativeMethods.OrtRun(
+                                                _nativeHandle,
+                                                options.Handle,
+                                                inputNamesArray,
+                                                inputValuesArray,
+                                                (UIntPtr)inputNames.Count,
+                                                outputNamesArray,
+                                                (UIntPtr)outputNames.Count,
+                                                outputValuesArray /* pointers to Pre-allocated OrtValue instances */
+                                                );
+
+            NativeApiStatus.VerifySuccess(status);
+        }
+
+        /// <summary>
+        /// Runs the loaded model for the given inputs and outputs.
+        /// 
+        /// Outputs need to be created with correct type and dimension to receive the fetched data.
+        /// </summary>
+        /// <param name="inputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the input values.</param>
+        /// <param name="output">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
+        public void Run(
+            IReadOnlyCollection<NamedOnnxValue> inputs,
+            IReadOnlyCollection<NamedOnnxValue> outputs)
+        {
+            Run(inputs, outputs, _builtInRunOptions);
+        }
+
+        /// <summary>
+        /// Runs the loaded model for the given inputs and outputs. Uses the given RunOptions for this run.
+        /// 
+        /// Outputs need to be created with correct type and dimension to receive the fetched data.
+        /// </summary>
+        /// <param name="inputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the input values.</param>
+        /// <param name="output">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
+        /// <param name="options"></param>
+        public void Run(
+            IReadOnlyCollection<NamedOnnxValue> inputs,
+            IReadOnlyCollection<NamedOnnxValue> outputs,
+            RunOptions options)
+        {
+            var inputNamesArray = new string[inputs.Count];
+            var inputValuesArray = new IntPtr[inputs.Count];
+            var pinnedInputBufferHandles = new System.Buffers.MemoryHandle[inputs.Count];
+            var disposeInputs = new bool[inputs.Count];
+
+            var outputNamesArray = new string[outputs.Count];
+            var outputValuesArray = new IntPtr[outputs.Count];
+            var pinnedOutputBufferHandles = new System.Buffers.MemoryHandle[outputs.Count];
+            var disposeOutputs = new bool[outputs.Count];
+
+            try
+            {
+                // prepare inputs
+                int inputIndex = 0;
+                foreach (var input in inputs)
+                {
+                    inputNamesArray[inputIndex] = input.Name;
+
+                    // create native OrtValue from the input if feasible, else throw notsupported exception for now
+                    input.ToNativeOnnxValue(
+                        out inputValuesArray[inputIndex],
+                        out pinnedInputBufferHandles[inputIndex],
+                        out disposeInputs[inputIndex]);
+
+                    inputIndex++;
+                }
+
+                // prepare outputs
+                int outputIndex = 0;
+                foreach (var output in outputs)
+                {
+                    outputNamesArray[outputIndex] = output.Name;
+
+                    // create native OrtValue from the output if feasible, else throw notsupported exception for now
+                    output.ToNativeOnnxValue(
+                        out outputValuesArray[outputIndex],
+                        out pinnedOutputBufferHandles[outputIndex],
+                        out disposeOutputs[outputIndex]);
+
+                    outputIndex++;
+                }
+
+                IntPtr status = NativeMethods.OrtRun(
+                                                    _nativeHandle,
+                                                    options.Handle,
+                                                    inputNamesArray,
+                                                    inputValuesArray,
+                                                    (UIntPtr)inputs.Count,
+                                                    outputNamesArray,
+                                                    (UIntPtr)outputs.Count,
+                                                    outputValuesArray /* pointers to Pre-allocated OrtValue instances */
+                                                    );
+
+                NativeApiStatus.VerifySuccess(status);
+            }
+            finally
+            {
+                for (int i = 0; i < inputs.Count; i++)
+                {
+                    if (disposeInputs[i])
+                    {
+                        NativeMethods.OrtReleaseValue(inputValuesArray[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
+                                                                            // For string tensors, this releases the native memory allocated for the tensor, including the buffer
+                        pinnedInputBufferHandles[i].Dispose();
+                    }
+                }
+
+                for (int i = 0; i < outputs.Count; i++)
+                {
+                    if (disposeOutputs[i])
+                    {
+                        NativeMethods.OrtReleaseValue(outputValuesArray[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
+                                                                             // For string tensors, this releases the native memory allocated for the tensor, including the buffer
+                        pinnedOutputBufferHandles[i].Dispose();
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Runs the loaded model for the given inputs and outputs.
+        /// 
+        /// Outputs need to be created with correct type and dimension to receive the fetched data.
+        /// </summary>
+        /// <param name="inputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the input values.</param>
+        /// <param name="outputNames">Specify a collection of string that indicates the output names. Should match <paramref name="outputValues"/>.</param>
+        /// <param name="outputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the output values.</param>
+        public void Run(
+            IReadOnlyCollection<NamedOnnxValue> inputs,
+            IReadOnlyCollection<string> outputNames,
+            IReadOnlyCollection<FixedBufferOnnxValue> outputValues)
+        {
+            Run(inputs, outputNames, outputValues, _builtInRunOptions);
+        }
+
+        /// <summary>
+        /// Runs the loaded model for the given inputs and outputs. Uses the given RunOptions for this run.
+        /// 
+        /// Outputs need to be created with correct type and dimension to receive the fetched data.
+        /// </summary>
+        /// <param name="inputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the input values.</param>
+        /// <param name="outputNames">Specify a collection of string that indicates the output names. Should match <paramref name="outputValues"/>.</param>
+        /// <param name="outputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the output values.</param>
+        /// <param name="options"></param>
+        public void Run(
+            IReadOnlyCollection<NamedOnnxValue> inputs,
+            IReadOnlyCollection<string> outputNames,
+            IReadOnlyCollection<FixedBufferOnnxValue> outputValues,
+            RunOptions options)
+        {
+            if (outputNames.Count != outputValues.Count)
+            {
+                throw new ArgumentException($"Length of {nameof(outputNames)} ({outputNames.Count}) must match that of {nameof(outputValues)} ({outputValues.Count}).");
+            }
+
+
+            var inputNamesArray = new string[inputs.Count];
+            var inputValuesArray = new IntPtr[inputs.Count];
+            var pinnedInputBufferHandles = new System.Buffers.MemoryHandle[inputs.Count];
+            var disposeInputs = new bool[inputs.Count];
+
+            try
+            {
+                // prepare inputs
+                int inputIndex = 0;
+                foreach (var input in inputs)
+                {
+                    inputNamesArray[inputIndex] = input.Name;
+
+                    // create native OrtValue from the input if feasible, else throw notsupported exception for now
+                    input.ToNativeOnnxValue(
+                        out inputValuesArray[inputIndex],
+                        out pinnedInputBufferHandles[inputIndex],
+                        out disposeInputs[inputIndex]);
+
+                    inputIndex++;
+                }
+
+                // prepare outputs
+                string[] outputNamesArray = outputNames as string[] ?? outputNames.ToArray();
+                IntPtr[] outputValuesArray = new IntPtr[outputNames.Count];
+                int outputIndex = 0;
+                foreach (var output in outputValues)
+                {
+                    outputValuesArray[outputIndex] = output.Value;
+
+                    outputIndex++;
+                }
+
+                IntPtr status = NativeMethods.OrtRun(
+                                                    _nativeHandle,
+                                                    options.Handle,
+                                                    inputNamesArray,
+                                                    inputValuesArray,
+                                                    (UIntPtr)inputs.Count,
+                                                    outputNamesArray,
+                                                    (UIntPtr)outputNames.Count,
+                                                    outputValuesArray /* pointers to Pre-allocated OrtValue instances */
+                                                    );
+
+
+                NativeApiStatus.VerifySuccess(status);
+            }
+            finally
+            {
+                for (int i = 0; i < inputs.Count; i++)
+                {
+                    if (disposeInputs[i])
+                    {
+                        NativeMethods.OrtReleaseValue(inputValuesArray[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
+                                                                            // For string tensors, this releases the native memory allocated for the tensor, including the buffer
+                        pinnedInputBufferHandles[i].Dispose();
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Runs the loaded model for the given inputs and outputs.
+        /// 
+        /// Outputs need to be created with correct type and dimension to receive the fetched data.
+        /// </summary>
+        /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
+        /// <param name="output">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
+        public void Run(
+            IReadOnlyCollection<string> inputNames,
+            IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
+            IReadOnlyCollection<NamedOnnxValue> outputs)
+        {
+            Run(inputNames, inputValues, outputs, _builtInRunOptions);
+        }
+
+        /// <summary>
+        /// Runs the loaded model for the given inputs and outputs. Uses the given RunOptions for this run.
+        /// 
+        /// Outputs need to be created with correct type and dimension to receive the fetched data.
+        /// </summary>
+        /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
+        /// <param name="output">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
+        /// <param name="options"></param>
+        public void Run(
+            IReadOnlyCollection<string> inputNames,
+            IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
+            IReadOnlyCollection<NamedOnnxValue> outputs,
+            RunOptions options)
+        {
+            if (inputNames.Count != inputValues.Count)
+            {
+                throw new ArgumentException($"Length of {nameof(inputNames)} ({inputNames.Count}) must match that of {nameof(inputValues)} ({inputValues.Count}).");
+            }
+
+            var outputNamesArray = new string[outputs.Count];
+            var outputValuesArray = new IntPtr[outputs.Count];
+            var pinnedOutputBufferHandles = new System.Buffers.MemoryHandle[outputs.Count];
+            var disposeOutputs = new bool[outputs.Count];
+
+            try
+            {
+                // prepare inputs
+                string[] inputNamesArray = inputNames as string[] ?? inputNames.ToArray();
+                IntPtr[] inputValuesArray = new IntPtr[inputNames.Count];
+                int inputIndex = 0;
+                foreach (var input in inputValues)
+                {
+                    inputValuesArray[inputIndex] = input.Value;
+
+                    inputIndex++;
+                }
+
+                // prepare outputs
+
+                int outputIndex = 0;
+                foreach (var output in outputs)
+                {
+                    outputNamesArray[outputIndex] = output.Name;
+
+                    // create native OrtValue from the output if feasible, else throw notsupported exception for now
+                    output.ToNativeOnnxValue(
+                        out outputValuesArray[outputIndex],
+                        out pinnedOutputBufferHandles[outputIndex],
+                        out disposeOutputs[outputIndex]);
+
+                    outputIndex++;
+                }
+
+                IntPtr status = NativeMethods.OrtRun(
+                                                    _nativeHandle,
+                                                    options.Handle,
+                                                    inputNamesArray,
+                                                    inputValuesArray,
+                                                    (UIntPtr)inputNames.Count,
+                                                    outputNamesArray,
+                                                    (UIntPtr)outputs.Count,
+                                                    outputValuesArray /* pointers to Pre-allocated OrtValue instances */
+                                                    );
+
+
+                NativeApiStatus.VerifySuccess(status);
+            }
+            finally
+            {
+                for (int i = 0; i < outputs.Count; i++)
+                {
+                    if (disposeOutputs[i])
+                    {
+                        NativeMethods.OrtReleaseValue(outputValuesArray[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
+                                                                             // For string tensors, this releases the native memory allocated for the tensor, including the buffer
+                        pinnedOutputBufferHandles[i].Dispose();
+                    }
+                }
+            }
+        }
+
 
         //TODO: kept internal until implemented
         internal ModelMetadata ModelMetadata

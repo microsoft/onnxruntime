@@ -4,15 +4,20 @@
 #pragma once
 // TODO(): delete this file from public interface
 #ifdef __GNUC__
+#include "onnxruntime_config.h"
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wignored-qualifiers"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#ifdef HAS_DEPRECATED_DECLARATIONS
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 #else
 #pragma warning(push)
 #pragma warning(disable : 4018) /*'expression' : signed/unsigned mismatch */
 #pragma warning(disable : 4065) /*switch statement contains 'default' but no 'case' labels*/
 #pragma warning(disable : 4100)
 #pragma warning(disable : 4146) /*unary minus operator applied to unsigned type, result still unsigned*/
+#pragma warning(disable : 4127)
 #pragma warning(disable : 4244) /*'conversion' conversion from 'type1' to 'type2', possible loss of data*/
 #pragma warning( \
     disable : 4251) /*'identifier' : class 'type' needs to have dll-interface to be used by clients of class 'type2'*/
@@ -26,6 +31,9 @@
 #pragma warning(disable : 4506) /*no definition for inline function 'function'*/
 #pragma warning(disable : 4800) /*'type' : forcing value to bool 'true' or 'false' (performance warning)*/
 #pragma warning(disable : 4996) /*The compiler encountered a deprecated declaration.*/
+#pragma warning(disable : 6011) /*Dereferencing NULL pointer*/
+#pragma warning(disable : 6387) /*'value' could be '0'*/
+#pragma warning(disable : 26495) /*Variable is uninitialized.*/
 #endif
 #include "onnx/onnx-ml.pb.h"
 #ifdef __GNUC__

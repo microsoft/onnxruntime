@@ -10,13 +10,13 @@
 #include <winrt/Windows.Storage.h>
 #include <winrt/Windows.Storage.Streams.h>
 #include <iostream>
-// using namespace winrt::Windows::Foundation;
-using namespace winrt::Windows::AI::MachineLearning;
-using namespace winrt::Windows::Foundation::Collections;
-using namespace winrt::Windows::Graphics::Imaging;
-using namespace winrt::Windows::Media;
-using namespace winrt::Windows::Storage;
-using namespace winrt::Windows::Storage::Streams;
+
+using namespace wfc;
+using namespace wgi;
+using namespace wm;
+using namespace ws;
+using namespace wss;
+using namespace winml;
 
 namespace WinML::Engine::Test{
 

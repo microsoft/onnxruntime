@@ -41,6 +41,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -63,6 +65,7 @@ public class InferenceTest {
 
   @Test
   public void repeatedCloseTest() throws OrtException {
+    Logger.getLogger(OrtEnvironment.class.getName()).setLevel(Level.SEVERE);
     OrtEnvironment env = OrtEnvironment.getEnvironment("repeatedCloseTest");
     try (OrtEnvironment otherEnv = OrtEnvironment.getEnvironment()) {
       assertFalse(otherEnv.isClosed());
@@ -115,7 +118,9 @@ public class InferenceTest {
   @Test
   public void morePartialInputsTest() throws OrtException {
     String modelPath = getResourcePath("/partial-inputs-test-2.onnx").toString();
-    try (OrtEnvironment env = OrtEnvironment.getEnvironment("partialInputs");
+    try (OrtEnvironment env =
+            OrtEnvironment.getEnvironment(
+                OrtEnvironment.LoggingLevel.ORT_LOGGING_LEVEL_FATAL, "partialInputs");
         OrtSession.SessionOptions options = new SessionOptions();
         OrtSession session = env.createSession(modelPath, options)) {
       assertNotNull(session);
@@ -200,7 +205,9 @@ public class InferenceTest {
   @Test
   public void partialInputsTest() throws OrtException {
     String modelPath = getResourcePath("/partial-inputs-test.onnx").toString();
-    try (OrtEnvironment env = OrtEnvironment.getEnvironment("partialInputs");
+    try (OrtEnvironment env =
+            OrtEnvironment.getEnvironment(
+                OrtEnvironment.LoggingLevel.ORT_LOGGING_LEVEL_FATAL, "partialInputs");
         OrtSession.SessionOptions options = new SessionOptions();
         OrtSession session = env.createSession(modelPath, options)) {
       assertNotNull(session);
@@ -370,6 +377,15 @@ public class InferenceTest {
         for (int i = 0; i < expectedOutputDimensions.length; i++) {
           assertEquals(expectedOutputDimensions[i], outputInfo.shape[i]);
         }
+
+        // Check the metadata can be extracted
+        OnnxModelMetadata metadata = session.getMetadata();
+        assertEquals("onnx-caffe2", metadata.getProducerName());
+        assertEquals("squeezenet_old", metadata.getGraphName());
+        assertEquals("", metadata.getDomain());
+        assertEquals("", metadata.getDescription());
+        assertEquals(0x7FFFFFFFFFFFFFFFL, metadata.getVersion());
+        assertTrue(metadata.getCustomMetadata().isEmpty());
       }
     }
   }
@@ -915,6 +931,12 @@ public class InferenceTest {
       assertTrue(firstOutputInfo.getInfo() instanceof TensorInfo);
       assertTrue(secondOutputInfo.getInfo() instanceof SequenceInfo);
       assertEquals(OnnxJavaType.INT64, ((TensorInfo) firstOutputInfo.getInfo()).type);
+      assertTrue(((SequenceInfo) secondOutputInfo.getInfo()).sequenceOfMaps);
+      assertEquals(OnnxJavaType.UNKNOWN, ((SequenceInfo) secondOutputInfo.getInfo()).sequenceType);
+      MapInfo mapInfo = ((SequenceInfo) secondOutputInfo.getInfo()).mapInfo;
+      assertNotNull(mapInfo);
+      assertEquals(OnnxJavaType.INT64, mapInfo.keyType);
+      assertEquals(OnnxJavaType.FLOAT, mapInfo.valueType);
 
       Map<String, OnnxTensor> container = new HashMap<>();
       long[] shape = new long[] {1, 2};
@@ -975,6 +997,12 @@ public class InferenceTest {
       assertTrue(firstOutputInfo.getInfo() instanceof TensorInfo);
       assertTrue(secondOutputInfo.getInfo() instanceof SequenceInfo);
       assertEquals(OnnxJavaType.STRING, ((TensorInfo) firstOutputInfo.getInfo()).type);
+      assertTrue(((SequenceInfo) secondOutputInfo.getInfo()).sequenceOfMaps);
+      assertEquals(OnnxJavaType.UNKNOWN, ((SequenceInfo) secondOutputInfo.getInfo()).sequenceType);
+      MapInfo mapInfo = ((SequenceInfo) secondOutputInfo.getInfo()).mapInfo;
+      assertNotNull(mapInfo);
+      assertEquals(OnnxJavaType.STRING, mapInfo.keyType);
+      assertEquals(OnnxJavaType.FLOAT, mapInfo.valueType);
 
       Map<String, OnnxTensor> container = new HashMap<>();
       long[] shape = new long[] {1, 2};

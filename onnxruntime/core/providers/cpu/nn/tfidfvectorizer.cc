@@ -311,7 +311,7 @@ void TfIdfVectorizer::OutputResult(OpKernelContext* ctx, size_t B, const std::ve
   }
 }
 
-void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, int32_t row_num, size_t row_size,
+void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, ptrdiff_t row_num, size_t row_size,
                                   std::vector<uint32_t>& frequencies) const {
   auto X = ctx->Input<Tensor>(0);
   const auto elem_size = X->DataType()->Size();
@@ -429,11 +429,11 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  std::function<void(int32_t)> fn = [this, ctx, C, &frequencies](int32_t row_num) {
+  std::function<void(ptrdiff_t)> fn = [this, ctx, C, &frequencies](ptrdiff_t row_num) {
     ComputeImpl(ctx, row_num, C, frequencies);
   };
 
-  concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(), num_rows, std::move(fn));
+  concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(), num_rows, std::move(fn), 0);
 
   OutputResult(ctx, B, frequencies);
 

@@ -461,9 +461,9 @@ void ResizeNearestImpl(
     float cubic_coeff_a,
     CudaFunctionOriginalCoordinate transform_coordinate,
     CudaFunctionNearestPixel calc_nearest_pixel,
-    int64_t* prefix_dim_sum,
+    int64_t* /* prefix_dim_sum */,
     NearestMappingInfo* dims_mapping) {
-  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  int blocksPerGrid = static_cast<int>(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
   bool could2d = rank >= 2 &&
                  transform_coordinate != GetDeviceOriginalCoordinateFunc(ResizeCoordinateTransformationMode::TF_CROP_AND_RESIZE) &&
@@ -472,7 +472,7 @@ void ResizeNearestImpl(
     int64_t output_height = output_shape[rank - 2];
     int64_t output_width = output_shape[rank - 1];
     fast_divmod div_output_image = (rank > 2) ? output_div_pitches[rank - 3] : fast_divmod(output_height * output_width);
-    int blocksPerDimsMappingGrid = (int)(ceil((output_height + output_width) / 32.0));
+    int blocksPerDimsMappingGrid = static_cast<int>(ceil((output_height + output_width) / 32.0));
 
     _ResizeNearestMappingKernel2D<T><<<blocksPerDimsMappingGrid, 32, 0>>>(
         input_shape[rank - 2], input_shape[rank - 1],

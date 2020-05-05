@@ -117,7 +117,10 @@ TEST(ParallelExecutor, TestStatusPropagation) {
   }
 }
 
-TEST(ParallelExecutor, TestNullInterOpThreadPool) {
+class ParallelExecutorThreadPoolTest : public testing::TestWithParam<int> {
+};
+
+TEST_P(ParallelExecutorThreadPoolTest, TestNullInterOpThreadPool) {
   auto registry = std::make_shared<CustomRegistry>();
   std::vector<OpSchema> schemas{TestOp::OpSchema()};
   Status status;
@@ -136,8 +139,11 @@ TEST(ParallelExecutor, TestNullInterOpThreadPool) {
   so.session_logid = "TestOp";
   so.session_log_verbosity_level = 1;
   so.execution_mode = ExecutionMode::ORT_PARALLEL;
-  so.inter_op_num_threads = 1;
+  so.inter_op_param.thread_pool_size = GetParam();
   tester.Run(so, OpTester::ExpectResult::kExpectSuccess, {}, {kTensorrtExecutionProvider}, nullptr, nullptr);
 }
+
+INSTANTIATE_TEST_SUITE_P(ParallelExecutorThreadPoolTests, ParallelExecutorThreadPoolTest,
+                        testing::Values(1, 0));
 }  // namespace test
 }  // namespace onnxruntime

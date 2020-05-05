@@ -5,7 +5,6 @@
 
 #include <iomanip>
 
-
 #include "core/graph/graph_viewer.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_frame.h"
@@ -140,10 +139,16 @@ const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info) 
   return required_provider_type;
 }
 
-static Status CopyMLValue(const DataTransferManager& data_transfer_mgr,
-                          const MLValueCopyInfo& copy_info,
-                          const OrtValue& source_mlvalue,
-                          OrtValue& target_mlvalue) {
+// Copy MLValue. Uses DataTransferManager for device copy if necessary. If copy_pairs is provided,
+// src/dst pairs that need a device copy are added to copy_pairs so copying can be batches by the DataTransferManager
+// implementation for performance reasons.
+static Status BatchOrCopyMLValue(
+    const DataTransferManager& data_transfer_mgr,
+    const MLValueCopyInfo& copy_info,
+    const OrtValue& source_mlvalue,
+    OrtValue& target_mlvalue,
+    std::vector<IDataTransfer::SrcDstPair>* copy_pairs = nullptr) {
+  // same device so direct copy
   if (copy_info.source_device == copy_info.target_device) {
     target_mlvalue = source_mlvalue;
     return Status::OK();
@@ -164,7 +169,11 @@ static Status CopyMLValue(const DataTransferManager& data_transfer_mgr,
 
   Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
 
-  ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensor(source_tensor, *p_output_tensor));
+  if (copy_pairs != nullptr) {
+    copy_pairs->push_back({source_tensor, *p_output_tensor, 0});
+  } else {
+    ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensor(source_tensor, *p_output_tensor));
+  }
 
   return Status::OK();
 }
@@ -385,9 +394,16 @@ static common::Status CopyInputsAcrossDevices(const std::vector<OrtValue>& orig_
   ORT_ENFORCE(copy_info.size() == num_feeds);
 
   new_feeds.resize(num_feeds);
+  std::vector<IDataTransfer::SrcDstPair> batched_data_transfers;
+  batched_data_transfers.reserve(num_feeds);
 
   for (size_t idx = 0; idx < num_feeds; ++idx) {
-    ORT_RETURN_IF_ERROR(CopyMLValue(data_transfer_mgr, copy_info[idx], orig_feeds[idx], new_feeds[idx]));
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(data_transfer_mgr, copy_info[idx], orig_feeds[idx], new_feeds[idx],
+                                           &batched_data_transfers));
+  }
+
+  if (!batched_data_transfers.empty()) {
+    ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensors(batched_data_transfers));
   }
 
   return Status::OK();
@@ -408,7 +424,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
   ORT_RETURN_IF_ERROR(CalculateStaticCopyInfoForFeed(session_state, input_name, copy_info));
   copy_info.source_device = orig_mlvalue.Get<Tensor>().Location().device;
 
-  return CopyMLValue(session_state.GetDataTransferMgr(), copy_info, orig_mlvalue, new_mlvalue);
+  return BatchOrCopyMLValue(session_state.GetDataTransferMgr(), copy_info, orig_mlvalue, new_mlvalue);
 }
 
 static common::Status CopyOutputsAcrossDevices(const SessionState& session_state,
@@ -419,9 +435,16 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
   user_fetches.resize(num_outputs);
 
   const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
+  std::vector<IDataTransfer::SrcDstPair> batched_data_transfers;
+  batched_data_transfers.reserve(num_outputs);
 
   for (size_t idx = 0; idx < num_outputs; ++idx) {
-    ORT_RETURN_IF_ERROR(CopyMLValue(data_transfer_mgr, copy_info[idx], fetches[idx], user_fetches[idx]));
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(data_transfer_mgr, copy_info[idx], fetches[idx], user_fetches[idx],
+                                           &batched_data_transfers));
+  }
+
+  if (!batched_data_transfers.empty()) {
+    ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensors(batched_data_transfers));
   }
 
   return Status::OK();
@@ -432,15 +455,15 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                        ExecutionMode execution_mode, const bool& terminate_flag,
-                                       const logging::Logger& logger) {
+                                       const logging::Logger& logger, const bool only_execute_path_to_fetches = false) {
   std::unique_ptr<IExecutor> p_exec;
   if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
-    p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag));
+    p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, only_execute_path_to_fetches));
   } else if (execution_mode == ExecutionMode::ORT_PARALLEL) {
     auto* p_inter_op_thread_pool = session_state.GetInterOpThreadPool();
     if (!p_inter_op_thread_pool) {
       LOGS(logger, WARNING) << "Only one thread was configured for parallel execution. Hence will use sequential execution.";
-      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag));
+      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, only_execute_path_to_fetches));
     } else {
       p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
     }
@@ -505,14 +528,14 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             FeedsFetchesManager& feeds_fetches_manager,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag,
-                            const logging::Logger& logger) {
+                            const logging::Logger& logger, bool only_execute_path_to_fetches) {
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
 
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(session_state, feeds_fetches_manager, feeds, fetches);
 
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                                 execution_mode, terminate_flag, logger);
+                                 execution_mode, terminate_flag, logger, only_execute_path_to_fetches);
 
   return status;
 }

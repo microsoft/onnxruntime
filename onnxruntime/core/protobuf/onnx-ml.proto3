@@ -63,7 +63,7 @@ enum Version {
   // The version field is always serialized and we will use it to store the
   // version that the  graph is generated from. This helps us set up version
   // control. 
-  // For the IR, we are using simple numbers starting with with 0x00000001, 
+  // For the IR, we are using simple numbers starting with 0x00000001,
   // which was the version we published on Oct 10, 2017.
   IR_VERSION_2017_10_10 = 0x0000000000000001;
 
@@ -92,7 +92,18 @@ enum Version {
   // - Add support for sparse tensor constants stored in model.
   //   - Add message SparseTensorProto
   //   - Add sparse initializers
-  IR_VERSION = 0x0000000000000006;
+  IR_VERSION_2019_9_19 = 0x0000000000000006;
+
+  // IR VERSION 7 published on <TBD>
+  // - Add support to allow function body graph to rely on multiple external opreator sets.
+  // - Add a list to promote inference graph's initializers to global and
+  //   mutable variables. Global variables are visible in all graphs of the
+  //   stored models.
+  // - Add message TrainingInfoProto to store initialization
+  //   method and training algorithm. The execution of TrainingInfoProto
+  //   can modify the values of mutable variables.
+  // - Make inference graph callable from TrainingInfoProto via GraphCall operator.
+  IR_VERSION = 0x0000000000000007;
 }
 
 // Attributes
@@ -136,10 +147,10 @@ message AttributeProto {
 
   // The type field MUST be present for this version of the IR.
   // For 0.0.1 versions of the IR, this field was not defined, and
-  // implementations needed to use has_field hueristics to determine
+  // implementations needed to use has_field heuristics to determine
   // which value field was in use.  For IR_VERSION 0.0.2 or later, this
   // field MUST be set and match the f|i|s|t|... field in use.  This
-  // change was made to accomodate proto3 implementations.
+  // change was made to accommodate proto3 implementations.
   AttributeType type = 20;   // discriminator that indicates which field below is in use
 
   // Exactly ONE of the following fields must be present for this version of the IR
@@ -199,12 +210,119 @@ message NodeProto {
   string doc_string = 6;
 }
 
+// Training information
+// TrainingInfoProto stores information for training a model.
+// In particular, this defines two functionalities: an initialization-step
+// and a training-algorithm-step. Initialization resets the model
+// back to its original state as if no training has been consumed.
+// Training algorithm improves the model based on input data.
+//
+// The semantics of the initialization-step is that the initializers
+// in ModelProto.graph and in TrainingInfoProto.algorithm are first
+// initialized as specified by the initializers in the graph, and then
+// updated by the "initialization_binding" in every instance in
+// ModelProto.training_info.
+//
+// The field "algorithm" defines a computation graph which represents a
+// training algorithm's step. After the execution of a
+// TrainingInfoProto.algorithm, the initializers specified by "update_binding"
+// may be immediately updated. If the targeted training algorithm contains
+// consecutive update stages (such as block coordinate descent methods),
+// the user needs to create a TrainingInfoProto for each stage.
+message TrainingInfoProto {
+  // This field describes a graph to compute the initial tensors
+  // upon starting the training process. Initialization graph has no input
+  // and can have multiple outputs. Usually, trainable tensors in neural
+  // networks are randomly initialized. To achieve that, for each tensor,
+  // the user can put a random number operator such as RandomNormal or
+  // RandomUniform in TrainingInfoProto.initialization.node and assign its
+  // random output to the specific tensor using "initialization_binding".
+  // This graph can also set the initializers in "algorithm" in the same
+  // TrainingInfoProto; a use case is resetting the number of training
+  // iteration to zero.
+  //
+  // By default, this field is an empty graph and its evaluation does not
+  // produce any output.
+  GraphProto initialization = 1;
+
+  // This field represents a training algorithm step. Given required inputs,
+  // it computes outputs to update initializers in its own or inference graph's
+  // initializer lists. In general, this graph contains loss node, gradient node,
+  // optimizer node, increment of iteration count, and some calls to the inference
+  // graph.
+  //
+  // The field algorithm.node is the only place the user can use GraphCall
+  // operator. The only callable graph is the one stored in ModelProto.graph.
+  //
+  // By default, this field is an empty graph and its evaluation does not
+  // produce any output.
+  GraphProto algorithm = 2;
+
+  // This field specifies the bindings from the outputs of "initialization" to
+  // some initializers in "ModelProto.graph.initializer" and 
+  // the "algorithm.initializer" in the same TrainingInfoProto.
+  // See "update_binding" below for details.
+  //
+  // By default, this field is empty and no initializer would be changed
+  // by the execution of "initialization".
+  repeated StringStringEntryProto initialization_binding = 3;
+
+  // Gradient-based training is usually an iterative procedure. In one gradient
+  // descent iteration, we apply
+  //
+  // x = x - r * g
+  //
+  // where "x" is the optimized tensor, "r" stands for learning rate, and "g" is
+  // gradient of "x" with respect to a chosen loss. To avoid adding assignments
+  // into the training graph, we split the update equation into
+  //
+  // y = x - r * g
+  // x = y
+  //
+  // The user needs to save "y = x - r * g" into TrainingInfoProto.algorithm. To
+  // tell that "y" should be assigned to "x", the field "update_binding" may
+  // contain a key-value pair of strings, "x" (key of StringStringEntryProto)
+  // and "y" (value of StringStringEntryProto).
+  // For a neural network with multiple trainable (mutable) tensors, there can
+  // be multiple key-value pairs in "update_binding".
+  //
+  // The initializers appears as keys in "update_binding" are considered
+  // mutable and globally-visible variables. This implies some behaviors
+  // as described below.
+  //
+  //  1. We have only unique keys in all "update_binding"s so that two global
+  //     variables may not have the same name. This ensures that one
+  //     global variable is assigned up to once.
+  //  2. The keys must appear in names of "ModelProto.graph.initializer" or
+  //     "TrainingInfoProto.algorithm.initializer".
+  //  3. The values must be output names of "algorithm".
+  //  4. If an optional input of a graph is omitted when using GraphCall, the
+  //     global variable with the same name may be used.
+  //  5. When using GraphCall, the users always can pass values to optional 
+  //     inputs of the called graph even if the associated initializers appears
+  //     as keys in "update_binding"s.
+  //  6. The graphs in TrainingInfoProto's can use global variables as
+  //     their operator inputs.
+  //  7. Mutable variables are initialized to the value specified by the
+  //     corresponding initializer, and then potentially updated by
+  //     "initializer_binding"s and "update_binding"s in "TrainingInfoProto"s.
+  //
+  // This field usually contains names of trainable tensors
+  // (in ModelProto.graph), optimizer states such as momentums in advanced
+  // stochastic gradient methods (in TrainingInfoProto.graph),
+  // and number of training iterations (in TrainingInfoProto.graph).
+  //
+  // By default, this field is empty and no initializer would be changed
+  // by the execution of "algorithm".
+  repeated StringStringEntryProto update_binding = 4;
+}
+
 // Models
 //
 // ModelProto is a top-level file/container format for bundling a ML model and
 // associating its computation graph with metadata.
 //
-// The semantics of the model are described by the associated GraphProto.
+// The semantics of the model are described by the associated GraphProto's.
 message ModelProto {
   // The version of the IR this model targets. See Version enum above.
   // This field MUST be present.
@@ -252,6 +370,17 @@ message ModelProto {
 
   // Named metadata values; keys should be distinct.
   repeated StringStringEntryProto metadata_props = 14;
+
+  // Training-specific information. Sequentially executing all stored
+  // `TrainingInfoProto.algorithm`s and assigning their outputs following
+  // the corresponding `TrainingInfoProto.update_binding`s is one training
+  // iteration. Similarly, to initialize the model
+  // (as if training hasn't happened), the user should sequentially execute
+  // all stored `TrainingInfoProto.initialization`s and assigns their outputs
+  // using `TrainingInfoProto.initialization_binding`s.
+  //
+  // If this field is empty, the training behavior of the model is undefined.
+  repeated TrainingInfoProto training_info = 20;
 };
 
 // StringStringEntryProto follows the pattern for cross-proto-version maps.
@@ -269,6 +398,8 @@ message TensorAnnotation {
   // quantization parameter keys.
   repeated StringStringEntryProto quant_parameter_tensor_names = 2;
 }
+
+
 
 // Graphs
 //
@@ -376,7 +507,7 @@ message TensorProto {
   // For float and complex64 values
   // Complex64 tensors are encoded as a single array of floats,
   // with the real components appearing in odd numbered positions,
-  // and the corresponding imaginary component apparing in the
+  // and the corresponding imaginary component appearing in the
   // subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
   // is encoded as [1.0, 2.0 ,3.0 ,4.0]
   // When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
@@ -448,7 +579,7 @@ message TensorProto {
   // For double
   // Complex128 tensors are encoded as a single array of doubles,
   // with the real components appearing in odd numbered positions,
-  // and the corresponding imaginary component apparing in the
+  // and the corresponding imaginary component appearing in the
   // subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
   // is encoded as [1.0, 2.0 ,3.0 ,4.0]
   // When this field is present, the data_type field MUST be DOUBLE or COMPLEX128
@@ -539,7 +670,7 @@ message TypeProto {
     int32 elem_type = 1;
     TensorShapeProto shape = 2;
   }
-  
+
   message Opaque {
     // When missing, the domain is the same as the model's.
     string domain = 1;
@@ -568,9 +699,8 @@ message TypeProto {
 
 
     SparseTensor sparse_tensor_type = 8;
-    
-    Opaque opaque_type = 7;
 
+    Opaque opaque_type = 7;
 
   }
 
@@ -596,6 +726,7 @@ message OperatorSetIdProto {
   int64 version = 2;
 }
 
+
 // Operator/function status.
 enum OperatorStatus {
     EXPERIMENTAL = 0;
@@ -605,7 +736,7 @@ enum OperatorStatus {
 message FunctionProto {
   // The name of the function, similar usage of op_type in OperatorProto.
   string name = 1;
-  
+
   // The first version of a function set which contains this function.
   // When there's any breaking change for this function, the function set
   // contains the function needs to bump its version, and since_version of
@@ -628,9 +759,21 @@ message FunctionProto {
 
   // The attributes of the function.
   repeated string attribute= 6;
-  
+
   // The nodes in the function.
   repeated NodeProto node = 7;
   // A human-readable documentation for this function. Markdown is allowed.
   string doc_string = 8;
+
+  // The OperatorSets this function body (graph) relies on.
+  // A FunctionProto body (graph) may implicitly rely on the OperatorSet that
+  // this function belongs to. It can also explicitly rely on more OperatorSets
+  // with this field specified.
+  //
+  // All nodes in the function body (graph) will bind against the operator
+  // with the same-domain/same-op_type operator with the HIGHEST version
+  // in the referenced operator sets. This means at most one version can be relied
+  // for one domain.
+  repeated OperatorSetIdProto opset_import = 9;
 }
+
