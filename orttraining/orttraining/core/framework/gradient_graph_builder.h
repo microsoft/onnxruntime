@@ -41,6 +41,11 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Where", {0}},
         {"Range", {0, 1, 2}}};
 
+static std::unordered_set<std::string>
+    COMMUNICATION_NODES = {
+        "Send",
+        "Receive"};
+
 class GradientGraphBuilder {
  public:
   /**

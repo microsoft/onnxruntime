@@ -18,7 +18,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T2", {DataTypeImpl::GetTensorType<MLFloat16>(),
                                DataTypeImpl::GetTensorType<float>(),
                                DataTypeImpl::GetTensorType<double>()})
-        .Alias(AliasRange<0, 0>(0, 1024)),
+        .Alias(AliasRange<1, 0>(0, 1024)),
     PassThrough);
 
 Status PassThrough::Compute(OpKernelContext* ctx) const {

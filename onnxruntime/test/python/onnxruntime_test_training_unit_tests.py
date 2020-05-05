@@ -53,7 +53,9 @@ class TestTrainingDropout(unittest.TestCase):
                         world_rank=0, world_size=1)
         input = torch.ones(dim_size, dtype=torch.float32).to(device)
         expected_training_output = [0.0]
-        expected_eval_output = [1.0]
+        # This is the result after first optimizer step
+        expected_eval_output = [-2.1621]
+        expected_train_output_2 = [-3.1621]
         learning_rate = torch.tensor([1.0000000e+00]).to(device)
         input_args=[input, learning_rate]
         train_output = model.train_step(*input_args)
@@ -66,7 +68,7 @@ class TestTrainingDropout(unittest.TestCase):
  
         # Do another train step to make sure it's using original ratios
         train_output_2 = model.train_step(*input_args)
-        assert_allclose(expected_training_output, train_output_2.item(), rtol=rtol, err_msg="dropout training loss 2 mismatch")
+        assert_allclose(expected_train_output_2, train_output_2.item(), rtol=rtol, err_msg="dropout training loss 2 mismatch")
 
 if __name__ == '__main__':
     unittest.main(module=__name__, buffer=True)

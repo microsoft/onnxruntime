@@ -29,7 +29,7 @@ void pass_through_multiple_tensors() {
   test_passthrough.AddInput<TTensor>("Input2", {static_cast<int64_t>(input2.size())}, input2);
   // We expect input and output are the same.
   test_passthrough.AddOutput<TTensor>("Output1", {static_cast<int64_t>(input1.size())}, input1);
-  test_passthrough.AddOutput<TTensor>("Output2", {static_cast<int64_t>(input2.size())}, input1);
+  test_passthrough.AddOutput<TTensor>("Output2", {static_cast<int64_t>(input2.size())}, input2);
   run_provider_specific_optest(test_passthrough);
 }
 

@@ -68,6 +68,8 @@ static Status BuildBackPropGraph(
 
   TrainingSession::TrainingConfigurationResult config_result{};
   ORT_RETURN_IF_ERROR(training_session.ConfigureForTraining(config, config_result));
+  //bugbug
+  training_session.Save(forward_model_file + ORT_TSTR(".onnx"), TrainingSession::SaveOption::NO_RELOAD);
 
   backward_model_file = config.model_with_training_graph_path.value();
 
@@ -1020,6 +1022,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
     ASSERT_TRUE(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
 
     Graph& graph = model->MainGraph();
+
     auto is_backward = [](Node& node) {
       return (node.Description() == "Backward pass");
     };
@@ -1140,7 +1143,16 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
         {},
         {},
         {}},
-       {{"MeanSquaredError_reduce_mean_Grad/Unqueezed_Grad", "MeanSquaredError_reduce_mean_Grad/Tiled_Grad", "MeanSquaredError_diff_square_grad", "MeanSquaredError_diff_grad", "predictions_grad", "B3_grad", "T7_grad", "W3_grad", "T6_grad"},
+       {{"MeanSquaredError_reduce_mean_Grad/Unqueezed_Grad",
+         "MeanSquaredError_reduce_mean_Grad/Tiled_Grad",
+         "MeanSquaredError_diff_square_grad",
+         "MeanSquaredError_diff_grad",
+         "predictions_grad",
+         "loss_grad",
+         "B3_grad",
+         "T7_grad",
+         "W3_grad", 
+         "T6_grad"},
         {},
         {"T6_grad"},
         {},
