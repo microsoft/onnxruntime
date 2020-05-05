@@ -44,26 +44,23 @@ namespace onnxruntime {
 
 // The function passed in will be run on provider DLL unload. This is used to free thread_local variables that are in threads we don't own
 // Since these are not destroyed when the DLL unloads we have to do it manually. Search for usage for an example.
-struct RunOnUnload {
-  RunOnUnload(std::function<void()> run);
-  ~RunOnUnload();
+void RunOnUnload(std::function<void()> function);
 
- private:
-  bool* enabled_{};
-};
-
+// A pointer stored in here will be deleted when the DLL gets unloaded, this is really only useful for thread_locals which don't get cleaned up properly otherwise
 template <typename T>
 struct DeleteOnUnloadPtr {
   DeleteOnUnloadPtr(T* p) : p_(p) {
+    RunOnUnload([p = p_]() {
+      delete p;
+    });
   }
 
-  operator T*() { return p_; }
+  operator T*() {
+    return p_;
+  }
 
  private:
   T* p_;
-  RunOnUnload deleter_{[p = p_]() {
-    delete p;
-  }};
 };
 
 constexpr const char* kOnnxDomain = "";

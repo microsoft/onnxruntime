@@ -18,28 +18,15 @@ void SetProviderHost(ProviderHost& host) {
   g_host = &host;
 }
 
-struct OnUnloadFunction {
-  OnUnloadFunction(std::function<void()> function) : function_(std::move(function)) {}
-
-  std::function<void()> function_;
-  bool enabled_{true};
-};
-
-static std::unique_ptr<std::vector<std::unique_ptr<OnUnloadFunction>>> s_run_on_unload_;
+static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 
 // See
-RunOnUnload::RunOnUnload(std::function<void()> deleter) {
+void RunOnUnload(std::function<void()> function) {
   static std::mutex mutex;
   std::lock_guard<std::mutex> guard{mutex};
   if (!s_run_on_unload_)
-    s_run_on_unload_ = onnxruntime::make_unique<std::vector<std::unique_ptr<OnUnloadFunction>>>();
-  auto unload_function = std::make_unique<OnUnloadFunction>(std::move(deleter));
-  enabled_ = &unload_function->enabled_;
-  s_run_on_unload_->push_back(std::move(unload_function));
-}
-
-RunOnUnload::~RunOnUnload() {
-  //  *enabled_ = false;  // If the thread_local gets destroyed, then disable the delete function
+    s_run_on_unload_ = onnxruntime::make_unique<std::vector<std::function<void()>>>();
+  s_run_on_unload_->push_back(std::move(function));
 }
 
 struct OnUnload {
@@ -47,10 +34,8 @@ struct OnUnload {
     if (!s_run_on_unload_)
       return;
 
-    for (auto& function : *s_run_on_unload_) {
-      if (function->enabled_)
-        function->function_();
-    }
+    for (auto& function : *s_run_on_unload_)
+      function();
 
     s_run_on_unload_.reset();
   }
