@@ -38,6 +38,7 @@ def get_lr(args, training_steps, schedule='warmup_poly'):
         return args.learning_rate
 
     schedule_fct = SCHEDULES[schedule]
+    training_steps = training_steps if training_steps < args.max_steps else args.max_steps
     return args.learning_rate * schedule_fct(training_steps / args.max_steps, args.warmup_proportion)
 
 def map_optimizer_attributes(name):
