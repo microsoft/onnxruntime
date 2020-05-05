@@ -26,6 +26,7 @@ inline common::Status GetFloatParam(const std::string& name, const onnxruntime::
 
 // Like the std::transform
 // T should be float or double
+// All the code(this class and its subclasses) must be exception free
 template <typename T>
 struct ElementWiseRangedTransform {
   using DataType = T;
@@ -40,15 +41,17 @@ struct ElementWiseRangedTransform {
   virtual ElementWiseRangedTransform<T>* Copy() const = 0;
   virtual ~ElementWiseRangedTransform() = 0;
 
-  // A helper function for creating such objects by type name.
-  static Status Create(const std::string& type, const onnxruntime::NodeAttributes& attributes,
-                       ElementWiseRangedTransform<T>** out);
+  // A helper function for creating such objects by op type name.
+  // Ideally we should use op type name + domain name + op version as the key, but currently there is no conflict yet,
+  // so other two are not needed
+  static Status Create(const std::string& activation_type, const onnxruntime::NodeAttributes& attributes,
+                       std::unique_ptr<ElementWiseRangedTransform<T>>& out);
 };
 
 template <typename T>
 ElementWiseRangedTransform<T>::~ElementWiseRangedTransform() {
 }
-#define ORT_GET_ATTR_AND_RETURN(X)                                 \
+#define ORT_GET_FLOAT_ATTR_AND_RETURN(X)                           \
   float X;                                                         \
   Status Init(const onnxruntime::NodeAttributes& attributes) {     \
     return (GetFloatParam(#X, attributes, X));                     \
@@ -59,7 +62,7 @@ ElementWiseRangedTransform<T>::~ElementWiseRangedTransform() {
     return new T2(*this);                                          \
   }
 
-#define ORT_GET_ATTR_AND_RETURN_2(X, Y)                            \
+#define ORT_GET_FLOAT_ATTR_AND_RETURN_2(X, Y)                      \
   float X;                                                         \
   float Y;                                                         \
   Status Init(const onnxruntime::NodeAttributes& attributes) {     \

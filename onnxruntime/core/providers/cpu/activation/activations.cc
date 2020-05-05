@@ -13,14 +13,14 @@ namespace onnxruntime {
   if (type == #X) {                           \
     functors::X<T>* p = new functors::X<T>(); \
     p->Init(attributes);                      \
-    *out = p;                                 \
+    out.reset(p);                             \
     return Status::OK();                      \
   }
 
 namespace functors {
 template <typename T>
 Status ElementWiseRangedTransform<T>::Create(const std::string& type, const NodeAttributes& attributes,
-                                             ElementWiseRangedTransform<T>** out) {
+                                             std::unique_ptr<ElementWiseRangedTransform<T>>& out) {
   CREATE_ELE_KERNEL(Elu);
   CREATE_ELE_KERNEL(HardSigmoid);
   CREATE_ELE_KERNEL(LeakyRelu);
@@ -39,7 +39,7 @@ Status ElementWiseRangedTransform<T>::Create(const std::string& type, const Node
 }
 
 template Status ElementWiseRangedTransform<float>::Create(const std::string& type, const NodeAttributes& attributes,
-                                                          ElementWiseRangedTransform<float>** out);
+                                                          std::unique_ptr<ElementWiseRangedTransform<float>>& out);
 }  // namespace functors
 
 #define REGISTER_UNARY_ELEMENTWISE_KERNEL_ALIAS(alias, x, sinceVersion) \

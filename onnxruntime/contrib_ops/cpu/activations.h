@@ -16,7 +16,7 @@ namespace functors {
 
 template <typename T>
 struct ScaledTanh : public ElementWiseRangedTransform<T> {
-  ORT_GET_ATTR_AND_RETURN_2(alpha, beta);
+  ORT_GET_FLOAT_ATTR_AND_RETURN_2(alpha, beta);
 
   float Cost() const final {
     return 5.0f;
@@ -31,7 +31,7 @@ struct ScaledTanh : public ElementWiseRangedTransform<T> {
 };
 template <typename T>
 struct ParametricSoftplus : public ElementWiseRangedTransform<T> {
-  ORT_GET_ATTR_AND_RETURN_2(alpha, beta);
+  ORT_GET_FLOAT_ATTR_AND_RETURN_2(alpha, beta);
 
   float Cost() const final {
     return 15.0f;

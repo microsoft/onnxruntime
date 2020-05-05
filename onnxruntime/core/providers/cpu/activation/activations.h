@@ -15,7 +15,7 @@ namespace functors {
 
 template <typename T>
 struct Elu : public ElementWiseRangedTransform<T> {
-  ORT_GET_ATTR_AND_RETURN(alpha);
+  ORT_GET_FLOAT_ATTR_AND_RETURN(alpha);
 
   float Cost() const final {
     return 30.f;
@@ -31,7 +31,7 @@ struct Elu : public ElementWiseRangedTransform<T> {
 
 template <typename T>
 struct HardSigmoid : public ElementWiseRangedTransform<T> {
-  ORT_GET_ATTR_AND_RETURN_2(alpha, beta);
+  ORT_GET_FLOAT_ATTR_AND_RETURN_2(alpha, beta);
 
   float Cost() const final {
     return 0.5f;
@@ -47,7 +47,7 @@ struct HardSigmoid : public ElementWiseRangedTransform<T> {
 
 template <typename T>
 struct LeakyRelu : public ElementWiseRangedTransform<T> {
-  ORT_GET_ATTR_AND_RETURN(alpha);
+  ORT_GET_FLOAT_ATTR_AND_RETURN(alpha);
 
   float Cost() const final {
     return 25.0f;
@@ -180,7 +180,7 @@ void Tanh<float>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const;
 
 template <typename T>
 struct ThresholdedRelu : public ElementWiseRangedTransform<T> {
-  ORT_GET_ATTR_AND_RETURN(alpha);
+  ORT_GET_FLOAT_ATTR_AND_RETURN(alpha);
 
   float Cost() const final {
     return 1.0f;
@@ -196,7 +196,7 @@ struct ThresholdedRelu : public ElementWiseRangedTransform<T> {
 
 template <typename T>
 struct Selu : public ElementWiseRangedTransform<T> {
-  ORT_GET_ATTR_AND_RETURN_2(alpha, gamma);
+  ORT_GET_FLOAT_ATTR_AND_RETURN_2(alpha, gamma);
 
   float Cost() const final {
     return 4.0f;

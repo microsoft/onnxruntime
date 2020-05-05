@@ -104,7 +104,7 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
   auto iter = provider_type_to_registry_.find(ptype);
   if (iter != provider_type_to_registry_.end()) p = iter->second.get();
   if (p != nullptr) {
-    status = p->TryFindKernel(node, "", kernel_create_info);
+    status = p->TryFindKernel(node, std::string(), kernel_create_info);
     if (status.IsOK()) return status;
   }
 
