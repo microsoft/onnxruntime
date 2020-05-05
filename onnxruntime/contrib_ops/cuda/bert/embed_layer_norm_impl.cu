@@ -193,7 +193,7 @@ bool LaunchEmbedLayerNormKernel(
 
   if (element_size == 2) {
     const half epsilon_half = __float2half_rn(epsilon);
-    if (epsilon_half == 0) {
+    if (epsilon_half == half_cast<half>(0)) {
       LOGS_DEFAULT(WARNING) << "EmbeddingLayerNormalization attribute epsilon is rounded to zero. ";
     }
     return EmbedSkipLayerNorm<half>(
