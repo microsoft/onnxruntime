@@ -31,6 +31,7 @@ using namespace ONNX_NAMESPACE;
 template <typename T>
 SkipLayerNorm<T>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
+  ORT_ENFORCE(epsilon_ >= 0);
 }
 
 template <typename T>
@@ -86,10 +87,6 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 
-  if (epsilon_ < 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Epsilon is expected to be positive, got ", epsilon_);
-  }
   int sequence_length = static_cast<int>(input_dims[1]);
   int hidden_size = static_cast<int>(input_dims[2]);
   int64_t element_count = input_dims[0] * sequence_length * hidden_size;

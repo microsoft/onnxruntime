@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace embed_layer_norm {
 
-Status CheckInputs(const OpKernelContext* context, const float epsilon) {
+Status CheckInputs(const OpKernelContext* context) {
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* segment_ids = context->Input<Tensor>(1);
   const Tensor* word_embedding = context->Input<Tensor>(2);
@@ -18,11 +18,6 @@ Status CheckInputs(const OpKernelContext* context, const float epsilon) {
   const Tensor* gamma = context->Input<Tensor>(5);
   const Tensor* beta = context->Input<Tensor>(6);
   const Tensor* mask = context->Input<Tensor>(7); // optional. nullptr if not provided
-
-  if (epsilon < 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Epsilon is expected to be positive, got ", epsilon);
-  }
 
   if (input_ids->Shape() != segment_ids->Shape()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

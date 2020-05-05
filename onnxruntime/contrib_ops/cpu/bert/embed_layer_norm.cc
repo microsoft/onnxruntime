@@ -27,11 +27,12 @@ REGISTER_KERNEL_TYPED(float)
 template <typename T>
 EmbedLayerNorm<T>::EmbedLayerNorm(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
+  ORT_ENFORCE(epsilon_ >= 0);
 }
 
 template <typename T>
 Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
-  ORT_RETURN_IF_ERROR(embed_layer_norm::CheckInputs(context, epsilon_));
+  ORT_RETURN_IF_ERROR(embed_layer_norm::CheckInputs(context));
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* segment_ids = context->Input<Tensor>(1);
   const Tensor* word_embedding = context->Input<Tensor>(2);
