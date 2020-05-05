@@ -366,7 +366,7 @@ TestModelInfo* TestModelInfo::LoadOnnxModel(_In_ const PATH_CHAR_TYPE* model_url
    * ???/output_??.pb
    */
 class OnnxTestCase : public ITestCase {
- private:
+ protected:
   std::string test_case_name_;
   std::vector<std::string> debuginfo_strings;
   onnxruntime::OrtMutex m_;
@@ -401,6 +401,7 @@ class OnnxTestCase : public ITestCase {
   Status GetPerSampleTolerance(double* value) override;
   Status GetRelativePerSampleTolerance(double* value) override;
   Status GetPostProcessing(bool* value) override;
+  bool UseCustomComparision() override;
 
   const ONNX_NAMESPACE::ValueInfoProto* GetOutputInfoFromModel(size_t i) const override {
     return model_info_->GetOutputInfoFromModel(i);
@@ -420,11 +421,21 @@ class OnnxTestCase : public ITestCase {
   }
   void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b, std::unordered_map<std::string, OrtValue*>&,
                     bool is_input) override;
+
+  std::pair<onnxruntime::COMPARE_RESULT, std::string> CustomComparator(OrtValue actual_output, OrtValue expected_output) override {
+    ONNX_UNUSED_PARAMETER(actual_output);
+    ONNX_UNUSED_PARAMETER(expected_output);
+    ORT_THROW("Test cases of OnnxTestCase type do not have custom comparision defined.");
+  }
 };
 
 ITestCase* CreateOnnxTestCase(const std::string& test_case_name, TestModelInfo* model,
                               double default_per_sample_tolerance, double default_relative_per_sample_tolerance) {
   return new OnnxTestCase(test_case_name, model, default_per_sample_tolerance, default_relative_per_sample_tolerance);
+}
+
+bool OnnxTestCase::UseCustomComparision() {
+  return false;
 }
 
 Status OnnxTestCase::GetPerSampleTolerance(double* value) {
@@ -649,4 +660,106 @@ OnnxTestCase::OnnxTestCase(const std::string& test_case_name, _In_ TestModelInfo
     }
     return true;
   });
+}
+
+class OnnxDropoutTestCase : public OnnxTestCase {
+ public:
+  OnnxDropoutTestCase(const std::string& test_case_name, _In_ TestModelInfo* model, double default_per_sample_tolerance,
+                      double default_relative_per_sample_tolerance);
+
+  bool UseCustomComparision() override;
+
+  std::pair<onnxruntime::COMPARE_RESULT, std::string> CustomComparator(OrtValue actual_output, OrtValue expected_output) override;
+};
+
+OnnxDropoutTestCase::OnnxDropoutTestCase(const std::string& test_case_name, _In_ TestModelInfo* model,
+                                         double default_per_sample_tolerance, double default_relative_per_sample_tolerance)
+    : OnnxTestCase(test_case_name, model, default_per_sample_tolerance, default_relative_per_sample_tolerance) {}
+
+bool OnnxDropoutTestCase::UseCustomComparision() {
+  return true;
+}
+
+std::pair<onnxruntime::COMPARE_RESULT, std::string> OnnxDropoutTestCase::CustomComparator(OrtValue actual_output, OrtValue expected_output) {
+  if (actual_output.IsTensor() != expected_output.IsTensor() || actual_output.Type() != expected_output.Type()) {
+    return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
+  }
+
+  if (!actual_output.IsTensor()) {
+    return std::make_pair(COMPARE_RESULT::NOT_SUPPORT, "");
+  }
+  const Tensor& outvalue = actual_output.Get<Tensor>();
+  const Tensor& expected_tensor = expected_output.Get<Tensor>();
+  if (outvalue.DataType() != expected_tensor.DataType()) {
+    std::ostringstream oss;
+    oss << "expect " << DataTypeImpl::ToString(expected_tensor.DataType()) << " got "
+        << DataTypeImpl::ToString(outvalue.DataType());
+    return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
+  }
+
+  if (expected_tensor.Shape() != outvalue.Shape()) {
+    std::ostringstream oss;
+    oss << "shape mismatch, expect " << expected_tensor.Shape().ToString() << " got " << outvalue.Shape().ToString();
+    return std::make_pair(COMPARE_RESULT::SHAPE_MISMATCH, oss.str());
+  }
+
+  const size_t size1 = static_cast<size_t>(expected_tensor.Shape().Size());
+  std::pair<COMPARE_RESULT, std::string> res = std::make_pair(COMPARE_RESULT::SUCCESS, "");
+  if (outvalue.IsDataType<float>()) {
+    const float* expected_float_output = expected_tensor.template Data<float>();
+    const float* real_output = outvalue.template Data<float>();
+    int expected_dropout_zeros = 0;
+    int real_dropout_zeros = 0;
+    for (size_t di = 0; di != size1; ++di) {
+      if ((this->post_processing_ ? std::max<double>(0.0, std::min<double>(255.0, real_output[di])) : real_output[di]) == 0) {
+        real_dropout_zeros += 1;
+      }
+
+      if (expected_float_output[di] == 0) {
+        expected_dropout_zeros += 1;
+      }
+    }
+
+    float ratio = static_cast<float>(real_dropout_zeros) / static_cast<float>(expected_dropout_zeros);
+    if (ratio >= 0.80f && ratio <= 1.20f) {
+      res.first = COMPARE_RESULT::SUCCESS;
+    } else {
+      res.first = COMPARE_RESULT::RESULT_DIFFERS;
+      std::ostringstream oss;
+      oss << std::hex << "expected zeros (" << expected_dropout_zeros << "), got (" << real_dropout_zeros << ")";
+      res.second = oss.str();
+    }
+
+  } else if (outvalue.IsDataType<bool>()) {
+    const bool* expected_bool_output = expected_tensor.template Data<bool>();
+    const bool* real_output = outvalue.template Data<bool>();
+    int expected_dropout_zeros = 0;
+    int real_dropout_zeros = 0;
+    for (size_t di = 0; di != size1; ++di) {
+      if (real_output[di] == false) {
+        real_dropout_zeros += 1;
+      }
+
+      if (expected_bool_output[di] == false) {
+        expected_dropout_zeros += 1;
+      }
+    }
+
+    float ratio = static_cast<float>(real_dropout_zeros) / static_cast<float>(expected_dropout_zeros);
+    if (ratio < 0.80f || ratio > 1.20f) {
+      std::ostringstream oss;
+      oss << std::hex << "expected zeros (" << expected_dropout_zeros << "), got (" << real_dropout_zeros << ")";
+      res.first = COMPARE_RESULT::RESULT_DIFFERS;
+      res.second = oss.str();
+    }
+  } else {
+    return std::make_pair(COMPARE_RESULT::NOT_SUPPORT, "");
+  }
+
+  return res;
+}
+
+ITestCase* CreateOnnxDropoutTestCase(const std::string& test_case_name, TestModelInfo* model,
+                                     double default_per_sample_tolerance, double default_relative_per_sample_tolerance) {
+  return new OnnxDropoutTestCase(test_case_name, model, default_per_sample_tolerance, default_relative_per_sample_tolerance);
 }

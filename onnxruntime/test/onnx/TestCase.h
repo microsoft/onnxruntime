@@ -8,7 +8,7 @@
 #include <core/common/common.h>
 #include <core/common/status.h>
 #include <core/platform/path_lib.h>
-#include <core/session/onnxruntime_cxx_api.h>
+#include <test/compare_ortvalue.h>
 #include "heap_buffer.h"
 
 namespace ONNX_NAMESPACE {
@@ -35,6 +35,8 @@ class ITestCase {
   virtual ::onnxruntime::common::Status GetPerSampleTolerance(double* value) = 0;
   virtual ::onnxruntime::common::Status GetRelativePerSampleTolerance(double* value) = 0;
   virtual ::onnxruntime::common::Status GetPostProcessing(bool* value) = 0;
+  virtual bool UseCustomComparision() = 0;
+  virtual std::pair<onnxruntime::COMPARE_RESULT, std::string> CustomComparator(OrtValue actual_output, OrtValue expected_output) = 0;
 };
 
 class TestModelInfo {
@@ -63,3 +65,6 @@ class TestModelInfo {
 
 ITestCase* CreateOnnxTestCase(const std::string& test_case_name, TestModelInfo* model,
                               double default_per_sample_tolerance, double default_relative_per_sample_tolerance);
+
+ITestCase* CreateOnnxDropoutTestCase(const std::string& test_case_name, TestModelInfo* model,
+                                     double default_per_sample_tolerance, double default_relative_per_sample_tolerance);

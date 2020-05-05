@@ -246,6 +246,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
                const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
                double default_per_sample_tolerance, double default_relative_per_sample_tolerance,
                const std::unordered_set<std::basic_string<ORTCHAR_T>>& disabled_tests,
+               const std::unordered_set<std::basic_string<ORTCHAR_T>>& dropout_tests,
                const std::function<void(ITestCase*)>& process_function) {
   std::vector<std::basic_string<PATH_CHAR_TYPE>> paths(input_paths);
   while (!paths.empty()) {
@@ -273,8 +274,13 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
 
       std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(node_data_root_path, filename_str);
 
-      ITestCase* l = CreateOnnxTestCase(ToMBString(test_case_name), TestModelInfo::LoadOnnxModel(p.c_str()),
-                                        default_per_sample_tolerance, default_relative_per_sample_tolerance);
+      ITestCase* l = dropout_tests.find(test_case_name) != dropout_tests.end() ? CreateOnnxDropoutTestCase(
+                                                                                     ToMBString(test_case_name), TestModelInfo::LoadOnnxModel(p.c_str()),
+                                                                                     default_per_sample_tolerance, default_relative_per_sample_tolerance)
+                                                                               : CreateOnnxTestCase(
+                                                                                     ToMBString(test_case_name), TestModelInfo::LoadOnnxModel(p.c_str()),
+                                                                                     default_per_sample_tolerance, default_relative_per_sample_tolerance);
+
       process_function(l);
       return true;
     });
@@ -397,9 +403,8 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
       break;
     }
     OrtValue* actual_output_value = iter->second;
-    std::pair<COMPARE_RESULT, std::string> ret =
-        CompareOrtValue(*actual_output_value, *expected_output_value, per_sample_tolerance,
-                        relative_per_sample_tolerance, post_procesing);
+    std::pair<COMPARE_RESULT, std::string> ret = this->c_->UseCustomComparision() ? this->c_->CustomComparator(*actual_output_value, *expected_output_value) : CompareOrtValue(*actual_output_value, *expected_output_value, per_sample_tolerance, relative_per_sample_tolerance, post_procesing);
+
     COMPARE_RESULT compare_result = ret.first;
     if (compare_result == COMPARE_RESULT::SUCCESS) {
       const ONNX_NAMESPACE::ValueInfoProto* v = name_output_value_info_proto[output_name];
@@ -463,7 +468,6 @@ void SeqTestRunner::Start(ORT_CALLBACK_INSTANCE pci, size_t) {
 }
 
 void RunSingleTestCase(ITestCase* info, Ort::Env& env, const Ort::SessionOptions& sf, size_t concurrent_runs, size_t repeat_count, PThreadPool tpool, ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished) {
-
   std::shared_ptr<TestCaseResult> ret;
   size_t data_count = info->GetDataCount();
   try {
