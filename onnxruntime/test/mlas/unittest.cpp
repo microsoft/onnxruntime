@@ -2111,7 +2111,7 @@ main(
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
         if (threadpool != nullptr)
           threadpool = new onnxruntime::concurrency::ThreadPool(
-              &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 2, true, nullptr);
+              &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 2, true);
 #else
         break;
 #endif

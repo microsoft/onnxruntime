@@ -652,6 +652,11 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       }
     }
   }
+  else if (optype == "Tile")
+  {
+    const auto& args = node->InputDefs();
+    return (initializers.find(args[1]->Name()) == initializers.end());
+  }
 
   //Op doesn't fall into known any of unsupported modes.
   return false;
@@ -730,7 +735,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
       "RNN", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", 
       "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", 
       "Round", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Split", "Sqrt", "Squeeze", 
-      "Sub", "Sum", "Tan", "Tanh", "Transpose", "Unsqueeze"};
+      "Sub", "Sum", "Tan", "Tanh", "Tile", "Transpose", "Unsqueeze"};
   std::vector<NodeIndex> unsupported_nodes_idx;
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     if (IsNodeSupported(mgx_supported_ops, graph_viewer, node_idx, logger)) {
@@ -1080,15 +1085,16 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     std::string onnx_string_buffer;
     model_proto.SerializeToString(&onnx_string_buffer);
     std::vector<std::string> input_names, output_names;
-    no_input_shape |= get_input_output_names(onnx_string_buffer, input_names, output_names);
+    no_input_shape = no_input_shape or get_input_output_names(onnx_string_buffer, input_names, output_names);
+    std::cout << "no_input_shape = " << no_input_shape << std::endl;
 
     // dump onnx file
-    // std::string name("ort_compile_");
-    // name.append(fused_node->Name());
-    // name.append(".onnx");
-    // std::ofstream ofs(name, std::ios::binary);
-    // ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
-    // ofs.close();
+    std::string name("ort_compile_");
+    name.append(fused_node->Name());
+    name.append(".onnx");
+    std::ofstream ofs(name, std::ios::binary);
+    ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
+    ofs.close();
 
     // by parsing the model_proto, create a program corresponding to
     // the input fused_node
@@ -1096,8 +1102,11 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
 
     if (!no_input_shape)
     {
+std::cout << "Loc1" << std::endl;
       prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
+std::cout << "Loc2" << std::endl;
       prog.compile(t_);
+std::cout << "Loc3" << std::endl;
 
       auto prog_output_shapes = prog.get_output_shapes();
       for (std::size_t i = 0; i < output_names.size(); ++i)
@@ -1176,6 +1185,13 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
 
               auto mgx_s = param_shapes[name];
               auto mgx_lens = mgx_s.lengths();
+              auto mgx_strides = mgx_s.strides();
+              if (mgx_lens.size() == 1 and mgx_lens[0] == 1 and 
+                  mgx_strides.size() == 1 and mgx_strides[0] == 0)
+              {
+                mgx_lens.clear();
+              }
+
               if (mgx_lens != ort_lens)
               {
                 cmp_options.set_input_parameter_shape(name, ort_lens);
@@ -1190,11 +1206,15 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       // re-compile the program
       if (!input_shape_match)
       {
+std::cout << "Loc4" << std::endl;
         prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
+std::cout << "Loc5" << std::endl;
         prog.compile(t);
+std::cout << "Loc6" << std::endl;
         mgx_state->prog = prog;
         param_shapes = prog.get_parameter_shapes();
         no_input_shape = false;
+std::cout << "Loc7" << std::endl;
       }
 
       migraphx::program_parameters m;

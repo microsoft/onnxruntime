@@ -54,8 +54,6 @@ void Log(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
 void Sqr(int N, const T* x, T* y, Provider* provider);
 
-template <typename T, class Provider>
-void Powx(int N, const T* a, T b, T* y, Provider* provider);
 
 #define DECLARE_BINARY_OP(name)                                                     \
   template <typename T, class Provider>                                             \

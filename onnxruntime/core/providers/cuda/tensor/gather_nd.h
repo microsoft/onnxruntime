@@ -23,14 +23,14 @@ class GatherNDBase : public CudaKernel {
 
  protected:
   template <typename TIndex>
-  Status CommonComputeKernel(
+  Status PrepareCompute(
       const int64_t batch_dims,
       const TensorShape& input_shape,
-      const Tensor* input_tensor,
-      Tensor* output_tensor,
       const TensorShape& indices_shape,
       const Tensor* indices_tensor,
-      const bool fwd) const;
+      int64_t& num_slices,
+      int64_t& slice_size,
+      IAllocatorUniquePtr<int64_t>& input_slice_offsets_buffer) const;
 
   int64_t batch_dims_;
 };

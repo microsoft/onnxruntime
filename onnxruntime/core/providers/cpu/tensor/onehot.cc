@@ -15,7 +15,7 @@ limitations under the License.
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/tensor/onehot.h"
-#include "core/util/eigen_common_wrapper.h"
+#include "core/common/eigen_common_wrapper.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
 

@@ -161,7 +161,6 @@ class CudaKernel : public OpKernel {
     const CudaKernel* op_kernel_;
   };
 
- protected:
   inline cublasHandle_t CublasHandle() const {
     return provider_->PerThreadCublasHandle();
   }
@@ -169,6 +168,8 @@ class CudaKernel : public OpKernel {
   inline cudnnHandle_t CudnnHandle() const {
     return provider_->PerThreadCudnnHandle();
   }
+
+ protected:
   inline curandGenerator_t CurandGenerator() const {
     return provider_->PerThreadCurandGenerator();
   }
