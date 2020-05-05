@@ -252,7 +252,7 @@ jobs:
     displayName: 'Download Pipeline Artifact - Signed NuGet Package'
     inputs:
       artifactName: 'drop-signed-nuget'
-      targetPath: '${{ parameters.downloadPath }}'
+      targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
 
   - template: get-nuget-package-version-as-variable.yml
     parameters:
