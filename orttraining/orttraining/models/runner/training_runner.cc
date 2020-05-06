@@ -821,8 +821,10 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
                                     &fetches));
 
     // Assume that user-specified fetches are avaliable only on the last pipeline stage. 
-    const bool session_can_see_loss = params_.pipeline_parallel_size == 1 ||
-      pipeline_context_.pipeline_stage_id == params_.pipeline_parallel_size - 1;
+    // When there is no pipeline, all pipeline_context_.pipeline_stage_id should be 0 and
+    // params_.pipeline_parallel_size is 1. Thus, the following condition is always true if there
+    // is no pipeline.
+    const bool session_can_see_loss = pipeline_context_.pipeline_stage_id == params_.pipeline_parallel_size - 1;
 
     // Call error function
     if (session_can_see_loss && params_.error_function) {
