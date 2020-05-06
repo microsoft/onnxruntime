@@ -87,24 +87,10 @@ public class App {
 					loadMetricsIntoMySQL(conn, commit_id, batch_id, (JSONObject) obj);
 				}
 			}
-		} finally {
-			deletePath(source_dir);
+		} catch (Exception e) {
+			e.printStackTrace();
+			throw e;
 		}
-	}
-
-	private static void deletePath(Path temp_path) throws IOException {
-		Files.walkFileTree(temp_path, new SimpleFileVisitor<Path>() {
-			@Override
-			public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-				String filename = file.getFileName().toString();
-				if (!filename.startsWith(".") && filename.endsWith(".json")) {
-					Files.deleteIfExists(file);
-				}
-
-				Files.deleteIfExists(file);
-				return FileVisitResult.CONTINUE;
-			}
-		});
 	}
 
 	static private void loadMetricsIntoMySQL(java.sql.Connection conn, String commit_id, String batch_id,
@@ -112,9 +98,9 @@ public class App {
 
 		try (java.sql.PreparedStatement st = conn.prepareStatement(
 				"INSERT INTO perf_test_training_data (BatchId,CommitId,Model,ModelName,DisplayName,UseMixedPrecision,Optimizer,BatchSize,SeqLen,PredictionsPerSeq," +
-						"NumOfBatches,WeightUpdateSteps,Round,GradAccSteps,AvgTimePerBatch,Throughput,TotalTime,AvgCPU,Memory,RunConfig,Time) " +
-						"values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now())"
-						+ "  ON DUPLICATE KEY UPDATE AvgTimePerBatch=?,Throughput=?,TotalTime=?,AvgCPU=?,Memory=?")) {
+						"NumOfBatches,WeightUpdateSteps,Round,GradAccSteps,AvgTimePerBatch,Throughput,StabilizedThroughput,TotalTime,AvgCPU,Memory,RunConfig,Time) " +
+						"values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now())"
+						+ "  ON DUPLICATE KEY UPDATE AvgTimePerBatch=?,Throughput=?,StabilizedThroughput=?,TotalTime=?,AvgCPU=?,Memory=?")) {
 
 			// unique key section
 			st.setString(1, batch_id);
@@ -141,37 +127,40 @@ public class App {
 			st.setInt(14, (int)(long)  json_object.get("GradAccSteps"));
 			st.setFloat(15, (float)(double) json_object.get("AvgTimePerBatch"));  // ms
 			st.setFloat(16, (float)(double) json_object.get("Throughput"));  // examples/sec
-			st.setFloat(17, (float)(double) json_object.get("TotalTime"));  // secs
+			st.setFloat(17, (float)(double) json_object.get("StabilizedThroughput"));  // examples/sec
+			st.setFloat(18, (float)(double) json_object.get("TotalTime"));  // secs
 			// TODO - remove "if" check
 			if (json_object.get("AvgCPU") == null)
-				st.setNull(18, Types.FLOAT);
+				st.setNull(19, Types.FLOAT);
 			else
-				st.setFloat(18, (float)(double) json_object.get("AvgCPU"));
+				st.setFloat(19, (float)(double) json_object.get("AvgCPU"));
 
 			if (json_object.get("Memory") == null)
-				st.setNull(19, Types.INTEGER);
+				st.setNull(20, Types.INTEGER);
 			else
-				st.setInt(19, (int)(long) json_object.get("Memory"));  // mb
+				st.setInt(20, (int)(long) json_object.get("Memory"));  // mb
 
-			st.setString(20, (String) json_object.get("RunConfig"));
+			st.setString(21, (String) json_object.get("RunConfig"));
 
 			// update section
-			st.setFloat(21, (float)(double) json_object.get("AvgTimePerBatch"));  // ms
-			st.setFloat(22, (float)(double) json_object.get("Throughput"));  // examples/sec
-			st.setFloat(23, (float)(double) json_object.get("TotalTime"));  // secs
+			st.setFloat(22, (float)(double) json_object.get("AvgTimePerBatch"));  // ms
+			st.setFloat(23, (float)(double) json_object.get("Throughput"));  // examples/sec
+			st.setFloat(24, (float)(double) json_object.get("StabilizedThroughput"));  // examples/sec
+			st.setFloat(25, (float)(double) json_object.get("TotalTime"));  // secs
 			if (json_object.get("AvgCPU") == null)
-				st.setNull(24, Types.FLOAT);
+				st.setNull(26, Types.FLOAT);
 			else
-				st.setFloat(24, (float)(double) json_object.get("AvgCPU"));
+				st.setFloat(26, (float)(double) json_object.get("AvgCPU"));
 
 			if (json_object.get("Memory") == null)
-				st.setNull(25, Types.INTEGER);
+				st.setNull(27, Types.INTEGER);
 			else
-				st.setInt(25, (int)(long) json_object.get("Memory"));  // mb
+				st.setInt(27, (int)(long) json_object.get("Memory"));  // mb
 
 			st.executeUpdate();
 		} catch (Exception e) {
 			e.printStackTrace();
+			throw e;
 		}
 
 	}

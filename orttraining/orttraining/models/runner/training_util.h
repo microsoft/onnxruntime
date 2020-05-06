@@ -56,8 +56,17 @@ class DataSet {
 
   void RandomShuffle();
 
-  void DataSet::GetSequenceMetrics(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
-                                   MapStringToString& perf_properties);
+  // The method is for getting model training params that are part of training data
+  // first load .onnx model in Netron to get the mapping between input data nd the graph
+  // for example, a bert model (see input_name_map in main.cc) requires 7 inputs
+  // each input may have different tensor shape, like so
+  //    intput1 : int64[batch,sequence]
+  //    masked_lm_ids:  int64[batch,dynamic_prediction_count]
+  // So to get sequence length, we can look for input name "input1" and get its value in shape vector's position 1 element 
+  // based on look up table (see metrics_map in main.cc) to map the name with the vector position, like so
+  //    {"input1", {"sequence", 1}}  
+  void GetConfigFromData(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
+                         MapStringToString& perf_properties);
 
  private:
   // The names of the tensors.

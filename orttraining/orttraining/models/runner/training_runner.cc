@@ -404,6 +404,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   const size_t weight_update_steps = weight_update_step_count_ - weight_update_step_count_start;
   const double avg_time_per_batch = total_time / (step_ - step_start) * 1000;
   const double throughput = params_.batch_size * (step_ - step_start) / total_time;
+  const double stabilized_throughput = params_.batch_size / (stabilized_total_time / stabilized_perf_total_step_count);
 
   if (params_.perf_output_dir.empty()) {
     printf("No perf output directory specified, skipping save of trained perf metrics.\n");
@@ -411,7 +412,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
     ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.perf_output_dir));
     // saving json file
     ORT_RETURN_IF_ERROR(SavePerfMetrics(number_of_batches, gradient_accumulation_step_count, weight_update_steps, 
-                                        total_time, avg_time_per_batch, throughput));
+                                        total_time, avg_time_per_batch, throughput, stabilized_throughput));
   }
 
   std::cout << "Round: " << round_ << "\n"
@@ -422,15 +423,14 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Total Running Time: " << total_time << " Seconds \n"
             << "Average Running Time Per Batch: " << avg_time_per_batch << " ms\n"
             << "Throughput: " << throughput << " Examples / Second\n"
-			<< "Stabilized Throughput: " << params_.batch_size / (stabilized_total_time / stabilized_perf_total_step_count)
-            << " Examples / Second\n";
+            << "Stabilized Throughput: " << stabilized_throughput << " Examples / Second\n";
 
   return Status::OK();
 }
 
 Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const size_t gradient_accumulation_steps,
                                        const size_t weight_update_steps, const double total_time,
-                                       const double avg_time_per_batch, const double throughput) {
+                                       const double avg_time_per_batch, const double throughput, const double stabilized_throughput) {
   // popualte metrics for reporting
   json perf_metrics;
   perf_metrics["Model"] = params_.model_type;  
@@ -456,6 +456,7 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
   perf_metrics["TotalTime"] = total_time;
   perf_metrics["AvgTimePerBatch"] = avg_time_per_batch;
   perf_metrics["Throughput"] = throughput;
+  perf_metrics["StabilizedThroughput"] = stabilized_throughput;
   perf_metrics["UseMixedPrecision"] = params_.use_mixed_precision;
 
   std::string optimizer = params_.training_optimizer_name;

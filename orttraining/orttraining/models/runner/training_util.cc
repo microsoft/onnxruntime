@@ -72,7 +72,7 @@ size_t DataSet::TotalBatch(size_t batch_size) const {
   return NumSamples() / batch_size + ((NumSamples() % batch_size > 0) ? 1 : 0);
 }
 
-void DataSet::GetSequenceMetrics(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
+void DataSet::GetConfigFromData(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
                                  MapStringToString& perf_properties) {
   if (metrics_map.size() == 0) return; 
 

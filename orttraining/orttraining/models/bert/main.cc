@@ -658,7 +658,7 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
 
     // collecting Bert related params from training data
     auto training_data = training_data_loader->CurrentDataSet();
-    training_data->GetSequenceMetrics(params.batch_size, params.metrics_map, params.perf_properties);
+    training_data->GetConfigFromData(params.batch_size, params.metrics_map, params.perf_properties);
     runner->UpdateMetricsParams(params.perf_properties);
 
     ORT_RETURN_IF_ERROR(runner->Run(training_data_loader.get(), test_data_loader.get()));
