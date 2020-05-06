@@ -19,13 +19,6 @@ java {
 project.group = "ai.onnxruntime"
 version = rootProject.file('../VERSION_NUMBER').text.trim()
 
-jar {
-	into("META-INF/maven/$project.group/$project.name") {
-		from { generatePomFileForMavenPublication }
-		rename ".*", "pom.xml"
-	}
-}
-
 // Add explicit sources jar with pom file.
 task sourcesJar(type: Jar, dependsOn: classes) {
 	classifier = "sources"
@@ -94,22 +87,11 @@ sourceSets.test {
 if (cmakeBuildDir != null) {
 	// generate tasks to be called from cmake
 
-	task jniJar(type: Jar) {
-		classifier = 'jni'
-		from cmakeNativeJniDir
-	}
-
-	task libJar(type: Jar) {
-		classifier = 'lib'
-		from cmakeNativeLibDir
-	}
-
 	task allJar(type: Jar) {
 		into("META-INF/maven/$project.group/$project.name") {
 			from { generatePomFileForMavenPublication }
 			rename ".*", "pom.xml"
 		}
-		classifier = 'all'
 		from sourceSets.main.output
 		from cmakeNativeJniDir
 		from cmakeNativeLibDir
@@ -121,9 +103,6 @@ if (cmakeBuildDir != null) {
 		include 'docs/**'
 		into cmakeBuildOutputDir
 	}
-	cmakeBuild.dependsOn jar
-	cmakeBuild.dependsOn jniJar
-	cmakeBuild.dependsOn libJar
 	cmakeBuild.dependsOn allJar
 	cmakeBuild.dependsOn sourcesJar
 	cmakeBuild.dependsOn javadocJar
