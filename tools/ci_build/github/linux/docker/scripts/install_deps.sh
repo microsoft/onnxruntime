@@ -117,6 +117,9 @@ elif [ $DEVICE_TYPE = "gpu" ]; then
       GetFile https://orttraining.blob.core.windows.net/transformers-wheel/transformers-2.8.0-py3-none-any.whl /tmp/transformers-2.8.0-py3-none-any.whl
       ${PYTHON_EXE} -m pip install /tmp/transformers-2.8.0-py3-none-any.whl
       ${PYTHON_EXE} -m pip install pytest
+
+      # optional required by transformers
+      ${PYTHON_EXE} -m pip install sklearn
     fi
 fi
 

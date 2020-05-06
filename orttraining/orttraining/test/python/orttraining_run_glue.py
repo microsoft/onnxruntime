@@ -8,13 +8,6 @@ from typing import Dict, Optional
 import unittest
 import numpy as np
 
-# import subprocess
-# import sys
-# def install_transformers_from_local_source():
-#     subprocess.check_call([sys.executable, "-m", "pip", "install", "/bert_ort/liqun/transformers/", "--upgrade"])
-
-# install_transformers_from_local_source()
-
 from transformers import (
     AutoConfig,
     AutoModelForSequenceClassification,
@@ -34,6 +27,7 @@ from transformers import (
 # 
 from transformers.training_args import TrainingArguments
 
+import onnxruntime
 from onnxruntime.capi.ort_trainer import ORTTrainer, LossScaler, ModelDescription, IODescription
 
 from orttraining_transformer_trainer import ORTTransformerTrainer
@@ -62,19 +56,8 @@ class ModelArguments:
         default=None, metadata={"help": "Where do you want to store the pretrained models downloaded from s3"}
     )
 
-
 class ORTGlueTest(unittest.TestCase):
-    # CUDA_VISIBLE_DEVICES=0 python orttraining_run_glue.py 
-    #   --model_type bert --model_name_or_path bert-base-cased --task_name MRPC     cl
-    #   --data_dir /bert_ort/liqun/hf_data/glue/glue_data/MRPC                      cl
-    #   --output_dir /bert_ort/liqun/test_out/MRPC/                                 cl
-    #   --fp16                                                                      cl
-    #   --do_train --do_eval --do_lower_case                                        fixed
-    #   --overwrite_output_dir                                                      fixed
-    #   --max_seq_length 128 --per_gpu_train_batch_size 32 --learning_rate 2e-5     default
-    #   --num_train_epochs 3.0                                                      default
-    #   --n_gpu 1 --local_rank -1                                                   fixed
-    #   --gradient_accumulation_steps 8                                             code
+
     def setUp(self):
         self.max_seq_length = 128
         self.train_batch_size = 32
@@ -111,16 +94,6 @@ class ORTGlueTest(unittest.TestCase):
             overwrite_output_dir=self.overwrite_output_dir, gradient_accumulation_steps=self.gradient_accumulation_steps,
             fp16=fp16)
 
-        if (
-            os.path.exists(training_args.output_dir)
-            and os.listdir(training_args.output_dir)
-            and training_args.do_train
-            and not training_args.overwrite_output_dir
-        ):
-            raise ValueError(
-                f"Output directory ({training_args.output_dir}) already exists and is not empty. Use --overwrite_output_dir to overcome."
-            )
-
         # Setup logging
         logging.basicConfig(
             format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -139,6 +112,7 @@ class ORTGlueTest(unittest.TestCase):
 
         # Set seed
         set_seed(training_args.seed)
+        onnxruntime.set_seed(training_args.seed)
 
         try:
             num_labels = glue_tasks_num_labels[data_args.task_name]

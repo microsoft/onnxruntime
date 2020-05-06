@@ -1016,11 +1016,11 @@ def run_training_python_frontend_e2e_tests(args, cwd):
     # force to use single GPU for fine-tune tests.
     env={'CUDA_VISIBLE_DEVICES': '0'}
     try:
-        run_subprocess([sys.executable, 'orttraining_run_glue.py'], cwd=cwd, env=env)
+        run_subprocess([sys.executable, 'orttraining_run_glue.py', '-v'], cwd=cwd, env=env)
     except:
         print('python orttraining_run_glue.py failed')
-        run_subprocess(['pytest', 'orttraining_run_glue.py', '-k', 'test_bert_fp16_with_mrpc'], cwd=cwd, env=env)
-        run_subprocess(['pytest', 'orttraining_run_glue.py', '-k', 'test_bert_with_mrpc'], cwd=cwd, env=env)
+        run_subprocess(['pytest', 'orttraining_run_glue.py', '-k', 'test_bert_fp16_with_mrpc', '-s'], cwd=cwd, env=env)
+        run_subprocess(['pytest', 'orttraining_run_glue.py', '-k', 'test_bert_with_mrpc', '-s'], cwd=cwd, env=env)
     
     run_subprocess(['pytest', 'orttraining_run_glue.py '], cwd=cwd)
 
