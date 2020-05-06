@@ -5,6 +5,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/kernel_registry.h"
 #include "core/framework/tensorprotoutils.h"
 
 using namespace onnxruntime::common;
@@ -27,7 +28,9 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     // we currently constant fold using the CPU EP only.
     // if the node is assigned to a different EP we can run it if it's an ONNX op as we have CPU based implementations
-    // for all ONNX ops. if it's from a different domain we can't.
+    // for all ONNX ops. If the node/op is from a different op domain or if the CPU implementation does not support the
+    // specific input type(s) required by the node (currently we only support a subset of types in some CPU kernels)
+    // then we can't proceed with constant folding for the node.
     // NOTE: This is in addition to the IsSupportedProvider check below which will optionally do further filtering
     // on the EPs we constant fold for.
     auto ep_type = node->GetExecutionProviderType();
@@ -51,8 +54,28 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       node->SetExecutionProviderType(kCpuExecutionProvider);
     }
 
+    // Check whether the CPU EP has a kernel for this node. Stop proceeding if it doesn't.
+    std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
+        onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+
+    auto cpu_kernel_found_for_node =
+        KernelRegistry::HasImplementationOf(*cpu_execution_provider->GetKernelRegistry(), *node, kCpuExecutionProvider);
+
+    if (!cpu_kernel_found_for_node) {
+      LOGS(logger, WARNING) << "Could not find a CPU kernel and hence "
+                            << "can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
+
+      // Revert the EP change. We won't be proceeding with constant folding for this node.
+      if (!cpu_ep) {
+        node->SetExecutionProviderType(ep_type);
+      }
+
+      // Move on to the next candidate node
+      continue;
+    }
+
     // Create execution frame for executing constant nodes.
-    OptimizerExecutionFrame::Info info({node}, constant_inputs);
+    OptimizerExecutionFrame::Info info({node}, constant_inputs, std::move(cpu_execution_provider));
 
     // undo the EP change in case something fails prior to node removal
     if (!cpu_ep) {

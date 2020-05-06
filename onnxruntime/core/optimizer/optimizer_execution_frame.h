@@ -20,7 +20,8 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
  public:
   class Info {
    public:
-    Info(const std::vector<const Node*>& nodes, const InitializedTensorSet& initialized_tensor_set);
+    Info(const std::vector<const Node*>& nodes, const InitializedTensorSet& initialized_tensor_set,
+         std::unique_ptr<CPUExecutionProvider> cpu_execution_provider);
     ~Info() {
       for (auto& kvp : deleter_for_initialized_tensors_) {
         kvp.second.f(kvp.second.param);
