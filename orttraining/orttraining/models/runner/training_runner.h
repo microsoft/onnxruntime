@@ -152,7 +152,7 @@ class TrainingRunner {
     int data_parallel_size = 1;
     int horizontal_parallel_size = 1;
     // pipeline_parallel_size > 1 means pipeline is enabled.
-    // pipeline_parallel_size == 1 means pipeline is not enabled.
+    // pipeline_parallel_size == 1 means pipeline is disabled.
     int pipeline_parallel_size = 1;
     // model_paths[i] is the name of the pipeline stage for i-th process.
     // The i-th file is run by the i-th MPI rank. 
