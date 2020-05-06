@@ -184,13 +184,12 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
   if (k == 1) {
     // just need to compare values and not indexes as the first instance of the best value is always selected
     find_top_k =
-        [num_threads, rows, block_slice, num_blocks, input_data, cols, &values_map, &indices_map](std::ptrdiff_t batch) {
-          int64_t start_row = static_cast<int64_t>(batch * rows / num_threads);
-          int64_t end_row = static_cast<int64_t>((batch + 1) * rows / num_threads);
-
+        [num_threads, rows, block_slice, num_blocks, input_data, cols,
+         &values_map, &indices_map](std::ptrdiff_t batch) {
+          auto work = concurrency::ThreadPool::PartitionWork(batch, num_threads, rows);
           Comparator comparer(input_data);
 
-          for (int64_t i = start_row; i < end_row; ++i) {
+          for (auto i = work.start; i < work.end; ++i) {
             auto row_offset = i * cols;
             for (int64_t j = 0; j < block_slice; ++j) {
               int64_t cur_idx = row_offset + j;
@@ -219,9 +218,7 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
     find_top_k =
         [num_threads, rows, block_slice, num_blocks, k, sorted,
          input_data, cols, &values_map, &indices_map](std::ptrdiff_t batch) {
-          int64_t start_row = static_cast<int64_t>(batch * rows / num_threads);
-          int64_t end_row = static_cast<int64_t>((batch + 1) * rows / num_threads);
-
+          auto work = concurrency::ThreadPool::PartitionWork(batch, num_threads, rows);
           Comparator comparer(input_data);
 
           // the heap is stored in indices_data. each iteration overwrites the old data when it adds the
@@ -229,7 +226,7 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
           std::vector<int64_t> indices_data(k);
           int64_t* indices = indices_data.data();  // raw pointer is slightly faster for HeapifyIthPosition
 
-          for (int64_t i = start_row; i < end_row; ++i) {
+          for (auto i = work.start; i < work.end; ++i) {
             const auto row_offset = i * cols;
 
             for (int64_t j = 0; j < block_slice; ++j) {
@@ -292,16 +289,14 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
         [num_threads, rows, block_slice, num_blocks, k, sorted,
          input_data, cols,
          &values_map, &indices_map](std::ptrdiff_t batch) {
-          int64_t start_row = static_cast<int64_t>(batch * rows / num_threads);
-          int64_t end_row = static_cast<int64_t>((batch + 1) * rows / num_threads);
-
+          auto work = concurrency::ThreadPool::PartitionWork(batch, num_threads, rows);
           Comparator comparer(input_data);
 
           // we re-use a single data_holder for performance. avoids allocating memory on each iteration.
           // the call to SelectTopK overwrites any existing data so we don't need to clear on each iteration.
           std::vector<int64_t> data_holder(num_blocks);
 
-          for (int64_t i = start_row; i < end_row; ++i) {
+          for (auto i = work.start; i < work.end; ++i) {
             auto row_offset = i * cols;
             for (int64_t j = 0; j < block_slice; ++j) {
               SelectTopK<Comparator>(comparer, row_offset, num_blocks, block_slice, j, k, sorted, data_holder);

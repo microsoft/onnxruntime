@@ -170,7 +170,7 @@ jobs:
         condition: succeededOrFailed()
 
     # Nuget packaging if needed
-    - ${{ if and(eq(parameters['DoNugetPack'], 'true'), eq('$(BuildConfig)', 'RelWithDebInfo')) }}:
+    - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
       - task: BatchScript@1
         displayName: 'Setup VS2019 env vars'
         inputs:

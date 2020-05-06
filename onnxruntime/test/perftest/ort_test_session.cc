@@ -100,14 +100,17 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   else
     session_options.DisableMemPattern();
   session_options.SetExecutionMode(performance_test_config.run_config.execution_mode);
-  fprintf(stdout, "Setting intra_op_num_threads to %d\n", performance_test_config.run_config.intra_op_num_threads);
-  session_options.SetIntraOpNumThreads(performance_test_config.run_config.intra_op_num_threads);
 
-  if (performance_test_config.run_config.execution_mode == ExecutionMode::ORT_PARALLEL) {
-    fprintf(stdout, "Setting inter_op_num_threads to %d\n", performance_test_config.run_config.inter_op_num_threads);
+  if(performance_test_config.run_config.intra_op_num_threads > 0){
+    fprintf(stdout, "Setting intra_op_num_threads to %d\n",   performance_test_config.run_config.intra_op_num_threads);
+    session_options.SetIntraOpNumThreads(performance_test_config.run_config.intra_op_num_threads);
   }
 
-  session_options.SetInterOpNumThreads(performance_test_config.run_config.inter_op_num_threads);
+  if (performance_test_config.run_config.execution_mode == ExecutionMode::ORT_PARALLEL && performance_test_config.run_config.inter_op_num_threads > 0) {
+    fprintf(stdout, "Setting inter_op_num_threads to %d\n", performance_test_config.run_config.inter_op_num_threads);
+    session_options.SetInterOpNumThreads(performance_test_config.run_config.inter_op_num_threads);
+  }
+
   // Set optimization level.
   session_options.SetGraphOptimizationLevel(performance_test_config.run_config.optimization_level);
   if (!performance_test_config.run_config.profile_file.empty())
