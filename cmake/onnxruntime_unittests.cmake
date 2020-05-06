@@ -815,6 +815,10 @@ if (onnxruntime_BUILD_JAVA)
     message(STATUS "Running Java tests")
     # delegate to gradle's test runner
     if(WIN32)
+      # If we're on windows, symlink the custom op test library somewhere we can see it
+      set(JAVA_NATIVE_TEST_DIR ${JAVA_OUTPUT_DIR}/native-test)
+      file(MAKE_DIRECTORY ${JAVA_NATIVE_TEST_DIR})
+      add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:custom_op_library> ${JAVA_NATIVE_TEST_DIR}/$<TARGET_FILE_NAME:custom_op_library>)
       # On windows ctest requires a test to be an .exe(.com) file
       # So there are two options 1) Install Chocolatey and its gradle package
       # That package would install gradle.exe shim to its bin so ctest could run gradle.exe
@@ -826,8 +830,8 @@ if (onnxruntime_BUILD_JAVA)
         -DREPO_ROOT=${REPO_ROOT}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
     else()
-        add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR}
-                 WORKING_DIRECTORY ${REPO_ROOT}/java)
+      add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR}
+               WORKING_DIRECTORY ${REPO_ROOT}/java)
     endif()
     set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
 endif()
