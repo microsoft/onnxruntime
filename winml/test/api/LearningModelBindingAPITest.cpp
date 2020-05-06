@@ -20,10 +20,6 @@ static void LearningModelBindingAPITestsClassSetup() {
   init_apartment();
 }
 
-static void LearningModelBindingAPITestsGpuMethodSetup() {
-  GPUTEST;
-}
-
 static void CpuSqueezeNet()
 {
     std::string cpuInstance("CPU");
@@ -712,10 +708,9 @@ static void SequenceConstructTensorString()
 }
 
 const LearningModelBindingAPITestsApi& getapi() {
-  static constexpr LearningModelBindingAPITestsApi api =
+  static LearningModelBindingAPITestsApi api =
   {
     LearningModelBindingAPITestsClassSetup,
-    LearningModelBindingAPITestsGpuMethodSetup,
     CpuSqueezeNet,
     CpuSqueezeNetEmptyOutputs,
     CpuSqueezeNetUnboundOutputs,
@@ -737,5 +732,14 @@ const LearningModelBindingAPITestsApi& getapi() {
     SequenceLengthTensorFloat,
     SequenceConstructTensorString
   };
+
+  if (SKIP_GPU_TESTS) {
+    api.GpuSqueezeNet = SkipTest;
+    api.GpuSqueezeNetEmptyOutputs = SkipTest;
+    api.GpuSqueezeNetUnboundOutputs = SkipTest;
+    api.ImageBindingDimensions = SkipTest;
+    api.VerifyInvalidBindExceptions = SkipTest;
+    api.BindInvalidInputName = SkipTest;
+  }
   return api;
 }

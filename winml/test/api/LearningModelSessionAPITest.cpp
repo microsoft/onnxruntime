@@ -23,15 +23,6 @@ static void LearningModelSessionAPITestsClassSetup() {
   init_apartment();
 }
 
-static void LearningModelSessionAPITestsGpuMethodSetup() {
-  GPUTEST;
-}
-
-static void LearningModelSessionAPITestsGpuSkipEdgeCoreMethodSetup() {
-  LearningModelSessionAPITestsGpuMethodSetup();
-  SKIP_EDGECORE;
-}
-
 static void CreateSessionDeviceDefault()
 {
     LearningModel learningModel = nullptr;
@@ -401,8 +392,6 @@ const LearningModelSessionAPITestsApi& getapi() {
   static LearningModelSessionAPITestsApi api =
   {
     LearningModelSessionAPITestsClassSetup,
-    LearningModelSessionAPITestsGpuMethodSetup,
-    LearningModelSessionAPITestsGpuSkipEdgeCoreMethodSetup,
     CreateSessionDeviceDefault,
     CreateSessionDeviceCpu,
     CreateSessionWithModelLoadedFromStream,
@@ -425,6 +414,10 @@ const LearningModelSessionAPITestsApi& getapi() {
     api.CreateSessionDeviceDirectXMinimumPower = SkipTest;
     api.CreateSessionWithCastToFloat16InModel = SkipTest;
     api.DISABLED_CreateSessionWithFloat16InitializersInModel = SkipTest;
+    api.AdapterIdAndDevice = SkipTest;
+  }
+  if (RUNTIME_PARAMETER_EXISTS("EdgeCore")) {
+    api.AdapterIdAndDevice = SkipTest;
   }
  return api;
 }
