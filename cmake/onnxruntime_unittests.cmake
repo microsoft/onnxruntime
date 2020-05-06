@@ -775,7 +775,7 @@ endif()
 list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
 target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})
 if(WIN32)
-  target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp)
+  target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp Advapi32)
 endif()
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
