@@ -2,7 +2,6 @@
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
-
 """ Benchmarking the inference of BERT models from huggingface transformers
     Example commands:
         Run OnnxRuntime on GPU for all models:
@@ -31,15 +30,12 @@ cpu_count = psutil.cpu_count(logical=True)
 if "OMP_NUM_THREADS" not in os.environ:
     os.environ["OMP_NUM_THREADS"] = str(cpu_count)
 
-from transformers import (
-    AutoConfig,
-    AutoTokenizer,
-    is_torch_available
-)
+from transformers import (AutoConfig, AutoTokenizer, is_torch_available)
 
 if is_torch_available():
     import torch
     from transformers import AutoModel
+
 
 def create_onnxruntime_session(onnx_model_path, use_gpu):
     import onnxruntime
@@ -54,22 +50,21 @@ def create_onnxruntime_session(onnx_model_path, use_gpu):
     session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
     return session
 
-def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names):
-    input_ids = numpy.random.randint(low=0,
-                                     high=vocab_size - 1,
-                                     size=(batch_size, sequence_length),
-                                     dtype = numpy.int64)
 
-    inputs = { 'input_ids': input_ids }
+def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names):
+    input_ids = numpy.random.randint(low=0, high=vocab_size - 1, size=(batch_size, sequence_length), dtype=numpy.int64)
+
+    inputs = {'input_ids': input_ids}
     if "attention_mask" in input_names:
-        attention_mask = numpy.ones([batch_size, sequence_length], dtype = numpy.int64)
+        attention_mask = numpy.ones([batch_size, sequence_length], dtype=numpy.int64)
         inputs['attention_mask'] = attention_mask
 
     if "token_type_ids" in input_names:
-        segment_ids = numpy.zeros([batch_size, sequence_length], dtype = numpy.int64)
+        segment_ids = numpy.zeros([batch_size, sequence_length], dtype=numpy.int64)
         inputs['token_type_ids'] = segment_ids
 
     return inputs
+
 
 def export_onnx_model(model_name, cache_dir):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
@@ -77,10 +72,7 @@ def export_onnx_model(model_name, cache_dir):
     model.cpu()
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
-    model_inputs = tokenizer.encode_plus(
-        "This is a sample input",
-        return_tensors="pt"
-    )
+    model_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="pt")
 
     onnx_model_filename = model_name + ".onnx"
     if not os.path.exists(onnx_model_filename):
@@ -95,18 +87,19 @@ def export_onnx_model(model_name, cache_dir):
             dynamic_axes['pooled'] = {0: 'batch_size'}
             output_names += ['pooled']
 
-        torch.onnx.export(model = model,
-            args = tuple(model_inputs.values()),
-            f = onnx_model_filename,
-            input_names = list(model_inputs.keys()),
-            output_names = output_names,
-            dynamic_axes = dynamic_axes,
-            do_constant_folding=True,
-            opset_version = 11)
+        torch.onnx.export(model=model,
+                          args=tuple(model_inputs.values()),
+                          f=onnx_model_filename,
+                          input_names=list(model_inputs.keys()),
+                          output_names=output_names,
+                          dynamic_axes=dynamic_axes,
+                          do_constant_folding=True,
+                          opset_version=11)
     else:
         print(f"Skip export since model existed: {onnx_model_filename}")
 
     return onnx_model_filename, config.vocab_size, tokenizer.max_model_input_sizes[model_name]
+
 
 def create_fp16_model(model_name):
     optimized_model_filename = model_name + "_fp16.onnx"
@@ -120,12 +113,15 @@ def create_fp16_model(model_name):
         print(f"Skip fp16 optimization since model existed: {optimized_model_filename}")
     return optimized_model_filename
 
+
 def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repeat_times, cache_dir, verbose):
     import onnxruntime
 
     results = []
     if use_gpu and ('CUDAExecutionProvider' not in onnxruntime.get_available_providers()):
-        print("Please install onnxruntime-gpu package instead of onnxruntime, and use a machine with GPU for testing gpu performance.")
+        print(
+            "Please install onnxruntime-gpu package instead of onnxruntime, and use a machine with GPU for testing gpu performance."
+        )
         return results
 
     if (not use_gpu) and ('CUDAExecutionProvider' in onnxruntime.get_available_providers()):
@@ -163,17 +159,19 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
                     "fp16": fp16,
                     "model_name": model_name,
                     "batch_size": batch_size,
-                    "sequence_length":sequence_length,
+                    "sequence_length": sequence_length,
                     "average_latency_ms": "{:.2f}".format(average_time * 1000),
                     "QPS": "{:.1f}".format(1.0 / average_time),
-                    }
+                }
 
                 print(result)
                 results.append(result)
 
     return results
 
-def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repeat_times, torchscript, cache_dir, verbose):
+
+def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repeat_times, torchscript, cache_dir,
+                verbose):
     results = []
     if use_gpu and not torch.cuda.is_available():
         print("Please install PyTorch with Cuda, and use a machine with GPU for testing gpu performance.")
@@ -229,9 +227,9 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
                         "fp16": fp16,
                         "model_name": model_name,
                         "batch_size": batch_size,
-                        "sequence_length":sequence_length,
+                        "sequence_length": sequence_length,
                         "average_latency_ms": "{:.2f}".format(average_time * 1000),
-                        }
+                    }
 
                     print(result)
                     results.append(result)
@@ -239,6 +237,7 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
                     print("Runtime error: {}".format(e))
                     torch.cuda.empty_cache()
     return results
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -248,32 +247,24 @@ def parse_arguments():
         required=False,
         type=str,
         default="all",
-        help="Pre-trained models (https://huggingface.co/transformers/pretrained_models.html) separated by comma"
-    )
+        help="Pre-trained models (https://huggingface.co/transformers/pretrained_models.html) separated by comma")
 
-    parser.add_argument(
-        "--cache_dir",
-        required=False,
-        type=str,
-        default="./cache_models",
-        help="Directory to cache pre-trained models"
-    )
+    parser.add_argument("--cache_dir",
+                        required=False,
+                        type=str,
+                        default="./cache_models",
+                        help="Directory to cache pre-trained models")
 
-    parser.add_argument(
-        "--no_onnxruntime", required=False, action="store_true", help="Do not benchmark the Onnxruntime"
-    )
+    parser.add_argument("--no_onnxruntime",
+                        required=False,
+                        action="store_true",
+                        help="Do not benchmark the Onnxruntime")
 
-    parser.add_argument(
-        "--use_gpu", required=False, action="store_true", help="Run on cuda device"
-    )
+    parser.add_argument("--use_gpu", required=False, action="store_true", help="Run on cuda device")
 
-    parser.add_argument(
-        "--fp16", required=False, action="store_true", help="Use FP16 to accelerate inference."
-    )
+    parser.add_argument("--fp16", required=False, action="store_true", help="Use FP16 to accelerate inference.")
 
-    parser.add_argument(
-        "--torch", required=False, action="store_true", help="Benchmark the Pytorch"
-    )
+    parser.add_argument("--torch", required=False, action="store_true", help="Benchmark the Pytorch")
 
     parser.add_argument(
         "--torchscript",
@@ -296,9 +287,11 @@ def parse_arguments():
         help="CSV file for saving results.",
     )
 
-    parser.add_argument(
-        "--test_times", required=False, default=100, type=int, help="Number of inference times to get average latency."
-    )
+    parser.add_argument("--test_times",
+                        required=False,
+                        default=100,
+                        type=int,
+                        help="Number of inference times to get average latency.")
 
     parser.add_argument("--batch_sizes", nargs="+", type=int, default=[1, 2])
 
@@ -306,6 +299,7 @@ def parse_arguments():
 
     args = parser.parse_args()
     return args
+
 
 def main():
     args = parse_arguments()
@@ -336,14 +330,17 @@ def main():
             raise ImportError("Trying to run a PyTorch benchmark but PyTorch was not found in the environment.")
 
         if args.torchscript:
-            results += run_pytorch(args.use_gpu, model_names, args.fp16, args.batch_sizes, args.sequence_lengths, args.test_times, args.torchscript, args.cache_dir, args.verbose)
+            results += run_pytorch(args.use_gpu, model_names, args.fp16, args.batch_sizes, args.sequence_lengths,
+                                   args.test_times, args.torchscript, args.cache_dir, args.verbose)
 
         if args.torch:
-            results += run_pytorch(args.use_gpu, model_names, args.fp16, args.batch_sizes, args.sequence_lengths, args.test_times, False, args.cache_dir, args.verbose)
+            results += run_pytorch(args.use_gpu, model_names, args.fp16, args.batch_sizes, args.sequence_lengths,
+                                   args.test_times, False, args.cache_dir, args.verbose)
 
     if not args.no_onnxruntime:
         try:
-            results += run_onnxruntime(args.use_gpu, model_names, args.fp16, args.batch_sizes, args.sequence_lengths, args.test_times, args.cache_dir, args.verbose)
+            results += run_onnxruntime(args.use_gpu, model_names, args.fp16, args.batch_sizes, args.sequence_lengths,
+                                       args.test_times, args.cache_dir, args.verbose)
         except:
             print(f"Exception:{traceback.format_exc()}")
 
@@ -353,11 +350,15 @@ def main():
 
     csv_filename = args.csv_filename or "benchmark_result_{}.csv".format(datetime.now().strftime("%Y%m%d-%H%M%S"))
     with open(csv_filename, mode="w") as csv_file:
-        column_names = ["runtime", "version", "device", "fp16", "model_name", "batch_size", "sequence_length", "average_latency_ms", "QPS"]
+        column_names = [
+            "runtime", "version", "device", "fp16", "model_name", "batch_size", "sequence_length", "average_latency_ms",
+            "QPS"
+        ]
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
         for result in results:
             csv_writer.writerow(result)
+
 
 if __name__ == "__main__":
     main()
