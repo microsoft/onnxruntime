@@ -269,7 +269,7 @@ def _find_nodes_using_initializer(graph, initializer):
 class ONNXQuantizer:
 
     def __init__(self, model, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
-                 quantization_params, nodes_to_quantize):
+                 quantization_params, nodes_to_quantize, nodes_to_exclude):
         self.model = shape_inference.infer_shapes(model)
         self.value_infos = {vi.name: vi for vi in self.model.graph.value_info}
         self.per_channel = per_channel  # weight-pack per channel
@@ -280,6 +280,7 @@ class ONNXQuantizer:
         self.weight_qType = weight_qType  # quantize data type
         self.quantization_params = quantization_params
         self.nodes_to_quantize = nodes_to_quantize  # specific nodes to quantize
+        self.nodes_to_exclude = nodes_to_exclude # specific nodes to exclude
 
         if not self.mode in quantization_modes:
             raise ValueError('unsupported quantization mode {}'.format(self.mode))
@@ -307,6 +308,8 @@ class ONNXQuantizer:
                 new_list += self._handle_other_ops(node, new_list)
             # only onnx domain ops can be quantized today
             elif node.domain != "ai.onnx" and node.domain != '':
+                new_list += self._handle_other_ops(node, new_list)
+            elif self.nodes_to_exclude is not None and node.name in self.nodes_to_exclude:
                 new_list += self._handle_other_ops(node, new_list)
             else:
                 if node.op_type == 'Conv':
@@ -350,8 +353,8 @@ class ONNXQuantizer:
             weights = onnx.numpy_helper.to_array(initializer)
         else:
             raise ValueError(
-                'Model contains conv operator weights in {}. Only float type quantization is supported.'.format(
-                    type_to_name[initializer.data_type]))
+                'Only float type quantization is supported. Weights {} is {}. '.format(
+                    initializer.name, type_to_name[initializer.data_type]))
         return weights
 
     def _is_valid_quantize_value(self, value_name):
@@ -378,8 +381,7 @@ class ONNXQuantizer:
                 self.model.graph.input.remove(weight_input)
             except StopIteration:
                 if self.model.ir_version < 4:
-                    raise ValueError('invalid weight name {} found in the graph (not a graph input) '.format(
-                        weight.name))
+                    print("Warning: invalid weight name {} found in the graph (not a graph input)".format(weight.name))
 
     def _update_graph(self, weight):
         '''
@@ -677,7 +679,7 @@ class ONNXQuantizer:
             if data_found == False:
                 raise ValueError(
                     "Quantization parameters are not specified for param {}."
-                    "In static mode quantization params for inputs and outputs of odes to be quantized are required.".
+                    "In static mode quantization params for inputs and outputs of nodes to be quantized are required.".
                     format(input_name))
 
             qlinear_node = onnx.helper.make_node("QuantizeLinear", [input_name, scale_name, zp_name], [output_name],
@@ -836,11 +838,9 @@ class ONNXQuantizer:
             # calcuate scale for bias
 
             bias_scale = input_scale * weight_scale
-            print(bias_scale)
 
             # quantize bias
             quantized_data = (np.asarray(bias_data) / bias_scale).round().astype(np.int32)
-            print(quantized_data)
 
             # update bias initializer
             bias_np_data = np.asarray(quantized_data, dtype=np.int32).reshape(bias_initializer.dims)
@@ -1388,7 +1388,8 @@ def quantize(model,
              symmetric_activation=False,
              symmetric_weight=False,
              quantization_params=None,
-             nodes_to_quantize=None):
+             nodes_to_quantize=None,
+             nodes_to_exclude=None):
     '''
         Given an onnx model, create a quantized onnx model and save it into a file
 
@@ -1429,7 +1430,7 @@ def quantize(model,
                 'resnet_model/Relu_2:0': [np.uint8(0), np.float32(0.011359662748873234)]
             }
     :return: ModelProto with quantization
-    :param nodes_to quantize:
+    :param nodes_to_quantize:
         List of nodes names to quantize. When this list is not None only the nodes in this list
         are quantized.
         example:
@@ -1437,6 +1438,9 @@ def quantize(model,
             'Conv__224',
             'Conv__252'
         ]
+    :param nodes_to_exclude:
+        List of nodes names to exclude. The nodes in this list will be excluded from quantization
+        when it is not None.
     '''
     if nbits == 8:
         input_qType = onnx_proto.TensorProto.INT8 if symmetric_activation else onnx_proto.TensorProto.UINT8
@@ -1446,7 +1450,7 @@ def quantize(model,
         copy_model.CopyFrom(model)
         fuse_dynamic_quant = check_opset_version(copy_model, force_fusions)
         quantizer = ONNXQuantizer(copy_model, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
-                                  quantization_params, nodes_to_quantize)
+                                  quantization_params, nodes_to_quantize, nodes_to_exclude)
         quantizer.quantize_model()
         quantizer.model.producer_name = __producer__
         quantizer.model.producer_version = __version__
