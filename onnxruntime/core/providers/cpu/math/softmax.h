@@ -7,8 +7,6 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/softmax_shared.h"
 
@@ -23,41 +21,32 @@ class Softmax final : public OpKernel {
     if (status.IsOK()) {
       axis_ = gsl::narrow_cast<int>(axis);
     }
+
+    log_softmax_ = info.GetKernelDef().OpName() == "LogSoftmax";
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
-
-    const auto* tensor_pointer = ctx->Input<Tensor>(0);
-    if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
-    const Tensor& X = *tensor_pointer;
-    const TensorShape& input_shape{X.Shape()};
-
-    VLOGS(ctx->Logger(), 2) << "Input tensor shape: " << input_shape;
-
-    Tensor* Y = ctx->Output(0, input_shape);
+    const auto* X = ctx->Input<Tensor>(0);
+    const auto& X_shape = X->Shape();
+    auto* Y = ctx->Output(0, X_shape);
 
     // edge case. one or more dims with value of 0. nothing to do
-    if (input_shape.Size() == 0)
+    if (X_shape.Size() == 0) {
       return Status::OK();
+    }
 
-    const int64_t axis = HandleNegativeAxis(axis_, input_shape.NumDimensions());
+    const int64_t axis = HandleNegativeAxis(axis_, X_shape.NumDimensions());
+    const size_t N = X_shape.SizeToDimension(axis);
+    const size_t D = X_shape.SizeFromDimension(axis);
 
-    size_t N = input_shape.SizeToDimension(axis);
-    size_t D = input_shape.SizeFromDimension(axis);
+    concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
-    auto* Ydata = Y->template MutableData<T>();
-
-    std::vector<T> scale_(N);
-    std::vector<T> rowmax_(N);
-    std::vector<T> sum_multiplier_(D, 1.f);  // initialize all multiplier values to 1.0
-
-    const bool logarithmic = false;
-    return SoftmaxCPU(N, D, X.template Data<T>(), Ydata,
-                             scale_.data(), sum_multiplier_.data(), logarithmic, rowmax_.data(), tp);
+    return SoftmaxCPU(N, D, X->template Data<T>(), Y->template MutableData<T>(), log_softmax_, thread_pool);
   }
 
  private:
   int axis_;
+  bool log_softmax_;
 };
+
 }  // namespace onnxruntime
