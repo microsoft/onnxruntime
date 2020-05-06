@@ -9,6 +9,13 @@ stages:
     enable_windows_cpu: false
     enable_windows_gpu: false
     enable_mac_cpu: false
+    python_version_strategy_matrix:
+      Python36:
+        python.version: '3.6'
+      Python37:
+        python.version: '3.7'
+      Python38:
+        python.version: '3.8'
 
 - stage: Test_Wheel
   condition: succeededOrFailed()
@@ -17,8 +24,6 @@ stages:
     pool: Linux-GPU-CUDA10
     strategy:
       matrix:
-        Python35:
-          python.version: '3.5'
         Python36:
           python.version: '3.6'
         Python37:

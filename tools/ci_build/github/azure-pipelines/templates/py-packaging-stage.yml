@@ -34,6 +34,19 @@ parameters:
   type: boolean
   default: true
 
+- name: python_version_strategy_matrix
+  displayName: 'Strategy matrix specifying the possible values of the python.version variable.'
+  type: object
+  default:
+    Python35:
+      python.version: '3.5'
+    Python36:
+      python.version: '3.6'
+    Python37:
+      python.version: '3.7'
+    Python38:
+      python.version: '3.8'
+
 
 stages:
 - stage: Python_Packaging
@@ -61,14 +74,7 @@ stages:
       pool: Linux-CPU
       strategy:
         matrix:
-          Python35:
-            python.version: '3.5'
-          Python36:
-            python.version: '3.6'
-          Python37:
-            python.version: '3.7'
-          Python38:
-            python.version: '3.8'
+          ${{ parameters.python_version_strategy_matrix }}
       steps:
         - checkout: self
           clean: true
@@ -135,14 +141,7 @@ stages:
       pool: Linux-GPU-CUDA10
       strategy:
         matrix:
-          Python35:
-            python.version: '3.5'
-          Python36:
-            python.version: '3.6'
-          Python37:
-            python.version: '3.7'
-          Python38:
-            python.version: '3.8'
+          ${{ parameters.python_version_strategy_matrix }}
       steps:
         - checkout: self
           clean: true
@@ -209,14 +208,7 @@ stages:
       pool: 'Win-CPU-2019'
       strategy:
         matrix:
-          Python35:
-            python.version: '3.5'
-          Python36:
-            python.version: '3.6'
-          Python37:
-            python.version: '3.7'
-          Python38:
-            python.version: '3.8'
+          ${{ parameters.python_version_strategy_matrix }}
       variables:
         OrtPackageId: 'Microsoft.ML.OnnxRuntime'
         MsbuildArguments: '-maxcpucount'
@@ -309,12 +301,7 @@ stages:
         EnvSetupScript: setup_env_cuda.bat
       strategy:
         matrix:
-          Python35:
-            python.version: '3.5'
-          Python36:
-            python.version: '3.6'
-          Python37:
-            python.version: '3.7'
+          ${{ parameters.python_version_strategy_matrix }}
       steps:
         - checkout: self
           clean: true
@@ -387,14 +374,7 @@ stages:
         vmImage: 'macOS-10.14'
       strategy:
         matrix:
-          Python35:
-            python.version: '3.5'
-          Python36:
-            python.version: '3.6'
-          Python37:
-            python.version: '3.7'
-          Python38:
-            python.version: '3.8'
+          ${{ parameters.python_version_strategy_matrix }}
       steps:
         - checkout: self
           clean: true
