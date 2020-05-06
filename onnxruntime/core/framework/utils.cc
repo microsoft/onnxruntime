@@ -100,7 +100,8 @@ bool ProviderIsCpuBased(const std::string& provider_type) {
          provider_type == onnxruntime::kNGraphExecutionProvider ||
          provider_type == onnxruntime::kNupharExecutionProvider ||
          provider_type == onnxruntime::kOpenVINOExecutionProvider ||
-         provider_type == onnxruntime::kNnapiExecutionProvider;
+         provider_type == onnxruntime::kNnapiExecutionProvider ||
+         provider_type == onnxruntime::kRknpuExecutionProvider;
 }
 
 common::Status AllocateHelper(const IExecutionProvider& execution_provider, const OrtDevice& device,
