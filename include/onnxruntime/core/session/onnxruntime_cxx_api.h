@@ -41,20 +41,20 @@ struct Exception : std::exception {
 // it transparent to the users of the API.
 template <typename T>
 struct Global {
-  static const OrtApi& api_;
+  static const OrtApi* api_;
 };
 
 #ifdef EXCLUDE_REFERENCE_TO_ORT_DLL
 OrtApi stub_api;
 template <typename T>
-const OrtApi& Global<T>::api_ = stub_api;
+const OrtApi* Global<T>::api_ = &stub_api;
 #else
 template <typename T>
-const OrtApi& Global<T>::api_ = *OrtGetApiBase()->GetApi(ORT_API_VERSION);
+const OrtApi* Global<T>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 #endif
 
 // This returns a reference to the OrtApi interface in use, in case someone wants to use the C API functions
-inline const OrtApi& GetApi() { return Global<void>::api_; }
+inline const OrtApi& GetApi() { return *Global<void>::api_; }
 
 // This is used internally by the C++ API. This macro is to make it easy to generate overloaded methods for all of the various OrtRelease* functions for every Ort* type
 // This can't be done in the C API since C doesn't have function overloading.
