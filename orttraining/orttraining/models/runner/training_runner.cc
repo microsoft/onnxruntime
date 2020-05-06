@@ -288,7 +288,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
                                                 IDataLoader& training_data_loader,
                                                 DataSet& training_data,
                                                 LearningRateScheduler* lr_scheduler,
-                                                LossScaler* loss_scaler, 
                                                 const size_t batch_index,
                                                 std::vector<std::string>& feed_names,
                                                 std::vector<MLValue>& feeds) {
@@ -313,11 +312,11 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
   }
 
   // Pick up feed from loss scaling.
-  if (loss_scaler) {
-    const auto name = loss_scaler->GetLossScaleInputName();
+  if (loss_scaler_) {
+    const auto name = loss_scaler_->GetLossScaleInputName();
     if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
       feed_names.push_back(name);
-      const float loss_scale = loss_scaler->GetLossScale();
+      const float loss_scale = mode == EvaluateStep ? 1.0f : loss_scaler_->GetLossScale();
       OrtValue loss_scale_val;
       TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val, input_allocator_);
       feeds.push_back(loss_scale_val);
@@ -329,7 +328,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     const auto name = params_.lr_params.feed_name;
     if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
       feed_names.push_back(name);
-      // learning rate is 1 if there is no learning-rate scheduler. Otherwise, learning rate is obtained from the scheduler.
+      // learning rate is 0 if there is no learning-rate scheduler. Otherwise, learning rate is obtained from the scheduler.
       const float learning_rate = lr_scheduler ? lr_scheduler->GetLearningRate(step_ + 1) : 0.0f;
       OrtValue lr_val;
       TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{learning_rate}, &lr_val, input_allocator_);
@@ -345,7 +344,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     const int64_t id = mode == EvaluateStep ? -1 : pipeline_schedule_.GetForwardWaitedEventId(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
-    std::cout << id << std::endl;
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -361,7 +359,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     const int64_t id = mode == EvaluateStep ? -1 : pipeline_schedule_.GetForwardRecordedEventId(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
-    std::cout << id << std::endl;
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -377,7 +374,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     const int64_t id = mode == EvaluateStep ? -1 : pipeline_schedule_.GetBackwardWaitedEventId(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
-    std::cout << id << std::endl;
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -393,7 +389,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     int64_t id = mode == EvaluateStep ? -1 : pipeline_schedule_.GetBackwardRecordedEventId(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
-    std::cout << id << std::endl;
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -634,7 +629,6 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                   training_data_loader,
                                   *training_data,
                                   lr_scheduler.get(),
-                                  loss_scaler_.get(),
                                   batch,
                                   feed_names,
                                   feeds);
@@ -647,7 +641,6 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                   training_data_loader,
                                   *training_data,
                                   lr_scheduler.get(),
-                                  loss_scaler_.get(),
                                   batch,
                                   feed_names,
                                   feeds);
@@ -813,7 +806,6 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
                              data_loader,
                              *test_data,
                              nullptr,
-                             loss_scaler_.get(),
                              batch_idx,
                              feed_names,
                              feeds);

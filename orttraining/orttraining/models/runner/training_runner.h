@@ -184,7 +184,6 @@ class TrainingRunner {
                                   IDataLoader& training_data_loader,
                                   DataSet& training_data,
                                   LearningRateScheduler* lr_scheduler,
-                                  LossScaler* loss_scaler,
                                   const size_t batch_index,
                                   std::vector<std::string>& feed_names,
                                   std::vector<MLValue>& feeds);
