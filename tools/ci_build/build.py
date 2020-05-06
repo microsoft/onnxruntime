@@ -1009,6 +1009,18 @@ def adb_shell(*args, **kwargs):
 def run_training_python_frontend_e2e_tests(args, cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
+
+    # force to use single GPU for fine-tune test.
+    env={'CUDA_VISIBLE_DEVICES': '0'}
+    try:
+        run_subprocess([sys.executable, 'orttraining_run_glue.py'], cwd=cwd, env=env)
+    except:
+        print('python orttraining_run_glue.py failed')
+        run_subprocess(['pytest', 'orttraining_run_glue.py', '-k', 'test_bert_fp16_with_mrpc'], cwd=cwd, env=env)
+        run_subprocess(['pytest', 'orttraining_run_glue.py', '-k', 'test_bert_with_mrpc'], cwd=cwd, env=env)
+    
+    run_subprocess(['pytest', 'orttraining_run_glue.py '], cwd=cwd)
+
     run_subprocess([sys.executable, 'orttraining_test_transformers.py'], cwd=cwd)
 
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
