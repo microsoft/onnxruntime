@@ -84,6 +84,24 @@ using namespace WEX::TestExecution;
     !SUCCEEDED(RuntimeParameters::TryGetValue(L"noGPUtests", _no_gpu_tests)) || !_no_gpu_tests
 #endif
 
+#define RUNTIME_PARAMETER_EXISTS(param) \
+  bool param_value; \
+  SUCCEEDED(RuntimeParameters::TryGetValue(param, param_value)) && param_value;
+
+#ifndef USE_DML
+#define SKIP_GPU_TESTS(isSkipped, skipReason) \
+  isSkipped = true
+  skipReason = "GPU tests disabled because this is a WinML only build (no DML)"
+#else
+#define SKIP_GPU_TESTS(isSkipped, skipReason) \
+  if (RUNTIME_PARAMETER_EXISTS(L"noGPUtests")) {\
+    isSkipped = true; \
+    skipReason = "This test is disabled by the no_gpu_tests runtime parameter." \
+  }
+#endif
+
+    
+
 #define SKIP_EDGECORE                                                                           \
   do {                                                                                          \
     bool is_edge_core;                                                                          \

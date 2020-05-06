@@ -3,7 +3,7 @@
 
 #include "test.h"
 
-struct LearningModelSesssionAPITestsApi {
+struct LearningModelSessionAPITestsApi {
   SetupClass LearningModelSessionAPITestsClassSetup;
   SetupTest LearningModelSessionAPITestsGpuMethodSetup;
   SetupTest LearningModelSessionAPITestsGpuSkipEdgeCoreMethodSetup;
@@ -22,7 +22,7 @@ struct LearningModelSesssionAPITestsApi {
   VoidTest EvaluateSessionAndCloseModel;
   VoidTest CloseSession;
 };
-const LearningModelSesssionAPITestsApi& getapi();
+const LearningModelSessionAPITestsApi& getapi();
 
 WINML_TEST_CLASS_BEGIN(LearningModelSessionAPITests)
 WINML_TEST_CLASS_SETUP_CLASS(LearningModelSessionAPITestsClassSetup)

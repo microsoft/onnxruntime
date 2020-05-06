@@ -67,6 +67,7 @@
 #define INSTANTIATE_TEST_SUITE_P INSTANTIATE_TEST_CASE_P
 #endif
 
+
 #define WINML_SKIP_TEST(message) \
   WINML_SUPRESS_UNREACHABLE_BELOW(GTEST_SKIP() << message)
 
@@ -107,3 +108,16 @@
       WINML_SKIP_TEST("Test can't be run in EdgeCore");                                       \
     }                                                                                         \
   } while (0)
+
+
+#define RUNTIME_PARAMETER_EXISTS(param) \
+  auto no_gpu_tests = RuntimeParameters::Parameters.find(param);                 \
+  no_gpu_tests != RuntimeParameters::Parameters.end() && no_gpu_tests->second != "0"
+
+#ifndef USE_DML
+#define SKIP_GPU_TESTS\
+  true
+#else
+#define SKIP_GPU_TESTS                                   \
+  RUNTIME_PARAMETER_EXISTS("noGPUtests")
+#endif

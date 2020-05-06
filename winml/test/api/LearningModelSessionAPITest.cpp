@@ -397,8 +397,8 @@ static void CloseSession()
     });
  }
 
-const LearningModelSesssionAPITestsApi& getapi() {
-  static constexpr LearningModelSesssionAPITestsApi api =
+const LearningModelSessionAPITestsApi& getapi() {
+  static LearningModelSessionAPITestsApi api =
   {
     LearningModelSessionAPITestsClassSetup,
     LearningModelSessionAPITestsGpuMethodSetup,
@@ -418,5 +418,13 @@ const LearningModelSesssionAPITestsApi& getapi() {
     EvaluateSessionAndCloseModel,
     CloseSession,
   };
+
+  if (SKIP_GPU_TESTS) {
+    api.CreateSessionDeviceDirectX = SkipTest;
+    api.CreateSessionDeviceDirectXHighPerformance = SkipTest;
+    api.CreateSessionDeviceDirectXMinimumPower = SkipTest;
+    api.CreateSessionWithCastToFloat16InModel = SkipTest;
+    api.DISABLED_CreateSessionWithFloat16InitializersInModel = SkipTest;
+  }
  return api;
 }
