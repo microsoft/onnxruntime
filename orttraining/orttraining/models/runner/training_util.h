@@ -66,7 +66,7 @@ class DataSet {
   // based on look up table (see metrics_map in main.cc) to map the name with the vector position, like so
   //    {"input1", {"sequence", 1}}  
   void GetConfigFromData(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
-                         MapStringToString& perf_properties);
+                         MapStringToString& perf_properties) const;
 
  private:
   // The names of the tensors.

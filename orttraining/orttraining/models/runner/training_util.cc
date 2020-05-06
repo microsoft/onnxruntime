@@ -73,7 +73,7 @@ size_t DataSet::TotalBatch(size_t batch_size) const {
 }
 
 void DataSet::GetConfigFromData(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
-                                MapStringToString& perf_properties) {
+                                MapStringToString& perf_properties) const {
   if (metrics_map.size() == 0) return; 
 
   batch_size = min(batch_size, data_.size());
