@@ -19,6 +19,8 @@ Abstract:
 #include "asmmacro.h"
 
         .text
+        .p2align 2
+
 //
 // ClearRowAccumulators
 //
@@ -431,7 +433,7 @@ Return Value:
         .globl  C_UNDERSCORE(MlasSgemmKernel\Mode\())
 #ifndef __APPLE__
         .type   C_UNDERSCORE(MlasSgemmKernel\Mode\()),%function
-#endif 
+#endif
 C_UNDERSCORE(MlasSgemmKernel\Mode\()):
 
         stp     d8,d9,[sp,#-32]!

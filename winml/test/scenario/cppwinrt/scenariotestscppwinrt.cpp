@@ -50,6 +50,7 @@ static void ScenarioCppWinrtTestsClassSetup() {
   winrt::init_apartment();
 }
 
+
 static void ScenarioCppWinrtTestsGpuMethodSetup() {
   GPUTEST;
 };

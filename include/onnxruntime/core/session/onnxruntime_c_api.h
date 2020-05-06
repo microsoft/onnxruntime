@@ -133,7 +133,6 @@ typedef enum OrtErrorCode {
   ORT_EP_FAIL,
 } OrtErrorCode;
 
-
 #define ORT_RUNTIME_CLASS(X) \
   struct Ort##X;             \
   typedef struct Ort##X Ort##X;
@@ -336,6 +335,8 @@ struct OrtApi {
 
   // Sets the number of threads used to parallelize the execution within nodes
   // A value of 0 means ORT will pick a default
+  // Note: If you've built ORT with OpenMP, this API has no effect on the number of threads used. In this case
+  // use the OpenMP env variables to configure the number of intra op num threads.
   ORT_API2_STATUS(SetIntraOpNumThreads, _Inout_ OrtSessionOptions* options, int intra_op_num_threads);
 
   // Sets the number of threads used to parallelize the execution of the graph (across nodes)
@@ -567,10 +568,10 @@ struct OrtApi {
   // Always returns the same instance on every invocation.
   ORT_API2_STATUS(GetAllocatorWithDefaultOptions, _Outptr_ OrtAllocator** out);
 
-  // Override symbolic dimensions with actual values if known at session initialization time to enable
+  // Override symbolic dimensions (by specific denotation strings) with actual values if known at session initialization time to enable
   // optimizations that can take advantage of fixed values (such as memory planning, etc)
-  ORT_API2_STATUS(AddFreeDimensionOverride, _Inout_ OrtSessionOptions* options, _In_ const char* symbolic_dim,
-                  _In_ int64_t dim_override);
+  ORT_API2_STATUS(AddFreeDimensionOverride, _Inout_ OrtSessionOptions* options, _In_ const char* dim_denotation,
+                  _In_ int64_t dim_value);
 
   /**
    * APIs to support non-tensor types - map and sequence.
@@ -808,7 +809,14 @@ struct OrtApi {
    * 'keys' will be a nullptr if custom metadata map is empty.
    */
   ORT_API2_STATUS(ModelMetadataGetCustomMetadataMapKeys, _In_ const OrtModelMetadata* model_metadata,
-                                                                  _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*num_keys) char*** keys, _Out_ int64_t* num_keys);
+                  _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*num_keys) char*** keys, _Out_ int64_t* num_keys);
+
+  // Override symbolic dimensions (by specific name strings) with actual values
+  // if known at session initialization time to enable optimizations that can
+  // take advantage of fixed values (such as memory planning, etc)
+  ORT_API2_STATUS(AddFreeDimensionOverrideByName,
+                  _Inout_ OrtSessionOptions* options, _In_ const char* dim_name,
+                  _In_ int64_t dim_value);
 };
 
 /*

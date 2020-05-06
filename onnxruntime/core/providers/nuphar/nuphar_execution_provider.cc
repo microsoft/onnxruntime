@@ -205,7 +205,7 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       }
     });
 
-    if (!all_shape_defined || GetKernelRegistryInternal()->TryFindKernel(node, Type()) == nullptr)
+    if (!all_shape_defined || !KernelRegistry::HasImplementationOf(*GetKernelRegistryInternal(), node, Type()))
       return false;
 
     const auto& inputs = node.InputDefs();

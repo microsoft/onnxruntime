@@ -137,6 +137,7 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
     loss_sample = loss_sample_buffer.data();
   }
 
+  std::memset(loss_sample, 0, sizeof(T1) * n_d);
   // Case where weights are provided.
   // Review(codemzs):
   // 1) Can merge the two cases in one if we assume default weight values to be 1s but will need to
@@ -172,10 +173,8 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
       // Sum loss over n_d samples
       math::Sum<float, CPUMathUtil>(n_d, loss_sample, loss_data, nullptr);
       // Average sum_loss over sum_weights
-      if (reduction_ == ReductionType::MEAN) {
-        if (sum_weight != 0) {
-          *loss_data /= sum_weight;
-        }
+      if ((reduction_ == ReductionType::MEAN) && (sum_weight != 0)) {
+        *loss_data /= sum_weight;
       }
     }
   } else {
@@ -194,7 +193,7 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
     if (reduction_ != ReductionType::NONE) {
       // Sum loss over n_d samples
       math::Sum<T1, CPUMathUtil>(n_d, loss_sample, loss_data, nullptr);
-      if (reduction_ == ReductionType::MEAN) {
+      if ((reduction_ == ReductionType::MEAN) && (unignored_samples != 0)) {
         *loss_data /= unignored_samples;
       }
     }
@@ -241,6 +240,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
   const T2* label_data = label.template Data<T2>();
   Tensor* d_logit = context->Output(0, probability_shape);
   T1* d_logit_data = d_logit->template MutableData<T1>();
+  std::memset(d_logit_data, 0, sizeof(T1) * n_d);
   OrtValue transpose_output;
   std::vector<int64_t> new_shape;
   std::vector<size_t> permutations;
@@ -324,7 +324,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
         }
       }
 
-      if (reduction_ == ReductionType::MEAN) {
+      if ((reduction_ == ReductionType::MEAN) && (unignored_sample_count != 0)) {
         dY_scaled = *dY_data / unignored_sample_count;
       }
 

@@ -2,14 +2,15 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <thread>
-#include <chrono>
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "event_pool.h"
 
 namespace onnxruntime {
 namespace contrib {
+
+// Wait for the event ID stored in the input tensor.
+void wait_event_in_tensor(const Tensor& event_id_tensor);
 
 class WaitEvent final : public OpKernel {
 public:

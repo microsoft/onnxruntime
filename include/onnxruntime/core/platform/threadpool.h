@@ -32,7 +32,6 @@ limitations under the License.
 namespace Eigen {
 class Allocator;
 class ThreadPoolInterface;
-struct ThreadPoolDevice;
 }  // namespace Eigen
 
 namespace onnxruntime {
@@ -125,12 +124,12 @@ class ThreadPool {
   // REQUIRES: num_threads > 0
   // The allocator parameter is only used for creating a Eigen::ThreadPoolDevice to be used with Eigen Tensor classes.
   ThreadPool(Env* env, const ThreadOptions& thread_options, const NAME_CHAR_TYPE* name, int num_threads,
-             bool low_latency_hint, Eigen::Allocator* allocator = nullptr);
+             bool low_latency_hint);
   // Constructs a pool that wraps around the thread::ThreadPoolInterface
   // instance provided by the caller. Caller retains ownership of
   // `user_threadpool` and must ensure its lifetime is longer than the
   // ThreadPool instance.
-  ThreadPool(Eigen::ThreadPoolInterface* user_threadpool, Eigen::Allocator* allocator);
+  ThreadPool(Eigen::ThreadPoolInterface* user_threadpool);
 
   // Waits until all scheduled work has finished and then destroy the
   // set of threads.
@@ -174,10 +173,8 @@ class ThreadPool {
     }
 #pragma omp parallel for
     for (std::ptrdiff_t i = 0; i < num_threads; i++) {
-      std::ptrdiff_t start, work_remaining;
-      PartitionWork(i, num_threads, total, &start, &work_remaining);
-      std::ptrdiff_t end = start + work_remaining;
-      fn(start, end);
+      auto work = PartitionWork(i, num_threads, total);
+      fn(work.start, work.end);
     }
 #else
     if (tp == nullptr) {
@@ -190,11 +187,11 @@ class ThreadPool {
 
   // Similar to ParallelFor above, but takes the specified scheduling strategy
   // into account.
-  void
-  ParallelFor(std::ptrdiff_t total, const SchedulingParams& scheduling_params,
-              const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
+  void ParallelFor(std::ptrdiff_t total, const SchedulingParams& scheduling_params,
+                   const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
 
-  static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const SchedulingParams& scheduling_params,
+  static void TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total,
+                             const SchedulingParams& scheduling_params,
                              const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
 #ifdef _OPENMP
     ORT_UNUSED_PARAMETER(scheduling_params);
@@ -204,10 +201,8 @@ class ThreadPool {
     }
 #pragma omp parallel for
     for (std::ptrdiff_t i = 0; i < num_threads; i++) {
-      std::ptrdiff_t start, work_remaining;
-      PartitionWork(i, num_threads, total, &start, &work_remaining);
-      std::ptrdiff_t end = start + work_remaining;
-      fn(start, end);
+      auto work = PartitionWork(i, num_threads, total);
+      fn(work.start, work.end);
     }
 #else
     if (tp == nullptr) {
@@ -216,7 +211,7 @@ class ThreadPool {
     }
     tp->ParallelFor(total, scheduling_params, fn);
 #endif
-  }  // namespace concurrency
+  }
 
   // Prefer using this API to get the number of threads unless you know what you're doing.
   // This API takes into account if openmp is enabled/disabled and if the thread pool ptr is nullptr.
@@ -236,7 +231,27 @@ class ThreadPool {
 
   // Directly schedule the 'total' tasks to the underlying threadpool, without
   // cutting them by halves
-  void SimpleParallelFor(std::ptrdiff_t total, std::function<void(std::ptrdiff_t)> fn);
+  void SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn);
+
+  inline static void TrySimpleParallelFor(ThreadPool* tp, std::ptrdiff_t total,
+                                          const std::function<void(std::ptrdiff_t)>& fn) {
+#ifdef _OPENMP
+    ORT_UNUSED_PARAMETER(tp);
+#pragma omp parallel for
+    for (std::ptrdiff_t i = 0; i < total; ++i) {
+      fn(i);
+    }
+#else
+    if (tp != nullptr) {
+      tp->SimpleParallelFor(total, fn);
+    } else {
+      for (std::ptrdiff_t i = 0; i < total; ++i) {
+        // In many cases, fn can be inlined here.
+        fn(i);
+      }
+    }
+#endif
+  }
 
   /**
    * Tries to call the given function in parallel, with calls split into (num_batches) batches.
@@ -285,22 +300,38 @@ class ThreadPool {
     }
 
     tp->SimpleParallelFor(num_batches, [&](std::ptrdiff_t batch_index) {
-      std::ptrdiff_t start, work_remaining;
-      PartitionWork(batch_index, num_batches, total, &start, &work_remaining);
-      std::ptrdiff_t end = start + work_remaining;
-      for (std::ptrdiff_t i = start; i < end; i++) {
+      auto work = PartitionWork(batch_index, num_batches, total);
+      for (std::ptrdiff_t i = work.start; i < work.end; i++) {
         fn(i);
       }
     });
 #endif
   }
 
-#ifndef _OPENMP
-  //Deprecated. Please avoid using Eigen Tensor because it will blow up binary size quickly.
-  Eigen::ThreadPoolDevice& Device() {
-    return *threadpool_device_;
+  struct WorkInfo {
+    std::ptrdiff_t start;
+    std::ptrdiff_t end;
+  };
+
+  /** Calculate the start and end offsets for a batch.
+      @remarks Based on MlasPartitionWork
+  */
+  static WorkInfo PartitionWork(std::ptrdiff_t batch_idx, std::ptrdiff_t num_batches, std::ptrdiff_t total_work) {
+    const std::ptrdiff_t work_per_batch = total_work / num_batches;
+    const std::ptrdiff_t work_per_batch_extra = total_work % num_batches;
+
+    WorkInfo info;
+    if (batch_idx < work_per_batch_extra) {
+      info.start = (work_per_batch + 1) * batch_idx;
+      info.end = info.start + work_per_batch + 1;
+    } else {
+      info.start = work_per_batch * batch_idx + work_per_batch_extra;
+      info.end = info.start + work_per_batch;
+    }
+
+    return info;
   }
-#endif
+
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ThreadPool);
 
  private:
@@ -320,24 +351,7 @@ class ThreadPool {
   // eigen_threadpool_ is instantiated and owned by thread::ThreadPool if
   // user_threadpool is not in the constructor.
   std::unique_ptr<ThreadPoolTempl<Env> > eigen_threadpool_;
-#ifndef _OPENMP
-  std::unique_ptr<Eigen::ThreadPoolDevice> threadpool_device_;
-#endif
-  // Copied from MlasPartitionWork
-  static void PartitionWork(std::ptrdiff_t ThreadId, std::ptrdiff_t ThreadCount, std::ptrdiff_t TotalWork,
-                            std::ptrdiff_t* WorkIndex, std::ptrdiff_t* WorkRemaining) {
-    const std::ptrdiff_t WorkPerThread = TotalWork / ThreadCount;
-    const std::ptrdiff_t WorkPerThreadExtra = TotalWork % ThreadCount;
-
-    if (ThreadId < WorkPerThreadExtra) {
-      *WorkIndex = (WorkPerThread + 1) * ThreadId;
-      *WorkRemaining = WorkPerThread + 1;
-    } else {
-      *WorkIndex = WorkPerThread * ThreadId + WorkPerThreadExtra;
-      *WorkRemaining = WorkPerThread;
-    }
-  }
-};  // namespace concurrency
+};
 
 }  // namespace concurrency
 }  // namespace onnxruntime

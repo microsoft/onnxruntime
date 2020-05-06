@@ -49,7 +49,7 @@ enum class MLOperatorAttributeType : uint32_t
 //! \brief Specifies the data type of a tensor.
 //! Each data type numerically matches corresponding ONNX types.
 enum class MLOperatorTensorDataType : uint32_t
-{	
+{
     //! Undefined (unused).
     Undefined = 0,
 

@@ -237,3 +237,32 @@ jobs:
   parameters:
     AgentPool : 'Linux-GPU-CUDA10'
     TestGPU : 'true'
+    
+- job: Publish_NuGet_Package_And_Report
+  workspace:
+    clean: all
+  pool: 'Win-CPU-2019'
+  condition: and (succeeded(), and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
+  dependsOn:
+  - NuGet_Test_Win
+  - NuGet_Test_Linux
+  steps:
+  - template: ../../templates/set-version-number-variables-step.yml
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+    inputs:
+      artifactName: 'drop-signed-nuget'
+      targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
+
+  - template: get-nuget-package-version-as-variable.yml
+    parameters:
+      packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Copy Signed Native NuGet Package to Internal NuGet Feed'
+    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
+    inputs:
+      command: 'push'
+      searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.Gpu.$(NuGetPackageVersionNumber).nupkg'
+      feedPublish: 'OnnxRuntime'

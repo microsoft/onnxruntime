@@ -174,8 +174,10 @@ static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& tar
   }
 }
 
-static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
-  const auto& input_shape = input.Shape();
+//  `input_shape_override` overrides the shape of `input` for compute purposes.
+static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                                 const TensorShape* input_shape_override = nullptr) {
+  const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
   const auto& input_dims = input_shape.GetDims();
   auto rank = input_shape.NumDimensions();
 
@@ -289,11 +291,12 @@ static void SimpleTransposeSingleAxisOutwards(const T* input_data, T* output_dat
   }
 }
 
+//  `input_shape_override` overrides the shape of `input` for compute purposes.
 static void TransposeSingleAxisOutwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
-                                        int64_t from, int64_t to) {
+                                        int64_t from, int64_t to, const TensorShape* input_shape_override = nullptr) {
   ORT_UNUSED_PARAMETER(permutations);
 
-  const auto& input_shape = input.Shape();
+  const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
   const auto& input_dims = input_shape.GetDims();
 
   const auto element_size = input.DataType()->Size();
@@ -380,11 +383,12 @@ static void SimpleTransposeSingleAxisInwards(const T* input_data, T* output_data
 }
 
 // moving a single axis inwards where the read/write size is a power of 2 and between 8 and 64 bits.
+//  `input_shape_override` overrides the shape of `input` for compute purposes.
 static void TransposeSingleAxisInwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
-                                       int64_t from, int64_t to) {
+                                       int64_t from, int64_t to, const TensorShape* input_shape_override = nullptr) {
   ORT_UNUSED_PARAMETER(permutations);
 
-  const auto& input_shape = input.Shape();
+  const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
   const auto& input_dims = input_shape.GetDims();
 
   const auto element_size = input.DataType()->Size();
@@ -448,12 +452,13 @@ static void TransposeSingleAxisInwards(const std::vector<size_t>& permutations, 
   }
 }
 
+//  `input_shape_override` overrides the shape of `input` for compute purposes.
 static void SingleAxisTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
-                                size_t from, size_t to) {
+                                size_t from, size_t to, const TensorShape* input_shape_override = nullptr) {
   if (from > to) {
-    TransposeSingleAxisOutwards(permutations, input, output, from, to);
+    TransposeSingleAxisOutwards(permutations, input, output, from, to, input_shape_override);
   } else {
-    TransposeSingleAxisInwards(permutations, input, output, from, to);
+    TransposeSingleAxisInwards(permutations, input, output, from, to, input_shape_override);
   }
 }
 
@@ -526,7 +531,9 @@ static bool IsMovingSingleAxis(const std::vector<size_t>& permutations, size_t& 
   return single_axis_moved;
 }
 
-Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
+//`input_shape_override` overrides the shape of `input` for compute purposes.
+Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                                  const TensorShape* input_shape_override) {
   Status status = Status::OK();
 
   auto input_type = input.DataType();
@@ -540,10 +547,10 @@ Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const
     bool moving_single_axis = IsMovingSingleAxis(permutations, from, to);
 
     if (moving_single_axis && !input.IsDataTypeString()) {
-      SingleAxisTranspose(permutations, input, output, from, to);
+      SingleAxisTranspose(permutations, input, output, from, to, input_shape_override);
     } else {
       // fall back to default implementation
-      status = DoUntypedTranspose(permutations, input, output);
+      status = DoUntypedTranspose(permutations, input, output, input_shape_override);
     }
   }
 

@@ -82,7 +82,7 @@ Status AdamOptimizerBuilder::Build(
       // Add first- and second-order momentums to input list.
       const std::vector<std::string> moments_prefixes({"Moment_1_", "Moment_2_"});
       for (const auto& moments_prefix : moments_prefixes) {
-        const std::string gradient_moment_name = moments_prefix + gradient_name;
+        const std::string gradient_moment_name = moments_prefix + weight_name;
 
         TensorProto moment_tensor_proto;
         TypeProto* moment_type_proto = graph_defs.CopyTypeProto(weight_argdefs[i]);

@@ -268,6 +268,7 @@ public class OrtSession implements AutoCloseable {
   /**
    * Gets the metadata for the currently loaded model.
    *
+   * @throws OrtException on failure
    * @return The metadata.
    */
   public OnnxModelMetadata getMetadata() throws OrtException {

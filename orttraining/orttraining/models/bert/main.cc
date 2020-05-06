@@ -153,6 +153,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("cuda_mem_limit_in_gb", "Max cuda memory ort can use, in GB", cxxopts::value<float>()->default_value("-1.0"))
       ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
+      ("pipeline_stage_size", "pipeline model parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
         cxxopts::value<bool>()->default_value("true"));
   options
@@ -364,8 +365,10 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
 
     params.data_parallel_size = flags["data_parallel_size"].as<int>();
     params.horizontal_parallel_size = flags["horizontal_parallel_size"].as<int>();
+    params.pipeline_stage_size = flags["pipeline_stage_size"].as<int>();
     ORT_RETURN_IF_NOT(params.data_parallel_size > 0, "data_parallel_size must > 0");
     ORT_RETURN_IF_NOT(params.horizontal_parallel_size > 0, "horizontal_parallel_size must > 0");
+    ORT_RETURN_IF_NOT(params.pipeline_stage_size > 0, "pipeline_stage_size must > 0");
 
     int64_t seed = flags["seed"].as<int64_t>();
     if (params.horizontal_parallel_size > 1 && seed <= 0) {
@@ -435,7 +438,7 @@ void setup_training_params(BertParameters& params) {
     return;
   }
 
-  auto data_group_size = params.mpi_context.world_size / params.horizontal_parallel_size;
+  auto data_group_size = params.mpi_context.world_size / (params.horizontal_parallel_size * params.pipeline_stage_size);
   if (data_group_size != params.data_parallel_size) {
     LOGS_DEFAULT(WARNING) << "WARNING: data_parallel_size is not correct, tuned automatically to "
                           << data_group_size << std::endl;
