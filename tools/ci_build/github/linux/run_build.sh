@@ -67,8 +67,8 @@ else
                 --cuda_home /usr/local/cuda \
                 --cudnn_home /usr/local/cuda $BUILD_EXTR_PAR
         else
-            # pip install /transformers/ --upgrade
-            python3 -m pip install /transformers/ --upgrade
+            pip install /transformers/ --upgrade
+            # python3 -m pip install /transformers/ --upgrade
 
             _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
             python3 $SCRIPT_DIR/../../build.py --build_dir /build \
