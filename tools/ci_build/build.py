@@ -331,6 +331,8 @@ def parse_arguments():
         help="Build with ACL for ARM architectures.")
     parser.add_argument("--use_hip", action='store_true', help="Build with ROCM")
     parser.add_argument("--hip_home", help="Path to HIP installation dir")
+    parser.add_argument("--use_mpi", action='store_true', help="Build with MPI")
+    parser.add_argument("--mpi_home", help="Path to MPI installation dir")
     return parser.parse_args()
 
 
@@ -506,7 +508,7 @@ def setup_test_data(build_dir, configs):
 
 
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
-                        cudnn_home, tensorrt_home, hip_home, path_to_protoc_exe, configs,
+                        cudnn_home, tensorrt_home, hip_home, mpi_home, path_to_protoc_exe, configs,
                         cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
@@ -614,6 +616,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             "ON" if args.use_horovod else "OFF"),
         "-Donnxruntime_USE_HIP=" + ("ON" if args.use_hip else "OFF"),
         "-Donnxruntime_HIP_HOME=" + (hip_home if args.use_hip else ""),
+        "-Donnxruntime_USE_MPI=" + ("ON" if args.use_mpi else "OFF"),
+        "-Donnxruntime_MPI_HOME=" + (mpi_home if args.use_mpi else ""),
     ]
 
     if args.winml_root_namespace_override:
@@ -1553,6 +1557,8 @@ def main():
     # if using hip, setup hip paths
     hip_home = setup_hip_vars(args)
   
+    mpi_home = args.mpi_home
+
     os.makedirs(build_dir, exist_ok=True)
 
     log.info("Build started")
@@ -1637,7 +1643,7 @@ def main():
             setup_test_data(build_dir, configs)
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home,
-            tensorrt_home, hip_home, path_to_protoc_exe, configs, cmake_extra_defines,
+            tensorrt_home, hip_home, mpi_home, path_to_protoc_exe, configs, cmake_extra_defines,
             args, cmake_extra_args)
 
     if args.clean:
