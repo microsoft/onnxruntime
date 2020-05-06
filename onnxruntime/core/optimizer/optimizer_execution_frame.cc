@@ -20,9 +20,11 @@ namespace onnxruntime {
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const InitializedTensorSet& initialized_tensor_set,
                                     std::unique_ptr<CPUExecutionProvider> cpu_execution_provider) {
+  ORT_ENFORCE(cpu_execution_provider_, "Provided CPU execution provider is a nullptr");
   cpu_execution_provider_ = std::move(cpu_execution_provider);
+
   allocator_ptr_ = cpu_execution_provider_->GetAllocator(device_id_, mem_type_);
-  ORT_ENFORCE(allocator_ptr_ != nullptr, "Failed to get allocator for optimizer");
+  ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
   data_transfer_mgr_.RegisterDataTransfer(onnxruntime::make_unique<CPUDataTransfer>());
 

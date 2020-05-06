@@ -64,7 +64,9 @@ TEST(OptimizerTest, Basic) {
     nodes.push_back(&node);
   }
 
-  OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set);
+  std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
+      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set, std::move(cpu_execution_provider));
   std::vector<int> fetch_mlvalue_idxs{info.GetMLValueIndex("out")};
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
   const logging::Logger& logger = DefaultLoggingManager().DefaultLogger();
