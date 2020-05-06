@@ -209,7 +209,7 @@ void GradientOpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, M
     }
     auto shape = output_data_[i].data_.Get<Tensor>().Shape();
     std::vector<float> values(shape.Size(), 0.0);
-    if (output_index_to_use_as_loss == i) {
+    if (output_index_to_use_as_loss == static_cast<int>(i)) {
       values[data_index_of_output] = 1.0;  //set only one value to one to construct jacobian matrix
     }
     AddData<float>(gradient_data, (output_data_[i].def_.Name() + "_grad").c_str(), shape.GetDims(), values.data(), values.size(), true);
