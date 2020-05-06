@@ -114,7 +114,8 @@ elif [ $DEVICE_TYPE = "gpu" ]; then
     fi
     if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
       # ${PYTHON_EXE} -m pip install transformers
-      ${PYTHON_EXE} -m pip install /bert_data/hf_data/transformers/dist/transformers-2.8.0-py3-none-any.whl
+      GetFile https://orttraining.blob.core.windows.net/transformers-wheel/transformers-2.8.0-py3-none-any.whl /tmp/transformers-2.8.0-py3-none-any.whl
+      ${PYTHON_EXE} -m pip install /tmp/transformers-2.8.0-py3-none-any.whl
       ${PYTHON_EXE} -m pip install pytest
     fi
 fi

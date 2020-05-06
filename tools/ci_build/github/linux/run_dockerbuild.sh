@@ -117,6 +117,7 @@ if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
     echo "doing mapping /bert_data/hf_data"
     DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --volume /bert_data/hf_data:/bert_data/hf_data"
     DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --volume /bert_data/hf_data/transformers:/transformers"
+    # DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER -u0"
 fi
 
 docker rm -f "onnxruntime-$BUILD_DEVICE" || true
