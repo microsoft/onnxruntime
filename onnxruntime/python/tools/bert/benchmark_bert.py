@@ -24,11 +24,12 @@ import sys
 import os
 import psutil
 import traceback
+from packaging import version
 
-num_threads = psutil.cpu_count(logical=True)
+cpu_count = psutil.cpu_count(logical=True)
 # Set OMP environment variable before importing onnxruntime or torch.
 if "OMP_NUM_THREADS" not in os.environ:
-    os.environ["OMP_NUM_THREADS"] = str(num_threads)
+    os.environ["OMP_NUM_THREADS"] = str(cpu_count)
 
 from transformers import (
     AutoConfig,
@@ -43,7 +44,12 @@ if is_torch_available():
 def create_onnxruntime_session(onnx_model_path, use_gpu):
     import onnxruntime
     sess_options = onnxruntime.SessionOptions()
-    sess_options.intra_op_num_threads = 1 # This line is not needed for ORT 1.3.0 or later.
+
+    if (not use_gpu) and (version.parse(onnxruntime.__version__) < version.parse('1.3.0')):
+        # Set intra_op_num_threads = 1 to enable OpenMP for onnxruntime 1.2.0 (cpu)
+        # onnxruntime-gpu is not built with openmp so it is better to use default (0) or cpu_count instead.
+        sess_options.intra_op_num_threads = 1
+
     execution_providers = ['CPUExecutionProvider'] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
     session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
     return session
@@ -173,7 +179,7 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
         print("Please install PyTorch with Cuda, and use a machine with GPU for testing gpu performance.")
         return results
 
-    #torch.set_num_threads(num_threads)
+    #torch.set_num_threads(cpu_count)
     torch.set_grad_enabled(False)
 
     for model_name in model_names:
@@ -249,7 +255,7 @@ def parse_arguments():
         "--cache_dir",
         required=False,
         type=str,
-        default=".\cache_models",
+        default="./cache_models",
         help="Directory to cache pre-trained models"
     )
 
