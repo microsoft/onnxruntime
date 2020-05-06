@@ -368,6 +368,8 @@ def parse_arguments():
 
     parser.add_argument("--use_hip", action='store_true', help="Build with ROCM")
     parser.add_argument("--hip_home", help="Path to HIP installation dir")
+    parser.add_argument("--use_mpi", action='store_true', help="Build with MPI")
+    parser.add_argument("--mpi_home", help="Path to MPI installation dir")
     return parser.parse_args()
 
 
@@ -668,6 +670,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.build_micro_benchmarks else "OFF")
         "-Donnxruntime_USE_HIP=" + ("ON" if args.use_hip else "OFF"),
         "-Donnxruntime_HIP_HOME=" + (hip_home if args.use_hip else ""),
+        "-Donnxruntime_USE_MPI=" + ("ON" if args.use_mpi else "OFF"),
+        "-Donnxruntime_MPI_HOME=" + (mpi_home if args.use_mpi else ""),
     ]
 
     if mpi_home and os.path.exists(mpi_home):
@@ -1685,6 +1689,8 @@ def main():
     # if using hip, setup hip paths
     hip_home = setup_hip_vars(args)
   
+    mpi_home = args.mpi_home
+
     os.makedirs(build_dir, exist_ok=True)
 
     log.info("Build started")

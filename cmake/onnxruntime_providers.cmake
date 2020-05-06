@@ -800,8 +800,14 @@ if (onnxruntime_USE_HIP)
   find_library(MIOPEN_LIB MIOpen REQUIRED)
   find_library(RCCL_LIB rccl REQUIRED)
   find_library(CLANG_RT_LIB clang_rt.builtins-x86_64 REQUIRED)
-  #find_library(MPI_LIB mpi REQUIRED)
-  set(ONNXRUNTIME_HIP_LIBS ${HIP_LIB} ${HIP_BLAS} ${MIOPEN_LIB} ${RCCL_LIB} ${CLANG_RT_LIB} ${MPI_LIB})
+  set(ONNXRUNTIME_HIP_LIBS ${HIP_LIB} ${HIP_BLAS} ${MIOPEN_LIB} ${RCCL_LIB} ${CLANG_RT_LIB})
+
+  if (onnxruntime_USE_MPI)
+    add_definitions(-DUSE_MPI=1)
+    list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_MPI_HOME}/lib)
+    find_library(MPI_LIB mpi REQUIRED)
+    set(ONNXRUNTIME_HIP_LIBS ${ONNXRUNTIME_HIP_LIBS} ${MPI_LIB})
+  endif()
 
   file(GLOB_RECURSE onnxruntime_providers_hip_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/hip/*.h"
@@ -876,6 +882,9 @@ if (onnxruntime_USE_HIP)
   set_target_properties(onnxruntime_providers_hip PROPERTIES FOLDER "ONNXRuntime")
   target_compile_options(onnxruntime_providers_hip PRIVATE -Wno-error=sign-compare -D__HIP_PLATFORM_HCC__=1)
   target_include_directories(onnxruntime_providers_hip PRIVATE ${onnxruntime_HIP_HOME}/include ${onnxruntime_HIP_HOME}/include/hipcub ${onnxruntime_HIP_HOME}/include/hiprand ${onnxruntime_HIP_HOME}/include/rocrand)
+  if (onnxruntime_USE_MPI)
+    target_include_directories(onnxruntime_providers_hip PRIVATE ${onnxruntime_MPI_HOME}/include)
+  endif()
   target_include_directories(onnxruntime_providers_hip PRIVATE ${ONNXRUNTIME_ROOT} ${SAFEINT_INCLUDE_DIR} ${ONNXRUNTIME_ROOT}/../cmake/external/eigen)
 
   if (onnxruntime_ENABLE_TRAINING)
