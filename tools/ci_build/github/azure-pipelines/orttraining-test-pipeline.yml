@@ -43,7 +43,6 @@ stages:
           -t onnxruntime-training-ubuntu-gpu-test \
           --build-arg BUILD_USER=onnxruntimedev \
           --build-arg BUILD_UID=$(id -u) \
-          --build-arg PYTHON_VERSION=$(python.version) \
           -f Dockerfile.ubuntu_gpu .
       displayName: 'Build docker image'
       workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
