@@ -248,7 +248,7 @@ def parse_arguments():
         required=False,
         type=str,
         default="all",
-        help="Pre-trained models to benchmark"
+        help="Pre-trained models (https://huggingface.co/transformers/pretrained_models.html) separated by comma"
     )
 
     parser.add_argument(
@@ -321,7 +321,7 @@ def main():
         except OSError:
             print("Creation of the directory %s failed" % args.cache_dir)
 
-    model_names = args.models.split()
+    model_names = args.models.split(',')
     if args.models == "all":
         model_names = [
             "bert-base-cased",
