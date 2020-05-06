@@ -1010,7 +1010,10 @@ def run_training_python_frontend_e2e_tests(args, cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
 
-    # force to use single GPU for fine-tune test.
+    # install latest huggingface transformers from source to take advantage of its generalized trainer
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "/transformers/", "--upgrade"])
+
+    # force to use single GPU for fine-tune tests.
     env={'CUDA_VISIBLE_DEVICES': '0'}
     try:
         run_subprocess([sys.executable, 'orttraining_run_glue.py'], cwd=cwd, env=env)

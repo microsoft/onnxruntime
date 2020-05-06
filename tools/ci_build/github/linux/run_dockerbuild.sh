@@ -111,9 +111,12 @@ DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \
 if [ $BUILD_DEVICE = "openvino" ] && [[ $BUILD_EXTR_PAR == *"--use_openvino GPU_FP"* ]]; then
     DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --device /dev/dri:/dev/dri"
 fi
+
+echo "start mapping /bert_data/hf_data"
 if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
-    echo "mapping /bert_data/hf_data"
+    echo "doing mapping /bert_data/hf_data"
     DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --volume /bert_data/hf_data:/bert_data/hf_data"
+    DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --volume /bert_data/hf_data/transformers:/transformers"
 fi
 
 docker rm -f "onnxruntime-$BUILD_DEVICE" || true

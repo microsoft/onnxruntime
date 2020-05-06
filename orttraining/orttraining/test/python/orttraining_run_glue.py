@@ -8,6 +8,13 @@ from typing import Dict, Optional
 import unittest
 import numpy as np
 
+# import subprocess
+# import sys
+# def install_transformers_from_local_source():
+#     subprocess.check_call([sys.executable, "-m", "pip", "install", "/bert_ort/liqun/transformers/", "--upgrade"])
+
+# install_transformers_from_local_source()
+
 from transformers import (
     AutoConfig,
     AutoModelForSequenceClassification,
