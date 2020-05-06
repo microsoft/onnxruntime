@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// Sets various runtime options. 
-    public class RunOptions: IDisposable
+    public class RunOptions : IDisposable
     {
         private IntPtr _nativePtr;
         internal IntPtr Handle
@@ -25,14 +25,33 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         /// <summary>
-        /// LogVerbosityLevel for the Run 
-        /// default == LogLevel.Verbose
+        /// LogSeverityLevel for the Run
+        /// default == ORT_LOGGING_LEVEL_WARNING.
         /// </summary>
-        public LogLevel LogVerbosityLevel 
+        public OrtLoggingLevel LogSeverityLevel
         {
             get
             {
-                LogLevel level;
+                OrtLoggingLevel level;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsGetRunLogSeverityLevel(_nativePtr, out level));
+                return level;
+            }
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunLogSeverityLevel(_nativePtr, value));
+            }
+        }
+
+        /// <summary>
+        /// LogVerbosityLevel for the Run
+        /// default == 0. Valid values are >=0.
+        /// This takes into effect only when the LogSeverityLevel is set to ORT_LOGGING_LEVEL_VERBOSE.
+        /// </summary>
+        public int LogVerbosityLevel
+        {
+            get
+            {
+                int level;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsGetRunLogVerbosityLevel(_nativePtr, out level));
                 return level;
             }
@@ -42,11 +61,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-
         /// <summary>
         /// Log tag to be used during the run. default = ""
         /// </summary>
-        public string LogId 
+        public string LogId
         {
             get
             {

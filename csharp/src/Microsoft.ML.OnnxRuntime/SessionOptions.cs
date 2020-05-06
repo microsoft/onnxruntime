@@ -19,6 +19,14 @@ namespace Microsoft.ML.OnnxRuntime
         ORT_ENABLE_ALL = 99
     }
 
+    public enum GraphOptimizationLevel
+    {
+        ORT_DISABLE_ALL = 0,
+        ORT_ENABLE_BASIC = 1,
+        ORT_ENABLE_EXTENDED = 2,
+        ORT_ENABLE_ALL = 99
+    }
+
     /// <summary>
     /// Controls whether you want to execute operators in the graph sequentially or in parallel.
     /// Usually when the model has many branches, setting this option to ExecutionMode.ORT_PARALLEL
@@ -298,11 +306,28 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private string _logId = "";
 
+        /// <summary>
+        /// Log Severity Level for the session logs. Default = ORT_LOGGING_LEVEL_WARNING
+        /// </summary>
+        public OrtLoggingLevel LogSeverityLevel
+        {
+            get
+            {
+                return _logSeverityLevel;
+            }
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogSeverityLevel(_nativePtr, value));
+                _logSeverityLevel = value;
+            }
+        }
+        private OrtLoggingLevel _logSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING;
 
         /// <summary>
-        /// Log Verbosity Level for the session logs. Default = LogLevel.Verbose
+        /// Log Verbosity Level for the session logs. Default = 0. Valid values are >=0.
+        /// This takes into effect only when the LogSeverityLevel is set to ORT_LOGGING_LEVEL_VERBOSE.
         /// </summary>
-        public LogLevel LogVerbosityLevel
+        public int LogVerbosityLevel
         {
             get
             {
@@ -314,7 +339,7 @@ namespace Microsoft.ML.OnnxRuntime
                 _logVerbosityLevel = value;
             }
         }
-        private LogLevel _logVerbosityLevel = LogLevel.Verbose;
+        private int _logVerbosityLevel = 0;
 
 
         /// <summary>

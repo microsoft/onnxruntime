@@ -38,8 +38,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr EnableCpuMemArena;
         public IntPtr DisableCpuMemArena;
         public IntPtr SetSessionLogId;
-        public IntPtr SetSessionLogVerbosityLevel;
         public IntPtr SetSessionLogSeverityLevel;
+        public IntPtr SetSessionLogVerbosityLevel;
         public IntPtr SetSessionGraphOptimizationLevel;
         public IntPtr SetIntraOpNumThreads;
         public IntPtr SetInterOpNumThreads;
@@ -59,8 +59,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SessionGetOutputName;
         public IntPtr SessionGetOverridableInitializerName;
         public IntPtr CreateRunOptions;
-        public IntPtr RunOptionsSetRunLogVerbosityLevel;
         public IntPtr RunOptionsSetRunLogSeverityLevel;
+        public IntPtr RunOptionsSetRunLogVerbosityLevel;
         public IntPtr RunOptionsSetRunTag;
         public IntPtr RunOptionsGetRunLogVerbosityLevel;
         public IntPtr RunOptionsGetRunLogSeverityLevel;
@@ -190,8 +190,10 @@ namespace Microsoft.ML.OnnxRuntime
             OrtCreateRunOptions = (DOrtCreateRunOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateRunOptions, typeof(DOrtCreateRunOptions));
             OrtReleaseRunOptions = (DOrtReleaseRunOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseRunOptions, typeof(DOrtReleaseRunOptions));
             OrtRunOptionsSetRunLogVerbosityLevel = (DOrtRunOptionsSetRunLogVerbosityLevel)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsSetRunLogVerbosityLevel, typeof(DOrtRunOptionsSetRunLogVerbosityLevel));
+            OrtRunOptionsSetRunLogSeverityLevel = (DOrtRunOptionsSetRunLogSeverityLevel)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsSetRunLogSeverityLevel, typeof(DOrtRunOptionsSetRunLogSeverityLevel));
             OrtRunOptionsSetRunTag = (DOrtRunOptionsSetRunTag)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsSetRunTag, typeof(DOrtRunOptionsSetRunTag));
             OrtRunOptionsGetRunLogVerbosityLevel = (DOrtRunOptionsGetRunLogVerbosityLevel)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsGetRunLogVerbosityLevel, typeof(DOrtRunOptionsGetRunLogVerbosityLevel));
+            OrtRunOptionsGetRunLogSeverityLevel = (DOrtRunOptionsGetRunLogSeverityLevel)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsGetRunLogSeverityLevel, typeof(DOrtRunOptionsGetRunLogSeverityLevel));
             OrtRunOptionsGetRunTag = (DOrtRunOptionsGetRunTag)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsGetRunTag, typeof(DOrtRunOptionsGetRunTag));
             OrtRunOptionsSetTerminate = (DOrtRunOptionsSetTerminate)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsSetTerminate, typeof(DOrtRunOptionsSetTerminate));
             OrtRunOptionsUnsetTerminate = (DOrtRunOptionsUnsetTerminate)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsUnsetTerminate, typeof(DOrtRunOptionsUnsetTerminate));
