@@ -297,13 +297,6 @@ DELEGATE_SIMPLE_UNARY_FUNCTION(float, Log, log)
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Sqr, square)
 #undef DELEGATE_SIMPLE_UNARY_FUNCTION
 
-#define DELEGATE_POWX_FUNCTION(T)                                          \
-  template <>                                                              \
-  void Powx<T, CPUMathUtil>(int N, const T* a, T b, T* y, CPUMathUtil*) {  \
-    EigenVectorMap<T>(y, N) = ConstEigenVectorMap<T>(a, N).array().pow(b); \
-  }
-DELEGATE_POWX_FUNCTION(float)
-#undef DELEGATE_POWX_FUNCTION
 
 #define EIGEN_SIMPLE_BINARY_FUNCTION(T, Funcname, expr)                                                       \
   template <>                                                                                                 \

@@ -314,6 +314,79 @@ mask_index shall not be provided.)DOC";
       .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QAttention)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Quantization of Multi-Head Self Attention.")
+      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Input(
+          0,
+          "input",
+          "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size",
+          "T1")
+      .Input(
+          1,
+          "weight",
+          "2D input tensor with shape (hidden_size, 3 * hidden_size)",
+          "T2")
+      .Input(
+          2,
+          "bias",
+          "1D input tensor with shape (3 * hidden_size)",
+          "T3")
+      .Input(
+          3,
+          "input_scale",
+          "scale of quantized input tensor. It's a scalar, which means a per-tensor/layer quantization.",
+          "T3")
+      .Input(
+          4,
+          "weight_scale",
+          "scale of weight scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "T3")
+      .Input(
+          5,
+          "mask_index",
+          "Attention mask index with shape (batch_size)",
+          "T4",
+          OpSchema::Optional)
+      .Input(
+          6,
+          "input_zero_point",
+          "zero point of quantized input tensor.It's a scalar, which means a per-tensor/layer quantization.",
+          "T1",
+          OpSchema::Optional)
+      .Input(
+          7,
+          "weight_zero_point",
+          "zero point of quantized weight tensor. It's a scalar, which means a per-tensor/layer quantization.",
+          "T2",
+          OpSchema::Optional)
+      .Output(
+          0,
+          "output",
+          "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
+          "T3")
+      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("T3", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("T4", {"tensor(int32)"}, "Constrain mask index to integer types")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
+
+        // Shape inference
+        // if the input shape doesn't exist, further shape inference is not possible
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+
+        ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
+
+        return;
+      });
+
   static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
 The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
@@ -326,6 +399,7 @@ will be calculated.)DOC";
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(EmbedLayerNormalization_ver1_doc)
+      .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
       .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
       .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1")
       .Input(2, "word_embedding", "2D with shape (,hidden_size)", "T")
@@ -398,6 +472,7 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Skip and Layer Normalization Fusion")
+      .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Input(2, "gamma", "1D input tensor with shape (hidden_size)", "T")
@@ -1201,7 +1276,17 @@ activation and leaky_relu_alpha.)DOC")
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr(
-          "leaky_relu_alpha",
+          "activation_alpha",
+          "",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_beta",
+          "",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_gamma",
           "",
           AttributeProto::FLOAT,
           OPTIONAL_VALUE)

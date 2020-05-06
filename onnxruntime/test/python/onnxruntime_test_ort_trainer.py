@@ -357,6 +357,57 @@ class TestOrtTrainer(unittest.TestCase):
         assert_allclose(expected_test_losses, actual_test_losses, rtol=rtol, err_msg="test loss mismatch")
         assert_allclose(expected_test_accuracies, actual_accuracies, rtol=rtol, err_msg="test accuracy mismatch")
 
+    def testMNISTStateDict(self):
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+
+        mnist = MNISTWrapper()
+        train_loader, test_loader = mnist.get_loaders()
+        model, model_desc = mnist.get_model()
+
+        trainer = mnist.get_trainer(model, model_desc, device)
+        state_dict = trainer.state_dict()
+        assert state_dict == {}
+
+        learningRate = 0.02
+        epoch = 0
+
+        data, target = next(iter(train_loader))
+        data, target = data.to(device), target.to(device)
+        data = data.reshape(data.shape[0], -1)
+
+        loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
+
+        state_dict = trainer.state_dict()
+        assert state_dict.keys() == {'model_.fc1.bias', 'model_.fc1.weight', 'model_.fc2.bias', 'model_.fc2.weight'}
+
+    def testMNISTSaveAsONNX(self):
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+        onnx_file_name = 'mnist.onnx'
+        if os.path.exists(onnx_file_name):
+            os.remove(onnx_file_name)
+
+        mnist = MNISTWrapper()
+        train_loader, test_loader = mnist.get_loaders()
+        model, model_desc = mnist.get_model()
+
+        trainer = mnist.get_trainer(model, model_desc, device)
+        trainer.save_as_onnx(onnx_file_name)
+        assert not os.path.exists(onnx_file_name)
+
+        learningRate = 0.02
+        epoch = 0
+
+        data, target = next(iter(train_loader))
+        data, target = data.to(device), target.to(device)
+        data = data.reshape(data.shape[0], -1)
+
+        loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
+
+        trainer.save_as_onnx(onnx_file_name)
+        assert os.path.exists(onnx_file_name)
+
     def testBertTrainingBasic(self):
         expected_losses = [
             11.02906322479248, 11.094074249267578, 11.00899887084961, 11.06129264831543,
