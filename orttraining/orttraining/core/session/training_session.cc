@@ -126,16 +126,18 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.data_parallel_size,
                                          config.distributed_config.horizontal_parallel_size});
 
-  // derive actual set of weights to train
-  std::unordered_set<std::string> weights_to_train =
+  // We need to get trainable weights to prevent constant folding from them. This works well if trainable weights are passed from config.
+  // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
+  // than trainable weights here as it's before transformers. So the constant folding may miss some nodes we actually can fold.
+  std::unordered_set<std::string> excluded_initializers =
       !config.weight_names_to_train.empty()
           ? config.weight_names_to_train
           : GetTrainableModelInitializers(config.immutable_weights);
   for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
-    weights_to_train.erase(weight_name_to_not_train);
+    excluded_initializers.erase(weight_name_to_not_train);
   }
 
-  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(weights_to_train));
+  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(excluded_initializers));
 
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
 
