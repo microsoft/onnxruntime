@@ -338,7 +338,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           |  (0,2,1,3)  (0,2,3,1)    (perm=0,2,1,3)              |
           |         \       /         |                    mask_Unsqueeze(axes=2)
           |      qk_MatMul            |                          |
-          |           |    [B=2]      |              [A=1] mask_Cast(to=1)
+          |           |    [B=2]      |              ([A=1] mask_Cast(to=1))
           |           |   /           |                   \     /
           |        qk_Div             |                 mask_Sub   [A=1000]
           |            \              |                        \   /
@@ -460,14 +460,15 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
     return false;
   }
 
-  // path 2 to find mask. Two possible paths in this case. 
-  std::vector<graph_utils::EdgeEndToMatch> mask_path_part_1{
+  // path 2 to find mask. Unsqueeze -> Unsqueeze -> (Cast) -> Sub -> Mul -> Add -> Softmax
+  // The "Cast" node in parentheses is optional. 
+  std::vector<graph_utils::EdgeEndToMatch> mask_path{
       {0, 0, "Softmax", {1, 11}, kOnnxDomain},
       {0, 0, "Add", {7}, kOnnxDomain},
       {0, 1, "Mul", {7}, kOnnxDomain},
       {0, 0, "Sub", {7}, kOnnxDomain}};
 
-  if (!graph_utils::FindPath(qkv_matmul, true, mask_path_part_1, edges, logger)) {
+  if (!graph_utils::FindPath(qkv_matmul, true, mask_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for mask");
     return false;
   }
@@ -494,7 +495,6 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
     p_mask_cast = const_cast<Node*>(&edges[0]->GetNode());
     p_mask_unsqueeze_2 = const_cast<Node*>(&edges[1]->GetNode());
     p_mask_unsqueeze_1 = const_cast<Node*>(&edges[2]->GetNode());
-    // return false;
   } else if (graph_utils::FindPath(mask_sub, true, mask_path_format_2, edges, logger)) {
     p_mask_unsqueeze_2 = const_cast<Node*>(&edges[0]->GetNode());
     p_mask_unsqueeze_1 = const_cast<Node*>(&edges[1]->GetNode());
