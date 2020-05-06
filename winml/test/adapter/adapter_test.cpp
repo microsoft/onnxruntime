@@ -13,9 +13,9 @@ static void AdapterTestSetup() {
   
   // for model tests
   std::wstring module_path = FileHelpers::GetModulePath();
-  std::wstring squeezenet_path = module_path + L"squeezenet_modifiedforruntimestests.onnx";
-  std::wstring metadata_path = module_path + L"modelWith2MetaData.onnx";
-  std::wstring float16_path = module_path + L"starry-night-fp16.onnx";
+  std::string squeezenet_path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(module_path + L"squeezenet_modifiedforruntimestests.onnx");
+  std::string metadata_path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(module_path + L"modelWith2MetaData.onnx");
+  std::string float16_path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(module_path + L"starry-night-fp16.onnx");
   winml_adapter_api->CreateModelFromPath(squeezenet_path.c_str(), squeezenet_path.size(), &squeezenet_model);
   winml_adapter_api->CreateModelFromPath(metadata_path.c_str(), metadata_path.size(), &metadata_model);
   winml_adapter_api->CreateModelFromPath(float16_path.c_str(), float16_path.size(), &float16_Model);

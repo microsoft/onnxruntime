@@ -14,8 +14,10 @@
 
 #include <io.h>
 #include <fcntl.h>
+#include <winrt/base.h>
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 #include "core/framework/onnxruntime_typeinfo.h"
+#include "StringHelpers.h"
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
@@ -116,12 +118,13 @@ OrtModel::OrtModel(std::unique_ptr<onnx::ModelProto> model_proto) : model_proto_
 }
 
 // factory methods for creating an ort model from a path
-static OrtStatus* CreateModelProto(const wchar_t* path, std::unique_ptr<onnx::ModelProto>& out) {
+static OrtStatus* CreateModelProto(const char* path, std::unique_ptr<onnx::ModelProto>& out) {
   int file_descriptor;
+  auto wide_path = _winml::Strings::HStringFromUTF8(path);
   _set_errno(0);  // clear errno
   _wsopen_s(
       &file_descriptor,
-      path,
+      wide_path.c_str(),
       O_RDONLY | _O_SEQUENTIAL | _O_BINARY,
       _SH_DENYWR,
       _S_IREAD | _S_IWRITE);
@@ -151,7 +154,7 @@ static OrtStatus* CreateModelProto(const wchar_t* path, std::unique_ptr<onnx::Mo
   return S_OK;
 }
 
-OrtStatus* OrtModel::CreateOrtModelFromPath(const wchar_t* path, size_t len, OrtModel** model) {
+OrtStatus* OrtModel::CreateOrtModelFromPath(const char* path, size_t len, OrtModel** model) {
   ORT_UNUSED_PARAMETER(len);
 
   std::unique_ptr<onnx::ModelProto> model_proto;
@@ -195,7 +198,7 @@ std::unique_ptr<onnx::ModelProto> OrtModel::DetachModelProto() {
   return std::move(model_proto_);
 }
 
-ORT_API_STATUS_IMPL(winmla::CreateModelFromPath, const wchar_t* model_path, size_t size, OrtModel** out) {
+ORT_API_STATUS_IMPL(winmla::CreateModelFromPath, const char* model_path, size_t size, OrtModel** out) {
   API_IMPL_BEGIN
   if (auto status = OrtModel::CreateOrtModelFromPath(model_path, size, out)) {
     return status;
