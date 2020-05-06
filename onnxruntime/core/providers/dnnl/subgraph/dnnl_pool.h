@@ -3,10 +3,8 @@
 
 #pragma once
 #include "core/providers/dnnl/dnnl_fwd.h"
-#include "core/providers/cpu/nn/autopad_type.h"
 #include "core/providers/dnnl/dnnl_execution_provider.h"
 #include "core/providers/dnnl/subgraph/dnnl_kernel.h"
-#include "core/util/math.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -14,9 +12,9 @@ template <typename T>
 class DnnlPool : public DnnlKernel {
  public:
   DnnlPool(const DnnlNode& node,
-             DNNLExecutionProvider* provider,
-             const NodeAttributes& attributes,
-             const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
+           DNNLExecutionProvider* provider,
+           const Provider_NodeAttributes& attributes,
+           const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     op_name_ = node.name;
     ReadAttributes(attributes, attributes_prefix);
   }
@@ -105,9 +103,9 @@ class DnnlPool : public DnnlKernel {
     }
     fwd_desc_ = onnxruntime::make_unique<dnnl::pooling_forward::desc>(
         dnnl::pooling_forward::desc(dnnl::prop_kind::forward_inference, algo,
-                                      *src_md_, *primitive_dst_md_,
-                                      strides_mkl, kernel_mkl,
-                                      padding_left_mkl, padding_right_mkl));
+                                    *src_md_, *primitive_dst_md_,
+                                    strides_mkl, kernel_mkl,
+                                    padding_left_mkl, padding_right_mkl));
 
     fwd_primitive_desc_ = onnxruntime::make_unique<dnnl::pooling_forward::primitive_desc>(
         dnnl::pooling_forward::primitive_desc(*fwd_desc_, cpu_engine));
@@ -200,7 +198,7 @@ class DnnlPool : public DnnlKernel {
       }
 
       auto src_size = fwd_primitive_desc_.get()->src_desc().get_size();
-      src_reorder_buffer_ = IAllocator::MakeUniquePtr<void>(alloc_, src_size);
+      src_reorder_buffer_ = Provider_IAllocator::MakeUniquePtr<void>(alloc_, src_size);
       src_mem_->set_data_handle(src_reorder_buffer_.get());
     } else {
       if (mklnode_ptr_->parent_nodes.empty()) {
@@ -230,7 +228,7 @@ class DnnlPool : public DnnlKernel {
   }
 
  private:
-  void ReadAttributes(const NodeAttributes& attributes,
+  void ReadAttributes(const Provider_NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");
@@ -239,7 +237,7 @@ class DnnlPool : public DnnlKernel {
       bool attr_read = false;
       auto attr = attributes.find(attributes_prefix + "kernel_shape");
       if (attr != attributes.end()) {
-        ONNX_NAMESPACE::AttributeProto proto = attr->second;
+        auto& proto = *attr->second;
         GetIntsAttr(proto, kernel_shape_);
         attr_read = true;
       }
@@ -248,15 +246,15 @@ class DnnlPool : public DnnlKernel {
       std::string auto_padding;
       attr = attributes.find(attributes_prefix + "auto_pad");
       if (attr != attributes.end() &&
-          attr->second.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING) {
-        auto_padding = attr->second.s();
+          attr->second->type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING) {
+        auto_padding = attr->second->s();
       }
       auto_pad_ = StringToAutoPadType(auto_padding);
 
       attr_read = false;
       attr = attributes.find(attributes_prefix + "pads");
       if (attr != attributes.end()) {
-        ONNX_NAMESPACE::AttributeProto proto = attr->second;
+        auto& proto = *attr->second;
         if (GetIntsAttr(proto, pads_) == Status::OK())
           attr_read = true;
       }
@@ -267,7 +265,7 @@ class DnnlPool : public DnnlKernel {
       attr_read = false;
       attr = attributes.find(attributes_prefix + "strides");
       if (attr != attributes.end()) {
-        ONNX_NAMESPACE::AttributeProto proto = attr->second;
+        auto& proto = *attr->second;
         if (GetIntsAttr(proto, strides_) == Status::OK())
           attr_read = true;
       }
@@ -278,7 +276,7 @@ class DnnlPool : public DnnlKernel {
       attr = attributes.find(attributes_prefix + "count_include_pad");
       int64_t temp = 0;
       if (attr != attributes.end()) {
-        ONNX_NAMESPACE::AttributeProto proto = attr->second;
+        auto& proto = *attr->second;
         GetIntAttr(proto, temp);
       }
       count_include_pad_ = (temp != 0);

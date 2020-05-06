@@ -7,6 +7,7 @@
     <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
     <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
+    <Configurations>Debug;Release;RelWithDebInfo</Configurations>
   </PropertyGroup>
 
   <ItemGroup>

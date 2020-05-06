@@ -3,7 +3,7 @@
 
 #pragma once
 
-#ifdef _WIN32
+#ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
