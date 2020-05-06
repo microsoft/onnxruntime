@@ -99,13 +99,6 @@ struct Provider_IAllocator {
   virtual void* Alloc(size_t size) = 0;
   virtual void Free(void* p) = 0;
 
-  static bool CalcMemSizeForArray(size_t nmemb, size_t size, size_t* out) noexcept {
-    return CalcMemSizeForArrayWithAlignment<0>(nmemb, size, out);
-  }
-
-  template <size_t alignment>
-  static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept ORT_MUST_USE_RESULT;
-
   template <typename T>
   static Provider_IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<Provider_IAllocator> allocator, size_t count_or_bytes) {
     if (allocator == nullptr) return nullptr;
@@ -114,10 +107,8 @@ struct Provider_IAllocator {
 
     // if T is not void, 'count_or_bytes' == number of items so allow for that
     if (!std::is_void<T>::value) {
-      // sizeof(void) isn't valid, but the compiler isn't smart enough to ignore that this line isn't
-      // reachable if T is void. use std::conditional to 'use' void* in the sizeof call
-      if (!CalcMemSizeForArray(count_or_bytes, sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type),
-                               &alloc_size)) return nullptr;
+      // TODO: Use internal implementation to get correct sizes
+      return nullptr;
     }
     return Provider_IAllocatorUniquePtr<T>{
         static_cast<T*>(allocator->Alloc(alloc_size)),  // allocate
@@ -126,27 +117,6 @@ struct Provider_IAllocator {
 
   void operator=(const Provider_IAllocator& v) = delete;
 };
-
-template <size_t alignment>
-bool Provider_IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept {
-  static constexpr size_t max_allowed = (static_cast<size_t>(1) << (static_cast<size_t>(std::numeric_limits<size_t>::digits >> 1))) - alignment;
-  static constexpr size_t max_size = std::numeric_limits<size_t>::max() - alignment;
-  static constexpr size_t alignment_mask = alignment - 1;
-  //Indeed, we only need to check if max_size / nmemb < size
-  //max_allowed is for avoiding unnecessary DIV.
-  if (nmemb >= max_allowed && max_size / nmemb < size) {
-    return false;
-  }
-  if (size >= max_allowed &&
-      nmemb > 0 && max_size / nmemb < size) {
-    return false;
-  }
-  if (alignment == 0)
-    *out = size * nmemb;
-  else
-    *out = (size * nmemb + alignment_mask) & ~static_cast<size_t>(alignment_mask);
-  return true;
-}
 
 struct Provider_IDeviceAllocator : Provider_IAllocator {
   virtual bool AllowsArena() const = 0;
