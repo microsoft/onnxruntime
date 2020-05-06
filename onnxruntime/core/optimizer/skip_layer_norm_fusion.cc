@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
+#include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/graph_utils.h"
 #include "float.h"
 #include <deque>
@@ -236,6 +237,15 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
                                                skip_layer_norm_input_defs,
                                                ln_node.MutableOutputDefs(), {}, kMSDomain);
 
+    // Get attribute "epsilon" from "LayerNormalization" node if available. Else, default value 
+    // will be used.
+    NodeAttributes ln_attrs = ln_node.GetAttributes();
+    NodeAttributes::const_iterator epsilon = ln_attrs.find("epsilon");
+    if (epsilon != ln_attrs.end()) {
+      skip_layer_norm_node.AddAttribute("epsilon", epsilon->second);
+    } else {
+      skip_layer_norm_node.AddAttribute("epsilon", contrib::kDefaultSkipLayerNormEpsilon);
+    }
     // Assign provider to this new node. Provider should be same as the provider for old node.
     skip_layer_norm_node.SetExecutionProviderType(ln_node.GetExecutionProviderType());
   }

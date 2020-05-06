@@ -89,6 +89,7 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     onnxruntime_optimizer
     onnxruntime_providers
@@ -173,6 +174,7 @@ endif()
 
 file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/*.py"
+    "${ORTTRAINING_SOURCE_DIR}/test/python/*.py"
 )
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/*.py"

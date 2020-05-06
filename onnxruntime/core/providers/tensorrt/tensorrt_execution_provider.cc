@@ -335,7 +335,8 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 
   // Assign inputs and outputs to subgraph's meta_def
   auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-  meta_def->name = "TRTKernel_" + graph.Name() + "_" + std::to_string(kernels_index++);
+  const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
+  meta_def->name = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + std::to_string(kernels_index++);
   meta_def->domain = kMSDomain;
 
   for (const auto& input : inputs) {

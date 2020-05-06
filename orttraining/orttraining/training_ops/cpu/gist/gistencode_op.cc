@@ -19,14 +19,9 @@ Status GistBinarizeEncoderOp::Compute(OpKernelContext* context) const {
   const TensorShape& shape = X->Shape();
   Tensor* Y = context->Output(0, shape);
   Tensor* Y1 = context->Output(1, shape);
-
   auto X_type = X->DataType();
-
   auto* src = X->template Data<float>();
   auto* dst = Y1->template MutableData<bool>();
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
   for (int64_t i = 0; i < X->Shape().Size(); ++i) {
     dst[i] = src[i] > 0.0;
   }

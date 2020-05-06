@@ -56,7 +56,7 @@ class KernelRegistryManager {
   /**
    * Whether this node can be run on this provider
    */
-  bool HasImplementationOf(const Node& node, const std::string& provider_type) const;
+  static bool HasImplementationOf(const KernelRegistryManager& r, const Node& node, const std::string& provider_type);
 
   /**
    * Search kernel registry by provider type.

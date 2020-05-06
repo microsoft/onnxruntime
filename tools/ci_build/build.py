@@ -258,6 +258,8 @@ def parse_arguments():
     parser.add_argument(
         "--use_dnnlibrary", action='store_true', help="Build with DNNLibrary.")
     parser.add_argument(
+        "--use_rknpu", action='store_true', help="Build with RKNPU.")
+    parser.add_argument(
         "--use_preinstalled_eigen", action='store_true',
         help="Use pre-installed Eigen.")
     parser.add_argument("--eigen_path", help="Path to pre-installed Eigen.")
@@ -560,10 +562,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_OPENVINO_BINARY=" + (
             "ON" if args.use_openvino else "OFF"),
         "-Donnxruntime_USE_NNAPI=" + ("ON" if args.use_dnnlibrary else "OFF"),
+        "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
         "-Donnxruntime_USE_OPENMP=" + (
             "ON" if args.use_openmp and not (
                 args.use_dnnlibrary or args.use_mklml or args.use_ngraph or
-                args.android or (args.ios and is_macOS()))
+                args.android or (args.ios and is_macOS()) or args.use_rknpu)
             else "OFF"),
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
@@ -1006,18 +1009,27 @@ def adb_push(source_dir, src, dest, **kwargs):
 def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
 
-def run_training_python_frontend_e2e_tests(args, cwd, dll_path):
+def run_training_python_frontend_e2e_tests(args, cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
-    run_subprocess(
-        [sys.executable, 'onnxruntime_test_ort_trainer_with_mixed_precision.py'],
-        cwd=cwd, dll_path=dll_path)
+    run_subprocess([sys.executable, 'orttraining_test_transformers.py'], cwd=cwd)
+
+    run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
+
+    run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer_with_mixed_precision.py'], cwd=cwd)
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                           enable_tvm=False, enable_tensorrt=False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
+
+        if args.enable_training and args.use_cuda and args.enable_training_python_frontend_e2e_tests:
+            # run frontend tests for orttraining-linux-gpu-frontend_test-ci-pipeline.
+            # this is not a PR merge test so skip other tests.
+            run_training_python_frontend_e2e_tests(args, cwd=cwd)
+            continue
+
         android_x86_64 = args.android_abi == 'x86_64'
         if android_x86_64:
             run_subprocess(os.path.join(
@@ -1098,10 +1110,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                 run_subprocess(
                     [sys.executable, 'onnxruntime_test_training_unit_tests.py'],
                     cwd=cwd, dll_path=dll_path)
-
-                # run additional frontend tests for orttraining-linux-gpu-frontend_test_ci-pipeline
-                if args.enable_training_python_frontend_e2e_tests:
-                    run_training_python_frontend_e2e_tests(args, cwd=cwd, dll_path=dll_path)
 
             try:
                 import onnx  # noqa

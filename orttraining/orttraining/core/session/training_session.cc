@@ -124,7 +124,8 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.local_rank,
                                          config.distributed_config.local_size,
                                          config.distributed_config.data_parallel_size,
-                                         config.distributed_config.horizontal_parallel_size});
+                                         config.distributed_config.horizontal_parallel_size,
+                                         config.distributed_config.pipeline_stage_size});
 
   // We need to get trainable weights to prevent constant folding from them. This works well if trainable weights are passed from config.
   // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
