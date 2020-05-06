@@ -582,7 +582,7 @@ You can get all these information from the previous output, please be sure they 
 ##### 3. (optional) Setup sysroot to enable python extension. 
    (Skip this part if you don't use python)
    
-   Dump the root file system of the target operating system to your build machine. We'll call that folder "sysroot" and use it for build onnxruntime python extension. Before doing that, you should install python3 dev package(which contains the C header files) and numpy python package on the target machine first. However, you can't install numpy in manylinux2014, it just doesn't work.
+   Dump the root file system of the target operating system to your build machine. We'll call that folder "sysroot" and use it for build onnxruntime python extension. Before doing that, you should install python3 dev package(which contains the C header files) and numpy python package on the target machine first.
    
    Below are some examples.
    
@@ -636,14 +636,18 @@ Ubuntu:
 ```bash
 docker run -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -it --rm quay.io/pypa/manylinux2014_aarch64 /bin/bash
 ```
-The "-v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static"  arg is not needed on Fedora. 
+The "-v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static" arg is not needed on Fedora.
 
 Then, inside the docker, run
 ```bash
-/opt/python/cp37-cp37m/bin/python3  -m pip install numpy==1.16.6
+cd /opt/python
+./cp35-cp35m/bin/python -m pip install numpy==1.16.6
+./cp36-cp36m/bin/python -m pip install numpy==1.16.6
+./cp37-cp37m/bin/python -m pip install numpy==1.16.6
+./cp38-cp38/bin/python -m pip install numpy==1.16.6
 ```
 
-In a second windows, run 
+These commands will take a few hours because numpy doesn't have such a prebuilt package yet. When it is finished, open a second window and run
 ```bash
 docker ps
 ```
@@ -652,7 +656,7 @@ From the output:
 CONTAINER ID        IMAGE                                COMMAND             CREATED             STATUS              PORTS               NAMES
 5a796e98db05        quay.io/pypa/manylinux2014_aarch64   "/bin/bash"         3 minutes ago       Up 3 minutes                            affectionate_cannon
 ```
-You'll see the docker instance id is: 5a796e98db05. Then run
+You'll see the docker instance id is: 5a796e98db05. Then please use the following command to export the root filesystem as the sysroot for future use.
 
 ```bash
 docker export 5a796e98db05 -o manylinux2014_aarch64.tar
