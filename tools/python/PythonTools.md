@@ -5,14 +5,14 @@
 Provides helpers for creating ONNX test directories that can be run using onnx_test_runner and onnxruntime_perf_test.
 
 In order to import ort_test_dir_utils you need to either 
-  - run python from the `<onnxruntime root dir`>\tools\python directory
+  - run python from the `<onnxruntime root dir`>/tools/python directory
   - add the directory to your PYTHONPATH 
   - add the directory to sys.path prior to importing
 
 e.g. to add to sys.path
 ```python 
 import sys
-sys.path.append('<onnxruntime root dir>\tools\python')
+sys.path.append('<onnxruntime root dir>/tools/python')
 
 import ort_test_dir_utils
 ```
@@ -52,14 +52,14 @@ import ort_test_dir_utils
 import onnx_test_data_utils
 
 # example model with two float32 inputs called 'input1' (dims: {2, 1}) and 'input2' (dims: {'dynamic', 4})
-model_path = r'<onnxruntime root dir>\onnxruntime\test\testdata\transform\expand_elimination.onnx'
+model_path = '<onnxruntime root dir>/onnxruntime/test/testdata/transform/expand_elimination.onnx'
 
 # when using the default data generation any symbolic dimension values must be provided
 symbolic_vals = {'dynamic':2} # provide value for symbolic dim named 'dynamic' in 'input2'
 
 # let create_test_dir create random input in the (arbitrary) default range of -10 to 10. 
 # it will create data of the correct type based on the model.
-ort_test_dir_utils.create_test_dir(model_path, r'd:\temp\examples', 'test1', symbolic_dim_values_map=symbolic_vals)
+ort_test_dir_utils.create_test_dir(model_path, 'temp/examples', 'test1', symbolic_dim_values_map=symbolic_vals)
 
 # alternatively some or all input can be provided directly. any missing inputs will have random data generated.
 # symbolic dimension values are only required for input data that is randomly generated,
@@ -67,10 +67,10 @@ ort_test_dir_utils.create_test_dir(model_path, r'd:\temp\examples', 'test1', sym
 inputs = {'input1': np.array([100, 200]).reshape((2,1)).astype(np.float32),
           'input2': np.random.randn(2,4).astype(np.float32)} # use 2 for the 'dynamic' dimension so shape is {2, 4}
 
-ort_test_dir_utils.create_test_dir(model_path, r'd:\temp\examples', 'test2', name_input_map=inputs)
+ort_test_dir_utils.create_test_dir(model_path, 'temp/examples', 'test2', name_input_map=inputs)
 
 # can easily dump the input and output to visually check it's as expected
-onnx_test_data_utils.dump_pb(r'd:\temp\examples\test2\test_data_set_0')
+onnx_test_data_utils.dump_pb('temp/examples/test2/test_data_set_0')
 ```
 
 ### Running the test using python
@@ -96,8 +96,8 @@ import sys
 import ort_test_dir_utils
 
 try:
-    ort_test_dir_utils.run_test_dir(r'd:\temp\examples\test1')
-    ort_test_dir_utils.run_test_dir(r'd:\temp\examples\test2\expand_elimination.onnx')
+    ort_test_dir_utils.run_test_dir('temp/examples/test1')
+    ort_test_dir_utils.run_test_dir('temp/examples/test2/expand_elimination.onnx')
 except:
     print("Exception:", sys.exc_info()[1])
 ```
