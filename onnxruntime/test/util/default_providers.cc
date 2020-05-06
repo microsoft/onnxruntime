@@ -18,6 +18,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi();
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 
@@ -81,6 +82,14 @@ std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider(bool allow_un
 std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
 #ifdef USE_NNAPI
   return CreateExecutionProviderFactory_Nnapi()->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider() {
+#ifdef USE_RKNPU
+  return CreateExecutionProviderFactory_Rknpu()->CreateProvider();
 #else
   return nullptr;
 #endif
