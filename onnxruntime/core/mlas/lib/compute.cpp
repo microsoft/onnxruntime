@@ -63,6 +63,20 @@ MLAS_INTERNAL_DATA const struct {
 
 MLAS_INTERNAL_DATA const float MlasMinimumF32Value = std::numeric_limits<float>::lowest();
 
+//
+// Define the parameters to execute segments of a softmax operation on worker
+// threads.
+//
+
+struct MLAS_SOFTMAX_WORK_BLOCK {
+    int32_t ThreadCountN;
+    bool LogSoftmax;
+    const float* Input;
+    float* Output;
+    size_t N;
+    size_t D;
+};
+
 MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasComputeExpVector(
@@ -394,6 +408,39 @@ Return Value:
 
         MLAS_FLOAT32X4 AccumulatorVector = MlasZeroFloat32x4();
 
+#if !defined(MLAS_SSE2_INTRINSICS)
+
+        //
+        // Unroll the loop for architectures that can benefit from improved
+        // instruction level parallelism.
+        //
+        // N.B. The extra code size is not worth the benefit for SSE2 as the
+        // MLAS_TARGET_AMD64 build already has specialized AVX2/AVX512F kernels
+        // that do this.
+        //
+
+        while (N >= 8) {
+
+            MLAS_FLOAT32X4 Vector0 = MlasLoadFloat32x4(Input);
+            MLAS_FLOAT32X4 Vector1 = MlasLoadFloat32x4(Input + 4);
+
+            Vector0 = MlasComputeSumExpVector(Vector0, NegativeMaximumVector);
+            Vector1 = MlasComputeSumExpVector(Vector1, NegativeMaximumVector);
+            AccumulatorVector = MlasAddFloat32x4(AccumulatorVector, Vector0);
+            AccumulatorVector = MlasAddFloat32x4(AccumulatorVector, Vector1);
+
+            if (Output != nullptr) {
+                MlasStoreFloat32x4(Output, Vector0);
+                MlasStoreFloat32x4(Output + 4, Vector1);
+                Output += 8;
+            }
+
+            Input += 8;
+            N -= 8;
+        }
+
+#endif
+
         while (N >= 4) {
 
             MLAS_FLOAT32X4 Vector = MlasLoadFloat32x4(Input);
@@ -660,27 +707,44 @@ Return Value:
     }
 }
 
-struct MLAS_SOFTMAX_WORK_BLOCK {
-    int32_t ThreadCountN;
-    bool LogSoftmax;
-    const float* Input;
-    float* Output;
-    size_t N;
-    size_t D;
-};
-
 void
 MlasComputeSoftmaxThreaded(
     void* Context,
     int32_t Index
     )
+/*++
+
+Routine Description:
+
+    This routine is invoked from a worker thread to execute a segment of a
+    softmax or log softmax operation.
+
+Arguments:
+
+    Context - Supplies the pointer to the context for the threaded operation.
+
+    ThreadId - Supplies the current index of the threaded operation.
+
+Return Value:
+
+    None.
+
+--*/
 {
     const auto* WorkBlock = (MLAS_SOFTMAX_WORK_BLOCK*)Context;
+
+    //
+    // Partition the operation along the N dimension.
+    //
 
     size_t n;
     size_t CountN;
 
     MlasPartitionWork(Index, WorkBlock->ThreadCountN, WorkBlock->N, &n, &CountN);
+
+    //
+    // Compute the softmax or log softmax function.
+    //
 
     const size_t D = WorkBlock->D;
     const bool LogSoftmax = WorkBlock->LogSoftmax;
@@ -689,6 +753,10 @@ MlasComputeSoftmaxThreaded(
     float* Output = WorkBlock->Output + n * D;
 
     while (CountN > 0) {
+
+        //
+        // Find the maximum value for the row.
+        //
 
 #if defined(MLAS_TARGET_AMD64)
         float Maximum = MlasPlatform.ReduceMaximumF32Kernel(Input, D);
@@ -699,11 +767,19 @@ MlasComputeSoftmaxThreaded(
 
         if (LogSoftmax) {
 
+            //
+            // Compute the sum of the exponential functions for the row.
+            //
+
 #if defined(MLAS_TARGET_AMD64)
             float Accumulation = MlasPlatform.ComputeSumExpF32Kernel(Input, nullptr, D, &NegativeMaximum);
 #else
             float Accumulation = MlasComputeSumExpF32Kernel(Input, nullptr, D, &NegativeMaximum);
 #endif
+
+            //
+            // Compute the log softmax output.
+            //
 
             float Parameters[] = { NegativeMaximum, std::log(Accumulation)};
 
@@ -715,11 +791,20 @@ MlasComputeSoftmaxThreaded(
 
         } else {
 
+            //
+            // Compute the exponential function for each element of the row and
+            // compute the sum of these exponential functions.
+            //
+
 #if defined(MLAS_TARGET_AMD64)
             float Accumulation = MlasPlatform.ComputeSumExpF32Kernel(Input, Output, D, &NegativeMaximum);
 #else
             float Accumulation = MlasComputeSumExpF32Kernel(Input, Output, D, &NegativeMaximum);
 #endif
+
+            //
+            // Normalize the softmax output.
+            //
 
             float Parameters[] = { 1.0f / Accumulation };
 
@@ -746,15 +831,70 @@ MlasComputeSoftmax(
     bool LogSoftmax,
     MLAS_THREADPOOL* ThreadPool
     )
+/*++
+
+Routine Description:
+
+    This routine computes the softmax or log softmax function.
+
+    N.B. This implementation supports in place updates of the output buffer.
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    Output - Supplies the output buffer.
+
+    N - Supplies the number of rows to process.
+
+    D - Supplies the number of columns per row to process.
+
+    LogSoftmax - Supplies true if this is a log softmax operation, else false
+        if this is a softmax operation.
+
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
+Return Value:
+
+    None.
+
+--*/
 {
     MLAS_SOFTMAX_WORK_BLOCK WorkBlock;
 
-    WorkBlock.ThreadCountN = 1;
+    //
+    // Capture the softmax parameters to the work block.
+    //
+
     WorkBlock.LogSoftmax = LogSoftmax;
     WorkBlock.Input = Input;
     WorkBlock.Output = Output;
     WorkBlock.N = N;
     WorkBlock.D = D;
 
-    MlasExecuteThreaded(MlasComputeSoftmaxThreaded, &WorkBlock, WorkBlock.ThreadCountN, ThreadPool);
+    //
+    // Compute the number of target threads given the complexity of the softmax
+    // operation. Limit the number of threads to the number of rows and try to
+    // keep each thread processing a minimum number of elements before using
+    // another thread.
+    //
+
+    int32_t ThreadCountN = MlasGetMaximumThreadCount(ThreadPool);
+
+    if (size_t(ThreadCountN) > N) {
+        ThreadCountN = int32_t(N);
+    }
+
+    constexpr size_t MinimumElementsPerThread = 16384;
+
+    size_t BlockCount = ((N * D) / MinimumElementsPerThread) + 1;
+
+    if (size_t(ThreadCountN) > BlockCount) {
+        ThreadCountN = int32_t(BlockCount);
+    }
+
+    WorkBlock.ThreadCountN = ThreadCountN;
+
+    MlasExecuteThreaded(MlasComputeSoftmaxThreaded, &WorkBlock, ThreadCountN, ThreadPool);
 }
