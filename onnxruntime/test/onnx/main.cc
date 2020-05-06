@@ -855,5 +855,6 @@ int main(int argc, char* argv[]) {
     retval = -1;
   }
   ::google::protobuf::ShutdownProtobufLibrary();
+  std::cout << "*** Exiting Test Runner\r\n";
   return retval;
 }
