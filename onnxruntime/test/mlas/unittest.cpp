@@ -2119,7 +2119,7 @@ private:
         for (size_t nd = 0; nd < N * D; nd++) {
             float diff = std::fabs(Output[nd] - OutputReference[nd]);
             if (diff > AbsoluteTolerance && diff > std::fabs(OutputReference[nd]) * RelativeTolerance) {
-                printf("softmax(%d) difference: %u/%u %.8f %.8f\n", LogSoftmax, unsigned(N), unsigned(D), Output[nd], OutputReference[nd]);
+                printf("softmax(%d) difference: %u/%u %.8f %.8f\n", int32_t(LogSoftmax), unsigned(N), unsigned(D), Output[nd], OutputReference[nd]);
             }
         }
     }
