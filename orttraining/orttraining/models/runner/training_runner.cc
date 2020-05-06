@@ -277,15 +277,18 @@ Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_
   ORT_RETURN_IF_ERROR(TrainingLoop(*training_data_loader, test_data_loader));
 
   // after successful Run(), update counters
-  round_++;
+  ++round_;
   step_ = 0;
 
   return Status::OK();
 }
 
 // Prepare feeds for a call to one session run.
-Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loader,
-                                                LearningRateScheduler& lr_scheduler,
+Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
+                                                IDataLoader& training_data_loader,
+                                                DataSet& training_data,
+                                                LearningRateScheduler* lr_scheduler,
+                                                LossScaler* loss_scaler, 
                                                 const size_t batch_index,
                                                 std::vector<std::string>& feed_names,
                                                 std::vector<MLValue>& feeds) {
@@ -298,9 +301,8 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
 
   // Pick up feeds from data loader
   {
-    auto training_data = training_data_loader.CurrentDataSet();
     std::vector<std::string> data_feed_names = training_data_loader.DataSetTensorNames();
-    std::vector<MLValue> data_feeds = training_data->GetKthBatch(params_.batch_size, batch_index, input_allocator_);
+    std::vector<MLValue> data_feeds = training_data.GetKthBatch(params_.batch_size, batch_index, input_allocator_);
     for (size_t i = 0; i < data_feed_names.size(); ++i) {
       const auto name = data_feed_names[i];
       if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
@@ -311,11 +313,11 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
   }
 
   // Pick up feed from loss scaling.
-  if (loss_scaler_) {
-    const auto name = loss_scaler_->GetLossScaleInputName();
+  if (loss_scaler) {
+    const auto name = loss_scaler->GetLossScaleInputName();
     if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
       feed_names.push_back(name);
-      const float loss_scale = loss_scaler_->GetLossScale();
+      const float loss_scale = loss_scaler->GetLossScale();
       OrtValue loss_scale_val;
       TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val, input_allocator_);
       feeds.push_back(loss_scale_val);
@@ -327,7 +329,8 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
     const auto name = params_.lr_params.feed_name;
     if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
       feed_names.push_back(name);
-      const float learning_rate = lr_scheduler.GetLearningRate(step_ + 1);
+      // learning rate is 1 if there is no learning-rate scheduler. Otherwise, learning rate is obtained from the scheduler.
+      const float learning_rate = lr_scheduler ? lr_scheduler->GetLearningRate(step_ + 1) : 0.0f;
       OrtValue lr_val;
       TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{learning_rate}, &lr_val, input_allocator_);
       feeds.push_back(lr_val);
@@ -339,9 +342,10 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
     ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.forward_waited_event_name);
     OrtValue event_id;
-    const int64_t id = pipeline_schedule_.GetForwardWaitedEventId(
+    const int64_t id = mode == EvaluateStep ? -1 : pipeline_schedule_.GetForwardWaitedEventId(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+    std::cout << id << std::endl;
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -354,9 +358,10 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
     ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.forward_recorded_event_name);
     OrtValue event_id;
-    const int64_t id = pipeline_schedule_.GetForwardRecordedEventId(
+    const int64_t id = mode == EvaluateStep ? -1 : pipeline_schedule_.GetForwardRecordedEventId(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+    std::cout << id << std::endl;
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -369,9 +374,10 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
     ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.backward_waited_event_name);
     OrtValue event_id;
-    const int64_t id = pipeline_schedule_.GetBackwardWaitedEventId(
+    const int64_t id = mode == EvaluateStep ? -1 : pipeline_schedule_.GetBackwardWaitedEventId(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+    std::cout << id << std::endl;
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -384,9 +390,10 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
     ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.backward_recorded_event_name);
     OrtValue event_id;
-    int64_t id = pipeline_schedule_.GetBackwardRecordedEventId(
+    int64_t id = mode == EvaluateStep ? -1 : pipeline_schedule_.GetBackwardRecordedEventId(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+    std::cout << id << std::endl;
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -397,7 +404,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
   return Status::OK();
 }
 
-Status TrainingRunner::PrepareFetchNamesAndFetches(const bool do_weight_update,
+Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
                                                    std::vector<std::string>& fetch_names,
                                                    std::vector<MLValue>& fetches) {
   // Initialize outputs of this function.
@@ -406,7 +413,7 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const bool do_weight_update,
 
   const auto& allowed_fetch_names = pipeline_context_.fetch_names;
 
-  if (do_weight_update) {
+  if (mode == ModelUpdateStep) {
     // Set up tensor to be fetched when doing model update. 
 
     if (params_.pipeline_parallel_size > 1) {
@@ -435,7 +442,7 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const bool do_weight_update,
         fetch_names.push_back(it->second);
       }
     }
-  } else {
+  } else if (mode == GradientAccumulateStep) {
     // Set up tensor to be fetched when doing gradient accumulation. 
 
     if (params_.gradient_accumulation_steps > 1) {
@@ -459,6 +466,26 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const bool do_weight_update,
         if (!pipeline_context_.backward_recorded_output_name.empty()) {
           fetch_names.push_back(pipeline_context_.backward_recorded_output_name);
         }
+    }
+  } else if (mode == EvaluateStep) {
+    // Set up tensor to be fetched when doing model evaluation.
+    // Ideally, this path should not fetch optimizer and gradient accumulation. 
+    // This path may fetch predicted scores, loss value, and so on.
+
+    if (params_.pipeline_parallel_size > 1) {
+      // If pipeline is used, we need to filter out fetches which are not in this pipeline stage.
+
+      for (size_t i = 0; i < params_.fetch_names.size(); ++i) {
+        const auto name = params_.fetch_names[i];
+        auto it = std::find(allowed_fetch_names.begin(), allowed_fetch_names.end(), name);
+        if (it == allowed_fetch_names.end()) {
+          continue;
+        }
+        fetch_names.push_back(name);
+      }
+    } else {
+      // No pipeline. All fetched names should appear in the graph handled by this process.
+      fetch_names = params_.fetch_names;
     }
   }
 
@@ -600,15 +627,33 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         std::vector<MLValue> feeds;
         std::vector<MLValue> fetches;
 
-        PrepareFeedNamesAndFeeds(training_data_loader, *lr_scheduler, batch, feed_names, feeds);
-
-        PrepareFetchNamesAndFetches(is_weight_update_step, fetch_names, fetches);
-
         auto start = std::chrono::high_resolution_clock::now();
 
         if (is_weight_update_step) {
+          PrepareFeedNamesAndFeeds(ModelUpdateStep,
+                                  training_data_loader,
+                                  *training_data,
+                                  lr_scheduler.get(),
+                                  loss_scaler_.get(),
+                                  batch,
+                                  feed_names,
+                                  feeds);
+          PrepareFetchNamesAndFetches(ModelUpdateStep,
+                                      fetch_names,
+                                      fetches);
           RunWithUpdate(feed_names, fetch_names, feeds, fetches);
         } else {
+          PrepareFeedNamesAndFeeds(GradientAccumulateStep,
+                                  training_data_loader,
+                                  *training_data,
+                                  lr_scheduler.get(),
+                                  loss_scaler_.get(),
+                                  batch,
+                                  feed_names,
+                                  feeds);
+          PrepareFetchNamesAndFetches(GradientAccumulateStep,
+                                      fetch_names,
+                                      fetches);
           RunWithoutUpdate(feed_names, fetch_names, feeds, gradient_accumulation_step_count); 
         }
 
@@ -671,7 +716,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       }
     }  // end of one epoch
 
-    epoch++;
+    ++epoch;
   }
 
   std::cout << "Round: " << round_ << "\n"
@@ -695,12 +740,7 @@ Status TrainingRunner::EndTraining(IDataLoader* data_loader) {
     std::cout << "Profiler data written to file " << profile_file << "\n";
   }
 
-  if (params_.mpi_context.world_rank != 0) {
-    printf("Skipping end-training on Device #%d, as it's not the root.\n", params_.mpi_context.world_rank);
-    return Status::OK();
-  }
-
-  if (params_.pipeline_parallel_size == 1 && data_loader) {
+  if (data_loader) {
     // Test the in-memory model before saving.
     printf("\nEvaluating the final model on the test set.\n");
     ORT_RETURN_IF_ERROR(Evaluate(session_, *data_loader));
@@ -738,18 +778,8 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
     return Status::OK();
   }
 
-  if (params_.mpi_context.world_rank != 0) {
-    printf("Skipping evaluation on Device #%d, as it's not the root.\n", params_.mpi_context.world_rank);
-    return Status::OK();
-  }
-
   // A static batch index representing current test batch
   static size_t current_batch = 0;
-  std::vector<std::string> feed_names = data_loader.DataSetTensorNames();
-  if (loss_scaler_) {
-    feed_names.push_back(loss_scaler_->GetLossScaleInputName());
-  }
-  feed_names.push_back(params_.lr_params.feed_name);
   auto test_data = data_loader.CurrentDataSet();
   if (params_.shuffle_data && current_batch == 0) {
     printf("Randomly shuffle test data.\n");
@@ -772,28 +802,38 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
         num_batches * params_.batch_size);
   }
 
-  OrtValue loss_scale_val;
-  TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{params_.loss_scale}, &loss_scale_val);
-
   RunOptions run_options;
-  run_options.only_execute_path_to_fetches = true;
   for (size_t batch_idx = 0; batch_idx < num_batches; ++batch_idx) {
-    std::vector<MLValue> feeds = test_data->GetKthBatch(params_.batch_size, current_batch);
-    if (loss_scaler_) {
-      feeds.push_back(loss_scale_val);
-    }
-    OrtValue lr_ort_val;
-    TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{params_.lr_params.initial_lr}, &lr_ort_val);
-    feeds.push_back(lr_ort_val);
+    std::vector<std::string> feed_names;
+    std::vector<MLValue> feeds;
+    std::vector<std::string> fetch_names;
     std::vector<MLValue> fetches;
+
+    PrepareFeedNamesAndFeeds(EvaluateStep,
+                             data_loader,
+                             *test_data,
+                             nullptr,
+                             loss_scaler_.get(),
+                             batch_idx,
+                             feed_names,
+                             feeds);
+
+    PrepareFetchNamesAndFetches(EvaluateStep,
+                                fetch_names,
+                                fetches);
+
     ORT_RETURN_IF_ERROR(session.Run(run_options,
                                     feed_names,
                                     feeds,
-                                    params_.fetch_names,
+                                    fetch_names,
                                     &fetches));
 
+    // Assume that user-specified fetches are avaliable only on the last pipeline stage. 
+    const bool session_can_see_loss = params_.pipeline_parallel_size == 1 ||
+      pipeline_context_.pipeline_stage_id == params_.pipeline_parallel_size - 1;
+
     // Call error function
-    if (params_.error_function) {
+    if (session_can_see_loss && params_.error_function) {
       params_.error_function(feed_names, feeds, params_.fetch_names, fetches, step_);
     }
 

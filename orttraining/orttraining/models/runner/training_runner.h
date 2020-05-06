@@ -179,12 +179,16 @@ class TrainingRunner {
   TrainingSession& GetSession() { return session_; }
 
  private:
-  Status PrepareFeedNamesAndFeeds(IDataLoader& training_data_loader,
-                                  LearningRateScheduler& lr_scheduler,
+  enum SessionMode: int {ModelUpdateStep, GradientAccumulateStep, EvaluateStep};
+  Status PrepareFeedNamesAndFeeds(const SessionMode mode,
+                                  IDataLoader& training_data_loader,
+                                  DataSet& training_data,
+                                  LearningRateScheduler* lr_scheduler,
+                                  LossScaler* loss_scaler,
                                   const size_t batch_index,
                                   std::vector<std::string>& feed_names,
                                   std::vector<MLValue>& feeds);
-  Status PrepareFetchNamesAndFetches(const bool do_weight_update,
+  Status PrepareFetchNamesAndFetches(const SessionMode mode,
                                      std::vector<std::string>& fetch_names,
                                      std::vector<MLValue>& fetches);
   Status RunWithUpdate(VectorString& feed_names,
