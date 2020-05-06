@@ -1005,7 +1005,6 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
     auto config = MakeBasicTrainingConfig();
 
     TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
-    pipe.num_pipeline_stages = 3;
     config.pipeline_config = pipe;
 
     PathString backprop_model_file;
