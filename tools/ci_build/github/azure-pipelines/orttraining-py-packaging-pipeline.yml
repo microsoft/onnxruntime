@@ -12,10 +12,6 @@ stages:
     python_version_strategy_matrix:
       Python36:
         python.version: '3.6'
-      Python37:
-        python.version: '3.7'
-      Python38:
-        python.version: '3.8'
 
 - stage: Test_Wheel
   condition: succeededOrFailed()
@@ -26,10 +22,6 @@ stages:
       matrix:
         Python36:
           python.version: '3.6'
-        Python37:
-          python.version: '3.7'
-        Python38:
-          python.version: '3.8'
 
     steps:
     - checkout: self
