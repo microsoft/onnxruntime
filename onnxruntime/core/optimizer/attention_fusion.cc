@@ -503,14 +503,13 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
     return false;
   }
   
-  const Node& mask_cast = *p_mask_cast;
   const Node& mask_unsqueeze_2 = *p_mask_unsqueeze_2;
   const Node& mask_unsqueeze_1 = *p_mask_unsqueeze_1;
 
   if (softmax.GetOutputEdgesCount() != 1 ||
       mask_add.GetOutputEdgesCount() != 1 ||
       mask_sub.GetOutputEdgesCount() != 1 ||
-      (p_mask_cast != nullptr && mask_cast.GetOutputEdgesCount() != 1) ||
+      (p_mask_cast != nullptr && (*p_mask_cast).GetOutputEdgesCount() != 1) ||
       mask_unsqueeze_2.GetOutputEdgesCount() != 1 ||
       mask_unsqueeze_1.GetOutputEdgesCount() != 1) {
     DEBUG_LOG("Output edge count not expected for mask nodes");
@@ -711,7 +710,7 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
     nodes_to_remove.push_back(mask_mul.Index());
     nodes_to_remove.push_back(mask_sub.Index());
     if (p_mask_cast != nullptr) {
-      nodes_to_remove.push_back(mask_cast.Index());
+      nodes_to_remove.push_back((*p_mask_cast).Index());
     }
     nodes_to_remove.push_back(mask_unsqueeze_2.Index());
     nodes_to_remove.push_back(mask_unsqueeze_1.Index());
