@@ -19,14 +19,6 @@ namespace Microsoft.ML.OnnxRuntime
         ORT_ENABLE_ALL = 99
     }
 
-    public enum GraphOptimizationLevel
-    {
-        ORT_DISABLE_ALL = 0,
-        ORT_ENABLE_BASIC = 1,
-        ORT_ENABLE_EXTENDED = 2,
-        ORT_ENABLE_ALL = 99
-    }
-
     /// <summary>
     /// Controls whether you want to execute operators in the graph sequentially or in parallel.
     /// Usually when the model has many branches, setting this option to ExecutionMode.ORT_PARALLEL
