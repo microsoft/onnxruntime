@@ -3,7 +3,7 @@ from onnx import helper
 from onnx import TensorProto
 
 graph = helper.make_graph(
-    [ # nodes
+    [  # nodes
         # fusable, const_min_negative should be replaced
         helper.make_node("Conv", ["X", "W"], ["conv0_out"], "Conv0"),
         helper.make_node("Clip", ["conv0_out", "const_min", "const_max"], ["clip0_out"], "Clip0"),
@@ -30,8 +30,7 @@ graph = helper.make_graph(
     [  # initializers
         helper.make_tensor('const_min', TensorProto.FLOAT, [1], [-1.0]),
         helper.make_tensor('const_max', TensorProto.FLOAT, [1], [10.0])
-    ]
-)
+    ])
 
 model = helper.make_model(graph)
 onnx.save(model, r'conv_clip11.onnx')

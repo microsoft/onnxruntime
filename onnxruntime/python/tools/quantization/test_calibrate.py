@@ -16,6 +16,7 @@ import calibrate
 import numpy as np
 from onnx import numpy_helper
 
+
 class TestCalibrate(unittest.TestCase):
 
     def test_augment_graph(self):
@@ -26,7 +27,10 @@ class TestCalibrate(unittest.TestCase):
         D = helper.make_tensor_value_info('D', TensorProto.FLOAT, [1, 1, 5, 5])
         E = helper.make_tensor_value_info('E', TensorProto.FLOAT, [1, 1, 5, 1])
         F = helper.make_tensor_value_info('F', TensorProto.FLOAT, [1, 1, 5, 1])
-        conv_node = onnx.helper.make_node('Conv', ['A', 'B'], ['C'], name='Conv', kernel_shape=[3, 3], pads=[1, 1, 1, 1])
+        conv_node = onnx.helper.make_node('Conv', ['A', 'B'], ['C'],
+                                          name='Conv',
+                                          kernel_shape=[3, 3],
+                                          pads=[1, 1, 1, 1])
         clip_node = onnx.helper.make_node('Clip', ['C'], ['D'], name='Clip')
         matmul_node = onnx.helper.make_node('MatMul', ['D', 'E'], ['F'], name='MatMul')
         graph = helper.make_graph([conv_node, clip_node, matmul_node], 'test_graph', [A, B, E], [F])
@@ -42,8 +46,10 @@ class TestCalibrate(unittest.TestCase):
         augmented_model_outputs = [output.name for output in augmented_model.graph.output]
         added_node_names = ['Conv_ReduceMin', 'Conv_ReduceMax', 'MatMul_ReduceMin', 'MatMul_ReduceMax']
         added_outputs = ['C_ReduceMin', 'C_ReduceMax', 'F_ReduceMin', 'F_ReduceMax']
-        self.assertEqual(len(augmented_model_node_names), 7) # original 3 nodes with 4 added ones
-        self.assertEqual(len(augmented_model_outputs), 5) # original single graph output with 4 added ones
+        # original 3 nodes with 4 added ones
+        self.assertEqual(len(augmented_model_node_names), 7)
+        # original single graph output with 4 added ones
+        self.assertEqual(len(augmented_model_outputs), 5)
         for name in added_node_names:
             self.assertTrue(name in augmented_model_node_names)
         for output in added_outputs:
@@ -77,19 +83,23 @@ class TestCalibrate(unittest.TestCase):
         session = onnxruntime.InferenceSession('augmented_test_model.onnx')
         (samples, channels, height, width) = session.get_inputs()[0].shape
         batch_data = calibrate.load_batch(images_folder, height, width, preprocess_func_name="preprocess_method1")
-        self.assertEqual(len(batch_data.shape), 5) # for 2D images like the ones in test_images
+        # for 2D images like the ones in test_images
+        self.assertEqual(len(batch_data.shape), 5)
         self.assertEqual(batch_data.shape[0], len(os.listdir(images_folder)))
-        self.assertEqual(batch_data.shape[2], 3) # checking for 3 channels for colored image
-        self.assertEqual(batch_data.shape[3], height) # checking if resized height is correct
-        self.assertEqual(batch_data.shape[4], width) # checking if resized width is correct
-    
+        # checking for 3 channels for colored image
+        self.assertEqual(batch_data.shape[2], 3)
+        # checking if resized height is correct
+        self.assertEqual(batch_data.shape[3], height)
+        # checking if resized width is correct
+        self.assertEqual(batch_data.shape[4], width)
+
     def test_load_pb(self):
         numpy_array = np.random.randn(3, 1, 3, 5, 5).astype(np.float32)
         tensor = numpy_helper.from_array(numpy_array)
         test_file_name = 'test_tensor.pb'
         with open(test_file_name, 'wb') as f:
             f.write(tensor.SerializeToString())
-        
+
         # test size_limit < than number of samples in data set
         # expecting to load size_limit number of samples
         batch_data = calibrate.load_pb_file('test_tensor.pb', 2, 1, 3, 5, 5)
@@ -97,9 +107,9 @@ class TestCalibrate(unittest.TestCase):
         self.assertEqual(batch_data.shape[0], 2)
         self.assertEqual(batch_data.shape[2], 3)
         self.assertEqual(batch_data.shape[3], 5)
-        self.assertEqual(batch_data.shape[4], 5) 
+        self.assertEqual(batch_data.shape[4], 5)
 
-        # test size_limit == 0 
+        # test size_limit == 0
         # expecting to load all samples
         batch_data = calibrate.load_pb_file('test_tensor.pb', 0, 1, 3, 5, 5)
         self.assertEqual(len(batch_data.shape), 5)
@@ -121,7 +131,6 @@ class TestCalibrate(unittest.TestCase):
             os.remove('test_tensor.pb')
         except:
             print("Warning: Trying to remove test file {} failed.".format(test_file_name))
-        
 
 
 if __name__ == '__main__':

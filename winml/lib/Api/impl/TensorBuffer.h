@@ -6,10 +6,11 @@
 #include "robuffer.h"
 #include "winrt/Windows.Storage.Streams.h"
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
+
 class VectorBuffer : public winrt::implements<
                          VectorBuffer,
-                         winrt::Windows::Storage::Streams::IBuffer,
+                         wss::IBuffer,
                          Windows::Storage::Streams::IBufferByteAccess> {
  public:
   VectorBuffer(size_t size) : m_buffer(size) {}
@@ -41,7 +42,7 @@ class VectorBuffer : public winrt::implements<
 
 template <typename T>
 class TensorBuffer {
-  winrt::Windows::Storage::Streams::IBuffer m_buffer;
+  wss::IBuffer m_buffer;
   uint32_t m_size;
 
   TensorBuffer(uint32_t size) : m_size(size),
@@ -57,7 +58,7 @@ class TensorBuffer {
 
   TensorBuffer(
       uint32_t size,
-      winrt::Windows::Storage::Streams::IBuffer buffer) : m_size(size),
+      wss::IBuffer buffer) : m_size(size),
                                                           m_buffer(buffer) {}
 
  public:
@@ -69,7 +70,7 @@ class TensorBuffer {
 
   static auto Create(
       uint32_t size,
-      winrt::Windows::Storage::Streams::IBuffer buffer) {
+      wss::IBuffer buffer) {
     return std::shared_ptr<TensorBuffer>(new TensorBuffer(size, buffer));
   }
 
@@ -145,4 +146,4 @@ class TensorBuffer<std::string> {
     std::copy(data, data + size, m_buffer.begin());
   }
 };
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

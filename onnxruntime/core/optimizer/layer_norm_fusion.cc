@@ -12,6 +12,8 @@ namespace onnxruntime {
 
 // LayerNorm supports limited data types.
 static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)"};
+// Default epsilon
+static const float DEFAULT_LAYERNORM_EPSILON = 1e-5f;
 
 static bool IsSupportedDataType(const Node& node) {
   for (const auto& input_arg : node.InputDefs()) {
@@ -24,21 +26,21 @@ static bool IsSupportedDataType(const Node& node) {
 }
 
 /**
-Layer Normalization will fuse LayerNormalization into one node : 
-+---------------------+ 
+Layer Normalization will fuse LayerNormalization into one node :
++---------------------+
 |                     |
-|                     v 
-X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add 
-                      |                                               ^ 
+|                     v
+X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add
+                      |                                               ^
                       |                                               |
                       +-----------------------------------------------+
-It also handles cases of duplicated sub nodes exported from older version of PyTorch : 
-+---------------------+ 
-|                     v 
-|          +-------> Sub ---------------------------------------------+ 
+It also handles cases of duplicated sub nodes exported from older version of PyTorch :
++---------------------+
+|                     v
+|          +-------> Sub ---------------------------------------------+
 |          |                                                          |
-|          |                                                          v 
-X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add 
+|          |                                                          v
+X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add
 |                     ^
 |                     |
 +---------------------+
@@ -169,10 +171,10 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
     nodes_to_remove.push_back(reduce_mean2_node);
-
+    
     // Traceback the reduceMean node to find pow --> reduceMean
     Node& pow_node = *graph.GetNode(reduce_mean2_node.InputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12}) ||
         pow_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         pow_node.GetOutputEdgesCount() != 1 ||
         !IsSupportedDataType(pow_node)) {
@@ -256,11 +258,12 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     // Get constant "epsilon" from "Add2" node if available. Else, default value will be used.
     const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, add2_node.MutableInputDefs()[1]->Name());
-    if (tensor_proto != nullptr) {
-      if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-        auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
-        layer_norm_node.AddAttribute("epsilon", initializer->data<float>()[0]);
-      }
+    if (tensor_proto != nullptr &&
+      tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        Initializer initializer{*tensor_proto, graph.ModelPath()};
+        layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
+    } else {
+      layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
     }
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
@@ -271,9 +274,11 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // remove all the other nodes.
     graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
 
+#ifdef ENABLE_TRAINING
     // add two extra output defs, so we have 3 output defs that match what gradient builder expected
     layer_norm_node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_mean"), nullptr));
     layer_norm_node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_inv_std_var"), nullptr));
+#endif
 
     modified = true;
   }

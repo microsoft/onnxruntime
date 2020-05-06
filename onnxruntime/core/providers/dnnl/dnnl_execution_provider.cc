@@ -5,12 +5,21 @@
 #pragma warning(disable : 4996)
 #endif
 
-#include "core/framework/allocator.h"
-#include "core/framework/compute_capability.h"
-#include "core/framework/kernel_registry.h"
-#include "core/providers/dnnl/subgraph/dnnl_func_kernel.h"
+#include "core/providers/shared_library/provider_api.h"
+#include <unordered_set>
+#include "subgraph/dnnl_func_kernel.h"
 #include "dnnl_execution_provider.h"
 #include "dnnl_fwd.h"
+
+namespace {
+
+struct KernelRegistryAndStatus {
+  std::shared_ptr<onnxruntime::Provider_KernelRegistry> kernel_registry{onnxruntime::Provider_KernelRegistry::Create()};
+
+  Status st;
+};
+
+}  // namespace
 
 namespace onnxruntime {
 
@@ -18,23 +27,21 @@ constexpr const char* DNNL = "Dnnl";
 constexpr const char* DNNL_CPU = "DnnlCpu";
 
 DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kDnnlExecutionProvider} {
-  DeviceAllocatorRegistrationInfo default_memory_info({OrtMemTypeDefault,
-                                                       [](int) { return onnxruntime::make_unique<CPUAllocator>(onnxruntime::make_unique<OrtMemoryInfo>(DNNL, OrtAllocatorType::OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
+    : Provider_IExecutionProvider{onnxruntime::kDnnlExecutionProvider} {
+  Provider_DeviceAllocatorRegistrationInfo default_memory_info({OrtMemTypeDefault,
+                                                                [](int) { return onnxruntime::CreateCPUAllocator(onnxruntime::Provider_OrtMemoryInfo::Create(DNNL, OrtAllocatorType::OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
 
-  DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUOutput,
-                                                   [](int) { return onnxruntime::make_unique<CPUAllocator>(onnxruntime::make_unique<OrtMemoryInfo>(DNNL_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); }, std::numeric_limits<size_t>::max()});
+  Provider_DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUOutput,
+                                                            [](int) { return onnxruntime::CreateCPUAllocator(onnxruntime::Provider_OrtMemoryInfo::Create(DNNL_CPU, OrtAllocatorType::OrtDeviceAllocator, nullptr, 0, OrtMemTypeCPUOutput)); }, std::numeric_limits<size_t>::max()});
 
   if (info.create_arena) {
-    InsertAllocator(CreateAllocator(default_memory_info));
+    Provider_InsertAllocator(CreateAllocator(default_memory_info));
 
-    InsertAllocator(CreateAllocator(cpu_memory_info));
+    Provider_InsertAllocator(CreateAllocator(cpu_memory_info));
   } else {
-    InsertAllocator(std::shared_ptr<IArenaAllocator>(
-        onnxruntime::make_unique<DummyArena>(default_memory_info.factory(0))));
+    Provider_InsertAllocator(onnxruntime::CreateDummyArenaAllocator(default_memory_info.factory(0)));
 
-    InsertAllocator(std::shared_ptr<IArenaAllocator>(
-        onnxruntime::make_unique<DummyArena>(cpu_memory_info.factory(0))));
+    Provider_InsertAllocator(onnxruntime::CreateDummyArenaAllocator(cpu_memory_info.factory(0)));
   }
 }  // namespace onnxruntime
 
@@ -44,29 +51,32 @@ DNNLExecutionProvider::~DNNLExecutionProvider() {
 namespace ort_dnnl {
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDnnlExecutionProvider, kOnnxDomain, 7, Gemm);
 
-void RegisterDNNLKernels(KernelRegistry& kernel_registry) {
-  static const BuildKernelCreateInfoFn function_table[] = {
+Status RegisterDNNLKernels(Provider_KernelRegistry& kernel_registry) {
+  static const Provider_BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDnnlExecutionProvider, kOnnxDomain, 7, Gemm)>,
   };
 
   for (auto& function_table_entry : function_table) {
-    kernel_registry.Register(function_table_entry());
+    ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
   }
+  return Status::OK();
 }
 
-std::shared_ptr<KernelRegistry> GetDnnlKernelRegistry() {
-  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  RegisterDNNLKernels(*kernel_registry);
-  return kernel_registry;
+KernelRegistryAndStatus GetDnnlKernelRegistry() {
+  KernelRegistryAndStatus ret;
+  ret.st = RegisterDNNLKernels(*ret.kernel_registry);
+  return ret;
 }
 }  // namespace ort_dnnl
 
-std::shared_ptr<KernelRegistry> DNNLExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::ort_dnnl::GetDnnlKernelRegistry();
-  return kernel_registry;
+std::shared_ptr<Provider_KernelRegistry> DNNLExecutionProvider::Provider_GetKernelRegistry() const {
+  static KernelRegistryAndStatus k = onnxruntime::ort_dnnl::GetDnnlKernelRegistry();
+  // throw if the registry failed to initialize
+  ORT_THROW_IF_ERROR(k.st);
+  return k.kernel_registry;
 }
 
-bool DNNLExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_viewer) const {
+bool DNNLExecutionProvider::UseSubgraph(const onnxruntime::Provider_GraphViewer& graph_viewer) const {
   bool use_subgraph = true;
 
   bool FP16_graph = false;
@@ -111,12 +121,12 @@ bool DNNLExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_vi
   return use_subgraph;
 }
 
-void DNNLExecutionProvider::CreateOrUpdateDnnlNode(const Node* node,
-                                                       std::shared_ptr<ort_dnnl::Subgraph>& subgraph_ptr,
-                                                       ort_dnnl::Subgraph::SubgraphVariables& sub_var,
-                                                       bool fused,
-                                                       std::map<std::string, size_t>& output_to_source_node_map,
-                                                       NodeAttributes& subgraph_attributes) const {
+void DNNLExecutionProvider::CreateOrUpdateDnnlNode(const Provider_Node* node,
+                                                   std::shared_ptr<ort_dnnl::Subgraph>& subgraph_ptr,
+                                                   ort_dnnl::Subgraph::SubgraphVariables& sub_var,
+                                                   bool fused,
+                                                   std::map<std::string, size_t>& output_to_source_node_map,
+                                                   Provider_NodeAttributes& subgraph_attributes) const {
   const auto& node_inputs = node->InputDefs();
   sub_var.outputs.push_back(node->OutputDefs()[0]->Name());
 
@@ -159,7 +169,7 @@ void DNNLExecutionProvider::CreateOrUpdateDnnlNode(const Node* node,
     }
   }
 
-  NodeAttributes attributes = node->GetAttributes();
+  const Provider_NodeAttributes& attributes = node->GetAttributes();
   if (attributes.size() > 0) {
     size_t index = subgraph_ptr->dnnl_nodes.size();
     std::string op_name;
@@ -173,24 +183,23 @@ void DNNLExecutionProvider::CreateOrUpdateDnnlNode(const Node* node,
 
     for (auto att_it = attributes.begin(); att_it != attributes.end(); ++att_it) {
       std::string key = op_name + "-" + std::to_string(index) + "-" + att_it->first;
-      std::pair<std::string, ONNX_NAMESPACE::AttributeProto> att(key, att_it->second);
       subgraph_attributes[key] = att_it->second;
     }
   }
 }
 
-std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapability(
-    const onnxruntime::GraphViewer& graph_viewer,
-    const std::vector<const KernelRegistry*>& kernel_registries) const {
+std::vector<std::unique_ptr<Provider_ComputeCapability>> DNNLExecutionProvider::Provider_GetCapability(
+    const onnxruntime::Provider_GraphViewer& graph_viewer,
+    const std::vector<const Provider_KernelRegistry*>& kernel_registries) const {
   ORT_UNUSED_PARAMETER(kernel_registries);
 
   if (UseSubgraph(graph_viewer) == false) {
-    return IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
+    return Provider_IExecutionProvider::Provider_GetCapability(graph_viewer, kernel_registries);
   }
 
   LOGS_DEFAULT(INFO) << "Using DNNL Subgraph";
   // use sub-graph implementation
-  std::vector<std::unique_ptr<ComputeCapability>> result;
+  std::vector<std::unique_ptr<Provider_ComputeCapability>> result;
   ort_dnnl::Subgraph::SubgraphVariables sub_var;
   std::shared_ptr<ort_dnnl::Subgraph> subgraph_ptr;
 
@@ -204,7 +213,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
   // output name to node index map. Using it to find sub-graph end nodes
   // if output of a node is not an input to any node in a sub-graph is end node
   std::map<std::string, size_t> output_to_source_node_map;
-  NodeAttributes subgraph_attributes;
+  Provider_NodeAttributes subgraph_attributes;
   int node_index = 0;
 
   while (node_index < graph_viewer.MaxNodeIndex()) {
@@ -344,11 +353,11 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
   return result;
 }
 
-void DNNLExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& graph_viewer,
-                                            const NodeAttributes& subgraph_attributes,
-                                            std::shared_ptr<ort_dnnl::Subgraph>& subgraph_ptr,
-                                            ort_dnnl::Subgraph::SubgraphVariables& sub_var,
-                                            std::vector<std::unique_ptr<ComputeCapability>>& result) const {
+void DNNLExecutionProvider::CreateMetaDef(const onnxruntime::Provider_GraphViewer& graph_viewer,
+                                          const Provider_NodeAttributes& subgraph_attributes,
+                                          std::shared_ptr<ort_dnnl::Subgraph>& subgraph_ptr,
+                                          ort_dnnl::Subgraph::SubgraphVariables& sub_var,
+                                          std::vector<std::unique_ptr<Provider_ComputeCapability>>& result) const {
   std::string graph_fused_nodes;
   std::string node_list;
   std::string subgraph_id = std::to_string(subgraph_index_);
@@ -359,19 +368,19 @@ void DNNLExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& graph_
   std::unordered_set<std::string> input_initializers;
 
   // Create ng_required_initializers attribute of NGraphCustomOp
-  ONNX_NAMESPACE::AttributeProto initializers;
-  initializers.set_name("initializers");
-  initializers.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS);
+  auto initializers = ONNX_NAMESPACE::Provider_AttributeProto::Create();
+  initializers->set_name("initializers");
+  initializers->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS);
 
   for (const auto& init : sub_var.inputs) {
     if (graph_viewer.GetAllInitializedTensors().count(init)) {
-      auto tensor = initializers.add_tensors();
+      auto tensor = initializers->add_tensors();
       *tensor = *(graph_viewer.GetAllInitializedTensors().at(init));
     }
   }
 
-  auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-  meta_def->attributes["initializers"] = initializers;
+  auto meta_def = onnxruntime::make_unique<::onnxruntime::Provider_IndexedSubGraph::MetaDef>();
+  meta_def->attributes["initializers"] = std::move(initializers);
   meta_def->name = "DnnlCustomOp" + std::to_string(subgraph_index_);
   meta_def->domain = kMSDomain;
   meta_def->since_version = 1;
@@ -389,22 +398,22 @@ void DNNLExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& graph_
     }
   }
 
-  ONNX_NAMESPACE::AttributeProto ap;
-  ap.set_s(subgraph_id);
-  ap.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
-  meta_def->attributes["subgraph_id"] = ap;
-  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
-  sub_graph->nodes = sub_var.subgraph_node_indexes;
+  auto ap = ONNX_NAMESPACE::Provider_AttributeProto::Create();
+  ap->set_s(subgraph_id);
+  ap->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
+  meta_def->attributes["subgraph_id"] = std::move(ap);
+  auto sub_graph = onnxruntime::Provider_IndexedSubGraph::Create();
+  sub_graph->Nodes() = sub_var.subgraph_node_indexes;
   sub_graph->SetMetaDef(meta_def);
-  result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+  result.push_back(onnxruntime::make_unique<Provider_ComputeCapability>(std::move(sub_graph)));
   mkl_subgraphs_.insert(std::make_pair(subgraph_id, subgraph_ptr));
 
   // Reset subgraph and meta_Def
   sub_var.Reset();
 }
 
-Status DNNLExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                                        std::vector<NodeComputeInfo>& node_compute_funcs) {
+Status DNNLExecutionProvider::Provider_Compile(const std::vector<onnxruntime::Provider_Node*>& fused_nodes,
+                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto* fused_node : fused_nodes) {
     auto attributes = fused_node->GetAttributes();
     NodeComputeInfo compute_info;
@@ -429,4 +438,5 @@ Status DNNLExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fus
   }
   return Status::OK();
 }
+
 }  // namespace onnxruntime

@@ -12,21 +12,38 @@
     getapi().test_name();                 \
   }
 
-#define WINML_TEST_CLASS_BEGIN_NO_SETUP(test_class_name) \
-  namespace {                                            \
-    class test_class_name : public ::testing::Test {     \
-    };
+#define WINML_TEST_CLASS_BEGIN(test_class_name)      \
+  namespace {                                        \
+    class test_class_name : public ::testing::Test {
 
-#define WINML_TEST_CLASS_BEGIN_WITH_SETUP(test_class_name, setup_method) \
-  namespace {                                                            \
-    class test_class_name : public ::testing::Test {                     \
-    protected:                                                           \
-      void SetUp() override {                                            \
-        getapi().setup_method();                                         \
-      }                                                                  \
-    };
+#define WINML_TEST_CLASS_SETUP_CLASS(setup_class) \
+    protected:                                    \
+      static void SetUpTestSuite() {              \
+        getapi().setup_class();                   \
+      }
 
+#define WINML_TEST_CLASS_TEARDOWN_CLASS(teardown_class) \
+    protected:                                          \
+      static void TearDownTestSuite() {                 \
+        getapi().teardown_class();                      \
+      }
+
+#define WINML_TEST_CLASS_SETUP_METHOD(setup_method) \
+    protected:                                      \
+      void SetUp() override {                       \
+        getapi().setup_method();                    \
+      }
+
+#define WINML_TEST_CLASS_TEARDOWN_METHOD(teardown_method) \
+    protected:                                            \
+      void TearDown() override {                          \
+        getapi().teardown_method();                       \
+      }
+
+#define WINML_TEST_CLASS_BEGIN_TESTS };
+  
 #define WINML_TEST_CLASS_END() }
+
 
 // For old versions of gtest without GTEST_SKIP, stream the message and return success instead
 #ifndef GTEST_SKIP
@@ -51,7 +68,7 @@
 #endif
 
 #define WINML_SKIP_TEST(message) \
-  GTEST_SKIP() << message;
+  WINML_SUPRESS_UNREACHABLE_BELOW(GTEST_SKIP() << message)
 
 #define WINML_EXPECT_NO_THROW(statement) EXPECT_NO_THROW(statement)
 #define WINML_EXPECT_TRUE(statement) EXPECT_TRUE(statement)
@@ -69,17 +86,24 @@
 
 #ifndef USE_DML
 #define GPUTEST \
-  WINML_SUPRESS_UNREACHABLE_BELOW(WINML_SKIP_TEST("GPU tests disabled because this is a WinML only build (no DML)"))
+  WINML_SKIP_TEST("GPU tests disabled because this is a WinML only build (no DML)")
+#define GPUTEST_ENABLED alwaysFalse()
 #else
-#define GPUTEST                                                                         \
-  if (auto noGpuTests = RuntimeParameters::Parameters.find("noGPUtests");               \
-      noGpuTests != RuntimeParameters::Parameters.end() && noGpuTests->second != "0") { \
-    WINML_SKIP_TEST("GPU tests disabled");                                              \
-  }
+#define GPUTEST                                                                               \
+  do {                                                                                        \
+    if (auto no_gpu_tests = RuntimeParameters::Parameters.find("noGPUtests");                 \
+        no_gpu_tests != RuntimeParameters::Parameters.end() && no_gpu_tests->second != "0") { \
+      WINML_SKIP_TEST("GPU tests disabled");                                                  \
+    }                                                                                         \
+  } while (0)
+#define GPUTEST_ENABLED auto _no_gpu_tests = RuntimeParameters::Parameters.find("noGPUtests");    \
+      _no_gpu_tests == RuntimeParameters::Parameters.end() || _no_gpu_tests->second == "0"
 #endif
 
-#define SKIP_EDGECORE                                                                   \
-  if (auto isEdgeCore = RuntimeParameters::Parameters.find("EdgeCore");                 \
-      isEdgeCore != RuntimeParameters::Parameters.end() && isEdgeCore->second != "0") { \
-    WINML_SKIP_TEST("Test can't be run in EdgeCore");                                   \
-  }
+#define SKIP_EDGECORE                                                                         \
+  do {                                                                                        \
+    if (auto is_edge_core = RuntimeParameters::Parameters.find("EdgeCore");                   \
+        is_edge_core != RuntimeParameters::Parameters.end() && is_edge_core->second != "0") { \
+      WINML_SKIP_TEST("Test can't be run in EdgeCore");                                       \
+    }                                                                                         \
+  } while (0)

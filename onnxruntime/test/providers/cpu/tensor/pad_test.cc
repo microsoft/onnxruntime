@@ -49,7 +49,11 @@ static void RunAllOpsetAllDomainPadTests(
   test1.AddAttribute("pads", pads);
   test1.AddAttribute("value", value);
   test1.AddOutput<float>("output", output_dims, output);
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+  test1.Run(expect, error_msg, {kOpenVINOExecutionProvider});
+#else
   test1.Run(expect, error_msg);
+#endif
 
   // ONNX domain opset-11
   RunOpset11TypedTest<float>(input_dims,
@@ -70,7 +74,7 @@ static void RunAllOpsetAllDomainPadTests(
   test3.AddInput<float>("value", {1}, {value});
   test3.AddOutput<float>("output", output_dims, output);
   //TensorRT does not support pads as an input
-  test3.Run(expect, error_msg, {kTensorrtExecutionProvider});
+  test3.Run(expect, error_msg, {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});
 
 #endif
 }

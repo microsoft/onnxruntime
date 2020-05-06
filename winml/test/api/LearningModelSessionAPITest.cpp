@@ -16,23 +16,22 @@
 #include "Psapi.h"
 
 using namespace winrt;
-using namespace winrt::Windows::AI::MachineLearning;
-using namespace winrt::Windows::Foundation::Collections;
+using namespace winml;
+using namespace wfc;
 
-using winrt::Windows::Foundation::IPropertyValue;
+using wf::IPropertyValue;
 
-static void LearningModelSessionAPITestSetup() {
+static void LearningModelSessionAPITestsClassSetup() {
   init_apartment();
 }
 
-static void LearningModelSessionAPITestGpuSetup() {
+static void LearningModelSessionAPITestsGpuMethodSetup() {
   GPUTEST;
-  init_apartment();
 }
 
-static void LearningModelSessionAPITestsSkipEdgeCoreSetup() {
-  LearningModelSessionAPITestGpuSetup();
-  SKIP_EDGECORE
+static void LearningModelSessionAPITestsGpuSkipEdgeCoreMethodSetup() {
+  LearningModelSessionAPITestsGpuMethodSetup();
+  SKIP_EDGECORE;
 }
 
 static void CreateSessionDeviceDefault() {
@@ -59,11 +58,12 @@ static void CreateSessionDeviceCpu() {
   WINML_EXPECT_EQUAL(id.HighPart, 0);
 }
 
-static void CreateSessionWithModelLoadedFromStream() {
+static void CreateSessionWithModelLoadedFromStream()
+{
   LearningModel learningModel = nullptr;
   LearningModelDevice learningModelDevice = nullptr;
   std::wstring path = FileHelpers::GetModulePath() + L"model.onnx";
-  auto storageFile = winrt::Windows::Storage::StorageFile::GetFileFromPathAsync(path).get();
+  auto storageFile = ws::StorageFile::GetFileFromPathAsync(path).get();
 
   WINML_EXPECT_NO_THROW(learningModel = LearningModel::LoadFromStream(storageFile));
 
@@ -162,7 +162,7 @@ static void EvaluateFeatures() {
 
   auto outputTensor = TensorString::Create();
 
-  std::map<hstring, winrt::Windows::Foundation::IInspectable> featuresstandardmap;
+  std::map<hstring, wf::IInspectable> featuresstandardmap;
   featuresstandardmap[L"X"] = tensor;
   featuresstandardmap[L"Y"] = outputTensor;
   auto featureswinrtmap = winrt::single_threaded_map(std::move(featuresstandardmap));
@@ -195,7 +195,7 @@ static void EvaluateFeaturesAsync() {
 
   auto outputTensor = TensorString::Create(shape);
 
-  std::map<hstring, winrt::Windows::Foundation::IInspectable> featuresstandardmap;
+  std::map<hstring, wf::IInspectable> featuresstandardmap;
   featuresstandardmap[L"X"] = tensor;
   featuresstandardmap[L"Y"] = outputTensor;
   auto featureswinrtmap = winrt::single_threaded_map(std::move(featuresstandardmap));
@@ -406,26 +406,26 @@ static void TestModelBuilding() {
     LearningModelBinding binding(session);
 }
 
-const LearningModelSesssionAPITestApi& getapi() {
-  static constexpr LearningModelSesssionAPITestApi api =
-      {
-          LearningModelSessionAPITestSetup,
-          LearningModelSessionAPITestGpuSetup,
-          LearningModelSessionAPITestsSkipEdgeCoreSetup,
-          CreateSessionDeviceDefault,
-          CreateSessionDeviceCpu,
-          CreateSessionWithModelLoadedFromStream,
-          CreateSessionDeviceDirectX,
-          CreateSessionDeviceDirectXHighPerformance,
-          CreateSessionDeviceDirectXMinimumPower,
-          AdapterIdAndDevice,
-          EvaluateFeatures,
-          EvaluateFeaturesAsync,
-          EvaluationProperties,
-          CreateSessionWithCastToFloat16InModel,
-          DISABLED_CreateSessionWithFloat16InitializersInModel,
-          EvaluateSessionAndCloseModel,
-          CloseSession,
-          TestModelBuilding};
-  return api;
+static constexpr LearningModelSesssionAPITestsApi api =
+  {
+    LearningModelSessionAPITestsClassSetup,
+    LearningModelSessionAPITestsGpuMethodSetup,
+    LearningModelSessionAPITestsGpuSkipEdgeCoreMethodSetup,
+    CreateSessionDeviceDefault,
+    CreateSessionDeviceCpu,
+    CreateSessionWithModelLoadedFromStream,
+    CreateSessionDeviceDirectX,
+    CreateSessionDeviceDirectXHighPerformance,
+    CreateSessionDeviceDirectXMinimumPower,
+    AdapterIdAndDevice,
+    EvaluateFeatures,
+    EvaluateFeaturesAsync,
+    EvaluationProperties,
+    CreateSessionWithCastToFloat16InModel,
+    DISABLED_CreateSessionWithFloat16InitializersInModel,
+    EvaluateSessionAndCloseModel,
+    CloseSession,
+    TestModelBuilding
+  };
+ return api;
 }

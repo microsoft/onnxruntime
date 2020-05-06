@@ -224,5 +224,31 @@ TEST(Scatter, BoolInputWithAxis) {
   scatter_bool_with_axis_tests("ScatterElements", 11);
 }
 
+static void scatter_same_updates_tests(const char* op_name, int op_version) {
+  OpTester test(op_name, op_version);
+
+  std::vector<float> input;
+  input.resize(3 * 3);
+  std::fill(input.begin(), input.end(), .0f);
+  test.AddInput<float>("data", {3, 3}, input);
+
+  test.AddInput<int64_t>("indices", {1, 2},
+                         {1, 1}, /*is_initializer*/ true);
+
+  test.AddInput<float>("updates", {1, 2},
+                       {2.0f, 2.0f});
+
+  test.AddOutput<float>("y", {3, 3},
+                        {0.0f, 0.0f, 0.0f,
+                         2.0f, 2.0f, 0.0f,
+                         0.0f, 0.0f, 0.0f});
+  test.Run();
+}
+
+TEST(Scatter, SameUpdateWithoutAxis) {
+  scatter_same_updates_tests("Scatter", 9);
+  scatter_same_updates_tests("ScatterElements", 11);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

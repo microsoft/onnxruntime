@@ -4,6 +4,7 @@
 //https://github.com/onnx/onnx/blob/master/docs/Operators.md#Gather
 #include "core/providers/cpu/tensor/gather.h"
 #include "core/common/common.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 
@@ -57,11 +58,10 @@ template <typename Tin>
 Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uint8_t* dst_base, bool is_string_type,
                       const size_t element_bytes, const int64_t block_size, const int64_t M,
                       const int64_t N, const int64_t data_batch_bytes, const int64_t gathered_batch_bytes,
-                      const TensorShape& input_data_shape, const int64_t axis) {
+                      const TensorShape& input_data_shape, const int64_t axis, concurrency::ThreadPool* tp) {
   const Tin* indices_data = indices_tensor->template Data<Tin>();
 
   // Check the indices first in case there's a out of bound index.
-  // We can't merge this code in the omp loop below as omp does not allow return in the loop
   auto axis_dim_limit = input_data_shape[axis];
 
   for (int64_t i = 0; i < N; ++i) {
@@ -73,10 +73,7 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
     }
   }
 
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-  for (int64_t index = 0; index < M * N; ++index) {
+  auto lambda = [&](int64_t index) {
     int64_t batch = index / N;
     int64_t i = index % N;
 
@@ -93,7 +90,13 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
     } else {
       memcpy(dst_base + dst_offset, src_base + src_offset, block_size);
     }
-  }
+  };
+  concurrency::ThreadPool::TryParallelFor(tp, M * N, static_cast<double>(block_size),
+                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
+                                            for (int index = static_cast<int>(first), end = static_cast<int>(last); index < end; ++index) {
+                                              lambda(index);
+                                            }
+                                          });
 
   return Status::OK();
 }
@@ -117,13 +120,15 @@ Status Gather::Compute(OpKernelContext* context) const {
   const auto* src_base = static_cast<const uint8_t*>(p.input_tensor->DataRaw());
   auto* dst_base = static_cast<uint8_t*>(p.output_tensor->MutableDataRaw());
 
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+
   if (p.indices_tensor->IsDataType<int32_t>()) {
     return GatherCopyData<int32_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
-                                   block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis);
+                                   block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis, tp);
   }
   if (p.indices_tensor->IsDataType<int64_t>()) {
     return GatherCopyData<int64_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
-                                   block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis);
+                                   block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis, tp);
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for Tind not supported yet in Gather.");

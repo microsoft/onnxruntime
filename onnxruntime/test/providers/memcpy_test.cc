@@ -10,9 +10,10 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/utils.h"
-#include "core/framework/path_lib.h"
+#include "core/platform/path_lib.h"
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "test/test_environment.h"
+#include "asserts.h"
 
 namespace onnxruntime {
 namespace {
@@ -25,7 +26,7 @@ void PutAllNodesOnOneProvider(Graph& graph, const std::string& provider_type) {
 
 namespace test {
 TEST(MemcpyTest, copy1) {
-  concurrency::ThreadPool tp{"test", 1};
+  concurrency::ThreadPool tp(&onnxruntime::Env::Default(), ThreadOptions(), ORT_TSTR("MemcpyTest"), 2, true);
 
   ExecutionProviders execution_providers;
   CPUExecutionProviderInfo epi;
@@ -34,7 +35,7 @@ TEST(MemcpyTest, copy1) {
   SessionState s{execution_providers, true, &tp, nullptr};
   s.SetLogger(logging::LoggingManager::DefaultLogger());
   KernelRegistryManager kernel_registry_manager;
-  kernel_registry_manager.RegisterKernels(execution_providers);
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   ONNX_NAMESPACE::ModelProto mp;
   std::ifstream model_istream("testdata/matmul_1.onnx", std::ifstream::in | std::ifstream::binary);

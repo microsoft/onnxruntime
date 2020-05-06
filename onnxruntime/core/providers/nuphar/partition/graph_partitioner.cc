@@ -49,7 +49,7 @@ bool GraphPartitioner::IsNodeSupported(const Node& node) const {
           }
         }
       });
-      return std::move(symbolic_dimensions);
+      return symbolic_dimensions;
     };
     // if there are any output symbols not in input symbols, fallback to CPU
     auto input_sym = get_symbolic_dimensions(node, true);

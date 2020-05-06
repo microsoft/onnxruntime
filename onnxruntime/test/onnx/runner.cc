@@ -11,7 +11,7 @@
 #include <core/platform/env.h>
 #include <core/framework/tensorprotoutils.h>
 #include "test_allocator.h"
-#include <core/framework/path_lib.h>
+#include <core/platform/path_lib.h>
 #ifdef _WIN32
 #include <Windows.h>
 #else

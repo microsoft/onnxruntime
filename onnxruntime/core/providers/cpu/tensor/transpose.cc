@@ -174,8 +174,10 @@ static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& tar
   }
 }
 
-static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
-  const auto& input_shape = input.Shape();
+//  `input_shape_override` overrides the shape of `input` for compute purposes.
+static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                                 const TensorShape* input_shape_override = nullptr) {
+  const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
   const auto& input_dims = input_shape.GetDims();
   auto rank = input_shape.NumDimensions();
 
@@ -269,29 +271,32 @@ template <typename T>
 static void SimpleTransposeSingleAxisOutwards(const T* input_data, T* output_data,
                                               int64_t num_loops, int64_t num_writers,
                                               int64_t writes_per_loop, int64_t writes_per_writer_per_loop) {
-  std::vector<T*> writers;
-  writers.resize(num_writers);
-
   for (int64_t l = 0; l < num_loops; ++l) {
-    for (auto w = 0; w < num_writers; ++w) {
-      writers[w] = (output_data + (w * writes_per_writer_per_loop));
-    }
+    T* output_for_first_writer = output_data;
 
     for (auto wwpl = 0; wwpl < writes_per_writer_per_loop; ++wwpl) {
+      T* output_for_current_writer = output_for_first_writer;
+
       for (int64_t w = 0; w < num_writers; ++w) {
-        *(writers[w]++) = *input_data++;
+        *output_for_current_writer = *input_data++;
+
+        // skip to output position for next writer
+        output_for_current_writer += writes_per_writer_per_loop;
       }
+
+      ++output_for_first_writer;
     }
 
     output_data += writes_per_loop;
   }
 }
 
-static void TranposeSingleAxisOutwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
-                                       int64_t from, int64_t to) {
+//  `input_shape_override` overrides the shape of `input` for compute purposes.
+static void TransposeSingleAxisOutwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                                        int64_t from, int64_t to, const TensorShape* input_shape_override = nullptr) {
   ORT_UNUSED_PARAMETER(permutations);
 
-  const auto& input_shape = input.Shape();
+  const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
   const auto& input_dims = input_shape.GetDims();
 
   const auto element_size = input.DataType()->Size();
@@ -332,20 +337,20 @@ static void TranposeSingleAxisOutwards(const std::vector<size_t>& permutations, 
     }
     default: {
       // we need to use memcpy for each block
-      std::vector<uint8_t*> writers;
-      writers.resize(num_writers);
-
       for (int64_t l = 0; l < num_loops; ++l) {
-        for (auto w = 0; w < num_writers; ++w) {
-          writers[w] = (output_data + (w * writes_per_writer_per_loop * bytes_per_write));
-        }
+        uint8_t* output_for_first_writer = output_data;
 
         for (auto wwpl = 0; wwpl < writes_per_writer_per_loop; ++wwpl) {
+          uint8_t* output_for_current_writer = output_for_first_writer;
+
           for (int64_t w = 0; w < num_writers; ++w) {
-            memcpy(writers[w], input_data, bytes_per_write);
-            writers[w] += bytes_per_write;
+            memcpy(output_for_current_writer, input_data, bytes_per_write);
+            // skip to output position for next writer
+            output_for_current_writer += (writes_per_writer_per_loop * bytes_per_write);
             input_data += bytes_per_write;
           }
+
+          output_for_first_writer += bytes_per_write;
         }
 
         output_data += writes_per_loop * bytes_per_write;
@@ -358,18 +363,19 @@ template <typename T>
 static void SimpleTransposeSingleAxisInwards(const T* input_data, T* output_data,
                                              int64_t num_loops, int64_t num_readers,
                                              int64_t reads_per_loop, int64_t reads_per_reader_per_loop) {
-  std::vector<const T*> readers;
-  readers.resize(num_readers);
-
   for (int64_t l = 0; l < num_loops; ++l) {
-    for (auto r = 0; r < num_readers; ++r) {
-      readers[r] = (input_data + (r * reads_per_reader_per_loop));
-    }
+    const T* input_for_first_reader = input_data;
 
     for (auto rrpl = 0; rrpl < reads_per_reader_per_loop; ++rrpl) {
+      const T* input_for_current_reader = input_for_first_reader;
+
       for (int64_t r = 0; r < num_readers; ++r) {
-        *output_data++ = *(readers[r]++);
+        *output_data++ = *input_for_current_reader;
+        // skip to input position for next reader
+        input_for_current_reader += reads_per_reader_per_loop;
       }
+
+      ++input_for_first_reader;
     }
 
     input_data += reads_per_loop;
@@ -377,11 +383,12 @@ static void SimpleTransposeSingleAxisInwards(const T* input_data, T* output_data
 }
 
 // moving a single axis inwards where the read/write size is a power of 2 and between 8 and 64 bits.
-static void TranposeSingleAxisInwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
-                                      int64_t from, int64_t to) {
+//  `input_shape_override` overrides the shape of `input` for compute purposes.
+static void TransposeSingleAxisInwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                                       int64_t from, int64_t to, const TensorShape* input_shape_override = nullptr) {
   ORT_UNUSED_PARAMETER(permutations);
 
-  const auto& input_shape = input.Shape();
+  const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
   const auto& input_dims = input_shape.GetDims();
 
   const auto element_size = input.DataType()->Size();
@@ -422,20 +429,21 @@ static void TranposeSingleAxisInwards(const std::vector<size_t>& permutations, c
     }
     default: {
       // we need to use memcpy for each block
-      std::vector<const uint8_t*> readers;
-      readers.resize(num_readers);
-
       for (int64_t l = 0; l < num_loops; ++l) {
-        for (auto r = 0; r < num_readers; ++r) {
-          readers[r] = (input_data + (r * reads_per_reader_per_loop * bytes_per_read));
-        }
+        const uint8_t* input_for_first_reader = input_data;
 
         for (auto rrpl = 0; rrpl < reads_per_reader_per_loop; ++rrpl) {
+          const uint8_t* input_for_current_reader = input_for_first_reader;
+
           for (int64_t r = 0; r < num_readers; ++r) {
-            memcpy(output_data, readers[r], bytes_per_read);
-            readers[r] += bytes_per_read;
+            memcpy(output_data, input_for_current_reader, bytes_per_read);
             output_data += bytes_per_read;
+
+            // skip to input position for next reader
+            input_for_current_reader += (reads_per_reader_per_loop * bytes_per_read);
           }
+
+          input_for_first_reader += bytes_per_read;
         }
 
         input_data += reads_per_loop * bytes_per_read;
@@ -444,18 +452,13 @@ static void TranposeSingleAxisInwards(const std::vector<size_t>& permutations, c
   }
 }
 
+//  `input_shape_override` overrides the shape of `input` for compute purposes.
 static void SingleAxisTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
-                                size_t from, size_t to) {
-  // TODO: We may want to fall back to the default implementation if the size of the axis being moved is large
-  // compared to the other axes.
-  // e.g. transpose {3, 2048} with permutation of {1, 0} would result in 2048 writers being created
-  //   (std::vector<uint8_t*> of size 2048) but only used in 3 loops. however that may still be cheaper than
-  //   calling ComputeOffset and IncrementIndex 6K times.
-
+                                size_t from, size_t to, const TensorShape* input_shape_override = nullptr) {
   if (from > to) {
-    TranposeSingleAxisOutwards(permutations, input, output, from, to);
+    TransposeSingleAxisOutwards(permutations, input, output, from, to, input_shape_override);
   } else {
-    TranposeSingleAxisInwards(permutations, input, output, from, to);
+    TransposeSingleAxisInwards(permutations, input, output, from, to, input_shape_override);
   }
 }
 
@@ -528,7 +531,9 @@ static bool IsMovingSingleAxis(const std::vector<size_t>& permutations, size_t& 
   return single_axis_moved;
 }
 
-Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
+//`input_shape_override` overrides the shape of `input` for compute purposes.
+Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                                  const TensorShape* input_shape_override) {
   Status status = Status::OK();
 
   auto input_type = input.DataType();
@@ -542,10 +547,10 @@ Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const
     bool moving_single_axis = IsMovingSingleAxis(permutations, from, to);
 
     if (moving_single_axis && !input.IsDataTypeString()) {
-      SingleAxisTranspose(permutations, input, output, from, to);
+      SingleAxisTranspose(permutations, input, output, from, to, input_shape_override);
     } else {
       // fall back to default implementation
-      status = DoUntypedTranspose(permutations, input, output);
+      status = DoUntypedTranspose(permutations, input, output, input_shape_override);
     }
   }
 

@@ -5,14 +5,14 @@
 
 #include "MapFeatureDescriptor.h"
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 MapFeatureDescriptor::MapFeatureDescriptor(
     const char* name,
     const char* description,
     bool is_required,
     winml::TensorKind key_kind,
-    winml::ILearningModelFeatureDescriptor value_kind) : name_(WinML::Strings::HStringFromUTF8(name)),
-                                                         description_(WinML::Strings::HStringFromUTF8(description)),
+    winml::ILearningModelFeatureDescriptor value_kind) : name_(_winml::Strings::HStringFromUTF8(name)),
+                                                         description_(_winml::Strings::HStringFromUTF8(description)),
                                                          is_required_(is_required),
                                                          key_kind_(key_kind),
                                                          value_kind_(value_kind) {
@@ -73,10 +73,10 @@ MapFeatureDescriptor::GetDescription(
 
 HRESULT
 MapFeatureDescriptor::GetDescriptorInfo(
-    WinML::IEngineFactory* engine_factory,
-    WinML::IDescriptorInfo** info) {
+    _winml::IEngineFactory* engine_factory,
+    _winml::IDescriptorInfo** info) {
   engine_factory->CreateMapDescriptorInfo(info);
   return S_OK;
 }
 
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP

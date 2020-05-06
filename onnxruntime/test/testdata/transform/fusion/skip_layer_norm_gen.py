@@ -3,13 +3,15 @@ from onnx import helper
 from onnx import TensorProto
 from enum import Enum
 
-class Format(Enum):
-    Format1=1,
-    Format2=2,
-    Format3=3
 
-def GenerateModel(format, model_name, multi_output_add = False):
-    nodes = [        # LayerNorm subgraph
+class Format(Enum):
+    Format1 = 1,
+    Format2 = 2,
+    Format3 = 3
+
+
+def GenerateModel(format, model_name, multi_output_add=False):
+    nodes = [  # LayerNorm subgraph
         helper.make_node("ReduceMean", ["ln_in"], ["rd1_out"], "reduce1", axes=[-1], keepdims=1),
         helper.make_node("Sub", ["ln_in", "rd1_out"], ["sb1_out"], "sub1"),
         helper.make_node("Sub", ["ln_in", "rd1_out"], ["sb2_out"], "sub2"),
@@ -22,7 +24,7 @@ def GenerateModel(format, model_name, multi_output_add = False):
         helper.make_node("Add", ["mul_out", "beta"], ["C"], "add0"),
     ]
 
-    initializers = [ # initializers
+    initializers = [  # initializers
         helper.make_tensor('pow_in_2', TensorProto.FLOAT, [], [2]),
         helper.make_tensor('const_e12', TensorProto.FLOAT, [], [1e-12]),
         helper.make_tensor('gamma', TensorProto.FLOAT, [4], [1.0, 2.0, 3.0, 4.0]),
@@ -30,17 +32,25 @@ def GenerateModel(format, model_name, multi_output_add = False):
     ]
 
     if format is Format.Format1:
-        nodes.extend([helper.make_node("Add", ["A", "bias"], ["add3_out"], "add3"),
-                      helper.make_node("Add", ["add3_out", "B"], ["ln_in"], "add2"),
-                    ])
-        initializers.extend([helper.make_tensor('bias', TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]),])
+        nodes.extend([
+            helper.make_node("Add", ["A", "bias"], ["add3_out"], "add3"),
+            helper.make_node("Add", ["add3_out", "B"], ["ln_in"], "add2"),
+        ])
+        initializers.extend([
+            helper.make_tensor('bias', TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]),
+        ])
     elif format is Format.Format2:
-        nodes.extend([helper.make_node("Add", ["B", "bias"], ["add3_out"], "add3"),
-                      helper.make_node("Add", ["A", "add3_out"], ["ln_in"], "add2"),
-                      ])
-        initializers.extend([helper.make_tensor('bias', TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]),])
+        nodes.extend([
+            helper.make_node("Add", ["B", "bias"], ["add3_out"], "add3"),
+            helper.make_node("Add", ["A", "add3_out"], ["ln_in"], "add2"),
+        ])
+        initializers.extend([
+            helper.make_tensor('bias', TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]),
+        ])
     elif format is Format.Format3:
-        nodes.extend([helper.make_node("Add", ["A", "B"], ["ln_in"], "add2"),])
+        nodes.extend([
+            helper.make_node("Add", ["A", "B"], ["ln_in"], "add2"),
+        ])
 
     if multi_output_add:
         neg_input = "ln_in" if format is Format.Format3 else "add3_out"
@@ -56,11 +66,11 @@ def GenerateModel(format, model_name, multi_output_add = False):
         [  # outputs
             helper.make_tensor_value_info('C', TensorProto.FLOAT, [16, 32, 4]),
         ],
-        initializers
-    )
+        initializers)
 
     model = helper.make_model(graph)
     onnx.save(model, model_name)
+
 
 GenerateModel(Format.Format1, 'skip_layer_norm_format1.onnx')
 GenerateModel(Format.Format2, 'skip_layer_norm_format2.onnx')

@@ -26,8 +26,11 @@
 #pragma warning(disable : 4506) /*no definition for inline function 'function'*/
 #pragma warning(disable : 4800) /*'type' : forcing value to bool 'true' or 'false' (performance warning)*/
 #pragma warning(disable : 4996) /*The compiler encountered a deprecated declaration.*/
+#pragma warning(disable : 4805) /*Unsafe mix of type 'const bool' and type 'int' in operation*/
 #endif
 #include <google/protobuf/message_lite.h>
+#include <Eigen/Core>
+#include <Eigen/src/Core/arch/Default/Half.h>
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #else
@@ -38,8 +41,6 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
-#include "Eigen/Core"
-#include "Eigen/src/Core/arch/Default/Half.h"
 
 using namespace onnxruntime;
 

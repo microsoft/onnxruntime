@@ -44,6 +44,7 @@ struct RunConfig {
   bool f_verbose{false};
   bool enable_memory_pattern{true};
   bool enable_cpu_mem_arena{true};
+  bool generate_model_input_binding{false};
   ExecutionMode execution_mode{ExecutionMode::ORT_SEQUENTIAL};
   int intra_op_num_threads{0};
   int inter_op_num_threads{0};

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
+#include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -12,7 +13,6 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
-
 // Add a Cast to convert Input from int64 to int32.
 static NodeArg* CastToInt32(Graph& graph, NodeArg* input, ProviderType provider_type) {
   auto data_type = input->TypeAsProto()->tensor_type().elem_type();
@@ -196,7 +196,7 @@ static bool MatchPositionSubgraph(
           ^\^        ^/^                    |
             ^Concat^                     NonZero
                |                            |
-               |                        Transpose  
+               |                        Transpose
                |                            |
                |                         Squeeze
                |                            |
@@ -210,7 +210,7 @@ static bool MatchPositionSubgraph(
             Gather
 
  Note that position gather node is the node in the bottom of above sub-graph.
- Paths in ^^ are alternative path to be matched if path input_ids -> Shape -> Expand -> Gather is not found. 
+ Paths in ^^ are alternative path to be matched if path input_ids -> Shape -> Expand -> Gather is not found.
 */
 static bool MatchPositionEmbeddingSubgraph1(
     Graph& graph,
@@ -445,7 +445,7 @@ static NodeArg* ExtractEmbedding(Graph& graph,
   assert(sequence_length > 0);
   assert(hidden_size > 0);
 
-  auto old_initializer = onnxruntime::make_unique<Initializer>(*tensor);
+  Initializer old_initializer{*tensor, graph.ModelPath()};
   auto data_type = tensor->data_type();
 
   ONNX_NAMESPACE::TensorProto initializer;
@@ -456,14 +456,14 @@ static NodeArg* ExtractEmbedding(Graph& graph,
   const int64_t element_count = sequence_length * hidden_size;
 
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    const float* data = old_initializer->data<float>();
+    const float* data = old_initializer.data<float>();
     if (!CheckEmbeddingData(data, batch_size, element_count)) {
       return nullptr;
     }
 
     initializer.set_raw_data(data, element_count * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
-    const MLFloat16* data = old_initializer->data<MLFloat16>();
+    const MLFloat16* data = old_initializer.data<MLFloat16>();
     if (!CheckEmbeddingData(data, batch_size, element_count)) {
       return nullptr;
     }
@@ -476,7 +476,7 @@ static NodeArg* ExtractEmbedding(Graph& graph,
 }
 
 /**
-Embed Layer Normalization will fuse embeddings and mask processing into one node : 
+Embed Layer Normalization will fuse embeddings and mask processing into one node :
 The embeddings before conversion:
   (input_ids) -------->  Gather ---------+       (segment_ids)
     |                                    |           |
@@ -698,6 +698,16 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
                                                 embed_layer_norm_input_defs,
                                                 {layer_norm_node.MutableOutputDefs()[0], reduce_sum_node.MutableOutputDefs()[0]},
                                                 {}, kMSDomain);
+
+    // Get attribute "epsilon" from "LayerNormalization" node if available. Else, default value
+    // will be used.
+    NodeAttributes ln_attrs = layer_norm_node.GetAttributes();
+    NodeAttributes::const_iterator epsilon = ln_attrs.find("epsilon");
+    if (epsilon != ln_attrs.end()) {
+      embed_layer_norm_node.AddAttribute("epsilon", epsilon->second);
+    } else {
+      embed_layer_norm_node.AddAttribute("epsilon", contrib::kDefaultEmbedLayerNormEpsilon);
+    }
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     embed_layer_norm_node.SetExecutionProviderType(layer_norm_node.GetExecutionProviderType());

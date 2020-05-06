@@ -2,14 +2,17 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#include "std.h"
+#include "winrt_headers.h"
+
 #include "winrt/Windows.Graphics.Imaging.h"
-#include "winrt/Windows.AI.MachineLearning.h"
 
 namespace FileHelpers
 {
     std::wstring GetModulePath();
     std::wstring GetWinMLPath();
 
-    winrt::Windows::Graphics::Imaging::SoftwareBitmap GetSoftwareBitmapFromFile(const std::wstring& filePath);
-    winrt::Windows::AI::MachineLearning::ImageFeatureValue LoadImageFeatureValue(const std::wstring& imagePath);
+    wgi::SoftwareBitmap GetSoftwareBitmapFromFile(const std::wstring& filePath);
+    winml::ImageFeatureValue LoadImageFeatureValue(const std::wstring& imagePath);
 }

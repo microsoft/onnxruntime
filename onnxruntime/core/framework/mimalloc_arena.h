@@ -1,4 +1,4 @@
-#ifdef USE_MIMALLOC
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
 #include "core/common/common.h"
 #include "core/framework/arena.h"
 #include "onnxruntime_config.h"

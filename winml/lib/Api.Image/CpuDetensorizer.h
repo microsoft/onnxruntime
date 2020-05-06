@@ -5,7 +5,8 @@
 
 #include "inc/ImageConversionTypes.h"
 
-namespace Windows::AI::MachineLearning::Internal {
+namespace _winml {
+
 class CpuDetensorizer {
  public:
   template <typename T>
@@ -234,4 +235,4 @@ class CpuDetensorizer {
   }
 #endif
 };
-}  // namespace Windows::AI::MachineLearning::Internal
+}  // namespace _winml

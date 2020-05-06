@@ -207,7 +207,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
 
     //if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
-      mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes);
+      mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes, feed_mlvalue_idxs);
       // if no existing patterns, generate one in this executionframe
       if (!mem_patterns_) {
         planner_ = onnxruntime::make_unique<OrtValuePatternPlanner>(*session_state.GetExecutionPlan());
@@ -221,6 +221,9 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                              ? alloc->Alloc(mem_patterns_->patterns[i].PeakSize())
                              : nullptr;
           buffers_[mem_patterns_->locations[i]] = BufferUniquePtr(buffer, alloc);
+
+          // log size of activation. Keep it commented out for now to avoid log flooding.
+          // VLOGS(session_state_.Logger(), 1) << "Allocated memory for activations, size: " << mem_patterns_->patterns[i].PeakSize();
         }
       }
     }
@@ -290,13 +293,13 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
           // fed in, so use VERBOSE as the log level as it's expected.
           // TODO: Should we re-use the block if the size is large enough? Would probably need to allow it
           // to be freed if the size difference was too large so our memory usage doesn't stick at a high water mark
-          LOGS_DEFAULT(VERBOSE) << "For ort_value with index: " << ort_value_index
-                                << ", block in memory pattern size is: " << block->size_
-                                << " but the actually size is: " << size
-                                << ", fall back to default allocation behavior";
+          LOGS(session_state_.Logger(), VERBOSE) << "For ort_value with index: " << ort_value_index
+                                                 << ", block in memory pattern size is: " << block->size_
+                                                 << " but the actually size is: " << size
+                                                 << ", fall back to default allocation behavior";
         } else if (it == buffers_.end()) {
-          LOGS_DEFAULT(WARNING) << "For ort_value with index: " << ort_value_index
-                                << ", block not found in target location. fall back to default allocation behavior";
+          LOGS(session_state_.Logger(), WARNING) << "For ort_value with index: " << ort_value_index
+                                                 << ", block not found in target location. fall back to default allocation behavior";
         }
       }
     }
@@ -340,7 +343,11 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
 
     // be generous and use the buffer if it's large enough. log a warning though as it indicates a bad model
     if (buffer_num_elements >= required_num_elements) {
-      LOGS_DEFAULT(WARNING) << message;
+      // View Operator is reusing the buffer bigger than the required size. 
+      // Disabling warning message for now. The op is in the process of being deprecated.
+#ifndef ENABLE_TRAINING
+      LOGS(session_state_.Logger(), WARNING) << message;
+#endif
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
     }
@@ -377,7 +384,7 @@ static Status AllocateTraditionalMLValue(OrtValue& ort_value, const NonTensorTyp
   return Status::OK();
 }
 
-static Status AllocateTensorSequence (OrtValue& ort_value) {
+static Status AllocateTensorSequence(OrtValue& ort_value) {
   auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
   auto p_tensor_sequence = onnxruntime::make_unique<TensorSeq>();
   ort_value.Init(p_tensor_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());
@@ -448,6 +455,14 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       }
       case AllocKind::kReuse: {
         int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
+        
+        // In case OrtRunOptions.only_execute_path_to_fetches == true, it is possible that 'reuse_value'
+        // is not allocated (its upstream op is not executed due to the option).
+        // In this case we need to allocate 'reuse_value' and then let 'ort_value' to reuse it. 
+        OrtValue& reuse_value = GetMutableMLValue(reuse_mlvalue_index);
+        if (!reuse_value.IsAllocated()) {
+         ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(reuse_value, reuse_mlvalue_index, shape, nnz));
+        }
         ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
             ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
         break;

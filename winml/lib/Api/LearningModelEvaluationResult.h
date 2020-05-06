@@ -5,7 +5,7 @@
 
 #include "LearningModelEvaluationResult.g.h"
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 struct LearningModelEvaluationResult : LearningModelEvaluationResultT<
                                            LearningModelEvaluationResult,
                                            ILearningModelEvaluationResultNative> {
@@ -20,8 +20,8 @@ struct LearningModelEvaluationResult : LearningModelEvaluationResultT<
   bool Succeeded();
   void Succeeded(bool succeeded);
 
-  Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable> Outputs();
-  void Outputs(Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable> outputs);
+  wfc::IMapView<hstring, wf::IInspectable> Outputs();
+  void Outputs(wfc::IMapView<hstring, wf::IInspectable> outputs);
 
   // ILearningModelEvaluationResultNative
   STDMETHOD(GetOutput)
@@ -30,12 +30,12 @@ struct LearningModelEvaluationResult : LearningModelEvaluationResultT<
       UINT32 cchName,
       IUnknown** result);
 
-  HRESULT SetOutputs(std::unordered_map<std::string, Windows::Foundation::IInspectable>&& outputs);
+  HRESULT SetOutputs(std::unordered_map<std::string, wf::IInspectable>&& outputs);
 
  private:
   hstring m_correlationId;
   int32_t m_errorStatus = 0;
   bool m_succeeded = false;
-  std::unordered_map<std::string, Windows::Foundation::IInspectable> m_outputs;
+  std::unordered_map<std::string, wf::IInspectable> m_outputs;
 };
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP

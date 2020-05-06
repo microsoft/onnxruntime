@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/platform/threadpool.h"
 #include "core/framework/op_kernel_context_internal.h"
 
 // there's no way to use a raw pointer as the copy destination with std::copy_n
@@ -22,6 +21,7 @@
 #include "core/framework/tensor.h"
 
 #include "core/platform/ort_mutex.h"
+#include "core/platform/threadpool.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -518,7 +518,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
   const bool output_sequence = !outputs.empty();
 
   if (direction_ == kReverse) {
-    ReverseSequence(inputs, inputs_reverse_, sequence_lengths, seq_length_, batch_size_, input_size_, 1);
+    ReverseSequence(inputs, inputs_reverse_, sequence_lengths, seq_length_, batch_size_, input_size_, 1, ttp_);
     // DumpMatrix("Reversed inputs", inputs_reverse_.data(), seq_length_ * batch_size_, input_size_);
 
     inputs = inputs_reverse_;
@@ -620,7 +620,11 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
 
     if (linear_before_reset_) {
       // copy Rbh to linear output
-      gsl::copy(batched_bias_Rh_.subspan(batched_bias_Rh_local - batched_bias_Rh_.begin(), batched_bias_Rh_local_end - batched_bias_Rh_local), linear_output_);
+      if (use_bias_) {
+        gsl::copy(batched_bias_Rh_.subspan(batched_bias_Rh_local - batched_bias_Rh_.begin(),
+                                           batched_bias_Rh_local_end - batched_bias_Rh_local),
+                  linear_output_);
+      }
 
       // compute Ht-1 * (Rh^T) + Rbh
       ComputeGemm(batch_size_, hidden_size_, hidden_size_, alpha,
@@ -628,7 +632,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
                   hidden_size_,
                   recurrent_weightsH.cbegin(), recurrent_weightsH.cend(),  // Rh^T
                   hidden_size_, beta,
-                  linear_output_.begin(), linear_output_.end(),  // pre: Rbh, post:output
+                  linear_output_.begin(), linear_output_.end(),  // pre: Rbh if use_bias_, post:output
                   hidden_size_, ttp_);
 
       DumpMatrix("Ht-1 * (Rh^T) + Rbh " + seqno_str, linear_output_.data(), batch_size_, hidden_size_);
@@ -816,7 +820,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
   if (output_sequence && direction_ == kReverse) {
     ReverseSequence<T>(outputs, original_outputs,
                        sequence_lengths, seq_length_,
-                       batch_size_, hidden_size_, num_directions);
+                       batch_size_, hidden_size_, num_directions, ttp_);
   }
 }
 
@@ -832,10 +836,15 @@ void UniDirectionalGru<T>::AllocateBuffers() {
     if (linear_before_reset_) {
       batched_bias_Wh_ = Allocate(allocator_, batch_size_ * hidden_size_, batched_bias_Wh_ptr_);
       batched_bias_Rh_ = Allocate(allocator_, batch_size_ * hidden_size_, batched_bias_Rh_ptr_);
-      linear_output_ = Allocate(allocator_, batch_size_ * hidden_size_, linear_output_ptr_);
     } else {
       batched_bias_WRh_ = Allocate(allocator_, batch_size_ * hidden_size_, batched_bias_WRh_ptr_);
     }
+  }
+
+  if (linear_before_reset_) {
+    // if use_bias_ is true we copy bias values to this as the first use. if it's false we don't and need to initialize
+    bool fill = !use_bias_;
+    linear_output_ = Allocate(allocator_, batch_size_ * hidden_size_, linear_output_ptr_, fill);
   }
 
   auto batch_times_seq_length = batch_size_ * seq_length_;

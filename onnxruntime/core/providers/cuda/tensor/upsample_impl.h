@@ -14,9 +14,9 @@ template <typename T>
 void UpampleImpl(const onnxruntime::UpsampleMode upsample_mode,
                  const size_t rank,
                  const int64_t input_dim2,
-                 const int64_t* input_pitches,
-                 const fast_divmod* output_div_pitches,
-                 const fast_divmod* scales_div,
+                 const TArray<int64_t>& input_pitches,
+                 const TArray<fast_divmod>& output_div_pitches,
+                 const TArray<fast_divmod>& scales_div,
                  const T* input_data,
                  T* output_data,
                  const size_t N);

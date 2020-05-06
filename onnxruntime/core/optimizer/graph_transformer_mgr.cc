@@ -3,10 +3,21 @@
 
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
+
 using namespace onnxruntime;
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
+
+common::Status GraphTransformerManager::SetSteps(unsigned steps) {
+  steps_ = steps;
+  return Status::OK();
+}
+
+common::Status GraphTransformerManager::GetSteps(unsigned& steps) const {
+  steps = steps_;
+  return Status::OK();
+}
 
 common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, TransformerLevel level, const logging::Logger& logger) const {
   const auto& transformers = level_to_transformer_map_.find(level);
@@ -29,10 +40,10 @@ common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, Transfor
   return Status::OK();
 }
 
-common::Status GraphTransformerManager::Register(std::unique_ptr<GraphTransformer> transformer, TransformerLevel level){ 
+common::Status GraphTransformerManager::Register(std::unique_ptr<GraphTransformer> transformer, TransformerLevel level) {
   const auto& name = transformer->Name();
   if (transformers_info_.find(name) != transformers_info_.end()) {
-    return Status(ONNXRUNTIME, FAIL, "This transformer is already registered " + name);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This transformer is already registered " + name);
   }
 
   transformers_info_[name] = transformer.get();

@@ -10,29 +10,15 @@ set(featurizers_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pr
 
 add_subdirectory(external/FeaturizersLibrary/src/Featurizers ${featurizers_BINARY_DIR} EXCLUDE_FROM_ALL)
 set_target_properties(FeaturizersCode PROPERTIES FOLDER "External/FeaturizersLibrary")
-
-add_library(onnxruntime_featurizers STATIC IMPORTED)
-add_dependencies(onnxruntime_featurizers FeaturizersCode)
-
-add_library(onnxruntime_featurizers_comp STATIC IMPORTED)
-add_dependencies(onnxruntime_featurizers_comp FeaturizersCode)
-
-
-target_include_directories(onnxruntime_featurizers INTERFACE ${featurizers_ROOT}/src)
-if(MSVC)
-  set_property(TARGET onnxruntime_featurizers PROPERTY IMPORTED_LOCATION
-    ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pref}/${CMAKE_BUILD_TYPE}/FeaturizersCode.lib)
-  set_property(TARGET onnxruntime_featurizers_comp PROPERTY IMPORTED_LOCATION
-    ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pref}/${CMAKE_BUILD_TYPE}/FeaturizersComponentsCode.lib)
-else()
-  set_property(TARGET onnxruntime_featurizers PROPERTY IMPORTED_LOCATION
-    ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pref}/libFeaturizersCode.a)
-  set_property(TARGET onnxruntime_featurizers_comp PROPERTY IMPORTED_LOCATION
-    ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pref}/libFeaturizersComponentsCode.a)
-endif()
-
+target_include_directories(FeaturizersCode INTERFACE ${featurizers_ROOT}/src)
 
 if (WIN32)
     # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
-    set_target_properties(onnxruntime_featurizers PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/ConfigureVisualStudioCodeAnalysis.props)
+    set_target_properties(FeaturizersCode PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/ConfigureVisualStudioCodeAnalysis.props)
 endif()
+if (WINDOWS_STORE)
+    # Library requires narrow version of APIs
+    target_compile_options(FeaturizersCode PRIVATE "/U UNICODE" "/U _UNICODE")
+endif()
+
+add_library(onnxruntime_featurizers ALIAS FeaturizersCode)

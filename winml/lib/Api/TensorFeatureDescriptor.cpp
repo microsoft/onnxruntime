@@ -7,15 +7,15 @@
 
 #include "TensorFeatureDescriptor.h"
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 TensorFeatureDescriptor::TensorFeatureDescriptor(
     const char* name,
     const char* description,
     winml::TensorKind tensor_kind,
     const std::vector<int64_t>& shape,
     bool is_required,
-    bool has_unsupported_image_metadata) : name_(WinML::Strings::HStringFromUTF8(name)),
-                                           description_(WinML::Strings::HStringFromUTF8(description)),
+    bool has_unsupported_image_metadata) : name_(_winml::Strings::HStringFromUTF8(name)),
+                                           description_(_winml::Strings::HStringFromUTF8(description)),
                                            tensor_kind_(tensor_kind),
                                            shape_(shape),
                                            is_required_(is_required),
@@ -97,10 +97,10 @@ TensorFeatureDescriptor::GetDescription(
 }
 
 HRESULT TensorFeatureDescriptor::GetDescriptorInfo(
-    WinML::IEngineFactory* engine_factory, 
-    WinML::IDescriptorInfo** info){
+    _winml::IEngineFactory* engine_factory, 
+    _winml::IDescriptorInfo** info){
   engine_factory->CreateTensorDescriptorInfo(tensor_kind_, shape_.data(), shape_.size(), info);
   return S_OK;
 };
 
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP

@@ -22,7 +22,6 @@ class OnnxRuntimeBackendRep(BackendRep):
         """
         self._session = session
 
-
     def run(self, inputs, **kwargs):  # type: (Any, **Any) -> Tuple[Any, ...]
         """
         Computes the prediction.

@@ -12,19 +12,22 @@
 #include "core/framework/ml_value.h"
 #include "core/framework/mem_buffer.h"
 #include "core/framework/tensor_external_data_info.h"
-#include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/env.h"
 
 namespace ONNX_NAMESPACE {
 class TensorProto;
 class TensorShapeProto;
+
+/** Test if two TensorShapeProto dimensions are equal. */
+bool operator==(const TensorShapeProto_Dimension& l, const TensorShapeProto_Dimension& r);
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
 class Tensor;
 namespace utils {
 TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto);
+
 /**
  * deserialize a TensorProto into a preallocated memory buffer.
  * \param tensor_proto_path A local file path of where the 'input' was loaded from. Can be NULL if the tensor proto doesn't
@@ -38,14 +41,11 @@ common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_prot
 /** Creates a TensorProto from a Tensor.
     @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.
     @param[in] tensor_proto_name the name of the TensorProto.
-    @param[in] tensor_proto_type the type of the TensorProto.
     @return the TensorProto. 
     
     Note: Method currently requires that data is in little-endian format.
-    TODO Once the GetTensorProtoType supports all data types, we can remove the tensor_proto_type parameter and 
-    instead get the type from the tensor. */
-ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name,
-                                                const ONNX_NAMESPACE::TypeProto& tensor_proto_type);
+ */
+ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name);
 
 ONNXTensorElementDataType CApiElementTypeFromProtoType(int type);
 ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
@@ -59,6 +59,14 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
 template <typename T>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
                     /*out*/ T* p_data, size_t expected_size);
+
+// Convert the NodeProto from a Constant node into a TensorProto that can be used as an initializer
+common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
+                                              ONNX_NAMESPACE::TensorProto& tensor);
+
+// Convert a SparseTensorProto to a dense TensorProto
+common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
+                                                   ONNX_NAMESPACE::TensorProto& dense);
 
 inline bool HasDimValue(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim) {
   return dim.value_case() == ONNX_NAMESPACE::TensorShapeProto_Dimension::kDimValue;
@@ -197,6 +205,14 @@ inline bool HasModelVersion(const ONNX_NAMESPACE::ModelProto& m_proto) {
 inline bool HasName(const ONNX_NAMESPACE::NodeProto& node_proto) {
   //XXX: Figure out proto3 style
   return node_proto.has_name();
+}
+
+// UnpackTensor from either raw data or the type specific data field.
+template <typename T>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, /*out*/ T* p_data, size_t expected_size) {
+  return HasRawData(tensor)
+             ? UnpackTensor(tensor, tensor.raw_data().data(), tensor.raw_data().size(), p_data, expected_size)
+             : UnpackTensor(tensor, nullptr, 0, p_data, expected_size);
 }
 
 }  // namespace utils

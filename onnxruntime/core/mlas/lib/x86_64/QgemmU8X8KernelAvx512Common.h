@@ -11,7 +11,7 @@ Module Name:
 Abstract:
 
     This module contains common kernel macros and structures for the quantized
-    integer matrix/matrix multiply operation (QGEMM) for the AVX512BW and
+    integer matrix/matrix multiply operation (QGEMM) for the AVX512 core and
     AVX512VNNI kernels.
 
 --*/
@@ -343,7 +343,7 @@ C_UNDERSCORE(MlasGemm\Type\()Kernel\Isa\()):
         mov     ebp,-1
         kmovw   k1,ebp                      # update mask to write all columns
 .ifeqs "\Type\()", "U8S8"
-.ifeqs "\Isa\()", "Avx512BW"
+.ifeqs "\Isa\()", "Avx512Core"
         neg     ebp
         vpbroadcastw zmm5,ebp               # generate 512-bit word vector [0x0001]
 .endif

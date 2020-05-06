@@ -6,7 +6,8 @@
 #include "ImageFeatureDescriptor.g.h"
 #include "iengine.h"
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
+
 enum class ImageNominalPixelRange {
   ImageNominalPixelRange_NominalRange_0_255,
   ImageNominalPixelRange_Normalized_0_1,
@@ -100,4 +101,5 @@ struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
   ImageNominalPixelRange nominal_pixel_range_;
   ImageColorSpaceGamma color_space_gamma_;
 };
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+
+}  // namespace WINMLP

@@ -10,11 +10,7 @@ import os
 import sys
 from timeit import default_timer as timer
 
-float_dict = {
-    'tensor(float16)': 'float16',
-    'tensor(float)': 'float32',
-    'tensor(double)': 'float64'
-}
+float_dict = {'tensor(float16)': 'float16', 'tensor(float)': 'float32', 'tensor(double)': 'float64'}
 
 integer_dict = {
     'tensor(int32)': 'int32',
@@ -32,18 +28,14 @@ integer_dict = {
 def main():
     parser = argparse.ArgumentParser(description='Simple ONNX Runtime Test Tool.')
     parser.add_argument('model_path', help='model path')
-    parser.add_argument('num_iters', nargs='?', type=int,
-                        default=1000, help='model run iterations. default=1000')
-    parser.add_argument('--debug', action='store_true',
-                        help='pause execution to allow attaching a debugger.')
-    parser.add_argument('--profile', action='store_true',
-                        help='enable chrome timeline trace profiling.')
+    parser.add_argument('num_iters', nargs='?', type=int, default=1000, help='model run iterations. default=1000')
+    parser.add_argument('--debug', action='store_true', help='pause execution to allow attaching a debugger.')
+    parser.add_argument('--profile', action='store_true', help='enable chrome timeline trace profiling.')
     args = parser.parse_args()
     iters = args.num_iters
 
     if args.debug:
-        print("Pausing execution ready for debugger to attach to pid: {}".format(
-            os.getpid()))
+        print("Pausing execution ready for debugger to attach to pid: {}".format(os.getpid()))
         print("Press key to continue.")
         sys.stdin.read(1)
 
@@ -61,17 +53,14 @@ def main():
         # replace any symbolic dimensions (value is None) with 1
         shape = [dim if dim else 1 for dim in input_meta.shape]
         if input_meta.type in float_dict:
-            feeds[input_meta.name] = np.random.rand(
-                *shape).astype(float_dict[input_meta.type])
+            feeds[input_meta.name] = np.random.rand(*shape).astype(float_dict[input_meta.type])
         elif input_meta.type in integer_dict:
-            feeds[input_meta.name] = np.random.uniform(
-                high=1000, size=tuple(shape)).astype(integer_dict[input_meta.type])
+            feeds[input_meta.name] = np.random.uniform(high=1000,
+                                                       size=tuple(shape)).astype(integer_dict[input_meta.type])
         elif input_meta.type == 'tensor(bool)':
-            feeds[input_meta.name] = np.random.randint(
-                2, size=tuple(shape)).astype('bool')
+            feeds[input_meta.name] = np.random.randint(2, size=tuple(shape)).astype('bool')
         else:
-            print("unsupported input type {} for input {}".format(
-                input_meta.type, input_meta.name))
+            print("unsupported input type {} for input {}".format(input_meta.type, input_meta.name))
             sys.exit(-1)
 
     # Starting with IR4 some initializers provide default values
@@ -80,17 +69,14 @@ def main():
     for initializer in sess.get_overridable_initializers():
         shape = [dim if dim else 1 for dim in initializer.shape]
         if initializer.type in float_dict:
-            feeds[initializer.name] = np.random.rand(
-                *shape).astype(float_dict[initializer.type])
+            feeds[initializer.name] = np.random.rand(*shape).astype(float_dict[initializer.type])
         elif initializer.type in integer_dict:
-            feeds[initializer.name] = np.random.uniform(
-                high=1000, size=tuple(shape)).astype(integer_dict[initializer.type])
+            feeds[initializer.name] = np.random.uniform(high=1000,
+                                                        size=tuple(shape)).astype(integer_dict[initializer.type])
         elif initializer.type == 'tensor(bool)':
-            feeds[initializer.name] = np.random.randint(
-                2, size=tuple(shape)).astype('bool')
+            feeds[initializer.name] = np.random.randint(2, size=tuple(shape)).astype('bool')
         else:
-            print("unsupported initializer type {} for initializer {}".format(
-                initializer.type, initializer.name))
+            print("unsupported initializer type {} for initializer {}".format(initializer.type, initializer.name))
             sys.exit(-1)
 
     start = timer()
@@ -101,7 +87,7 @@ def main():
     print("model: {}".format(meta.graph_name))
     print("version: {}".format(meta.version))
     print("iterations: {}".format(iters))
-    print("avg latency: {} ms".format(((end - start)*1000)/iters))
+    print("avg latency: {} ms".format(((end - start) * 1000) / iters))
 
     if args.profile:
         trace_file = sess.end_profiling()

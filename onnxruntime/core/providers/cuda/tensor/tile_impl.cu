@@ -10,10 +10,10 @@ namespace cuda {
 template <typename T>
 __global__ void _TileKernel(
     const size_t shape_rank,
-    const fast_divmod* fdm_input_shape,
-    const int64_t* input_strides,
+    const TArray<fast_divmod> fdm_input_shape,
+    const TArray<int64_t> input_strides,
     const T* input_data,
-    const fast_divmod* fdm_output_strides,
+    const TArray<fast_divmod> fdm_output_strides,
     T* output_data,
     const CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
@@ -33,10 +33,10 @@ __global__ void _TileKernel(
 template <typename T>
 void TileImpl(
     const size_t shape_rank,
-    const fast_divmod* fdm_input_shape,
-    const int64_t* input_stride,
+    const TArray<fast_divmod>& fdm_input_shape,
+    const TArray<int64_t>& input_stride,
     const T* input_data,
-    const fast_divmod* fdm_output_strides,
+    const TArray<fast_divmod>& fdm_output_strides,
     T* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
@@ -46,7 +46,7 @@ void TileImpl(
 }
 
 #define SPECIALIZED_IMPL(T) \
-  template void TileImpl<T>(const size_t shape_rank, const fast_divmod* fdm_input_shape, const int64_t* input_stride, const T* input_data, const fast_divmod* fdm_output_strides, T* output_data, const size_t N);
+  template void TileImpl<T>(const size_t shape_rank, const TArray<fast_divmod>& fdm_input_shape, const TArray<int64_t>& input_stride, const T* input_data, const TArray<fast_divmod>& fdm_output_strides, T* output_data, const size_t N);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)

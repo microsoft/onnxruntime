@@ -2,21 +2,6 @@
 // Licensed under the MIT License.
 
 #include <iostream>
-#ifdef _MSC_VER
-#pragma warning(push)
-// 'identifier' : unreferenced formal parameter
-#pragma warning(disable : 4100)
-// 'type' : forcing value to bool 'true' or 'false' (performance warning)
-#pragma warning(disable : 4800)
-#else
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#endif
-#ifdef _MSC_VER
-#pragma warning(pop)
-#else
-#pragma GCC diagnostic pop
-#endif
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
@@ -162,76 +147,76 @@ static void ConstructASimpleAddGraph(GraphProto& g, const char* domain) {
 }
 
 TEST_F(GraphTest, SimpleAddWithoutDomain) {
-  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
-  m->set_ir_version(3);
-  ImportOpset(*m, "", 10);
-  ConstructASimpleAddGraph(*m->mutable_graph(), nullptr);
+  ModelProto m;
+  m.set_ir_version(3);
+  ImportOpset(m, "", 10);
+  ConstructASimpleAddGraph(*m.mutable_graph(), nullptr);
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
 }
 
 TEST_F(GraphTest, SimpleAddDefaultDomain) {
-  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
-  m->set_ir_version(3);
-  ImportOpset(*m, "", 10);
-  ConstructASimpleAddGraph(*m->mutable_graph(), "");
+  ModelProto m;
+  m.set_ir_version(3);
+  ImportOpset(m, "", 10);
+  ConstructASimpleAddGraph(*m.mutable_graph(), "");
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
 }
 
 TEST_F(GraphTest, SimpleAddFutureOpSet) {
-  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
-  m->set_ir_version(3);
-  ImportOpset(*m, "", 9999);
-  ConstructASimpleAddGraph(*m->mutable_graph(), "ai.onnx");
+  ModelProto m;
+  m.set_ir_version(3);
+  ImportOpset(m, "", 9999);
+  ConstructASimpleAddGraph(*m.mutable_graph(), "ai.onnx");
   std::shared_ptr<Model> model;
   Status st;
   ASSERT_FALSE((st = Model::Load(std::move(m), model, nullptr, *logger_)).IsOK());
 }
 
 TEST_F(GraphTest, SimpleAddONNXDomain) {
-  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
-  m->set_ir_version(3);
-  ImportOpset(*m, "", 10);
-  ConstructASimpleAddGraph(*m->mutable_graph(), "ai.onnx");
+  ModelProto m;
+  m.set_ir_version(3);
+  ImportOpset(m, "", 10);
+  ConstructASimpleAddGraph(*m.mutable_graph(), "ai.onnx");
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
 }
 
 TEST_F(GraphTest, SimpleAddONNXDomain2) {
-  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
-  m->set_ir_version(3);
-  ImportOpset(*m, "ai.onnx", 10);
-  ConstructASimpleAddGraph(*m->mutable_graph(), "ai.onnx");
+  ModelProto m;
+  m.set_ir_version(3);
+  ImportOpset(m, "ai.onnx", 10);
+  ConstructASimpleAddGraph(*m.mutable_graph(), "ai.onnx");
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
 }
 
 TEST_F(GraphTest, SimpleAddWrongDomain) {
-  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
-  m->set_ir_version(3);
-  ImportOpset(*m, "", 10);
-  ConstructASimpleAddGraph(*m->mutable_graph(), "AAAA");
+  ModelProto m;
+  m.set_ir_version(3);
+  ImportOpset(m, "", 10);
+  ConstructASimpleAddGraph(*m.mutable_graph(), "AAAA");
   std::shared_ptr<Model> model;
   Status st;
   ASSERT_FALSE((st = Model::Load(std::move(m), model, nullptr, *logger_)).IsOK());
 }
 
 TEST_F(GraphTest, SimpleAddWrongDomain2) {
-  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
-  m->set_ir_version(3);
-  ImportOpset(*m, "AAAA", 10);
-  ConstructASimpleAddGraph(*m->mutable_graph(), "AAAA");
+  ModelProto m;
+  m.set_ir_version(3);
+  ImportOpset(m, "AAAA", 10);
+  ConstructASimpleAddGraph(*m.mutable_graph(), "AAAA");
   std::shared_ptr<Model> model;
   Status st;
   ASSERT_FALSE((st = Model::Load(std::move(m), model, nullptr, *logger_)).IsOK());
 }
 
 TEST_F(GraphTest, SimpleUnique) {
-  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
-  m->set_ir_version(3);
-  ImportOpset(*m, "", 11);
-  GraphProto& g = *m->mutable_graph();
+  ModelProto m;
+  m.set_ir_version(3);
+  ImportOpset(m, "", 11);
+  GraphProto& g = *m.mutable_graph();
   NodeProto* node = g.add_node();
   *node->add_input() = "x";
   *node->add_output() = "sum";
@@ -246,13 +231,38 @@ TEST_F(GraphTest, SimpleUnique) {
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
 }
+  
+TEST_F(GraphTest, UnusedValueInfoSerializes) {
+  ModelProto m;
+  m.set_ir_version(4);
+  ImportOpset(m, "", 11);
+  GraphProto& g = *m.mutable_graph();   
+  NodeProto* node = g.add_node();
+  *node->add_input() = "x";
+  *node->add_output() = "sum";
+  node->set_op_type("Unique");
+  node->set_domain("");
+  ValueInfoProto* input1 = g.add_input();
+  input1->set_name("x");
+  SetTypeAndShape(input1->mutable_type()->mutable_tensor_type(), 1, {3, 4, 5});
+  ValueInfoProto* output = g.add_output();
+  output->set_name("sum");
+  SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {60});
+  ValueInfoProto* unused = g.add_value_info();
+  unused->set_name("unused");
+  SetTypeAndShape(unused->mutable_type()->mutable_tensor_type(), 1, {123});
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+  model->MainGraph().SetGraphProtoSyncNeeded();
+  EXPECT_TRUE(Model::Save(*model, "graph_with_unused_value_info.onnx").IsOK());
+}
 
 TEST_F(GraphTest, WrongOpset) {
-  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
-  m->set_ir_version(3);
+  ModelProto m;
+  m.set_ir_version(3);
   //No Op registered for Unique with domain_version of 1
-  ImportOpset(*m, "", 1);
-  GraphProto& g = *m->mutable_graph();
+  ImportOpset(m, "", 1);
+  GraphProto& g = *m.mutable_graph();
   NodeProto* node = g.add_node();
   *node->add_input() = "x";
   *node->add_output() = "sum";
@@ -270,11 +280,11 @@ TEST_F(GraphTest, WrongOpset) {
 }
 
 TEST_F(GraphTest, ExtraInput) {
-  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
-  m->set_ir_version(3);
+  ModelProto m;
+  m.set_ir_version(3);
   //Node () has input size 2 not in range [min=1, max=1].
-  ImportOpset(*m, "", 11);
-  GraphProto& g = *m->mutable_graph();
+  ImportOpset(m, "", 11);
+  GraphProto& g = *m.mutable_graph();
   NodeProto* node = g.add_node();
   *node->add_input() = "x";
   *node->add_input() = "y";
@@ -297,10 +307,10 @@ TEST_F(GraphTest, LocalCustomRegistry) {
   std::vector<ONNX_NAMESPACE::OpSchema> schema = {
       OpSchema().SetName("FakeUnique").Input(0, "X", "A N-D input tensor that is to be processed.", "T").Output(0, "Y", "desc", "T").TypeConstraint("T", OpSchema::all_tensor_types(), "Constrain input and output types to any tensor type.").SetDomain("FakeTestDomain")};
   ASSERT_TRUE(registry->RegisterOpSet(schema, "FakeTestDomain", 0, 1).IsOK());
-  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
-  m->set_ir_version(3);
-  ImportOpset(*m, "FakeTestDomain", 1);
-  GraphProto& g = *m->mutable_graph();
+  ModelProto m;
+  m.set_ir_version(3);
+  ImportOpset(m, "FakeTestDomain", 1);
+  GraphProto& g = *m.mutable_graph();
   NodeProto* node = g.add_node();
   *node->add_input() = "x";
   *node->add_output() = "sum";
@@ -323,11 +333,11 @@ TEST_F(GraphTest, LocalCustomRegistryWrongOpsetImportVersion) {
   std::vector<ONNX_NAMESPACE::OpSchema> schema = {
       OpSchema().SetName("FakeUnique").Input(0, "X", "A N-D input tensor that is to be processed.", "T").Output(0, "Y", "desc", "T").TypeConstraint("T", OpSchema::all_tensor_types(), "Constrain input and output types to any tensor type.").SetDomain("FakeTestDomain")};
   ASSERT_TRUE(registry->RegisterOpSet(schema, "FakeTestDomain", 0, 1).IsOK());
-  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
-  m->set_ir_version(3);
+  ModelProto m;
+  m.set_ir_version(3);
   //Should be 1, but we put 11 herer so the model loading will fail
-  ImportOpset(*m, "FakeTestDomain", 11);
-  GraphProto& g = *m->mutable_graph();
+  ImportOpset(m, "FakeTestDomain", 11);
+  GraphProto& g = *m.mutable_graph();
   NodeProto* node = g.add_node();
   *node->add_input() = "x";
   *node->add_output() = "sum";
@@ -1282,6 +1292,50 @@ TEST_F(GraphTest, AddRemoveInitializerHandling) {
   auto num_initializers = graph_proto_from_resolved_graph.initializer_size();
   ASSERT_EQ(num_initializers, 0) << "Expected unused initializers to be removed from proto. "
                                  << num_initializers << " remain.";
+}
+
+TEST_F(GraphTest, SetInputsAndSetOutputs_NewInputAndOutput) {
+  std::shared_ptr<Model> model;
+  {
+    ModelProto m;
+    m.set_ir_version(4);
+    ImportOpset(m, "", 10);
+    ConstructASimpleAddGraph(*m.mutable_graph(), nullptr);
+    ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+  }
+
+  // starting from:
+  //   x + y = sum
+  // modify to:
+  //   (x + y) + z = sum_with_z
+  // set z as an additional input
+  // set sum_with_z as an additional output
+
+  Graph& graph = model->MainGraph();
+  TypeProto type_proto{};
+  SetTypeAndShape(type_proto.mutable_tensor_type(), 1, {3, 4, 5});
+  auto* sum = graph.GetNodeArg("sum");
+  auto* z = &graph.GetOrCreateNodeArg("z", &type_proto);
+  auto* sum_with_z = &graph.GetOrCreateNodeArg("sum_with_z", &type_proto);
+
+  graph.AddNode("add_z", "Add", "add z to sum", {sum, z}, {sum_with_z});
+
+  auto inputs = graph.GetInputsIncludingInitializers();
+  inputs.push_back(z);
+  graph.SetInputs(inputs);
+
+  auto outputs = graph.GetOutputs();
+  outputs.push_back(sum_with_z);
+  graph.SetOutputs(outputs);
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  inputs = graph.GetInputsIncludingInitializers();
+  ASSERT_TRUE(std::find(inputs.begin(), inputs.end(), z) != inputs.end()) << "expected new input z";
+
+  outputs = graph.GetOutputs();
+  ASSERT_TRUE(std::find(outputs.begin(), outputs.end(), sum_with_z) != outputs.end())
+      << "expected new output sum_with_z";
 }
 }  // namespace test
 }  // namespace onnxruntime

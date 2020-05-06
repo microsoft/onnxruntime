@@ -6,7 +6,7 @@
 #include "SequenceFeatureDescriptor.g.h"
 #include "iengine.h"
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 struct SequenceFeatureDescriptor : SequenceFeatureDescriptorT<
                                        SequenceFeatureDescriptor,
                                        ILearningModelFeatureDescriptorNative,
@@ -54,4 +54,4 @@ struct SequenceFeatureDescriptor : SequenceFeatureDescriptorT<
   bool is_required_;
   winml::ILearningModelFeatureDescriptor element_descriptor_;
 };
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP

@@ -38,12 +38,13 @@ OrtStatus* OrtSequenceTypeInfo::Clone(OrtSequenceTypeInfo** out) {
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetSequenceElementType, const OrtSequenceTypeInfo* sequence_type_info, OrtTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::GetSequenceElementType, _In_ const OrtSequenceTypeInfo* sequence_type_info,
+                    _Outptr_ OrtTypeInfo** out) {
   API_IMPL_BEGIN
   return sequence_type_info->sequence_key_type_->Clone(out);
   API_IMPL_END
 }
 
-ORT_API(void, OrtApis::ReleaseSequenceTypeInfo, OrtSequenceTypeInfo* ptr) {
+ORT_API(void, OrtApis::ReleaseSequenceTypeInfo, _Frees_ptr_opt_ OrtSequenceTypeInfo* ptr) {
   delete ptr;
 }

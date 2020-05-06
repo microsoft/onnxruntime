@@ -3,7 +3,16 @@
 
 #pragma once
 
-#include "common.h"
+// STL
+#define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING
+#define _SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING
+
+#include <Windows.h>
+#ifdef OPTIONAL
+#undef OPTIONAL
+#endif
+
+#pragma warning(disable : 4100)
 
 // Needed to work around the fact that OnnxRuntime defines ERROR
 #ifdef ERROR

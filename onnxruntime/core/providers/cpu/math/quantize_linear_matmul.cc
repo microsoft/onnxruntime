@@ -3,7 +3,12 @@
 
 #include "core/providers/cpu/math/quantize_linear_matmul.h"
 #include "core/providers/cpu/math/matmul_helper.h"
+#include "core/common/safeint.h"
 #include "core/providers/common.h"
+#include "core/util/math_cpuonly.h"
+#include "core/util/qmath.h"
+#include "core/util/gemmlowp_common.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 
@@ -56,11 +61,44 @@ Status QLinearMatMul<uint8_t, uint8_t, uint8_t>::Compute(OpKernelContext* ctx) c
   auto y_scale_data = *(y_scale->template Data<float>());
 
   const float real_multiplier = (a_scale_data * b_scale_data) / y_scale_data;
+
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
+  auto gemm_output_data = alloc->Alloc(SafeInt<size_t>(sizeof(int32_t)) *
+                                       static_cast<size_t>(helper.M()) * static_cast<size_t>(helper.N()));
+  BufferUniquePtr gemm_output_buffer(gemm_output_data, BufferDeleter(alloc));
+  auto* gemm_output = static_cast<int32_t*>(gemm_output_buffer.get());
+#else
+  // Compute the fixed point multiplier and shift for requantizing with GEMMLOWP.
   int32_t integer_multiplier;
   int right_shift;
   QuantizeMultiplier(real_multiplier, &integer_multiplier, &right_shift);
+#endif
 
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
+    QGemmu8u8_s32(static_cast<int>(helper.M()),
+                  static_cast<int>(helper.N()),
+                  static_cast<int>(helper.K()),
+                  a->template Data<uint8_t>() + helper.LeftOffsets()[i],
+                  static_cast<int>(helper.K()),
+                  *a_offset->template Data<uint8_t>(),
+                  b->template Data<uint8_t>() + helper.RightOffsets()[i],
+                  static_cast<int>(helper.N()),
+                  *b_offset->template Data<uint8_t>(),
+                  gemm_output,
+                  static_cast<int>(helper.N()),
+                  ctx->GetOperatorThreadPool());
+
+    MlasRequantizeOutput(gemm_output,
+                         y->template MutableData<uint8_t>() + helper.OutputOffsets()[i],
+                         nullptr,
+                         static_cast<size_t>(helper.M()),
+                         static_cast<size_t>(helper.N()),
+                         real_multiplier,
+                         *y_offset->template Data<uint8_t>());
+#else
     GemmlowpMultiplyu8u8_u8(a->template Data<uint8_t>() + helper.LeftOffsets()[i],
                             b->template Data<uint8_t>() + helper.RightOffsets()[i],
                             y->template MutableData<uint8_t>() + helper.OutputOffsets()[i],
@@ -72,6 +110,7 @@ Status QLinearMatMul<uint8_t, uint8_t, uint8_t>::Compute(OpKernelContext* ctx) c
                             static_cast<int>(helper.K()),
                             integer_multiplier,
                             right_shift);
+#endif
   }
 
   return Status::OK();

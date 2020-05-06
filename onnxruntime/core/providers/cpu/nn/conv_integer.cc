@@ -2,10 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/nn/conv_integer.h"
+
+#include "core/common/safeint.h"
+#include "core/providers/common.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
-#include "core/providers/common.h"
 
 namespace onnxruntime {
 
@@ -89,7 +91,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
     AllocatorPtr alloc;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-    auto* col_data = alloc->Alloc(sizeof(uint8_t) * col_buffer_size);
+    auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
 
     if (kernel_rank != 2) {
@@ -105,6 +107,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   const auto* Xdata = X->template Data<uint8_t>();
+  const auto* Wdata = W->template Data<uint8_t>();
   auto* Ydata = Y->template MutableData<int32_t>();
 
   for (int image_id = 0; image_id < N; ++image_id) {
@@ -112,7 +115,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
       if (col_buffer_data != nullptr) {
         if (kernel_rank == 2) {
           math::Im2col<uint8_t, StorageOrder::NCHW>()(
-              Xdata + group_id * X_offset,
+              Xdata,
               C / conv_attrs_.group,
               input_shape[0],
               input_shape[1],
@@ -130,7 +133,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
               input_offset);
         } else {
           math::Im2colNd<uint8_t, StorageOrder::NCHW>()(
-              Xdata + group_id * X_offset,
+              Xdata,
               X->Shape().GetDims().data() + 1,
               col_buffer_shape.data(),
               C * input_image_size,
@@ -149,19 +152,19 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
       QGemmu8u8_s32(static_cast<int>(M / conv_attrs_.group),
                     static_cast<int>(output_image_size),
                     static_cast<int>(kernel_dim),
-                    W->template Data<uint8_t>() + group_id * W_offset,
+                    Wdata + group_id * W_offset,
                     static_cast<int>(kernel_dim),
                     filter_offset,
-                    col_buffer_data == nullptr ? Xdata + group_id * X_offset : col_buffer_data,
+                    col_buffer_data == nullptr ? Xdata : col_buffer_data,
                     static_cast<int>(output_image_size),
                     input_offset,
-                    Ydata + group_id * Y_offset,
+                    Ydata,
                     static_cast<int>(output_image_size),
                     thread_pool);
-    }
 
-    Xdata += X_offset * conv_attrs_.group;
-    Ydata += Y_offset * conv_attrs_.group;
+      Xdata += X_offset;
+      Ydata += Y_offset;
+    }
   }
 
   return Status::OK();

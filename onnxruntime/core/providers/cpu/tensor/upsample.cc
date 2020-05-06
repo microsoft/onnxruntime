@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/upsample.h"
+#include "core/common/safeint.h"
 #include <sstream>
 
 using namespace onnxruntime::common;
@@ -28,7 +29,6 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     uint8_t,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
     Upsample<uint8_t>);
-
 
 template <typename T>
 void UpsampleNearest2x(int64_t batch_size,
@@ -302,8 +302,8 @@ void UpsampleBilinear(int64_t batch_size,
   std::vector<float> y_original;
   std::vector<float> x_original;
 
-  size_t idx_buffer_size = 2 * sizeof(int64_t) * (output_height + output_width);
-  size_t scale_buffer_size = 2 * sizeof(float_t) * (output_height + output_width);
+  SafeInt<size_t> idx_buffer_size = SafeInt<size_t>(2) * sizeof(int64_t) * (output_height + output_width);
+  SafeInt<size_t> scale_buffer_size = SafeInt<size_t>(2) * sizeof(float_t) * (output_height + output_width);
   auto inx_scale_data_buffer = alloc->Alloc(idx_buffer_size + scale_buffer_size);
   BufferUniquePtr idx_scale_data_buffer_holder(inx_scale_data_buffer, BufferDeleter(alloc));
   auto* idx_data = static_cast<int64_t*>(idx_scale_data_buffer_holder.get());
@@ -442,7 +442,10 @@ float CubicInterpolation1D(const T* Xdata,
 
   return result;
 }
-
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 6001)
+#endif
 template <typename T>
 void ResizeBiCubic(
     int64_t batch_size,
@@ -580,6 +583,9 @@ void ResizeBiCubic(
     }
   }
 }
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 template <typename T>
 Status Upsample<T>::BaseCompute(OpKernelContext* context,
@@ -592,11 +598,11 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
   ORT_ENFORCE(output_dims.size() == dims.size(), "Rank of input and output tensor should be same.");
 
   Tensor* Y = context->Output(0, output_dims);
-    
+
   if (dims.size() != scales.size())
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   is_resize_ ? "Resize: input tensor's dimension does not match the scales."
-                            : "Upsample: input tensor's dimension does not match the scales.");
+                             : "Upsample: input tensor's dimension does not match the scales.");
 
   if (roi.size() != 2 * X->Shape().GetDims().size())
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -614,9 +620,9 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
   switch (mode_) {
     case UpsampleMode::NN:
-      return UpsampleNearest<T>(X->template Data<T>(), Y->template MutableData<T>(), X->Shape(), Y->Shape(), scales, roi,
-                                is_resize_, use_extrapolation_, extrapolation_value_, use_nearest2x_optimization_,
-                                get_original_coordinate_, get_nearest_pixel_);
+      return UpsampleNearest<T>(X->template Data<T>(), Y->template MutableData<T>(), X->Shape(), Y->Shape(),
+                                scales, roi, is_resize_, use_extrapolation_, extrapolation_value_,
+                                use_nearest2x_optimization_, get_original_coordinate_, get_nearest_pixel_);
     case UpsampleMode::LINEAR: {
       //The correct behavior of 'linear' mode for an N-D input is not clear right now,
       //so only support 'bilinear' with 2-D or 4-D input tensor with outermost 2 scales as 1 in the 4-D case
@@ -712,15 +718,13 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   std::vector<float> scales_array(X->Shape().GetDims().size());
 
   if (scales != nullptr && scales->Shape().Size() != 0) {
-    ORT_ENFORCE(sizes == nullptr,
-                "Only one of scales or sizes must be provided as input.");
+    ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
     ParseScalesData(scales, scales_array);
 
     // Compute output shape from scales and input dims
     ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
   } else {
-    ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0,
-                "Either scales or sizes MUST be provided as input.");
+    ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0, "Either scales or sizes MUST be provided as input.");
 
     // When sizes input is available directly populate it into the output_dims array.
     memcpy(output_dims.data(), sizes->template Data<int64_t>(), sizes->Shape().Size() * sizeof(int64_t));

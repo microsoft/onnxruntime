@@ -3,7 +3,7 @@
 
 #pragma once
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 interface IEngineFactory;
 
@@ -92,7 +92,7 @@ IValue : IUnknown {
   (bool* out) PURE;
 
   STDMETHOD(GetResource)
-  (WinML::Resource & resource) PURE;
+  (_winml::Resource & resource) PURE;
 
   STDMETHOD(IsTensor)
   (bool* out) PURE;
@@ -108,6 +108,9 @@ IValue : IUnknown {
 
   STDMETHOD(IsOfVectorMapType)
   (winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) PURE;
+
+  STDMETHOD(IsOfVectorTensorType)
+  (winml::TensorKind kind, bool* out) PURE;
 };
 
 MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac")
@@ -131,9 +134,6 @@ IEngine : IUnknown {
   () PURE;
 
   STDMETHOD(FlushContext)
-  () PURE;
-
-  STDMETHOD(TrimUploadHeap)
   () PURE;
 
   STDMETHOD(ReleaseCompletedReferences)
@@ -163,6 +163,9 @@ IEngine : IUnknown {
   STDMETHOD(CreateSequenceOfMapsValue)
   (IInspectable * sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue * *out) PURE;
 
+  STDMETHOD(CreateSequenceOfValuesValue)
+  (IValue ** values, size_t size, IValue * *out) PURE;
+
   STDMETHOD(CreateOneInputAcrossDevices)
   (const char* name, IValue* src, IValue** dest) PURE;
 
@@ -177,12 +180,18 @@ IEngine : IUnknown {
 
   STDMETHOD(FillSequenceOfMapsValue)
   (IInspectable * sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue * value) PURE;
+
+  STDMETHOD(GetSequenceOfTensorValues)
+  (_winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) PURE;
 };
 
-MIDL_INTERFACE("0452ef15-b66b-47ca-9eff-aedac571764e")
+MIDL_INTERFACE("8ac0b6b9-4561-492b-b63d-a07bdd8292c6")
 IEngineBuilder : IUnknown {
   STDMETHOD(SetD3D12Resources)
   (ID3D12Device * device, ID3D12CommandQueue * queue) PURE;
+
+  STDMETHOD(SetMetacommandsEnabled)
+  (int enabled) PURE;
 
   STDMETHOD(GetD3D12Device)
   (ID3D12Device * *device) PURE;
@@ -231,4 +240,4 @@ IEngineFactory : IUnknown {
   (_Out_ IDescriptorInfo * *info) PURE;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

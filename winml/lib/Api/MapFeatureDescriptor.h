@@ -6,7 +6,7 @@
 #include "MapFeatureDescriptor.g.h"
 #include "iengine.h"
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 struct MapFeatureDescriptor : MapFeatureDescriptorT<
                                   MapFeatureDescriptor,
                                   ILearningModelFeatureDescriptorNative,
@@ -62,4 +62,4 @@ struct MapFeatureDescriptor : MapFeatureDescriptorT<
   winml::TensorKind key_kind_;
   winml::ILearningModelFeatureDescriptor value_kind_;
 };
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP

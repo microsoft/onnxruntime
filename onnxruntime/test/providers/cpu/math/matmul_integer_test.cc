@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
 #include "core/common/common.h"
@@ -32,6 +33,209 @@ TEST(MatmulIntegerOpTest, MatMulInteger) {
   test.AddOutput<int32_t>("T3", {1, 1}, {-1});
   test.Run();
 }
+
+TEST(MatmulIntegerOpTest, MatMulInteger_int8_t) {
+  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<int8_t>("T1",
+                        {2, 4},
+                        {-3, 7, 5, -6,
+                         4, -5, 8, 7});
+  test.AddInput<int8_t>("T2",
+                        {4, 4},
+                        {5, -3, 7, 8,
+                         -6, -8, -3, 6,
+                         7, 9, 9, -5,
+                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a_zero_point", {}, {5});
+  test.AddInput<int8_t>("b_zero_point", {}, {5});
+  test.AddOutput<int32_t>("T3",
+                          {2, 4},
+                          {-55, 16, 89, -44,
+                           122, 154, 68, -39});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_ND) {
+  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<int8_t>("T1",
+                        {2, 2, 4},
+                        {-3, 7, 5, -6,
+                         4, -5, 8, 7,
+
+                         7, -4, 3, 6,
+                         -4, -5, 5, 7});
+
+  test.AddInput<int8_t>("T2",
+                        {4, 3},
+                        {5, -3, 7,
+                         8, -6, -8,
+                         -3, 6, 7,
+                         9, 9, -5});
+
+  test.AddInput<int8_t>("a_zero_point", {}, {3});
+  test.AddInput<int8_t>("b_zero_point", {}, {4});
+  test.AddOutput<int32_t>("T3",
+                          {2, 2, 3},
+                          {-49, -39, 21,
+                           -46, 103, 78,
+
+                           -9, 57, 69,
+                           -33, 153, 45});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_B_ND) {
+  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<int8_t>("T1",
+                        {2, 4},
+                        {-3, 7, 5, -6,
+                         4, -5, 8, 7});
+  test.AddInput<int8_t>("T2",
+                        {2, 4, 3},
+                        {5, -3, 7,
+                         8, -6, -8,
+                         -3, 6, 7,
+                         9, 9, -5,
+
+                         5, -3, 7,
+                         8, -6, -8,
+                         -3, 6, 7,
+                         9, 9, -5});
+  test.AddInput<int8_t>("a_zero_point", {}, {1});
+  test.AddInput<int8_t>("b_zero_point", {}, {2});
+  test.AddOutput<int32_t>("T3",
+                          {2, 2, 3},
+                          {-45, -61, -11,
+                           -20, 103, 68,
+
+                           -45, -61, -11,
+                           -20, 103, 68});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_ND_B_ND) {
+  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<int8_t>("T1",
+                        {2, 2, 4},
+                        {-3, 7, 5, -6,
+                         4, -5, 8, 7,
+
+                         -3, 7, 5, -6,
+                         4, -5, 8, 7});
+  test.AddInput<int8_t>("T2",
+                        {2, 4, 4},
+                        {5, -3, 7, 8,
+                         -6, -8, -3, 6,
+                         7, 9, 9, -5,
+                         8, 7, -6, 7,
+
+                         5, -3, 7, 8,
+                         -6, -8, -3, 6,
+                         7, 9, 9, -5,
+                         8, 7, -6, 7});
+  test.AddInput<int8_t>("a_zero_point", {}, {5});
+  test.AddInput<int8_t>("b_zero_point", {}, {5});
+  test.AddOutput<int32_t>("T3",
+                          {2, 2, 4},
+                          {-55, 16, 89, -44,
+                           122, 154, 68, -39,
+
+                           -55, 16, 89, -44,
+                           122, 154, 68, -39});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_Has_Zero_Point) {
+  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<int8_t>("T1",
+                        {2, 2, 4},
+                        {-3, 7, 5, -6,
+                         4, -5, 8, 7,
+
+                         -3, 7, 5, -6,
+                         4, -5, 8, 7});
+  test.AddInput<int8_t>("T2",
+                        {2, 4, 4},
+                        {0, -8, 2, 3,
+                         -11, -13, -8, 1,
+                         2, 4, 4, -10,
+                         3, 2, -11, 2,
+
+                         0, -8, 2, 3,
+                         -11, -13, -8, 1,
+                         2, 4, 4, -10,
+                         3, 2, -11, 2});
+  test.AddInput<int8_t>("a_zero_point", {}, {5});
+  test.AddOutput<int32_t>("T3",
+                          {2, 2, 4},
+                          {-55, 16, 89, -44,
+                           122, 154, 68, -39,
+
+                           -55, 16, 89, -44,
+                           122, 154, 68, -39});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_No_Zero_Point) {
+  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<int8_t>("T1",
+                        {2, 2, 4},
+                        {-8, 2, 0, -11,
+                         -1, -10, 3, 2,
+
+                         -8, 2, 0, -11,
+                         -1, -10, 3, 2});
+  test.AddInput<int8_t>("T2",
+                        {2, 4, 4},
+                        {0, -8, 2, 3,
+                         -11, -13, -8, 1,
+                         2, 4, 4, -10,
+                         3, 2, -11, 2,
+
+                         0, -8, 2, 3,
+                         -11, -13, -8, 1,
+                         2, 4, 4, -10,
+                         3, 2, -11, 2});
+  test.AddOutput<int32_t>("T3",
+                          {2, 2, 4},
+                          {-55, 16, 89, -44,
+                           122, 154, 68, -39,
+
+                           -55, 16, 89, -44,
+                           122, 154, 68, -39});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(MatmulIntegerOpTest, MatMulInteger_WithZero_ZeroPoint) {
   OpTester test("MatMulInteger", 10);
   test.AddInput<uint8_t>("T1", {4, 3}, {11, 7, 3, 10, 6, 2, 9, 5, 1, 8, 4, 0});

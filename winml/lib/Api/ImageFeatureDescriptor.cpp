@@ -7,7 +7,7 @@
 
 #include <windows.graphics.imaging.h>
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 ImageFeatureDescriptor::ImageFeatureDescriptor(
     const char* name,
     const char* description,
@@ -19,8 +19,8 @@ ImageFeatureDescriptor::ImageFeatureDescriptor(
     uint32_t width,
     uint32_t height,
     ImageNominalPixelRange nominal_pixel_range,
-    ImageColorSpaceGamma color_space_gamma) : name_(WinML::Strings::HStringFromUTF8(name)),
-                                              description_(WinML::Strings::HStringFromUTF8(description)),
+    ImageColorSpaceGamma color_space_gamma) : name_(_winml::Strings::HStringFromUTF8(name)),
+                                              description_(_winml::Strings::HStringFromUTF8(description)),
                                               tensor_kind_(tensor_kind),
                                               shape_(shape),
                                               is_required_(is_required),
@@ -123,11 +123,11 @@ ImageFeatureDescriptor::GetColorSpaceGamma() {
 
 HRESULT
 ImageFeatureDescriptor::GetDescriptorInfo(
-    WinML::IEngineFactory* engine_factory,
-    WinML::IDescriptorInfo** info) {
+    _winml::IEngineFactory* engine_factory,
+    _winml::IDescriptorInfo** info) {
     // TODO: Need to add denotations here
   engine_factory->CreateTensorDescriptorInfo(tensor_kind_, shape_.data(), shape_.size(), info);
   return S_OK;
 }
 
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP

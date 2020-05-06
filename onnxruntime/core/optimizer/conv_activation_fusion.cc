@@ -39,7 +39,7 @@ static bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& m
       bool is_constant = true;
       const ONNX_NAMESPACE::TensorProto* initializer = graph_utils::GetConstantInitializer(graph, input->Name());
       if (initializer) {
-        Initializer i(*initializer);
+        Initializer i(*initializer, graph.ModelPath());
         switch (initializer->data_type()) {
           case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
             value = *i.data<float>();
@@ -108,7 +108,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         !graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Tanh", {6})) {
       if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "LeakyRelu", {6})) {
         activation_params.push_back(graph_utils::GetNodeAttribute(next_node, "alpha")->f());
-      } else if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6, 11})) {
+      } else if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6, 11, 12})) {
         float min, max;
         if (GetClipConstantMinMax(graph, next_node, min, max)) {
           activation_params.push_back(min);

@@ -15,6 +15,7 @@
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/onnxruntime_map_type_info.h"
 #include "core/framework/onnxruntime_sequence_type_info.h"
+#include "core/framework/TensorSeq.h"
 
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
@@ -48,31 +49,35 @@ OrtTypeInfo::~OrtTypeInfo() {
   }
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetOnnxTypeFromTypeInfo, _In_ const struct OrtTypeInfo* input, ONNXType* out) {
+ORT_API_STATUS_IMPL(OrtApis::GetOnnxTypeFromTypeInfo, _In_ const struct OrtTypeInfo* input, _Out_ ONNXType* out) {
   *out = input->type;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToTensorInfo, _In_ const struct OrtTypeInfo* input, const struct OrtTensorTypeAndShapeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToTensorInfo, _In_ const struct OrtTypeInfo* input,
+                    _Outptr_result_maybenull_ const struct OrtTensorTypeAndShapeInfo** out) {
   *out = input->type == ONNX_TYPE_TENSOR ? input->data : nullptr;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToMapTypeInfo, const OrtTypeInfo* type_info, const OrtMapTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToMapTypeInfo, _In_ const OrtTypeInfo* type_info,
+                    _Outptr_result_maybenull_ const OrtMapTypeInfo** out) {
   API_IMPL_BEGIN
   *out = type_info->type == ONNX_TYPE_MAP ? type_info->map_type_info : nullptr;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToSequenceTypeInfo, const OrtTypeInfo* type_info, const OrtSequenceTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToSequenceTypeInfo, _In_ const OrtTypeInfo* type_info,
+                    _Outptr_result_maybenull_ const OrtSequenceTypeInfo** out) {
   API_IMPL_BEGIN
   *out = type_info->type == ONNX_TYPE_SEQUENCE ? type_info->sequence_type_info : nullptr;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetDenotationFromTypeInfo, const OrtTypeInfo* type_info, const char** const out, size_t* len) {
+ORT_API_STATUS_IMPL(OrtApis::GetDenotationFromTypeInfo, _In_ const OrtTypeInfo* type_info, _Out_ const char** const out,
+                    _Out_ size_t* len) {
   API_IMPL_BEGIN
   *out = type_info->denotation.c_str();
   *len = type_info->denotation.size();
@@ -126,8 +131,23 @@ OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
   }
 
   if (type->IsTensorSequenceType()) {
-    *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE);
-    return nullptr;
+    OrtTensorTypeAndShapeInfo* info = nullptr;
+    const auto* tensor_data_type = value.Get<onnxruntime::TensorSeq>().DataType();
+    if (tensor_data_type != nullptr) {
+      TensorShape void_shape = {};
+      OrtStatus* st = GetTensorShapeAndType(void_shape, *tensor_data_type, &info);
+      if (st != nullptr) {
+        return st;
+      }
+
+      auto element_type_info = new OrtTypeInfo(ONNX_TYPE_TENSOR, info);
+      auto sequence_type_info = new OrtSequenceTypeInfo(element_type_info);
+      *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE, sequence_type_info);
+      return nullptr;
+    }
+    else {
+      return OrtApis::CreateStatus(ORT_FAIL, "OrtValue is TensorSequence type but has no element Tensor DataType.");
+    } 
   }
 
   const auto* type_proto = type->GetTypeProto();

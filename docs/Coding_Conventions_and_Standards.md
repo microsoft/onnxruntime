@@ -27,9 +27,12 @@ Other
 * Don't overuse std::shared\_ptr. Use std::shared\_ptr only if it's not clear when and where the object will be deallocated. See also: [https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr)
 * Avoid using the 'long' type, which could be either 32 bits or 64 bits.
 * If there is a legitimate need to allocate objects on the heap, prefer using onnxruntime::make_unique(). References for the reasoning:
-   * https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Rh-make_unique
-   * https://herbsutter.com/2013/05/29/gotw-89-solution-smart-pointers/
-   * https://abseil.io/tips/126
+  * https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Rh-make_unique
+  * https://herbsutter.com/2013/05/29/gotw-89-solution-smart-pointers/
+  * https://abseil.io/tips/126
+* Use [SafeInt](https://github.com/dcleblanc/SafeInt) when calculating the size of memory to allocate to protect against overflow errors
+  * `#include "core/common/safeint.h"`
+  * search for `SafeInt<size_t>` in the code for examples
 
 #### Clang-format
 

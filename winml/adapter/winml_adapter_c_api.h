@@ -213,7 +213,7 @@ struct WinmlAdapterApi {
     * OrtSessionOptionsAppendExecutionProvider_DML
 	 * This api is used to add the DML EP to OrtSessionOptions.
     */
-  OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_DML)(_In_ OrtSessionOptions* options, ID3D12Device* device, ID3D12CommandQueue* queue)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_DML)(_In_ OrtSessionOptions* options, ID3D12Device* device, ID3D12CommandQueue* queue, bool metacommands_enabled)NO_EXCEPTION;
 
   // OrtSession methods
 
@@ -304,14 +304,6 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderFlushContext)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
 
   /**
-    * DmlExecutionProviderTrimUploadHeap
-	 * This api is used to trim the upload heap in the DML EP.
-    * 
-    * WinML communicates directly with DML to perform this as an optimization.
-    */
-  OrtStatus*(ORT_API_CALL* DmlExecutionProviderTrimUploadHeap)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
-
-  /**
     * DmlExecutionProviderReleaseCompletedReferences
 	 * This api is used to release completed references after first run the DML EP.
     * 
@@ -394,8 +386,8 @@ struct WinmlAdapterApi {
 
   /**
     * CreateCustomRegistry
-	 * This api creates a custom registry that callers can populate with cusom ops.
-    * 
+	 * This api creates a custom registry that callers can populate with custom ops.
+    *
     * WinML uses this to support custom ops.
     */
   OrtStatus*(ORT_API_CALL* CreateCustomRegistry)(_Out_ IMLOperatorRegistry** registry)NO_EXCEPTION;

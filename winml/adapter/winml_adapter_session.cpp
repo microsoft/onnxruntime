@@ -42,7 +42,7 @@ ORT_API_STATUS_IMPL(winmla::CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ co
   std::unique_ptr<onnxruntime::InferenceSession> inference_session;
   try {
     // Create the inference session
-    inference_session = std::make_unique<onnxruntime::InferenceSession>(options->value, env->GetLoggingManager());
+    inference_session = std::make_unique<onnxruntime::InferenceSession>(options->value, env->GetEnvironment());
   } catch (const std::exception& e) {
     return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }
@@ -171,7 +171,7 @@ GetLotusCustomRegistries(IMLOperatorRegistry* registry) {
 
     // Get the ORT registry
     return abi_custom_registry->GetRegistries();
-#endif // USE_DML
+#endif  // USE_DML
   }
   return {};
 }
@@ -195,7 +195,7 @@ ORT_API_STATUS_IMPL(winmla::CreateCustomRegistry, _Out_ IMLOperatorRegistry** re
 #ifdef USE_DML
   auto impl = wil::MakeOrThrow<winmla::AbiCustomRegistryImpl>();
   *registry = impl.Detach();
-#endif // USE_DML
+#endif  // USE_DML
   return nullptr;
   API_IMPL_END
 }

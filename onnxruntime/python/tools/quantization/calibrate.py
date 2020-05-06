@@ -21,39 +21,52 @@ import re
 import subprocess
 import json
 
-def augment_graph(model):
+def augment_graph(model, quantization_candidates=['Conv', 'MatMul'], black_nodes=[], white_nodes=[]):
     '''
-    Adds ReduceMin and ReduceMax nodes to all Conv and MatMul nodes in
+    Adds ReduceMin and ReduceMax nodes to all quantization_candidates op type nodes in
     model and ensures their outputs are stored as part of the graph output
         parameter model: loaded FP32 ONNX model to quantize
+        parameter quantization_candidates: node op types for nodes to be quantized.
+                                           Calibraton will be done for them.
+        parameter black_nodes: nodes with these names will be force ignored by this
+                               calibration augmentation, no mather what's their op type.
+        parameter white_nodes: nodes with these names will be force to be calibration augmented.
         return: augmented ONNX model
     '''
-    # Candidate nodes for quantization. Calibration will be done for these nodes only
-    # When more nodes are extended to support quantization, add them to this list
-    quantization_candidates = ['Conv', 'MatMul']
+
     added_nodes = []
     added_outputs = []
     for node in model.graph.node:
-        if node.op_type in quantization_candidates:
+        should_be_calibrate = ((node.op_type in quantization_candidates) and (node.name not in black_nodes)) or (node.name in white_nodes)
+        if should_be_calibrate:
             input_name = node.output[0]
             # Adding ReduceMin nodes
-            reduce_min_name = node.name + '_ReduceMin'
-            reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name],
-                            [input_name + '_ReduceMin'], reduce_min_name, keepdims=0)
+            reduce_min_name = ''
+            if node.name != '':
+                reduce_min_name = node.name + '_ReduceMin'
+            reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name], [input_name + '_ReduceMin'],
+                                                    reduce_min_name,
+                                                    keepdims=0)
             added_nodes.append(reduce_min_node)
             added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
 
             # Adding ReduceMax nodes
-            reduce_max_name = node.name + '_ReduceMax'
-            reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name],
-                            [input_name + '_ReduceMax'], reduce_max_name, keepdims=0)
+            reduce_max_name = ''
+            if node.name!='':
+                reduce_max_name = node.name + '_ReduceMax'
+            reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name], [input_name + '_ReduceMax'],
+                                                    reduce_max_name,
+                                                    keepdims=0)
             added_nodes.append(reduce_max_node)
             added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, ()))
     model.graph.node.extend(added_nodes)
     model.graph.output.extend(added_outputs)
     return model
 
+
 # Using augmented outputs to generate inputs to quantize.py
+
+
 def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
     '''
     Gather intermediate model outputs after running inference
@@ -69,7 +82,8 @@ def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
         return: dictionary mapping added node names to (ReduceMin, ReduceMax) pairs
     '''
     model = onnx.load(model_path)
-    num_model_outputs = len(model.graph.output) # number of outputs in original model
+    # number of outputs in original model
+    num_model_outputs = len(model.graph.output)
     num_inputs = len(inputs)
     input_name = session.get_inputs()[0].name
     intermediate_outputs = [session.run([], {input_name: inputs[i]}) for i in range(num_inputs)]
@@ -82,19 +96,24 @@ def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
         for k, v in d.items():
             merged_dict.setdefault(k, []).append(v)
     added_node_output_names = node_output_names[num_model_outputs:]
-    node_names = [added_node_output_names[i].rpartition('_')[0] for i in range(0, len(added_node_output_names), 2)] # output names
+    node_names = [added_node_output_names[i].rpartition('_')[0] for i in range(0, len(added_node_output_names), 2)
+                 ]  # output names
 
     # Characterizing distribution of a node's values across test data sets
     clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i != list(merged_dict.keys())[0])
     if calib_mode == 'naive':
-        pairs = [tuple([float(min(clean_merged_dict[added_node_output_names[i]])),
-                float(max(clean_merged_dict[added_node_output_names[i+1]]))])
-                for i in range(0, len(added_node_output_names), 2)]
+        pairs = [
+            tuple([
+                float(min(clean_merged_dict[added_node_output_names[i]])),
+                float(max(clean_merged_dict[added_node_output_names[i + 1]]))
+            ]) for i in range(0, len(added_node_output_names), 2)
+        ]
     else:
         raise ValueError('Unknown value for calib_mode. Currently only naive mode is supported.')
 
     final_dict = dict(zip(node_names, pairs))
     return final_dict
+
 
 def calculate_scale_zeropoint(node, next_node, rmin, rmax):
     zp_and_scale = []
@@ -117,13 +136,14 @@ def calculate_scale_zeropoint(node, next_node, rmin, rmax):
         if rmin < 0:
             rmin = 0
 
-    scale = np.float32((rmax - rmin)/255 if rmin != rmax else 1)
+    scale = np.float32((rmax - rmin) / 255 if rmin != rmax else 1)
     initial_zero_point = (0 - rmin) / scale
     zero_point = np.uint8(round(max(0, min(255, initial_zero_point))))
 
     zp_and_scale.append(zero_point)
     zp_and_scale.append(scale)
     return zp_and_scale
+
 
 def calculate_quantization_params(model, quantization_thresholds):
     '''
@@ -145,7 +165,7 @@ def calculate_quantization_params(model, quantization_thresholds):
             {
                 "param_name": [zero_point, scale]
             }
-    '''    
+    '''
     if quantization_thresholds is None:
         raise ValueError('quantization thresholds is required to calculate quantization params (zero point and scale)')
 
@@ -154,7 +174,8 @@ def calculate_quantization_params(model, quantization_thresholds):
         node_output_name = node.output[0]
         if node_output_name in quantization_thresholds:
             node_thresholds = quantization_thresholds[node_output_name]
-            node_params = calculate_scale_zeropoint(node, model.graph.node[index+1], node_thresholds[0], node_thresholds[1])
+            node_params = calculate_scale_zeropoint(node, model.graph.node[index + 1], node_thresholds[0],
+                                                    node_thresholds[1])
             quantization_params[node_output_name] = node_params
 
     return quantization_params
@@ -187,20 +208,41 @@ def load_pb_file(data_file_name, size_limit, samples, channels, height, width):
 
             inputs = inputs.reshape(dataset_size, samples, channels, height, width)
         except:
-            sys.exit("Input .pb file contains incorrect input size. \nThe required size is: (%s). The real size is: (%s)"
-                        %((dataset_size, samples, channels, height, width), shape))
+            sys.exit(
+                "Input .pb file contains incorrect input size. \nThe required size is: (%s). The real size is: (%s)" %
+                ((dataset_size, samples, channels, height, width), shape))
 
     return inputs
+
 
 def main():
     # Parsing command-line arguments
     parser = argparse.ArgumentParser(description='parsing model and test data set paths')
     parser.add_argument('--model_path', required=True)
     parser.add_argument('--dataset_path', required=True)
+    parser.add_argument('--force_fusions', default=False, action='store_true')
+    parser.add_argument('--op_types', type=str, default='Conv,MatMul',
+                        help='comma delimited operator types to be calibrated and quantized')
+    parser.add_argument('--black_nodes', type=str, default='',
+                        help='comma delimited operator names that should not be quantized')
+    parser.add_argument('--white_nodes', type=str, default='',
+                        help='comma delimited operator names force to be quantized')
+    parser.add_argument('--augmented_model_path', type=str, default = 'augmented_model.onnx',
+                        help='save augmented model to this file for verification purpose')
     parser.add_argument('--output_model_path', type=str, default='calibrated_quantized_model.onnx')
-    parser.add_argument('--dataset_size', type=int, default=0, help="Number of images or tensors to load. Default is 0 which means all samples")
-    parser.add_argument('--data_preprocess', type=str, required=True, choices=['preprocess_method1', 'preprocess_method2', 'None'], help="Refer to Readme.md for guidance on choosing this option.")
+    parser.add_argument('--dataset_size',
+                        type=int,
+                        default=0,
+                        help="Number of images or tensors to load. Default is 0 which means all samples")
+    parser.add_argument('--data_preprocess',
+                        type=str,
+                        required=True,
+                        choices=['preprocess_method1', 'preprocess_method2', 'None'],
+                        help="Refer to Readme.md for guidance on choosing this option.")
     args = parser.parse_args()
+    calibrate_op_types = args.op_types.split(',')
+    black_nodes = args.black_nodes.split(',')
+    white_nodes = args.white_nodes.split(',')
     model_path = args.model_path
     output_model_path = args.output_model_path
     images_folder = args.dataset_path
@@ -208,27 +250,30 @@ def main():
     size_limit = args.dataset_size
 
     # Generating augmented ONNX model
-    augmented_model_path = 'augmented_model.onnx'
     model = onnx.load(model_path)
-    augmented_model = augment_graph(model)
-    onnx.save(augmented_model, augmented_model_path)
+    augmented_model = augment_graph(model, calibrate_op_types, black_nodes, white_nodes)
+    onnx.save(augmented_model, args.augmented_model_path)
 
     # Conducting inference
-    session = onnxruntime.InferenceSession(augmented_model_path, None)
+    session = onnxruntime.InferenceSession(args.augmented_model_path, None)
     (samples, channels, height, width) = session.get_inputs()[0].shape
 
     # Generating inputs for quantization
     if args.data_preprocess == "None":
         inputs = load_pb_file(images_folder, args.dataset_size, samples, channels, height, width)
     else:
-        inputs = load_batch(images_folder, height, width, size_limit, args.data_preprocess)        
+        inputs = load_batch(images_folder, height, width, args.data_preprocess, size_limit)
     print(inputs.shape)
     dict_for_quantization = get_intermediate_outputs(model_path, session, inputs, calib_mode)
     quantization_params_dict = calculate_quantization_params(model, quantization_thresholds=dict_for_quantization)
-    calibrated_quantized_model = quantize(onnx.load(model_path), quantization_mode=QuantizationMode.QLinearOps, quantization_params=quantization_params_dict)
+    calibrated_quantized_model = quantize(onnx.load(model_path),
+                                          quantization_mode=QuantizationMode.QLinearOps,
+                                          force_fusions=args.force_fusions,
+                                          quantization_params=quantization_params_dict)
     onnx.save(calibrated_quantized_model, output_model_path)
 
     print("Calibrated, quantized model saved.")
+
 
 if __name__ == '__main__':
     main()

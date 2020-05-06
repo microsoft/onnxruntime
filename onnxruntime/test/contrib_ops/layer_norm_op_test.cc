@@ -159,7 +159,7 @@ void LayerNormOpTester::ComputeWithCPU(std::vector<MLValue>& cpu_fetches) {
   run_options.run_log_verbosity_level = 1;
 
   // run with LayerNormalization
-  InferenceSession layernorm_session_object{so};
+  InferenceSession layernorm_session_object{so, GetEnvironment()};
   std::string s1;
   p_model->ToProto().SerializeToString(&s1);
   std::istringstream str(s1);
@@ -193,7 +193,7 @@ void LayerNormOpTester::ComputeWithCUDA(std::vector<MLValue>& cuda_fetches) {
   run_options.run_log_verbosity_level = 1;
 
   auto cuda_execution_provider = DefaultCudaExecutionProvider();
-  InferenceSession cuda_session_object{so};
+  InferenceSession cuda_session_object{so, GetEnvironment()};
   EXPECT_TRUE(cuda_session_object.RegisterExecutionProvider(std::move(cuda_execution_provider)).IsOK());
 
   std::string s;
@@ -226,7 +226,7 @@ void LayerNormOpTester::ComputeOriSubgraphWithCPU(std::vector<MLValue>& subgraph
   run_options.run_log_verbosity_level = 1;
 
   Status status;
-  InferenceSession subgraph_session_object{so, &DefaultLoggingManager()};
+  InferenceSession subgraph_session_object{so, GetEnvironment()};
   ASSERT_TRUE((status = subgraph_session_object.Load("testdata/layernorm.onnx")).IsOK()) << status;
   ASSERT_TRUE((status = subgraph_session_object.Initialize()).IsOK()) << status;
   ASSERT_TRUE((status = subgraph_session_object.Run(run_options, feeds, output_names, &subgraph_fetches)).IsOK()) << status;
