@@ -435,17 +435,13 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
   json perf_metrics;
   perf_metrics["Model"] = params_.model_type;  
 
-  // loop thru the perf_properties
+  // loop thru the perf_properties and put it in json sub-structure
   std::string seq_len;
   for (auto const& it : params_.perf_properties) {
-    if (it.first == "sequence") {
-      perf_metrics["SeqLen"] = std::stoi(it.second);
+    if (it.first == "SeqLen") {
       seq_len = it.second;     
-    } else if (it.first == "dynamic_prediction_count") {
-      perf_metrics["PredictionsPerSeq"] = std::stoi(it.second);
-    } else {
-      perf_metrics[it.first] = it.second;
     }
+    perf_metrics["DerivedProperties"][it.first] = it.second;
   }
 
   perf_metrics["Round"] = round_;

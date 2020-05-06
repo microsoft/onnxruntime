@@ -69,12 +69,12 @@ public class App {
 		System.out.println(String.format("Commit change date: %s", batch_id));
 
 		// collect all json files list
-		processPerfMetrics(source_dir, perf_metrics, commit_id, batch_id);
+		processPerfMetrics(perf_metrics, commit_id, batch_id);
 
 		// TODO - add e2e tests later, run it w/ process command
 	}
 
-	private static void processPerfMetrics(Path source_dir, final List<Path> perf_metrics, String commit_id,
+	private static void processPerfMetrics(final List<Path> perf_metrics, String commit_id,
 										   String batch_id) throws Exception {
 		try {
 			Connection conn = JdbcUtil.GetConn();
@@ -102,60 +102,70 @@ public class App {
 						"values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now())"
 						+ "  ON DUPLICATE KEY UPDATE AvgTimePerBatch=?,Throughput=?,StabilizedThroughput=?,TotalTime=?,AvgCPU=?,Memory=?")) {
 
+			int i = 0;
+
 			// unique key section
-			st.setString(1, batch_id);
-			st.setString(2, commit_id.substring(0, 8));
-			st.setString(3, (String) json_object.get("Model"));
-			st.setString(4, (String) json_object.get("ModelName"));
-			st.setString(5, (String) json_object.get("DisplayName"));
-			st.setBoolean(6, (Boolean) json_object.get("UseMixedPrecision"));
-			st.setString(7, (String) json_object.get("Optimizer"));
-			st.setInt(8, (int)(long) json_object.get("BatchSize"));
-			if (json_object.get("SeqLen") == null) 				//  mysql allows null value in unique key column
-				st.setNull(9, Types.INTEGER);
-			else
-				st.setFloat(9, (int)(long) json_object.get("SeqLen"));
+			st.setString(++i, batch_id);
+			st.setString(++i, commit_id.substring(0, 8));
+			st.setString(++i, (String) json_object.get("Model"));
+			st.setString(++i, (String) json_object.get("ModelName"));
+			st.setString(++i, (String) json_object.get("DisplayName"));
+			st.setBoolean(++i, (Boolean) json_object.get("UseMixedPrecision"));
+			st.setString(++i, (String) json_object.get("Optimizer"));
+			st.setInt(++i, (int)(long) json_object.get("BatchSize"));
 
 			// non-key section
-			if (json_object.get("PredictionsPerSeq") == null)
-				st.setNull(10, Types.INTEGER);
-			else
-				st.setFloat(10, (int)(long) json_object.get("PredictionsPerSeq"));
-			st.setInt(11, (int)(long)  json_object.get("NumOfBatches"));
-			st.setInt(12, (int)(long)  json_object.get("WeightUpdateSteps"));
-			st.setInt(13, (int)(long)  json_object.get("Round"));
-			st.setInt(14, (int)(long)  json_object.get("GradAccSteps"));
-			st.setFloat(15, (float)(double) json_object.get("AvgTimePerBatch"));  // ms
-			st.setFloat(16, (float)(double) json_object.get("Throughput"));  // examples/sec
-			st.setFloat(17, (float)(double) json_object.get("StabilizedThroughput"));  // examples/sec
-			st.setFloat(18, (float)(double) json_object.get("TotalTime"));  // secs
-			// TODO - remove "if" check
+			JSONObject properties = (JSONObject) json_object.get("DerivedProperties");
+			if (properties != null) {
+				if (properties.get("SeqLen") == null) 				//  mysql allows null value in unique key column
+					st.setNull(++i, Types.INTEGER);
+				else
+					st.setInt(++i, Integer.parseInt((String) properties.get("SeqLen")));
+
+				if (properties.get("PredictionsPerSeq") == null) 				//  mysql allows null value in unique key column
+					st.setNull(++i, Types.INTEGER);
+				else
+					st.setInt(++i, Integer.parseInt((String) properties.get("PredictionsPerSeq")));
+			} else {
+				st.setNull(++i, Types.INTEGER);
+				st.setNull(++i, Types.INTEGER);
+			}
+
+			st.setInt(++i, (int)(long)  json_object.get("NumOfBatches"));
+			st.setInt(++i, (int)(long)  json_object.get("WeightUpdateSteps"));
+			st.setInt(++i, (int)(long)  json_object.get("Round"));
+			st.setInt(++i, (int)(long)  json_object.get("GradAccSteps"));
+			st.setFloat(++i, (float)(double) json_object.get("AvgTimePerBatch"));  // ms
+			st.setFloat(++i, (float)(double) json_object.get("Throughput"));  // examples/sec
+			st.setFloat(++i, (float)(double) json_object.get("StabilizedThroughput"));  // examples/sec
+			st.setFloat(++i, (float)(double) json_object.get("TotalTime"));  // secs
+			// TODO - remove "if" check later
 			if (json_object.get("AvgCPU") == null)
-				st.setNull(19, Types.FLOAT);
+				st.setNull(++i, Types.FLOAT);
 			else
-				st.setFloat(19, (float)(double) json_object.get("AvgCPU"));
+				st.setFloat(++i, (float)(double) json_object.get("AvgCPU"));
 
 			if (json_object.get("Memory") == null)
-				st.setNull(20, Types.INTEGER);
+				st.setNull(++i, Types.INTEGER);
 			else
-				st.setInt(20, (int)(long) json_object.get("Memory"));  // mb
+				st.setInt(++i, (int)(long) json_object.get("Memory"));  // mb
 
-			st.setString(21, (String) json_object.get("RunConfig"));
+			st.setString(++i, (String) json_object.get("RunConfig"));
 
 			// update section
-			st.setFloat(22, (float)(double) json_object.get("AvgTimePerBatch"));  // ms
-			st.setFloat(23, (float)(double) json_object.get("Throughput"));  // examples/sec
-			st.setFloat(24, (float)(double) json_object.get("StabilizedThroughput"));  // examples/sec
-			st.setFloat(25, (float)(double) json_object.get("TotalTime"));  // secs
+			st.setFloat(++i, (float)(double) json_object.get("AvgTimePerBatch"));  // ms
+			st.setFloat(++i, (float)(double) json_object.get("Throughput"));  // examples/sec
+			st.setFloat(++i, (float)(double) json_object.get("StabilizedThroughput"));  // examples/sec
+			st.setFloat(++i, (float)(double) json_object.get("TotalTime"));  // secs
 			if (json_object.get("AvgCPU") == null)
-				st.setNull(26, Types.FLOAT);
+				st.setNull(++i, Types.FLOAT);
 			else
-				st.setFloat(26, (float)(double) json_object.get("AvgCPU"));
+				st.setFloat(++i, (float)(double) json_object.get("AvgCPU"));
 
 			if (json_object.get("Memory") == null)
-				st.setNull(27, Types.INTEGER);
+				st.setNull(++i, Types.INTEGER);
 			else
-				st.setInt(27, (int)(long) json_object.get("Memory"));  // mb
+				st.setInt(++i, (int)(long) json_object.get("Memory"));  // mb
 
 			st.executeUpdate();
 		} catch (Exception e) {

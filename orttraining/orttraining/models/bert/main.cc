@@ -423,6 +423,9 @@ float GetLossValue(const Tensor& loss_tensor) {
   return loss;
 }
 
+// mapping of max_sequence_length and max_predictions_per_sequence position derived from training data
+std::map<std::string, std::pair<std::string, size_t>> metrics_map;
+
 void setup_training_params(BertParameters& params) {
   params.model_path = ToPathString(params.model_name) + ORT_TSTR(".onnx");
   params.model_with_loss_func_path = ToPathString(params.model_name) + ORT_TSTR("_with_cost.onnx");
@@ -499,10 +502,11 @@ void setup_training_params(BertParameters& params) {
       {"masked_lm_weights", "masked_lm_weights"},
       {"next_sentence_label", "next_sentence_labels"}};
 
-  // mapping of max_sequence_length and max_predictions_per_sequence position derived from training data
-  params.metrics_map = {
-      {"input1", {"sequence", 1}},                          // int64[batch,sequence]
-      {"masked_lm_ids", {"dynamic_prediction_count", 1}}    // int64[batch,dynamic_prediction_count]
+  // use this table mapping to define what to be stored in perf_properties, and ultimately in json structure 
+  // see training_runner.cc and GetConfigFromData() in training_util.h for more details 
+  metrics_map = {
+      {"input1", {"SeqLen", 1}},                     // int64[batch,sequence]    "sequence" -> "SeqLen"
+      {"masked_lm_ids", {"PredictionsPerSeq", 1}}    // int64[batch,dynamic_prediction_count]
   };
 
   params.model_type = "bert";
@@ -658,7 +662,7 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
 
     // collecting Bert related params from training data
     auto training_data = training_data_loader->CurrentDataSet();
-    training_data->GetConfigFromData(params.batch_size, params.metrics_map, params.perf_properties);
+    training_data->GetConfigFromData(params.batch_size, metrics_map, params.perf_properties);
     runner->UpdateMetricsParams(params.perf_properties);
 
     ORT_RETURN_IF_ERROR(runner->Run(training_data_loader.get(), test_data_loader.get()));

@@ -57,8 +57,6 @@ class TrainingRunner {
 
     MapStringToString input_name_map;
 
-    // used for collecting perf metrics - see bert/main.cc for example
-    std::map<std::string, std::pair<std::string, size_t>> metrics_map;
     // generic properties for storing perf metrics
     mutable MapStringToString perf_properties;
 
