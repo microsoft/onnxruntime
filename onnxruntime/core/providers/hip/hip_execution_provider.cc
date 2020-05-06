@@ -1084,7 +1084,7 @@ std::unique_ptr<onnxruntime::IDataTransfer> HIPExecutionProvider::GetDataTransfe
 
 std::vector<std::unique_ptr<ComputeCapability>>
 HIPExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                    const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+                                    const std::vector<const KernelRegistry*>& kernel_registries) const {
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
   std::unordered_set<const NodeArg*> defs_outside_hip;
@@ -1100,7 +1100,16 @@ HIPExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
       defs_outside_hip.insert(node.OutputDefs().cbegin(), node.OutputDefs().cend());
       continue;
     }
-    hip_kernel_def = GetKernelRegistry()->TryFindKernel(node, Type());
+
+    for (auto registry : kernel_registries) {
+      auto st = registry->TryFindKernel(node, Type(), &hip_kernel_def);
+
+      // at least one registry has a HIP kernel for this node
+      if (st.IsOK())
+        break;
+    }
+
+    // none of the provided registries has a HIP kernel for this node
     if (hip_kernel_def == nullptr) {
       // node is not in hip exeuction provider if no kernel def found,
       // or if other execution provider already assigned to it
