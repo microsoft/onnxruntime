@@ -149,21 +149,17 @@ class TrainingRunner {
     size_t checkpoint_period = 0;
     // upper limit on number of checkpoint files to keep
     size_t max_num_checkpoints = 1;
-
     int data_parallel_size = 1;
     int horizontal_parallel_size = 1;
-    // Enable gradient clipping.
-    bool enable_grad_norm_clip=true;
-
-    // Pipeline configuration.
-
-    // model_paths[i] is the name of the i-th pipeline stage's forward model.
-    // The i-th stage is run by the i-th MPI rank. 
-    // If model_paths is not empty, model partition transformation may not be invoked.
+    // pipeline_parallel_size > 1 means pipeline is enabled.
+    // pipeline_parallel_size == 1 means pipeline is not enabled.
+    int pipeline_parallel_size = 1;
+    // model_paths[i] is the name of the pipeline stage for i-th process.
+    // The i-th file is run by the i-th MPI rank. 
+    // If model_paths is not empty, model partition transformation may not be internally invoked.
     VectorString pipeline_stage_paths;
-   // num_pipeline_stages > 1 means pipeline is enabled.
-   // num_pipeline_stages == 1 means pipeline is not enabled.
-    size_t num_pipeline_stages;
+    // Enable gradient clipping.
+    bool enable_grad_norm_clip = true;
   };
 
   TrainingRunner(Parameters params, const Environment& env);
@@ -222,7 +218,7 @@ class TrainingRunner {
 
   std::unique_ptr<CheckpointRegistry> checkpoint_registry_;
   
-  // Pipeline fields are valid only if params_.num_pipeline_stages > 1.
+  // Pipeline fields are valid only if params_.pipeline_parallel_size > 1.
   // Information for running pipeline.
   pipeline::PipelineContext pipeline_context_;
   // Pipeline schedule for deciding when to run batch, forward, or backward.

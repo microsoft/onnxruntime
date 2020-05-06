@@ -53,30 +53,25 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
       session_options_(session_options),
       session_(session_options, env),
       input_allocator_(params.input_allocator ? params.input_allocator : TrainingUtil::GetCpuAllocator()),
-      pipeline_schedule_(static_cast<int>(params_.num_pipeline_stages)),
-      pipeline_worker_pool_(params.num_pipeline_stages) {
+      pipeline_schedule_(params_.pipeline_parallel_size),
+      pipeline_worker_pool_(params_.pipeline_parallel_size) {
   ORT_ENFORCE(!params_.model_path.empty());
   if (!params.weights_to_train.empty())
     ORT_ENFORCE(params.weights_not_to_train.empty());
   ORT_ENFORCE(!params_.training_optimizer_name.empty());
   if (params.partition_optimizer)
-    ORT_ENFORCE(params.use_nccl, "Optimizer partitioning is only supported with NCCL distributed training.");
-  
-  if (params_.num_pipeline_stages > 1) {
-    pipeline_context_.pipeline_stage_id = params_.mpi_context.world_rank;
-    pipeline_context_.num_pipeline_stages = params_.num_pipeline_stages;
-    pipeline_context_.num_pipeline_batches = params_.gradient_accumulation_steps - 1;
-    pipeline_context_.num_gradient_accumulation_steps = static_cast<int>(params_.gradient_accumulation_steps);
-    pipeline_context_.pipeline_stage_paths = params_.pipeline_stage_paths;
-    pipeline_schedule_.add(0, static_cast<int>(pipeline_context_.num_pipeline_batches));
-  }
+    ORT_ENFORCE(params.use_nccl,
+      "Optimizer partitioning is only supported with NCCL distributed training.");
+  ORT_ENFORCE(params.num_train_steps % params.gradient_accumulation_steps == 0,
+    "Number of training steps must be a multiple of number of gradient accumulation step.");
 }
 
 Status TrainingRunner::Initialize() {
-  if (params_.num_pipeline_stages > 1 && !pipeline_context_.pipeline_stage_paths.empty()) {
+  if (params_.pipeline_parallel_size > 1 && !params_.pipeline_stage_paths.empty()) {
     // Pipeline partition happens outside ORT. We just load the result of partitioning forward graph.
     // Backward graph will be generated using ORT's graph transformers.
-    ORT_RETURN_IF_ERROR(session_.Load(pipeline_context_.pipeline_stage_paths[pipeline_context_.pipeline_stage_id]));
+    ORT_ENFORCE(static_cast<size_t>(params_.mpi_context.world_size) == params_.pipeline_stage_paths.size());
+    ORT_RETURN_IF_ERROR(session_.Load(params_.pipeline_stage_paths[params_.mpi_context.world_rank]));
   } else {
     ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
   }
@@ -99,6 +94,7 @@ Status TrainingRunner::Initialize() {
   config.distributed_config.local_rank = params_.mpi_context.local_rank;
   config.distributed_config.data_parallel_size = params_.data_parallel_size;
   config.distributed_config.horizontal_parallel_size = params_.horizontal_parallel_size;
+  config.distributed_config.pipeline_parallel_size = params_.pipeline_parallel_size;
 
   if (params_.use_mixed_precision) {
     TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
@@ -108,7 +104,7 @@ Status TrainingRunner::Initialize() {
   }
 
   // always configure the loss function
-  if (params_.num_pipeline_stages == 1 || params_.mpi_context.world_rank == params_.mpi_context.world_size - 1) {
+  if (params_.pipeline_parallel_size == 1 || params_.mpi_context.world_rank == params_.mpi_context.world_size - 1) {
     TrainingSession::TrainingConfiguration::LossFunctionConfiguration lf{};
     lf.loss_function_info = params_.loss_func_info;
 
@@ -149,10 +145,11 @@ Status TrainingRunner::Initialize() {
   }
 
   // Prepare pipeline information to do configuration.
-  if (params_.num_pipeline_stages > 1) {
+  if (params_.pipeline_parallel_size > 1) {
     TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
-    pipe.num_pipeline_stages = params_.num_pipeline_stages;
-    pipe.pipeline_stage_id = params_.mpi_context.world_rank;
+    // If partition is done outside and the paths to partitioned model are provided,
+    // the session already loads a pipeline stage.
+    pipe.do_partition = params_.pipeline_stage_paths.empty() ? true : false;
     pipe.fetch_names = params_.fetch_names;
     // Do not assign value to config.pipeline_config if pipeline is not used.
     config.pipeline_config = pipe;
@@ -178,7 +175,7 @@ Status TrainingRunner::Initialize() {
 
   // Retrieve pipeline information from configuration result.
   VectorString fetch_names;
-  if (params_.num_pipeline_stages > 1) {
+  if (params_.pipeline_parallel_size > 1) {
     fetch_names = config_result.pipeline_config_result.value().fetch_names;
     // Exposes forward waited event tensor ID name to TrainingRunner.
     // It's an input of a graph.
@@ -218,8 +215,14 @@ Status TrainingRunner::Initialize() {
     pipeline_context_.feed_names = config_result.pipeline_config_result.value().feed_names;
     // Names of allowed outputs after pipeline partition.
     pipeline_context_.fetch_names = config_result.pipeline_config_result.value().fetch_names;
+
+    // Configure dimension of this pipeline.
+    pipeline_context_.pipeline_stage_id = config_result.pipeline_config_result.value().pipeline_stage_id;
+    pipeline_context_.num_pipeline_batches = params_.gradient_accumulation_steps;
+    pipeline_schedule_.Add(0, pipeline_context_.num_pipeline_batches);
   } else {
     fetch_names = params_.fetch_names;
+    pipeline_context_.pipeline_stage_id = 0;
   }
 
   // Expose all optimizer outputs as graph outputs.
@@ -300,7 +303,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
     std::vector<MLValue> data_feeds = training_data->GetKthBatch(params_.batch_size, batch_index, input_allocator_);
     for (size_t i = 0; i < data_feed_names.size(); ++i) {
       const auto name = data_feed_names[i];
-      if (params_.num_pipeline_stages == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
+      if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
         feed_names.push_back(name);
         feeds.push_back(data_feeds[i]);
       }
@@ -310,7 +313,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
   // Pick up feed from loss scaling.
   if (loss_scaler_) {
     const auto name = loss_scaler_->GetLossScaleInputName();
-    if (params_.num_pipeline_stages == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
+    if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
       feed_names.push_back(name);
       const float loss_scale = loss_scaler_->GetLossScale();
       OrtValue loss_scale_val;
@@ -322,7 +325,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
   // Pick up feed from learning rate schedule.
   {
     const auto name = params_.lr_params.feed_name;
-    if (params_.num_pipeline_stages == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
+    if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
       feed_names.push_back(name);
       const float learning_rate = lr_scheduler.GetLearningRate(step_ + 1);
       OrtValue lr_val;
@@ -333,12 +336,12 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
 
   // Create feed of waited event in forward pass.
   if (!pipeline_context_.forward_waited_event_name.empty()) {
-    ORT_ENFORCE(params_.num_pipeline_stages > 1);
+    ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.forward_waited_event_name);
     OrtValue event_id;
-    const int64_t id = pipeline_schedule_.get_forward_waited_event_id(
-      static_cast<int>(pipeline_context_.pipeline_stage_id),
-      static_cast<int>(step_ % pipeline_context_.num_gradient_accumulation_steps));
+    const int64_t id = pipeline_schedule_.GetForwardWaitedEventId(
+      pipeline_context_.pipeline_stage_id,
+      static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -348,12 +351,12 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
 
   // Create feed of recorded event in forward pass.
   if (!pipeline_context_.forward_recorded_event_name.empty()) {
-    ORT_ENFORCE(params_.num_pipeline_stages > 1);
+    ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.forward_recorded_event_name);
     OrtValue event_id;
-    const int64_t id = pipeline_schedule_.get_forward_recorded_event_id(
-      static_cast<int>(pipeline_context_.pipeline_stage_id),
-      static_cast<int>(step_ % pipeline_context_.num_gradient_accumulation_steps));
+    const int64_t id = pipeline_schedule_.GetForwardRecordedEventId(
+      pipeline_context_.pipeline_stage_id,
+      static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -363,12 +366,12 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
 
   // Create feed of waited event in backward pass.
   if (!pipeline_context_.backward_waited_event_name.empty()) {
-    ORT_ENFORCE(params_.num_pipeline_stages > 1);
+    ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.backward_waited_event_name);
     OrtValue event_id;
-    const int64_t id = pipeline_schedule_.get_backward_waited_event_id(
-      static_cast<int>(pipeline_context_.pipeline_stage_id),
-      static_cast<int>(step_ % pipeline_context_.num_gradient_accumulation_steps));
+    const int64_t id = pipeline_schedule_.GetBackwardWaitedEventId(
+      pipeline_context_.pipeline_stage_id,
+      static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -378,12 +381,12 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(IDataLoader& training_data_loade
 
   // Create feed of recorded event in backward pass.
   if (!pipeline_context_.backward_recorded_event_name.empty()) {
-    ORT_ENFORCE(params_.num_pipeline_stages > 1);
+    ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.backward_recorded_event_name);
     OrtValue event_id;
-    int64_t id = pipeline_schedule_.get_backward_recorded_event_id(
-      static_cast<int>(pipeline_context_.pipeline_stage_id),
-      static_cast<int>(step_ % pipeline_context_.num_gradient_accumulation_steps));
+    int64_t id = pipeline_schedule_.GetBackwardRecordedEventId(
+      pipeline_context_.pipeline_stage_id,
+      static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -406,7 +409,7 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const bool do_weight_update,
   if (do_weight_update) {
     // Set up tensor to be fetched when doing model update. 
 
-    if (params_.num_pipeline_stages > 1) {
+    if (params_.pipeline_parallel_size > 1) {
       // If pipeline is used, we need to filter out fetches which are not in this pipeline stage.
 
       for (size_t i = 0; i < params_.fetch_names.size(); ++i) {
@@ -443,7 +446,7 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const bool do_weight_update,
 
     // Always execute event operators to avoid deadlock if pipeline is used.
     // TODO: create a list of must-to-fetch tensors and pass it to all graph transformer.
-    if (params_.num_pipeline_stages) {
+    if (params_.pipeline_parallel_size) {
         if (!pipeline_context_.forward_waited_output_name.empty()) {
           fetch_names.push_back(pipeline_context_.forward_waited_output_name);
         }
@@ -472,8 +475,6 @@ Status TrainingRunner::RunWithUpdate(VectorString& feed_names,
                                      VectorString& fetch_names,
                                      std::vector<MLValue>& feeds,
                                      std::vector<MLValue>& fetches) {
-  pipeline_worker_pool_.join_all();
-
   ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
                                     feed_names,
                                     feeds,
@@ -492,8 +493,9 @@ Status TrainingRunner::RunWithUpdate(VectorString& feed_names,
 
   // Assume that only the last pipeline stage can see loss, predicted value, and so on.
   // Thus, the error function should only be called when we are at the last stage.
-  if (params_.num_pipeline_stages == 1 ||
-      pipeline_context_.pipeline_stage_id == pipeline_context_.num_pipeline_stages - 1 &&
+  const bool session_can_see_loss = params_.pipeline_parallel_size == 1 ||
+    pipeline_context_.pipeline_stage_id == params_.pipeline_parallel_size - 1;
+  if (session_can_see_loss &&
       !params_.is_perf_test &&
       weight_update_step_count_ % params_.display_loss_steps == 0) {
     if (params_.error_function) {
@@ -503,6 +505,10 @@ Status TrainingRunner::RunWithUpdate(VectorString& feed_names,
       params_.post_evaluation_callback(params_.batch_size, weight_update_step_count_, "train");
     }
   }
+
+  // Wait all workers to finish this around of pipeline parallism. 
+  // The last batch in a pipeline collects gradient and update the model.
+  pipeline_worker_pool_.JoinAll();
 
   // Add one after process one batch.
   ++step_;
@@ -516,8 +522,8 @@ Status TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
                                         VectorString& fetch_names,
                                         std::vector<MLValue>& feeds,
                                         size_t& gradient_accumulation_step_count) {
-  const size_t worker_id = step_ % pipeline_context_.num_pipeline_stages;
-  pipeline_worker_pool_.join(worker_id);
+  const size_t worker_id = step_ % params_.pipeline_parallel_size;
+  pipeline_worker_pool_.Join(worker_id);
   pipeline_worker_pool_.worker_states[worker_id].feeds = feeds;
   pipeline_worker_pool_.worker_states[worker_id].feed_names = feed_names;
   pipeline_worker_pool_.worker_states[worker_id].fetch_names = fetch_names;
@@ -613,23 +619,20 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           stabilized_total_time += duration_seconds.count();
         }
 
-        // Print some info when reaching the end of the batch.
-        // When pipeline is enabled, the first stage, idexed by 0, computes the start and end of a batch.
-        if (params_.num_pipeline_stages == 1 || pipeline_context_.pipeline_stage_id == 0) {
-          printf("Round %d, Step: %d, epoch: %d, batch: %d/%d, shard_iteration: %d/%d, time: %.2f ms, throughput: %.2f ex/sec \n",
-                static_cast<int>(round_),
-                static_cast<int>(step_),
-                static_cast<int>(epoch),
-                static_cast<int>(batch),
-                static_cast<int>(batch_num_cur_shard),
-                static_cast<int>(shard_it + 1),
-                static_cast<int>(num_shards_to_visit),
-                duration_seconds.count() * 1000,
-                params_.batch_size * (step_ - step_start) / total_time);
-          printf("Training data range: [%d - %d)\n",
-                static_cast<int>(batch * params_.batch_size),
-                static_cast<int>((batch + 1) * params_.batch_size - 1));
-        }
+        printf("Stage %d, Round %d, Step: %d, epoch: %d, batch: %d/%d, shard_iteration: %d/%d, time: %.2f ms, throughput: %.2f ex/sec \n",
+              pipeline_context_.pipeline_stage_id,
+              static_cast<int>(round_),
+              static_cast<int>(step_),
+              static_cast<int>(epoch),
+              static_cast<int>(batch),
+              static_cast<int>(batch_num_cur_shard),
+              static_cast<int>(shard_it + 1),
+              static_cast<int>(num_shards_to_visit),
+              duration_seconds.count() * 1000,
+              params_.batch_size * (step_ - step_start) / total_time);
+        printf("Training data range: [%d - %d)\n",
+              static_cast<int>(batch * params_.batch_size),
+              static_cast<int>((batch + 1) * params_.batch_size - 1));
 
         if (test_data_loader &&
             params_.do_eval && step_ % params_.evaluation_period == 0) {
@@ -662,7 +665,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         }
       }  // end of one file/shard
 
-      pipeline_worker_pool_.join_all();
+      pipeline_worker_pool_.JoinAll();
       if (step_ < params_.num_train_steps) {
         training_data_loader.MoveToNextDataSet();
       }
@@ -671,22 +674,16 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
     epoch++;
   }
 
-  // Print some info when reaching the end of the batch.
-  // For pipeline, the first stage, idexed by 0, computes the start and end of each batch.
-  // That is, it computes the start and the end even for the last, and we threfore should
-  // print out timing result at the first stage.
-  if (pipeline_context_.pipeline_stage_id == 0) {
-    std::cout << "Round: " << round_ << "\n"
-              << "Batch size: " << params_.batch_size << "\n"
-              << "Number of Batches: " << (step_ - step_start) << "\n"
-              << "Gradient Accumulation Steps: " << gradient_accumulation_step_count << "\n"
-              << "Weight Update Steps: " << (weight_update_step_count_ - weight_update_step_count_start) << "\n"
-              << "Total Running Time: " << total_time << " Seconds \n"
-              << "Average Running Time Per Batch: " << total_time / (step_ - step_start) * 1000 << " ms\n"
-              << "Throughput: " << params_.batch_size * (step_ - step_start) / total_time << " Examples / Second\n"
-              << "Stabilized Throughput: " << params_.batch_size / (stabilized_total_time / stabilized_perf_total_step_count)
-              << " Examples / Second\n";
-  }
+  std::cout << "Round: " << round_ << "\n"
+            << "Batch size: " << params_.batch_size << "\n"
+            << "Number of Batches: " << (step_ - step_start) << "\n"
+            << "Gradient Accumulation Steps: " << gradient_accumulation_step_count << "\n"
+            << "Weight Update Steps: " << (weight_update_step_count_ - weight_update_step_count_start) << "\n"
+            << "Total Running Time: " << total_time << " Seconds \n"
+            << "Average Running Time Per Batch: " << total_time / (step_ - step_start) * 1000 << " ms\n"
+            << "Throughput: " << params_.batch_size * (step_ - step_start) / total_time << " Examples / Second\n"
+            << "Stabilized Throughput: " << params_.batch_size / (stabilized_total_time / stabilized_perf_total_step_count)
+            << " Examples / Second\n";
   return Status::OK();
 }
 
@@ -703,7 +700,7 @@ Status TrainingRunner::EndTraining(IDataLoader* data_loader) {
     return Status::OK();
   }
 
-  if (params_.num_pipeline_stages == 1 && data_loader) {
+  if (params_.pipeline_parallel_size == 1 && data_loader) {
     // Test the in-memory model before saving.
     printf("\nEvaluating the final model on the test set.\n");
     ORT_RETURN_IF_ERROR(Evaluate(session_, *data_loader));

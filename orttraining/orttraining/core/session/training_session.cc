@@ -119,14 +119,16 @@ Status TrainingSession::ConfigureForTraining(
 
   TrainingConfigurationResult config_result{};
 
+  ORT_ENFORCE(config.distributed_config.pipeline_parallel_size > 0,
+    "This parameter should be 1 if there is no pipelie parallelism. Otherwise, it's the number of pipeline stages.");
+
   DistributedRunContext::CreateInstance({config.distributed_config.world_rank,
                                          config.distributed_config.world_size,
                                          config.distributed_config.local_rank,
                                          config.distributed_config.local_size,
                                          config.distributed_config.data_parallel_size,
                                          config.distributed_config.horizontal_parallel_size,
-                                         config.pipeline_config.has_value() ?
-                                          static_cast<int>(config.pipeline_config.value().num_pipeline_stages) : 1});
+                                         config.distributed_config.pipeline_parallel_size});
 
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph());
 
@@ -216,6 +218,8 @@ Status TrainingSession::ConfigureForTraining(
       }
       pipeline_result.fetch_names.push_back(name);
     }
+    pipeline_result.pipeline_stage_id = config.distributed_config.world_rank / 
+      (config.distributed_config.data_parallel_size * config.distributed_config.horizontal_parallel_size);
     config_result.pipeline_config_result = pipeline_result;
   }
 

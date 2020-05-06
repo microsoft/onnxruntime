@@ -36,18 +36,18 @@ bool Slot::IsBackward() const {
     return type == Backward;
 }
 
-void Slot::show() const {
-    int wid = waited_events.size() > 0 ? waited_events[0] : -1;
-    int rid = recorded_events.size() > 0 ? recorded_events[0] : -1;
+void Slot::Show() const {
+    const int waited_event_id = waited_events.size() > 0 ? waited_events[0] : -1;
+    const int recorded_event_id = recorded_events.size() > 0 ? recorded_events[0] : -1;
     switch (type) {
     case Empty:
         std::cout << "         ";
         break;
     case Forward:
-        std::cout << " F" << batch_id << "(" << wid << "," << rid << ")" << " ";
+        std::cout << " F" << batch_id << "(" << waited_event_id << "," << recorded_event_id << ")" << " ";
         break;
     case Backward:
-        std::cout << " B" << batch_id << "(" << wid << "," << rid << ")" << " ";
+        std::cout << " B" << batch_id << "(" << waited_event_id << "," << recorded_event_id << ")" << " ";
         break;
     }
 }
@@ -57,7 +57,7 @@ PipelineSchedule::PipelineSchedule(int num_stages) {
     num_batches_ = 0;
 }
 
-void PipelineSchedule::add(int batch_id) {
+void PipelineSchedule::Add(int batch_id) {
     ++num_batches_;
 
     // Expand table to accomonadate the new batch.
@@ -90,7 +90,7 @@ void PipelineSchedule::add(int batch_id) {
         table_[t][s].type = Slot::Type::Forward;
         table_[t][s].batch_id = batch_id;
 
-        auto events = search_last_recorded_events(t, s);
+        auto events = SearchLastRecordedEvents(t, s);
         table_[t][s].waited_events = events;
 
         if (events.size() != 0) {
@@ -103,7 +103,7 @@ void PipelineSchedule::add(int batch_id) {
         for (int t_ = t + 1; t_ < required_max_time; ++t_) {
             if (table_[t_][s].IsEmpty())
             continue;
-            events = search_last_recorded_events(t_, s);
+            events = SearchLastRecordedEvents(t_, s);
             table_[t_][s].waited_events = events;
             table_[t_][s].recorded_events = std::vector<int>{ /* max event id */ events[events.size() - 1] + 1 };
         }
@@ -136,7 +136,7 @@ void PipelineSchedule::add(int batch_id) {
         table_[t][s].type = Slot::Type::Backward;
         table_[t][s].batch_id = batch_id;
 
-        auto events = search_last_recorded_events(t, s);
+        auto events = SearchLastRecordedEvents(t, s);
         table_[t][s].waited_events = events;
 
         if (events.size() != 0) {
@@ -149,7 +149,7 @@ void PipelineSchedule::add(int batch_id) {
         for (int t_ = t + 1; t_ < required_max_time; ++t_) {
             if (table_[t_][s].IsEmpty())
             continue;
-            events = search_last_recorded_events(t_, s);
+            events = SearchLastRecordedEvents(t_, s);
             table_[t_][s].waited_events = events;
             table_[t_][s].recorded_events = std::vector<int>{ /* max event id */ events[events.size() - 1] + 1 };
         }
@@ -167,13 +167,13 @@ void PipelineSchedule::add(int batch_id) {
     }
 }
 
-void PipelineSchedule::add(int batch_id_begin, int batch_id_end) {
+void PipelineSchedule::Add(int batch_id_begin, int batch_id_end) {
     for (int i = batch_id_begin; i < batch_id_end; ++i) {
-        add(i);
+        Add(i);
     }
 }
 
-int PipelineSchedule::get_forward_waited_event_id(int stage_id, int batch_id) const {
+int PipelineSchedule::GetForwardWaitedEventId(int stage_id, int batch_id) const {
     std::vector<int> events = {-1};
     for (size_t t = 0; t < table_.size(); ++t) {
         auto& slot = table_[t][stage_id];
@@ -188,7 +188,7 @@ int PipelineSchedule::get_forward_waited_event_id(int stage_id, int batch_id) co
     return events[0];
 }
 
-int PipelineSchedule::get_forward_recorded_event_id(int stage_id, int batch_id) const {
+int PipelineSchedule::GetForwardRecordedEventId(int stage_id, int batch_id) const {
     std::vector<int> events = {-1};
     for (size_t t = 0; t < table_.size(); ++t) {
         auto& slot = table_[t][stage_id];
@@ -203,7 +203,7 @@ int PipelineSchedule::get_forward_recorded_event_id(int stage_id, int batch_id) 
     return events[0];
 }
 
-int PipelineSchedule::get_backward_waited_event_id(int stage_id, int batch_id) const {
+int PipelineSchedule::GetBackwardWaitedEventId(int stage_id, int batch_id) const {
     std::vector<int> events = {-1};
     for (size_t t = 0; t < table_.size(); ++t) {
         auto& slot = table_[t][stage_id];
@@ -218,7 +218,7 @@ int PipelineSchedule::get_backward_waited_event_id(int stage_id, int batch_id) c
     return events[0];
 }
 
-int PipelineSchedule::get_backward_recorded_event_id(int stage_id, int batch_id) const {
+int PipelineSchedule::GetBackwardRecordedEventId(int stage_id, int batch_id) const {
     std::vector<int> events = {-1};
     for (size_t t = 0; t < table_.size(); ++t) {
         auto& slot = table_[t][stage_id];
@@ -233,12 +233,12 @@ int PipelineSchedule::get_backward_recorded_event_id(int stage_id, int batch_id)
     return events[0];
 }
 
-void PipelineSchedule::show() const {
+void PipelineSchedule::Show() const {
     const int num_slots = static_cast<int>(table_.size());
 
     for (int s = 0; s < num_stages_; ++s) {
         for (int t = 0; t < num_slots; ++t) {
-        table_[t][s].show();
+        table_[t][s].Show();
         if (t == num_slots - 1) {
             std::cout << std::endl;
         }
@@ -246,7 +246,7 @@ void PipelineSchedule::show() const {
     }
 }
 
-std::vector<int> PipelineSchedule::search_last_recorded_events(int time_id, int stage_id) const {
+std::vector<int> PipelineSchedule::SearchLastRecordedEvents(int time_id, int stage_id) const {
     std::vector<int> events;
     for (int t = time_id - 1; t >= 0; --t) {
         auto& slot = table_[t][stage_id];
@@ -261,14 +261,14 @@ std::vector<int> PipelineSchedule::search_last_recorded_events(int time_id, int 
     return events;
 }
 
-void PipelineWorkerPool::join(size_t worker_id) {
+void PipelineWorkerPool::Join(size_t worker_id) {
     auto & worker = workers[worker_id];
     if (!worker.joinable())
         return;
     worker.join();
 }
 
-void PipelineWorkerPool::join_all() {
+void PipelineWorkerPool::JoinAll() {
     for(size_t i = 0; i < workers.size(); ++i) {
         auto& worker = workers[i];
         if (!worker.joinable())

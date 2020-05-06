@@ -57,10 +57,12 @@ class TrainingSession : public InferenceSession {
       int world_size{1};
       // The number of local ranks on a node.
       int local_size{1};
-      // The number of ranks for data parallel group
+      // The number of ranks for data parallel group.
       int data_parallel_size{1};
-      // The number of ranks for horizontal model parallel group
+      // The number of ranks for horizontal model parallel group.
       int horizontal_parallel_size{1};
+      // The number of pipeline stages.
+      int pipeline_parallel_size{1};
     };
     // The distributed training configuration.
     DistributedConfiguration distributed_config{};
@@ -137,10 +139,6 @@ class TrainingSession : public InferenceSession {
       // If model partition happens outside ORT, this flag should be false.
       // Otherwise, use true to trigger ORT's pipeline partition.
       bool do_partition;
-      // Total number of pipeline stages. 
-      size_t num_pipeline_stages;
-      // Id of stage handled by this process. Currently, it matches the MPI's rank.
-      size_t pipeline_stage_id;
       // Tensors to fetch as specified by the user.
       // Each pipeline stage should pick up some strings from this field..
       std::vector<std::string> fetch_names;
@@ -175,6 +173,8 @@ class TrainingSession : public InferenceSession {
     // The names of pipeline events in model's input list.
     // If an event is not used, its name should be empty.
     struct PipelineConfigurationResult {
+      // Index of obtained pipeline stage. The first stage is indexed by 0.
+      int pipeline_stage_id;
       // The names of pipeline events in model's input list.
       std::string forward_waited_event_name;
       std::string forward_recorded_event_name;

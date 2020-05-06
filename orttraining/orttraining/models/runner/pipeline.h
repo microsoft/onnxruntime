@@ -23,7 +23,7 @@ struct Slot {
   bool IsEmpty() const; 
   bool IsForward() const; 
   bool IsBackward() const; 
-  void show() const; 
+  void Show() const; 
 
   Type type;
   int batch_id;
@@ -35,16 +35,16 @@ class PipelineSchedule {
 public:
   PipelineSchedule() = default;
   PipelineSchedule(int num_stages);
-  void add(int batch_id);
-  void add(int batch_id_begin, int batch_id_end);
-  int get_forward_waited_event_id(int stage_id, int batch_id) const;
-  int get_forward_recorded_event_id(int stage_id, int batch_id) const;
-  int get_backward_waited_event_id(int stage_id, int batch_id) const;
-  int get_backward_recorded_event_id(int stage_id, int batch_id) const;
-  void show() const;
+  void Add(int batch_id);
+  void Add(int batch_id_begin, int batch_id_end);
+  int GetForwardWaitedEventId(int stage_id, int batch_id) const;
+  int GetForwardRecordedEventId(int stage_id, int batch_id) const;
+  int GetBackwardWaitedEventId(int stage_id, int batch_id) const;
+  int GetBackwardRecordedEventId(int stage_id, int batch_id) const;
+  void Show() const;
 
 private:
-  std::vector<int> search_last_recorded_events(int time_id, int stage_id) const;
+  std::vector<int> SearchLastRecordedEvents(int time_id, int stage_id) const;
 
   // 2-D table of pipeline schedule. table_[i][j] is the computation happening in
   // the i-th time slot at the j-th stage. For example, PipeDream schedule may have
@@ -73,8 +73,8 @@ struct PipelineWorkerState {
 struct PipelineWorkerPool {
   PipelineWorkerPool() = default;
   PipelineWorkerPool(size_t num_workers) : workers(num_workers), worker_states(num_workers) {};
-  void join(size_t worker_id);
-  void join_all();
+  void Join(size_t worker_id);
+  void JoinAll();
 
   std::vector<std::thread> workers;
   std::vector<PipelineWorkerState> worker_states;
@@ -82,22 +82,13 @@ struct PipelineWorkerPool {
 };
 
 struct PipelineContext {
-  // Total number of pipeline stages. 
-  size_t num_pipeline_stages;
-
-  // Pipeline stage files, pipeline_stage_paths[i] is the forward model at the i-th stage.
-  // It's used when forward model is partitioned oustide ORT.
-  // ORT will apply all graph transforms but graph partition.
-  std::vector<std::string> pipeline_stage_paths;
-
   // Id of stage handled by this process. Currently, it matches the MPI's rank.
-  size_t pipeline_stage_id;
+  int pipeline_stage_id;
   // The number of batches per pipeline run. Its value is
-  // num_gradient_accumulation_steps - 1
-  size_t num_pipeline_batches;
-  // We only run pipeline on the first num_gradient_accumulation_steps - 1 batches.
-  // The last batch runs optimizer and update the weights. 
-  size_t num_gradient_accumulation_steps;
+  // num_gradient_accumulation_steps.
+  // Only the last step among num_gradient_accumulation_steps steps may call
+  // optimizer to update the model.
+  int num_pipeline_batches;
 
   // Name of scheduling event in graph's input list.
   // If an event name is an empty string, it means no event
@@ -124,7 +115,7 @@ struct PipelineContext {
   // Allowed feed names.
   // It stands for inputs of a graph partition at this stage.
   std::vector<std::string> feed_names;
-  // Allowed feed names.
+  // Allowed fetch names.
   // Values can be fetched at this pipeline stage.
   std::vector<std::string> fetch_names;
 }; 
