@@ -33,6 +33,32 @@ TEST(TensorOpTest, ReshapeWithEmptyDim) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT doesn't support empty dimension
 }
 
+TEST(TensorOpTest, ReshapeWithEmptyInput) {
+  OpTester test("Reshape");
+  test.AddInput<float>("data", {0, 10}, std::vector<float>());
+  test.AddInput<int64_t>("shape", {3}, {0, 10, 1}, false);
+  test.AddOutput<float>("reshaped", {0, 10, 1}, std::vector<float>());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT doesn't support empty dimension
+}
+
+TEST(TensorOpTest, ReshapeWithEmptyInputAndDynamicShape) {
+  {
+    OpTester test("Reshape");
+    test.AddInput<float>("data", {1, 0}, std::vector<float>());
+    test.AddInput<int64_t>("shape", {3}, {1, 0, -1}, false);
+    test.AddOutput<float>("reshaped", {1, 0, 1}, {});
+    test.Run(OpTester::ExpectResult::kExpectFailure, "The input tensor cannot be reshaped to the requested shape", {kTensorrtExecutionProvider}); // TensorRT doesn't support empty dimension
+  }
+
+  {
+    OpTester test("Reshape");
+    test.AddInput<float>("data", {1, 0}, std::vector<float>());
+    test.AddInput<int64_t>("shape", {3}, {1, 1, -1}, false);
+    test.AddOutput<float>("reshaped", {1, 1, 0}, {});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT doesn't support empty dimension
+  }
+}
+
 TEST(TensorOpTest, ReshapeWithInitializer) {
   OpTester test("Reshape");
 

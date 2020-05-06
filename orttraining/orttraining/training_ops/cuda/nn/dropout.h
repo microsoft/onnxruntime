@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T1, typename T2>
+template <typename T1, typename T2, bool trainable_dropout>
 class Dropout final : public CudaKernel {
  public:
   Dropout(const OpKernelInfo& info) : CudaKernel(info), default_ratio_(0.5) {
@@ -29,7 +29,9 @@ class Dropout final : public CudaKernel {
 template <typename T1, typename T2>
 class DropoutGrad final : public CudaKernel {
  public:
-  DropoutGrad(const OpKernelInfo& info) : CudaKernel(info), default_ratio_(0.5) {}
+  DropoutGrad(const OpKernelInfo& info) : CudaKernel(info), default_ratio_(0.5) {
+  }
+
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:

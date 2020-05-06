@@ -213,12 +213,10 @@ Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
   auto range = kernel_creator_fn_map_.equal_range(key);
   for (auto i = range.first; i != range.second; ++i) {
     if (i->second.kernel_def &&
-        i->second.status.IsOK() &&
         i->second.kernel_def->IsConflict(*create_info.kernel_def)) {
-      return create_info.status =
-                 Status(ONNXRUNTIME, FAIL,
-                        "Failed to add kernel for " + key +
-                            ": Conflicting with a registered kernel with op versions.");
+      return Status(ONNXRUNTIME, FAIL,
+                    "Failed to add kernel for " + key +
+                        ": Conflicting with a registered kernel with op versions.");
     }
   }
 
@@ -235,11 +233,8 @@ Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node,
                                        const FuncManager& funcs_mgr,
                                        const DataTransferManager& data_transfer_mgr,
                                        /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
-  const KernelCreateInfo* kernel_create_info = TryFindKernel(node, execution_provider.Type());
-
-  if (!kernel_create_info) {
-    return Status(ONNXRUNTIME, FAIL, "Failed to find kernel for " + node.OpType());
-  }
+  const KernelCreateInfo* kernel_create_info;
+  ORT_RETURN_IF_ERROR(TryFindKernel(node, execution_provider.Type(), &kernel_create_info));
 
   OpKernelInfo kernel_info(node,
                            *kernel_create_info->kernel_def,
@@ -259,41 +254,37 @@ static std::string ToString(const std::vector<std::string>& error_strs) {
   return ostr.str();
 }
 
-// TODO: return a Status instead of logging error messages here.
-// Because this function often returns nullptr, which is totally expected.
+// It's often this function returns a failed status, but it is totally expected.
+// It just means this registry doesn't have such a kernel, please search it elsewhere.
 // if this function is called before graph partition, then node.provider is not set.
 // In this case, the kernel's provider must equal to exec_provider
 // otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
-const KernelCreateInfo* KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
-                                                      onnxruntime::ProviderType exec_provider) const {
+
+Status KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
+                                     onnxruntime::ProviderType exec_provider, const KernelCreateInfo** out) const {
   const auto& node_provider = node.GetExecutionProviderType();
   const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
 
   auto range = kernel_creator_fn_map_.equal_range(GetMapKey(node.OpType(), node.Domain(), expected_provider));
   std::vector<std::string> verify_kernel_def_error_strs;
-  LOGS_DEFAULT(VERBOSE) << "Trying to find a kernel for op with name (" << node.Name() << ")"
-                        << " and type (" << node.OpType() << ")"
-                        << " and execution provider (" << expected_provider << ")";
   for (auto i = range.first; i != range.second; ++i) {
-    if (!i->second.status.IsOK()) {
-      LOGS_DEFAULT(ERROR) << "Failed to create kernel for op: " << node.OpType()
-                          << " since it was ill-formed during registration";
-      continue;
-    }
     std::string error_str;
     if (VerifyKernelDef(node, *i->second.kernel_def, error_str)) {
-      return &i->second;
+      *out = &i->second;
+      return Status::OK();
     }
     verify_kernel_def_error_strs.push_back(error_str);
   }
-
+  *out = nullptr;
   if (!verify_kernel_def_error_strs.empty()) {
-    LOGS_DEFAULT(INFO) << "Op with name (" << node.Name() << ")"
-                       << " and type (" << node.OpType() << ")"
-                       << " kernel is not supported in " << expected_provider << "."
-                       << " Encountered following errors: (" << ToString(verify_kernel_def_error_strs) << ")";
+    std::ostringstream oss;
+    oss << "Op with name (" << node.Name() << ")"
+        << " and type (" << node.OpType() << ")"
+        << " kernel is not supported in " << expected_provider << "."
+        << " Encountered following errors: (" << ToString(verify_kernel_def_error_strs) << ")";
+    return Status(ONNXRUNTIME, FAIL, oss.str());
   }
-  return nullptr;
+  return Status(ONNXRUNTIME, FAIL, "Kernel not found");
 }
 
 }  // namespace onnxruntime

@@ -39,7 +39,30 @@ void ComputeBroadcastBackwardAxes(
       auto A_dim = A_dims[i].dim_param(),
            B_dim = B_dims[j].dim_param();
       if (A_dim != B_dim) {
-        ORT_THROW("Error");
+        ORT_THROW("Error: symbolic dimension doesn't match. Expect the same symbolic but got \"",
+                  A_dim, "\" and \"", B_dim, "\".");
+      }
+    } else if (A_dims[i].has_dim_param() && B_dims[j].has_dim_value()) {
+      auto A_dim = A_dims[i].dim_param();
+      auto B_dim = B_dims[j].dim_value();
+
+      if (B_dim != 1) {
+        ORT_THROW("Error: symbolic broadcasting requires the corresponding dimension to be 1. ",
+                  "Actually got ", B_dim);
+      }
+      if (B_axes) {
+        B_axes->push_back(gsl::narrow_cast<int64_t>(k));
+      }
+    } else if (A_dims[i].has_dim_value() && B_dims[j].has_dim_param()) {
+      auto A_dim = A_dims[j].dim_value();
+      auto B_dim = B_dims[i].dim_param();
+
+      if (A_dim != 1) {
+        ORT_THROW("Error: symbolic broadcasting requires the corresponding dimension to be 1. ",
+                  "Actually got ", A_dim);
+      }
+      if (A_axes) {
+        A_axes->push_back(gsl::narrow_cast<int64_t>(k));
       }
     } else if (A_dims[i].has_dim_value() && B_dims[j].has_dim_param()) {
       auto A_dim = A_dims[j].dim_value();
@@ -72,7 +95,6 @@ void ComputeBroadcastBackwardAxes(
         A_axes->push_back(gsl::narrow_cast<int64_t>(k));
       }
     }
-    // TODO : complete othere cases
 
     --i;
     --j;

@@ -173,10 +173,8 @@ class ThreadPool {
     }
 #pragma omp parallel for
     for (std::ptrdiff_t i = 0; i < num_threads; i++) {
-      std::ptrdiff_t start, work_remaining;
-      PartitionWork(i, num_threads, total, &start, &work_remaining);
-      std::ptrdiff_t end = start + work_remaining;
-      fn(start, end);
+      auto work = PartitionWork(i, num_threads, total);
+      fn(work.start, work.end);
     }
 #else
     if (tp == nullptr) {
@@ -203,10 +201,8 @@ class ThreadPool {
     }
 #pragma omp parallel for
     for (std::ptrdiff_t i = 0; i < num_threads; i++) {
-      std::ptrdiff_t start, work_remaining;
-      PartitionWork(i, num_threads, total, &start, &work_remaining);
-      std::ptrdiff_t end = start + work_remaining;
-      fn(start, end);
+      auto work = PartitionWork(i, num_threads, total);
+      fn(work.start, work.end);
     }
 #else
     if (tp == nullptr) {
@@ -304,14 +300,36 @@ class ThreadPool {
     }
 
     tp->SimpleParallelFor(num_batches, [&](std::ptrdiff_t batch_index) {
-      std::ptrdiff_t start, work_remaining;
-      PartitionWork(batch_index, num_batches, total, &start, &work_remaining);
-      std::ptrdiff_t end = start + work_remaining;
-      for (std::ptrdiff_t i = start; i < end; i++) {
+      auto work = PartitionWork(batch_index, num_batches, total);
+      for (std::ptrdiff_t i = work.start; i < work.end; i++) {
         fn(i);
       }
     });
 #endif
+  }
+
+  struct WorkInfo {
+    std::ptrdiff_t start;
+    std::ptrdiff_t end;
+  };
+
+  /** Calculate the start and end offsets for a batch.
+      @remarks Based on MlasPartitionWork
+  */
+  static WorkInfo PartitionWork(std::ptrdiff_t batch_idx, std::ptrdiff_t num_batches, std::ptrdiff_t total_work) {
+    const std::ptrdiff_t work_per_batch = total_work / num_batches;
+    const std::ptrdiff_t work_per_batch_extra = total_work % num_batches;
+
+    WorkInfo info;
+    if (batch_idx < work_per_batch_extra) {
+      info.start = (work_per_batch + 1) * batch_idx;
+      info.end = info.start + work_per_batch + 1;
+    } else {
+      info.start = work_per_batch * batch_idx + work_per_batch_extra;
+      info.end = info.start + work_per_batch;
+    }
+
+    return info;
   }
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ThreadPool);
@@ -333,22 +351,7 @@ class ThreadPool {
   // eigen_threadpool_ is instantiated and owned by thread::ThreadPool if
   // user_threadpool is not in the constructor.
   std::unique_ptr<ThreadPoolTempl<Env> > eigen_threadpool_;
-
-  // Copied from MlasPartitionWork
-  static void PartitionWork(std::ptrdiff_t ThreadId, std::ptrdiff_t ThreadCount, std::ptrdiff_t TotalWork,
-                            std::ptrdiff_t* WorkIndex, std::ptrdiff_t* WorkRemaining) {
-    const std::ptrdiff_t WorkPerThread = TotalWork / ThreadCount;
-    const std::ptrdiff_t WorkPerThreadExtra = TotalWork % ThreadCount;
-
-    if (ThreadId < WorkPerThreadExtra) {
-      *WorkIndex = (WorkPerThread + 1) * ThreadId;
-      *WorkRemaining = WorkPerThread + 1;
-    } else {
-      *WorkIndex = WorkPerThread * ThreadId + WorkPerThreadExtra;
-      *WorkRemaining = WorkPerThread;
-    }
-  }
-};  // namespace concurrency
+};
 
 }  // namespace concurrency
 }  // namespace onnxruntime

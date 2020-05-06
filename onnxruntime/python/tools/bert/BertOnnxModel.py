@@ -18,11 +18,14 @@ logger = logging.getLogger(__name__)
 class BertOptimizationOptions:
 
     def __init__(self, model_type):
+        self.enable_gelu = True
+        self.enable_layer_norm = True
         self.enable_attention = True
         self.enable_skip_layer_norm = True
         self.enable_embed_layer_norm = True
         self.enable_bias_skip_layer_norm = True
         self.enable_bias_gelu = True
+        self.enable_gelu_approximation = False
 
         if model_type == 'gpt2':
             self.enable_skip_layer_norm = False
@@ -515,6 +518,23 @@ class BertOnnxModel(OnnxModel):
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
 
+    def gelu_approximation(self):
+        nodes_to_add = []
+        nodes_to_remove = self.get_nodes_by_op_type("Gelu") + self.get_nodes_by_op_type("BiasGelu")
+        for node in nodes_to_remove:
+            new_node = onnx.helper.make_node("FastGelu",
+                                             inputs=node.input,
+                                             outputs=node.output,
+                                             name=self.create_node_name("FastGelu", node.op_type + "_Approximation"))
+            new_node.domain = "com.microsoft"
+            nodes_to_add.append(new_node)
+
+        if len(nodes_to_add) > 0:
+            logger.info(f"Gelu approximation count:{len(nodes_to_add)}")
+
+        self.remove_nodes(nodes_to_remove)
+        self.add_nodes(nodes_to_add)
+
     def fuse_add_bias_skip_layer_norm(self):
         logger.debug(f"start Bias and SkipLayerNormalization fusion...")
         input_name_to_nodes = self.input_name_to_nodes()
@@ -863,6 +883,13 @@ class BertOnnxModel(OnnxModel):
 
         embed_node.domain = "com.microsoft"
 
+        # Pass attribute "epsilon" from normalize node to EmbedLayerNormalization.
+        for att in normalize_node.attribute:
+            if att.name == 'epsilon':
+                embed_node.attribute.extend([att])
+        # Set default value to 1e-12 if no attribute is found.
+        if len(embed_node.attribute) == 0:
+            embed_node.attribute.extend([onnx.helper.make_attribute("epsilon", 1.0E-12)])
         self.replace_input_of_all_nodes(normalize_node.output[0], 'embed_output')
 
         self.remove_nodes(nodes_to_remove)
@@ -1116,6 +1143,13 @@ class BertOnnxModel(OnnxModel):
                         outputs=[node.output[0]],
                         name=self.create_node_name("SkipLayerNormalization", name_prefix="SkipLayerNorm"))
                     normalize_node.domain = "com.microsoft"
+                    # Pass attribute "epsilon" from layernorm node to SkipLayerNormalization
+                    for att in node.attribute:
+                        if att.name == 'epsilon':
+                            normalize_node.attribute.extend([att])
+                    # Set default epsilon if no epsilon exists from layernorm
+                    if len(normalize_node.attribute) == 0:
+                        normalize_node.attribute.extend([onnx.helper.make_attribute("epsilon", 1.0E-12)])
                     skip_layernorm_nodes.extend([normalize_node])
 
         self.remove_nodes(nodes_to_remove)
@@ -1129,9 +1163,11 @@ class BertOnnxModel(OnnxModel):
         self.prune_graph()
 
     def optimize(self, options: BertOptimizationOptions = None):
-        self.fuse_layer_norm()
+        if (options is None) or options.enable_layer_norm:
+            self.fuse_layer_norm()
 
-        self.fuse_gelu()
+        if (options is None) or options.enable_gelu:
+            self.fuse_gelu()
 
         self.preprocess()
 
@@ -1158,6 +1194,9 @@ class BertOnnxModel(OnnxModel):
         if (options is None) or options.enable_bias_skip_layer_norm:
             # Fuse SkipLayerNormalization and Add Bias before it.
             self.fuse_add_bias_skip_layer_norm()
+
+        if (options is not None and options.enable_gelu_approximation):
+            self.gelu_approximation()
 
         self.remove_unused_constant()
 
