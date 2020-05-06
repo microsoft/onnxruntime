@@ -9,7 +9,7 @@
         Run OnnxRuntime on CPU for all models:
             python benchmark_bert.py
         Run PyTorch and TorchScript on CPU for all models:
-            python benchmark_bert.py --no_onnxruntime --torch --torchscript
+            python benchmark_bert.py --engines torch torchscript
         Run OnnxRuntime on the bert-base-cased model:
             python benchmark_bert.py --models bert-base-cased --batch_sizes 1 --sequence_lengths 128 --test_times 1000
 """
@@ -150,7 +150,8 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
                 if verbose:
                     print("Run onnxruntime on {} with input shape {}".format(model_name, [batch_size, sequence_length]))
                 runtimes = timeit.repeat(lambda: ort_session.run(None, ort_input), number=1, repeat=repeat_times)
-                average_time = sum(runtimes) / float(len(runtimes))
+                latency_ms = sum(runtimes) / float(len(runtimes)) * 1000
+                throughput = batch_size * (1000.0 / latency_ms)
 
                 result = {
                     "runtime": "onnxruntime",
@@ -160,8 +161,11 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
                     "model_name": model_name,
                     "batch_size": batch_size,
                     "sequence_length": sequence_length,
-                    "average_latency_ms": "{:.2f}".format(average_time * 1000),
-                    "QPS": "{:.1f}".format(1.0 / average_time),
+                    "average_latency_ms": "{:.2f}".format(latency_ms),
+                    "latency_90_percentile": "{:.2f}".format(numpy.percentile(runtimes, 90) * 1000.0),
+                    "latency_95_percentile": "{:.2f}".format(numpy.percentile(runtimes, 95) * 1000.0),
+                    "latency_99_percentile": "{:.2f}".format(numpy.percentile(runtimes, 99) * 1000.0),
+                    "QPS": "{:.2f}".format(throughput),
                 }
 
                 print(result)
@@ -210,7 +214,7 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
                 try:
                     if torchscript:
                         if verbose:
-                            print("Tracing model with sequence size {}".format(input_ids.shape))
+                            print("Tracing model with input shape {}".format(input_ids.shape))
                         inference = torch.jit.trace(model, input_ids)
                         inference(input_ids)
                     else:
@@ -218,7 +222,8 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
                         inference(input_ids)
 
                     runtimes = timeit.repeat(lambda: inference(input_ids), repeat=repeat_times, number=1)
-                    average_time = sum(runtimes) / float(len(runtimes))
+                    latency_ms = sum(runtimes) / float(len(runtimes)) * 1000
+                    throughput = batch_size * (1000.0 / latency_ms)
 
                     result = {
                         "runtime": "torchscript" if torchscript else "torch",
@@ -228,7 +233,11 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
                         "model_name": model_name,
                         "batch_size": batch_size,
                         "sequence_length": sequence_length,
-                        "average_latency_ms": "{:.2f}".format(average_time * 1000),
+                        "average_latency_ms": "{:.2f}".format(latency_ms),
+                        "latency_90_percentile": "{:.2f}".format(numpy.percentile(runtimes, 90) * 1000),
+                        "latency_95_percentile": "{:.2f}".format(numpy.percentile(runtimes, 95) * 1000),
+                        "latency_99_percentile": "{:.2f}".format(numpy.percentile(runtimes, 99) * 1000),
+                        "QPS": "{:.2f}".format(throughput),
                     }
 
                     print(result)
@@ -249,29 +258,23 @@ def parse_arguments():
         default="all",
         help="Pre-trained models (https://huggingface.co/transformers/pretrained_models.html) separated by comma")
 
+    parser.add_argument("--engines",
+                        required=False,
+                        nargs="+",
+                        type=str,
+                        default=['onnxruntime'],
+                        choices=['onnxruntime', 'torch', 'torchscript'],
+                        help="Engines to benchmark")
+
     parser.add_argument("--cache_dir",
                         required=False,
                         type=str,
                         default="./cache_models",
                         help="Directory to cache pre-trained models")
 
-    parser.add_argument("--no_onnxruntime",
-                        required=False,
-                        action="store_true",
-                        help="Do not benchmark the Onnxruntime")
-
     parser.add_argument("--use_gpu", required=False, action="store_true", help="Run on cuda device")
 
-    parser.add_argument("--fp16", required=False, action="store_true", help="Use FP16 to accelerate inference.")
-
-    parser.add_argument("--torch", required=False, action="store_true", help="Benchmark the Pytorch")
-
-    parser.add_argument(
-        "--torchscript",
-        required=False,
-        action="store_true",
-        help="Pytorch: trace the models using torchscript",
-    )
+    parser.add_argument("--fp16", required=False, action="store_true", help="Use FP16 to accelerate inference")
 
     parser.add_argument(
         "--verbose",
@@ -291,7 +294,7 @@ def parse_arguments():
                         required=False,
                         default=100,
                         type=int,
-                        help="Number of inference times to get average latency.")
+                        help="Number of repeat times to get average inference latency.")
 
     parser.add_argument("--batch_sizes", nargs="+", type=int, default=[1, 2])
 
@@ -324,20 +327,24 @@ def main():
         ]
         print(f"Models to run benchmark: {model_names}")
 
+    enable_torch = "torch" in args.engines
+    enable_torchscript = "torchscript" in args.engines
+    enable_onnxruntime = "onnxruntime" in args.engines
+
     results = []
-    if args.torch or args.torchscript:
+    if enable_torch or enable_torchscript:
         if not is_torch_available():
             raise ImportError("Trying to run a PyTorch benchmark but PyTorch was not found in the environment.")
 
-        if args.torchscript:
+        if enable_torchscript:
             results += run_pytorch(args.use_gpu, model_names, args.fp16, args.batch_sizes, args.sequence_lengths,
-                                   args.test_times, args.torchscript, args.cache_dir, args.verbose)
+                                   args.test_times, True, args.cache_dir, args.verbose)
 
-        if args.torch:
+        if enable_torch:
             results += run_pytorch(args.use_gpu, model_names, args.fp16, args.batch_sizes, args.sequence_lengths,
                                    args.test_times, False, args.cache_dir, args.verbose)
 
-    if not args.no_onnxruntime:
+    if enable_onnxruntime:
         try:
             results += run_onnxruntime(args.use_gpu, model_names, args.fp16, args.batch_sizes, args.sequence_lengths,
                                        args.test_times, args.cache_dir, args.verbose)
@@ -352,8 +359,9 @@ def main():
     with open(csv_filename, mode="w") as csv_file:
         column_names = [
             "runtime", "version", "device", "fp16", "model_name", "batch_size", "sequence_length", "average_latency_ms",
-            "QPS"
+            "QPS", "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
         ]
+
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
         for result in results:
