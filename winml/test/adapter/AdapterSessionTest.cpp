@@ -156,9 +156,9 @@ void RegisterCustomRegistry_DML() {
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionRegisterCustomRegistry(session.get(), registry), ort_api);
 }
 
-void LoadAndPurloinModel(const UniqueOrtSession& session, const std::string& model_path) {
+void LoadAndPurloinModel(const UniqueOrtSession& session, const std::wstring& model_path) {
   winrt::com_ptr<_winml::IModel> model;
-  WINML_THROW_IF_FAILED(engine_factory->CreateModel(model_path.c_str(), sizeof(model_path), model.put()));
+  WINML_THROW_IF_FAILED(engine_factory->CreateModel(model_path.c_str(), model_path.size(), model.put()));
 
   winrt::com_ptr<_winml::IOnnxruntimeModel> onnxruntime_model;
   WINML_EXPECT_NO_THROW(onnxruntime_model = model.as<_winml::IOnnxruntimeModel>());
@@ -170,23 +170,14 @@ void LoadAndPurloinModel(const UniqueOrtSession& session, const std::string& mod
 void LoadAndPurloinModel() {
   const auto session_options = CreateUniqueOrtSessionOptions();
   auto session = CreateUniqueOrtSession(session_options);
-  LoadAndPurloinModel(session, "fns-candy.onnx");
+  LoadAndPurloinModel(session, L"fns-candy.onnx");
 }
 
 void Initialize() {
   const auto session_options = CreateUniqueOrtSessionOptions();
   auto session = CreateUniqueOrtSession(session_options);
 
-  winrt::com_ptr<_winml::IModel> model;
-  const auto model_path = "fns-candy.onnx";
-  WINML_THROW_IF_FAILED(engine_factory->CreateModel(model_path, sizeof(model_path), model.put()));
-
-  winrt::com_ptr<_winml::IOnnxruntimeModel> onnxruntime_model;
-  WINML_EXPECT_NO_THROW(onnxruntime_model = model.as<_winml::IOnnxruntimeModel>());
-  OrtModel* ort_model;
-  WINML_EXPECT_HRESULT_SUCCEEDED(onnxruntime_model->DetachOrtModel(&ort_model));
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionLoadAndPurloinModel(session.get(), ort_model), ort_api);
-
+  LoadAndPurloinModel(session, L"fns-candy.onnx");
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionInitialize(session.get()), ort_api);
 }
 
@@ -213,7 +204,7 @@ void Profiling() {
   auto session = CreateUniqueOrtSession(session_options);
 
   winml_adapter_api->SessionStartProfiling(ort_env, session.get());
-  LoadAndPurloinModel(session, "fns-candy.onnx");
+  LoadAndPurloinModel(session, L"fns-candy.onnx");
   winml_adapter_api->SessionEndProfiling(session.get());
   WINML_EXPECT_TRUE(logging_called);
   WINML_EXPECT_TRUE(profile_called);
@@ -259,7 +250,7 @@ void CopyInputAcrossDevices_DML() {
   THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get(), true), ort_api);
   auto session = CreateUniqueOrtSession(session_options);
 
-  LoadAndPurloinModel(session, "fns-candy.onnx");
+  LoadAndPurloinModel(session, L"fns-candy.onnx");
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionInitialize(session.get()), ort_api);
   constexpr std::array<int64_t, 4> dimensions{1, 3, 720, 720};
   constexpr size_t input_tensor_size = [&dimensions]() {

@@ -26,7 +26,7 @@ struct LearningModel : LearningModelT<LearningModel> {
       const winml::ILearningModelOperatorProvider operator_provider);
 
   LearningModel(
-      const std::string& path,
+      const std::wstring& path,
       const winml::ILearningModelOperatorProvider operator_provider);
 
   /* LearningModel properties (MachineLearningContract 1). */

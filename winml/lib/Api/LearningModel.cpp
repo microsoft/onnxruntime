@@ -17,13 +17,13 @@
 namespace WINMLP {
 LearningModel::LearningModel(
     const hstring& path,
-    const winml::ILearningModelOperatorProvider op_provider) try : LearningModel(_winml::Strings::UTF8FromHString(path),
+    const winml::ILearningModelOperatorProvider op_provider) try : LearningModel(std::wstring(path.c_str()),
                                                                                  op_provider) {
 }
 WINML_CATCH_ALL
 
 LearningModel::LearningModel(
-    const std::string& path,
+    const std::wstring& path,
     const winml::ILearningModelOperatorProvider operator_provider) try : operator_provider_(operator_provider) {
   _winmlt::TelemetryEvent loadModel_event(_winmlt::EventCategory::kModelLoad);
 
@@ -271,8 +271,7 @@ __stdcall LearningModel::Load(
     WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, model_path_size > 0, "Failed to create LearningModel. Ivalid argument model_path_size.");
     WINML_THROW_HR_IF_NULL_MSG(E_INVALIDARG, pp_model_unk, "Failed to create LearningModel. Ivalid argument pp_model_unk.");
 
-    auto path = _winml::Strings::UTF8FromUnicode(p_model_path, model_path_size);
-    auto model = make<winmlp::LearningModel>(path, nullptr);
+    auto model = make<winmlp::LearningModel>(std::wstring(p_model_path, model_path_size), nullptr);
     *pp_model_unk = model.as<IUnknown>().detach();
     return S_OK;
   }

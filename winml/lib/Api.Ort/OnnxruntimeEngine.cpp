@@ -1299,7 +1299,7 @@ HRESULT OnnxruntimeEngineFactory::EnsureEnvironment() {
   return S_OK;
 }
 
-STDMETHODIMP OnnxruntimeEngineFactory::CreateModel(_In_ const char* model_path, _In_ size_t len, _Outptr_ IModel** out) {
+STDMETHODIMP OnnxruntimeEngineFactory::CreateModel(_In_ const wchar_t* model_path, _In_ size_t len, _Outptr_ IModel** out) {
   RETURN_IF_FAILED(EnsureEnvironment());
 
   OrtModel* ort_model = nullptr;

@@ -69,7 +69,7 @@ struct WinmlAdapterApi {
 	 * There is no inferencing or evaluation setup performed. Only ONNX load is done to reflect on the model's inputs/outputs and other properties.
 	 * This is used by WinML to support model reflection APIs.
     */
-  OrtStatus*(ORT_API_CALL* CreateModelFromPath)(_In_ const char* model_path, _In_ size_t size, _Outptr_ OrtModel** out)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* CreateModelFromPath)(_In_ const wchar_t* model_path, _In_ size_t size, _Outptr_ OrtModel** out)NO_EXCEPTION;
 
   /**
     * CreateModelFromData

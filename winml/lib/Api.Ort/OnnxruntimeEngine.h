@@ -130,7 +130,7 @@ class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
  public:
   HRESULT RuntimeClassInitialize();
   STDMETHOD(CreateModel)
-  (_In_ const char* model_path, _In_ size_t len, _Outptr_ IModel** out) override;
+  (_In_ const wchar_t* model_path, _In_ size_t len, _Outptr_ IModel** out) override;
   STDMETHOD(CreateModel)
   (_In_ void* data, _In_ size_t size, _Outptr_ IModel** out) override;
   STDMETHOD(CreateEngineBuilder)
