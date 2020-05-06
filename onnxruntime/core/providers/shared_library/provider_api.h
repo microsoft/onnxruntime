@@ -3,6 +3,9 @@
 
 // Provider implementations include this file
 
+// NOTE: This is still in development so there are many parts that will be fixed in the future. This is just the first version of
+//       switching providers to be runnable as shared libraries. The interfaces will become more tightly integrated into the core code.
+
 #pragma once
 
 #include <vector>
