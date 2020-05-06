@@ -316,7 +316,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     const auto name = loss_scaler_->GetLossScaleInputName();
     if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
       feed_names.push_back(name);
-      const float loss_scale = mode == EvaluateStep ? 1.0f : loss_scaler_->GetLossScale();
+      const float loss_scale = (mode == EvaluateStep) ? 1.0f : loss_scaler_->GetLossScale();
       OrtValue loss_scale_val;
       TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val, input_allocator_);
       feeds.push_back(loss_scale_val);
@@ -341,7 +341,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.forward_waited_event_name);
     OrtValue event_id;
-    const int64_t id = mode == EvaluateStep ? -1 : pipeline_schedule_.GetForwardWaitedEventId(
+    const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardWaitedEventId(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
     TrainingUtil::CreateCpuMLScalar(
@@ -356,7 +356,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.forward_recorded_event_name);
     OrtValue event_id;
-    const int64_t id = mode == EvaluateStep ? -1 : pipeline_schedule_.GetForwardRecordedEventId(
+    const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardRecordedEventId(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
     TrainingUtil::CreateCpuMLScalar(
@@ -371,7 +371,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.backward_waited_event_name);
     OrtValue event_id;
-    const int64_t id = mode == EvaluateStep ? -1 : pipeline_schedule_.GetBackwardWaitedEventId(
+    const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardWaitedEventId(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
     TrainingUtil::CreateCpuMLScalar(
@@ -386,7 +386,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.backward_recorded_event_name);
     OrtValue event_id;
-    int64_t id = mode == EvaluateStep ? -1 : pipeline_schedule_.GetBackwardRecordedEventId(
+    int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardRecordedEventId(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
     TrainingUtil::CreateCpuMLScalar(
