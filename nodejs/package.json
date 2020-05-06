@@ -12,7 +12,7 @@
     "rebuildd": "tsc && node ./script/build --debug --rebuild",
     "test": "mocha ./test/test-main",
     "lint": "eslint . --ext .ts",
-    "prepack": "node ./script/build --prebuild",
+    "prepack": "node ./script/pack-prebuild",
     "format": "clang-format --glob=\"{{lib,test,script}/**/*.ts,src/**/*.{cc,h}}\" --style=file -i"
   },
   "repository": {
@@ -39,7 +39,9 @@
   "license": "MIT",
   "devDependencies": {
     "@types/fs-extra": "^8.1.0",
+    "@types/klaw-sync": "^6.0.0",
     "@types/mocha": "^7.0.2",
+    "@types/tar-stream": "^2.1.0",
     "@typescript-eslint/eslint-plugin": "^2.29.0",
     "@typescript-eslint/parser": "^2.29.0",
     "clang-format": "^1.4.0",
@@ -51,11 +53,12 @@
     "fs-extra": "^9.0.0",
     "globby": "^11.0.0",
     "jsonc": "^2.0.0",
+    "klaw-sync": "^6.0.0",
     "mocha": "^7.1.1",
     "node-addon-api": "^2.0.0",
     "node-pre-gyp-github": "^1.4.3",
     "onnx-proto": "^4.0.4",
-    "prebuild": "^10.0.0",
+    "tar-stream": "2.1.2",
     "typedoc": "^0.17.3",
     "typescript": "^3.8.3"
   },
