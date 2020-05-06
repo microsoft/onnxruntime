@@ -105,10 +105,7 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 #If you have already installed protobuf(or the others) in your system at the default system paths(like /usr/include), then it's better to set onnxruntime_PREFER_SYSTEM_LIB ON. Otherwise onnxruntime may see two different protobuf versions and we won't know which one will be used, the worst case could be onnxruntime picked up header files from one of them but the binaries from the other one.
 #It's default OFF because it's experimental now.
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
-<<<<<<< HEAD
-=======
 option(onnxruntime_USE_HIP "Build with AMD GPU support" OFF)
->>>>>>> init commit
 
 # training options
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
