@@ -57,9 +57,10 @@ class TrainingRunner {
 
     MapStringToString input_name_map;
 
-    // used for collecting perf metrics
+    // used for collecting perf metrics - see bert/main.cc for example
     std::map<std::string, std::pair<std::string, size_t>> metrics_map;
-    MapStringToInt64 perf_properties;
+    // generic properties for storing perf metrics
+    mutable MapStringToString perf_properties;
 
     bool is_perf_test;
     bool shuffle_data;
@@ -168,13 +169,11 @@ class TrainingRunner {
 
   common::Status Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader);
 
-  common::Status SavePerfMetrics(const size_t number_of_batches, const size_t gradient_accumulation_steps, 
-                                 const size_t weight_update_steps, const double total_time, 
-                                 const double avg_time_per_batch, const double throughput);
-
   common::Status EndTraining(IDataLoader* data_loader);
 
   common::Status UpdateParams(Parameters params);
+
+  void UpdateMetricsParams(MapStringToString& properties);
 
   common::Status ResetLossScaler();
 
@@ -189,6 +188,10 @@ class TrainingRunner {
   Status LoadCheckpoint(const PathString& checkpoint_path);
   Status SaveCheckpointProperties(std::unordered_map<std::string, std::string>& properties) const;
   Status LoadCheckpointProperties(const std::unordered_map<std::string, std::string>& properties);
+
+  Status SavePerfMetrics(const size_t number_of_batches, const size_t gradient_accumulation_steps,
+                         const size_t weight_update_steps, const double total_time,
+                         const double avg_time_per_batch, const double throughput);
 
   size_t step_;
   size_t round_;

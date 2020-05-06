@@ -56,8 +56,8 @@ class DataSet {
 
   void RandomShuffle();
 
-  void DataSet::GetMetrics(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
-                           MapStringToInt64& perf_properties);
+  void DataSet::GetSequenceMetrics(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
+                                   MapStringToString& perf_properties);
 
  private:
   // The names of the tensors.

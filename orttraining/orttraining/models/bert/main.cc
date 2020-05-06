@@ -496,7 +496,7 @@ void setup_training_params(BertParameters& params) {
       {"masked_lm_weights", "masked_lm_weights"},
       {"next_sentence_label", "next_sentence_labels"}};
 
-  // mapping of max_sequence_length and max_predictions_per_sequence position
+  // mapping of max_sequence_length and max_predictions_per_sequence position derived from training data
   params.metrics_map = {
       {"input1", {"sequence", 1}},                          // int64[batch,sequence]
       {"masked_lm_ids", {"dynamic_prediction_count", 1}}    // int64[batch,dynamic_prediction_count]
@@ -652,6 +652,11 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
                                                               params_for_phase.test_data_dir,
                                                               max_num_files_preload);
     }
+
+    // collecting Bert related params from training data
+    auto training_data = training_data_loader->CurrentDataSet();
+    training_data->GetSequenceMetrics(params.batch_size, params.metrics_map, params.perf_properties);
+    runner->UpdateMetricsParams(params.perf_properties);
 
     ORT_RETURN_IF_ERROR(runner->Run(training_data_loader.get(), test_data_loader.get()));
 

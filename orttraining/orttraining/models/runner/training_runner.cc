@@ -255,7 +255,6 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   size_t gradient_accumulation_step_count = 0;
   const auto step_start = step_;
   const auto weight_update_step_count_start = weight_update_step_count_;
-  bool shouldCollectPerfMetrics = !params_.perf_output_dir.empty();
 
   while (step_ < params_.num_train_steps) {
     for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
@@ -266,11 +265,6 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                static_cast<int>(training_data_loader.CurrentDataSetIndex()));
         training_data_loader.MoveToNextDataSet();
         continue;
-      }
-
-      if (shouldCollectPerfMetrics) {
-        training_data->GetMetrics(params_.batch_size, params_.metrics_map, params_.perf_properties);
-        shouldCollectPerfMetrics = false;
       }
 
       // Shuffle the data for each epoch
@@ -427,27 +421,48 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
                                        const size_t weight_update_steps, const double total_time,
                                        const double avg_time_per_batch, const double throughput) {
   // popualte metrics for reporting
-  json j;
-  j["Model"] = params_.model_type;  
-  auto it = params_.perf_properties.find("sequence");
+  json perf_metrics;
+  perf_metrics["Model"] = params_.model_type;  
+
+  // loop thru the perf_properties
   std::string seq_len;
-  if (it != params_.perf_properties.end()) {
-    j["SeqLen"] = it->second;
-    seq_len = std::to_string(it->second);
+  for (auto const& it : params_.perf_properties) {
+    if (it.first == "sequence") {
+      perf_metrics["SeqLen"] = std::stoi(it.second);
+      seq_len = it.second;     
+    } else if (it.first == "dynamic_prediction_count") {
+      perf_metrics["PredictionsPerSeq"] = std::stoi(it.second);
+    } else {
+      perf_metrics[it.first] = it.second;
+    }
   }
-  it = params_.perf_properties.find("dynamic_prediction_count");
-  if (it != params_.perf_properties.end())
-    j["PredictionsPerSeq"] = it->second;
-  j["Round"] = round_;
-  j["BatchSize"] = params_.batch_size;
-  j["NumOfBatches"] = number_of_batches;
-  j["GradAccSteps"] = gradient_accumulation_steps;
-  j["WeightUpdateSteps"] = weight_update_steps;
-  j["TotalTime"] = total_time;
-  j["AvgTimePerBatch"] = avg_time_per_batch;
-  j["Throughput"] = throughput;
-  j["Precision"] = params_.use_mixed_precision ? "fp16" : "fp32";
-  j["Optimizer"] = params_.training_optimizer_name;
+
+  perf_metrics["Round"] = round_;
+  perf_metrics["BatchSize"] = params_.batch_size;
+  perf_metrics["NumOfBatches"] = number_of_batches;
+  perf_metrics["GradAccSteps"] = gradient_accumulation_steps;
+  perf_metrics["WeightUpdateSteps"] = weight_update_steps;
+  perf_metrics["TotalTime"] = total_time;
+  perf_metrics["AvgTimePerBatch"] = avg_time_per_batch;
+  perf_metrics["Throughput"] = throughput;
+  perf_metrics["UseMixedPrecision"] = params_.use_mixed_precision;
+
+  std::string optimizer = params_.training_optimizer_name;
+  std::size_t pos = optimizer.find("Optimizer");
+  if (pos != std::string::npos) 
+    optimizer = optimizer.substr(0, pos);
+  perf_metrics["Optimizer"] = optimizer;
+
+  Path model_path{};
+  Path::Parse(params_.model_path, model_path);
+  PathString leaf = model_path.GetComponents().back();
+  std::string model_name = ToMBString(leaf.c_str());
+  perf_metrics["ModelName"] = model_name;
+
+  std::string display_name = model_name + "_" + params_.model_type + "_" + (params_.use_mixed_precision ? "fp16" : "fp32") +
+                             (seq_len.empty() ? "" : "_" + seq_len) + "_" + optimizer;
+  perf_metrics["DisplayName"] = display_name;
+
 
   // TODO - add memory/cpu
   //j["Memory"] = ;
@@ -458,30 +473,26 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
   //          
 
   // populate other basic params for bookkeeping - add more as needed
-  json p;
-  p["LearningRate"] = params_.lr_params.initial_lr;
-  p["WarmupRatio"] = params_.lr_params.warmup_ratio;
-  p["WarmupMode"] = params_.lr_params.warmup_mode;
-  p["TrainSteps"] = params_.num_train_steps;
-  p["ModelPath"] = ToMBString(params_.model_path.c_str());
-  p["TrainDataDir"] = ToMBString(params_.train_data_dir.c_str());
-  p["TestDataDir"] = ToMBString(params_.test_data_dir.c_str());
+  json bookkeeping_params;
+  bookkeeping_params["LearningRate"] = params_.lr_params.initial_lr;
+  bookkeeping_params["WarmupRatio"] = params_.lr_params.warmup_ratio;
+  bookkeeping_params["WarmupMode"] = params_.lr_params.warmup_mode;
+  bookkeeping_params["TrainSteps"] = params_.num_train_steps;
+  bookkeeping_params["ModelPath"] = ToMBString(params_.model_path.c_str());
+  bookkeeping_params["TrainDataDir"] = ToMBString(params_.train_data_dir.c_str());
+  bookkeeping_params["TestDataDir"] = ToMBString(params_.test_data_dir.c_str());
 
-  j["RunConfig"] = p.dump(); // serialize the params as json string
+  perf_metrics["RunConfig"] = bookkeeping_params.dump();  // serialize the params as json string
 
-  std::string jsonString = j.dump(); 
+  std::string json_string = perf_metrics.dump(); 
 
   // write to a file - the next task in CI will pick up all files with the same prefix
   const PathString perf_metrics_path =
-      params_.perf_output_dir + GetPathSep<PathChar>() + ORT_TSTR("onnxruntime_perf_metrics_") +
-      ToPathString(params_.model_type) + ORT_TSTR("_") + ToPathString(params_.use_mixed_precision ? "fp16" : "fp32") +
-      (seq_len.empty() ? ORT_TSTR("") : ORT_TSTR("_")) + ToPathString(seq_len) +
-      ORT_TSTR("_") + ToPathString(params_.training_optimizer_name) + ORT_TSTR(".json");
+      params_.perf_output_dir + GetPathSep<PathChar>() + ORT_TSTR("onnxruntime_perf_metrics_") + ToPathString(display_name) + ORT_TSTR(".json");
 
   std::ofstream perf_metrics_stream;
   perf_metrics_stream.open(perf_metrics_path, std::ios::out | std::ios::trunc);
-  perf_metrics_stream << jsonString << "\n";
-  perf_metrics_stream.close();
+  ORT_RETURN_IF_NOT(perf_metrics_stream << json_string << "\n", "Failed to write to output file.");
 
   return Status::OK();
 }
@@ -753,6 +764,10 @@ Status TrainingRunner::UpdateParams(Parameters params) {
   params_.batch_size = params.batch_size;
   params_.gradient_accumulation_steps = params.gradient_accumulation_steps;
   return Status::OK();
+}
+
+void TrainingRunner::UpdateMetricsParams(MapStringToString& properties) {
+  params_.perf_properties = properties;
 }
 
 Status TrainingRunner::ResetLossScaler() {

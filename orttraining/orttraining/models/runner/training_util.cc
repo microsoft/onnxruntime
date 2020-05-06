@@ -72,8 +72,8 @@ size_t DataSet::TotalBatch(size_t batch_size) const {
   return NumSamples() / batch_size + ((NumSamples() % batch_size > 0) ? 1 : 0);
 }
 
-void DataSet::GetMetrics(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
-                         MapStringToInt64& perf_properties) {
+void DataSet::GetSequenceMetrics(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
+                                 MapStringToString& perf_properties) {
   if (metrics_map.size() == 0) return; 
 
   batch_size = min(batch_size, data_.size());
@@ -91,7 +91,7 @@ void DataSet::GetMetrics(size_t batch_size, const std::map<std::string, std::pai
       shape_vector.clear();
       shape_vector.emplace_back(batch_size);
     }
-    perf_properties.insert({metric.first, shape_vector[metric.second]});
+    perf_properties.insert({metric.first, std::to_string(shape_vector[metric.second])});
   }
 }
 
