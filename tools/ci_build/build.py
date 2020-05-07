@@ -384,7 +384,7 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None,
                 my_env["LD_LIBRARY_PATH"] += os.pathsep + dll_path
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
-    my_env["MACOSX_DEPLOYMENT_TARGET"] = '10.12'
+
     stdout, stderr = (subprocess.PIPE, subprocess.STDOUT) if capture else (
         None, None)
     my_env.update(env)
