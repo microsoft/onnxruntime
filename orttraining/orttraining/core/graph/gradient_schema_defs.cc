@@ -1463,7 +1463,7 @@ Example 4:
           /*is_homogeneous*/ false,
           /*min_arity*/ 1)
       .TypeConstraint(
-          "T1",
+          "T",
           OpSchema::all_tensor_types(),
           "Inputs and outputs can be of any type.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
