@@ -1490,7 +1490,7 @@ def main():
     if not (args.update or args.clean or args.build or args.test):
         log.debug(
             "Defaulting to running update, build "
-            "[and test for native builds].")
+            "[and test for native builds]. " + str(distutils.util.get_platform()))
         args.update = True
         args.build = True
         if cross_compiling:
