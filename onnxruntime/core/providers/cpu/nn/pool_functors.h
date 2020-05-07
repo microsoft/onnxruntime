@@ -3,7 +3,6 @@
 #pragma once
 
 #include "core/platform/threadpool.h"
-#include "core/util/eigen_common_wrapper.h"
 #include "core/providers/cpu/nn/pool_base.h"
 namespace onnxruntime {
 
@@ -25,7 +24,7 @@ struct Pool1DTask final {
     return TensorOpCost{loop_count, loop_count, loop_count};
   }
 
-  void operator()(Eigen::Index begin, Eigen::Index end) const {
+  void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
@@ -33,7 +32,7 @@ struct Pool1DTask final {
       operator()(c);
     }
   }
-  void operator()(Eigen::Index c) const {
+  void operator()(std::ptrdiff_t c) const {
     const T* x_d = X_data + c * x_step;
     T* y_d = Y_data + c * y_step;
 
@@ -77,7 +76,7 @@ struct Pool2DTask final {
     return TensorOpCost{loop_count, loop_count, loop_count};
   }
 
-  void operator()(Eigen::Index begin, Eigen::Index end) const {
+  void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
@@ -86,7 +85,7 @@ struct Pool2DTask final {
     }
   }
 
-  void operator()(Eigen::Index c) const {
+  void operator()(std::ptrdiff_t c) const {
     const T* x_d = X_data + c * x_step;
     T* y_d = Y_data + c * y_step;
 
@@ -143,7 +142,7 @@ struct Pool3DTask final {
     return TensorOpCost{loop_count, loop_count, loop_count};
   }
 
-  void operator()(Eigen::Index begin, Eigen::Index end) const {
+  void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
@@ -152,7 +151,7 @@ struct Pool3DTask final {
     }
   }
 
-  void operator()(Eigen::Index c) const {
+  void operator()(std::ptrdiff_t c) const {
     const T* x_d = X_data + c * x_step;
     T* y_d = Y_data + c * y_step;
 
@@ -208,7 +207,7 @@ struct MaxPool1DTask final {
     return TensorOpCost{loop_count, loop_count, loop_count};
   }
 
-  void operator()(Eigen::Index begin, Eigen::Index end) const {
+  void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
@@ -216,7 +215,7 @@ struct MaxPool1DTask final {
       operator()(c);
     }
   }
-  void operator()(Eigen::Index c) const {
+  void operator()(std::ptrdiff_t c) const {
     const T* x_d = X_data + c * x_step;
     T* y_d = Y_data + c * y_step;
     int64_t* i_d = I_data ? I_data + c * y_step : nullptr;
@@ -264,7 +263,7 @@ struct MaxPool2DTask final {
     return TensorOpCost{loop_count, loop_count, loop_count};
   }
 
-  void operator()(Eigen::Index begin, Eigen::Index end) const {
+  void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
@@ -273,7 +272,7 @@ struct MaxPool2DTask final {
     }
   }
 
-  void operator()(Eigen::Index c) const {
+  void operator()(std::ptrdiff_t c) const {
     const T* x_d = X_data + c * x_step;
     T* y_d = Y_data + c * y_step;
     int64_t* i_d = I_data ? I_data + c * y_step : nullptr;
@@ -333,7 +332,7 @@ struct MaxPool3DTask {
   const std::vector<int64_t>& pads;
   int64_t storage_order;
 
-  void operator()(Eigen::Index begin, Eigen::Index end) const {
+  void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
@@ -348,7 +347,7 @@ struct MaxPool3DTask {
     return TensorOpCost{loop_count, loop_count, loop_count};
   }
 
-  void operator()(Eigen::Index c) const {
+  void operator()(std::ptrdiff_t c) const {
     const T* x_d = X_data + c * x_step;
     T* y_d = Y_data + c * y_step;
     int64_t* i_d = I_data ? I_data + c * y_step : nullptr;

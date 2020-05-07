@@ -76,7 +76,7 @@ jobs:
   workspace:
     clean: all
   pool: 'Win-CPU-2019'
-  timeoutInMinutes:  120
+  timeoutInMinutes:  160
   strategy:
     maxParallel: 2
     matrix: 
@@ -118,7 +118,7 @@ jobs:
        $Env:ONNX_ML=1
        $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
        python setup.py bdist_wheel
-       Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
+       Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
       workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'      
       displayName: 'Install ONNX'    
 
@@ -195,7 +195,7 @@ jobs:
        $Env:ONNX_ML=1
        $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
        python setup.py bdist_wheel
-       Get-ChildItem -Path dist/*.whl | foreach {pip install --upgrade $_.fullname}   
+       Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
       workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
       displayName: 'Install ONNX'
 

@@ -766,14 +766,16 @@ void OpTester::Run(
           execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kNGraphExecutionProvider)
           execution_provider = DefaultNGraphExecutionProvider();
-	      else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
-	        execution_provider = DefaultOpenVINOExecutionProvider();
+        else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
+          execution_provider = DefaultOpenVINOExecutionProvider();
         else if (provider_type == onnxruntime::kNupharExecutionProvider)
           execution_provider = DefaultNupharExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
           execution_provider = DefaultNnapiExecutionProvider();
+        else if (provider_type == onnxruntime::kRknpuExecutionProvider)
+          execution_provider = DefaultRknpuExecutionProvider();
         else if (provider_type == onnxruntime::kAclExecutionProvider)
           execution_provider = DefaultAclExecutionProvider();
         // skip if execution provider is disabled
@@ -790,17 +792,15 @@ void OpTester::Run(
           // if node is not registered for the provider, skip
           node.SetExecutionProviderType(provider_type);
           if (provider_type == onnxruntime::kNGraphExecutionProvider ||
-	            provider_type == onnxruntime::kOpenVINOExecutionProvider ||
+              provider_type == onnxruntime::kOpenVINOExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
               provider_type == onnxruntime::kNupharExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
-          const KernelCreateInfo* kci =
-              reg->TryFindKernel(node, execution_provider->Type());
-          if (!kci) {
+          if (!KernelRegistry::HasImplementationOf(*reg, node, execution_provider->Type())) {
             valid = false;
             for (auto& custom_session_registry : custom_session_registries_) {
-              if (custom_session_registry->GetKernelRegistry()->TryFindKernel(
+              if (KernelRegistry::HasImplementationOf(*custom_session_registry->GetKernelRegistry(),
                       node, execution_provider->Type())) {
                 valid = true;
                 break;

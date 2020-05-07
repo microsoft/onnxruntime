@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Rule Name="OnnxRuntime" DisplayName="ONNX Runtime (Beta)" Order="75" PageTemplate="generic" xmlns="http://schemas.microsoft.com/build/2009/properties">
+  <Rule.Categories>
+    <Category Name="General" DisplayName="General"/>
+  </Rule.Categories>
+
+  <Rule.DataSource>
+    <DataSource Persistence="ProjectFile" HasConfigurationCondition="false" Label="Globals" />
+  </Rule.DataSource>
+
+  <StringProperty Name="OnnxRuntimePathOverride"
+                  DisplayName="Custom ONNXRuntime DLL"
+                  Description="Specifies a path to a custom OnnxRuntime dll."
+                  Category="General" />
+
+  <StringProperty Name="DirectMLPathOverride"
+                  DisplayName="Custom DirectML DLL"
+                  Description="Specifies a path to a custom Direct ML dll."
+                  Category="General" />
+</Rule>

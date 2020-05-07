@@ -175,7 +175,7 @@ static inline void ExecuteLambdaInParallel(TLambda lambda, int max, int step, do
   }
 #else
   const int total_tasks = max / (step > 0 ? step : 1) + (max % step > 0 ? 1 : 0);
-  concurrency::ThreadPool::TryParallelFor(ttp, total_tasks, cost, [lambda, step](ptrdiff_t first, ptrdiff_t last) {
+  concurrency::ThreadPool::TryParallelFor(ttp, total_tasks, cost, [&lambda, step](ptrdiff_t first, ptrdiff_t last) {
     for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
       lambda(i * step);
     }
@@ -849,7 +849,9 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       }
     };
 
-    double cost = max_sequence_length * fused_hidden_rows;  // TODO: approximate cost, needs more tuning.
+    // Approximate worst case cost of hidden_gemm_and_activations.
+    double gemm_cost = fused_hidden_rows * hidden_size_x4 * hidden_size_;
+    double cost = max_sequence_length * (gemm_cost + fused_hidden_rows);
     ExecuteLambdaInParallel(hidden_gemm_and_activations, batch_size_, fused_hidden_rows, cost, mlas_tp_);
 
   } else {

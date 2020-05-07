@@ -5,6 +5,8 @@
 
 #include "core/framework/data_transfer_utils.h"
 #include "core/graph/model.h"
+#include "core/session/IOBinding.h"
+#include "core/providers/cpu/controlflow/utils.h"
 #include "orttraining/core/graph/loss_function_builder.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/framework/checkpointing.h"
@@ -117,12 +119,16 @@ Status TrainingSession::ConfigureForTraining(
 
   TrainingConfigurationResult config_result{};
 
+  ORT_ENFORCE(config.distributed_config.pipeline_parallel_size > 0,
+    "This parameter should be 1 if there is no pipelie parallelism. Otherwise, it's the number of pipeline stages.");
+
   DistributedRunContext::CreateInstance({config.distributed_config.world_rank,
                                          config.distributed_config.world_size,
                                          config.distributed_config.local_rank,
                                          config.distributed_config.local_size,
                                          config.distributed_config.data_parallel_size,
-                                         config.distributed_config.horizontal_parallel_size});
+                                         config.distributed_config.horizontal_parallel_size,
+                                         config.distributed_config.pipeline_parallel_size});
 
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph());
 
@@ -131,11 +137,12 @@ Status TrainingSession::ConfigureForTraining(
   std::string loss_name{};
   optional<std::string> loss_scale_input_name =
         is_mixed_precision_enabled_ ? optional<std::string>{""} : optional<std::string>{};
-  if (config.use_pipeline) {
+  if (config.pipeline_config.has_value()) {
     // if use pipeline, first check if model contains send op. If it does, set the
     // send node's output as the start tensor to build gradient graph
     GetPipelineSendOutput(model_->MainGraph(), loss_name);
   }
+
   if (loss_name.empty()) {
     const optional<LossFunctionInfo> loss_function_info =
         config.loss_function_config.has_value()
@@ -190,8 +197,30 @@ Status TrainingSession::ConfigureForTraining(
         weight_names_to_train, mixed_precision_config.use_fp16_initializers, fp32_weight_name_to_fp16_node_arg));
   }
 
-  if (config.use_pipeline) {
-    ORT_RETURN_IF_ERROR(InsertPipelineOps());
+  if (config.pipeline_config.has_value()) {
+    TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
+    ORT_RETURN_IF_ERROR(InsertPipelineOps(pipeline_result.forward_waited_event_name,
+                                          pipeline_result.forward_recorded_event_name,
+                                          pipeline_result.backward_waited_event_name,
+                                          pipeline_result.backward_recorded_event_name,
+                                          pipeline_result.forward_waited_output_name,
+                                          pipeline_result.forward_recorded_output_name,
+                                          pipeline_result.backward_waited_output_name,
+                                          pipeline_result.backward_recorded_output_name));
+    // The following loop is for not to fetch tensors not in this pipeline stage.
+    for (size_t i = 0; i < config.pipeline_config.value().fetch_names.size(); ++i) {
+      auto name = config.pipeline_config.value().fetch_names[i];
+      const auto* node_arg = model_->MainGraph().GetNodeArg(name);
+      if (!node_arg) {
+        // This pipelie stage doesn't contain this name.
+        // Let's not to fetch it.
+        continue;
+      }
+      pipeline_result.fetch_names.push_back(name);
+    }
+    pipeline_result.pipeline_stage_id = config.distributed_config.world_rank / 
+      (config.distributed_config.data_parallel_size * config.distributed_config.horizontal_parallel_size);
+    config_result.pipeline_config_result = pipeline_result;
   }
 
   // All non-float tensors are not trainable. Remove those weights.
@@ -228,6 +257,9 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
+  // Set eval feed names for Dropout ratio.
+  ORT_RETURN_IF_ERROR(SetDropoutEvalFeedNames());
+
   // add Tensorboard
   if (config.tensorboard_config.has_value()) {
     const auto& tensorboard_config = config.tensorboard_config.value();
@@ -260,7 +292,7 @@ Status TrainingSession::ConfigureForTraining(
         tensorboard_config.histogram_node_names, tensorboard_config.norm_node_names,
         tensorboard_config.dump_convergence_metrics));
   }
-
+    
   // add GIST encoding
   if (config.gist_config.has_value()) {
     ORT_RETURN_IF_ERROR(AddGistEncoding());
@@ -269,6 +301,20 @@ Status TrainingSession::ConfigureForTraining(
   if (IsRootNode(config) && config.model_with_training_graph_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
+  }
+
+  // After pipeline partition, we need to return the inputs allowed in this partition.
+  if (config.pipeline_config.has_value()) {
+    const auto& allowed_inputs = model_->MainGraph().GetInputsIncludingInitializers();
+    const auto& allowed_outputs = model_->MainGraph().GetInputsIncludingInitializers();
+    for (size_t i = 0; i < allowed_inputs.size(); ++i) {
+      const auto name = allowed_inputs[i]->Name();
+      config_result.pipeline_config_result.value().feed_names.push_back(name);
+    }
+    for (size_t i = 0; i < allowed_outputs.size(); ++i) {
+      const auto name = allowed_outputs[i]->Name();
+      config_result.pipeline_config_result.value().fetch_names.push_back(name);
+    }
   }
 
   config_result_out = std::move(config_result);
@@ -465,8 +511,25 @@ Status TrainingSession::AddTensorboard(const std::string& summary_name,
   return DoPostLoadProcessing(*model_);
 }
 
-Status TrainingSession::InsertPipelineOps() {
-  ORT_RETURN_IF_ERROR(TransformGraphForPipeline(model_->MainGraph()));
+Status TrainingSession::InsertPipelineOps(
+  std::string& forward_waited_event_name,
+  std::string& forward_recorded_event_name,
+  std::string& backward_waited_event_name,
+  std::string& backward_recorded_event_name,
+  std::string& forward_waited_output_name,
+  std::string& forward_recorded_output_name,
+  std::string& backward_waited_output_name,
+  std::string& backward_recorded_output_name) {
+  ORT_RETURN_IF_ERROR(TransformGraphForPipeline(
+    model_->MainGraph(),
+    forward_waited_event_name,
+    forward_recorded_event_name,
+    backward_waited_event_name,
+    backward_recorded_event_name,
+    forward_waited_output_name,
+    forward_recorded_output_name,
+    backward_waited_output_name,
+    backward_recorded_output_name));
   return DoPostLoadProcessing(*model_);
 }
 
@@ -663,7 +726,8 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
 }
 
 common::Status TrainingSession::GetStateTensors(NameMLValMap& state_tensors) {
-  return session_state_->GetInitializedTensors(GetStateTensorNames(), false, state_tensors);
+  bool allow_missing = opt_graph_config_.partition_optimizer;
+  return session_state_->GetInitializedTensors(GetStateTensorNames(), allow_missing, state_tensors);
 }
 
 const DataTransferManager& TrainingSession::GetDataTransferManager() const {
@@ -674,6 +738,57 @@ bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) cons
   auto output_producer_node = model_->MainGraph().GetProducerNode(output_name);
   ORT_ENFORCE(output_producer_node != nullptr, "Output: " + output_name + " is not produced by any node.");
   return IsFP32Node(output_producer_node);
+}
+
+common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io_binding) {
+  // Override initializers in eval mode.
+  if (!run_options.training_mode) {
+    // override all dropout raiots to 0
+    for (auto& drop_ratio : dropout_eval_feeds_) {
+      OrtValue feed_value;
+      // We allocate on CPU first, copy will be taken care off downstream.
+      auto cpu_allocator = session_state_->GetExecutionProviders()
+                           .Get(onnxruntime::kCpuExecutionProvider)
+                           ->GetAllocator(0, OrtMemTypeDefault);
+      feed_value = onnxruntime::MakeScalarMLValue<float>(cpu_allocator, 0.f, true /*is_1d*/);
+      // Bind new feed to graph input.
+      ORT_RETURN_IF_ERROR(io_binding.BindInput(drop_ratio, feed_value));
+    }
+  }
+
+  // Call Run in inferenceSession
+  return InferenceSession::Run(run_options, io_binding);
+}
+
+common::Status TrainingSession::Run(IOBinding& io_binding) {
+  RunOptions run_options;
+  // Set training_mode to true in training session by default.
+  run_options.training_mode = true;
+  return Run(run_options, io_binding);
+}
+
+static const std::unordered_set<std::string> Dropout_Nodes = {
+    "TrainableDropout",
+};
+// TODO remove this once ONNX properly supports training_mode input.
+Status TrainingSession::SetDropoutEvalFeedNames() {
+  Graph& graph = model_->MainGraph();
+
+  // add ratio node to graph input for overriding.
+  GraphAugmenter::GraphDefs defs{};
+
+  for (const auto& node : graph.Nodes()) {
+    auto it = Dropout_Nodes.find(node.OpType());
+    if(it != Dropout_Nodes.cend()) {
+      auto& ratio_name = node.InputDefs()[1]->Name();
+      dropout_eval_feeds_.insert(ratio_name);
+      ORT_ENFORCE(model_->MainGraph().GetProducerNode(ratio_name) == nullptr,
+      "Input: " + ratio_name + " should not have any producer node.");
+      defs.AddGraphInputs({ratio_name});
+    }
+  }
+  ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, defs));
+  return DoPostLoadProcessing(*model_);
 }
 
 Status TrainingSession::SetStateTensors(const NameMLValMap& state_tensors, bool strict) {

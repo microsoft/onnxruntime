@@ -14,9 +14,10 @@ class TransposeBase {
  public:
   /**
   Transpose the input Tensor into the output Tensor using the provided permutations.
-  Both Tensors must have the same data type. 
+  Both Tensors must have the same data type. `input_shape_override` overrides the shape of `input` for compute purposes.
   */
-  static Status DoTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output);
+  static Status DoTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                            const TensorShape* input_shape_override = nullptr);
 
  protected:
   TransposeBase(const OpKernelInfo& info) {
