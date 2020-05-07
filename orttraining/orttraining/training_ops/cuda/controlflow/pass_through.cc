@@ -27,7 +27,7 @@ Status PassThrough::ComputeInternal(OpKernelContext* ctx) const {
     const Tensor* X = ctx->Input<Tensor>(i);
     const TensorShape& data_shape = X->Shape();
     Tensor* Y = ctx->Output(i, data_shape);
-    if (Y == nullptr)
+    if (!Y)
       continue;
     CopyTensor(*X, *Y);
   }
