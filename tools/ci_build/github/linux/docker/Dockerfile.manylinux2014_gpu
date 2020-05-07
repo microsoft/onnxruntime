@@ -8,6 +8,16 @@ RUN cd /tmp/scripts && \
     /tmp/scripts/install_deps.sh -d gpu -p $PYTHON_VERSION && \
     rm -rf /tmp/scripts
 
+RUN yum remove -y devtoolset-\* && \
+    yum install -y \
+        devtoolset-7-binutils \
+        devtoolset-7-gcc \
+        devtoolset-7-gcc-c++ \
+        devtoolset-7-gcc-gfortran \
+        devtoolset-7-libquadmath-devel \
+        devtoolset-7-libstdc++-devel \
+        devtoolset-7-runtime
+
 
 # Copied and adapted from https://gitlab.com/nvidia/container-images/cuda/-/blob/d442ff6975fb8310da90e6c3f35a988b6920b017/dist/centos7/10.1/base/Dockerfile
 
