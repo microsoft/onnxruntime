@@ -1437,6 +1437,33 @@ TEST_F(GraphTransformationTests, AttentionFusionInt64Test) {
   ValidateAttention(graph);
 }
 
+// Test Attention Fusion with float32 mask and no "cast" node in mask path
+TEST_F(GraphTransformationTests, AttentionFusionFloat32Test) {
+  auto model_uri = MODEL_FOLDER "fusion/attention_mask_no_cast.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<AttentionFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["MatMul"], 1);
+  EXPECT_EQ(op_to_count["Add"], 2);
+  EXPECT_EQ(op_to_count["Transpose"], 0);
+  EXPECT_EQ(op_to_count["Reshape"], 0);
+  EXPECT_EQ(op_to_count["Mul"], 0);
+  EXPECT_EQ(op_to_count["Div"], 0);
+  EXPECT_EQ(op_to_count["Sub"], 0);
+  EXPECT_EQ(op_to_count["Unsqueeze"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 1);
+  EXPECT_EQ(op_to_count["Attention"], 1);
+
+  ValidateAttention(graph);
+}
+
 TEST_F(GraphTransformationTests, GeluFusionTest) {
   auto model_uri = MODEL_FOLDER "fusion/gelu.onnx";
   std::shared_ptr<Model> p_model;
