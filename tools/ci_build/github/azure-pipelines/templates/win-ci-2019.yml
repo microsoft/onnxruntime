@@ -19,7 +19,7 @@ parameters:
   RunTests : 'true'
 jobs:
 - job: ${{ parameters.JobName }}
-  timeoutInMinutes: 120
+  timeoutInMinutes: 160
   strategy:
     maxParallel: 2
     matrix:
