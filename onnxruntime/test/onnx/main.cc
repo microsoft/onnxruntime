@@ -854,6 +854,9 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "%s\n", ex.what());
     retval = -1;
   }
+#ifdef _WIN32
+  Sleep(10); // Temporary workaround until we figure out what's crashing on exit due to a race condition
+#endif
   ::google::protobuf::ShutdownProtobufLibrary();
   std::cout << "*** Exiting Test Runner\r\n";
   return retval;
