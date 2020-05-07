@@ -74,8 +74,20 @@ def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_name
 
     return inputs
 
-def flatten(outputs):
-    return [[flatten(i) for i in outputs] if isinstance(outputs, (list, tuple)) else outputs]
+def get_input_names(model_name, num_inputs):
+    inputs = MODELS[model_name][0]
+    num_required_inputs = len(inputs) - MODELS[model_name][1]
+    if num_inputs > len(inputs) or num_inputs < num_required_inputs:
+        print(f"Model {model_name} inputs: Min {num_required_inputs}, Max {len(inputs)}.")
+        return None
+
+    return inputs[:num_inputs]
+
+def filter_inputs(inputs, input_names):
+    remaining_model_inputs = {}
+    for input_name in input_names:
+        remaining_model_inputs[input_name] = inputs[input_name]
+    return remaining_model_inputs
 
 def build_dynamic_axes(example_inputs, example_outputs):
     sequence_length = example_inputs["input_ids"].shape[-1]
@@ -93,7 +105,7 @@ def build_dynamic_axes(example_inputs, example_outputs):
                 dynamic_axes[output_name].update({j: 'seq_len'})
     return dynamic_axes, output_names
 
-def export_onnx_model(model_name, cache_dir):
+def export_onnx_model(model_name, cache_dir, input_names):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
     model = AutoModel.from_pretrained(model_name, config=config, cache_dir=cache_dir)
     model.cpu()
@@ -101,7 +113,9 @@ def export_onnx_model(model_name, cache_dir):
     tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
     model_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="pt")
 
-    onnx_model_filename = model_name + ".onnx"
+    model_inputs = filter_inputs(model_inputs, input_names)
+
+    onnx_model_filename = "{}_{}.onnx".format(model_name, str(len(input_names)))
     if not os.path.exists(onnx_model_filename):
         print("Exporting ONNX model to {}".format(onnx_model_filename))
 
@@ -123,11 +137,10 @@ def export_onnx_model(model_name, cache_dir):
     return onnx_model_filename, config.vocab_size, tokenizer.max_model_input_sizes[model_name]
 
 
-def create_fp16_model(model_name):
-    optimized_model_filename = model_name + "_fp16.onnx"
+def create_fp16_model(onnx_model_filename):
+    optimized_model_filename = onnx_model_filename.replace(".onnx", "_fp16.onnx")
     if not os.path.exists(optimized_model_filename):
         import bert_model_optimization as bert_opt
-        onnx_model_filename = model_name + ".onnx"
         bert_model = bert_opt.optimize_model(onnx_model_filename, "bert", num_heads=12, hidden_size=768, opt_level=0)
         bert_model.convert_model_float32_to_float16()
         bert_model.save_model_to_file(optimized_model_filename)
@@ -136,7 +149,7 @@ def create_fp16_model(model_name):
     return optimized_model_filename
 
 
-def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repeat_times, cache_dir, verbose):
+def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repeat_times, num_inputs, cache_dir, verbose):
     import onnxruntime
 
     results = []
@@ -150,9 +163,14 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
         print("Warning: Please install onnxruntime package instead of onnxruntime-gpu to get best cpu performance.")
 
     for model_name in model_names:
-        onnx_model_file, vocab_size, max_sequence_length = export_onnx_model(model_name, cache_dir)
+        input_names = get_input_names(model_name, num_inputs)
+        if input_names is None:
+            print("Skip model {model_name} since it does not support {} inputs")
+            continue
+
+        onnx_model_file, vocab_size, max_sequence_length = export_onnx_model(model_name, cache_dir, input_names)
         if fp16:
-            onnx_model_file = create_fp16_model(model_name)
+            onnx_model_file = create_fp16_model(onnx_model_file)
 
         for batch_size in batch_sizes:
             for sequence_length in sequence_lengths:
@@ -160,7 +178,7 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
                     continue
 
                 ort_session = create_onnxruntime_session(onnx_model_file, use_gpu)
-                input_names = MODELS[model_name][0]
+                
                 ort_input = create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names)
                 ort_session.run(None, ort_input)
 
@@ -176,6 +194,7 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
                     "device": "cuda" if use_gpu else "cpu",
                     "fp16": fp16,
                     "model_name": model_name,
+                    "inputs": num_inputs,
                     "batch_size": batch_size,
                     "sequence_length": sequence_length,
                     "average_latency_ms": "{:.2f}".format(latency_ms),
@@ -248,6 +267,7 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
                         "device": device,
                         "fp16": fp16,
                         "model_name": model_name,
+                        "inputs": num_inputs,
                         "batch_size": batch_size,
                         "sequence_length": sequence_length,
                         "average_latency_ms": "{:.2f}".format(latency_ms),
@@ -299,7 +319,7 @@ def parse_arguments():
 
     parser.add_argument("--csv_filename", required=False, default=None, help="CSV file for saving results.")
 
-    #parser.add_argument("--no_optional_inputs", required=False, default=None, help="Remove optional model inputs.")
+    parser.add_argument("--num_inputs", required=False,  default=1, type=int, choices=[1, 2, 3], help="Number of ONNX model inputs. Please use 1 for fair comparison with Torch or TorchScript.")
 
     parser.add_argument("--test_times",
                         required=False,
@@ -309,7 +329,7 @@ def parse_arguments():
 
     parser.add_argument("--batch_sizes", nargs="+", type=int, default=[1, 2])
 
-    parser.add_argument("--sequence_lengths", nargs="+", type=int, default=[8, 32, 128, 512])
+    parser.add_argument("--sequence_lengths", nargs="+", type=int, default=[8, 32, 128])
 
     args = parser.parse_args()
     return args
@@ -349,7 +369,7 @@ def main():
     if enable_onnxruntime:
         try:
             results += run_onnxruntime(args.use_gpu, args.models, args.fp16, args.batch_sizes, args.sequence_lengths,
-                                       args.test_times, args.cache_dir, args.verbose)
+                                       args.test_times, args.num_inputs, args.cache_dir, args.verbose)
         except:
             print(f"Exception:{traceback.format_exc()}")
 
@@ -358,9 +378,9 @@ def main():
         return
 
     csv_filename = args.csv_filename or "benchmark_result_{}.csv".format(datetime.now().strftime("%Y%m%d-%H%M%S"))
-    with open(csv_filename, mode="w") as csv_file:
+    with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "runtime", "version", "device", "fp16", "model_name", "batch_size", "sequence_length", "average_latency_ms",
+            "runtime", "version", "device", "fp16", "model_name", "inputs", "batch_size", "sequence_length", "average_latency_ms",
             "QPS", "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
         ]
 
