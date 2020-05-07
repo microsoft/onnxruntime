@@ -80,16 +80,17 @@ def flatten(outputs):
 def build_dynamic_axes(example_inputs, example_outputs):
     sequence_length = example_inputs["input_ids"].shape[-1]
 
-    dynamic_axes = {key: {0: 'batch_size', 1: 'max_seq_len'} for key in example_inputs.keys()}
+    dynamic_axes = {key: {0: 'batch_size', 1: 'seq_len'} for key in example_inputs.keys()}
 
-    outputs = example_outputs # if isinstance(example_outputs, (list, tuple)) else (example_outputs, )
+    assert isinstance(example_outputs, (list, tuple))
+    outputs = example_outputs
     output_names = ['output_' + str(i + 1) for i in range(len(outputs))]
     for i, output_name in enumerate(output_names):
         dynamic_axes[output_name] = {0: 'batch_size'}
         dims = outputs[i].shape
         for j, dim in enumerate(dims):
             if dim == sequence_length:
-                dynamic_axes[output_name].update({j: 'max_seq_len'})
+                dynamic_axes[output_name].update({j: 'seq_len'})
     return dynamic_axes, output_names
 
 def export_onnx_model(model_name, cache_dir):
@@ -197,7 +198,7 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
         print("Please install PyTorch with Cuda, and use a machine with GPU for testing gpu performance.")
         return results
 
-    #torch.set_num_threads(cpu_count)
+    torch.set_num_threads(cpu_count)
     torch.set_grad_enabled(False)
 
     for model_name in model_names:
