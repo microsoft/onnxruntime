@@ -34,7 +34,7 @@ stages:
       inputs:
         source: current
         artifact: onnxruntime_gpu
-        patterns: '**/*-$(python.whl.impl.abi.tags)-manylinux2010_x86_64.whl'
+        patterns: '**/*-$(python.whl.impl.abi.tags)-linux_x86_64.whl'
         path: $(Pipeline.Workspace)/artifacts
       displayName: 'Download wheel'
 
@@ -50,7 +50,7 @@ stages:
 
     - script: |
         HOST_WHEEL_PATH=$( \
-          find "$(Pipeline.Workspace)/artifacts" -name "*-$(python.whl.impl.abi.tags)-manylinux2010_x86_64.whl" \
+          find "$(Pipeline.Workspace)/artifacts" -name "*-$(python.whl.impl.abi.tags)-linux_x86_64.whl" \
           | tail -n 1 ) && \
         ls "${HOST_WHEEL_PATH}" && \
         docker run \
