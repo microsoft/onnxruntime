@@ -10,15 +10,36 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 namespace {
+// Don't check if the op is Deprecated. In ONNX Runtime's world, there is no deprecation.
+bool IsSupportedOptypeVersionAndDomain(const Node& node, const std::string& op_type,
+                                       const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
+                                       const std::string& domain) {
+  return (node.OpType() == op_type && graph_utils::MatchesOpSinceVersion(node, versions) &&
+          graph_utils::MatchesOpSetDomain(node, domain));
+}
+
+// If the op has multiple versions, here we require it must have a single implementation that can work across all the
+// versions. Because in the fusion, we discarded the op version information.
 bool IsFusableActivation(const Node& node) {
-  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", {6}) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6}) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6}) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", {6});
+  return IsSupportedOptypeVersionAndDomain(node, "Elu", {6}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "HardSigmoid", {6}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", {6}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "Relu", {6}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "Selu", {6}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "Softplus", {1}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "Softsign", {1}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "Tanh", {6}, kOnnxDomain) ||
+#ifndef DISABLE_CONTRIB_OPS
+         IsSupportedOptypeVersionAndDomain(node, "ScaledTanh", {1}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "ParametricSoftplus", {1}, kOnnxDomain) ||
+#endif
+         IsSupportedOptypeVersionAndDomain(node, "ThresholdedRelu", {1, 10}, kOnnxDomain);
 }
 }  // namespace
 
-Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
+                                       const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -30,15 +51,13 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     auto& node = *node_ptr;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", {7, 9}) ||
-        !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
-        node.GetOutputEdgesCount() != 1) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", {7, 9, 11}) ||
+        !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) || node.GetOutputEdgesCount() != 1) {
       continue;
     }
 
     const Node& next_node = *(node.OutputNodesBegin());
-    if (!IsFusableActivation(next_node) ||
-        next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
+    if (!IsFusableActivation(next_node) || next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
       continue;
     }
 
@@ -51,25 +70,20 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     Node& fused_gemm = graph.AddNode(graph.GenerateNodeName("fused " + gemm_node.Name()), "FusedGemm",
                                      "fused Gemm " + gemm_node.Name() + "with activation " + act_node.OpType(),
-                                     gemm_node.MutableInputDefs(),
-                                     {},
-                                     &gemm_node.GetAttributes(),
-                                     "com.microsoft");
+                                     gemm_node.MutableInputDefs(), {}, &gemm_node.GetAttributes(), "com.microsoft");
 
-    //Add a new attribute to specify the activation type
+    // Add a new attribute to specify the activation type
     fused_gemm.AddAttribute("activation", act_node.OpType());
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     fused_gemm.SetExecutionProviderType(gemm_node.GetExecutionProviderType());
 
-    //Add optional attributes for activations
-    if (act_node.OpType() == "LeakyRelu") {
-      const NodeAttributes& attrs = act_node.GetAttributes();
-      for (const auto& attr : attrs) {
-        AttributeProto fused_gemm_attr(attr.second);
-        fused_gemm_attr.set_name("leaky_relu_" + attr.first);
-        fused_gemm.AddAttribute("leaky_relu_" + attr.first, fused_gemm_attr);
-      }
+    // Add optional attributes for activations
+    const NodeAttributes& attrs = act_node.GetAttributes();
+    for (const auto& attr : attrs) {
+      AttributeProto fused_gemm_attr(attr.second);
+      fused_gemm_attr.set_name("activation_" + attr.first);
+      fused_gemm.AddAttribute("activation_" + attr.first, fused_gemm_attr);
     }
 
     // move output definitions and edges from act_node to fused_gemm. delete gemm_node and act_node.

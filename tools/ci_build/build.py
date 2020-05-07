@@ -258,6 +258,8 @@ def parse_arguments():
     parser.add_argument(
         "--use_dnnlibrary", action='store_true', help="Build with DNNLibrary.")
     parser.add_argument(
+        "--use_rknpu", action='store_true', help="Build with RKNPU.")
+    parser.add_argument(
         "--use_preinstalled_eigen", action='store_true',
         help="Use pre-installed Eigen.")
     parser.add_argument("--eigen_path", help="Path to pre-installed Eigen.")
@@ -560,10 +562,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_OPENVINO_BINARY=" + (
             "ON" if args.use_openvino else "OFF"),
         "-Donnxruntime_USE_NNAPI=" + ("ON" if args.use_dnnlibrary else "OFF"),
+        "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
         "-Donnxruntime_USE_OPENMP=" + (
             "ON" if args.use_openmp and not (
                 args.use_dnnlibrary or args.use_mklml or args.use_ngraph or
-                args.android or (args.ios and is_macOS()))
+                args.android or (args.ios and is_macOS()) or args.use_rknpu)
             else "OFF"),
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),

@@ -57,10 +57,12 @@ class TrainingSession : public InferenceSession {
       int world_size{1};
       // The number of local ranks on a node.
       int local_size{1};
-      // The number of ranks for data parallel group
+      // The number of ranks for data parallel group.
       int data_parallel_size{1};
-      // The number of ranks for horizontal model parallel group
+      // The number of ranks for horizontal model parallel group.
       int horizontal_parallel_size{1};
+      // The number of pipeline stages.
+      int pipeline_parallel_size{1};
     };
     // The distributed training configuration.
     DistributedConfiguration distributed_config{};
@@ -133,8 +135,19 @@ class TrainingSession : public InferenceSession {
     // If not provided, no optimizer is added.
     optional<OptimizerConfiguration> optimizer_config{};
 
-    // Whether to use pipeline in training.
-    bool use_pipeline{false};
+    struct PipelineConfiguration {
+      // If model partition happens outside ORT, this flag should be false.
+      // Otherwise, use true to trigger ORT's pipeline partition.
+      bool do_partition;
+      // Tensors to fetch as specified by the user.
+      // Each pipeline stage should pick up some strings from this field..
+      std::vector<std::string> fetch_names;
+      // [TODO] Add cut information.
+    };
+
+    // If pipeline is enabled, this field's has_value() returns true.
+    // Otherwise, it returns false.
+    optional<PipelineConfiguration> pipeline_config{};
   };
 
   /**
@@ -156,6 +169,33 @@ class TrainingSession : public InferenceSession {
     // The optimizer configuration output.
     // This is only set if an optimizer is added.
     optional<OptimizerConfigurationResult> opt_config_result;
+
+    // The names of pipeline events in model's input list.
+    // If an event is not used, its name should be empty.
+    struct PipelineConfigurationResult {
+      // Index of obtained pipeline stage. The first stage is indexed by 0.
+      int pipeline_stage_id;
+      // The names of pipeline events in model's input list.
+      std::string forward_waited_event_name;
+      std::string forward_recorded_event_name;
+      std::string backward_waited_event_name;
+      std::string backward_recorded_event_name;
+
+      std::string forward_waited_output_name;
+      std::string forward_recorded_output_name;
+      std::string backward_waited_output_name;
+      std::string backward_recorded_output_name;
+
+      // Tensors to feed at this pipeline stage.
+      std::vector<std::string> feed_names;
+      // Tensors to fetch at this pipeline stage.
+      // It's a subset of PipelineConfiguration.fetch_names.
+      std::vector<std::string> fetch_names;
+    };
+
+    // The pipeline configuration output.
+    // This is only set if an pipeline is enabled.
+    optional<PipelineConfigurationResult> pipeline_config_result;
   };
 
   /**
@@ -225,7 +265,6 @@ class TrainingSession : public InferenceSession {
    * @return The list of feed names.
    */
   std::unordered_set<std::string> GetDropoutEvalFeeds() const { return dropout_eval_feeds_; }
-  
   /** Override Run function in InferenceSession to inject some training-specific logics **/
   using InferenceSession::Run; // For overload resolution.
   common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
@@ -282,7 +321,20 @@ class TrainingSession : public InferenceSession {
                                 const std::vector<std::string>& norm_nodes,
                                 const bool dump_convergence_metrics);
 
-  common::Status InsertPipelineOps();
+  // Insert operators for running pipeline and return event tensor names.
+  // For an intermediate pipeline stage, two WaitEvent and two RecordEvent would
+  // be inserted. The dependent event tensor names are returned.
+  // The related computation order is
+  //  WaitEvent --> Forward --> RecordEvent --> WaitEvent --> Backward --> RecordEvent
+  common::Status InsertPipelineOps(std::string& forward_waited_event_name,
+                                   std::string& forward_recorded_event_name,
+                                   std::string& backward_waited_event_name,
+                                   std::string& backward_recorded_event_name,
+                                   std::string& forward_waited_output_name,
+                                   std::string& forward_recorded_output_name,
+                                   std::string& backward_waited_output_name,
+                                   std::string& backward_recorded_output_name);
+
   common::Status ApplyTransformationsToMainGraph();
 
   /** configure initial transformers for training */

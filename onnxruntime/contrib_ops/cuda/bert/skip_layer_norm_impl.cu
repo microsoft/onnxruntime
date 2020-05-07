@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "layer_norm.cuh"
 #include "skip_layer_norm_impl.h"
+#include <cuda_fp16.h>
 
 namespace onnxruntime {
 namespace contrib {
@@ -29,7 +30,8 @@ namespace cuda {
 
 template <typename T, unsigned TPB>
 __global__ void SkipLayerNormKernelSmall(
-    const int ld, const T* input, const T* skip, const T* beta, const T* gamma, const T* bias, T* output) {
+    const int ld, const T* input, const T* skip, const T* beta, const T* gamma, const T* bias, 
+    const T epsilon, T* output) {
   const T reverse_ld = T(1.f / ld);
   const int offset = blockIdx.x * ld;
 
@@ -45,12 +47,13 @@ __global__ void SkipLayerNormKernelSmall(
     thread_data = pair_sum(thread_data, cub::KeyValuePair<T, T>(rldval, rldval * val));
   }
 
-  LayerNormSmall<T, TPB>(val, thread_data, ld, idx, beta, gamma, output);
+  LayerNormSmall<T, TPB>(val, thread_data, ld, idx, beta, gamma, epsilon, output);
 }
 
 template <typename T, unsigned TPB>
 __global__ void SkipLayerNormKernel(
-    const int ld, const T* input, const T* skip, const T* beta, const T* gamma, const T* bias, T* output) {
+    const int ld, const T* input, const T* skip, const T* beta, const T* gamma, const T* bias, 
+    const T epsilon, T* output) {
   const T reverse_ld = T(1.f / ld);
   const int offset = blockIdx.x * ld;
 
@@ -66,13 +69,13 @@ __global__ void SkipLayerNormKernel(
     output[idx] = val;
   }
 
-  LayerNorm<T, TPB>(thread_data, ld, offset, beta, gamma, output);
+  LayerNorm<T, TPB>(thread_data, ld, offset, beta, gamma, epsilon, output);
 }
 
 template <typename T>
 bool ComputeSkipLayerNorm(
     cudaStream_t stream, const int ld, const int n, const T* input, const T* skip,
-    const T* beta, const T* gamma, const T* bias, T* output) {
+    const T* beta, const T* gamma, const T* bias, const T epsilon, T* output) {
   // this must be true because n is the total size of the tensor
   assert(n % ld == 0);
   const int grid_size = n / ld;
@@ -80,18 +83,18 @@ bool ComputeSkipLayerNorm(
   if (ld <= 32) {
     constexpr int block_size = 32;
     SkipLayerNormKernelSmall<T, block_size>
-        <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, output);
+        <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
   } else if (ld <= 128) {
     constexpr int block_size = 128;
     SkipLayerNormKernelSmall<T, block_size>
-        <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, output);
+        <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
   } else if (ld == 384) {
     constexpr int block_size = 384;
     SkipLayerNormKernelSmall<T, block_size>
-        <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, output);
+        <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
   } else {
     constexpr int block_size = 256;
-    SkipLayerNormKernel<T, block_size><<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, output);
+    SkipLayerNormKernel<T, block_size><<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
   }
   return CUDA_CALL(cudaPeekAtLastError());
 }
@@ -102,7 +105,8 @@ bool LaunchSkipLayerNormKernel(
     const void* skip,
     const void* gamma,
     const void* beta,
-    const void* bias,
+    const void* bias,    
+    float epsilon,
     int hidden_size,
     int element_count,
     size_t element_size) {
@@ -119,6 +123,7 @@ bool LaunchSkipLayerNormKernel(
         reinterpret_cast<const half*>(beta),
         reinterpret_cast<const half*>(gamma),
         reinterpret_cast<const half*>(bias),
+        __float2half_rn(epsilon),
         reinterpret_cast<half*>(output));
   } else {
     return ComputeSkipLayerNorm(
@@ -130,6 +135,7 @@ bool LaunchSkipLayerNormKernel(
         reinterpret_cast<const float*>(beta),
         reinterpret_cast<const float*>(gamma),
         reinterpret_cast<const float*>(bias),
+        epsilon,
         reinterpret_cast<float*>(output));
   }
 }

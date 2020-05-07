@@ -601,6 +601,25 @@ TEST_F(GraphTransformationTests, MatMulAddFusion_negitive_case) {
   ASSERT_TRUE(op_to_count["Gemm"] == 0);
 }
 
+// Matmul+Add with shape [M,k]*[k,N]+[1,4], won't do the fusion
+// 1,4 is not uni-directionally broadcast
+TEST_F(GraphTransformationTests, MatMulAddFusion_NotBroadcastable) {
+  auto model_uri = MODEL_FOLDER "matmul_add_fusion/matmul_add_not_broadcastable.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MatMulAddFusion>(), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["MatMul"] == 1);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+  ASSERT_TRUE(op_to_count["Gemm"] == 0);
+}
+
 #ifndef DISABLE_CONTRIB_OPS
 TEST_F(GraphTransformationTests, Gemm_Relu_three_input) {
   auto model_uri = MODEL_FOLDER "matmul_add_fusion/3Input/gemm_relu.onnx";
@@ -1116,7 +1135,6 @@ TEST_F(GraphTransformationTests, ReshapeFusionInternalReuseTest) {
   }
 }
 
-
 TEST_F(GraphTransformationTests, ReshapeFusionGraphInputsTest) {
   auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_with_graph_inputs.onnx";
   std::shared_ptr<Model> p_model;
@@ -1135,7 +1153,91 @@ TEST_F(GraphTransformationTests, ReshapeFusionGraphInputsTest) {
   ASSERT_EQ(op_to_count["Concat"], 1);
   ASSERT_EQ(op_to_count["Reshape"], 1);
 }
+  
+TEST_F(GraphTransformationTests, ReshapeFusionMultipleValuesInInitializerDoesntApplyTest) {
+  auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_multiple_values_in_initializer_tensor_1.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count_orig = CountOpsInGraph(graph);
 
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  // The optimization does not apply.
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count_orig, op_to_count);
+}
+
+TEST_F(GraphTransformationTests, ReshapeFusionMultipleValuesInInitializerAppliesTest) {
+  auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_multiple_values_in_initializer_tensor_2.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Shape"], 0);
+  ASSERT_EQ(op_to_count["Gather"], 0);
+  ASSERT_EQ(op_to_count["Unsqueeze"], 0);
+  ASSERT_EQ(op_to_count["Concat"], 0);
+  ASSERT_EQ(op_to_count["Reshape"], 1);
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Reshape") {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
+      ASSERT_TRUE(tensor_proto != nullptr);
+
+      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      EXPECT_EQ(initializer->size(), 3);
+
+      const int64_t* val = initializer->data<int64_t>();
+      EXPECT_EQ(val[0], 1);
+      EXPECT_EQ(val[1], 200);
+      EXPECT_EQ(val[2], 0);
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, ReshapeFusionAnotherGraphInput) {
+  auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_input_is_graph_input.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count_orig = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  // The optimization does not apply.
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count_orig, op_to_count);
+}
+
+TEST_F(GraphTransformationTests, ReshapeFusionOverridableInitializer) {
+  auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_overridable_initializer.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count_orig = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  // The optimization does not apply.
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count_orig, op_to_count);
+}
 
 TEST_F(GraphTransformationTests, ExpandElimination) {
   auto model_uri = MODEL_FOLDER "expand_elimination.onnx";
@@ -1329,6 +1431,33 @@ TEST_F(GraphTransformationTests, AttentionFusionInt64Test) {
   EXPECT_EQ(op_to_count["Transpose"], 0);
   EXPECT_EQ(op_to_count["Reshape"], 0);
   EXPECT_EQ(op_to_count["Cast"], 1);  // Cast for int64 mask to int32
+  EXPECT_EQ(op_to_count["ReduceSum"], 1);
+  EXPECT_EQ(op_to_count["Attention"], 1);
+
+  ValidateAttention(graph);
+}
+
+// Test Attention Fusion with float32 mask and no "cast" node in mask path
+TEST_F(GraphTransformationTests, AttentionFusionFloat32Test) {
+  auto model_uri = MODEL_FOLDER "fusion/attention_mask_no_cast.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<AttentionFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["MatMul"], 1);
+  EXPECT_EQ(op_to_count["Add"], 2);
+  EXPECT_EQ(op_to_count["Transpose"], 0);
+  EXPECT_EQ(op_to_count["Reshape"], 0);
+  EXPECT_EQ(op_to_count["Mul"], 0);
+  EXPECT_EQ(op_to_count["Div"], 0);
+  EXPECT_EQ(op_to_count["Sub"], 0);
+  EXPECT_EQ(op_to_count["Unsqueeze"], 0);
   EXPECT_EQ(op_to_count["ReduceSum"], 1);
   EXPECT_EQ(op_to_count["Attention"], 1);
 
@@ -1771,9 +1900,9 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusion_Input_Output_Check) {
       std::vector<NodeArg*>& output_defs = node.MutableOutputDefs();
 #ifdef ENABLE_TRAINING
       EXPECT_EQ(node.OutputDefs().size(), 3u) << "SkipLayerNormalization number of outputs does not equal to 3. Got:" << node.OutputDefs().size();
-#else     
+#else
       EXPECT_EQ(node.OutputDefs().size(), 1u) << "SkipLayerNormalization number of outputs does not equal to 1. Got:" << node.OutputDefs().size();
-#endif     
+#endif
       EXPECT_EQ(output_defs[0]->Name(), "19");
     } else {
       EXPECT_EQ(node.OpType(), "MatMul") << "Unexpected node: " << node.OpType() << "," << node.Name();
