@@ -21,6 +21,8 @@ java {
 }
 
 
+// This jar tasks serves as a CMAKE signalling
+// mechanism. The jar will be overwritten by allJar task
 jar {
 	into("META-INF/maven/$project.group/$project.name") {
 	}
@@ -31,6 +33,8 @@ task sourcesJar(type: Jar, dependsOn: classes) {
 	classifier = "sources"
 	from sourceSets.main.allSource
 	into("META-INF/maven/$project.group/$project.name") {
+		from { generatePomFileForMavenPublication }
+		rename ".*", "pom.xml"
 	}
 }
 
@@ -39,6 +43,8 @@ task javadocJar(type: Jar, dependsOn: javadoc) {
 	classifier = "javadoc"
 	from javadoc.destinationDir
 	into("META-INF/maven/$project.group/$project.name") {
+		from { generatePomFileForMavenPublication }
+		rename ".*", "pom.xml"
 	}
 }
 
@@ -66,6 +72,9 @@ def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
 def cmakeNativeTestDir = "${cmakeJavaDir}/native-test"
 def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
 
+def mavenUser = System.properties['mavenUser']
+def mavenPwd = System.properties['mavenPwd']
+
 compileJava {
 	options.compilerArgs += ["-h", "${project.buildDir}/headers/"]
 }
@@ -90,8 +99,11 @@ sourceSets.test {
 if (cmakeBuildDir != null) {
 	// generate tasks to be called from cmake
 
+	// Overwrite jar location
 	task allJar(type: Jar) {
 		into("META-INF/maven/$project.group/$project.name") {
+			from { generatePomFileForMavenPublication }
+			rename ".*", "pom.xml"
 		}
 		from sourceSets.main.output
 		from cmakeNativeJniDir
@@ -143,36 +155,17 @@ jacocoTestReport {
 	}
 }
 
-artifacts {
-	archives jar, sourcesJar, javadocJar
-}
-
-signing {
-	sign configurations.archives
-}
-
-uploadArchives {
-	repositories {
-		mavenDeployer {
-			beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
-
-			repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
-				authentication(userName: ossrhUsername, password: ossrhPassword)
-			}
-
-			snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
-				authentication(userName: ossrhUsername, password: ossrhPassword)
-			}
+publishing {
+	publications {
+		maven(MavenPublication) {
+			groupId = project.group
+			artifactId = project.name
 
 			from components.java
-			pom.project {
+			pom {
 				name = 'onnx-runtime'
-				packaging 'jar'
 				description = 'ONNX Runtime is a performance-focused inference engine for ONNX (Open Neural Network Exchange) models.'
 				url = 'https://microsoft.github.io/onnxruntime/'
-				groupId = project.group
-				artifactId = project.name
-
 				licenses {
 					license {
 						name = 'MIT License'
@@ -197,6 +190,26 @@ uploadArchives {
 				}
 			}
 		}
+		maven {
+			url 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
+			credentials {
+				username mavenUser
+				password mavenUser
+			}
+		}
 	}
 }
 
+// Generates a task signMavenJavaPublication that will
+// build all artifacts.
+signing {
+	// Queries env vars:
+	// ORG_GRADLE_PROJECT_signingKeyId
+	// ORG_GRADLE_PROJECT_signingKey
+	// ORG_GRADLE_PROJECT_signingPassword but can be changed to properties
+	def signingKeyId = findProperty("signingKeyId")
+	def signingKey = findProperty("signingKey")
+	def signingPassword = findProperty("signingPassword")
+	useInMemoryPgpKeys(signingKeyId, signingKey, signingPassword)
+	sign publishing.publications.mavenJava
+}
