@@ -20,12 +20,16 @@ public:
         ML_CHECK_VALID_ARGUMENT(inputDescs.size() == 1);
         ML_CHECK_VALID_ARGUMENT(outputDescs.size() == 1);
 
-        DML_DEPTH_TO_SPACE_OPERATOR_DESC operatorDesc = {};
+        std::string mode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::Mode, "DCR");
+        DML_DEPTH_SPACE_ORDER depthSpaceOrder = Dml::MapStringToDepthSpaceMode(mode);
+
+        DML_DEPTH_TO_SPACE1_OPERATOR_DESC operatorDesc = {};
         operatorDesc.InputTensor = inputDescs.data();
         operatorDesc.OutputTensor = outputDescs.data();
         operatorDesc.BlockSize = m_blockSize;
+        operatorDesc.Order = depthSpaceOrder;
 
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_DEPTH_TO_SPACE, &operatorDesc };
+        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_DEPTH_TO_SPACE1, &operatorDesc };
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
     }
 };

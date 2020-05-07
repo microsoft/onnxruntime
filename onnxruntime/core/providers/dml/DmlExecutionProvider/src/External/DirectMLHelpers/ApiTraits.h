@@ -1,6 +1,5 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
 #pragma once
 
 namespace ApiTraits
@@ -13,7 +12,7 @@ struct EnumTraits
 template <>
 struct EnumTraits<DML_TENSOR_DATA_TYPE>
 {
-    static constexpr auto ValueCount = 9;
+    static constexpr auto ValueCount = 12;
 };
 
 template <>
@@ -25,7 +24,7 @@ struct EnumTraits<DML_TENSOR_TYPE>
 template <>
 struct EnumTraits<DML_OPERATOR_TYPE>
 {
-    static constexpr auto ValueCount = 97;
+    static constexpr auto ValueCount = 120;
     static constexpr size_t ActivationFunctionCount = 19;
 };
 
@@ -88,6 +87,30 @@ template <>
 struct EnumTraits<DML_FEATURE_LEVEL>
 {
     static constexpr auto ValueCount = 2;
+};
+
+template <>
+struct EnumTraits<DML_IS_INFINITY_MODE>
+{
+    static constexpr auto ValueCount = 3;
+};
+
+template <>
+struct EnumTraits<DML_DEPTH_SPACE_ORDER>
+{
+    static constexpr auto ValueCount = 2;
+};
+
+template <>
+struct EnumTraits<DML_AXIS_DIRECTION>
+{
+    static constexpr auto ValueCount = 2;
+};
+
+template <>
+struct EnumTraits<DML_ROUNDING_MODE>
+{
+    static constexpr auto ValueCount = 3;
 };
 
 template <typename T>
@@ -608,6 +631,144 @@ template <>
 struct OperatorDescTraits<DML_RESAMPLE_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_RESAMPLE;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_BIT_SHIFT_LEFT_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_LEFT;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_BIT_SHIFT_RIGHT_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_RIGHT;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_ROUND_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_ROUND;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_IS_INFINITY_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_IS_INFINITY;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_MODULUS_TRUNCATE_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_MODULUS_TRUNCATE;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_MODULUS_FLOOR_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_MODULUS_FLOOR;
+};
+
+template <>
+struct OperatorDescTraits<DML_FILL_VALUE_CONSTANT_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_FILL_VALUE_CONSTANT;
+};
+
+template <>
+struct OperatorDescTraits<DML_FILL_VALUE_SEQUENCE_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_FILL_VALUE_SEQUENCE;
+};
+
+template <>
+struct OperatorDescTraits<DML_CUMULATIVE_SUMMATION_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_CUMULATIVE_SUMMATION;
+};
+
+template <>
+struct OperatorDescTraits<DML_REVERSE_SUBSEQUENCES_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_REVERSE_SUBSEQUENCES;
+};
+
+template <>
+struct OperatorDescTraits<DML_GATHER_ELEMENTS_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_GATHER_ELEMENTS;
+};
+
+template <>
+struct OperatorDescTraits<DML_GATHER_ND_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_GATHER_ND;
+};
+
+template <>
+struct OperatorDescTraits<DML_SCATTER_ND_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_SCATTER_ND;
+};
+
+template <>
+struct OperatorDescTraits<DML_MAX_POOLING2_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MAX_POOLING2;
+};
+
+template <>
+struct OperatorDescTraits<DML_SLICE1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_SLICE1;
+};
+
+template <>
+struct OperatorDescTraits<DML_TOP_K1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_TOP_K1;
+};
+
+template <>
+struct OperatorDescTraits<DML_DEPTH_TO_SPACE1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_DEPTH_TO_SPACE1;
+};
+
+template <>
+struct OperatorDescTraits<DML_SPACE_TO_DEPTH1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_SPACE_TO_DEPTH1;
+};
+
+template <>
+struct OperatorDescTraits<DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1;
+};
+
+template <>
+struct OperatorDescTraits<DML_MATRIX_MULTIPLY_INTEGER_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MATRIX_MULTIPLY_INTEGER;
+};
+
+template <>
+struct OperatorDescTraits<DML_QUANTIZED_LINEAR_MATRIX_MULTIPLY_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY;
+};
+
+template <>
+struct OperatorDescTraits<DML_CONVOLUTION_INTEGER_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_CONVOLUTION_INTEGER;
+};
+
+template <>
+struct OperatorDescTraits<DML_QUANTIZED_LINEAR_CONVOLUTION_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_QUANTIZED_LINEAR_CONVOLUTION;
 };
 
 template <>
@@ -1193,6 +1354,144 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_RESAMPLE>
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_LEFT>
+{
+    using DescType = DML_ELEMENT_WISE_BIT_SHIFT_LEFT_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_RIGHT>
+{
+    using DescType = DML_ELEMENT_WISE_BIT_SHIFT_RIGHT_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_ROUND>
+{
+    using DescType = DML_ELEMENT_WISE_ROUND_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_IS_INFINITY>
+{
+    using DescType = DML_ELEMENT_WISE_IS_INFINITY_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_MODULUS_TRUNCATE>
+{
+    using DescType = DML_ELEMENT_WISE_MODULUS_TRUNCATE_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_MODULUS_FLOOR>
+{
+    using DescType = DML_ELEMENT_WISE_MODULUS_FLOOR_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_FILL_VALUE_CONSTANT>
+{
+    using DescType = DML_FILL_VALUE_CONSTANT_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_FILL_VALUE_SEQUENCE>
+{
+    using DescType = DML_FILL_VALUE_SEQUENCE_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_CUMULATIVE_SUMMATION>
+{
+    using DescType = DML_CUMULATIVE_SUMMATION_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_REVERSE_SUBSEQUENCES>
+{
+    using DescType = DML_REVERSE_SUBSEQUENCES_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_GATHER_ELEMENTS>
+{
+    using DescType = DML_GATHER_ELEMENTS_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_GATHER_ND>
+{
+    using DescType = DML_GATHER_ND_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_SCATTER_ND>
+{
+    using DescType = DML_SCATTER_ND_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MAX_POOLING2>
+{
+    using DescType = DML_MAX_POOLING2_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_SLICE1>
+{
+    using DescType = DML_SLICE1_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_TOP_K1>
+{
+    using DescType = DML_TOP_K1_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_DEPTH_TO_SPACE1>
+{
+    using DescType = DML_DEPTH_TO_SPACE1_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_SPACE_TO_DEPTH1>
+{
+    using DescType = DML_SPACE_TO_DEPTH1_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1>
+{
+    using DescType = DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MATRIX_MULTIPLY_INTEGER>
+{
+    using DescType = DML_MATRIX_MULTIPLY_INTEGER_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY>
+{
+    using DescType = DML_QUANTIZED_LINEAR_MATRIX_MULTIPLY_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_CONVOLUTION_INTEGER>
+{
+    using DescType = DML_CONVOLUTION_INTEGER_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_QUANTIZED_LINEAR_CONVOLUTION>
+{
+    using DescType = DML_QUANTIZED_LINEAR_CONVOLUTION_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_ELU>
 {
     using DescType = DML_ACTIVATION_ELU_OPERATOR_DESC;
@@ -1305,7 +1604,6 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_SHRINK>
 {
     using DescType = DML_ACTIVATION_SHRINK_OPERATOR_DESC;
 };
-
 
 // Calls a visitor functor, supplying an empty operator desc corresponding to the given DML_OPERATOR_TYPE as
 // the first argument.
@@ -1474,6 +1772,54 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_ONE_HOT_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_RESAMPLE:
         return std::invoke(std::forward<Visitor>(visitor), DML_RESAMPLE_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_LEFT:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_BIT_SHIFT_LEFT_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_RIGHT:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_BIT_SHIFT_RIGHT_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_ROUND:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_ROUND_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_IS_INFINITY:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_IS_INFINITY_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_MODULUS_TRUNCATE:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_MODULUS_TRUNCATE_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_MODULUS_FLOOR:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_MODULUS_FLOOR_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_FILL_VALUE_CONSTANT:
+        return std::invoke(std::forward<Visitor>(visitor), DML_FILL_VALUE_CONSTANT_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_FILL_VALUE_SEQUENCE:
+        return std::invoke(std::forward<Visitor>(visitor), DML_FILL_VALUE_SEQUENCE_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_CUMULATIVE_SUMMATION:
+        return std::invoke(std::forward<Visitor>(visitor), DML_CUMULATIVE_SUMMATION_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_REVERSE_SUBSEQUENCES:
+        return std::invoke(std::forward<Visitor>(visitor), DML_REVERSE_SUBSEQUENCES_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_GATHER_ELEMENTS:
+        return std::invoke(std::forward<Visitor>(visitor), DML_GATHER_ELEMENTS_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_GATHER_ND:
+        return std::invoke(std::forward<Visitor>(visitor), DML_GATHER_ND_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_SCATTER_ND:
+        return std::invoke(std::forward<Visitor>(visitor), DML_SCATTER_ND_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_MAX_POOLING2:
+        return std::invoke(std::forward<Visitor>(visitor), DML_MAX_POOLING2_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_SLICE1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_SLICE1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_TOP_K1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_TOP_K1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_DEPTH_TO_SPACE1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_DEPTH_TO_SPACE1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_SPACE_TO_DEPTH1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_SPACE_TO_DEPTH1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_RESAMPLE1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_RESAMPLE1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER:
+        return std::invoke(std::forward<Visitor>(visitor), DML_MATRIX_MULTIPLY_INTEGER_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY:
+        return std::invoke(std::forward<Visitor>(visitor), DML_QUANTIZED_LINEAR_MATRIX_MULTIPLY_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_CONVOLUTION_INTEGER:
+        return std::invoke(std::forward<Visitor>(visitor), DML_CONVOLUTION_INTEGER_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_QUANTIZED_LINEAR_CONVOLUTION:
+        return std::invoke(std::forward<Visitor>(visitor), DML_QUANTIZED_LINEAR_CONVOLUTION_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_ELU:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_ELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_HARDMAX:
@@ -1601,6 +1947,30 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_SCATTER: return "DML_OPERATOR_SCATTER";
     case DML_OPERATOR_ONE_HOT: return "DML_OPERATOR_ONE_HOT";
     case DML_OPERATOR_RESAMPLE: return "DML_OPERATOR_RESAMPLE";
+    case DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_LEFT: return "DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_LEFT";
+    case DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_RIGHT: return "DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_RIGHT";
+    case DML_OPERATOR_ELEMENT_WISE_ROUND: return "DML_OPERATOR_ELEMENT_WISE_ROUND";
+    case DML_OPERATOR_ELEMENT_WISE_IS_INFINITY: return "DML_OPERATOR_ELEMENT_WISE_IS_INFINITY";
+    case DML_OPERATOR_ELEMENT_WISE_MODULUS_TRUNCATE: return "DML_OPERATOR_ELEMENT_WISE_MODULUS_TRUNCATE";
+    case DML_OPERATOR_ELEMENT_WISE_MODULUS_FLOOR: return "DML_OPERATOR_ELEMENT_WISE_MODULUS_FLOOR";
+    case DML_OPERATOR_FILL_VALUE_CONSTANT: return "DML_OPERATOR_FILL_VALUE_CONSTANT";
+    case DML_OPERATOR_FILL_VALUE_SEQUENCE: return "DML_OPERATOR_FILL_VALUE_SEQUENCE";
+    case DML_OPERATOR_CUMULATIVE_SUMMATION: return "DML_OPERATOR_CUMULATIVE_SUMMATION";
+    case DML_OPERATOR_REVERSE_SUBSEQUENCES: return "DML_OPERATOR_REVERSE_SUBSEQUENCES";
+    case DML_OPERATOR_GATHER_ELEMENTS: return "DML_OPERATOR_GATHER_ELEMENTS";
+    case DML_OPERATOR_GATHER_ND: return "DML_OPERATOR_GATHER_ND";
+    case DML_OPERATOR_SCATTER_ND: return "DML_OPERATOR_SCATTER_ND";
+    case DML_OPERATOR_MAX_POOLING2: return "DML_OPERATOR_MAX_POOLING2";
+    case DML_OPERATOR_SLICE1: return "DML_OPERATOR_SLICE1";
+    case DML_OPERATOR_TOP_K1: return "DML_OPERATOR_TOP_K1";
+    case DML_OPERATOR_DEPTH_TO_SPACE1: return "DML_OPERATOR_DEPTH_TO_SPACE1";
+    case DML_OPERATOR_SPACE_TO_DEPTH1: return "DML_OPERATOR_SPACE_TO_DEPTH1";
+    case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1: return "DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1";
+    case DML_OPERATOR_RESAMPLE1: return "DML_OPERATOR_RESAMPLE1";
+    case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER: return "DML_OPERATOR_MATRIX_MULTIPLY_INTEGER";
+    case DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY: return "DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY";
+    case DML_OPERATOR_CONVOLUTION_INTEGER: return "DML_OPERATOR_CONVOLUTION_INTEGER";
+    case DML_OPERATOR_QUANTIZED_LINEAR_CONVOLUTION: return "DML_OPERATOR_QUANTIZED_LINEAR_CONVOLUTION";
     default:
         assert(false);
         return "<unknown>";

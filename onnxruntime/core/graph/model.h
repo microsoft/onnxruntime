@@ -10,7 +10,6 @@
 #include "core/common/path.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_c_api.h"
-
 #include "gsl/gsl"
 
 namespace onnxruntime {
@@ -94,7 +93,7 @@ class Model {
   // Return null pointer if not specified.
   Version ModelVersion() const;
   // Set models' version.
-  void SetModelversion(onnxruntime::Version model_version);
+  void SetModelVersion(onnxruntime::Version model_version);
 
   // Get model's doc string.
   // Return null pointer if not specified.

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -16,7 +16,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 }
 
 /**
- * Must be kept in sync with ORT_LOGGING_LEVEL and OrtEnvironment#LoggingLevel
+ * Must be kept in sync with ORT_LOGGING_LEVEL and the OrtLoggingLevel java enum
  */
 OrtLoggingLevel convertLoggingLevel(jint level) {
     switch (level) {

@@ -15,8 +15,8 @@ ToONNXTensorElementDataType(ONNX_NAMESPACE::TensorProto_DataType data_type) {
   switch (data_type) {
     case TensorType::TensorProto_DataType_BOOL:            { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;         }
     case TensorType::TensorProto_DataType_STRING:          { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;       }   // maps to c++ type std::string
-    case TensorType::TensorProto_DataType_FLOAT16:         { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;        }   // maps to c type float
-    case TensorType::TensorProto_DataType_FLOAT:           { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;      }
+    case TensorType::TensorProto_DataType_FLOAT16:         { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;      }   // maps to c type float16
+    case TensorType::TensorProto_DataType_FLOAT:           { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;        }   // maps to c type float
     case TensorType::TensorProto_DataType_DOUBLE:          { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;       }   // maps to c type double
     case TensorType::TensorProto_DataType_INT8:            { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;         }   // maps to c type int8_t
     case TensorType::TensorProto_DataType_INT16:           { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;        }   // maps to c type int16_t

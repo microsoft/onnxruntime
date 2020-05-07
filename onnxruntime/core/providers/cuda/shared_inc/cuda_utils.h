@@ -21,6 +21,12 @@ enum class SimpleBroadcast : int32_t {
   RightPerChannelBatchN = (int32_t)-5,
 };
 
+enum class BroadcastIndexType : int32_t {
+  NoBroadcast = (int32_t)0,
+  Scalar = (int32_t)1,
+  NeedCompute = (int32_t)2,
+};
+
 template <typename T>
 class IConstantBuffer {
  public:

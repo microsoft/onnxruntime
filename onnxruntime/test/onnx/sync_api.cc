@@ -12,7 +12,7 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
-#include <unsupported/Eigen/CXX11/ThreadPool>
+#include <core/platform/EigenNonBlockingThreadPool.h>
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
