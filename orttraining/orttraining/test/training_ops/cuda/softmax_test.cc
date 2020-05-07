@@ -55,6 +55,9 @@ static void TestSoftmaxGrad(const std::vector<int64_t>& dY_dims,
   test.CompareWithCPU(kCudaExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
 }
 
+// TODO fix flaky test
+// failing on Linux random seed: 3190010571
+// failing on Windows random seed: 1224836532
 TEST(CudaKernelTest, SoftmaxGrad_SmallTensor) {
   std::vector<int64_t> dY_dims{8, 2, 128, 128};
   std::vector<int64_t> Y_dims{8, 2, 128, 128};
