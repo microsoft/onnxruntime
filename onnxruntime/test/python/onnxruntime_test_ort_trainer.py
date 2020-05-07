@@ -273,7 +273,7 @@ class TestOrtTrainer(unittest.TestCase):
         trainer = mnist.get_trainer(model, model_desc, device)
 
         learningRate = 0.01
-        args_epochs = 2
+        args_epochs = 10
         expected_losses = [2.333008289337158, 1.0680292844772339, 0.6300537586212158, 0.5279903411865234,
                         0.3710068166255951, 0.4044453501701355, 0.30482712388038635, 0.4595026969909668,
                         0.42305776476860046, 0.4797358512878418, 0.23006735742092133, 0.48427966237068176,

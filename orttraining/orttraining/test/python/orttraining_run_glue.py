@@ -68,6 +68,7 @@ class ORTGlueTest(unittest.TestCase):
         self.gradient_accumulation_steps = 8
         self.data_dir = "/bert_data/hf_data/glue_data/"
         self.output_dir = os.path.dirname(os.path.realpath(__file__)) + "/glue_test_output/"
+        self.cache_dir = '/tmp/glue/'
 
     def test_bert_fp16_with_mrpc(self):
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True)
@@ -84,7 +85,7 @@ class ORTGlueTest(unittest.TestCase):
         self.assertTrue(results['loss'] < 0.55)
 
     def run_glue(self, model_name, task_name, fp16):
-        model_args = ModelArguments(model_name_or_path=model_name)
+        model_args = ModelArguments(model_name_or_path=model_name, cache_dir=self.cache_dir)
         data_args = GlueDataTrainingArguments(task_name=task_name, data_dir=self.data_dir + "/" + task_name,
             max_seq_length=self.max_seq_length)
             
