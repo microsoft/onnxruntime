@@ -5,15 +5,10 @@ ARG PYTHON_VERSION=3.5
 ENV NVIDIA_VISIBLE_DEVICES all
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
 
-SHELL ["/bin/bash", "-c"]
-
 ADD scripts /tmp/scripts
-RUN cd /tmp/scripts && \
-    /tmp/scripts/install_centos.sh && \
-    /tmp/scripts/install_deps.sh -d gpu -p $PYTHON_VERSION && \
-    yum remove -y devtoolset-\* && \
-    yum install -y devtoolset-7-binutils devtoolset-7-gcc devtoolset-7-gcc-c++ devtoolset-7-gcc-gfortran devtoolset-7-libquadmath-devel devtoolset-7-libstdc++-devel devtoolset-7-runtime && \
-    rm -rf /tmp/scripts
+RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh && /tmp/scripts/install_deps.sh -p $PYTHON_VERSION && \
+yum remove -y devtoolset-\*  && yum install -y devtoolset-7-binutils devtoolset-7-gcc devtoolset-7-gcc-c++ devtoolset-7-gcc-gfortran devtoolset-7-libquadmath-devel devtoolset-7-libstdc++-devel devtoolset-7-runtime && \
+rm -rf /tmp/scripts
 
 #Below are copied from https://gitlab.com/nvidia/container-images/cuda/tree/master/dist/centos6
 
@@ -49,6 +44,8 @@ ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/opt/rh/devtoolset-7/root/usr
 ENV LD_LIBRARY_PATH /usr/local/nvidia/lib:/usr/local/nvidia/lib64:${LD_LIBRARY_PATH}
 
 # nvidia-container-runtime
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
 ENV NVIDIA_REQUIRE_CUDA "cuda>=10.1 brand=tesla,driver>=384,driver<385 brand=tesla,driver>=396,driver<397 brand=tesla,driver>=410,driver<411"
 
 
@@ -64,36 +61,6 @@ RUN CUDNN_DOWNLOAD_SUM=7eaec8039a2c30ab0bc758d303588767693def6bf49b22485a2c00bf2
     tar --no-same-owner -xzf cudnn-10.1-linux-x64-v7.6.5.32.tgz -C /usr/local && \
     rm cudnn-10.1-linux-x64-v7.6.5.32.tgz && \
     ldconfig
-
-
-# -- training dependencies --
-
-# enable training dependencies by setting build argument ENABLE_TRAINING to a non-empty value
-ARG ENABLE_TRAINING
-
-# install MPI 4.0.0
-RUN test -z $ENABLE_TRAINING || ( \
-    MPI_SUM=36f10daa3f1b1d37530f686bf7f70966b2a13c0bc6e2e05aebc7e85e3d21b10d && \
-    curl -fsSL https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz -O && \
-    echo "$MPI_SUM  openmpi-4.0.0.tar.gz" | sha256sum -c - && \
-    tar zxf openmpi-4.0.0.tar.gz && \
-    cd openmpi-4.0.0 && \
-    ./configure --enable-orterun-prefix-by-default && \
-    make -j $(nproc) all && \
-    make install && \
-    ldconfig \
-    )
-
-# install NCCL 2.4.8
-RUN test -z $ENABLE_TRAINING || ( \
-    RPM_SUM=ce8da101c05f0a52e01a569acc7e6845b3883f7e5760eefee85dccb279454d5d && \
-    curl -fsSL https://developer.download.nvidia.com/compute/machine-learning/repos/rhel7/x86_64/nvidia-machine-learning-repo-rhel7-1.0.0-1.x86_64.rpm -O && \
-    echo "$RPM_SUM  nvidia-machine-learning-repo-rhel7-1.0.0-1.x86_64.rpm" | sha256sum -c - && \
-    rpm -i nvidia-machine-learning-repo-rhel7-1.0.0-1.x86_64.rpm && \
-    yum install -y libnccl-2.4.8-1+cuda10.1 libnccl-devel-2.4.8-1+cuda10.1 libnccl-static-2.4.8-1+cuda10.1 \
-    )
-
-# -- training dependencies end --
 
 
 ARG BUILD_UID=1000

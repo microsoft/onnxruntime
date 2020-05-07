@@ -2,8 +2,6 @@ FROM quay.io/pypa/manylinux2014_x86_64:2020-05-03-c2ce11e
 
 ARG PYTHON_VERSION=3.5
 
-SHELL ["/bin/bash", "-c"]
-
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && \
     /tmp/scripts/install_centos.sh && \
