@@ -1,7 +1,8 @@
 plugins {
-	id 'java'
-	id 'jacoco'
+	id 'java-library'
 	id 'maven-publish'
+	id 'signing'
+	id 'jacoco'
 	id 'com.diffplug.gradle.spotless' version '3.26.0'
 }
 
@@ -11,21 +12,25 @@ allprojects {
 	}
 }
 
+project.group = "ai.onnxruntime"
+version = rootProject.file('../VERSION_NUMBER').text.trim()
+
 java {
 	sourceCompatibility = JavaVersion.VERSION_1_8
 	targetCompatibility = JavaVersion.VERSION_1_8
 }
 
-project.group = "ai.onnxruntime"
-version = rootProject.file('../VERSION_NUMBER').text.trim()
+
+jar {
+	into("META-INF/maven/$project.group/$project.name") {
+	}
+}
 
 // Add explicit sources jar with pom file.
 task sourcesJar(type: Jar, dependsOn: classes) {
 	classifier = "sources"
 	from sourceSets.main.allSource
 	into("META-INF/maven/$project.group/$project.name") {
-		from { generatePomFileForMavenPublication }
-		rename ".*", "pom.xml"
 	}
 }
 
@@ -34,13 +39,11 @@ task javadocJar(type: Jar, dependsOn: javadoc) {
 	classifier = "javadoc"
 	from javadoc.destinationDir
 	into("META-INF/maven/$project.group/$project.name") {
-		from { generatePomFileForMavenPublication }
-		rename ".*", "pom.xml"
 	}
 }
 
 wrapper {
-	gradleVersion = '6.1.1'
+	gradleVersion = '6.3'
 }
 
 spotless {
@@ -89,8 +92,6 @@ if (cmakeBuildDir != null) {
 
 	task allJar(type: Jar) {
 		into("META-INF/maven/$project.group/$project.name") {
-			from { generatePomFileForMavenPublication }
-			rename ".*", "pom.xml"
 		}
 		from sourceSets.main.output
 		from cmakeNativeJniDir
@@ -142,17 +143,36 @@ jacocoTestReport {
 	}
 }
 
-publishing {
-	publications {
-		maven(MavenPublication) {
-			groupId = project.group
-			artifactId = project.name
+artifacts {
+	archives jar, sourcesJar, javadocJar
+}
+
+signing {
+	sign configurations.archives
+}
+
+uploadArchives {
+	repositories {
+		mavenDeployer {
+			beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+			repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+				authentication(userName: ossrhUsername, password: ossrhPassword)
+			}
+
+			snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
+				authentication(userName: ossrhUsername, password: ossrhPassword)
+			}
 
 			from components.java
-			pom {
+			pom.project {
 				name = 'onnx-runtime'
+				packaging 'jar'
 				description = 'ONNX Runtime is a performance-focused inference engine for ONNX (Open Neural Network Exchange) models.'
 				url = 'https://microsoft.github.io/onnxruntime/'
+				groupId = project.group
+				artifactId = project.name
+
 				licenses {
 					license {
 						name = 'MIT License'
@@ -168,7 +188,15 @@ publishing {
 					developerConnection = 'scm:git:ssh://github.com/microsoft/onnxruntime.git'
 					url = 'http://github.com/microsoft/onnxruntime'
 				}
+				developers {
+					developer {
+						id 'onnxruntime'
+						name 'ONNX Runtime'
+						email 'onnxruntime@microsoft.com'
+					}
+				}
 			}
 		}
 	}
 }
+
