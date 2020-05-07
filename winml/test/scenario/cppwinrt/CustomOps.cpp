@@ -33,11 +33,6 @@ static void CustomOpsScenarioTestsClassSetup()
   winrt::init_apartment();
 }
 
-static void CustomOpsScenarioTestsGpuMethodSetup()
-{
-  GPUTEST;
-}
-
 // Tests that the execution provider correctly fuses operators together when custom ops are involved.
 static void CustomOperatorFusion() {
   constexpr const wchar_t* c_modelFilename = L"squeezenet_tensor_input.onnx";
@@ -677,12 +672,16 @@ static void CustomKernelWithCustomSchema() {
 }
 
 const CustomOpsTestsApi& getapi() {
-  static constexpr CustomOpsTestsApi api = 
+  static CustomOpsTestsApi api = 
       {
           CustomOpsScenarioTestsClassSetup,
-          CustomOpsScenarioTestsGpuMethodSetup,
           CustomOperatorFusion,
           CustomKernelWithBuiltInSchema,
-          CustomKernelWithCustomSchema};
+          CustomKernelWithCustomSchema
+      };
+
+  if (SKIP_GPU_TESTS) {
+    api.CustomOperatorFusion = SkipTest;
+  }
   return api;
 }

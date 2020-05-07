@@ -50,20 +50,6 @@ static void ScenarioCppWinrtTestsClassSetup() {
   winrt::init_apartment();
 }
 
-
-static void ScenarioCppWinrtTestsGpuMethodSetup() {
-  GPUTEST;
-};
-
-static void ScenarioCppWinrtTestsSkipEdgeCoreMethodSetup() {
-  SKIP_EDGECORE;
-};
-
-static void ScenarioCppWinrtTestsGpuSkipEdgeCoreMethodSetup() {
-  ScenarioCppWinrtTestsGpuMethodSetup();
-  SKIP_EDGECORE;
-};
-
 static void Sample1() {
   LearningModel model = nullptr;
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
@@ -1410,46 +1396,74 @@ static void D2DInterop() {
 }
 
 const ScenarioTestsApi& getapi() {
-  static constexpr ScenarioTestsApi api =
+  static ScenarioTestsApi api =
       {
-        ScenarioCppWinrtTestsClassSetup,
-        ScenarioCppWinrtTestsGpuMethodSetup,
-        ScenarioCppWinrtTestsSkipEdgeCoreMethodSetup,
-        ScenarioCppWinrtTestsGpuSkipEdgeCoreMethodSetup,
-        Sample1,
-        Scenario1LoadBindEvalDefault,
-        Scenario2LoadModelFromStream,
-        Scenario5AsyncEval,
-        Scenario7EvalWithNoBind,
-        Scenario8SetDeviceSampleDefault,
-        Scenario8SetDeviceSampleCPU,
-        Scenario17DevDiagnostics,
-        Scenario22ImageBindingAsCPUTensor,
-        QuantizedModels,
-        EncryptedStream,
-        Scenario3SoftwareBitmapInputBinding,
-        Scenario6BindWithProperties,
-        Scenario8SetDeviceSampleDefaultDirectX,
-        Scenario8SetDeviceSampleMinPower,
-        Scenario8SetDeviceSampleMaxPerf,
-        Scenario8SetDeviceSampleMyCameraDevice,
-        Scenario8SetDeviceSampleCustomCommandQueue,
-        Scenario9LoadBindEvalInputTensorGPU,
-        Scenario13SingleModelOnCPUandGPU,
-        Scenario11FreeDimensionsTensor,
-        Scenario11FreeDimensionsImage,
-        Scenario14RunModelSwapchain,
-        Scenario20aLoadBindEvalCustomOperatorCPU,
-        Scenario20bLoadBindEvalReplacementCustomOperatorCPU,
-        Scenario21RunModel2ChainZ,
-        Scenario22ImageBindingAsGPUTensor,
-        MsftQuantizedModels,
-        SyncVsAsync,
-        CustomCommandQueueWithFence,
-        ReuseVideoFrame,
-        DeviceLostRecovery,
-        Scenario8SetDeviceSampleD3D11Device,
-        D2DInterop,
+          ScenarioCppWinrtTestsClassSetup,
+          Sample1,
+          Scenario1LoadBindEvalDefault,
+          Scenario2LoadModelFromStream,
+          Scenario5AsyncEval,
+          Scenario7EvalWithNoBind,
+          Scenario8SetDeviceSampleDefault,
+          Scenario8SetDeviceSampleCPU,
+          Scenario17DevDiagnostics,
+          Scenario22ImageBindingAsCPUTensor,
+          QuantizedModels,
+          EncryptedStream,
+          Scenario3SoftwareBitmapInputBinding,
+          Scenario6BindWithProperties,
+          Scenario8SetDeviceSampleDefaultDirectX,
+          Scenario8SetDeviceSampleMinPower,
+          Scenario8SetDeviceSampleMaxPerf,
+          Scenario8SetDeviceSampleMyCameraDevice,
+          Scenario8SetDeviceSampleCustomCommandQueue,
+          Scenario9LoadBindEvalInputTensorGPU,
+          Scenario13SingleModelOnCPUandGPU,
+          Scenario11FreeDimensionsTensor,
+          Scenario11FreeDimensionsImage,
+          Scenario14RunModelSwapchain,
+          Scenario20aLoadBindEvalCustomOperatorCPU,
+          Scenario20bLoadBindEvalReplacementCustomOperatorCPU,
+          Scenario21RunModel2ChainZ,
+          Scenario22ImageBindingAsGPUTensor,
+          MsftQuantizedModels,
+          SyncVsAsync,
+          CustomCommandQueueWithFence,
+          ReuseVideoFrame,
+          DeviceLostRecovery,
+          Scenario8SetDeviceSampleD3D11Device,
+          D2DInterop,
       };
+
+  if (SKIP_GPU_TESTS) {
+    api.Scenario6BindWithProperties = SkipTest;
+    api.Scenario8SetDeviceSampleDefaultDirectX = SkipTest;
+    api.Scenario8SetDeviceSampleMinPower = SkipTest;
+    api.Scenario8SetDeviceSampleMaxPerf = SkipTest;
+    api.Scenario8SetDeviceSampleCustomCommandQueue = SkipTest;
+    api.DISABLED_Scenario9LoadBindEvalInputTensorGPU = SkipTest;
+    api.Scenario13SingleModelOnCPUandGPU = SkipTest;
+    api.Scenario11FreeDimensionsTensor = SkipTest;
+    api.Scenario11FreeDimensionsImage = SkipTest;
+    api.Scenario14RunModelSwapchain = SkipTest;
+    api.Scenario20aLoadBindEvalCustomOperatorCPU = SkipTest;
+    api.Scenario20bLoadBindEvalReplacementCustomOperatorCPU = SkipTest;
+    api.DISABLED_Scenario21RunModel2ChainZ = SkipTest;
+    api.DISABLED_Scenario22ImageBindingAsGPUTensor = SkipTest;
+    api.MsftQuantizedModels = SkipTest;
+    api.DISABLED_SyncVsAsync = SkipTest;
+    api.DISABLED_CustomCommandQueueWithFence = SkipTest;
+    api.DISABLED_ReuseVideoFrame = SkipTest;
+    api.DeviceLostRecovery = SkipTest;
+    api.Scenario8SetDeviceSampleD3D11Device = SkipTest;
+    api.D2DInterop = SkipTest;
+  }
+
+  if (RUNTIME_PARAMETER_EXISTS("EdgeCore")) {
+    api.Scenario8SetDeviceSampleMyCameraDevice = SkipTest;
+    api.Scenario8SetDeviceSampleD3D11Device = SkipTest;
+    api.D2DInterop = SkipTest;
+  }
+
   return api;
 }

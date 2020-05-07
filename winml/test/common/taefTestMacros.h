@@ -67,46 +67,19 @@ using namespace WEX::TestExecution;
 #define WINML_EXPECT_THROW_SPECIFIC(statement, exception, condition) VERIFY_THROWS_SPECIFIC(statement, exception, condition)
 #define WINML_EXPECT_HRESULT_FAILED(hresult_expression) VERIFY_FAILED(hresult_expression)
 
-#ifndef USE_DML
-#define GPUTEST \
-  WINML_SKIP_TEST("GPU tests disabled because this is a WinML only build (no DML)")
-#define GPUTEST_ENABLED alwaysFalse()
-#else
-#define GPUTEST                                                                               \
-  do {                                                                                        \
-    bool no_gpu_tests;                                                                          \
-    if (SUCCEEDED(RuntimeParameters::TryGetValue(L"noGPUtests", no_gpu_tests)) && no_gpu_tests) { \
-      WINML_SKIP_TEST("This test is disabled by the no_gpu_tests runtime parameter.");          \
-      return;                                                                                 \
-    }                                                                                         \
-  } while (0)
-#define GPUTEST_ENABLED bool _no_gpu_tests; \
-    !SUCCEEDED(RuntimeParameters::TryGetValue(L"noGPUtests", _no_gpu_tests)) || !_no_gpu_tests
-#endif
-
 #define RUNTIME_PARAMETER_EXISTS(param) \
-  bool param_value; \
+  bool param_value;                     \
   SUCCEEDED(RuntimeParameters::TryGetValue(param, param_value)) && param_value;
 
 #ifndef USE_DML
-#define SKIP_GPU_TESTS(isSkipped, skipReason) \
-  isSkipped = true
-  skipReason = "GPU tests disabled because this is a WinML only build (no DML)"
+#define SKIP_GPU_TESTS \
+  true
 #else
-#define SKIP_GPU_TESTS(isSkipped, skipReason) \
-  if (RUNTIME_PARAMETER_EXISTS(L"noGPUtests")) {\
-    isSkipped = true; \
-    skipReason = "This test is disabled by the no_gpu_tests runtime parameter." \
-  }
+#define SKIP_GPU_TESTS \
+  RUNTIME_PARAMETER_EXISTS(L"noGPUtests")
 #endif
 
-    
-
-#define SKIP_EDGECORE                                                                           \
-  do {                                                                                          \
-    bool is_edge_core;                                                                          \
-    if (SUCCEEDED(RuntimeParameters::TryGetValue(L"EdgeCore", is_edge_core)) && is_edge_core) { \
-      WINML_SKIP_TEST("This test is disabled by the EdgeCore runtime parameter.");              \
-      return;                                                                                   \
-    }                                                                                           \
-  } while (0)
+#define GPUTEST                            \
+  if (SKIP_GPU_TESTS) {                    \
+    WINML_SKIP_TEST("Gpu tests disabled"); \
+  }

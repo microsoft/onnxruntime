@@ -85,39 +85,22 @@
 #define WINML_EXPECT_HRESULT_FAILED(hresult_expression) EXPECT_HRESULT_FAILED(hresult_expression)
 #define WINML_EXPECT_THROW_SPECIFIC(statement, exception, condition) EXPECT_THROW_SPECIFIC(statement, exception, condition)
 
-#ifndef USE_DML
-#define GPUTEST \
-  WINML_SKIP_TEST("GPU tests disabled because this is a WinML only build (no DML)")
-#define GPUTEST_ENABLED alwaysFalse()
-#else
-#define GPUTEST                                                                               \
-  do {                                                                                        \
-    if (auto no_gpu_tests = RuntimeParameters::Parameters.find("noGPUtests");                 \
-        no_gpu_tests != RuntimeParameters::Parameters.end() && no_gpu_tests->second != "0") { \
-      WINML_SKIP_TEST("GPU tests disabled");                                                  \
-    }                                                                                         \
-  } while (0)
-#define GPUTEST_ENABLED auto _no_gpu_tests = RuntimeParameters::Parameters.find("noGPUtests");    \
-      _no_gpu_tests == RuntimeParameters::Parameters.end() || _no_gpu_tests->second == "0"
-#endif
 
-#define SKIP_EDGECORE                                                                         \
-  do {                                                                                        \
-    if (auto is_edge_core = RuntimeParameters::Parameters.find("EdgeCore");                   \
-        is_edge_core != RuntimeParameters::Parameters.end() && is_edge_core->second != "0") { \
-      WINML_SKIP_TEST("Test can't be run in EdgeCore");                                       \
-    }                                                                                         \
-  } while (0)
-
-
-#define RUNTIME_PARAMETER_EXISTS(param) \
-  auto no_gpu_tests = RuntimeParameters::Parameters.find(param);                 \
+#define RUNTIME_PARAMETER_EXISTS(param)                          \
+  auto no_gpu_tests = RuntimeParameters::Parameters.find(param); \
   no_gpu_tests != RuntimeParameters::Parameters.end() && no_gpu_tests->second != "0"
 
 #ifndef USE_DML
-#define SKIP_GPU_TESTS\
+#define SKIP_GPU_TESTS \
   true
 #else
-#define SKIP_GPU_TESTS                                   \
+#define SKIP_GPU_TESTS \
   RUNTIME_PARAMETER_EXISTS("noGPUtests")
 #endif
+
+
+#define GPUTEST                            \
+  if (SKIP_GPU_TESTS) {                    \
+    WINML_SKIP_TEST("Gpu tests disabled"); \
+  }
+
