@@ -66,9 +66,8 @@ class PrimitivePool {
  private:
   // For thread safety, the map needs to be kept in thread local storage.
   static inline std::unordered_map<std::string, std::unique_ptr<PrimitiveBase>>& GetMap() {
-    using MapType = std::unordered_map<std::string, std::unique_ptr<PrimitiveBase>>;
-    static thread_local DeleteOnUnloadPtr<MapType> map(new MapType());
-    return *map;
+    static thread_local std::unordered_map<std::string, std::unique_ptr<PrimitiveBase>> map;
+    return map;
   }
 };
 

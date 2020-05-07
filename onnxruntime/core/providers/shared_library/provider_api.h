@@ -45,27 +45,6 @@ enum OperatorStatus : int {
 
 namespace onnxruntime {
 
-// The function passed in will be run on provider DLL unload. This is used to free thread_local variables that are in threads we don't own
-// Since these are not destroyed when the DLL unloads we have to do it manually. Search for usage for an example.
-void RunOnUnload(std::function<void()> function);
-
-// A pointer stored in here will be deleted when the DLL gets unloaded, this is really only useful for thread_locals which don't get cleaned up properly otherwise
-template <typename T>
-struct DeleteOnUnloadPtr {
-  DeleteOnUnloadPtr(T* p) : p_(p) {
-    RunOnUnload([p = p_]() {
-      delete p;
-    });
-  }
-
-  operator T*() {
-    return p_;
-  }
-
- private:
-  T* p_;
-};
-
 constexpr const char* kOnnxDomain = "";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 
