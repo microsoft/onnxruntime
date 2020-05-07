@@ -4,11 +4,11 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<groupId>com.msft</groupId>
-	<artifactId>ort_perf_tool</artifactId>
+	<artifactId>send_perf_metrics</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<packaging>jar</packaging>
 
-	<name>ort_perf_tool</name>
+	<name>send_perf_metrics</name>
 	<url>http://maven.apache.org</url>
 	<build>
 

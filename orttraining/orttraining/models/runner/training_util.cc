@@ -88,9 +88,6 @@ void DataSet::GetTensorDimensionsFromInputs(size_t batch_size, const std::map<st
     const Tensor& first_tensor = data_[0]->at(input_index).Get<Tensor>();
     std::vector<int64_t> shape_vector = first_tensor.Shape().GetDims();
     // By default, batch_size(i.e., batch) will be at postition 0.
-    // although batch size normally is not used, we are not skipping it to make it look consistent with 
-    // the graph loaded by, say, Netron. Thus we are expecting training param (other than batch size) 
-    // would start from position 1. For example int64[batch,sequence] for input "input1" in bert model.
     if (first_tensor.Shape().Size() > 1) {
       shape_vector.insert(shape_vector.begin(), batch_size);
     } else {
@@ -98,7 +95,7 @@ void DataSet::GetTensorDimensionsFromInputs(size_t batch_size, const std::map<st
       shape_vector.emplace_back(batch_size);
     }
     // skipping out of bounds position, continue with warning
-    if (metric.second > static_cast<size_t>(-1) && metric.second < shape_vector.size())
+    if (metric.second < shape_vector.size())
       perf_properties.insert({metric.first, std::to_string(shape_vector[metric.second])});
     else 
       printf("warning: shape position out of bounds for input %s.\n", input_name.c_str());    

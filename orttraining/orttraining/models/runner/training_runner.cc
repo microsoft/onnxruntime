@@ -749,7 +749,7 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
                                        const size_t weight_update_steps, const double total_time,
                                        const double avg_time_per_batch, const double throughput, const double stabilized_throughput,
                                        const MapStringToString& perf_properties) {
-  // popualte metrics for reporting
+  // populate metrics for reporting
   json perf_metrics;
   perf_metrics["Model"] = params_.model_type;  
 
