@@ -74,8 +74,8 @@ class DataSet {
                         input1's "sequence" at position 1 into "SeqLen" as perf_properties key
      @param perf_properties populated as json for perf monitoring
    */ 
-  void GetTensorDimensionsFromInputs(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
-                                     MapStringToString& perf_properties) const;
+  common::Status GetTensorDimensionsFromInputs(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
+                                               MapStringToString& perf_properties) const;
 
  private:
   // The names of the tensors.

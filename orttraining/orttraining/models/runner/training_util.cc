@@ -74,9 +74,9 @@ size_t DataSet::TotalBatch(size_t batch_size) const {
 
 // gather additional training params from tensor dimensions
 // see metrics_map in bert/main.cc for example, and training_utils.h for more explanation
-void DataSet::GetTensorDimensionsFromInputs(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
-                                            MapStringToString& perf_properties) const {
-  if (metrics_map.size() == 0) return; 
+common::Status DataSet::GetTensorDimensionsFromInputs(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
+                                                      MapStringToString& perf_properties) const {
+  if (metrics_map.size() == 0) return Status::OK(); 
 
   batch_size = min(batch_size, data_.size());
   for (size_t input_index = 0; input_index < NumInputs(); ++input_index) {
@@ -98,8 +98,9 @@ void DataSet::GetTensorDimensionsFromInputs(size_t batch_size, const std::map<st
     if (metric.second < shape_vector.size())
       perf_properties.insert({metric.first, std::to_string(shape_vector[metric.second])});
     else 
-      printf("warning: shape position out of bounds for input %s.\n", input_name.c_str());    
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "shape position out of bounds for input: ", input_name.c_str());
   }
+  return Status::OK();
 }
 
 std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th, AllocatorPtr allocator) const {

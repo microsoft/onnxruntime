@@ -681,7 +681,7 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
     if (!params.perf_output_dir.empty()) {
       // collecting Bert related params from training data
       auto training_data = training_data_loader->CurrentDataSet();
-      training_data->GetTensorDimensionsFromInputs(params.batch_size, metrics_map, perf_properties);
+       ORT_RETURN_IF_ERROR(training_data->GetTensorDimensionsFromInputs(params.batch_size, metrics_map, perf_properties));
     }
 
     ORT_RETURN_IF_ERROR(runner->Run(training_data_loader.get(), test_data_loader.get(), perf_properties));
