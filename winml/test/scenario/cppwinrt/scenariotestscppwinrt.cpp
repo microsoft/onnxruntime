@@ -1465,5 +1465,28 @@ const ScenarioTestsApi& getapi() {
     api.D2DInterop = SkipTest;
   }
 
-  return api;
+  if (RUNTIME_PARAMETER_EXISTS("noVideoFrameTests")) {
+    api.Scenario1LoadBindEvalDefault = SkipTest;
+    api.Scenario3SoftwareBitmapInputBinding = SkipTest;
+    api.Scenario5AsyncEval = SkipTest;
+    api.Scenario6BindWithProperties = SkipTest;
+    api.Scenario7EvalWithNoBind = SkipTest;
+    api.DISABLED_Scenario9LoadBindEvalInputTensorGPU = SkipTest;
+    api.Scenario11FreeDimensionsTensor = SkipTest;
+    api.Scenario11FreeDimensionsImage = SkipTest;
+    api.Scenario13SingleModelOnCPUandGPU = SkipTest;
+    api.Scenario14RunModelSwapchain = SkipTest;
+    api.Scenario17DevDiagnostics = SkipTest;
+    api.DISABLED_Scenario21RunModel2ChainZ = SkipTest;
+    api.DISABLED_Scenario22ImageBindingAsCPUTensor = SkipTest;
+    api.DISABLED_Scenario22ImageBindingAsGPUTensor = SkipTest;
+    api.DISABLED_CustomCommandQueueWithFence = SkipTest;
+    api.DISABLED_ReuseVideoFrame = SkipTest;
+    api.D2DInterop = SkipTest;
+    api.DeviceLostRecovery = SkipTest;
+    api.QuantizedModels = SkipTest;
+    api.MsftQuantizedModels = SkipTest;
+  }
+
+    return api;
 }

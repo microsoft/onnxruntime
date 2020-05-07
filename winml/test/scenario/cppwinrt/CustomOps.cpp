@@ -683,5 +683,8 @@ const CustomOpsTestsApi& getapi() {
   if (SKIP_GPU_TESTS) {
     api.CustomOperatorFusion = SkipTest;
   }
+  if (RUNTIME_PARAMETER_EXISTS("noVideoFrameTests")) {
+    api.CustomOperatorFusion = SkipTest;
+  }
   return api;
 }

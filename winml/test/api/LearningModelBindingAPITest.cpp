@@ -737,9 +737,12 @@ const LearningModelBindingAPITestsApi& getapi() {
     api.GpuSqueezeNet = SkipTest;
     api.GpuSqueezeNetEmptyOutputs = SkipTest;
     api.GpuSqueezeNetUnboundOutputs = SkipTest;
+  }
+  if (RUNTIME_PARAMETER_EXISTS("noVideoFrameTests")) {
     api.ImageBindingDimensions = SkipTest;
-    api.VerifyInvalidBindExceptions = SkipTest;
     api.BindInvalidInputName = SkipTest;
+    api.VerifyOutputAfterImageBindCalledTwice = SkipTest;
+    api.VerifyInvalidBindExceptions = SkipTest;
   }
   return api;
 }
