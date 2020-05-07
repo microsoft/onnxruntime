@@ -1457,7 +1457,7 @@ Example 4:
           0,
           "Y",
           "Output tensors",
-          "T1",
+          "T",
           /* Outputs are optional*/
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
