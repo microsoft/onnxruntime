@@ -12,6 +12,7 @@ import warnings
 
 import onnxruntime as ort
 from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
+import onnxruntime.capi.training as training
 
 DEFAULT_OPSET_VERSION = 10
 
@@ -339,7 +340,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                enable_grad_norm_clip=True,
                                                frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION):
     output_name = model.graph.output[0].name
-    ort_parameters = ort.TrainingParameters()
+    ort_parameters = training.TrainingParameters()
     ort_parameters.loss_output_name = output_name
     ort_parameters.use_mixed_precision = use_mixed_precision
     ort_parameters.world_rank = world_rank
@@ -395,7 +396,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.optimizer_attributes_map = optimizer_attributes_map
     ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
 
-    session = ort.TrainingSession(model.SerializeToString(), ort_parameters)
+    session = training.TrainingSession(model.SerializeToString(), ort_parameters)
     train_io_binding = session.io_binding()
     eval_io_binding = session.io_binding()
 

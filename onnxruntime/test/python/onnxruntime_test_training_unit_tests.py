@@ -16,7 +16,7 @@ from onnxruntime_test_ort_trainer import map_optimizer_attributes, ort_trainer_l
 from helper import get_name
 import onnxruntime
 from onnxruntime_test_training_unittest_utils import process_dropout
-from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample
+import onnxruntime.capi.training as training
 
 torch.manual_seed(1)
 onnxruntime.set_seed(1)
@@ -44,11 +44,11 @@ class TestTrainingDropout(unittest.TestCase):
         device = torch.device("cuda", 0)
         # This will drop all values, therefore expecting all 0 in output tensor
         model = TwoDropoutNet(0.999, 0.999, dim_size)
-        input_desc = IODescription('input', [dim_size], torch.float32)
-        output_desc = IODescription('output', [], torch.float32)
-        model_desc = ModelDescription([input_desc], [output_desc])
+        input_desc = training.IODescription('input', [dim_size], torch.float32)
+        output_desc = training.IODescription('output', [], torch.float32)
+        model_desc = training.ModelDescription([input_desc], [output_desc])
         lr_desc = ort_trainer_learning_rate_description()
-        model = ORTTrainer(model, None, model_desc, "LambOptimizer",
+        model = training.ORTTrainer(model, None, model_desc, "LambOptimizer",
                         map_optimizer_attributes,
                         lr_desc,
                         device,

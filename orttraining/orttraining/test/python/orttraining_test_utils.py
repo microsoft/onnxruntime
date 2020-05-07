@@ -1,6 +1,6 @@
 import torch
 
-from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription
+import onnxruntime.capi.training as training
 
 from orttraining_test_data_loader import create_ort_test_dataloader, BatchArgsOption, split_batch
 from orttraining_test_bert_postprocess import postprocess_model
@@ -53,9 +53,9 @@ def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
     batch_args_option):
     dataloader = create_ort_test_dataloader(model_desc.inputs_, args.batch_size, args.seq_len, device)
 
-    model = ORTTrainer(model, None, model_desc, "LambOptimizer",
+    model = training.ORTTrainer(model, None, model_desc, "LambOptimizer",
         map_optimizer_attributes=map_optimizer_attributes,
-        learning_rate_description=IODescription('Learning_Rate', [1,], torch.float32),
+        learning_rate_description=training.IODescription('Learning_Rate', [1,], torch.float32),
         device=device, postprocess_model=postprocess_model,
         gradient_accumulation_steps=gradient_accumulation_steps,                
         # BertLAMB default initial settings: b1=0.9, b2=0.999, e=1e-6

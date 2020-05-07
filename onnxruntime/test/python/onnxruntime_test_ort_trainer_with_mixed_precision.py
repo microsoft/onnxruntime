@@ -6,6 +6,7 @@ import pytest
 from numpy.testing import assert_allclose, assert_array_equal
 
 import torch
+import onnxruntime.capi.training as training
 from onnxruntime_test_ort_trainer import runBertTrainingTest
 
 class TestOrtTrainer(unittest.TestCase):

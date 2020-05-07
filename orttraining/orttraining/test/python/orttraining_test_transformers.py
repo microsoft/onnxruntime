@@ -12,7 +12,7 @@ from transformers import (BertConfig, BertForPreTraining, BertModel)
 from orttraining_test_data_loader import ids_tensor, BatchArgsOption
 from orttraining_test_utils import run_test, get_lr
 
-from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler
+import onnxruntime.capi.training as training
 
 import torch
 
@@ -71,32 +71,32 @@ class BertModelTest(unittest.TestCase):
 
             # 1. superset of bert input/output descs
             # see BertPreTrainedModel doc
-            self.input_ids_desc = IODescription('input_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=self.vocab_size)
-            self.attention_mask_desc = IODescription('attention_mask', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2)
-            self.token_type_ids_desc = IODescription('token_type_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2)
-            self.position_ids_desc = IODescription('position_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=self.max_position_embeddings)
-            self.head_mask_desc = IODescription('head_mask', [self.num_hidden_layers, self.num_attention_heads], torch.int64, num_classes=2)
-            self.inputs_embeds_desc = IODescription('inputs_embeds', ['batch', 'max_seq_len_in_batch', self.hidden_size], torch.float32)
+            self.input_ids_desc = training.IODescription('input_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=self.vocab_size)
+            self.attention_mask_desc = training.IODescription('attention_mask', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2)
+            self.token_type_ids_desc = training.IODescription('token_type_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2)
+            self.position_ids_desc = training.IODescription('position_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=self.max_position_embeddings)
+            self.head_mask_desc = training.IODescription('head_mask', [self.num_hidden_layers, self.num_attention_heads], torch.int64, num_classes=2)
+            self.inputs_embeds_desc = training.IODescription('inputs_embeds', ['batch', 'max_seq_len_in_batch', self.hidden_size], torch.float32)
 
-            self.encoder_hidden_states_desc = IODescription('encoder_hidden_states', ['batch', 'max_seq_len_in_batch', self.hidden_size], torch.float32)
-            self.encoder_attention_mask_desc = IODescription('encoder_attention_mask', ['batch', 'max_seq_len_in_batch'], torch.float32)
+            self.encoder_hidden_states_desc = training.IODescription('encoder_hidden_states', ['batch', 'max_seq_len_in_batch', self.hidden_size], torch.float32)
+            self.encoder_attention_mask_desc = training.IODescription('encoder_attention_mask', ['batch', 'max_seq_len_in_batch'], torch.float32)
 
             # see BertForPreTraining doc
-            self.masked_lm_labels_desc = IODescription('masked_lm_labels', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=self.vocab_size)
-            self.next_sentence_label_desc = IODescription('next_sentence_label', ['batch',], torch.int64, num_classes=2)
+            self.masked_lm_labels_desc = training.IODescription('masked_lm_labels', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=self.vocab_size)
+            self.next_sentence_label_desc = training.IODescription('next_sentence_label', ['batch',], torch.int64, num_classes=2)
 
             # outputs
-            self.loss_desc = IODescription('loss', [1,], torch.float32)
-            self.prediction_scores_desc = IODescription('prediction_scores', ['batch', 'max_seq_len_in_batch', self.vocab_size], torch.float32)
+            self.loss_desc = training.IODescription('loss', [1,], torch.float32)
+            self.prediction_scores_desc = training.IODescription('prediction_scores', ['batch', 'max_seq_len_in_batch', self.vocab_size], torch.float32)
 
-            self.seq_relationship_scores_desc = IODescription('seq_relationship_scores', ['batch', 2], torch.float32)   # IODescription('seq_relationship_scores', ['batch', 'max_seq_len_in_batch', 2], torch.float32)
-            self.hidden_states_desc = IODescription('hidden_states', [self.num_hidden_layers, 'batch', 'max_seq_len_in_batch', self.hidden_size], torch.float32)
-            self.attentions_desc = IODescription('attentions', [self.num_hidden_layers, 'batch', self.num_attention_heads, 'max_seq_len_in_batch', 'max_seq_len_in_batch'], torch.float32)
-            self.last_hidden_state_desc = IODescription('last_hidden_state', ['batch', 'max_seq_len_in_batch', self.hidden_size], torch.float32)
-            self.pooler_output_desc = IODescription('pooler_output', ['batch', self.hidden_size], torch.float32)
+            self.seq_relationship_scores_desc = training.IODescription('seq_relationship_scores', ['batch', 2], torch.float32)   # training.IODescription('seq_relationship_scores', ['batch', 'max_seq_len_in_batch', 2], torch.float32)
+            self.hidden_states_desc = training.IODescription('hidden_states', [self.num_hidden_layers, 'batch', 'max_seq_len_in_batch', self.hidden_size], torch.float32)
+            self.attentions_desc = training.IODescription('attentions', [self.num_hidden_layers, 'batch', self.num_attention_heads, 'max_seq_len_in_batch', 'max_seq_len_in_batch'], torch.float32)
+            self.last_hidden_state_desc = training.IODescription('last_hidden_state', ['batch', 'max_seq_len_in_batch', self.hidden_size], torch.float32)
+            self.pooler_output_desc = training.IODescription('pooler_output', ['batch', self.hidden_size], torch.float32)
 
         def BertForPreTraining_descs(self):
-            return ModelDescription(
+            return training.ModelDescription(
                 [self.input_ids_desc, self.attention_mask_desc, self.token_type_ids_desc, self.masked_lm_labels_desc, self.next_sentence_label_desc],
                 # returns loss_desc if both masked_lm_labels_desc, next_sentence_label are provided
                 # hidden_states_desc, attentions_desc shall be included according to config.output_attentions, config.output_hidden_states
@@ -145,7 +145,7 @@ class BertModelTest(unittest.TestCase):
             model.eval()
             loss, prediction_scores, seq_relationship_score = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids,
                                                                     masked_lm_labels=token_labels, next_sentence_label=sequence_labels)
-            model_desc = ModelDescription([self.input_ids_desc, self.attention_mask_desc, self.token_type_ids_desc,
+            model_desc = training.ModelDescription([self.input_ids_desc, self.attention_mask_desc, self.token_type_ids_desc,
                                            self.masked_lm_labels_desc, self.next_sentence_label_desc],
                                           [self.loss_desc, self.prediction_scores_desc, self.seq_relationship_scores_desc])
 
@@ -156,7 +156,7 @@ class BertModelTest(unittest.TestCase):
 
             def get_lr_this_step(global_step):
                 return get_lr(args, global_step)
-            loss_scaler = LossScaler('loss_scale_input_name', True, up_scale_window=2000)
+            loss_scaler = training.LossScaler('loss_scale_input_name', True, up_scale_window=2000)
 
             # It would be better to test both with/without mixed precision and allreduce_post_accumulation.
             # However, stress test of all the 4 cases is not stable at lease on the test machine.

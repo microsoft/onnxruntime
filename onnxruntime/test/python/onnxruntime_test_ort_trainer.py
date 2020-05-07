@@ -16,10 +16,10 @@ from torchvision import datasets, transforms
 
 from helper import get_name
 import onnxruntime
-from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample, save_checkpoint, load_checkpoint
+import onnxruntime.capi.training as training
 
 def ort_trainer_learning_rate_description():
-    return IODescription('Learning_Rate', [1, ], torch.float32)
+    return training.IODescription('Learning_Rate', [1, ], torch.float32)
 
 
 def remove_extra_info(model_desc):
@@ -34,15 +34,15 @@ def remove_extra_info(model_desc):
 
 def bert_model_description():
     vocab_size = 30528
-    input_ids_desc = IODescription('input_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=vocab_size)
-    segment_ids_desc = IODescription('segment_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2)
-    input_mask_desc = IODescription('input_mask', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2)
-    masked_lm_labels_desc = IODescription('masked_lm_labels', ['batch', 'max_seq_len_in_batch'], torch.int64,
+    input_ids_desc = training.IODescription('input_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=vocab_size)
+    segment_ids_desc = training.IODescription('segment_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2)
+    input_mask_desc = training.IODescription('input_mask', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2)
+    masked_lm_labels_desc = training.IODescription('masked_lm_labels', ['batch', 'max_seq_len_in_batch'], torch.int64,
                                           num_classes=vocab_size)
-    next_sentence_labels_desc = IODescription('next_sentence_labels', ['batch', ], torch.int64, num_classes=2)
-    loss_desc = IODescription('loss', [], torch.float32)
+    next_sentence_labels_desc = training.IODescription('next_sentence_labels', ['batch', ], torch.int64, num_classes=2)
+    loss_desc = training.IODescription('loss', [], torch.float32)
 
-    return ModelDescription([input_ids_desc, segment_ids_desc, input_mask_desc, masked_lm_labels_desc,
+    return training.ModelDescription([input_ids_desc, segment_ids_desc, input_mask_desc, masked_lm_labels_desc,
                              next_sentence_labels_desc], [loss_desc])
 
 def map_optimizer_attributes(name):
@@ -56,7 +56,7 @@ def map_optimizer_attributes(name):
 def generate_sample_batch(desc, batch_size, device):
     desc_ = copy.deepcopy(desc)
     desc_.shape_[0] = batch_size
-    sample = generate_sample(desc_, device)
+    sample = training.generate_sample(desc_, device)
     return sample
 
 def create_ort_trainer(gradient_accumulation_steps,
@@ -72,7 +72,7 @@ def create_ort_trainer(gradient_accumulation_steps,
 
     onnx_model = onnx.load(get_name("bert_toy_postprocessed.onnx"))
 
-    model = ORTTrainer(onnx_model, None, simple_model_desc, "LambOptimizer",
+    model = training.ORTTrainer(onnx_model, None, simple_model_desc, "LambOptimizer",
                        map_optimizer_attributes,
                        learning_rate_description,
                        device, postprocess_model=None,
@@ -93,7 +93,7 @@ def runBertTrainingTest(gradient_accumulation_steps,
     torch.manual_seed(1)
     onnxruntime.set_seed(1)
   
-    loss_scaler = LossScaler("ort_test_input_loss_scalar", True) if use_internel_loss_scale else None
+    loss_scaler = training.LossScaler("ort_test_input_loss_scalar", True) if use_internel_loss_scale else None
 
     model, model_desc, device = create_ort_trainer(gradient_accumulation_steps,
                         use_mixed_precision,
@@ -102,7 +102,7 @@ def runBertTrainingTest(gradient_accumulation_steps,
                         loss_scaler)
 
     if loss_scaler is None:
-        loss_scaler = LossScaler(model.loss_scale_input_name, True)
+        loss_scaler = training.LossScaler(model.loss_scale_input_name, True)
 
     input_ids_batches = []
     segment_ids_batches = []
@@ -224,11 +224,11 @@ class MNISTWrapper():
         return test_loss, correct / len(test_loader.dataset)
 
     def mnist_model_description():
-        input_desc = IODescription('input1', ['batch', 784], torch.float32)
-        label_desc = IODescription('label', ['batch', ], torch.int64, num_classes=10)
-        loss_desc = IODescription('loss', [], torch.float32)
-        probability_desc = IODescription('probability', ['batch', 10], torch.float32)
-        return ModelDescription([input_desc, label_desc], [loss_desc, probability_desc])
+        input_desc = training.IODescription('input1', ['batch', 784], torch.float32)
+        label_desc = training.IODescription('label', ['batch', ], torch.int64, num_classes=10)
+        loss_desc = training.IODescription('loss', [], torch.float32)
+        probability_desc = training.IODescription('probability', ['batch', 10], torch.float32)
+        return training.ModelDescription([input_desc, label_desc], [loss_desc, probability_desc])
 
     def get_loaders(self):
         args_batch_size = 64
@@ -259,7 +259,7 @@ class MNISTWrapper():
         return model, model_desc
 
     def get_trainer(self, model, model_desc, device):
-        return ORTTrainer(model, MNISTWrapper.my_loss, model_desc, "SGDOptimizer", None, IODescription('Learning_Rate', [1, ], 
+        return training.ORTTrainer(model, MNISTWrapper.my_loss, model_desc, "SGDOptimizer", None, training.IODescription('Learning_Rate', [1, ],
                                 torch.float32), device, _opset_version=12)
 
 class TestOrtTrainer(unittest.TestCase):
@@ -407,7 +407,7 @@ class TestOrtTrainer(unittest.TestCase):
         model.load_state_dict(sd)
 
         ckpt_dir = get_name("ort_ckpt")
-        save_checkpoint(model, ckpt_dir, 'bert_toy_save_test')
+        training.save_checkpoint(model, ckpt_dir, 'bert_toy_save_test')
         del model
 
         # create new model
@@ -418,7 +418,7 @@ class TestOrtTrainer(unittest.TestCase):
                         loss_scaler=None)
 
         # load changed checkpoint
-        load_checkpoint(model2, ckpt_dir, 'bert_toy_save_test')
+        training.load_checkpoint(model2, ckpt_dir, 'bert_toy_save_test')
         loaded_sd = model2.state_dict()
 
         for k,v in loaded_sd.items():
@@ -435,7 +435,7 @@ class TestOrtTrainer(unittest.TestCase):
                         loss_scaler=None)
 
         ckpt_dir = get_name("ort_ckpt")
-        load_checkpoint(model, ckpt_dir, 'bert_toy_lamb')
+        training.load_checkpoint(model, ckpt_dir, 'bert_toy_lamb')
                 
         expected_eval_loss = [10.997552871]
 
