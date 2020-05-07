@@ -14,7 +14,6 @@ import subprocess
 import sys
 import hashlib
 import itertools
-import distutils
 
 logging.basicConfig(
     format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
@@ -1499,7 +1498,7 @@ def main():
     if not (args.update or args.clean or args.build or args.test):
         log.debug(
             "Defaulting to running update, build "
-            "[and test for native builds]. ")
+            "[and test for native builds].")
         args.update = True
         args.build = True
         if cross_compiling:
