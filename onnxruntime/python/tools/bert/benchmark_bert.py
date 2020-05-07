@@ -185,7 +185,8 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
                 if verbose:
                     print("Run onnxruntime on {} with input shape {}".format(model_name, [batch_size, sequence_length]))
                 runtimes = timeit.repeat(lambda: ort_session.run(None, ort_input), number=1, repeat=repeat_times)
-                latency_ms = sum(runtimes) / float(len(runtimes)) * 1000
+                latency_ms = sum(runtimes) / float(len(runtimes)) * 1000.0
+                latency_variance = numpy.var(runtimes, dtype=numpy.float64) * 1000.0
                 throughput = batch_size * (1000.0 / latency_ms)
 
                 result = {
@@ -198,6 +199,7 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
                     "batch_size": batch_size,
                     "sequence_length": sequence_length,
                     "average_latency_ms": "{:.2f}".format(latency_ms),
+                    "latency_variance": "{:.2f}".format(latency_variance),
                     "latency_90_percentile": "{:.2f}".format(numpy.percentile(runtimes, 90) * 1000.0),
                     "latency_95_percentile": "{:.2f}".format(numpy.percentile(runtimes, 95) * 1000.0),
                     "latency_99_percentile": "{:.2f}".format(numpy.percentile(runtimes, 99) * 1000.0),
@@ -259,6 +261,7 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
 
                     runtimes = timeit.repeat(lambda: inference(input_ids), repeat=repeat_times, number=1)
                     latency_ms = sum(runtimes) / float(len(runtimes)) * 1000
+                    latency_variance = numpy.var(runtimes, dtype=numpy.float64) * 1000.0
                     throughput = batch_size * (1000.0 / latency_ms)
 
                     result = {
@@ -271,6 +274,7 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
                         "batch_size": batch_size,
                         "sequence_length": sequence_length,
                         "average_latency_ms": "{:.2f}".format(latency_ms),
+                        "latency_variance": "{:.2f}".format(latency_variance),
                         "latency_90_percentile": "{:.2f}".format(numpy.percentile(runtimes, 90) * 1000),
                         "latency_95_percentile": "{:.2f}".format(numpy.percentile(runtimes, 95) * 1000),
                         "latency_99_percentile": "{:.2f}".format(numpy.percentile(runtimes, 99) * 1000),
@@ -323,7 +327,7 @@ def parse_arguments():
 
     parser.add_argument("--test_times",
                         required=False,
-                        default=100,
+                        default=1000,
                         type=int,
                         help="Number of repeat times to get average inference latency.")
 
@@ -383,8 +387,8 @@ def main():
     csv_filename = args.csv_filename or "benchmark_result_{}.csv".format(datetime.now().strftime("%Y%m%d-%H%M%S"))
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "runtime", "version", "device", "fp16", "model_name", "inputs", "batch_size", "sequence_length", "average_latency_ms",
-            "QPS", "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
+            "runtime", "version", "device", "fp16", "model_name", "inputs", "batch_size", "sequence_length", "QPS", "average_latency_ms",
+            "latency_variance", "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
         ]
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
