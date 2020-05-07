@@ -1459,8 +1459,9 @@ Example 4:
           "Output tensors",
           "T1",
           /* Outputs are optional*/
-          OpSchema::Optional,
-          /*is_homogeneous*/ false)
+          OpSchema::Variadic,
+          /*is_homogeneous*/ false,
+          /*min_arity*/ 1)
       .TypeConstraint(
           "T1",
           OpSchema::all_tensor_types(),
