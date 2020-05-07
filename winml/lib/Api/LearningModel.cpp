@@ -23,8 +23,8 @@ LearningModel::LearningModel(
 WINML_CATCH_ALL
 
 LearningModel::LearningModel(
-    WinML::IEngineFactory* engine_factory,
-    WinML::IModel* model,
+    _winml::IEngineFactory* engine_factory,
+    _winml::IModel* model,
     const winml::ILearningModelOperatorProvider operator_provider) try :
       operator_provider_(operator_provider) {
   engine_factory_.copy_from(engine_factory);

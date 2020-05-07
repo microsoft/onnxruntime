@@ -25,7 +25,7 @@ TensorFeatureDescriptor::TensorFeatureDescriptor(
 TensorFeatureDescriptor::TensorFeatureDescriptor(
     hstring const& name,
     hstring const& description,
-    Windows::AI::MachineLearning::TensorKind const& kind,
+    winml::TensorKind const& kind,
     array_view<int64_t const> shape) : name_(name),
                                        description_(description),
                                        tensor_kind_(kind),

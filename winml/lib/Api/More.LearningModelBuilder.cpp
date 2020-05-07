@@ -1,12 +1,12 @@
 ﻿#include "pch.h"
-#include "LearningModelBuilder.h"
+#include "More.LearningModelBuilder.h"
 #include "LearningModel.h"
 
-#include "LearningModelInputs.h"
-#include "LearningModelOutputs.h"
+#include "More.LearningModelInputs.h"
+#include "More.LearningModelOutputs.h"
 #include "OnnxruntimeProvider.h"
 
-namespace winrt::Windows::AI::MachineLearning::More::implementation {
+namespace MOREP {
 
 LearningModelBuilder::LearningModelBuilder() : inputs_(nullptr), outputs_(nullptr) {
   WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
@@ -43,8 +43,8 @@ more::LearningModelOperator LearningModelBuilder::AfterAll(more::LearningModelOp
   throw hresult_not_implemented();
 }
 
-WinML::IModel* LearningModelBuilder::UseModel() {
+_winml::IModel* LearningModelBuilder::UseModel() {
   return model_.get();
 }
 
-}  // namespace winrt::Windows::AI::MachineLearning::More::implementation
+}  // namespace MOREP

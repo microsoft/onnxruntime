@@ -35,11 +35,13 @@ namespace winml = WINML;
 namespace WINMLP {}
 namespace winmlp = WINMLP;
 
-namespace winrt::Windows::AI::MachineLearning::More {}
-namespace more = ::winrt::Windows::AI::MachineLearning::More;
+#define MORE winrt::WINML_ROOT_NS::AI::MachineLearning::More
+namespace MORE {}
+namespace more = MORE;
 
-namespace winrt::Windows::AI::MachineLearning::More::implementation {}
-namespace morep = ::winrt::Windows::AI::MachineLearning::More::implementation;
+#define MOREP winrt::WINML_ROOT_NS::AI::MachineLearning::More::implementation
+namespace MOREP {}
+namespace morep = MOREP;
 
 namespace _winml::Adapter {}
 namespace winmla = ::_winml::Adapter;

@@ -10,7 +10,7 @@ namespace WINMLP {
 struct MapFeatureDescriptor : MapFeatureDescriptorT<
                                   MapFeatureDescriptor,
                                   ILearningModelFeatureDescriptorNative,
-                                  WinML::IDescriptorInfoProvider> {
+                                  _winml::IDescriptorInfoProvider> {
   MapFeatureDescriptor() = delete;
 
   MapFeatureDescriptor(
@@ -52,8 +52,8 @@ struct MapFeatureDescriptor : MapFeatureDescriptorT<
   
   STDMETHOD(GetDescriptorInfo)
   (
-      WinML::IEngineFactory* engine_factory,
-      WinML::IDescriptorInfo** info) override;
+      _winml::IEngineFactory* engine_factory,
+      _winml::IDescriptorInfo** info) override;
 
  private:
   winrt::hstring name_;

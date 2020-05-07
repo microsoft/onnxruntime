@@ -10,7 +10,7 @@ namespace WINMLP {
 struct SequenceFeatureDescriptor : SequenceFeatureDescriptorT<
                                        SequenceFeatureDescriptor,
                                        ILearningModelFeatureDescriptorNative,
-                                       WinML::IDescriptorInfoProvider> {
+                                       _winml::IDescriptorInfoProvider> {
   SequenceFeatureDescriptor() = delete;
   SequenceFeatureDescriptor(
       const char* name,
@@ -46,8 +46,8 @@ struct SequenceFeatureDescriptor : SequenceFeatureDescriptorT<
 
   STDMETHOD(GetDescriptorInfo)
   (
-      WinML::IEngineFactory* engine_factory,
-      WinML::IDescriptorInfo** info) override;
+      _winml::IEngineFactory* engine_factory,
+      _winml::IDescriptorInfo** info) override;
  private:
   winrt::hstring name_;
   winrt::hstring description_;

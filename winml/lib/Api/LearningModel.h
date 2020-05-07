@@ -30,8 +30,8 @@ struct LearningModel : LearningModelT<LearningModel> {
       const winml::ILearningModelOperatorProvider operator_provider);
 
   LearningModel(
-      WinML::IEngineFactory* engine_factory,
-      WinML::IModel* model,
+      _winml::IEngineFactory* engine_factory,
+      _winml::IModel* model,
       const winml::ILearningModelOperatorProvider operator_provider);
 
   /* LearningModel properties (MachineLearningContract 1). */

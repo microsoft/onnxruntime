@@ -1,9 +1,9 @@
 ﻿#include "pch.h"
-#include "LearningModelOutputs.h"
-#include "LearningModelBuilder.h"
+#include "More.LearningModelOutputs.h"
+#include "More.LearningModelBuilder.h"
 #include "TensorFeatureDescriptor.h"
 
-namespace winrt::Windows::AI::MachineLearning::More::implementation
+namespace MOREP
 {
 
 LearningModelOutputs::LearningModelOutputs(winml::More::LearningModelBuilder builder) :
@@ -16,13 +16,13 @@ more::LearningModelBuilder LearningModelOutputs::Add(winml::ILearningModelFeatur
   // Perform model update inside the builder
   auto model = builder_.as<morep::LearningModelBuilder>()->UseModel();
 
-  auto descriptor_provider = output.as<WinML::IDescriptorInfoProvider>();
+  auto descriptor_provider = output.as<_winml::IDescriptorInfoProvider>();
 
-  auto name = WinML::Strings::UTF8FromHString(output.Name());
+  auto name = _winml::Strings::UTF8FromHString(output.Name());
   model->AddModelOutput(name.c_str(), descriptor_provider.get());
   output_descriptors_.Append(output);
 
   return builder_;
 }
 
-}
+} // namespace MOREP

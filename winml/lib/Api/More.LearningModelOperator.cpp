@@ -1,7 +1,8 @@
 ﻿#include "pch.h"
-#include "LearningModelOperator.h"
+#include "More.LearningModelOperator.h"
 
-namespace winrt::Windows::AI::MachineLearning::More::implementation {
+namespace MOREP {
+
 static uint32_t c_operator_index = 0;
 
 LearningModelOperator::LearningModelOperator(hstring const& type, hstring const& name) : builder_(nullptr),
@@ -23,8 +24,8 @@ void LearningModelOperator::GetBuilder(more::LearningModelBuilder& builder) {
 }
 
 void LearningModelOperator::JoinAfterInternal(wfc::IVectorView<winml::ILearningModelFeatureDescriptor>& input_decs) {
-  auto operator_name = WinML::Strings::UTF8FromHString(name_);
-  auto operator_type = WinML::Strings::UTF8FromHString(type_);
+  auto operator_name = _winml::Strings::UTF8FromHString(name_);
+  auto operator_type = _winml::Strings::UTF8FromHString(type_);
 
   auto builder = builder_.as<morep::LearningModelBuilder>();
 
@@ -56,7 +57,7 @@ void LearningModelOperator::JoinAfterInternal(wfc::IVectorView<winml::ILearningM
                  end(inputs_),
                  std::begin(input_names),
                  [](auto input) {
-                   return WinML::Strings::UTF8FromHString(input.Name());
+                   return _winml::Strings::UTF8FromHString(input.Name());
                  });
 
   std::vector<const char*> inputs(input_names.size());
@@ -72,7 +73,7 @@ void LearningModelOperator::JoinAfterInternal(wfc::IVectorView<winml::ILearningM
                  end(outputs_),
                  std::begin(output_names),
                  [operator_name](auto output) {
-                   return operator_name + "." + WinML::Strings::UTF8FromHString(output.Name());
+                   return operator_name + "." + _winml::Strings::UTF8FromHString(output.Name());
                  });
 
   std::vector<const char*> outputs(output_names.size());
@@ -106,19 +107,19 @@ void LearningModelOperator::SetAttributeInternal(const char* const name, wf::IIn
     throw;
   }
   /*
-    auto featureValue = WinML::CreateFeatureValueFromInspectable(WinML::BindingType::kInput, inspectable, found_it->second);
+    auto featureValue = _winml::CreateFeatureValueFromInspectable(WinML::BindingType::kInput, inspectable, found_it->second);
     // Validate that the feature value is compatible with the descriptor
-    WinML::VerifyFeatureValueCompatibleWithDescriptor(featureValue, found_it->second);
+    _winml::VerifyFeatureValueCompatibleWithDescriptor(featureValue, found_it->second);
     
-    auto spLotusValueProvider = featureValue.as<WinML::ILotusValueProviderPrivate>();
+    auto spLotusValueProvider = featureValue.as<_winml::ILotusValueProviderPrivate>();
 
     ////////
     //////// TODO: Need to create a fake IEngine that is not backed by a cpu session but no model in order to generate the appropriate values here.
     ////////
 
     // Create the Binding Context to pass to the feature value
-    WinML::BindingContext context{
-        WinML::BindingType::kInput,
+    _winml::BindingContext context{
+        _winml::BindingType::kInput,
         nullptr,
         found_it->second,
         nullptr,
@@ -126,7 +127,7 @@ void LearningModelOperator::SetAttributeInternal(const char* const name, wf::IIn
     };
 
     // Get the bound tensor
-    winrt::com_ptr<WinML::IValue> value;
+    winrt::com_ptr<_winml::IValue> value;
     spLotusValueProvider->GetValue(context, value.put());
 
     attribute_values_[name] = value;
@@ -157,7 +158,7 @@ more::LearningModelBuilder LearningModelOperator::ConnectToOutputs(more::Learnin
 }
 
 more::LearningModelOperator LearningModelOperator::SetAttribute(hstring const& name, Windows::Foundation::IInspectable const& value) {
-  SetAttributeInternal(WinML::Strings::UTF8FromHString(name).c_str(), value);
+  SetAttributeInternal(_winml::Strings::UTF8FromHString(name).c_str(), value);
   return *this;
 }
 
@@ -188,4 +189,4 @@ more::LearningModelOperator LearningModelOperator::Gemm() {
 more::LearningModelOperator LearningModelOperator::Gemm(hstring const& name) {
   return winrt::make<morep::LearningModelOperator>(L"Gemm", name);
 }
-}  // namespace winrt::Windows::AI::MachineLearning::More::implementation
+}  // namespace MOREP

@@ -14,5 +14,3 @@
 #include "dx.h"
 
 #pragma warning(pop)
-
-#include "winrt/Windows.AI.MachineLearning.More.h"

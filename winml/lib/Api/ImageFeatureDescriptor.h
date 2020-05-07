@@ -22,7 +22,7 @@ enum class ImageColorSpaceGamma {
 struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
                                     ImageFeatureDescriptor,
                                     ILearningModelFeatureDescriptorNative,
-                                    WinML::IDescriptorInfoProvider> {
+                                    _winml::IDescriptorInfoProvider> {
   ImageFeatureDescriptor() = delete;
   ImageFeatureDescriptor(
       const char* name,
@@ -85,8 +85,8 @@ struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
 
   STDMETHOD(GetDescriptorInfo)
   (
-      WinML::IEngineFactory* engine_factory,
-      WinML::IDescriptorInfo** info) override;
+      _winml::IEngineFactory* engine_factory,
+      _winml::IDescriptorInfo** info) override;
 
  private:
   winrt::hstring name_;

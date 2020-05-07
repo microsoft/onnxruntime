@@ -26,14 +26,20 @@ set(winml_lib_telemetry_dir ${REPO_ROOT}/winml/lib/telemetry)
 
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE)
   set(output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning")
+  set(more_output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.More")
   set(idl_native_output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.Native")
   set(idl_native_internal_output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.Native.Internal")
-  set(winml_midl_defines "/DROOT_NS=${onnxruntime_WINML_NAMESPACE_OVERRIDE}")
+
+  if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
+    set(winml_midl_defines "/DBUILD_INBOX=1")
+  endif()
+  
   set(winml_root_ns "${onnxruntime_WINML_NAMESPACE_OVERRIDE}")
   set(BINARY_NAME "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.dll")
   set(winml_api_use_ns_prefix false)
 else()
   set(output_name "Microsoft.AI.MachineLearning")
+  set(more_output_name "Microsoft.AI.MachineLearning.More")
   set(idl_native_output_name "Microsoft.AI.MachineLearning.Native")
   set(idl_native_internal_output_name "Microsoft.AI.MachineLearning.Native.Internal")
   set(winml_midl_defines "/DROOT_NS=Microsoft")
@@ -55,7 +61,7 @@ convert_forward_slashes_to_back(${exclusions} CPPWINRT_COMPONENT_EXCLUSION_LIST)
 #
 # For native idl files there are no casing restrictions.
 get_filename_component(winrt_idl "${winml_api_root}/Windows.AI.MachineLearning.idl" ABSOLUTE)
-get_filename_component(winrt_more_idl "${winml_api_root}/Windows.AI.MachineLearning.More.idl" ABSOLUTE)
+get_filename_component(winrt_more_idl "${winml_api_root}/Microsoft.AI.MachineLearning.More.idl" ABSOLUTE)
 get_filename_component(idl_native "${winml_api_root}/windows.ai.machineLearning.native.idl" ABSOLUTE)
 get_filename_component(idl_native_internal "${winml_api_root}/windows.ai.machineLearning.native.internal.idl" ABSOLUTE)
 
@@ -82,12 +88,17 @@ target_cppwinrt(winml_api
 
 # generate winml.more headers from idl
 target_cppwinrt(winml_more_api
-  ${winrt_more_idl}       # winml winrt idl to compile
-  ${winml_lib_api_dir}    # location for cppwinrt generated component sources
-  ${sdk_folder}           # location of sdk folder
-  ${sdk_version}          # sdk version
-  ${target_folder}        # the folder this target will be placed under
+  ${winrt_more_idl}                       # winml winrt idl to compile
+  "Microsoft.AI.MachineLearning.More"     # outputs name
+  ${winml_lib_api_dir}                    # location for cppwinrt generated component sources
+  ${sdk_folder}                           # location of sdk folder
+  ${sdk_version}                          # sdk version
+  ${target_folder}                        # the folder this target will be placed under
+  ${winml_midl_defines}                   # the midl compiler defines
+  ${winml_api_use_ns_prefix}              # set ns_prefix
 )
+
+add_dependencies(winml_more_api winml_api)
 
 target_midl(winml_api_native
   ${idl_native}             # winml native idl to compile
@@ -407,16 +418,16 @@ add_library(winml_lib_api STATIC
   ${winml_lib_api_dir}/TensorFeatureDescriptor.h
 
   ## WinML.More
-  ${winml_lib_api_dir}/LearningModelBuilder.cpp
-  ${winml_lib_api_dir}/LearningModelBuilder.h
-  ${winml_lib_api_dir}/LearningModelInputs.cpp
-  ${winml_lib_api_dir}/LearningModelInputs.h
-  ${winml_lib_api_dir}/LearningModelOutputs.cpp
-  ${winml_lib_api_dir}/LearningModelOutputs.h
-  ${winml_lib_api_dir}/LearningModelOperator.cpp
-  ${winml_lib_api_dir}/LearningModelOperator.h
-  ${winml_lib_api_dir}/LearningModelOperatorResolutionPolicy.cpp
-  ${winml_lib_api_dir}/LearningModelOperatorResolutionPolicy.h
+  ${winml_lib_api_dir}/More.LearningModelBuilder.cpp
+  ${winml_lib_api_dir}/More.LearningModelBuilder.h
+  ${winml_lib_api_dir}/More.LearningModelInputs.cpp
+  ${winml_lib_api_dir}/More.LearningModelInputs.h
+  ${winml_lib_api_dir}/More.LearningModelOutputs.cpp
+  ${winml_lib_api_dir}/More.LearningModelOutputs.h
+  ${winml_lib_api_dir}/More.LearningModelOperator.cpp
+  ${winml_lib_api_dir}/More.LearningModelOperator.h
+  ${winml_lib_api_dir}/More.LearningModelOperatorResolutionPolicy.cpp
+  ${winml_lib_api_dir}/More.LearningModelOperatorResolutionPolicy.h
   
   ${winml_lib_api_dir}/pch/pch.h
 )

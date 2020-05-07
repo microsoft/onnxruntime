@@ -10,7 +10,7 @@ namespace WINMLP {
 struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
                                      TensorFeatureDescriptor,
                                      ILearningModelFeatureDescriptorNative,
-                                     WinML::IDescriptorInfoProvider> {
+                                     _winml::IDescriptorInfoProvider> {
   TensorFeatureDescriptor() = delete;
   TensorFeatureDescriptor(
       const char* name,
@@ -23,7 +23,7 @@ struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
   TensorFeatureDescriptor(
       hstring const& name,
       hstring const& description,
-      Windows::AI::MachineLearning::TensorKind const& kind,
+      winml::TensorKind const& kind,
       array_view<int64_t const> shape);
 
   // ITensorDescriptor
@@ -62,8 +62,8 @@ struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
   
   STDMETHOD(GetDescriptorInfo)
   (
-      WinML::IEngineFactory* engine_factory, 
-      WinML::IDescriptorInfo** info) override;
+      _winml::IEngineFactory* engine_factory, 
+      _winml::IDescriptorInfo** info) override;
 
  private:
   winrt::hstring name_;

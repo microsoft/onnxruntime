@@ -306,10 +306,10 @@ STDMETHODIMP OnnruntimeModel::AddModelInput(_In_ const char* const name, _In_ ID
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
   auto ort_api = engine_factory_->UseOrtApi();
 
-  winrt::com_ptr<WinML::IDescriptorInfo> descriptor_info;
+  winrt::com_ptr<_winml::IDescriptorInfo> descriptor_info;
   descriptor_provider->GetDescriptorInfo(engine_factory_.Get(), descriptor_info.put());
 
-  auto ort_type_info_provider = descriptor_info.as<WinML::IOrtTypeInfoProvider>();
+  auto ort_type_info_provider = descriptor_info.as<_winml::IOrtTypeInfoProvider>();
   OrtTypeInfo* type_info;
   ort_type_info_provider->GetTypeInfo(&type_info);
 
@@ -322,10 +322,10 @@ STDMETHODIMP OnnruntimeModel::AddModelOutput(_In_ const char* const name, _In_ I
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
   auto ort_api = engine_factory_->UseOrtApi();
 
-  winrt::com_ptr<WinML::IDescriptorInfo> descriptor_info;
+  winrt::com_ptr<_winml::IDescriptorInfo> descriptor_info;
   descriptor_provider->GetDescriptorInfo(engine_factory_.Get(), descriptor_info.put());
 
-  auto ort_type_info_provider = descriptor_info.as<WinML::IOrtTypeInfoProvider>();
+  auto ort_type_info_provider = descriptor_info.as<_winml::IOrtTypeInfoProvider>();
   OrtTypeInfo* type_info;
   ort_type_info_provider->GetTypeInfo(&type_info);
 
@@ -374,7 +374,7 @@ STDMETHODIMP OnnruntimeModel::ResolveOperatorInputs(_In_ const char* const op_ty
 
     const char* name;
     winml_adapter_api->OperatorGetInputName(op_type, i, &name);
-    mapping.Insert(WinML::Strings::HStringFromUTF8(name), feature_descriptor.Name());
+    mapping.Insert(_winml::Strings::HStringFromUTF8(name), feature_descriptor.Name());
   }
 
   return S_OK;

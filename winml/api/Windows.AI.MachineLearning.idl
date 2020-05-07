@@ -18,13 +18,17 @@ import "windows.storage.idl";
 
 #include <sdkddkver.h>
 
-#ifndef ROOT_NS
-#define ROOT_NS Windows
-#define INBOX_ONLY(x) x
-#define OTB_ONLY(x)
+#ifdef BUILD_INBOX
+  #define ROOT_NS Windows
+  #define INBOX_ONLY(x) x
+  #define OTB_ONLY(x)
 #else
-#define INBOX_ONLY(x)
-#define OTB_ONLY(x) x
+  #define INBOX_ONLY(x)
+  #define OTB_ONLY(x) x
+#endif
+
+#ifndef ROOT_NS
+  #define ROOT_NS Microsoft
 #endif
 
 namespace ROOT_NS.AI.MachineLearning 

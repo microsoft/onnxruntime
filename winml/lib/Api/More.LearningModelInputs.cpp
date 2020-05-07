@@ -1,11 +1,12 @@
 ﻿#include "pch.h"
-#include "LearningModelInputs.h"
-#include "LearningModelOperator.h"
+#include "More.LearningModelInputs.h"
+#include "More.LearningModelOperator.h"
 
 #include "LearningModelBuilder.h"
 #include "TensorFeatureDescriptor.h"
 
-namespace winrt::Windows::AI::MachineLearning::More::implementation {
+namespace MOREP {
+
 LearningModelInputs::LearningModelInputs(winml::More::LearningModelBuilder builder) : builder_(builder),
                                                                                       input_descriptors_(winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>()),
                                                                                       input_default_values_(winrt::single_threaded_vector<wf::IInspectable>()),
@@ -31,9 +32,9 @@ more::LearningModelBuilder LearningModelInputs::AddInput(winml::ILearningModelFe
   // Perform model update inside the builder
   auto model = builder_.as<morep::LearningModelBuilder>()->UseModel();
 
-  auto descriptor_provider = input.as<WinML::IDescriptorInfoProvider>();
+  auto descriptor_provider = input.as<_winml::IDescriptorInfoProvider>();
 
-  auto input_name = WinML::Strings::UTF8FromHString(input.Name());
+  auto input_name = _winml::Strings::UTF8FromHString(input.Name());
   model->AddModelInput(input_name.c_str(), descriptor_provider.get(), is_constant);
 
   if (is_constant) {
@@ -70,4 +71,4 @@ wfc::IVector<winml::ILearningModelFeatureDescriptor> LearningModelInputs::Inputs
   return winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>(std::move(all));
 }
 
-}  // namespace winrt::Windows::AI::MachineLearning::More::implementation
+}  // namespace MOREP

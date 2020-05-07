@@ -1,9 +1,10 @@
 ﻿#pragma once
 
 #include "LearningModelInputs.g.h"
-#include "LearningModelBuilder.h"
+#include "More.LearningModelBuilder.h"
 
-namespace winrt::Windows::AI::MachineLearning::More::implementation {
+namespace MOREP {
+
 struct LearningModelInputs : LearningModelInputsT<LearningModelInputs> {
   LearningModelInputs(winml::More::LearningModelBuilder builder);
 
@@ -24,4 +25,4 @@ struct LearningModelInputs : LearningModelInputsT<LearningModelInputs> {
   wfc::IVector<wf::IInspectable> constant_values_;
   more::LearningModelBuilder builder_;
 };
-}  // namespace winrt::Windows::AI::MachineLearning::More::implementation
+}  // namespace MOREP
