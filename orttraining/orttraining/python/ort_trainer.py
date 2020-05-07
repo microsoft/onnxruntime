@@ -404,6 +404,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.allreduce_post_accumulation = allreduce_post_accumulation
     ort_parameters.partition_optimizer = partition_optimizer
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
+    ort_parameters.set_gradients_as_graph_outputs = False
 
     output_types = {}
     for output in model.graph.output:
@@ -476,6 +477,7 @@ def create_ort_training_session_bind_parameters(model, device, world_rank=-1, wo
     ort_parameters.world_rank = world_rank
     ort_parameters.world_size = world_size
     ort_parameters.gradient_accumulation_steps = gradient_accumulation_steps
+    ort_parameters.set_gradients_as_graph_outputs = True
 
     torch_params = {}
     output_types = {}
