@@ -136,6 +136,16 @@ class TrainingSession : public InferenceSession {
     // Whether to use pipeline in training.
     bool use_pipeline{false};
 
+    struct CutEdge {
+      std::string node_arg_name;
+      optional<std::string> consumer_node;
+
+      CutEdge(std::string edge) : node_arg_name(edge){};
+      CutEdge(std::string edge, std::string node) : node_arg_name(edge), consumer_node(node){};
+    };
+
+    typedef std::vector<CutEdge> CutInfo;
+
     struct PipelineConfiguration {
       // Total number of pipeline stages.
       size_t num_pipeline_stages;
@@ -145,6 +155,7 @@ class TrainingSession : public InferenceSession {
       // Each pipeline stage should pick up some strings from this field..
       std::vector<std::string> fetch_names;
       // [TODO] Add cut information.
+      std::vector<CutInfo> cut_list;
     };
 
     optional<PipelineConfiguration> pipeline_config{};
@@ -246,6 +257,12 @@ class TrainingSession : public InferenceSession {
 
   /** Checks to be see if given graph output is produced by an fp32-only node. */
   bool IsGraphOutputFp32Node(const std::string& output_name) const;
+
+    // using CutInfo = std::vector<training::pipeline::PipelineContext::CutEdge>;
+  common::Status GetSplitGraphForPipeline(std::vector<TrainingConfiguration::CutInfo> cut_info,
+                                          size_t pipeline_stage_id,
+                                          size_t num_pipeline_stages,
+                                          std::string& pipeline_partition_file_name);
 
  private:
   /** Configures the loss function.
@@ -351,8 +368,7 @@ class TrainingSession : public InferenceSession {
 
   std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights) const;
 
-  using CutInfo = std::vector<pipeline::PipelineContext::CutEdge>;
-  common::Status GetSplitGraphForPipeline(std::vector<CutInfo> cut_info, size_t pipeline_stage_id, const std::string& input_file_name,std::string& pipeline_partition_file_name);
+
 
   std::unordered_set<std::string> GetStateTensorNames() const;
 

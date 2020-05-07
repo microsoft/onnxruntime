@@ -525,6 +525,10 @@ class Graph {
     return graph_inputs_including_initializers_;
   }
 
+  bool IsInputsIncludingInitializers(const NodeArg* node_arg) const noexcept{
+    return std::find(graph_inputs_including_initializers_.begin(), graph_inputs_including_initializers_.end(), node_arg) != graph_inputs_including_initializers_.end();
+  }
+
   /** Gets the Graph inputs that are initializers
   These are overridable initializers. This is a difference between
   graph_inputs_including_initializers_ and graph_inputs_excluding_initializers_
@@ -536,6 +540,10 @@ class Graph {
   /** Gets the Graph outputs.
   @remarks Contains no nullptr values.*/
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return graph_outputs_; }
+
+  bool IsOutput(const NodeArg* node_arg) const noexcept{
+    return std::find(graph_outputs_.begin(), graph_outputs_.end(), node_arg) != graph_outputs_.end();
+  }
 
   /** Returns a vector with the indexes of the outputs of the given Node that are also Graph outputs. */
   std::vector<int> GetNodeOutputsInGraphOutputs(const Node& node) const {

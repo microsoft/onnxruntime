@@ -15,7 +15,8 @@
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/util/include/default_providers.h"
 #include "orttraining/test/optimizer/horizontal_parallel_test_utils.h"
-
+#include "orttraining/core/session/training_session.h"
+#include "orttraining/core/graph/pipeline_transformer.h"
 #include <random>
 
 using namespace std;
@@ -58,6 +59,32 @@ Node* GetNodeByName(Graph& graph, std::string node_name) {
   return nullptr;
 }
 
+TEST_F(GraphTransformationTests, PipelinePartitionRank0) {
+  auto model_uri = "testdata/test_training_model.onnx";
+  // auto model_uri = "testdata/bert-tiny-shaped.onnx";
+  std::shared_ptr<Model> p_model;
+  auto ret = Model::Load(model_uri, p_model, nullptr, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+  Graph& graph = p_model->MainGraph();
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  using CutInfo = std::vector<onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge>;
+  std::vector<CutInfo> cut_list_;
+
+  // CutInfo cut0 = {onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("186"), onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("71", "273")};
+  // CutInfo cut1 = {onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("308"), onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("71", "395")};
+  CutInfo cut0 = {onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("T3")};
+  CutInfo cut1 = {onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("T6")};
+
+
+  cut_list_.emplace_back(cut0);
+  cut_list_.emplace_back(cut1);
+
+  graph_transformation_mgr.Register(onnxruntime::make_unique<onnxruntime::training::PipelineTransformer>(cut_list_, 0, 3, "test.onnx"), TransformerLevel::Level1);
+  ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+  auto model_uri2 = "testdata/0.onnx";
+  Model::Save(*p_model, model_uri2);
+}
 
 // MegatronF/G is defined only for training, and in msdomain.
 #ifndef DISABLE_CONTRIB_OPS

@@ -33,6 +33,14 @@ struct Slot {
   std::vector<int> recorded_events;
 };
 
+struct CutEdge {
+  std::string node_arg_name;
+  optional<std::string> consumer_node;
+
+  CutEdge(std::string edge) : node_arg_name(edge){};
+  CutEdge(std::string edge, std::string node) : node_arg_name(edge), consumer_node(node){};
+};
+
 class PipelineSchedule {
 public:
   PipelineSchedule() = default;
@@ -96,15 +104,7 @@ struct PipelineContext {
   // The last batch runs optimizer and update the weights.
   size_t num_gradient_accumulation_steps;
 
-  struct CutEdge{
-    std::string node_arg_name;
-    optional<std::string> consumer_node;
 
-    CutEdge(std::string edge): node_arg_name(edge) {};
-    CutEdge(std::string edge, std::string node): node_arg_name(edge), consumer_node(node) {};
-  };
-  using CutInfo = std::vector<CutEdge>;
-  std::vector<CutInfo> cut_list;
 
   // Name of scheduling event in graph's input list.
   // If an event name is an empty string, it means no event

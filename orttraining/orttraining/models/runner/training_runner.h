@@ -204,7 +204,7 @@ class TrainingRunner {
   AllocatorPtr input_allocator_;
 
   std::unique_ptr<CheckpointRegistry> checkpoint_registry_;
-  
+
   // Pipeline fields are valid only if params_.use_pipeline_ is true.
   // Information for running pipeline.
   pipeline::PipelineContext pipeline_context_;
@@ -212,6 +212,10 @@ class TrainingRunner {
   pipeline::PipelineSchedule pipeline_schedule_;
   // Workers to run pipeline stage.
   pipeline::PipelineWorkerPool pipeline_worker_pool_;
+
+  using CutInfo = std::vector<TrainingSession::TrainingConfiguration::CutEdge>;
+  std::vector<CutInfo> cut_list_;
+
 };
 
 }  // namespace training

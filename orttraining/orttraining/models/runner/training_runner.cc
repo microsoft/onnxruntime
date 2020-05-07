@@ -68,17 +68,22 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
     pipeline_context_.num_pipeline_batches = params_.gradient_accumulation_steps - 1;
     pipeline_context_.num_gradient_accumulation_steps = params_.gradient_accumulation_steps;
 
-    using CutInfo = std::vector<pipeline::PipelineContext::CutEdge>;
-    CutInfo cut0 = {pipeline::PipelineContext::CutEdge("186"), pipeline::PipelineContext::CutEdge("71", "273")};
-    CutInfo cut1 = {pipeline::PipelineContext::CutEdge("308"), pipeline::PipelineContext::CutEdge("71", "395")};
+    // using CutInfo = std::vector<TrainingConfiguration::CutEdge>;
+    // std::vector<CutInfo> cut_list;
+
+
+    // using CutInfo = std::vector<pipeline::PipelineContext::CutEdge>;
+    CutInfo cut0 = {TrainingSession::TrainingConfiguration::CutEdge("186"), TrainingSession::TrainingConfiguration::CutEdge("71", "273")};
+    CutInfo cut1 = {TrainingSession::TrainingConfiguration::CutEdge("308"), TrainingSession::TrainingConfiguration::CutEdge("71", "395")};
   //   struct CutEdge{
   //   std::string node_arg_name;
   //   std::optional<std::string> consumer_node;
   // };
   // using CutInfo = std::vector<CutEdge>;
   // std::vector<CutInfo> cut_list;
-
-    pipeline_context_.cut_list={cut0, cut1};
+cut_list_.emplace_back(cut0);
+cut_list_.emplace_back(cut1);
+    // cut_list_={cut0, cut1};
     // //     cut0_input = {CutEdge('186'), CutEdge('71', {'273', '395'})}
     // // cut1_input = {CutEdge('308'), CutEdge('71', {'395'})}
     pipeline_schedule_.add(0, pipeline_context_.num_pipeline_batches);
@@ -96,9 +101,9 @@ Status TrainingRunner::Initialize() {
   // }
 
   // throw if faile
-  // std::string pipeline_partition_file_name;
+  std::string pipeline_partition_file_name = "/bert_ort/xuzhu/pipe/test_" + std::to_string(pipeline_context_.pipeline_stage_id)+".onnx";
   ORT_RETURN_IF_ERROR(session_.Load("/bert_ort/xuzhu/pipe/bert-tiny-shaped.onnx"));
-  ORT_RETURN_IF_ERROR(session_.GetSplitGraphForPipeline(pipeline_context_.cut_list, pipeline_context_.pipeline_stage_id, pipeline_partition_file_name));
+  ORT_RETURN_IF_ERROR(session_.GetSplitGraphForPipeline(cut_list_, pipeline_context_.pipeline_stage_id, pipeline_context_.num_pipeline_stages, pipeline_partition_file_name));
 
   /*
   ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
@@ -179,6 +184,7 @@ Status TrainingRunner::Initialize() {
     pipe.num_pipeline_stages = params_.num_pipeline_stages;
     pipe.pipeline_stage_id = params_.mpi_context.world_rank;
     pipe.fetch_names = params_.fetch_names;
+    pipe.cut_list = cut_list_;
     config.pipeline_config = pipe;
   }
 

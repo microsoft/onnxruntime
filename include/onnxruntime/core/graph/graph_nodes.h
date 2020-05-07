@@ -12,7 +12,7 @@ namespace onnxruntime {
 class Node;
 
 /**
-Class to filter out null entries from either a vector of unique_ptr<Node> or a vector of [const] Node* and 
+Class to filter out null entries from either a vector of unique_ptr<Node> or a vector of [const] Node* and
 provide an iterator interface that returns [const] Node& for the valid entries.
 */
 template <typename TNodesContainer>
@@ -46,6 +46,14 @@ class ValidNodes {
     return cend();
   }
 
+  // ConstNodeIterator rbegin() const noexcept {
+  //   return {nodes_.rbegin(), nodes_.rend()};
+  // }
+
+  // ConstNodeIterator rend() const noexcept {
+  //   return {nodes_.rend(), nodes_.rend()};
+  // }
+
   MutableNodeIterator begin() noexcept {
     return {nodes_.begin(), nodes_.end()};
   }
@@ -56,10 +64,10 @@ class ValidNodes {
 
   bool empty() const noexcept { return nodes_.empty(); }
 
-  /** 
+  /**
   @class NodeIterator
   Iterator to provide const and non-const access to valid Node instances in a Graph.
-  @remarks Skips invalid nodes. 
+  @remarks Skips invalid nodes.
   */
   template <typename TIterator>
   class NodeIterator {
@@ -130,7 +138,7 @@ class ValidNodes {
 };
 
 /**
-Class that provides iteration over all valid nodes in the Graph. 
+Class that provides iteration over all valid nodes in the Graph.
 */
 class GraphNodes : public ValidNodes<std::vector<std::unique_ptr<Node>>> {
  public:

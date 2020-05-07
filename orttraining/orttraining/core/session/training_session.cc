@@ -107,12 +107,12 @@ bool IsRootNode(const TrainingSession::TrainingConfiguration& config) {
 }
 }  // namespace
 
-using CutInfo = std::vector<pipeline::PipelineContext::CutEdge>;
-Status GetSplitGraphForPipeline(std::vector<CutInfo> cut_info,
+// using CutInfo = std::vector<pipeline::PipelineContext::CutEdge>;
+Status TrainingSession::GetSplitGraphForPipeline(std::vector<TrainingConfiguration::CutInfo> cut_info,
                                 size_t pipeline_stage_id,
-                                const std::string& input_file_name,
+                                size_t num_pipeline_stages,
                                 std::string& pipeline_partition_file_name) {
-  ORT_RETURN_IF_ERROR(SplitGraphForPipeline(model_->MainGraph(), cut_info, pipeline_stage_id, pipeline_partition_file_name));
+  return SplitGraphForPipeline(model_->MainGraph(), cut_info, pipeline_stage_id, num_pipeline_stages, pipeline_partition_file_name);
 }
 
 Status TrainingSession::ConfigureForTraining(
