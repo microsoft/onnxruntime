@@ -14,7 +14,7 @@ import subprocess
 import sys
 import hashlib
 import itertools
-
+from distutils import util
 
 logging.basicConfig(
     format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
@@ -1728,6 +1728,7 @@ def main():
 
 if __name__ == "__main__":
     try:
+        print(distutils.util.get_platform())
         sys.exit(main())
     except BaseError as e:
         log.error(str(e))
