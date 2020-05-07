@@ -1449,7 +1449,7 @@ Example 4:
           0,
           "X",
           "Input tensors",
-          "T1",
+          "T",
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
           /*min_arity*/ 1)
