@@ -25,6 +25,14 @@ import psutil
 import traceback
 from packaging import version
 
+# List of pretrained models: https://huggingface.co/transformers/pretrained_models.html
+# Pretrained model name to a tuple of input names, number of optional inputs
+MODELS = {
+    "bert-base-cased": (["input_ids", "attention_mask", "token_type_ids"], 2),
+    "distilbert-base-uncased": (["input_ids", "attention_mask"], 1),
+    "roberta-base": (["input_ids", "attention_mask"], 1),
+}
+
 cpu_count = psutil.cpu_count(logical=True)
 # Set OMP environment variable before importing onnxruntime or torch.
 if "OMP_NUM_THREADS" not in os.environ:
@@ -55,6 +63,7 @@ def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_name
     input_ids = numpy.random.randint(low=0, high=vocab_size - 1, size=(batch_size, sequence_length), dtype=numpy.int64)
 
     inputs = {'input_ids': input_ids}
+
     if "attention_mask" in input_names:
         attention_mask = numpy.ones([batch_size, sequence_length], dtype=numpy.int64)
         inputs['attention_mask'] = attention_mask
@@ -65,6 +74,23 @@ def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_name
 
     return inputs
 
+def flatten(outputs):
+    return [[flatten(i) for i in outputs] if isinstance(outputs, (list, tuple)) else outputs]
+
+def build_dynamic_axes(example_inputs, example_outputs):
+    sequence_length = example_inputs["input_ids"].shape[-1]
+
+    dynamic_axes = {key: {0: 'batch_size', 1: 'max_seq_len'} for key in example_inputs.keys()}
+
+    outputs = example_outputs # if isinstance(example_outputs, (list, tuple)) else (example_outputs, )
+    output_names = ['output_' + str(i + 1) for i in range(len(outputs))]
+    for i, output_name in enumerate(output_names):
+        dynamic_axes[output_name] = {0: 'batch_size'}
+        dims = outputs[i].shape
+        for j, dim in enumerate(dims):
+            if dim == sequence_length:
+                dynamic_axes[output_name].update({j: 'max_seq_len'})
+    return dynamic_axes, output_names
 
 def export_onnx_model(model_name, cache_dir):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
@@ -80,12 +106,7 @@ def export_onnx_model(model_name, cache_dir):
 
         model_outputs = model(**model_inputs)
 
-        dynamic_axes = {key: {0: 'batch_size', 1: 'max_seq_len'} for key in model_inputs.keys()}
-        output_names = ['last_hidden_state']
-        dynamic_axes['last_hidden_state'] = {0: 'batch_size', 1: 'max_seq_len'}
-        if len(model_outputs) > 1:
-            dynamic_axes['pooled'] = {0: 'batch_size'}
-            output_names += ['pooled']
+        dynamic_axes, output_names = build_dynamic_axes(model_inputs, model_outputs)
 
         torch.onnx.export(model=model,
                           args=tuple(model_inputs.values()),
@@ -138,12 +159,7 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
                     continue
 
                 ort_session = create_onnxruntime_session(onnx_model_file, use_gpu)
-                modle_input_names = {
-                    "bert-base-cased": ["input_ids", "attention_mask", "token_type_ids"],
-                    "distilbert-base-uncased": ["input_ids", "attention_mask"],
-                    "roberta-base": ["input_ids"]
-                }
-                input_names = modle_input_names[model_name] if model_name in modle_input_names else ["input_ids"]
+                input_names = MODELS[model_name][0]
                 ort_input = create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names)
                 ort_session.run(None, ort_input)
 
@@ -254,9 +270,11 @@ def parse_arguments():
     parser.add_argument(
         "--models",
         required=False,
+        nargs="+",
         type=str,
-        default="all",
-        help="Pre-trained models (https://huggingface.co/transformers/pretrained_models.html) separated by comma")
+        default=list(MODELS.keys()),
+        choices=list(MODELS.keys()),
+        help="Pre-trained models in the list: " + ", ".join(MODELS.keys()))
 
     parser.add_argument("--engines",
                         required=False,
@@ -276,19 +294,11 @@ def parse_arguments():
 
     parser.add_argument("--fp16", required=False, action="store_true", help="Use FP16 to accelerate inference")
 
-    parser.add_argument(
-        "--verbose",
-        required=False,
-        action="store_true",
-        help="Print more information",
-    )
+    parser.add_argument("--verbose", required=False, action="store_true", help="Print more information")
 
-    parser.add_argument(
-        "--csv_filename",
-        required=False,
-        default=None,
-        help="CSV file for saving results.",
-    )
+    parser.add_argument("--csv_filename", required=False, default=None, help="CSV file for saving results.")
+
+    #parser.add_argument("--no_optional_inputs", required=False, default=None, help="Remove optional model inputs.")
 
     parser.add_argument("--test_times",
                         required=False,
@@ -318,15 +328,6 @@ def main():
         except OSError:
             print("Creation of the directory %s failed" % args.cache_dir)
 
-    model_names = args.models.split(',')
-    if args.models == "all":
-        model_names = [
-            "bert-base-cased",
-            #"distilbert-base-uncased",
-            #"roberta-base",
-        ]
-        print(f"Models to run benchmark: {model_names}")
-
     enable_torch = "torch" in args.engines
     enable_torchscript = "torchscript" in args.engines
     enable_onnxruntime = "onnxruntime" in args.engines
@@ -337,16 +338,16 @@ def main():
             raise ImportError("Trying to run a PyTorch benchmark but PyTorch was not found in the environment.")
 
         if enable_torchscript:
-            results += run_pytorch(args.use_gpu, model_names, args.fp16, args.batch_sizes, args.sequence_lengths,
+            results += run_pytorch(args.use_gpu, args.models, args.fp16, args.batch_sizes, args.sequence_lengths,
                                    args.test_times, True, args.cache_dir, args.verbose)
 
         if enable_torch:
-            results += run_pytorch(args.use_gpu, model_names, args.fp16, args.batch_sizes, args.sequence_lengths,
+            results += run_pytorch(args.use_gpu, args.models, args.fp16, args.batch_sizes, args.sequence_lengths,
                                    args.test_times, False, args.cache_dir, args.verbose)
 
     if enable_onnxruntime:
         try:
-            results += run_onnxruntime(args.use_gpu, model_names, args.fp16, args.batch_sizes, args.sequence_lengths,
+            results += run_onnxruntime(args.use_gpu, args.models, args.fp16, args.batch_sizes, args.sequence_lengths,
                                        args.test_times, args.cache_dir, args.verbose)
         except:
             print(f"Exception:{traceback.format_exc()}")
