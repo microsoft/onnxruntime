@@ -58,16 +58,17 @@ stages:
         --enable_training
         --skip_python_training_tests
         --wheel_name_suffix training
-      actual_extra_linux_docker_build_parameters: '--build-arg ENABLE_TRAINING=1'
       docker_image_prefix: onnxruntime-training
+      linux_gpu_dockerfile: Dockerfile.manylinux2014_gpu
 
     ${{ if ne(parameters.enable_training, true) }}:
       actual_extra_build_py_parameters: '${{ parameters.build_py_parameters }}'
       docker_image_prefix: onnxruntime
+      linux_gpu_dockerfile: Dockerfile.manylinux2010_gpu
 
   jobs:
   - ${{ if eq(parameters.enable_linux_cpu, true) }}:
-    - job: Manylinux1_py_Wheels
+    - job: Linux_py_Wheels
       timeoutInMinutes: 90
       workspace:
         clean: all
@@ -91,7 +92,6 @@ stages:
                 --build-arg BUILD_USER=onnxruntimedev \
                 --build-arg BUILD_UID=$(id -u) \
                 --build-arg PYTHON_VERSION=$(python.version) \
-                ${{ variables.actual_extra_linux_docker_build_parameters }} \
                 -f Dockerfile.manylinux1 .
             workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
@@ -134,7 +134,7 @@ stages:
         - template: clean-agent-build-directory-step.yml
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
-    - job: Manylinux2010_py_GPU_Wheels
+    - job: Linux_py_GPU_Wheels
       timeoutInMinutes: 90
       workspace:
         clean: all
@@ -158,8 +158,7 @@ stages:
                 --build-arg BUILD_USER=onnxruntimedev \
                 --build-arg BUILD_UID=$(id -u) \
                 --build-arg PYTHON_VERSION=$(python.version) \
-                ${{ variables.actual_extra_linux_docker_build_parameters }} \
-                -f Dockerfile.manylinux2010_gpu .
+                -f ${{ parameters.linux_gpu_dockerfile }} .
             workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
         - task: CmdLine@2
