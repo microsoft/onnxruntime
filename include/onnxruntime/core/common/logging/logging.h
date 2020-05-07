@@ -219,6 +219,7 @@ class LoggingManager final {
   const bool default_filter_user_data_;
   const int default_max_vlog_level_;
   bool owns_default_logger_;
+
   static Logger* s_default_logger_;
 
   struct Epochs {
