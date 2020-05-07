@@ -1,10 +1,10 @@
+# ported from trainer.py of huggingface transformers
+# Still missing gradient clipping and the approach in AdamW.
+
 import json
 import logging
 import os
 import random
-import re
-import shutil
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Dict, List, NamedTuple, Optional, Tuple
 
@@ -113,7 +113,7 @@ class ORTTransformerTrainer:
             else:
                 return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6}
 
-        model = ORTTrainer(model, None,
+        self.model = ORTTrainer(model, None,
             model_desc, 
             "AdamOptimizer",
             # TODO: how to support AdamW
@@ -122,16 +122,13 @@ class ORTTransformerTrainer:
             device=args.device,
             postprocess_model=postprocess_model,
             gradient_accumulation_steps=args.gradient_accumulation_steps,
-            # BertLAMB default initial settings: b1=0.9, b2=0.999, e=1e-6
-            world_rank=0, world_size=1,
+            world_rank=0, world_size=1,     # only support single GPU cases
             use_mixed_precision=args.fp16,
             allreduce_post_accumulation=True,
             get_lr_this_step=get_lr_this_step,
             loss_scaler=loss_scaler,
             _opset_version=12)
 
-
-        self.model = model
         self.args = args
         if data_collator is not None:
             self.data_collator = data_collator

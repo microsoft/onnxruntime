@@ -1,3 +1,5 @@
+# Code ported from run_glue.py of huggingface transformers
+# Still missing gradient clipping and the approach in AdamW.
 # Finetuning sequence classification models on GLUE (Bert, XLM, XLNet, RoBERTa, Albert, XLM-RoBERTa).
 
 import dataclasses
@@ -15,17 +17,12 @@ from transformers import (
     EvalPrediction,
     GlueDataset,
     GlueDataTrainingArguments,
-    HfArgumentParser,
-    Trainer,
     TrainingArguments,
     glue_compute_metrics,
     glue_output_modes,
     glue_tasks_num_labels,
     set_seed,
 )
-
-# 
-from transformers.training_args import TrainingArguments
 
 import onnxruntime
 from onnxruntime.capi.ort_trainer import ORTTrainer, LossScaler, ModelDescription, IODescription
@@ -35,7 +32,6 @@ from orttraining_transformer_trainer import ORTTransformerTrainer
 import torch
 
 logger = logging.getLogger(__name__)
-
 
 @dataclass
 class ModelArguments:
@@ -59,6 +55,7 @@ class ModelArguments:
 class ORTGlueTest(unittest.TestCase):
 
     def setUp(self):
+        # configurations not to be changed accoss tests
         self.max_seq_length = 128
         self.train_batch_size = 32
         self.learning_rate = 2e-5
@@ -170,7 +167,7 @@ class ORTGlueTest(unittest.TestCase):
             IODescription('loss', [], torch.float32),
             IODescription('logits', ['batch', 2], torch.float32)])
 
-        # Initialize the Trainer
+        # Initialize the ORTTrainer within ORTTransformerTrainer
         trainer = ORTTransformerTrainer(
             model=model,
             model_desc=model_desc,
