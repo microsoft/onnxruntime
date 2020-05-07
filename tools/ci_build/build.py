@@ -1010,19 +1010,10 @@ def run_training_python_frontend_e2e_tests(args, cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
 
-    # # install latest huggingface transformers from source to take advantage of its generalized trainer
-    # subprocess.check_call([sys.executable, "-m", "pip", "install", "/transformers/", "--upgrade"])
-
     # force to use single GPU for fine-tune tests.
-    env={'CUDA_VISIBLE_DEVICES': '0'}
-    try:
-        run_subprocess([sys.executable, 'orttraining_run_glue.py', '-v'], cwd=cwd, env=env)
-    except:
-        print('python orttraining_run_glue.py failed')
-        run_subprocess(['pytest', 'orttraining_run_glue.py', '-k', 'test_bert_fp16_with_mrpc', '-s'], cwd=cwd, env=env)
-        run_subprocess(['pytest', 'orttraining_run_glue.py', '-k', 'test_bert_with_mrpc', '-s'], cwd=cwd, env=env)
-    
-    run_subprocess(['pytest', 'orttraining_run_glue.py '], cwd=cwd)
+    # need to run test separately.
+    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_with_mrpc', '-v'], cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_fp16_with_mrpc', '-v'], cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
 
     run_subprocess([sys.executable, 'orttraining_test_transformers.py'], cwd=cwd)
 
