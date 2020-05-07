@@ -8,7 +8,6 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/environment.h"
 #include "orttraining/models/runner/training_runner.h"
-#include "test/framework/test_utils.h"
 
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
 
@@ -20,8 +19,6 @@
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
 using namespace google::protobuf::util;
-using onnxruntime::test::CountOpsInGraph;
-using onnxruntime::test::GetOpCount;
 
 namespace onnxruntime {
 namespace test {
@@ -29,7 +26,6 @@ namespace test {
 namespace {
 constexpr auto ORIGINAL_MODEL_PATH = ORT_TSTR("testdata/test_training_model.onnx");
 constexpr auto BACKWARD_MODEL_PATH = ORT_TSTR("testdata/temp_backward_model.onnx");
-constexpr const char* const k_pass_through_op_name = "PassThrough";
 
 std::unordered_set<std::string> GetModelOutputNames(const InferenceSession& session) {
   const auto outputs_result = session.GetModelOutputs();
@@ -68,8 +64,6 @@ static Status BuildBackPropGraph(
 
   TrainingSession::TrainingConfigurationResult config_result{};
   ORT_RETURN_IF_ERROR(training_session.ConfigureForTraining(config, config_result));
-  //bugbug
-  training_session.Save(forward_model_file + ORT_TSTR(".onnx"), TrainingSession::SaveOption::NO_RELOAD);
 
   backward_model_file = config.model_with_training_graph_path.value();
 
@@ -144,9 +138,6 @@ TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
   EXPECT_TRUE(graph.NumberOfNodes() > 0);
   EXPECT_TRUE(graph.MaxNodeIndex() > 0);
 
-  auto op_counts = CountOpsInGraph(graph, false);
-  EXPECT_TRUE(GetOpCount(op_counts, k_pass_through_op_name) == 1);
-  
   std::cout << "Graph input names = [\n";
   for (const NodeArg* p_node_arg : graph.GetInputs()) {
     std::cout << '\t' << p_node_arg->Name() << '\n';
@@ -1022,7 +1013,6 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
     ASSERT_TRUE(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
 
     Graph& graph = model->MainGraph();
-
     auto is_backward = [](Node& node) {
       return (node.Description() == "Backward pass");
     };
@@ -1143,16 +1133,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
         {},
         {},
         {}},
-       {{"MeanSquaredError_reduce_mean_Grad/Unqueezed_Grad",
-         "MeanSquaredError_reduce_mean_Grad/Tiled_Grad",
-         "MeanSquaredError_diff_square_grad",
-         "MeanSquaredError_diff_grad",
-         "predictions_grad",
-         "loss_grad",
-         "B3_grad",
-         "T7_grad",
-         "W3_grad", 
-         "T6_grad"},
+       {{"MeanSquaredError_reduce_mean_Grad/Unqueezed_Grad", "MeanSquaredError_reduce_mean_Grad/Tiled_Grad", "MeanSquaredError_diff_square_grad", "MeanSquaredError_diff_grad", "predictions_grad", "B3_grad", "T7_grad", "W3_grad", "T6_grad"},
         {},
         {"T6_grad"},
         {},

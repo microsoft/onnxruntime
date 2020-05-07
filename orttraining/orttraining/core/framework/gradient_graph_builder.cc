@@ -26,10 +26,6 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
     : graph_(graph),
       loss_node_arg_name_(loss_node_arg_name),
       set_gradient_as_graph_output_(set_gradient_as_graph_output) {
-  // Need to make sure the loss output from forward graph is not empty.
-  ORT_ENFORCE(!loss_node_arg_name.empty(),
-              "GradientGraphBuilder: Loss output name cannot be empty.");
-
   auto rule_based_graph_transformer =
       onnxruntime::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
   rule_based_graph_transformer->Register(make_unique<InsertMaxPoolOutput>());
@@ -131,49 +127,16 @@ Status GradientGraphBuilder::Build() {
   ORT_RETURN_IF_ERROR(opt_ret);
 
   GraphAugmenter::GraphDefs gradient_graph_defs;
-
-  // We skip adding loss gradient in case it's partitioned by pipeline.
-  if(COMMUNICATION_NODES.find(graph_->GetProducerNode(loss_node_arg_name_)->OpType()) == COMMUNICATION_NODES.end()) {
-    // We need to feed the loss output from forward graph and the gradient of loss initializer
-    // to the PassThrough op so that we manually enforce a dependency between backward pass
-    // and forward pass. Otherwise there will be cases where gradient ops don't rely on outputs
-    // from forward ops, then the backward pass might be scheduled to run before forward.
-    
-    // add "gradient of the loss" node, always 1.
+  // add "gradient of the loss" node, always 1.
+  if (loss_node_arg_name_ != "") {
     ONNX_NAMESPACE::TensorProto tensor_proto;
     tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     tensor_proto.add_float_data(1.f);
-    const std::string& loss_grad_name = GradientBuilderBase::GradientName(loss_node_arg_name_);
-    const std::string& loss_grad_initializer_name = loss_grad_name + "_initializer";
-    tensor_proto.set_name(loss_grad_initializer_name);
+    tensor_proto.set_name(GradientBuilderBase::GradientName(loss_node_arg_name_));
 
     gradient_graph_defs.AddInitializers({tensor_proto});
-
-    // Output of PassThrough is 'loss_name' + '_grad' which will be
-    // connected to first node in backward graph when we traverse
-    // through visited nodes later.
-    ArgDef loss_grad_initializer_arg = 
-        ArgDef(loss_grad_initializer_name,
-               gradient_graph_defs.CreateTypeProto({},
-                                                   ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-
-    auto output_node = graph_->GetNodeArg(loss_node_arg_name_);
-    TypeProto* loss_output_arg_type_proto = gradient_graph_defs.CopyTypeProto(output_node);
-
-    ArgDef loss_output_arg = ArgDef(loss_node_arg_name_,
-                                    loss_output_arg_type_proto);
-
-    ArgDef loss_grad_arg = ArgDef(loss_grad_name,
-                                  gradient_graph_defs.CopyTypeProto(loss_grad_initializer_arg));
-
-    gradient_graph_defs.AddNodeDefs(
-          {NodeDef(OpDef{"PassThrough", kMSDomain, 1},
-                   {loss_output_arg, /*control*/
-                    loss_grad_initializer_arg /*data*/},
-                   {loss_grad_arg},
-                   NodeAttributes(),
-                   loss_grad_name + "_PassThrough")});
   }
+
   NodeSet reachable_nodes = ReverseBFS(y_nodes_);
 
   ORT_RETURN_IF_ERROR(CheckNodeArgsReachable(reachable_nodes));

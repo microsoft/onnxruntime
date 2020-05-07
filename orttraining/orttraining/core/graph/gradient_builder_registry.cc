@@ -95,8 +95,6 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Send", GetSendGradient);
   REGISTER_GRADIENT_BUILDER("Recv", GetRecvGradient);
   REGISTER_GRADIENT_BUILDER("Expand", GetExpandGradient);
-
-  NO_GRADIENT("PassThrough");
 };
 
 }  // namespace training
