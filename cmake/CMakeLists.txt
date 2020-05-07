@@ -1010,8 +1010,4 @@ if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
     target_link_options(onnxruntime PRIVATE /SAFESEH)
     target_link_options(winml_dll PRIVATE /SAFESEH)
   endif()
-<<<<<<< HEAD
 endif()
-=======
-endif()
->>>>>>> origin/master
