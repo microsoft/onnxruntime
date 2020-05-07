@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace hip {
 
-template <typename T1, typename T2>
+template <typename T1, typename T2, bool trainable_dropout>
 class Dropout final : public HipKernel {
  public:
   Dropout(const OpKernelInfo& info) : HipKernel(info), default_ratio_(0.5) {
@@ -29,7 +29,9 @@ class Dropout final : public HipKernel {
 template <typename T1, typename T2>
 class DropoutGrad final : public HipKernel {
  public:
-  DropoutGrad(const OpKernelInfo& info) : HipKernel(info), default_ratio_(0.5) {}
+  DropoutGrad(const OpKernelInfo& info) : HipKernel(info), default_ratio_(0.5) {
+  }
+
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:

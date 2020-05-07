@@ -181,8 +181,11 @@ __device__ __inline__ half2 _Tanh(half2 a) {
   return __float22half2_rn(tmp);
 }
 
-template <typename T>
-__device__ __inline__ T _Pow(T a, T b);
+// Capture permutations of int32/64/float/double
+template <typename T, typename T1>
+__device__ __inline__ T _Pow(T a, T1 b) {
+  return static_cast<T>(pow(static_cast<double>(a), static_cast<double>(b)));
+}
 
 template <>
 __device__ __inline__ float _Pow(float a, float b) { return powf(a, b); }
