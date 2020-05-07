@@ -78,7 +78,7 @@ def get_input_names(model_name, num_inputs):
     inputs = MODELS[model_name][0]
     num_required_inputs = len(inputs) - MODELS[model_name][1]
     if num_inputs > len(inputs) or num_inputs < num_required_inputs:
-        print(f"Model {model_name} inputs: Min {num_required_inputs}, Max {len(inputs)}.")
+        print(f"Model {model_name} allowed inputs: Min={num_required_inputs}, Max={len(inputs)}, Requested={num_inputs}.")
         return None
 
     return inputs[:num_inputs]
@@ -165,7 +165,7 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
     for model_name in model_names:
         input_names = get_input_names(model_name, num_inputs)
         if input_names is None:
-            print("Skip model {model_name} since it does not support {} inputs")
+            print(f"Skip model {model_name} which does not support {num_inputs} inputs")
             continue
 
         onnx_model_file, vocab_size, max_sequence_length = export_onnx_model(model_name, cache_dir, input_names)
@@ -267,7 +267,7 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
                         "device": device,
                         "fp16": fp16,
                         "model_name": model_name,
-                        "inputs": num_inputs,
+                        "inputs": 1,
                         "batch_size": batch_size,
                         "sequence_length": sequence_length,
                         "average_latency_ms": "{:.2f}".format(latency_ms),
@@ -357,6 +357,9 @@ def main():
     if enable_torch or enable_torchscript:
         if not is_torch_available():
             raise ImportError("Trying to run a PyTorch benchmark but PyTorch was not found in the environment.")
+        
+        if args.num_inputs != 1:
+            print("warning: --num_inputs is not implemented for torch or torchscript engine: reset to 1.")
 
         if enable_torchscript:
             results += run_pytorch(args.use_gpu, args.models, args.fp16, args.batch_sizes, args.sequence_lengths,
