@@ -98,7 +98,7 @@ void DataSet::GetTensorDimensionsFromInputs(size_t batch_size, const std::map<st
       shape_vector.emplace_back(batch_size);
     }
     // skipping out of bounds position, continue with warning
-    if (metric.second < shape_vector.size())
+    if (metric.second >= 0 && metric.second < shape_vector.size())
       perf_properties.insert({metric.first, std::to_string(shape_vector[metric.second])});
     else 
       printf("warning: shape position out of bounds for input %s.\n", input_name.c_str());    
