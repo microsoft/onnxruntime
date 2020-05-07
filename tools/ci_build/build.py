@@ -1358,6 +1358,12 @@ def build_python_wheel(
         args = [sys.executable, os.path.join(source_dir, 'setup.py'),
                 'bdist_wheel']
 
+        # We explicitly override the platform tag in the name of the generated build wheel
+        # so that we can install the wheel on Mac OS X versions 10.12+
+        # See PR #3626 for more details
+        if is_macOS():
+            args += ['-p', 'macosx_10_12_x86_64']
+
         # Any combination of the following arguments can be applied
         if nightly_build:
             args.append('--nightly_build')
