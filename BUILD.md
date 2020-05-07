@@ -191,10 +191,10 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 
 Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
-#### Jetson Nano/TX1/TX2(ARM64 Builds)
+#### Jetson TX1/TX2/Nano(ARM64 Builds)
 
 
-1. ONNX Runtime v1.2.0 or higher requires TensorRT 7 support, make sure jetson device is upgraded to [JetPack](https://docs.nvidia.com/jetson/jetpack/release-notes/) 4.4 or higher.
+1. ONNX Runtime v1.2.0 or higher requires TensorRT 7 support, make sure Jetson device is upgraded to [JetPack](https://docs.nvidia.com/jetson/jetpack/release-notes/) 4.4 or higher.
 2. Indicate CUDA compiler
 ```
 export CUDACXX="/usr/local/cuda/bin/nvcc"
@@ -216,7 +216,7 @@ export CUDACXX="/usr/local/cuda/bin/nvcc"
 
 ```
 
-See [instructions](https://github.com/microsoft/onnxruntime/issues/2684#issuecomment-568548387) for additional information and tips related to building Onnxruntime with TensorRT Execution Provider on Jetson platforms (TX1/TX2, Nano)
+See [instructions](https://github.com/microsoft/onnxruntime/issues/2684#issuecomment-568548387) for additional information and tips.
 
 ---
 
