@@ -54,6 +54,11 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   // tensor_sizes_in_bytes[i] = (# of elements in the i-th tensor) * sizeof(the i-th tensor's element type)
   std::vector<size_t> tensor_sizes_in_bytes;
 
+  // Same-rank communication is not allowed because we currently don't have async Send/Recv.
+  int world_rank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+  ORT_ENFORCE(world_rank != dst, "Sending data to rank ", dst, " on the rank ", world_rank, ".");
+
   // Compute tensor shapes and sizes
   size_t prefix_tensor_shape_size_sum = 0;
   for (int i = 0; i < tensor_num; ++i) {
@@ -71,11 +76,6 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
     tensor_sizes_in_bytes.push_back(x_tensor->SizeInBytes());
   }
 
-  // Start communication
-  int world_rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-  ORT_ENFORCE(world_rank != dst, "Sending data to rank ", dst, " on the rank ", world_rank, ".");
-
   IAllocatorUniquePtr<char> buffer = AllocateBufferOnCPUPinned<char>(
       static_cast<size_t>(aggregated_aligned_tensor_bytes));
 
@@ -83,7 +83,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   // TODO they can be moved to async call after global stream becoming accessible
   for (int i = 0; i < tensor_num; ++i) {
     const Tensor* x_tensor = ctx->Input<Tensor>(i + 2);
-    ORT_ENFORCE(cudaMemcpy(buffer.get() + tensor_offsets_in_bytes[i], x_tensor->Data<void>(),
+    ORT_ENFORCE(cudaMemcpy(buffer.get() + tensor_offsets_in_bytes[i], x_tensor->DataRaw(),
                            tensor_sizes_in_bytes[i], cudaMemcpyDeviceToHost) == cudaSuccess);
   }
 
