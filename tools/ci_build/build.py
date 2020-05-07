@@ -14,6 +14,7 @@ import subprocess
 import sys
 import hashlib
 import itertools
+import distutils
 from distutils import util
 
 logging.basicConfig(
