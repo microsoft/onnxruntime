@@ -18,18 +18,19 @@
 namespace onnxruntime {
 namespace test {
 
-template <typename TTensor, typename TControl>
+template <typename T1, typename T2>
 void pass_through_multiple_tensors() {
-  std::vector<TControl> control = {10.0f};
-  std::vector<TTensor> input1 = {2.2f, 4.7f, 9.6f};
-  std::vector<TTensor> input2 = {0.6f, 4.3f};
+  std::vector<T2> input0 = {10.0f};
+  std::vector<T1> input1 = {2.2f, 4.7f, 9.6f};
+  std::vector<T1> input2 = {0.6f, 4.3f};
   OpTester test_passthrough("PassThrough", 1, onnxruntime::kMSDomain);
-  test_passthrough.AddInput<TControl>("control_signal", {}, control);
-  test_passthrough.AddInput<TTensor>("Input1", {static_cast<int64_t>(input1.size())}, input1);
-  test_passthrough.AddInput<TTensor>("Input2", {static_cast<int64_t>(input2.size())}, input2);
+  test_passthrough.AddInput<T2>("Input0", {}, input0);
+  test_passthrough.AddInput<T1>("Input1", {static_cast<int64_t>(input1.size())}, input1);
+  test_passthrough.AddInput<T1>("Input2", {static_cast<int64_t>(input2.size())}, input2);
   // We expect input and output are the same.
-  test_passthrough.AddOutput<TTensor>("Output1", {static_cast<int64_t>(input1.size())}, input1);
-  test_passthrough.AddOutput<TTensor>("Output2", {static_cast<int64_t>(input2.size())}, input2);
+  test_passthrough.AddOutput<T2>("Output0", {}, input0);
+  test_passthrough.AddOutput<T1>("Output1", {static_cast<int64_t>(input1.size())}, input1);
+  test_passthrough.AddOutput<T1>("Output2", {static_cast<int64_t>(input2.size())}, input2);
   run_provider_specific_optest(test_passthrough);
 }
 
@@ -38,13 +39,13 @@ TEST(PassThrough, PassThroughMultipleFloatTensors) {
   pass_through_multiple_tensors<float, float>();
 }
 
-// Input tensor data is float, control is double
-TEST(PassThrough, PassThroughFloatTensorDoubleControl) {
+// Input tensors have float and doule types
+TEST(PassThrough, PassThroughFloatDoubleMixedInput) {
   pass_through_multiple_tensors<float, double>();
 }
 
-// Input tensor data is double, control is float
-TEST(PassThrough, PassThroughDoubleTensorFloatControl) {
+// Input tensors have float and doule types
+TEST(PassThrough, PassThroughDoubleFloatMixedInput) {
   pass_through_multiple_tensors<double, float>();
 }
 
@@ -55,34 +56,35 @@ TEST(PassThrough, PassThroughMultipleDoubleTensors) {
 
 // All inputs to PassThrough are half
 TEST(PassThrough, PassThroughMultipleHalfTensors) {
-  std::vector<float> control = {10.0f};
+  std::vector<float> input0 = {10.0f};
   std::vector<float> input1 = {2.2f, 4.7f, 9.6f};
   std::vector<float> input2 = {0.6f, 4.3f};
-  size_t control_size = control.size();
+  size_t input0_size = input0.size();
   size_t input1_size = input1.size();
   size_t input2_size = input2.size();
  
-  std::vector<MLFloat16> control_half(control_size);
+  std::vector<MLFloat16> input0_half(input0_size);
   std::vector<MLFloat16> input1_half(input1_size);
   std::vector<MLFloat16> input2_half(input2_size);
 
-  ConvertFloatToMLFloat16(control.data(), control_half.data(), control_size);
-  ConvertFloatToMLFloat16(input1.data(), input1_half.data(), input1_size);
-  ConvertFloatToMLFloat16(input2.data(), input2_half.data(), input2_size);
+  ConvertFloatToMLFloat16(input0.data(),input0_half.data(), static_cast<int>(input0_size));
+  ConvertFloatToMLFloat16(input1.data(), input1_half.data(), static_cast<int>(input1_size));
+  ConvertFloatToMLFloat16(input2.data(), input2_half.data(), static_cast<int>(input2_size));
 
   OpTester test_passthrough("PassThrough", 1, onnxruntime::kMSDomain);
-  test_passthrough.AddInput<MLFloat16>("control_signal", {}, control_half);
+  test_passthrough.AddInput<MLFloat16>("Input0", {}, input0_half);
   test_passthrough.AddInput<MLFloat16>("Input1", {static_cast<int64_t>(input1_size)}, input1_half);
   test_passthrough.AddInput<MLFloat16>("Input2", {static_cast<int64_t>(input2_size)}, input2_half);
   // We expect input and output are the same.
+  test_passthrough.AddOutput<MLFloat16>("Output0", {}, input0_half);
   test_passthrough.AddOutput<MLFloat16>("Output1", {static_cast<int64_t>(input1_size)}, input1_half);
   test_passthrough.AddOutput<MLFloat16>("Output2", {static_cast<int64_t>(input2_size)}, input2_half);
   run_provider_specific_optest(test_passthrough);
 }
 
-// Input tensor data is half, control is float
+// Input tensors have float and half types
 TEST(PassThrough, PassThroughHalfTensorFloatControl) {
-  std::vector<float> control = {10.0f};
+  std::vector<float> input0 = {10.0f};
   std::vector<float> input1 = {2.2f, 4.7f, 9.6f};
   std::vector<float> input2 = {0.6f, 4.3f};
   size_t input1_size = input1.size();
@@ -91,22 +93,23 @@ TEST(PassThrough, PassThroughHalfTensorFloatControl) {
   std::vector<MLFloat16> input1_half(input1_size);
   std::vector<MLFloat16> input2_half(input2_size);
 
-  ConvertFloatToMLFloat16(input1.data(), input1_half.data(), input1_size);
-  ConvertFloatToMLFloat16(input2.data(), input2_half.data(), input2_size);
+  ConvertFloatToMLFloat16(input1.data(), input1_half.data(), static_cast<int>(input1_size));
+  ConvertFloatToMLFloat16(input2.data(), input2_half.data(), static_cast<int>(input2_size));
 
   OpTester test_passthrough("PassThrough", 1, onnxruntime::kMSDomain);
-  test_passthrough.AddInput<float>("control_signal", {}, control);
+  test_passthrough.AddInput<float>("Input0", {}, input0);
   test_passthrough.AddInput<MLFloat16>("Input1", {static_cast<int64_t>(input1_size)}, input1_half);
   test_passthrough.AddInput<MLFloat16>("Input2", {static_cast<int64_t>(input2_size)}, input2_half);
   // We expect input and output are the same.
+  test_passthrough.AddOutput<float>("Output0", {}, input0);
   test_passthrough.AddOutput<MLFloat16>("Output1", {static_cast<int64_t>(input1_size)}, input1_half);
   test_passthrough.AddOutput<MLFloat16>("Output2", {static_cast<int64_t>(input2_size)}, input2_half);
   run_provider_specific_optest(test_passthrough);
 }
 
-// Input tensor data is half, control is bool
-TEST(PassThrough, PassThroughHalfTensorBoolControl) {
-  std::initializer_list<bool> control = {true};
+// Input tensors have half and bool types
+TEST(PassThrough, PassThroughHalfBoolTensor) {
+  std::initializer_list<bool> input0 = {true};
   std::vector<float> input1 = {2.2f, 4.7f, 9.6f};
   std::vector<float> input2 = {0.6f, 4.3f};
   size_t input1_size = input1.size();
@@ -115,16 +118,41 @@ TEST(PassThrough, PassThroughHalfTensorBoolControl) {
   std::vector<MLFloat16> input1_half(input1_size);
   std::vector<MLFloat16> input2_half(input2_size);
 
-  ConvertFloatToMLFloat16(input1.data(), input1_half.data(), input1_size);
-  ConvertFloatToMLFloat16(input2.data(), input2_half.data(), input2_size);
+  ConvertFloatToMLFloat16(input1.data(), input1_half.data(), static_cast<int>(input1_size));
+  ConvertFloatToMLFloat16(input2.data(), input2_half.data(), static_cast<int>(input2_size));
 
   OpTester test_passthrough("PassThrough", 1, onnxruntime::kMSDomain);
-  test_passthrough.AddInput<bool>("control_signal", {}, control);
+  test_passthrough.AddInput<bool>("Input0", {}, input0);
   test_passthrough.AddInput<MLFloat16>("Input1", {static_cast<int64_t>(input1_size)}, input1_half);
   test_passthrough.AddInput<MLFloat16>("Input2", {static_cast<int64_t>(input2_size)}, input2_half);
   // We expect input and output are the same.
+  test_passthrough.AddOutput<bool>("Output0", {}, input0);
   test_passthrough.AddOutput<MLFloat16>("Output1", {static_cast<int64_t>(input1_size)}, input1_half);
   test_passthrough.AddOutput<MLFloat16>("Output2", {static_cast<int64_t>(input2_size)}, input2_half);
+  run_provider_specific_optest(test_passthrough);
+}
+
+// Input tensors have float and half types, but only first 2 inputs are needed.
+TEST(PassThrough, PassThroughHalfBoolTensorNeglectOneInput) {
+  std::initializer_list<bool> input0 = {true};
+  std::vector<float> input1 = {2.2f, 4.7f, 9.6f};
+  std::vector<float> input2 = {0.6f, 4.3f};
+  size_t input1_size = input1.size();
+  size_t input2_size = input2.size();
+ 
+  std::vector<MLFloat16> input1_half(input1_size);
+  std::vector<MLFloat16> input2_half(input2_size);
+
+  ConvertFloatToMLFloat16(input1.data(), input1_half.data(), static_cast<int>(input1_size));
+  ConvertFloatToMLFloat16(input2.data(), input2_half.data(), static_cast<int>(input2_size));
+
+  OpTester test_passthrough("PassThrough", 1, onnxruntime::kMSDomain);
+  test_passthrough.AddInput<bool>("Input0", {}, input0);
+  test_passthrough.AddInput<MLFloat16>("Input1", {static_cast<int64_t>(input1_size)}, input1_half);
+  test_passthrough.AddInput<MLFloat16>("Input2", {static_cast<int64_t>(input2_size)}, input2_half);
+  // We expect first 2 inputs and outputs are the same.
+  test_passthrough.AddOutput<bool>("Output0", {}, input0);
+  test_passthrough.AddOutput<MLFloat16>("Output1", {static_cast<int64_t>(input1_size)}, input1_half);
   run_provider_specific_optest(test_passthrough);
 }
 

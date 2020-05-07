@@ -15,21 +15,20 @@ ONNX_OPERATOR_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<MLFloat16>(),
-                               DataTypeImpl::GetTensorType<float>(),
-                               DataTypeImpl::GetTensorType<double>()})
-        .Alias(AliasRange<1, 0>(0, 1024)),
+        .Alias(AliasRange<0, 0>(0, 1024)),
     PassThrough);
 
 Status PassThrough::Compute(OpKernelContext* ctx) const {
 
-  ORT_ENFORCE(ctx->InputCount() == (ctx->OutputCount() + 1),
-              "PassThrough's input count must be the same as output count.");
+  ORT_ENFORCE(ctx->InputCount() >= ctx->OutputCount(),
+              "PassThrough's input count must be greater or equal to output count.");
 
   for (int i = 0; i < ctx->OutputCount(); ++i) {
-    const Tensor* X = ctx->Input<Tensor>(i + 1);
+    const Tensor* X = ctx->Input<Tensor>(i);
     const TensorShape& data_shape = X->Shape();
     Tensor* Y = ctx->Output(i, data_shape);
+    if (Y == nullptr)
+      continue;
     // This will do copy if not the same buffer.
     CopyCpuTensor(X, Y);
   }

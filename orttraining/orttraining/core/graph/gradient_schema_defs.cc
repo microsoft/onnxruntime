@@ -1444,43 +1444,36 @@ Example 4:
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc("Passes input to output as is with a given signal.")
+      .SetDoc("Passes input to output as is.")
       .Input(
           0,
-          "control_signal",
-          "Control signal to pass tensors",
-          "T1")
-      .Input(
-          1,
-          "input_tensor",
-          "Input tensor",
-          "T2",
+          "X",
+          "Input tensors",
+          "T1",
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
           /*min_arity*/ 1)
       .Output(
           0,
-          "output_tensor",
-          "Output tensor",
-          "T2",
-          OpSchema::Variadic,
-          /*is_homogeneous*/ false,
-          /*min_arity*/ 1)
+          "Y",
+          "Output tensors",
+          "T1",
+          /* Outputs are optional*/
+          OpSchema::Optional,
+          /*is_homogeneous*/ false)
       .TypeConstraint(
           "T1",
           OpSchema::all_tensor_types(),
-          "control_signal can be of any tensor type.")
-      .TypeConstraint(
-          "T2",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output tensor types to float tensors.")
+          "Inputs and outputs can be of any type.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        if (ctx.getNumInputs() != ctx.getNumOutputs() + 1)
-          fail_shape_inference("Number of input tensors must be the same as number of output tensors for PassThrough");
+        if (ctx.getNumOutputs() > ctx.getNumInputs())
+          fail_shape_inference("Number of output tensors must be less or equal to the number of input tensors.");
 
+        // Since we do not require all inputs to be propagated,
+        // shape inferencing is only done for # of outputs.
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
-          propagateElemTypeFromInputToOutput(ctx, i + 1, i);
-          propagateShapeFromInputToOutput(ctx, i + 1, i);
+          propagateElemTypeFromInputToOutput(ctx, i, i);
+          propagateShapeFromInputToOutput(ctx, i, i);
         }
       });
 
