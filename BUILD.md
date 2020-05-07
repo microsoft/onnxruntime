@@ -27,7 +27,8 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 ```
 ./build.sh --config RelWithDebInfo --build_shared_lib --parallel
 ```
-By default, ORT is configured to be deployable on Mac OS X versions 10.9+
+By default, ORT is configured to be built for a minimum target Mac OS X version of 10.12. 
+The shared library in the release Nuget(s) and the Python wheel may be installed on Mac OS X versions of 10.12+. 
 
 #### Notes
 
