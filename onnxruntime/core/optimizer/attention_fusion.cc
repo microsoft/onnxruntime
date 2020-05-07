@@ -219,9 +219,16 @@ static NodeArg* ProcessMask(Graph& graph, NodeArg* mask_input, ProviderType prov
   }
 
   auto data_type = mask_input->TypeAsProto()->tensor_type().elem_type();
+  if (data_type != ONNX_NAMESPACE::TensorProto_DataType_INT64 &&
+      data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32 &&
+      data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    DEBUG_LOG("Mask data type is not int32 or int64 or float32");
+    return nullptr;
+  }
 
   NodeArg* reduce_sum_input = mask_input;
-  if (data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
+    data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     NodeArg& cast_int32 = CastMaskToInt32(graph, mask_input, provider_type);
     reduce_sum_input = &cast_int32;
   }
