@@ -190,7 +190,8 @@ Status TrainingRunner::Initialize() {
   return Status::OK();
 }
 
-Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader) {
+Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader, 
+  const MapStringToString& perf_properties) {
   if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
   }
@@ -201,7 +202,7 @@ Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_
     return Status::OK();
   }
 
-  ORT_RETURN_IF_ERROR(TrainingLoop(*training_data_loader, test_data_loader));
+  ORT_RETURN_IF_ERROR(TrainingLoop(*training_data_loader, test_data_loader, perf_properties));
 
   // after successful Run(), update counters
   round_++;
@@ -210,7 +211,8 @@ Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_
   return Status::OK();
 }
 
-Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader) {
+Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader, 
+  const MapStringToString& perf_properties) {
   const bool enable_checkpoint_saving =
       params_.mpi_context.world_rank == 0 &&
       checkpoint_registry_ && params_.checkpoint_period > 0;
@@ -412,7 +414,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
     ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.perf_output_dir));
     // saving json file
     ORT_RETURN_IF_ERROR(SavePerfMetrics(number_of_batches, gradient_accumulation_step_count, weight_update_steps, 
-                                        total_time, avg_time_per_batch, throughput, stabilized_throughput));
+                                        total_time, avg_time_per_batch, throughput, stabilized_throughput, perf_properties));
   }
 
   std::cout << "Round: " << round_ << "\n"
@@ -430,14 +432,15 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
 Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const size_t gradient_accumulation_steps,
                                        const size_t weight_update_steps, const double total_time,
-                                       const double avg_time_per_batch, const double throughput, const double stabilized_throughput) {
+                                       const double avg_time_per_batch, const double throughput, const double stabilized_throughput,
+                                       const MapStringToString& perf_properties) {
   // popualte metrics for reporting
   json perf_metrics;
   perf_metrics["Model"] = params_.model_type;  
 
   // loop thru the perf_properties and put it in json sub-structure
   std::string seq_len;
-  for (auto const& it : params_.perf_properties) {
+  for (auto const& it : perf_properties) {
     if (it.first == "SeqLen") {
       seq_len = it.second;     
     }
@@ -772,10 +775,6 @@ Status TrainingRunner::UpdateParams(Parameters params) {
   params_.batch_size = params.batch_size;
   params_.gradient_accumulation_steps = params.gradient_accumulation_steps;
   return Status::OK();
-}
-
-void TrainingRunner::UpdateMetricsParams(MapStringToString& properties) {
-  params_.perf_properties = properties;
 }
 
 Status TrainingRunner::ResetLossScaler() {
