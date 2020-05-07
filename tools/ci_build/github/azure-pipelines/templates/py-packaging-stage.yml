@@ -158,7 +158,7 @@ stages:
                 --build-arg BUILD_USER=onnxruntimedev \
                 --build-arg BUILD_UID=$(id -u) \
                 --build-arg PYTHON_VERSION=$(python.version) \
-                -f ${{ parameters.linux_gpu_dockerfile }} .
+                -f ${{ variables.linux_gpu_dockerfile }} .
             workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
         - task: CmdLine@2
