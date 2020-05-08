@@ -49,49 +49,40 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
-    // override the EP while setting up OptimizerExecutionFrame::Info so that it will use the CPU kernel for Compute.
-    if (!cpu_ep) {
-      node->SetExecutionProviderType(kCpuExecutionProvider);
-    }
-
     // Check whether the CPU EP has a kernel for this node. Stop proceeding if it doesn't.
     std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
         onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
 
-    auto cpu_kernel_found_for_node =
-        KernelRegistry::HasImplementationOf(*cpu_execution_provider->GetKernelRegistry(), *node, kCpuExecutionProvider);
-
-    if (!cpu_kernel_found_for_node) {
-      LOGS(logger, WARNING) << "Could not find a CPU kernel and hence "
-                            << "can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
-
-      // Revert the EP change. We won't be proceeding with constant folding for this node.
-      if (!cpu_ep) {
-        node->SetExecutionProviderType(ep_type);
-      }
-
-      // Move on to the next candidate node
-      continue;
-    }
-
     // Create execution frame for executing constant nodes.
     OptimizerExecutionFrame::Info info({node}, constant_inputs, std::move(cpu_execution_provider));
-
-    // undo the EP change in case something fails prior to node removal
-    if (!cpu_ep) {
-      node->SetExecutionProviderType(ep_type);
-    }
 
     std::vector<int> fetch_mlvalue_idxs;
     for (const auto* node_out : node->OutputDefs()) {
       fetch_mlvalue_idxs.push_back(info.GetMLValueIndex(node_out->Name()));
     }
 
+    // override the EP assigned to the node so that it will use the CPU kernel for Compute.
+    if (!cpu_ep) {
+      node->SetExecutionProviderType(kCpuExecutionProvider);
+    }
+
+    auto* kernel = info.CreateKernel(node);
+
+    // undo the EP change to the value that was assigned at graph partitioning time
+    if (!cpu_ep) {
+      node->SetExecutionProviderType(ep_type);
+    }
+
+    if (kernel == nullptr) {
+      LOGS(logger, WARNING) << "Could not find a CPU kernel and hence "
+                            << "can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
+
+      // Move on to the next candidate node
+      continue;
+    }
+
     OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
 
-    auto* kernel = info.GetKernel(node->Index());
-    if (kernel == nullptr)
-      continue;
     OpKernelContext op_kernel_context(&frame, kernel, nullptr, logger);
 
     ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));

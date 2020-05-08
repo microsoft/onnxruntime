@@ -49,7 +49,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
       return -1;
     }
 
-    const OpKernel* GetKernel(NodeIndex node_id) const;
+    const OpKernel* CreateKernel(const Node* node) const;
 
    private:
     // The optimizer is running on CPU execution provider by default.
@@ -68,7 +68,6 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
     std::unique_ptr<NodeIndexInfo> node_index_info_;
 
-    std::unordered_map<onnxruntime::NodeIndex, std::unique_ptr<OpKernel>> kernels_;
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Info);
   };
 

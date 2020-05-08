@@ -63,24 +63,18 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   }
 
   node_index_info_ = onnxruntime::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
+}  // namespace onnxruntime
 
-  // create kernels for these nodes
-  for (auto* node : nodes) {
-    std::unique_ptr<OpKernel> op_kernel;
-    std::shared_ptr<KernelRegistry> kernel_registry = cpu_execution_provider_->GetKernelRegistry();
-    ORT_THROW_IF_ERROR(kernel_registry->TryCreateKernel(*node, *cpu_execution_provider_, initializers_,
-                                                        ort_value_name_idx_map_, FuncManager(), data_transfer_mgr_,
-                                                        op_kernel));
-    kernels_[node->Index()] = std::move(op_kernel);
-  }
-}
+const OpKernel* OptimizerExecutionFrame::Info::CreateKernel(const Node* node) const {
+  std::unique_ptr<OpKernel> op_kernel;
+  std::shared_ptr<KernelRegistry> kernel_registry = cpu_execution_provider_->GetKernelRegistry();
+  auto status = kernel_registry->TryCreateKernel(*node, *cpu_execution_provider_, initializers_,
+                                                 ort_value_name_idx_map_, FuncManager(), data_transfer_mgr_,
+                                                 op_kernel);
+  if (status.IsOK())
+    return op_kernel.get();
 
-const OpKernel* OptimizerExecutionFrame::Info::GetKernel(NodeIndex node_id) const {
-  if (kernels_.find(node_id) == kernels_.cend()) {
-    return nullptr;
-  }
-
-  return kernels_.at(node_id).get();
+  return nullptr;
 }
 
 // For optimizer, probably no need to pass feed_mlvalue_idxs, feeds to initialize IExecutionFrame.
