@@ -76,7 +76,7 @@ jobs:
   workspace:
     clean: all
   pool: 'Win-CPU-2019'
-  timeoutInMinutes:  120
+  timeoutInMinutes:  160
   strategy:
     maxParallel: 2
     matrix: 
