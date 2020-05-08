@@ -377,10 +377,10 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     optimizer_attributes_map = {}
     optimizer_int_attributes_map = {}
 
-    miss_frozen_weights = [n for n in frozen_weights if n not in [i.name for i in model.graph.initializer]]
-    if miss_frozen_weights:
+    unused_frozen_weights = [n for n in frozen_weights if n not in [i.name for i in model.graph.initializer]]
+    if unused_frozen_weights:
         warnings.warn("Ignoring {} in frozen_weights as they are not found in model weights."\
-            .format(miss_frozen_weights))
+            .format(unused_frozen_weights))
 
     weights_to_train = set()
     for initializer in model.graph.initializer:
