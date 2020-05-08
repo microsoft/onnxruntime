@@ -3,8 +3,6 @@
 ## A private PyTorch build from https://aiinfra.visualstudio.com/Lotus/_git/pytorch (ORTTraining branch) is needed to run the demo.
 ## To run the demo with ORT backend:
 ##      python mnist_training.py --use-ort
-## or
-##      python mnist_training.py --use-ort --use-ort-trainer
 
 ## When "--use-ort" is not given, it will run training with PyTorch as backend.
 ## Model testing is not complete.
@@ -19,7 +17,7 @@ from torchvision import datasets, transforms
 import numpy as np
 import os
 
-from onnxruntime.capi.ort_trainer import IODescription, ModelDescription, ORTTrainer, ORTModel
+from onnxruntime.capi.ort_trainer import IODescription, ModelDescription, ORTTrainer
 from mpi4py import MPI
 from onnxruntime.capi._pybind_state import set_cuda_device_id
 
@@ -140,9 +138,6 @@ def main():
     parser.add_argument('--use-ort', action='store_true', default=False,
                         help='to use onnxruntime as training backend')
 
-    parser.add_argument('--use-ort-trainer', action='store_true', default=False,
-                        help='to use onnxruntime as training backend')
-
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -180,25 +175,15 @@ def main():
     model = NeuralNet(input_size, hidden_size, num_classes)
 
     model_desc = mnist_model_description()
-    if args.use_ort_trainer:
-        # use log_interval as gradient accumulate steps
-        trainer = ORTTrainer(model, my_loss, model_desc, "LambOptimizer", None, IODescription('Learning_Rate', [1,], torch.float32), device, 1, None,
-        args.world_rank, args.world_size, use_mixed_precision=False, allreduce_post_accumulation = True)
-        print('\nBuild ort model done.')
+    # use log_interval as gradient accumulate steps
+    trainer = ORTTrainer(model, my_loss, model_desc, "LambOptimizer", None, IODescription('Learning_Rate', [1,], torch.float32), device, 1, None,
+    args.world_rank, args.world_size, use_mixed_precision=False, allreduce_post_accumulation = True)
+    print('\nBuild ort model done.')
 
-        for epoch in range(1, args.epochs + 1):
-            train_with_trainer(args, trainer, device, train_loader, epoch)
-            import pdb
-            test_with_trainer(args, trainer, device, test_loader)
-    else:
-        model = ORTModel(model, my_loss, model_desc, device, None, args.world_rank, args.world_size)
-        print('\nBuild ort model done.')
-
-        optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
-
-        for epoch in range(1, args.epochs + 1):
-            train_with_model(args, model, device, train_loader, optimizer, epoch)
-            # test(args, model, device, test_loader)
+    for epoch in range(1, args.epochs + 1):
+        train_with_trainer(args, trainer, device, train_loader, epoch)
+        import pdb
+        test_with_trainer(args, trainer, device, test_loader)
 
 
 if __name__ == '__main__':
