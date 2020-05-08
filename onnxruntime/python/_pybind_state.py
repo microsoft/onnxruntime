@@ -10,4 +10,5 @@ import onnxruntime.capi._ld_preload
 try:
     from onnxruntime.capi.onnxruntime_pybind11_state import *  # noqa
 except ImportError as e:
-    warnings.warn("Cannot load onnxruntime.capi. Error: '{0}'".format(str(e)))
+    warnings.warn("Cannot load onnxruntime.capi. Error: '{0}'.".format(str(e)) + 
+                            "Please install the Visual C++ 2019 runtime if you haven't already done so")
