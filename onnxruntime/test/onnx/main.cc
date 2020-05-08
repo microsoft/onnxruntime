@@ -104,7 +104,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_dml = false;
   bool enable_acl = false;
   int device_id = 0;
-  GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
+  GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
   int verbosity_option_count = 0;
 
