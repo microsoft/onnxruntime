@@ -1,4 +1,4 @@
-package com.msft.ort_perf_tool;
+package com.msft.send_perf_metrics;
 
 import java.sql.DriverManager;
 import java.util.Properties;
