@@ -1,0 +1,182 @@
+# Copyright (c) 2018-2019, NVIDIA CORPORATION. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+#1 DGX1 phase1
+bert--DGX1:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX1
+  variables:
+    <<: *DGX1_VARS
+    NNODES: "1"
+    BATCHSIZE: "8192"
+    LR: "6e-3"
+    GRADIENT_STEPS: "512"
+    PHASE: "1"
+
+#4 DGX1 phase1
+bert--DGX1_4x8x16x128:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX1
+  variables:
+    <<: *DGX1_VARS
+    NNODES: "4"
+    BATCHSIZE: "2048"
+    LR: "6e-3"
+    GRADIENT_STEPS: "128"
+    PHASE: "1"
+
+#16 DGX1 phase1
+bert--DGX1_16x8x16x32:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX1
+  variables:
+    <<: *DGX1_VARS
+    NNODES: "16"
+    BATCHSIZE: "512"
+    LR: "6e-3"
+    GRADIENT_STEPS: "32"
+    PHASE: "1"
+
+#1 DGX2 phase1
+bert--DGX2:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX2
+  variables:
+    <<: *DGX2_VARS
+    NNODES: "1"
+    BATCHSIZE: "4096"
+    LR: "6e-3"
+    GRADIENT_STEPS: "64"
+    PHASE: "1"
+
+#4 DGX2 phase1
+bert--DGX2_4x16x64x16:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX2
+  variables:
+    <<: *DGX2_VARS
+    NNODES: "4"
+    BATCHSIZE: "1024"
+    LR: "6e-3"
+    GRADIENT_STEPS: "16"
+    PHASE: "1"
+
+#16 DGX2 phase1
+bert--DGX2_16x16x64x4:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX2
+  variables:
+    <<: *DGX2_VARS
+    NNODES: "16"
+    BATCHSIZE: "256"
+    LR: "6e-3"
+    GRADIENT_STEPS: "4"
+    PHASE: "1"
+
+#64 DGX2 phase1
+bert--DGX2_64x16x64:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX2
+  variables:
+    <<: *DGX2_VARS
+    NNODES: "64"
+    BATCHSIZE: "64"
+    LR: "6e-3"
+    GRADIENT_STEPS: "1"
+    PHASE: "1"
+
+#1 DGX1 phase2
+bert--DGX1_1x8x4x1024:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX1
+  variables:
+    <<: *DGX1_VARS
+    NNODES: "1"
+    BATCHSIZE: "4096"
+    LR: "4e-3"
+    GRADIENT_STEPS: "1024"
+    PHASE: "2"
+
+#4 DGX1 phase2
+bert--DGX1_4x8x4x256:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX1
+  variables:
+    <<: *DGX1_VARS
+    NNODES: "4"
+    BATCHSIZE: "1024"
+    LR: "4e-3"
+    GRADIENT_STEPS: "256"
+    PHASE: "2"
+
+#16 DGX1 phase2
+bert--DGX1_16x8x4x64:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX1
+  variables:
+    <<: *DGX1_VARS
+    NNODES: "16"
+    BATCHSIZE: "256"
+    LR: "4e-3"
+    GRADIENT_STEPS: "64"
+    PHASE: "2"
+
+#1 DGX2 phase2
+bert--DGX2_1x16x8x256:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX2
+  variables:
+    <<: *DGX2_VARS
+    NNODES: "1"
+    BATCHSIZE: "2048"
+    LR: "4e-3"
+    GRADIENT_STEPS: "256"
+    PHASE: "2"
+
+#4 DGX2 phase2
+bert--DGX2_4x16x8x64:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX2
+  variables:
+    <<: *DGX2_VARS
+    NNODES: "4"
+    BATCHSIZE: "512"
+    LR: "4e-3"
+    GRADIENT_STEPS: "64"
+    PHASE: "2"
+
+#16 DGX2 phase2
+bert--DGX2_16x16x8x16:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX2
+  variables:
+    <<: *DGX2_VARS
+    NNODES: "16"
+    BATCHSIZE: "128"
+    LR: "4e-3"
+    GRADIENT_STEPS: "16"
+    PHASE: "2"
+
+#64 DGX2 phase2
+bert--DGX2_64x16x8x4:
+  <<: *BERT_ON_CLUSTER
+  <<: *DGX2
+  variables:
+    <<: *DGX2_VARS
+    NNODES: "64"
+    BATCHSIZE: "32"
+    LR: "4e-3"
+    GRADIENT_STEPS: "4"
+    PHASE: "2"
+

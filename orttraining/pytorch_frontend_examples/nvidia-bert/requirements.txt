@@ -1,0 +1,13 @@
+# progress bars in model download and training scripts
+tqdm
+# Accessing files from S3 directly.
+boto3
+# Used for downloading models over HTTP
+requests
+six
+ipdb
+#Data processing
+h5py
+html2text
+nltk
+progressbar
