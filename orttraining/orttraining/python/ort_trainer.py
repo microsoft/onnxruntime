@@ -730,6 +730,7 @@ class ORTTrainer():
             return
 
         if self.torch_model_ is not None:
+            # NOTE: pt model is moved to cpu to conserve gpu memory.
             self.torch_model_.cpu()
             self.onnx_model_ = convert_model_loss_fn_to_onnx(
                 self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_)
