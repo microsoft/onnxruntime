@@ -3,7 +3,7 @@
 namespace onnxruntime {
 namespace training {
 MPIContext::MPIContext(int w_rank, int l_rank, int w_size, int l_size) : world_rank(w_rank), local_rank(l_rank), world_size(w_size), local_size(l_size) {}
-//#ifdef USE_HOROVOD
+#if defined(USE_HOROVOD) || defined(USE_MPI)
 MPIContext setup_horovod() {
   //using namespace horovod::common;
   // setup MPI amd horovod
@@ -60,7 +60,7 @@ void shutdown_horovod() {
     MPI_Finalize();
   }
 }
-//#endif
+#endif
 
 }  // namespace training
 }  // namespace onnxruntime

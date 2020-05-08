@@ -2,10 +2,10 @@
 
 #include <stdio.h>      /* printf, scanf, NULL */
 #include <stdlib.h>     /* malloc, free, rand */
-//#ifdef USE_HOROVOD
+#if defined(USE_HOROVOD) || defined(USE_MPI)
 //#include "orttraining/core/graph/horovod_adapters.h"
 #include <mpi.h>
-//#endif
+#endif
 
 namespace onnxruntime {
 namespace training {
@@ -18,9 +18,9 @@ struct MPIContext {
   int local_size;
 };
 
-//#ifdef USE_HOROVOD
+#if defined(USE_HOROVOD) || defined(USE_MPI)
 MPIContext setup_horovod();
 void shutdown_horovod();
-//#endif
+#endif
 }  // namespace training
 }  // namespace onnxruntime

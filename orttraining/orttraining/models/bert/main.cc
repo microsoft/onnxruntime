@@ -426,7 +426,7 @@ void setup_training_params(BertParameters& params) {
   params.model_with_training_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw.onnx");
   params.model_actual_running_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw_running.onnx");
 
-//#ifdef USE_HOROVOD
+#if defined(USE_HOROVOD) || defined(USE_MPI)
   params.mpi_context = setup_horovod();
   ORT_ENFORCE(params.horizontal_parallel_size <= params.mpi_context.world_size);
   ORT_ENFORCE(params.data_parallel_size <= params.mpi_context.world_size);
@@ -445,7 +445,7 @@ void setup_training_params(BertParameters& params) {
   params.use_adasum = params.use_adasum && (params.data_parallel_size > 1);
   if (params.use_adasum)
     std::cout << "Use Adsum for allreduce." << std::endl;
-//#endif
+#endif
 
 #ifdef USE_CUDA
   OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(params.mpi_context.local_rank);
@@ -707,9 +707,9 @@ int main(int argc, char* argv[]) {
     RETURN_IF_FAIL(RunTraining(params, *env));
   }
 
-//#ifdef USE_HOROVOD
+#if defined(USE_HOROVOD) || defined(USE_MPI)
   shutdown_horovod();
-//#endif
+#endif
 
   return 0;
 }
