@@ -242,6 +242,4 @@ inline std::wstring ToWideString(const std::wstring& s) { return s; }
 inline std::string ToWideString(const std::string& s) { return s; }
 #endif
 
-std::wstring UTF8ToWideString(const std::string& s);
-
 }  // namespace onnxruntime
