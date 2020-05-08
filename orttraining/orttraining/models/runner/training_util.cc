@@ -74,11 +74,10 @@ size_t DataSet::TotalBatch(size_t batch_size) const {
 
 // gather additional training params from tensor dimensions
 // see metrics_map in bert/main.cc for example, and training_utils.h for more explanation
-common::Status DataSet::GetTensorDimensionsFromInputs(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
+common::Status DataSet::GetTensorDimensionsFromInputs(const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
                                                       MapStringToString& perf_properties) const {
   if (metrics_map.size() == 0) return Status::OK(); 
 
-  batch_size = min(batch_size, data_.size());
   for (size_t input_index = 0; input_index < NumInputs(); ++input_index) {
     std::string input_name = GetInputName(input_index);
     const auto it = metrics_map.find(input_name);
@@ -87,14 +86,7 @@ common::Status DataSet::GetTensorDimensionsFromInputs(size_t batch_size, const s
 
     const Tensor& first_tensor = data_[0]->at(input_index).Get<Tensor>();
     std::vector<int64_t> shape_vector = first_tensor.Shape().GetDims();
-    // By default, batch_size(i.e., batch) will be at postition 0.
-    if (first_tensor.Shape().Size() > 1) {
-      shape_vector.insert(shape_vector.begin(), batch_size);
-    } else {
-      shape_vector.clear();
-      shape_vector.emplace_back(batch_size);
-    }
-    // skipping out of bounds position, continue with warning
+
     if (metric.second < shape_vector.size())
       perf_properties.insert({metric.first, std::to_string(shape_vector[metric.second])});
     else 

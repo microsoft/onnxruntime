@@ -519,12 +519,14 @@ void setup_training_params(BertParameters& params) {
       {"next_sentence_label", "next_sentence_labels"}};
 
   // use this table mapping to define what to be stored in perf_properties, and ultimately in json structure 
-  // see training_runner.cc and GetTensorDimensionsFromInputs() in training_util.h for more details 
   // Be mindful on the position, if it's invalid or out of bound, the property population process will be 
-  // either incorrect or skipped. 
+  // either incorrect or aborted. Also make sure to substract the index position by 1 to get valid correspondent value
+  // namely, in the graph, sequence is at position 1, but in initial tensor shape vector loaded from training data is at position 0,
+  // batch is not part of the initial tensor shape vector till later 
+  // see GetTensorDimensionsFromInputs() in training_util.h and training_runner.cc for more details 
   metrics_map = {
-      {"input1", {"SeqLen", 1}},                     // int64[batch,sequence]    "sequence" -> "SeqLen"
-      {"masked_lm_ids", {"PredictionsPerSeq", 1}}    // int64[batch,dynamic_prediction_count]
+      {"input1", {"SeqLen", 0}},                     // int64[batch,sequence]    "sequence" -> "SeqLen", 0
+      {"masked_lm_ids", {"PredictionsPerSeq", 0}}    // int64[batch,dynamic_prediction_count]
   };
 
   params.model_type = "bert";
@@ -681,7 +683,7 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
     if (!params.perf_output_dir.empty()) {
       // collecting Bert related params from training data
       auto training_data = training_data_loader->CurrentDataSet();
-       ORT_RETURN_IF_ERROR(training_data->GetTensorDimensionsFromInputs(params.batch_size, metrics_map, perf_properties));
+       ORT_RETURN_IF_ERROR(training_data->GetTensorDimensionsFromInputs(metrics_map, perf_properties));
     }
 
     ORT_RETURN_IF_ERROR(runner->Run(training_data_loader.get(), test_data_loader.get(), perf_properties));

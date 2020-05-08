@@ -63,18 +63,16 @@ class DataSet {
      each input may have different tensor shape, like so
         intput1 : int64[batch,sequence]
         masked_lm_ids:  int64[batch,dynamic_prediction_count]
-     So to get sequence length, we can look for input name "input1" and get its value in shape vector's position 1 element 
+     When loading training data, the actual shape vector of tensor would not include "batch", thus caller needs to adjust 
+     the index position (i.e., subtract by 1) to get the correspondent value. For example,
+     to get sequence length, we can look for input name "input1" and get its value in shape vector's position 0 (NOT 1) element 
      based on metrics_map (see metrics_map example in bert/main.cc) to map the name with the vector position, like so
-        {"input1", {"SegLen", 1}}  => sequence->SeqLen , where SeqLen will be populated as key in perf_properties
-     @param batch_size batch size of a tensor. Normally, batch_size(i.e., batch) will be at postition 0 of tensor inputs 
-                       e.g., input1 above. Although batch size typically is not used, we are not skipping it in the process 
-                       to make it looked consistent with the graph loaded by, say, Netron. Thus we are expecting training 
-                       params (other than batch size) would start from position 1. For example, "sequence" in input1. 
-     @param metrics_map tensor shape dimension mapping from training data, example above {"input1", {"SegLen", 1}} to map 
-                        input1's "sequence" at position 1 into "SeqLen" as perf_properties key
+        {"input1", {"SegLen", 0}}  => sequence->SeqLen , where SeqLen will be populated as key in perf_properties 
+     @param metrics_map tensor shape dimension mapping from training data, example above {"input1", {"SegLen", 0}} to map 
+                        input1's "sequence" at position 0 into "SeqLen" as perf_properties key
      @param perf_properties populated as json for perf monitoring
    */ 
-  common::Status GetTensorDimensionsFromInputs(size_t batch_size, const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
+  common::Status GetTensorDimensionsFromInputs(const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
                                                MapStringToString& perf_properties) const;
 
  private:
