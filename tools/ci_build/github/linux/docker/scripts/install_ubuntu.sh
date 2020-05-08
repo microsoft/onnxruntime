@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 set -e
 while getopts p:d: parameter_Option
 do case "${parameter_Option}"
@@ -145,7 +146,8 @@ rm -rf /var/lib/apt/lists/*
 
 if [ "$SYS_LONG_BIT" = "64" ]; then
     if [ "$DEVICE_TYPE" = "Normal" ]; then
-	aria2c -q -d /tmp -o llvm.tar.xz http://releases.llvm.org/9.0.0/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-${OS_VERSION}.tar.xz
+    # originally from http://releases.llvm.org/9.0.0/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-${OS_VERSION}.tar.xz
+	aria2c -q -d /tmp -o llvm.tar.xz https://onnxruntimetestdata.blob.core.windows.net/models/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-${OS_VERSION}.tar.xz
 	tar --strip 1 -Jxf /tmp/llvm.tar.xz -C /usr
     fi
 fi
