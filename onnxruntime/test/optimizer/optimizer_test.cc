@@ -74,7 +74,7 @@ TEST(OptimizerTest, Basic) {
   for (auto& node : graph.Nodes()) {
     auto* kernel = info.CreateKernel(&node);
 
-    // kernel can only be nullptr if a CPU kernel implementation has been removed,
+    // kernel can only be a nullptr if a CPU kernel implementation has been removed,
     // if that is the case, OpKernelContext instance construction will throw in the next step
     // and fail the test
 

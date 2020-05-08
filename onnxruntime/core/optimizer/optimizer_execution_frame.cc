@@ -71,9 +71,12 @@ const OpKernel* OptimizerExecutionFrame::Info::CreateKernel(const Node* node) co
   auto status = kernel_registry->TryCreateKernel(*node, *cpu_execution_provider_, initializers_,
                                                  ort_value_name_idx_map_, FuncManager(), data_transfer_mgr_,
                                                  op_kernel);
+
+  // Kernel found in the CPU kernel registry
   if (status.IsOK())
     return op_kernel.get();
 
+  // No kernel found in the CPU kernel registry
   return nullptr;
 }
 
