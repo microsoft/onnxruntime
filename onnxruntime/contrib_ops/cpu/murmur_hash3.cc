@@ -198,11 +198,12 @@ Status MurmurHash3::Compute(OpKernelContext* ctx) const {
     }
   } else {
     auto input = reinterpret_cast<const unsigned char*>(keys->DataRaw());
-    ORT_ENFORCE(input_element_bytes < static_cast<size_t>(std::numeric_limits<int>::max()));
+    //input_element_bytes is 4, 8,.. less than 4 bytes is not allowed
     int input_num_bytes = static_cast<int>(input_element_bytes);
+    ORT_ENFORCE(input_num_bytes % 4 == 0);
     const auto input_end = input + input_count * input_num_bytes;
     while (input != input_end) {
-      MurmurHash3_x86_32(reinterpret_cast<const uint32_t*>(input),
+      MurmurHash3_x86_32(input,
                          input_num_bytes,
                          seed_,
                          output);
