@@ -1,22 +1,23 @@
 // Copyright(C) 2019 Intel Corporation
 // Licensed under the MIT License
 
+#include "core/providers/shared_library/provider_api.h"
 #include "dnnl_kernel.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
 
 void DnnlKernel::InitDstReorderOutput(dnnl::engine& cpu_engine,
-                                        dnnl::memory::data_type& data_type,
-                                        std::vector<dnnl::primitive>& net,
-                                        std::vector<std::unordered_map<int, dnnl::memory>>& net_args) {
+                                      dnnl::memory::data_type& data_type,
+                                      std::vector<dnnl::primitive>& net,
+                                      std::vector<std::unordered_map<int, dnnl::memory>>& net_args) {
   // Allocate dst buffer if reorder is necessary
   if (primitive_dst_desc_ != ort_source_desc_) {
     // reorder to ONNXRuntime format
     dnnl::memory::dims dst_dims_mkl(
         primitive_dst_shape_.GetDims().begin(), primitive_dst_shape_.GetDims().end());
     dnnl::memory::desc dst_des = dnnl::memory::desc(dst_dims_mkl,
-                                                        data_type, ort_source_format_);
+                                                    data_type, ort_source_format_);
     reorder_dst_mem_to_ = onnxruntime::make_unique<dnnl::memory>(
         dnnl::memory(dst_des, cpu_engine));
     net.push_back(dnnl::reorder(*primitive_dst_mem_, *reorder_dst_mem_to_));

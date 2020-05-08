@@ -284,6 +284,22 @@ MlasPool(
 
 void
 MLASCALL
+MlasComputeErf(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasComputeExp(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+void
+MLASCALL
 MlasComputeLogistic(
     const float* Input,
     float* Output,
@@ -292,15 +308,18 @@ MlasComputeLogistic(
 
 void
 MLASCALL
-MlasComputeTanh(
+MlasComputeSoftmax(
     const float* Input,
     float* Output,
-    size_t N
+    size_t N,
+    size_t D,
+    bool LogSoftmax,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 void
 MLASCALL
-MlasComputeErf(
+MlasComputeTanh(
     const float* Input,
     float* Output,
     size_t N
