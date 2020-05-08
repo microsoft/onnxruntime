@@ -38,8 +38,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr EnableCpuMemArena;
         public IntPtr DisableCpuMemArena;
         public IntPtr SetSessionLogId;
-        public IntPtr SetSessionLogVerbosityLevel;
         public IntPtr SetSessionLogSeverityLevel;
+        public IntPtr SetSessionLogVerbosityLevel;
         public IntPtr SetSessionGraphOptimizationLevel;
         public IntPtr SetIntraOpNumThreads;
         public IntPtr SetInterOpNumThreads;
@@ -59,8 +59,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SessionGetOutputName;
         public IntPtr SessionGetOverridableInitializerName;
         public IntPtr CreateRunOptions;
-        public IntPtr RunOptionsSetRunLogVerbosityLevel;
         public IntPtr RunOptionsSetRunLogSeverityLevel;
+        public IntPtr RunOptionsSetRunLogVerbosityLevel;
         public IntPtr RunOptionsSetRunTag;
         public IntPtr RunOptionsGetRunLogVerbosityLevel;
         public IntPtr RunOptionsGetRunLogSeverityLevel;
@@ -190,8 +190,10 @@ namespace Microsoft.ML.OnnxRuntime
             OrtCreateRunOptions = (DOrtCreateRunOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateRunOptions, typeof(DOrtCreateRunOptions));
             OrtReleaseRunOptions = (DOrtReleaseRunOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseRunOptions, typeof(DOrtReleaseRunOptions));
             OrtRunOptionsSetRunLogVerbosityLevel = (DOrtRunOptionsSetRunLogVerbosityLevel)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsSetRunLogVerbosityLevel, typeof(DOrtRunOptionsSetRunLogVerbosityLevel));
+            OrtRunOptionsSetRunLogSeverityLevel = (DOrtRunOptionsSetRunLogSeverityLevel)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsSetRunLogSeverityLevel, typeof(DOrtRunOptionsSetRunLogSeverityLevel));
             OrtRunOptionsSetRunTag = (DOrtRunOptionsSetRunTag)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsSetRunTag, typeof(DOrtRunOptionsSetRunTag));
             OrtRunOptionsGetRunLogVerbosityLevel = (DOrtRunOptionsGetRunLogVerbosityLevel)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsGetRunLogVerbosityLevel, typeof(DOrtRunOptionsGetRunLogVerbosityLevel));
+            OrtRunOptionsGetRunLogSeverityLevel = (DOrtRunOptionsGetRunLogSeverityLevel)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsGetRunLogSeverityLevel, typeof(DOrtRunOptionsGetRunLogSeverityLevel));
             OrtRunOptionsGetRunTag = (DOrtRunOptionsGetRunTag)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsGetRunTag, typeof(DOrtRunOptionsGetRunTag));
             OrtRunOptionsSetTerminate = (DOrtRunOptionsSetTerminate)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsSetTerminate, typeof(DOrtRunOptionsSetTerminate));
             OrtRunOptionsUnsetTerminate = (DOrtRunOptionsUnsetTerminate)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsUnsetTerminate, typeof(DOrtRunOptionsUnsetTerminate));
@@ -389,10 +391,10 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionLogId(IntPtr /* OrtSessionOptions* */ options, string logId);
         public static DOrtSetSessionLogId OrtSetSessionLogId;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionLogVerbosityLevel(IntPtr /* OrtSessionOptions* */ options, LogLevel sessionLogVerbosityLevel);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionLogVerbosityLevel(IntPtr /* OrtSessionOptions* */ options, int sessionLogVerbosityLevel);
         public static DOrtSetSessionLogVerbosityLevel OrtSetSessionLogVerbosityLevel;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionLogSeverityLevel(IntPtr /* OrtSessionOptions* */ options, LogLevel sessionLogSeverityLevel);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionLogSeverityLevel(IntPtr /* OrtSessionOptions* */ options, OrtLoggingLevel sessionLogSeverityLevel);
         public static DOrtSetSessionLogSeverityLevel OrtSetSessionLogSeverityLevel;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetIntraOpNumThreads(IntPtr /* OrtSessionOptions* */ options, int intraOpNumThreads);
@@ -452,14 +454,20 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate void DOrtReleaseRunOptions(IntPtr /*(OrtRunOptions*)*/options);
         public static DOrtReleaseRunOptions OrtReleaseRunOptions;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsSetRunLogVerbosityLevel(IntPtr /* OrtRunOptions* */ options, LogLevel value);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsSetRunLogVerbosityLevel(IntPtr /* OrtRunOptions* */ options, int value);
         public static DOrtRunOptionsSetRunLogVerbosityLevel OrtRunOptionsSetRunLogVerbosityLevel;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsSetRunLogSeverityLevel(IntPtr /* OrtRunOptions* */ options, OrtLoggingLevel value);
+        public static DOrtRunOptionsSetRunLogSeverityLevel OrtRunOptionsSetRunLogSeverityLevel;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsSetRunTag(IntPtr /* OrtRunOptions* */ options, string /* const char* */ runTag);
         public static DOrtRunOptionsSetRunTag OrtRunOptionsSetRunTag;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsGetRunLogVerbosityLevel(IntPtr /* OrtRunOptions* */ options, out LogLevel verbosityLevel);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsGetRunLogVerbosityLevel(IntPtr /* OrtRunOptions* */ options, out int verbosityLevel);
         public static DOrtRunOptionsGetRunLogVerbosityLevel OrtRunOptionsGetRunLogVerbosityLevel;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsGetRunLogSeverityLevel(IntPtr /* OrtRunOptions* */ options, out OrtLoggingLevel severityLevel);
+        public static DOrtRunOptionsGetRunLogSeverityLevel OrtRunOptionsGetRunLogSeverityLevel;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsGetRunTag(IntPtr /* const OrtRunOptions* */options, out IntPtr /* const char** */ runtag);
         public static DOrtRunOptionsGetRunTag OrtRunOptionsGetRunTag;
