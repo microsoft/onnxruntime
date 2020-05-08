@@ -14,6 +14,10 @@
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
 
+#if defined DEBUG_NODE_INPUTS_OUTPUTS
+#include "core/framework/utils.h"
+#endif
+
 // #define TRACE_EXECUTION
 
 // Define this symbol to create Concurrency Visualizer markers.

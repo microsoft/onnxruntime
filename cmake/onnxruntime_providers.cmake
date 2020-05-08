@@ -7,15 +7,11 @@ file(GLOB_RECURSE onnxruntime_providers_srcs CONFIGURE_DEPENDS
 )
 
 file(GLOB_RECURSE onnxruntime_cpu_contrib_ops_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu_contrib_kernels.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu_contrib_kernels.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.cc"
 )
 
 file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_contrib_kernels.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_contrib_kernels.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
 )
@@ -26,8 +22,6 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
 )
 
 file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu_featurizers_kernels.h"
-  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu_featurizers_kernels.cc"
   "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.cc"
 )
@@ -60,6 +54,10 @@ endif()
 if(onnxruntime_USE_NNAPI)
   set(PROVIDERS_NNAPI onnxruntime_providers_nnapi)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
+endif()
+if(onnxruntime_USE_RKNPU)
+  set(PROVIDERS_RKNPU onnxruntime_providers_rknpu)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES rknpu)
 endif()
 if(onnxruntime_USE_DML)
   set(PROVIDERS_DML onnxruntime_providers_dml)
@@ -95,8 +93,6 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu_training_kernels.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu_training_kernels.cc"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.cc"
   )
@@ -174,8 +170,6 @@ if (onnxruntime_USE_CUDA)
 
   if (onnxruntime_ENABLE_TRAINING)
     file(GLOB_RECURSE onnxruntime_cuda_training_ops_cc_srcs CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda_training_kernels.h"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda_training_kernels.cc"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.h"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cc"
     )
@@ -212,8 +206,11 @@ if (onnxruntime_USE_CUDA)
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
-  elseif(HAS_D2FH4)
-    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /d2FH4->")
+  else()
+    if(HAS_D2FH4)
+      target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /d2FH4->")
+    endif()
+    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>")
   endif()
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
   if (onnxruntime_ENABLE_TRAINING)
@@ -268,16 +265,30 @@ if (onnxruntime_USE_DNNL)
   file(GLOB_RECURSE onnxruntime_providers_dnnl_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/dnnl/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/dnnl/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
   )
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dnnl_cc_srcs})
-  add_library(onnxruntime_providers_dnnl ${onnxruntime_providers_dnnl_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_dnnl onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  add_library(onnxruntime_providers_dnnl SHARED ${onnxruntime_providers_dnnl_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_dnnl onnxruntime_common onnx) # onnx needed for stl_backports.h
   add_dependencies(onnxruntime_providers_dnnl ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_dnnl PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_dnnl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${DNNL_INCLUDE_DIR})
+  target_link_libraries(onnxruntime_providers_dnnl PRIVATE dnnl)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dnnl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_dnnl PROPERTIES LINKER_LANGUAGE CXX)
+
+  if(APPLE)
+    set_property(TARGET onnxruntime_providers_dnnl APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/dnnl/exported_symbols.lst")
+    target_link_libraries(onnxruntime_providers_dnnl PRIVATE nsync_cpp)
+  elseif(UNIX)
+    set_property(TARGET onnxruntime_providers_dnnl APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/dnnl/version_script.lds -Xlinker --gc-sections")
+    target_link_libraries(onnxruntime_providers_dnnl PRIVATE nsync_cpp)
+  else()
+    set_property(TARGET onnxruntime_providers_dnnl APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/dnnl/symbols.def")
+  endif()
+
 endif()
 
 if (onnxruntime_USE_TENSORRT)
@@ -480,6 +491,40 @@ if (onnxruntime_USE_NNAPI)
   set_target_properties(onnxruntime_providers_nnapi PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
+if (onnxruntime_USE_RKNPU)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-variable -Wno-unused-parameter")
+  add_definitions(-DUSE_RKNPU=1)
+  option(DNN_READ_ONNX "" ON)
+  set(DNN_CUSTOM_PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+  option(DNN_CMAKE_INSTALL "" OFF)
+  option(DNN_BUILD_BIN "" OFF)
+  if (NOT RKNPU_DDK_PATH)
+    message(FATAL_ERROR "RKNPU_DDK_PATH required for onnxruntime_USE_RKNPU")
+  endif()
+  set(RKNPU_DDK_INCLUDE_DIR ${RKNPU_DDK_PATH}/include)
+  if (CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(RKNPU_DDK_LIB_DIR ${RKNPU_DDK_PATH}/lib64)
+  else()
+    set(RKNPU_DDK_LIB_DIR ${RKNPU_DDK_PATH}/lib)
+  endif()
+  file(GLOB_RECURSE
+    onnxruntime_providers_rknpu_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/rknpu/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/rknpu/*.cc"
+  )
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_rknpu_cc_srcs})
+  add_library(onnxruntime_providers_rknpu ${onnxruntime_providers_rknpu_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_rknpu onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite)
+  target_link_libraries(onnxruntime_providers_rknpu PRIVATE -lrknpu_ddk)
+  add_dependencies(onnxruntime_providers_rknpu onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_rknpu PROPERTIES CXX_STANDARD 14)
+  set_target_properties(onnxruntime_providers_rknpu PROPERTIES CXX_STANDARD_REQUIRED ON)
+  set_target_properties(onnxruntime_providers_rknpu PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_rknpu PRIVATE ${ONNXRUNTIME_ROOT} ${rknpu_INCLUDE_DIRS} ${RKNPU_DDK_INCLUDE_DIR})
+  link_directories(onnxruntime_providers_rknpu ${RKNPU_DDK_LIB_DIR})
+  set_target_properties(onnxruntime_providers_rknpu PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+
 if (onnxruntime_USE_DML)
   file(GLOB_RECURSE onnxruntime_providers_dml_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/dml/*.h"
@@ -491,6 +536,8 @@ if (onnxruntime_USE_DML)
   onnxruntime_add_include_to_target(onnxruntime_providers_dml onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
   add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dml PRIVATE ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/../cmake/external/wil/include)
+
+  add_definitions(-DDML_TARGET_VERSION_USE_LATEST=1)
 
   if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
     if(NOT onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_target_platform STREQUAL "x64")
@@ -506,9 +553,12 @@ if (onnxruntime_USE_DML)
   endif()
 
   function(target_add_dml target)
-    if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
-      target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/DirectML.lib")
+    if (onnxruntime_USE_CUSTOM_DIRECTML)
+      target_link_libraries(${target} PRIVATE DirectML)
+    else()
       add_dependencies(${target} RESTORE_PACKAGES)
+      target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/DirectML.lib")
+	  target_compile_definitions(${target} PRIVATE DML_TARGET_VERSION_USE_LATEST)
     endif()
   endfunction()
 
@@ -521,7 +571,7 @@ if (onnxruntime_USE_DML)
     target_link_libraries(onnxruntime_providers_dml PRIVATE delayimp.lib)
   endif()
 
-  set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll")
+  set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /ignore:4199")
 
   # The DML EP requires C++17
   set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD 17)

@@ -20,7 +20,8 @@ class GatherGrad final : public OpKernel {
 
  private:
   template <typename T, typename Tind>
-  Status ComputeImpl(const TensorShape& data_shape, const Tensor& indices, const Tensor& grad, Tensor& output) const;
+  Status ComputeImpl(const TensorShape& data_shape, const Tensor& indices, const Tensor& grad, Tensor& output,
+      concurrency::ThreadPool* tp) const;
 
   int64_t axis_;
 };

@@ -4,9 +4,11 @@
 #pragma once
 
 #include <random>
+#include <type_traits>
 
 #include "gtest/gtest.h"
 
+#include "core/common/common.h"
 #include "core/util/math.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/test_random_seed.h"
@@ -14,25 +16,50 @@
 namespace onnxruntime {
 namespace test {
 
+namespace detail {
+inline int64_t SizeFromDims(const std::vector<int64_t>& dims) {
+  const int64_t size = std::accumulate(
+      dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+  ORT_ENFORCE(size >= 0);
+  return size;
+}
+}  // namespace detail
+
 class RandomValueGenerator {
  public:
   RandomValueGenerator();
 
-  template <class T>
-  inline std::vector<T> Uniform(const std::vector<int64_t>& dims, float min, float max) {
-    int64_t size = std::accumulate(dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
-    std::vector<T> val(size);
-    std::uniform_real_distribution<float> distribution(min, max);
+  // Random values generated are in the range [min, max).
+  template <typename TFloat>
+  typename std::enable_if<
+      std::is_floating_point<TFloat>::value,
+      std::vector<TFloat>>::type
+  Uniform(const std::vector<int64_t>& dims, TFloat min, TFloat max) {
+    std::vector<TFloat> val(detail::SizeFromDims(dims));
+    std::uniform_real_distribution<TFloat> distribution(min, max);
     for (size_t i = 0; i < val.size(); ++i) {
-      val[i] = T(distribution(generator_));
+      val[i] = distribution(generator_);
+    }
+    return val;
+  }
+
+  // Random values generated are in the range [min, max).
+  template <typename TInt>
+  typename std::enable_if<
+      std::is_integral<TInt>::value,
+      std::vector<TInt>>::type
+  Uniform(const std::vector<int64_t>& dims, TInt min, TInt max) {
+    std::vector<TInt> val(detail::SizeFromDims(dims));
+    std::uniform_int_distribution<TInt> distribution(min, max - 1);
+    for (size_t i = 0; i < val.size(); ++i) {
+      val[i] = distribution(generator_);
     }
     return val;
   }
 
   template <class T>
   inline std::vector<T> OneHot(const std::vector<int64_t>& dims, int64_t stride) {
-    int64_t size = std::accumulate(dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
-    std::vector<T> val(size, T(0));
+    std::vector<T> val(detail::SizeFromDims(dims), T(0));
     std::uniform_int_distribution<int64_t> distribution(0, stride - 1);
     for (size_t offset = 0; offset < val.size(); offset += stride) {
       size_t rand_index = static_cast<size_t>(distribution(generator_));
@@ -50,9 +77,22 @@ class RandomValueGenerator {
 
 template <class T>
 inline std::vector<T> FillZeros(const std::vector<int64_t>& dims) {
-  int64_t size = std::accumulate(dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
-  std::vector<T> val(size, T(0));
+  std::vector<T> val(detail::SizeFromDims(dims), T(0));
   return val;
+}
+
+// Returns a vector of `count` values which start at `start` and change by increments of `step`.
+template <typename T>
+inline std::vector<T> ValueRange(
+    size_t count, T start = static_cast<T>(0), T step = static_cast<T>(1)) {
+  std::vector<T> result;
+  result.reserve(count);
+  T curr = start;
+  for (size_t i = 0; i < count; ++i) {
+    result.emplace_back(curr);
+    curr += step;
+  }
+  return result;
 }
 
 inline std::pair<float, float> MeanStdev(std::vector<float>& v) {

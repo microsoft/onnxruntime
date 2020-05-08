@@ -1,4 +1,6 @@
 import io
+import os
+import warnings
 import numpy as np
 import onnx
 from onnx import numpy_helper
@@ -8,6 +10,7 @@ import torch.nn
 import torch.onnx
 import onnxruntime as ort
 from distutils.version import LooseVersion
+from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
 
 DEFAULT_OPSET_VERSION = 12
 
@@ -250,6 +253,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
 
     # Other export options to use(this is for backward compatibility).
     other_export_options = {}
+    
     # This option was added after 1.4 release.
     if LooseVersion(torch.__version__) > LooseVersion('1.4.0'):
         other_export_options['enable_onnx_checker'] = False
@@ -271,7 +275,6 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     # TODO : WE CAN REMOVE SCE PASS FOR OPSET >= 12 with pytorch master (post 1.5)
     model = postprocess.fuse_sofmaxNLL_to_softmaxCE(model)
 
-    model = postprocess.fix_transpose(model)
     model = postprocess.layer_norm_transform(model)
     model = postprocess.fix_expand_shape(model)
 
@@ -350,6 +353,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.allreduce_post_accumulation = allreduce_post_accumulation
     ort_parameters.partition_optimizer = partition_optimizer
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
+    ort_parameters.set_gradients_as_graph_outputs = False
 
     output_types = {}
     for output in model.graph.output:
@@ -422,6 +426,7 @@ def create_ort_training_session_bind_parameters(model, device, world_rank=-1, wo
     ort_parameters.world_rank = world_rank
     ort_parameters.world_size = world_size
     ort_parameters.gradient_accumulation_steps = gradient_accumulation_steps
+    ort_parameters.set_gradients_as_graph_outputs = True
 
     torch_params = {}
     output_types = {}
@@ -463,6 +468,70 @@ def create_ort_training_session_bind_parameters(model, device, world_rank=-1, wo
         create_and_bind_grad_or_grad_accumulate_buffer(train_io_binding, torch_tensor, param, enable_grad_accumulation, device, device_index)
 
     return session, train_io_binding, eval_io_binding, output_name, torch_params, output_types
+
+def save_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", checkpoint_state_dict=None):
+    if checkpoint_state_dict==None:
+        checkpoint_state_dict={'model': model.state_dict()}
+    else:
+        checkpoint_state_dict.update({'model': model.state_dict()})
+
+    assert os.path.exists(checkpoint_dir), "ERROR: Checkpoint directory doesn't exist: {}".format(checkpoint_dir)
+
+    checkpoint_name = get_checkpoint_name(checkpoint_prefix, model.partition_optimizer_, model.world_rank, model.world_size)
+    checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
+
+    if os.path.exists(checkpoint_file):
+        warnings.warn("{} already exists, overwriting.".format(checkpoint_file))
+
+    torch.save(checkpoint_state_dict, checkpoint_file)
+
+def _load_single_checkpoint(model, checkpoint_dir, checkpoint_prefix, is_partitioned, strict):
+    checkpoint_name = get_checkpoint_name(checkpoint_prefix, is_partitioned, model.world_rank, model.world_size)
+    checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
+
+    if is_partitioned:
+        assert_msg = ("Couldn't find checkpoint file {}." +
+            "Optimizer partitioning is enabled using ZeRO. Please make sure that the "+
+            "checkpoint file exists for rank {} of {}.").format(checkpoint_file,model.world_rank, model.world_size)
+    else:
+        assert_msg = "Couldn't find checkpoint file {}.".format(checkpoint_file)
+
+    assert os.path.exists(checkpoint_file), assert_msg
+
+    checkpoint_state = torch.load(checkpoint_file, map_location='cpu')
+
+    model.load_state_dict(checkpoint_state['model'], strict=strict)
+    del(checkpoint_state['model'])
+    return checkpoint_state
+
+def _load_multi_checkpoint(model, checkpoint_dir, checkpoint_prefix, strict):
+    checkpoint_files = list_checkpoint_files(checkpoint_dir, checkpoint_prefix)
+
+    ckpt_agg = CombineZeroCheckpoint(checkpoint_files)
+    aggregate_state_dict = ckpt_agg.aggregate_checkpoints()
+
+    model.load_state_dict(aggregate_state_dict, strict=strict)
+
+    # aggregate other keys in the state_dict.
+    # Values will be overwritten for matching keys among workers
+    all_checkpoint_states=dict()
+    for checkpoint_file in checkpoint_files:
+        checkpoint_state = torch.load(checkpoint_file, map_location='cpu')
+        del(checkpoint_state['model'])
+        all_checkpoint_states.update(checkpoint_state)
+    return all_checkpoint_states
+
+def load_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", strict=False):
+    checkpoint_files = list_checkpoint_files(checkpoint_dir, checkpoint_prefix)
+    is_partitioned = False
+    if len(checkpoint_files) > 1:
+        warnings.warn(f"Found more than one file with prefix {checkpoint_prefix} in directory {checkpoint_dir}." +
+            "Attempting to load ZeRO checkpoint.")
+        is_partitioned = True
+    if (not model.partition_optimizer_) and is_partitioned:
+        return _load_multi_checkpoint(model, checkpoint_dir, checkpoint_prefix, strict)
+    else:
+        return _load_single_checkpoint(model, checkpoint_dir, checkpoint_prefix, is_partitioned, strict)
 
 class ORTTrainer():
 
@@ -511,8 +580,9 @@ class ORTTrainer():
         else:
             self.onnx_model_ = model
             if loss_fn is not None:
-                print("loss_fn is not used when creating ORTTrainer because an ONNX model is provided.")
+                warnings.warn("loss_fn is not used when creating ORTTrainer because an ONNX model is provided.")
             # TODO: accept loss_fn as an onnx model. build self.onnx_model_ with model and loss_fn
+            self.loss_fn_ = None
 
         self.model_desc_ = model_desc
         self.input_desc_with_lr = [*self.model_desc_.inputs_, learning_rate_description]
@@ -538,7 +608,7 @@ class ORTTrainer():
         self.loss_scaler_ = loss_scaler
 
         if self.get_lr_this_step_ is not None or self.loss_scaler_ is not None:
-            print("It is experimental to use learning rate scheduler and loss scaler inside ORTTrainer.")
+            warnings.warn("It is experimental to use learning rate scheduler and loss scaler inside ORTTrainer.")
         self.training_optimizer_name_ = training_optimizer_name
         self.learning_rate_description_ = learning_rate_description
         self.map_optimizer_attributes_ = map_optimizer_attributes
@@ -547,8 +617,11 @@ class ORTTrainer():
         self.enable_grad_norm_clip_ = enable_grad_norm_clip
         self.frozen_weights_ = frozen_weights
         self.opset_version_ = _opset_version
-        self.loss_scale_input_name = ''
         self.state_dict_ = None
+
+        # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
+        # see prepare_input_and_fetches for more details.
+        self.loss_scale_input_name = 'default_loss_scale_input_name'
 
         self._init_session()
 
@@ -556,7 +629,7 @@ class ORTTrainer():
         if self.onnx_model_ is None:
             return
 
-        self.verify_fully_optimized_model(self.onnx_model_)
+        self._verify_fully_optimized_model(self.onnx_model_)
         self.session, self.train_io_binding, self.eval_io_binding, self.output_name, _, self.output_types = \
             create_ort_training_session_with_optimizer(
                 self.onnx_model_, self.device_,
@@ -597,11 +670,15 @@ class ORTTrainer():
                 IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool)]
 
         if self.state_dict_:
-            self.load_state_dict(self.state_dict_, self.strict_) 
+            self.load_state_dict(self.state_dict_, self.strict_)
         self.state_dict_ = None
 
     def _init_onnx_model(self, inputs):
         if self.onnx_model_ is not None:
+            import onnxruntime.capi.postprocess as postprocess
+            self.onnx_model_ = postprocess.fuse_softmaxNLL_to_softmaxCE(self.onnx_model_)
+            self.onnx_model_ = postprocess.layer_norm_transform(self.onnx_model_)
+            self.onnx_model_ = postprocess.fix_expand_shape(self.onnx_model_)
             return
 
         if self.torch_model_ is not None:
@@ -620,6 +697,10 @@ class ORTTrainer():
         self.is_train = False
 
     def state_dict(self):
+        if not self.session:
+            warnings.warn("ONNXRuntime training session is not initialized yet. "
+                          "Please run train_step or eval_step at least once before calling state_dict().")
+            return {}
         session_state = self.session.get_state()
         torch_state = {}
         for name in session_state:
@@ -641,6 +722,10 @@ class ORTTrainer():
         self.session.load_state(session_state, strict)
 
     def save_as_onnx(self, path):
+        if not self.session:
+            warnings.warn("ONNXRuntime training session is not initialized yet. "
+                          "Please run train_step or eval_step at least once before calling save_as_onnx().")
+            return
         state_tensors = self.session.get_state()
         # replace the initializers with new value
         new_weights = []
@@ -659,7 +744,7 @@ class ORTTrainer():
         with open(path, "wb") as f:
             f.write(self.onnx_model_.SerializeToString())
 
-    def prepare_input_and_fetches(self, input_desc_with_, internal_learning_rate, internal_loss_scale, *args, **kwargs):
+    def _prepare_input_and_fetches(self, input_desc_with_, internal_learning_rate, internal_loss_scale, *args, **kwargs):
         fetches = None
         if type(args) == tuple and len(args) == 1 and type(args[0]) == list:
             input = tuple(args[0])
@@ -673,6 +758,15 @@ class ORTTrainer():
             input = input + (internal_learning_rate,)
         if internal_loss_scale is not None:
             input = input + (internal_loss_scale,)
+        elif self.use_mixed_precision:
+            # loss_scale input name is needed to call train_step, for example:
+            #   kwargs[model.loss_scale_input_name] = loss_scale
+            #   outputs = model.train_step(*args, **kwargs)
+            # However, when first time train_step is called model.loss_scale_input_name is not set.
+            # To workaround this problem, we use the special name 'default_loss_scale_input_name' to indicate 
+            # the loss_scale.
+            if 'default_loss_scale_input_name' in kwargs.keys():
+                input = input + (kwargs['default_loss_scale_input_name'],)
 
         fetches = None
         if 'fetches' in kwargs:
@@ -711,17 +805,17 @@ class ORTTrainer():
             loss_scale = torch.tensor([self.loss_scaler_.loss_scale_])
 
         if self.onnx_model_ is None:
-            sample_input, _ = self.prepare_input_and_fetches(self.model_desc_.inputs_,
+            sample_input, _ = self._prepare_input_and_fetches(self.model_desc_.inputs_,
                 None, None, *args, **kwargs)
             self._init_onnx_model(sample_input)
 
         if self.use_mixed_precision:
-            input, fetches = self.prepare_input_and_fetches(self.input_desc_with_lr_and_loss_scale,
+            input, fetches = self._prepare_input_and_fetches(self.input_desc_with_lr_and_loss_scale,
                 learning_rate, loss_scale, *args, **kwargs)
             assert len(self.input_desc_with_lr_and_loss_scale) == len(input)
             input_descs = self.input_desc_with_lr_and_loss_scale
         else:
-            input, fetches = self.prepare_input_and_fetches(self.input_desc_with_lr,
+            input, fetches = self._prepare_input_and_fetches(self.input_desc_with_lr,
                 learning_rate, loss_scale, *args, **kwargs)
             assert len(self.input_desc_with_lr) == len(input)
             input_descs = self.input_desc_with_lr
@@ -736,6 +830,7 @@ class ORTTrainer():
         elif self.current_step % self.gradient_accumulation_steps != 0:
             run_options = ort.RunOptions()
             run_options.only_execute_path_to_fetches = True
+            run_options.training_mode = True
             output_desc = self.output_desc_with_group_accumulated_gradients
         elif self.use_mixed_precision:
             has_if_all_finite = True
@@ -793,8 +888,8 @@ class ORTTrainer():
         """
 
         # with model_loss_cls, the last input is label, first output is loss
-        input, fetches = self.prepare_input_and_fetches(self.model_desc_.inputs_,
-                                                        None, None, *args, **kwargs)
+        input, fetches = self._prepare_input_and_fetches(self.model_desc_.inputs_,
+                                                         None, None, *args, **kwargs)
 
         if self.onnx_model_ is None:
             if self.torch_model_ is not None:
@@ -813,6 +908,7 @@ class ORTTrainer():
 
         run_options = ort.RunOptions()
         run_options.only_execute_path_to_fetches = True
+        run_options.training_mode = False
 
         session_run_results = ort_training_session_run_helper(self.session, self.eval_io_binding, input,
                                                               input_desc,
@@ -825,7 +921,7 @@ class ORTTrainer():
         else:
             return [session_run_results[output_desc.name_] for output_desc in output_desc]
 
-    def verify_fully_optimized_model(self, model):
+    def _verify_fully_optimized_model(self, model):
         assert(len(model.graph.output) > 0)
         # model's first output must be the loss tensor
         if model.graph.output[0].type.tensor_type.elem_type != onnx.TensorProto().FLOAT and\
@@ -850,6 +946,9 @@ class ORTModel():
         self.world_size = world_size
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.opset_version = _opset_version
+
+        # Adding to not break checkpointing functions for ORTModel
+        self.partition_optimizer_ = False
 
         model = convert_model_loss_fn_to_onnx(self.model_, self.loss_fn_, self.model_desc_, torch.device(
             'cpu'), opset_version=self.opset_version)

@@ -71,7 +71,9 @@ NodeArg& CreateNodeArg(Graph& graph, const NodeArg* base_arg) {
 Status AddRecordBackward(Graph& graph,
                        Node* send_bw,
                        std::vector<std::string>& new_input_names,
-                       std::vector<std::string>& new_output_names) {
+                       std::vector<std::string>& new_output_names,
+                       std::string &event_id_tensor_name,
+                       std::string &output_tensor_name) {
   std::vector<NodeArg*> input_args;
   AddInputEvent(graph, "RecordEvent", false /* is_forward */, input_args, new_input_names);
   std::vector<NodeArg*> output_args{};
@@ -99,10 +101,20 @@ Status AddRecordBackward(Graph& graph,
                 output_args,
                 nullptr,
                 kMSDomain);
+
+  // First input argument is the recorded event ID tensor.
+  event_id_tensor_name = input_args.front()->Name();
+  // Use first output as output singnal. It will be fetched outside to make sure
+  // event operator is computed.
+  output_tensor_name = output_args.front()->Name();
   return Status::OK();
 }
 
-Status AddWaitForward(Graph& graph, Node* /* recv_fw */, std::vector<std::string>& new_input_names) {
+Status AddWaitForward(Graph& graph,
+                      Node* /* recv_fw */,
+                      std::vector<std::string>& new_input_names,
+                      std::string& forward_waited_event_name,
+                      std::string& output_tensor_name) {
   // Append old_input to input_args and return its pass-through value. Note that
   // input_args and output_args are Wait's inputs and outputs, respectively.
   auto update_wait_input_output = [&](NodeArg* old_input,
@@ -148,11 +160,19 @@ Status AddWaitForward(Graph& graph, Node* /* recv_fw */, std::vector<std::string
                 output_args,
                 nullptr,
                 kMSDomain);
-
+  forward_waited_event_name = input_args.front()->Name();
+  output_tensor_name = output_args.front()->Name();
   return Status::OK();
 }
 
-Status AddOrSkipRecordForwardWaitBackward(Graph& graph, Node* send_fw, Node* recv_bw, std::vector<std::string>& new_input_names) {
+Status AddOrSkipRecordForwardWaitBackward(Graph& graph,
+                                          Node* send_fw,
+                                          Node* recv_bw,
+                                          std::vector<std::string>& new_input_names,
+                                          std::string& forward_recorded_event_name,
+                                          std::string& backward_waited_event_name,
+                                          std::string& forward_output_name,
+                                          std::string& backward_output_name) {
   if (!send_fw != !recv_bw){
     ORT_THROW("Graph requires either having both send forward node "
       "and recv backword node, or none of them. Currently the graph "
@@ -189,6 +209,9 @@ Status AddOrSkipRecordForwardWaitBackward(Graph& graph, Node* send_fw, Node* rec
                                     {},          /* attribute */
                                     kMSDomain);
     record_node = &new_node;
+
+    forward_recorded_event_name = record_node->InputDefs()[0]->Name();
+    forward_output_name = record_node->OutputDefs()[0]->Name();
   }
   // Insert WaitEvent
   {
@@ -213,13 +236,24 @@ Status AddOrSkipRecordForwardWaitBackward(Graph& graph, Node* send_fw, Node* rec
                   {},          /* attribute */
                   kMSDomain);
     wait_node = &new_node;
-    ORT_UNUSED_PARAMETER(wait_node);
+
+    backward_waited_event_name = wait_node->InputDefs()[0]->Name();
+    backward_output_name = wait_node->OutputDefs()[0]->Name();
   }
 
   return Status::OK();
 }
 
-Status TransformGraphForPipeline(Graph& graph) {
+Status TransformGraphForPipeline(
+  Graph& graph,
+  std::string& forward_waited_event_name,
+  std::string& forward_recorded_event_name,
+  std::string& backward_waited_event_name,
+  std::string& backward_recorded_event_name,
+  std::string& forward_waited_output_name,
+  std::string& forward_recorded_output_name,
+  std::string& backward_waited_output_name,
+  std::string& backward_recorded_output_name) {
   // insert WaitEvent and RecordEvent to the partition
   Node* send_fw{nullptr};
   Node* send_bw{nullptr};
@@ -244,9 +278,28 @@ Status TransformGraphForPipeline(Graph& graph) {
   std::vector<std::string> new_input_names;
   std::vector<std::string> new_output_names;
 
-  ORT_RETURN_IF_ERROR(AddRecordBackward(graph, send_bw, new_input_names, new_output_names));
-  ORT_RETURN_IF_ERROR(AddWaitForward(graph, recv_fw, new_input_names));
-  ORT_RETURN_IF_ERROR(AddOrSkipRecordForwardWaitBackward(graph, send_fw, recv_bw, new_input_names));
+  ORT_RETURN_IF_ERROR(AddRecordBackward(
+    graph,
+    send_bw,
+    new_input_names,
+    new_output_names,
+    backward_recorded_event_name,
+    backward_recorded_output_name));
+  ORT_RETURN_IF_ERROR(AddWaitForward(
+    graph,
+    recv_fw,
+    new_input_names,
+    forward_waited_event_name,
+    forward_waited_output_name));
+  ORT_RETURN_IF_ERROR(AddOrSkipRecordForwardWaitBackward(
+    graph,
+    send_fw,
+    recv_bw,
+    new_input_names,
+    forward_recorded_event_name,
+    backward_waited_event_name,
+    forward_recorded_output_name,
+    backward_waited_output_name));
 
   auto fill_node_args = [&](const Graph& graph,
                             const std::vector<const NodeArg*>& existed_node_args,

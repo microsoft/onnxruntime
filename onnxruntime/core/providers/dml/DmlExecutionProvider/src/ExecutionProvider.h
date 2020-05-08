@@ -39,8 +39,6 @@ namespace Dml
 
         void ReleaseCompletedReferences();
 
-        void TrimUploadHeap();
-
     public: // implements Dml::IExecutionProvider
         STDMETHOD(GetD3DDevice)(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept final;
 
@@ -92,7 +90,7 @@ namespace Dml
         uint32_t GetSuppportedDeviceDataTypeMask() const;
 
         onnxruntime::common::Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const;
-        onnxruntime::common::Status WaitForGpuCompletion();
+        onnxruntime::common::Status CopyTensors(const std::vector<onnxruntime::IDataTransfer::SrcDstPair>& src_dst_pairs) const;
 
         // IWinmlExecutionProvider methods
         void QueueReference(IUnknown* object) override;
@@ -157,7 +155,9 @@ namespace Dml
         std::shared_ptr<onnxruntime::IAllocator> GetCpuOutputAllocator();
 
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> 
-        GetInternalRegistrationInfoMap() const;
+        GetInternalRegistrationInfoMap() const;        
+        
+        onnxruntime::common::Status OnSessionInitializationEnd();
 
     private:
         void Initialize(ID3D12CommandQueue* queue, ExecutionProvider& executionProvider);
@@ -198,6 +198,11 @@ namespace Dml
             assert(exec_queue_id == 0);
             return m_impl->CopyTensor(src, dst);
         }
+        
+        onnxruntime::common::Status CopyTensors(const std::vector<onnxruntime::IDataTransfer::SrcDstPair>& src_dst_pairs) const 
+        {
+            return m_impl->CopyTensors(src_dst_pairs);
+        }
 
         bool CanCopy(const OrtDevice& srcDevice, const OrtDevice& dstDevice) const final
         {
@@ -221,31 +226,28 @@ namespace Dml
             bool enableMetacommands = true
         );
         
-        std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const final
+        std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const final override
         {
             return std::make_unique<DataTransfer>(m_impl.Get());
         }
 
-        const void* GetExecutionHandle() const noexcept final
+        const void* GetExecutionHandle() const noexcept final override
         {
             return m_impl.Get();
         }
 
-        std::shared_ptr<onnxruntime::KernelRegistry> GetKernelRegistry() const final
+        std::shared_ptr<onnxruntime::KernelRegistry> GetKernelRegistry() const final override
         {
             return m_impl->GetKernelRegistry();
         }
 
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
             GetCapability(const onnxruntime::GraphViewer& graph,
-                const std::vector<const onnxruntime::KernelRegistry*>& kernel_registries) const final;
+                const std::vector<const onnxruntime::KernelRegistry*>& kernel_registries) const final override;
 
-        // Not to be confused with IExecutionProvider::Sync() const.  The DML provider handles 
-        // synchronization when copying inputs and outputs, therefore doesn't override the 
-        // default ORT method, which does nothin.
-        onnxruntime::common::Status WaitForGpuCompletion()
-        {
-            return m_impl->WaitForGpuCompletion();
+        onnxruntime::common::Status OnSessionInitializationEnd() override
+        { 
+            return m_impl->OnSessionInitializationEnd();
         }
 
         void Flush()
@@ -261,11 +263,6 @@ namespace Dml
         void ReleaseCompletedReferences()
         {
             return m_impl->ReleaseCompletedReferences();
-        }
-
-        void TrimUploadHeap()
-        {
-            m_impl->TrimUploadHeap();
         }
         
         ExecutionProviderImpl* GetImpl()
