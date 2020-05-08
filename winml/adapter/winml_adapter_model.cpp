@@ -122,7 +122,7 @@ static OrtStatus* CreateModelProto(const char* path, std::unique_ptr<onnx::Model
   int file_descriptor;
 
   auto path_str = std::string(path);
-  auto wide_path = onnxruntime::ToWideString(path_str);
+  auto wide_path = onnxruntime::UTF8ToWideString(path_str);
   
   _set_errno(0);  // clear errno
   _wsopen_s(
