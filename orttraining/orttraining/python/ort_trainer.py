@@ -15,7 +15,7 @@ import onnxruntime as ort
 from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
 import onnxruntime.capi.pt_patch
 
-DEFAULT_OPSET_VERSION = 10
+DEFAULT_OPSET_VERSION = 12
 
 class IODescription():
     def __init__(self, name, shape, dtype=None, num_classes=None):
@@ -204,7 +204,7 @@ def wrap_for_input_match(model, loss_fn, input_names):
         if len(sig_loss.parameters) != 2:
             raise RuntimeError("loss function should take two arguments - predict and label.")
 
-        # label shall be the second input to loss_fn. 
+        # label shall be the second input to loss_fn.
         ordered_list_keys = [*ordered_list_keys, list(sig_loss.parameters.keys())[1]]
 
     class model_loss_cls(torch.nn.Module):
@@ -333,7 +333,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
                        output_names=output_names,
                        opset_version=opset_version,
                        dynamic_axes=dynamic_axes,
-                       training=True,
+                       training=torch.onnx.TrainingMode.TRAINING,
                        _retain_param_name=True,
                        example_outputs=tuple(sample_outputs),
                        do_constant_folding=False,
@@ -351,6 +351,13 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
         for i, name in enumerate(n.input):
             if name in replace_name_dict:
                 n.input[i] = replace_name_dict[name]
+    import onnxruntime.capi.postprocess as postprocess
+    # TODO : WE CAN REMOVE SCE PASS FOR OPSET >= 12 with pytorch master (post 1.5)
+    model = postprocess.fuse_sofmaxNLL_to_softmaxCE(model)
+
+    model = postprocess.fix_transpose(model)
+    model = postprocess.layer_norm_transform(model)
+    model = postprocess.fix_expand_shape(model)
 
     # onnx model initializer may contain non-trainable registered buffers that are not part
     # of pytorch model named parameteres.
