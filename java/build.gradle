@@ -199,16 +199,14 @@ publishing {
 	}
 }
 
-// Generates a task signMavenJavaPublication that will
+// Generates a task signMavenPublication that will
 // build all artifacts.
 signing {
 	// Queries env vars:
-	// ORG_GRADLE_PROJECT_signingKeyId
 	// ORG_GRADLE_PROJECT_signingKey
 	// ORG_GRADLE_PROJECT_signingPassword but can be changed to properties
-	def signingKeyId = findProperty("signingKeyId")
 	def signingKey = findProperty("signingKey")
 	def signingPassword = findProperty("signingPassword")
-	useInMemoryPgpKeys(signingKeyId, signingKey, signingPassword)
+	useInMemoryPgpKeys(signingKey, signingPassword)
 	sign publishing.publications.maven
 }
