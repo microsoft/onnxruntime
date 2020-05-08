@@ -5,7 +5,6 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "core/framework/op_kernel.h"
-#include "core/framework/kernel_registry.h"
 #include "core/framework/tensorprotoutils.h"
 
 using namespace onnxruntime::common;
