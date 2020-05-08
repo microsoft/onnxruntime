@@ -422,6 +422,7 @@ const LearningModelSessionAPITestsApi& getapi() {
   if (RUNTIME_PARAMETER_EXISTS("noIDXGIFactory6Tests")) {
     api.CreateSessionDeviceDirectXHighPerformance = SkipTest;
     api.CreateSessionDeviceDirectXMinimumPower = SkipTest;
+    api.AdapterIdAndDevice = SkipTest;
   }
  return api;
 }
