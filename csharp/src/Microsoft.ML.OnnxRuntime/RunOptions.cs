@@ -23,43 +23,40 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateRunOptions(out _nativePtr));
         }
 
-
         /// <summary>
-        /// LogSeverityLevel for the Run
-        /// default == ORT_LOGGING_LEVEL_WARNING.
+        /// Log Severity Level for the session logs. Default = ORT_LOGGING_LEVEL_WARNING
         /// </summary>
         public OrtLoggingLevel LogSeverityLevel
         {
             get
             {
-                OrtLoggingLevel level;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsGetRunLogSeverityLevel(_nativePtr, out level));
-                return level;
+                return _logSeverityLevel;
             }
             set
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunLogSeverityLevel(_nativePtr, value));
+                _logSeverityLevel = value;
             }
         }
+        private OrtLoggingLevel _logSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING;
 
         /// <summary>
-        /// LogVerbosityLevel for the Run
-        /// default == 0. Valid values are >=0.
+        /// Log Verbosity Level for the session logs. Default = 0. Valid values are >=0.
         /// This takes into effect only when the LogSeverityLevel is set to ORT_LOGGING_LEVEL_VERBOSE.
         /// </summary>
         public int LogVerbosityLevel
         {
             get
             {
-                int level;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsGetRunLogVerbosityLevel(_nativePtr, out level));
-                return level;
+                return _logVerbosityLevel;
             }
             set
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunLogVerbosityLevel(_nativePtr, value));
+                _logVerbosityLevel = value;
             }
         }
+        private int _logVerbosityLevel = 0;
 
         /// <summary>
         /// Log tag to be used during the run. default = ""
