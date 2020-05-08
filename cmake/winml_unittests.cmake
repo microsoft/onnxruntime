@@ -89,7 +89,7 @@ function(get_winml_test_api_src
       "${winml_test_src_path}/api/LearningModelSessionAPITest.cpp")
   
   if (NOT winml_is_inbox)
-      file(GLOB winml_redist_only_tests CONFIGURE_DEPENDS
+      file(GLOB winml_redist_only_api_src CONFIGURE_DEPENDS
       "${winml_test_src_path}/api/RawApiHelpers.h"
       "${winml_test_src_path}/api/RawApiTests.h"
       "${winml_test_src_path}/api/RawApiTestsGpu.h"
@@ -100,7 +100,7 @@ function(get_winml_test_api_src
       "${winml_test_src_path}/api/raw/*.cpp")
   endif()
 
-  set(${output_winml_test_api_src} ${winml_test_api_src} PARENT_SCOPE)
+  set(${output_winml_test_api_src} ${winml_test_api_src} ${winml_redist_only_api_src} PARENT_SCOPE)
 endfunction()
 
 function(get_winml_test_concurrency_src
