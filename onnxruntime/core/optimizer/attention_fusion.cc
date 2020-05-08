@@ -220,13 +220,15 @@ static NodeArg* ProcessMask(Graph& graph, NodeArg* mask_input, ProviderType prov
 
   auto data_type = mask_input->TypeAsProto()->tensor_type().elem_type();
   if (data_type != ONNX_NAMESPACE::TensorProto_DataType_INT64 &&
-      data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-    DEBUG_LOG("Mask data type is not int32 or int64");
+      data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32 &&
+      data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    DEBUG_LOG("Mask data type is not int32 or int64 or float32");
     return nullptr;
   }
 
   NodeArg* reduce_sum_input = mask_input;
-  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
+    data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     NodeArg& cast_int32 = CastMaskToInt32(graph, mask_input, provider_type);
     reduce_sum_input = &cast_int32;
   }
@@ -343,7 +345,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           |  (0,2,1,3)  (0,2,3,1)    (perm=0,2,1,3)              |
           |         \       /         |                    mask_Unsqueeze(axes=2)
           |      qk_MatMul            |                          |
-          |           |    [B=2]      |              [A=1] mask_Cast(to=1)
+          |           |    [B=2]      |              ([A=1] mask_Cast(to=1))
           |           |   /           |                   \     /
           |        qk_Div             |                 mask_Sub   [A=1000]
           |            \              |                        \   /
@@ -465,33 +467,56 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
     return false;
   }
 
-  // path 2 to find mask
+  // path 2 to find mask. Unsqueeze -> Unsqueeze -> (Cast) -> Sub -> Mul -> Add -> Softmax
+  // The "Cast" node in parentheses is optional. 
   std::vector<graph_utils::EdgeEndToMatch> mask_path{
       {0, 0, "Softmax", {1, 11}, kOnnxDomain},
       {0, 0, "Add", {7}, kOnnxDomain},
       {0, 1, "Mul", {7}, kOnnxDomain},
-      {0, 0, "Sub", {7}, kOnnxDomain},
-      {0, 1, "Cast", {9}, kOnnxDomain},
-      {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain}};
+      {0, 0, "Sub", {7}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(qkv_matmul, true, mask_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for mask");
     return false;
   }
-
+  
   const Node& softmax = edges[0]->GetNode();
   const Node& mask_add = edges[1]->GetNode();
   const Node& mask_mul = edges[2]->GetNode();
   const Node& mask_sub = edges[3]->GetNode();
-  const Node& mask_cast = edges[4]->GetNode();
-  const Node& mask_unsqueeze_2 = edges[5]->GetNode();
-  const Node& mask_unsqueeze_1 = edges[6]->GetNode();
+
+  // Match optional mask cast node
+  Node* p_mask_cast = nullptr;
+  Node* p_mask_unsqueeze_2 = nullptr;
+  Node* p_mask_unsqueeze_1 = nullptr;
+  std::vector<graph_utils::EdgeEndToMatch> mask_path_format_1{
+      {0, 1, "Cast", {9}, kOnnxDomain}, 
+      {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain}};
+
+  std::vector<graph_utils::EdgeEndToMatch> mask_path_format_2{
+      {0, 1, "Unsqueeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain}};
+
+  if (graph_utils::FindPath(mask_sub, true, mask_path_format_1, edges, logger)) {
+    p_mask_cast = const_cast<Node*>(&edges[0]->GetNode());
+    p_mask_unsqueeze_2 = const_cast<Node*>(&edges[1]->GetNode());
+    p_mask_unsqueeze_1 = const_cast<Node*>(&edges[2]->GetNode());
+  } else if (graph_utils::FindPath(mask_sub, true, mask_path_format_2, edges, logger)) {
+    p_mask_unsqueeze_2 = const_cast<Node*>(&edges[0]->GetNode());
+    p_mask_unsqueeze_1 = const_cast<Node*>(&edges[1]->GetNode());
+  } else {
+    DEBUG_LOG("Failed to find path for mask");
+    return false;
+  }
+  
+  const Node& mask_unsqueeze_2 = *p_mask_unsqueeze_2;
+  const Node& mask_unsqueeze_1 = *p_mask_unsqueeze_1;
 
   if (softmax.GetOutputEdgesCount() != 1 ||
       mask_add.GetOutputEdgesCount() != 1 ||
       mask_sub.GetOutputEdgesCount() != 1 ||
-      mask_cast.GetOutputEdgesCount() != 1 ||
+      (p_mask_cast != nullptr && (*p_mask_cast).GetOutputEdgesCount() != 1) ||
       mask_unsqueeze_2.GetOutputEdgesCount() != 1 ||
       mask_unsqueeze_1.GetOutputEdgesCount() != 1) {
     DEBUG_LOG("Output edge count not expected for mask nodes");
@@ -691,7 +716,9 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
   if (mask_mul.GetOutputEdgesCount() == 1) {
     nodes_to_remove.push_back(mask_mul.Index());
     nodes_to_remove.push_back(mask_sub.Index());
-    nodes_to_remove.push_back(mask_cast.Index());
+    if (p_mask_cast != nullptr) {
+      nodes_to_remove.push_back((*p_mask_cast).Index());
+    }
     nodes_to_remove.push_back(mask_unsqueeze_2.Index());
     nodes_to_remove.push_back(mask_unsqueeze_1.Index());
   }
