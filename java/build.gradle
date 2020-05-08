@@ -20,12 +20,9 @@ java {
 	targetCompatibility = JavaVersion.VERSION_1_8
 }
 
-
 // This jar tasks serves as a CMAKE signalling
 // mechanism. The jar will be overwritten by allJar task
 jar {
-	into("META-INF/maven/$project.group/$project.name") {
-	}
 }
 
 // Add explicit sources jar with pom file.
@@ -183,18 +180,20 @@ publishing {
 				}
 				developers {
 					developer {
-						id 'onnxruntime'
-						name 'ONNX Runtime'
-						email 'onnxruntime@microsoft.com'
+						id = 'onnxruntime'
+						name = 'ONNX Runtime'
+						email = 'onnxruntime@microsoft.com'
 					}
 				}
 			}
 		}
+	}
+	repositories {
 		maven {
 			url 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
 			credentials {
 				username mavenUser
-				password mavenUser
+				password mavenPwd
 			}
 		}
 	}
@@ -211,5 +210,5 @@ signing {
 	def signingKey = findProperty("signingKey")
 	def signingPassword = findProperty("signingPassword")
 	useInMemoryPgpKeys(signingKeyId, signingKey, signingPassword)
-	sign publishing.publications.mavenJava
+	sign publishing.publications.maven
 }

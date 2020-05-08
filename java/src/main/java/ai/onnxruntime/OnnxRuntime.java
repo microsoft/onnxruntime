@@ -33,7 +33,7 @@ final class OnnxRuntime {
   /** The short name of the ONNX runtime JNI shared library */
   static final String ONNXRUNTIME_JNI_LIBRARY_NAME = "onnxruntime4j_jni";
 
-  private static String OS_ARCH_STR;
+  private static final String OS_ARCH_STR = initOsArch();
 
   private static boolean loaded = false;
 
@@ -42,19 +42,15 @@ final class OnnxRuntime {
 
   private OnnxRuntime() {}
 
-  /**
-   * Computes and initializes OS_ARCH_STR (such as linux-x64)
-   *
-   * @throws IOException If it can't write to disk to copy out the library from the jar file.
-   */
-  private static void initOsArch() throws IOException {
+  /* Computes and initializes OS_ARCH_STR (such as linux-x64) */
+  private static String initOsArch() {
     String detectedOS = null;
-    String OS = System.getProperty("os.name", "generic").toLowerCase(Locale.ENGLISH);
-    if ((OS.indexOf("mac") >= 0) || (OS.indexOf("darwin") >= 0)) {
+    String os = System.getProperty("os.name", "generic").toLowerCase(Locale.ENGLISH);
+    if (os.contains("mac") || os.contains("darwin")) {
       detectedOS = "osx";
-    } else if (OS.indexOf("win") >= 0) {
+    } else if (os.contains("win")) {
       detectedOS = "win";
-    } else if (OS.indexOf("nux") >= 0) {
+    } else if (os.contains("nux")) {
       detectedOS = "linux";
     } else {
       detectedOS = "android";
@@ -66,9 +62,9 @@ final class OnnxRuntime {
     } else if (arch.indexOf("x86") == 0) {
       detectedArch = "x86";
     } else {
-      throw new IOException("Unsupported arch:" + arch);
+      throw new IllegalStateException("Unsupported arch:" + arch);
     }
-    OS_ARCH_STR = detectedOS + '-' + detectedArch;
+    return detectedOS + '-' + detectedArch;
   }
 
   /**
@@ -80,7 +76,6 @@ final class OnnxRuntime {
     if (loaded) {
       return;
     }
-    initOsArch();
     Path tempDirectory = isAndroid() ? null : Files.createTempDirectory("onnxruntime-java");
     try {
       load(tempDirectory, ONNXRUNTIME_LIBRARY_NAME);
