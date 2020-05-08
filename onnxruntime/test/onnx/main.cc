@@ -24,6 +24,8 @@
 
 using namespace onnxruntime;
 
+static bool g_exit_fast = false;
+
 namespace {
 void usage() {
   printf(
@@ -102,7 +104,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_dml = false;
   bool enable_acl = false;
   int device_id = 0;
-  GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
+  GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
   int verbosity_option_count = 0;
 
@@ -321,6 +323,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     if (enable_dnnl) {
 #ifdef USE_DNNL
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena ? 1 : 0));
+      g_exit_fast = true;
 #else
       fprintf(stderr, "DNNL is not supported in this build");
       return -1;
@@ -855,5 +858,7 @@ int main(int argc, char* argv[]) {
     retval = -1;
   }
   ::google::protobuf::ShutdownProtobufLibrary();
+  if (g_exit_fast)
+    std::_Exit(retval);
   return retval;
 }

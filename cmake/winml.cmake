@@ -28,7 +28,11 @@ if (onnxruntime_WINML_NAMESPACE_OVERRIDE)
   set(output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning")
   set(idl_native_output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.Native")
   set(idl_native_internal_output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.Native.Internal")
-  set(winml_midl_defines "/DROOT_NS=${onnxruntime_WINML_NAMESPACE_OVERRIDE}")
+  
+  if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
+    set(winml_midl_defines "/DBUILD_INBOX=1")
+  endif()
+
   set(winml_root_ns "${onnxruntime_WINML_NAMESPACE_OVERRIDE}")
   set(BINARY_NAME "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.dll")
   set(winml_api_use_ns_prefix false)

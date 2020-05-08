@@ -1004,7 +1004,8 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
   auto load_gradient_graph = [](int stageIdx, PathString& input_file, PathString& output_file) {
     auto config = MakeBasicTrainingConfig();
 
-    config.use_pipeline = true;
+    TrainingSession::TrainingConfiguration::PipelineConfiguration pipe_config{};
+    config.pipeline_config = pipe_config;
 
     PathString backprop_model_file;
     ASSERT_STATUS_OK(BuildBackPropGraph(input_file, config, backprop_model_file));
