@@ -20,7 +20,7 @@ namespace onnxruntime {
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const InitializedTensorSet& initialized_tensor_set,
                                     std::unique_ptr<CPUExecutionProvider> cpu_execution_provider) {
-  ORT_ENFORCE(cpu_execution_provider_, "Provided CPU execution provider is a nullptr");
+  ORT_ENFORCE(cpu_execution_provider, "Provided CPU execution provider is a nullptr");
   cpu_execution_provider_ = std::move(cpu_execution_provider);
 
   allocator_ptr_ = cpu_execution_provider_->GetAllocator(device_id_, mem_type_);
@@ -63,7 +63,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   }
 
   node_index_info_ = onnxruntime::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
-}  // namespace onnxruntime
+}
 
 const OpKernel* OptimizerExecutionFrame::Info::CreateKernel(const Node* node) const {
   std::unique_ptr<OpKernel> op_kernel;
