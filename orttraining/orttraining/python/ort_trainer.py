@@ -8,8 +8,10 @@ from onnx import helper
 import torch
 import torch.nn
 import torch.onnx
-import onnxruntime as ort
 from distutils.version import LooseVersion
+import warnings
+
+import onnxruntime as ort
 from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
 import onnxruntime.capi.pt_patch
 
@@ -22,12 +24,10 @@ class IODescription():
         self.dtype_ = dtype
         self.num_classes_ = num_classes
 
-
 class ModelDescription():
     def __init__(self, inputs, outputs):
         self.inputs_ = inputs
         self.outputs_ = outputs
-
 
 def resolve_symbolic_dimensions(inputs, input_descs, output_descs):
     import copy
@@ -530,15 +530,21 @@ class ORTTrainer():
             learning_rate_description: in form of IODescription(Learning_Rate_Name, [1,], torch.float32).
                 Because learning_rate is an input to the training model, Learning_Rate_Name shall be set so that
                 there is no name conflict within the above model.
-            device: cuda device to store tensors
+            device: device to store tensors (e.g. 'cpu', 'cuda', 'cuda:<int_idx>')
             gradient_accumulation_steps: number of training steps to accumulate gradients before averaging and applying them (default is 1)
             postprocess_model: a callable to postprocess the ONNX model that is converted from PyTorch (default is None)
             world_rank: rank id used for distributed training (default is 0)
             world_size: number of ranks participating in distributed training (default is 1)
             use_mixed_precision: flag to enable mixed precision (aka fp16) (default is False)
             allreduce_post_accumulation: controls whether overlaping gradient computation with allreduce (default is False)
+            global_step: training step that will be used as input to 'get_lr_this_step'
+            get_lr_this_step: functor used as learning rate scheduler. It uses 'global_step' as input
+            loss_scaler: loss scaler that can be used used along with 'use_mixed_precision' to update loss scale automaticaly
             partition_optimizer: controls whether to partition the optimizer state (default is False)
+            enable_grad_norm_clip: enables or disables gradient norm clipping
+            frozen_weights: list of model parameters to be frozen (not trained)
         """
+        warnings.warn('DISCLAIMER: This is an early version of an experimental training API and it is subject to change. DO NOT create production applications with it')
         self.is_train = True
 
         self.torch_model_ = None
