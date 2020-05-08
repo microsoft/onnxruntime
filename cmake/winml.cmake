@@ -24,6 +24,8 @@ set(winml_lib_api_ort_dir ${REPO_ROOT}/winml/lib/api.ort)
 set(winml_lib_common_dir ${REPO_ROOT}/winml/lib/common)
 set(winml_lib_telemetry_dir ${REPO_ROOT}/winml/lib/telemetry)
 
+set(winml_is_inbox false)
+
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE)
   set(output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning")
   set(idl_native_output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.Native")
@@ -31,6 +33,7 @@ if (onnxruntime_WINML_NAMESPACE_OVERRIDE)
   
   if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
     set(winml_midl_defines "/DBUILD_INBOX=1")
+    set(winml_is_inbox true)
   endif()
 
   set(winml_root_ns "${onnxruntime_WINML_NAMESPACE_OVERRIDE}")

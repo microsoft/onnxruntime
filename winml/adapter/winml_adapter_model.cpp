@@ -14,8 +14,10 @@
 
 #include <io.h>
 #include <fcntl.h>
+#include <winrt/base.h>
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 #include "core/framework/onnxruntime_typeinfo.h"
+#include "StringHelpers.h"
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
@@ -118,10 +120,13 @@ OrtModel::OrtModel(std::unique_ptr<onnx::ModelProto> model_proto) : model_proto_
 // factory methods for creating an ort model from a path
 static OrtStatus* CreateModelProto(const char* path, std::unique_ptr<onnx::ModelProto>& out) {
   int file_descriptor;
+  std::wstringstream wide_path_stream;
+  wide_path_stream << path;
+  auto wide_path = wide_path_stream.str();
   _set_errno(0);  // clear errno
-  _sopen_s(
+  _wsopen_s(
       &file_descriptor,
-      path,
+      wide_path.c_str(),
       O_RDONLY | _O_SEQUENTIAL | _O_BINARY,
       _SH_DENYWR,
       _S_IREAD | _S_IWRITE);
