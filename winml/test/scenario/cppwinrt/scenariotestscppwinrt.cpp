@@ -1487,6 +1487,10 @@ const ScenarioTestsApi& getapi() {
     api.QuantizedModels = SkipTest;
     api.MsftQuantizedModels = SkipTest;
   }
+  if (RUNTIME_PARAMETER_EXISTS("noIDXGIFactory6Tests")) {
+    api.Scenario8SetDeviceSampleMinPower = SkipTest;
+    api.Scenario8SetDeviceSampleMaxPerf = SkipTest;
+  }
 
     return api;
 }

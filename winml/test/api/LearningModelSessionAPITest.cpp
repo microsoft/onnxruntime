@@ -419,5 +419,9 @@ const LearningModelSessionAPITestsApi& getapi() {
   if (RUNTIME_PARAMETER_EXISTS("EdgeCore")) {
     api.AdapterIdAndDevice = SkipTest;
   }
+  if (RUNTIME_PARAMETER_EXISTS("noIDXGIFactory6Tests")) {
+    api.CreateSessionDeviceDirectXHighPerformance = SkipTest;
+    api.CreateSessionDeviceDirectXMinimumPower = SkipTest;
+  }
  return api;
 }
