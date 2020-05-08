@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "testPch.h"
@@ -24,6 +24,11 @@ static void LearningModelAPITestsGpuMethodSetup() {
 static void CreateModelFromFilePath() {
   LearningModel learningModel = nullptr;
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"squeezenet_modifiedforruntimestests.onnx", learningModel));
+}
+
+static void CreateModelFromUnicodeFilePath() {
+  LearningModel learningModel = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"UnicodePath\\こんにちは maçã\\foo.onnx", learningModel));
 }
 
 static void CreateModelFileNotFound() {
@@ -274,6 +279,7 @@ const LearningModelApiTestsApi& getapi() {
     LearningModelAPITestsClassSetup,
     LearningModelAPITestsGpuMethodSetup,
     CreateModelFromFilePath,
+    CreateModelFromUnicodeFilePath,
     CreateModelFileNotFound,
     CreateModelFromIStorage,
     CreateModelFromIStorageOutsideCwd,
