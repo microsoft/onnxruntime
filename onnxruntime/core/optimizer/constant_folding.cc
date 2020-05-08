@@ -48,11 +48,10 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
-    // Check whether the CPU EP has a kernel for this node. Stop proceeding if it doesn't.
+    // Create execution frame for executing constant nodes.
     std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
         onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
 
-    // Create execution frame for executing constant nodes.
     OptimizerExecutionFrame::Info info({node}, constant_inputs, std::move(cpu_execution_provider));
 
     std::vector<int> fetch_mlvalue_idxs;
