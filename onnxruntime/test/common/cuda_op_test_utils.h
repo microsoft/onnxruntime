@@ -37,5 +37,12 @@ inline bool HasCudaEnvironment(int min_cuda_architecture) {
   return cuda_architecture >= min_cuda_architecture;
 }
 
+inline bool NeedSkipIfCudaArchLowerThan(int min_cuda_architecture) {
+  // only skip when CUDA ep is enabled.
+  if (DefaultCudaExecutionProvider().get() != nullptr) {
+    return !HasCudaEnvironment(min_cuda_architecture);
+  }
+  return false;
+}
 }  // namespace test
 }  // namespace onnxruntime

@@ -164,6 +164,13 @@ class Div final : public BinaryElementwise<ShouldBroadcast> {
 };
 
 template <typename T>
+class Pow_7 final : public BinaryElementwise<ShouldBroadcast> {
+ public:
+  Pow_7(const OpKernelInfo& info) : BinaryElementwise(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+// Since version 12
 class Pow final : public BinaryElementwise<ShouldBroadcast> {
  public:
   Pow(const OpKernelInfo& info) : BinaryElementwise(info) {}

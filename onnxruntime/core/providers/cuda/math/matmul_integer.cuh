@@ -20,7 +20,5 @@ Status OffsetOutput(const int32_t* row_sum,
                     const int8_t b_offset,
                     const MatMulComputeHelper& helper);
 
-Status PadMatrixInLeadingDimension(const int8_t* src, int8_t* dst, int64_t row, int64_t col, int64_t pad_size);
-
 }  // namespace cuda
 }  // namespace onnxruntime

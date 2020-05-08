@@ -30,5 +30,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 /** Given a TransformerLevel, this method generates a name for the rule-based graph transformer of that level. */
 std::string GenerateRuleBasedTransformerName(TransformerLevel level);
 
+/** Generates all rule-based transformers for this level. */
+std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(TransformerLevel level,
+                                                                             const std::vector<std::string>& rules_to_enable,
+                                                                             const std::unordered_set<std::string>& compatible_execution_providers);
+
 }  // namespace optimizer_utils
 }  // namespace onnxruntime

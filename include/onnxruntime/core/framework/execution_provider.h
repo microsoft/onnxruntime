@@ -15,9 +15,6 @@
 namespace onnxruntime {
 class GraphViewer;
 class Node;
-}  // namespace onnxruntime
-namespace onnxruntime {
-
 struct ComputeCapability;
 class KernelRegistry;
 class KernelRegistryManager;
@@ -27,7 +24,7 @@ class KernelRegistryManager;
 */
 typedef std::map<int, AllocatorPtr> AllocatorMap;
 
-// if we are export the fused function to dll, the function will still in the same binary as lotus
+// if we are export the fused function to dll, the function will still in the same binary as onnxruntime
 // use std function to give execution provider some chance to capture some state.
 using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
 using ComputeFunc = std::function<Status(FunctionState, const OrtApi*, OrtKernelContext*)>;
@@ -95,6 +92,11 @@ class IExecutionProvider {
      execution provider lib.
   */
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const;
+
+  /**
+     Get the device id of current execution provider
+  */
+  virtual int GetDeviceId() const { return -1; };
 
   /**
      Returns an opaque handle whose exact type varies based on the provider

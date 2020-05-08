@@ -28,7 +28,11 @@ if (onnxruntime_WINML_NAMESPACE_OVERRIDE)
   set(output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning")
   set(idl_native_output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.Native")
   set(idl_native_internal_output_name "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.Native.Internal")
-  set(winml_midl_defines "/DROOT_NS=${onnxruntime_WINML_NAMESPACE_OVERRIDE}")
+  
+  if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
+    set(winml_midl_defines "/DBUILD_INBOX=1")
+  endif()
+
   set(winml_root_ns "${onnxruntime_WINML_NAMESPACE_OVERRIDE}")
   set(BINARY_NAME "${onnxruntime_WINML_NAMESPACE_OVERRIDE}.AI.MachineLearning.dll")
   set(winml_api_use_ns_prefix false)
@@ -170,7 +174,7 @@ if (onnxruntime_USE_DML)
     ${winml_lib_api_ort_dir}/OnnxruntimeDmlSessionBuilder.h
     ${winml_lib_api_ort_dir}/OnnxruntimeDmlSessionBuilder.cpp
     )
-endif(onnxruntime_USE_DML)
+endif()
 
 # Add static library that will be archived/linked for both static/dynamic library
 add_library(winml_lib_ort STATIC ${winml_lib_api_ort_files})
@@ -218,7 +222,8 @@ if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_ort)
 endif()
 target_link_libraries(winml_lib_ort PRIVATE wil)
-
+target_link_libraries(winml_lib_ort INTERFACE winml_lib_api)
+target_link_libraries(winml_lib_ort INTERFACE winml_lib_telemetry)
 
 ###########################
 # Add winml_adapter
@@ -242,7 +247,7 @@ if (onnxruntime_USE_DML)
     ${winml_adapter_dir}/abi_custom_registry_impl.cpp
     ${winml_adapter_dir}/abi_custom_registry_impl.h
     )
-endif(onnxruntime_USE_DML)
+endif()
 
 add_library(winml_adapter ${winml_adapter_files})
 
@@ -271,7 +276,7 @@ set_target_properties(winml_adapter
 target_link_libraries(winml_adapter PRIVATE wil)
 if (onnxruntime_USE_DML)
   target_add_dml(winml_adapter)
-endif(onnxruntime_USE_DML)
+endif()
 
 # add it to the onnxruntime shared library
 set(onnxruntime_winml winml_adapter)
@@ -350,10 +355,6 @@ add_dependencies(winml_lib_image winml_api_native_internal)
 target_link_libraries(winml_lib_image PRIVATE dxgi d3d11 d3d12 wil winml_lib_common)
 
 get_target_property(winml_lib_image_include_directories winml_lib_image INCLUDE_DIRECTORIES)
-try_compile(has_dxcore "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/test_dxcore.cpp" CMAKE_FLAGS -DLINK_DIRECTORIES="${winml_lib_image_include_directories}")
-if (has_dxcore)
-  target_link_libraries(winml_lib_image PRIVATE dxcore)
-endif()
 
 if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_image)
@@ -443,6 +444,7 @@ target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/eig
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/onnx)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
+target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
 
 # Properties
 set_target_properties(winml_lib_api
@@ -585,6 +587,7 @@ target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/onnx)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/eigen)
+target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
 
 # Properties
 set_target_properties(winml_dll
@@ -594,7 +597,7 @@ set_target_properties(winml_dll
 set(os_component_link_flags_list ${os_component_link_flags})
 separate_arguments(os_component_link_flags_list)
 
-target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/winml.def ${os_component_link_flags_list} /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-threadpool-legacy-l1-1-0.dll /DELAYLOAD:api-ms-win-core-processtopology-obsolete-l1-1-0.dll /DELAYLOAD:api-ms-win-core-kernel32-legacy-l1-1-0.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll)
+target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/winml.def ${os_component_link_flags_list} /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-threadpool-legacy-l1-1-0.dll /DELAYLOAD:api-ms-win-core-processtopology-obsolete-l1-1-0.dll /DELAYLOAD:api-ms-win-core-kernel32-legacy-l1-1-0.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll)
 
 
 if (EXISTS ${dxcore_header})
@@ -619,9 +622,16 @@ target_link_libraries(winml_dll PRIVATE winml_lib_api)
 target_link_libraries(winml_dll PRIVATE winml_lib_image)
 target_link_libraries(winml_dll PRIVATE winml_lib_ort)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
-target_link_libraries(winml_dll PRIVATE delayimp.lib)
+
 target_link_libraries(winml_dll PRIVATE RuntimeObject.lib)
 target_link_libraries(winml_dll PRIVATE windowsapp.lib)
+
+if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
+  target_link_libraries(winml_dll PRIVATE dloadhelper.lib)
+else()
+  target_link_libraries(winml_dll PRIVATE delayimp.lib)
+endif()
+
 
 # Any project that links in debug_alloc.obj needs this lib.
 # unresolved external symbol __imp_SymSetOptions

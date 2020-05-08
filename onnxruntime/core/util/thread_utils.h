@@ -7,7 +7,7 @@
 #include <memory>
 #include <string>
 
-struct OrtThreadPoolParams{
+struct OrtThreadPoolParams {
   //0: Use default setting. (All the physical cores or half of the logical cores)
   //1: Don't create thread pool
   //n: Create a thread pool with n threads.
@@ -25,7 +25,7 @@ struct OrtThreadPoolParams{
   size_t* affinity_vec = nullptr;
   size_t affinity_vec_len = 0;
   const ORTCHAR_T* name = nullptr;
-} ;
+};
 
 struct OrtThreadingOptions {
   // Params for creating the threads that parallelizes execution of an op
@@ -33,13 +33,16 @@ struct OrtThreadingOptions {
 
   // Params for creating the threads that parallelizes execution across ops
   OrtThreadPoolParams inter_op_thread_pool_params;
-} ;
+};
 
 namespace onnxruntime {
 
 namespace concurrency {
-
+enum class ThreadPoolType : uint8_t {
+  INTRA_OP,
+  INTER_OP
+};
 std::unique_ptr<ThreadPool> CreateThreadPool(Env* env, OrtThreadPoolParams options,
-                                             Eigen::Allocator* allocator = nullptr);
+                                             ThreadPoolType tpool_type);
 }  // namespace concurrency
 }  // namespace onnxruntime

@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "testPch.h"
@@ -24,6 +24,22 @@ static void LearningModelAPITestsGpuMethodSetup() {
 static void CreateModelFromFilePath() {
   LearningModel learningModel = nullptr;
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"squeezenet_modifiedforruntimestests.onnx", learningModel));
+}
+
+static void CreateModelFromUnicodeFilePath() {
+  LearningModel learningModel = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"UnicodePath\\こんにちは maçã\\foo.onnx", learningModel));
+}
+
+static void CreateModelFileNotFound() {
+  LearningModel learningModel = nullptr;
+
+  WINML_EXPECT_THROW_SPECIFIC(
+    APITest::LoadModel(L"missing_model.onnx", learningModel),
+    winrt::hresult_error,
+    [](const winrt::hresult_error& e) -> bool {
+          return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+    });
 }
 
 static void CreateModelFromIStorage() {
@@ -242,11 +258,19 @@ static void CloseModelNoNewSessions() {
   WINML_EXPECT_NO_THROW(learningModel.Close());
   LearningModelSession session = nullptr;
   WINML_EXPECT_THROW_SPECIFIC(
-      session = LearningModelSession(learningModel);,
+      session = LearningModelSession(learningModel),
       winrt::hresult_error,
       [](const winrt::hresult_error& e) -> bool {
             return e.code() == E_INVALIDARG;
       });
+}
+
+static void CheckMetadataCaseInsensitive() {
+  LearningModel learningModel = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"modelWithMetaData.onnx", learningModel));
+  IMapView metadata = learningModel.Metadata();
+  WINML_EXPECT_TRUE(metadata.HasKey(L"tHiSiSaLoNgKeY"));
+  WINML_EXPECT_EQUAL(metadata.Lookup(L"tHiSiSaLoNgKeY"), L"thisisalongvalue");
 }
 
 const LearningModelApiTestsApi& getapi() {
@@ -255,6 +279,8 @@ const LearningModelApiTestsApi& getapi() {
     LearningModelAPITestsClassSetup,
     LearningModelAPITestsGpuMethodSetup,
     CreateModelFromFilePath,
+    CreateModelFromUnicodeFilePath,
+    CreateModelFileNotFound,
     CreateModelFromIStorage,
     CreateModelFromIStorageOutsideCwd,
     CreateModelFromIStream,
@@ -267,7 +293,8 @@ const LearningModelApiTestsApi& getapi() {
     EnumerateOutputs,
     CloseModelCheckMetadata,
     CloseModelCheckEval,
-    CloseModelNoNewSessions
+    CloseModelNoNewSessions,
+    CheckMetadataCaseInsensitive
   };
   return api;
 }

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "core/platform/threadpool.h"
 #include "core/common/common.h"
-#include "core/util/eigen_common_wrapper.h"
+#include "core/common/eigen_common_wrapper.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
 
@@ -83,33 +83,22 @@ class BlockingCounter {
 namespace concurrency {
 
 ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options, const NAME_CHAR_TYPE* name, int num_threads,
-                       bool low_latency_hint, Eigen::Allocator* allocator)
+                       bool low_latency_hint)
     : thread_options_(thread_options) {
   ORT_ENFORCE(num_threads >= 1);
   eigen_threadpool_ =
       onnxruntime::make_unique<ThreadPoolTempl<Env>>(name, num_threads, low_latency_hint, *env, thread_options_);
   underlying_threadpool_ = eigen_threadpool_.get();
-#ifdef _OPENMP
-  ORT_UNUSED_PARAMETER(allocator);
-#else
-  threadpool_device_ =
-      onnxruntime::make_unique<Eigen::ThreadPoolDevice>(underlying_threadpool_, num_threads, allocator);
-#endif
 }
 
-ThreadPool::ThreadPool(Eigen::ThreadPoolInterface* user_threadpool, Eigen::Allocator* allocator)
+ThreadPool::ThreadPool(Eigen::ThreadPoolInterface* user_threadpool)
     : thread_options_(ThreadOptions()) {
   underlying_threadpool_ = user_threadpool;
-#ifdef _OPENMP
-  ORT_UNUSED_PARAMETER(allocator);
-#else
-  threadpool_device_ = onnxruntime::make_unique<Eigen::ThreadPoolDevice>(
-      underlying_threadpool_, underlying_threadpool_->NumThreads(), allocator);
-#endif
 }
 
 ThreadPool::~ThreadPool() = default;
-void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, std::function<void(std::ptrdiff_t)> fn) {
+
+void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
   if (total <= 0)
     return;
 
@@ -296,6 +285,15 @@ void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c,
 void ThreadPool::ParallelFor(std::ptrdiff_t total, double cost_per_unit,
                              const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn) {
   ParallelFor(total, TensorOpCost{0, 0, static_cast<double>(cost_per_unit)}, fn);
+}
+
+int ThreadPool::NumThreads(const concurrency::ThreadPool* tp) {
+#ifdef _OPENMP
+  ORT_UNUSED_PARAMETER(tp);
+  return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
+#else
+  return tp ? tp->NumThreads() : 1;
+#endif
 }
 
 int ThreadPool::NumThreads() const {
