@@ -326,11 +326,26 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
                        do_constant_folding=False,
                        **other_export_options)
 
-    model = onnx.load_model_from_string(f.getvalue())
+    onnx_model = onnx.load_model_from_string(f.getvalue())
 
-    model = FuseSofmaxNLLToSoftmaxCE(model)
+    # Remove 'model_.' prefix introduced by model wrapper for initializers.
+    replace_name_dict = {}
+    for n in onnx_model.graph.initializer:
+        if n.name.startswith('model_.'):
+            replace_name_dict[n.name] = n.name[len('model_.'):]
+            n.name = replace_name_dict[n.name]
+    for n in onnx_model.graph.node:
+        for i, name in enumerate(n.input):
+            if name in replace_name_dict:
+                n.input[i] = replace_name_dict[name]
+    assert set([n.name for n in onnx_model.graph.initializer]) == \
+        set([n for n, t in model.model_.named_parameters()]), \
+        "Initializer names do not match between PyTorch model and ONNX model, " \
+        "please report a bug to ONNX Runtime."
 
-    return model
+    onnx_model = FuseSofmaxNLLToSoftmaxCE(onnx_model)
+
+    return onnx_model
 
 def create_ort_training_session_with_optimizer(model, device, training_optimizer_name, lr_params_feed_name,
                                                map_optimizer_attributes, world_rank=-1, world_size=1,
@@ -361,6 +376,12 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     torch_params = {}
     optimizer_attributes_map = {}
     optimizer_int_attributes_map = {}
+
+    miss_frozen_weights = [n for n in frozen_weights if n not in [i.name for i in model.graph.initializer]]
+    if miss_frozen_weights:
+        warnings.warn("Ignoring {} in frozen_weights as they are not found in model weights."\
+            .format(miss_frozen_weights))
+
     weights_to_train = set()
     for initializer in model.graph.initializer:
         if initializer.name in frozen_weights:
