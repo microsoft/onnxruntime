@@ -9,7 +9,7 @@ import torch.onnx
 import onnxruntime as ort
 from distutils.version import LooseVersion
 
-DEFAULT_OPSET_VERSION = 10
+DEFAULT_OPSET_VERSION = 12
 
 class IODescription():
     def __init__(self, name, shape, dtype=None, num_classes=None):
@@ -118,63 +118,6 @@ class model_loss_cls(torch.nn.Module):
         input, label = inputs[:-1], inputs[-1]
         preds = self.model_(*input)
         return self.loss_fn_(preds, label), preds
-
-
-def FuseSofmaxNLLToSoftmaxCE(onnx_model):
-    nll_count = 0
-    while True:
-        nll_count = nll_count + 1
-        nll_loss_node = None
-        nll_loss_node_index = 0
-        for nll_loss_node_index, node in enumerate(onnx_model.graph.node):
-            if node.op_type == "nll_loss" or node.op_type == "NegativeLogLikelihoodLoss":
-                nll_loss_node = node
-                break
-
-        if nll_loss_node is None:
-            break
-
-        softmax_node = None
-        softmax_node_index = 0
-        label_input_name = None
-        weight_input_name = None
-        for softmax_node_index, node in enumerate(onnx_model.graph.node):
-            if node.op_type == "LogSoftmax":
-                # has to be connected to nll_loss
-                if len(nll_loss_node.input) > 2:
-                    weight_input_name = nll_loss_node.input[2]
-                if node.output[0] == nll_loss_node.input[0]:
-                    softmax_node = node
-                    label_input_name = nll_loss_node.input[1]
-                    break
-                elif node.output[0] == nll_loss_node.input[1]:
-                    softmax_node = node
-                    label_input_name = nll_loss_node.input[0]
-                    break
-            else:
-                if softmax_node is not None:
-                    break
-
-        if softmax_node is None:
-            break
-
-        # delete nll_loss and LogSoftmax nodes in order
-        if nll_loss_node_index < softmax_node_index:
-            del onnx_model.graph.node[softmax_node_index]
-            del onnx_model.graph.node[nll_loss_node_index]
-        else:
-            del onnx_model.graph.node[nll_loss_node_index]
-            del onnx_model.graph.node[softmax_node_index]
-
-        probability_output_name = softmax_node.output[0]
-        node = onnx_model.graph.node.add()
-        inputs = [softmax_node.input[0], label_input_name, weight_input_name] if weight_input_name else [softmax_node.input[0], label_input_name]
-        node.CopyFrom(onnx.helper.make_node("SparseSoftmaxCrossEntropy", inputs,
-                                            [nll_loss_node.output[0], probability_output_name],
-                                            "nll_loss_node_" + str(nll_count)))
-
-    return onnx_model
-
 
 def delete_input_with_name(input, name):
     index = 0
@@ -316,7 +259,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
                        output_names=output_names,
                        opset_version=opset_version,
                        dynamic_axes=dynamic_axes,
-                       training=True,
+                       training=torch.onnx.TrainingMode.TRAINING,
                        _retain_param_name=True,
                        example_outputs=tuple(sample_outputs),
                        do_constant_folding=False,
@@ -324,7 +267,13 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
 
     model = onnx.load_model_from_string(f.getvalue())
 
-    model = FuseSofmaxNLLToSoftmaxCE(model)
+    import onnxruntime.capi.postprocess as postprocess
+    # TODO : WE CAN REMOVE SCE PASS FOR OPSET >= 12 with pytorch master (post 1.5)
+    model = postprocess.fuse_sofmaxNLL_to_softmaxCE(model)
+
+    model = postprocess.fix_transpose(model)
+    model = postprocess.layer_norm_transform(model)
+    model = postprocess.fix_expand_shape(model)
 
     return model
 
