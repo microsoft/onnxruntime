@@ -9,12 +9,14 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-void DropoutGradientKernelImpl(
+void DropoutKernelImpl(
+  const cudaDeviceProp& prop,
   const int64_t N,
-  const T* dY_data,
-  const bool* mask_data,
   const float ratio,
-  T* dX_data);
+  PhiloxGenerator& generator,
+  const T* X_data,
+  T* Y_data,
+  bool* mask_data);
 
 }  // namespace cuda
 }  // namespace onnxruntime
