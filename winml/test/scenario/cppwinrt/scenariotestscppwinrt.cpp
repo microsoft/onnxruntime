@@ -1491,6 +1491,8 @@ const ScenarioTestsApi& getapi() {
     api.Scenario8SetDeviceSampleMinPower = SkipTest;
     api.Scenario8SetDeviceSampleMaxPerf = SkipTest;
   }
-
-    return api;
+  if (RUNTIME_PARAMETER_EXISTS("noID3D12Device5Tests")) {
+    api.DeviceLostRecovery = SkipTest;
+  }
+  return api;
 }
