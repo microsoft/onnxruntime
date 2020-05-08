@@ -5,7 +5,6 @@
 
 #include <limits>
 
-#include "core/framework/allocator.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 
