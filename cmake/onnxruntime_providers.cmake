@@ -756,6 +756,14 @@ if (onnxruntime_USE_HIP)
       "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/*.cc"
     )
 
+    if (NOT onnxruntime_USE_MPI)
+      list(REMOVE_ITEM onnxruntime_hip_training_ops_cc_srcs
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/nccl_common.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/nccl_kernels.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/megatron.cc"
+      )
+    endif()
+
     file(GLOB_RECURSE onnxruntime_hip_training_ops_cu_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/*.cu"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/*.cuh"
@@ -784,8 +792,8 @@ if (onnxruntime_USE_HIP)
   #list(APPEND HIP_CXX_FLAGS -std=c++14)
 
   if(CMAKE_BUILD_TYPE MATCHES Debug)
-      list(APPEND HIP_CXX_FLAGS -g)
-      list(APPEND HIP_CXX_FLAGS -O0)
+      #list(APPEND HIP_CXX_FLAGS -g)
+      #list(APPEND HIP_CXX_FLAGS -O0)
   endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
   list(APPEND HIP_HCC_FLAGS ${HIP_CXX_FLAGS})
