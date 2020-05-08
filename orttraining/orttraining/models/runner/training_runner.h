@@ -170,7 +170,7 @@ class TrainingRunner {
   common::Status Initialize();
 
   common::Status Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader, 
-    const MapStringToString& perf_properties = {});
+    const MapStringToString& mapped_dimensions = {});
 
   common::Status EndTraining(IDataLoader* data_loader);
 
@@ -202,7 +202,7 @@ class TrainingRunner {
                           std::vector<MLValue>& feeds,
                           size_t& gradient_accumulation_step_count); 
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader, 
-    const MapStringToString& perf_properties = {});
+    const MapStringToString& mapped_dimensions);
   Status Evaluate(InferenceSession& session, IDataLoader& data_loader);
 
   Status SaveCheckpoint(const PathString& checkpoint_path);
@@ -213,7 +213,7 @@ class TrainingRunner {
   Status SavePerfMetrics(const size_t number_of_batches, const size_t gradient_accumulation_steps,
                          const size_t weight_update_steps, const double total_time,
                          const double avg_time_per_batch, const double throughput, const double stabilized_throughput,
-                         const MapStringToString& perf_properties = {});
+                         const MapStringToString& mapped_dimensions = {});
 
   size_t step_;
   size_t round_;

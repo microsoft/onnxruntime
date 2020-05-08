@@ -73,24 +73,24 @@ size_t DataSet::TotalBatch(size_t batch_size) const {
 }
 
 // gather additional training params from tensor dimensions
-// see metrics_map in bert/main.cc for example, and training_utils.h for more explanation
-common::Status DataSet::GetTensorDimensionsFromInputs(const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
-                                                      MapStringToString& perf_properties) const {
-  if (metrics_map.size() == 0) return Status::OK(); 
+// see input_to_dimension_mapping in bert/main.cc for example, and training_utils.h for more explanation
+common::Status DataSet::GetTensorDimensionsFromInputs(const std::map<std::string, std::pair<std::string, size_t>>& input_to_dimension_mapping,
+                                                      MapStringToString& mapped_dimensions) const {
+  if (input_to_dimension_mapping.size() == 0) return Status::OK(); 
 
   for (size_t input_index = 0; input_index < NumInputs(); ++input_index) {
     std::string input_name = GetInputName(input_index);
-    const auto it = metrics_map.find(input_name);
-    if (it == metrics_map.end()) continue;
+    const auto it = input_to_dimension_mapping.find(input_name);
+    if (it == input_to_dimension_mapping.end()) continue;
     auto metric = it->second;
 
     const Tensor& first_tensor = data_[0]->at(input_index).Get<Tensor>();
     std::vector<int64_t> shape_vector = first_tensor.Shape().GetDims();
 
-    if (metric.second < shape_vector.size())
-      perf_properties.insert({metric.first, std::to_string(shape_vector[metric.second])});
-    else 
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "shape position out of bounds for input: ", input_name.c_str());
+    ORT_RETURN_IF_NOT(metric.second < shape_vector.size(), "Index out of bounds for input: ", input_name.c_str(),
+                      "; requested index: ", metric.second, ", actual size: ", shape_vector.size());
+
+    mapped_dimensions.insert({metric.first, std::to_string(shape_vector[metric.second])});
   }
   return Status::OK();
 }

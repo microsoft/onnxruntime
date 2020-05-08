@@ -66,14 +66,15 @@ class DataSet {
      When loading training data, the actual shape vector of tensor would not include "batch", thus caller needs to adjust 
      the index position (i.e., subtract by 1) to get the correspondent value. For example,
      to get sequence length, we can look for input name "input1" and get its value in shape vector's position 0 (NOT 1) element 
-     based on metrics_map (see metrics_map example in bert/main.cc) to map the name with the vector position, like so
-        {"input1", {"SegLen", 0}}  => sequence->SeqLen , where SeqLen will be populated as key in perf_properties 
-     @param metrics_map tensor shape dimension mapping from training data, example above {"input1", {"SegLen", 0}} to map 
-                        input1's "sequence" at position 0 into "SeqLen" as perf_properties key
-     @param perf_properties populated as json for perf monitoring
+     based on input_to_dimension_mapping (see input_to_dimension_mapping example in bert/main.cc) to map the name with the vector position, 
+     like so
+        {"input1", {"SeqLen", 0}}  => sequence->SeqLen , where SeqLen will be populated as key in mapped_dimensions 
+     @param input_to_dimension_mapping tensor shape dimension mapping from training data, example above {"input1", {"SeqLen", 0}} to map 
+                        input1's "sequence" at position 0 into "SeqLen" as mapped_dimensions key
+     @param mapped_dimensions populated as json for perf monitoring
    */ 
-  common::Status GetTensorDimensionsFromInputs(const std::map<std::string, std::pair<std::string, size_t>>& metrics_map,
-                                               MapStringToString& perf_properties) const;
+  common::Status GetTensorDimensionsFromInputs(const std::map<std::string, std::pair<std::string, size_t>>& input_to_dimension_mapping,
+                                               MapStringToString& mapped_dimensions) const;
 
  private:
   // The names of the tensors.
