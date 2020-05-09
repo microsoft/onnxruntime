@@ -2,16 +2,20 @@
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
-""" Benchmarking the inference of BERT models from huggingface transformers
+""" Benchmarking the inference of pretrained transformer models
     Example commands:
         Export all models to ONNX, optimize and validate them:
             python benchmark.py -b 0 -o -v -i 1 2 3
         Run OnnxRuntime on GPU for all models:
-            python benchmark.py -g
-        Run PyTorch and TorchScript on CPU for all models:
-            python benchmark.py -e torch torchscript
-        Run OnnxRuntime on the bert-base-cased model of 3 inputs with fp16 on GPU:
-            python benchmark.py -m bert-base-cased -g --fp16 -i 3
+            python benchmark.py -i 1 2 3 -g
+        Run OnnxRuntime on GPU for all models with fp32 optimization:
+            python benchmark.py -i 1 2 3 -g -o
+        Run OnnxRuntime on GPU with fp16 optimization:
+            python benchmark.py -i 1 2 3 -g -o --fp16
+        Run TorchScript on GPU for all models:
+            python benchmark.py -e torchscript -g
+        Run TorchScript on GPU for all models with fp16:
+            python benchmark.py -e torchscript -g --fp16
 """
 
 import argparse
@@ -35,7 +39,7 @@ MODELS = {
     "distilbert-base-uncased": (["input_ids", "attention_mask"], 11, "bert"),
     "roberta-base": (["input_ids", "attention_mask"], 11, "bert"),
 
-    # The following models need a fix in transformers (https://github.com/huggingface/transformers/pull/4194) for exporting ONNX models.
+    # The following models need a fix in transformers (https://github.com/huggingface/transformers/pull/4244) for exporting ONNX models.
     "gpt2": (["input_ids"], 11, "gpt2"),  # no past state
     "distilgpt2": (["input_ids"], 11, "gpt2"),  # no past state
     "albert-base-v2": (["input_ids", "attention_mask", "token_type_ids"], 12, "bert"),
@@ -179,8 +183,7 @@ def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hi
 
 
 def export_onnx_model(model_name, cache_dir, input_names, fp16, optimize_onnx, validate_onnx):
-    torchscript = False
-    config = AutoConfig.from_pretrained(model_name, torchscript=torchscript, cache_dir=cache_dir)
+    config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
     model = AutoModel.from_pretrained(model_name, config=config, cache_dir=cache_dir)
     model.cpu()
 
@@ -188,9 +191,6 @@ def export_onnx_model(model_name, cache_dir, input_names, fp16, optimize_onnx, v
     example_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="pt")
 
     example_inputs = filter_inputs(example_inputs, input_names)
-
-    if torchscript:
-        model = torch.jit.trace(model, tuple(example_inputs.values()))
 
     example_outputs = model(**example_inputs)
 
@@ -205,26 +205,15 @@ def export_onnx_model(model_name, cache_dir, input_names, fp16, optimize_onnx, v
 
         dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
 
-        if isinstance(model, torch.jit.ScriptModule):
-            torch.onnx._export(model=model,
-                               args=tuple(example_inputs.values()),
-                               f=onnx_model_filename,
-                               input_names=list(example_inputs.keys()),
-                               output_names=output_names,
-                               example_outputs=example_outputs,
-                               dynamic_axes=dynamic_axes,
-                               do_constant_folding=True,
-                               opset_version=MODELS[model_name][1])
-        else:
-            torch.onnx.export(model=model,
-                              args=tuple(example_inputs.values()),
-                              f=onnx_model_filename,
-                              input_names=list(example_inputs.keys()),
-                              output_names=output_names,
-                              example_outputs=example_outputs,
-                              dynamic_axes=dynamic_axes,
-                              do_constant_folding=True,
-                              opset_version=MODELS[model_name][1])
+        torch.onnx.export(model=model,
+                            args=tuple(example_inputs.values()),
+                            f=onnx_model_filename,
+                            input_names=list(example_inputs.keys()),
+                            output_names=output_names,
+                            example_outputs=example_outputs,
+                            dynamic_axes=dynamic_axes,
+                            do_constant_folding=True,
+                            opset_version=MODELS[model_name][1])
     else:
         logger.info(f"Skip export since model existed: {onnx_model_filename}")
 
