@@ -72,13 +72,13 @@ TEST(OptimizerTest, Basic) {
   const logging::Logger& logger = DefaultLoggingManager().DefaultLogger();
 
   for (auto& node : graph.Nodes()) {
-    auto* kernel = info.CreateKernel(&node);
+    auto kernel = info.CreateKernel(&node);
 
     // kernel can only be a nullptr if a CPU kernel implementation has been removed,
     // if that is the case, OpKernelContext instance construction will throw in the next step
     // and fail the test
 
-    OpKernelContext op_kernel_context(&frame, kernel, nullptr, logger);
+    OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, logger);
 
     auto st = kernel->Compute(&op_kernel_context);
     ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();

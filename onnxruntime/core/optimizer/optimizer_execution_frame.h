@@ -49,7 +49,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
       return -1;
     }
 
-    const OpKernel* CreateKernel(const Node* node) const;
+    std::unique_ptr<const OpKernel> CreateKernel(const Node* node) const;
 
    private:
     // The optimizer is running on CPU execution provider by default.

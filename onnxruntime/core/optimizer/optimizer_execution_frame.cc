@@ -65,7 +65,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   node_index_info_ = onnxruntime::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
 }
 
-const OpKernel* OptimizerExecutionFrame::Info::CreateKernel(const Node* node) const {
+std::unique_ptr<const OpKernel> OptimizerExecutionFrame::Info::CreateKernel(const Node* node) const {
   std::unique_ptr<OpKernel> op_kernel;
   std::shared_ptr<KernelRegistry> kernel_registry = cpu_execution_provider_->GetKernelRegistry();
   auto status = kernel_registry->TryCreateKernel(*node, *cpu_execution_provider_, initializers_,
@@ -74,7 +74,7 @@ const OpKernel* OptimizerExecutionFrame::Info::CreateKernel(const Node* node) co
 
   // Kernel found in the CPU kernel registry
   if (status.IsOK())
-    return op_kernel.get();
+    return op_kernel;
 
   // No kernel found in the CPU kernel registry
   return nullptr;
