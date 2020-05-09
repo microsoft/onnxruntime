@@ -68,6 +68,31 @@ class TrainOutput(NamedTuple):
     global_step: int
     training_loss: float
 
+# ported from transformers optimization.py
+def get_linear_schedule_with_warmup(num_warmup_steps, num_training_steps, base_lr):
+    """ Create a schedule with a learning rate that decreases linearly after
+    linearly increasing during a warmup period.
+    """
+
+    def lr_lambda_linear(current_step):
+        if current_step < num_warmup_steps:
+            return float(current_step) / float(max(1, num_warmup_steps))
+        return max(
+            0.0, float(num_training_steps - current_step) / float(max(1, num_training_steps - num_warmup_steps))
+        )
+
+    # the original method returns a LambdaLR instance.
+    # return LambdaLR(optimizer, lr_lambda, last_epoch)
+
+    # ORTTrainer, however, needs a function that takes a global_step and return a lr.
+    # duplicate LambdaLR.get_lr here:
+    # return [base_lr * lmbda(self.last_epoch)
+    #             for lmbda, base_lr in zip(self.lr_lambdas, self.base_lrs)]
+    def lambda_lr_get_lr(current_global_step):
+        # LambdaLR increment self.last_epoch at evert sept()
+        return base_lr * lr_lambda_linear(current_global_step)
+
+    return lambda_lr_get_lr
 
 class ORTTransformerTrainer:
     """
@@ -96,39 +121,8 @@ class ORTTransformerTrainer:
         """
         """
 
-        from collections import namedtuple
-        MyArgs = namedtuple("MyArgs", 
-            "local_rank world_size max_steps learning_rate warmup_proportion batch_size seq_len")
-        lr_args = MyArgs(local_rank=0, world_size=1, max_steps=100, learning_rate=0.00001, warmup_proportion=0.01, batch_size=13, seq_len=7)
-
-        def get_lr_this_step(global_step):
-            return get_lr(lr_args, global_step)
-        loss_scaler = LossScaler('loss_scale_input_name', True, up_scale_window=2000)
-
-        def map_optimizer_attributes(name):
-            no_decay_keys = ["bias", "gamma", "beta", "LayerNorm"]
-            no_decay = any(no_decay_key in name for no_decay_key in no_decay_keys)
-            if no_decay:
-                return {"alpha": 0.9, "beta": 0.999, "lambda": 0.0, "epsilon": 1e-6}
-            else:
-                return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6}
-
-        self.model = ORTTrainer(model, None,
-            model_desc, 
-            "AdamOptimizer",
-            # TODO: how to support AdamW
-            map_optimizer_attributes=map_optimizer_attributes,
-            learning_rate_description=IODescription('Learning_Rate', [1,], torch.float32),
-            device=args.device,
-            postprocess_model=postprocess_model,
-            gradient_accumulation_steps=args.gradient_accumulation_steps,
-            world_rank=0, world_size=1,     # only support single GPU cases
-            use_mixed_precision=args.fp16,
-            allreduce_post_accumulation=True,
-            get_lr_this_step=get_lr_this_step,
-            loss_scaler=loss_scaler,
-            _opset_version=12)
-
+        self.model = model
+        self.model_desc = model_desc
         self.args = args
         if data_collator is not None:
             self.data_collator = data_collator
@@ -196,7 +190,33 @@ class ORTTransformerTrainer:
             t_total = int(len(train_dataloader) // self.args.gradient_accumulation_steps * self.args.num_train_epochs)
             num_train_epochs = self.args.num_train_epochs
 
-        model = self.model
+        get_lr_this_step = get_linear_schedule_with_warmup(self.args.warmup_steps, t_total, self.args.learning_rate)
+        loss_scaler = LossScaler('loss_scale_input_name', True, up_scale_window=2000)
+
+        def map_optimizer_attributes(name):
+            no_decay_keys = ["bias", "gamma", "beta", "LayerNorm"]
+            no_decay = any(no_decay_key in name for no_decay_key in no_decay_keys)
+            if no_decay:
+                return {"alpha": 0.9, "beta": 0.999, "lambda": 0.0, "epsilon": 1e-6}
+            else:
+                return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6}
+
+        self.model = ORTTrainer(self.model, None,
+            self.model_desc, 
+            "AdamOptimizer",
+            # TODO: how to support AdamW
+            map_optimizer_attributes=None,
+            learning_rate_description=IODescription('Learning_Rate', [1,], torch.float32),
+            device=self.args.device,
+            postprocess_model=postprocess_model,
+            gradient_accumulation_steps=self.args.gradient_accumulation_steps,
+            world_rank=0, world_size=1,     # only support single GPU cases
+            use_mixed_precision=self.args.fp16,
+            allreduce_post_accumulation=True,
+            get_lr_this_step=get_lr_this_step,
+            loss_scaler=loss_scaler,
+            enable_grad_norm_clip=False,
+            _opset_version=12)
 
         if self.tb_writer is not None:
             self.tb_writer.add_text("args", self.args.to_json_string())
@@ -260,7 +280,7 @@ class ORTTransformerTrainer:
                                     logs[eval_key] = value
 
                             loss_scalar = (tr_loss - logging_loss) / self.args.logging_steps
-                            learning_rate_scalar = scheduler.get_last_lr()[0]
+                            learning_rate_scalar = get_lr_this_step(global_step)
                             logs["learning_rate"] = learning_rate_scalar
                             logs["loss"] = loss_scalar
                             logging_loss = tr_loss

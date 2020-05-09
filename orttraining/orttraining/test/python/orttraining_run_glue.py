@@ -57,29 +57,30 @@ class ORTGlueTest(unittest.TestCase):
     def setUp(self):
         # configurations not to be changed accoss tests
         self.max_seq_length = 128
-        self.train_batch_size = 32
+        self.train_batch_size = 8
         self.learning_rate = 2e-5
         self.num_train_epochs = 3.0
         self.local_rank = -1
         self.overwrite_output_dir = True
-        self.gradient_accumulation_steps = 8
+        self.gradient_accumulation_steps = 1
         self.data_dir = "/bert_data/hf_data/glue_data/"
         self.output_dir = os.path.dirname(os.path.realpath(__file__)) + "/glue_test_output/"
         self.cache_dir = '/tmp/glue/'
-
-    def test_bert_fp16_with_mrpc(self):
-        results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True)
-        self.assertTrue(results['acc'] > 0.75)
-        self.assertTrue(results['acc_and_f1'] > 0.79)
-        self.assertTrue(results['f1'] > 0.84)
-        self.assertTrue(results['loss'] < 0.55)
+        self.logging_steps = 10
 
     def test_bert_with_mrpc(self):
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False)
-        self.assertTrue(results['acc'] > 0.75)
-        self.assertTrue(results['acc_and_f1'] > 0.79)
-        self.assertTrue(results['f1'] > 0.84)
-        self.assertTrue(results['loss'] < 0.55)
+        self.assertTrue(results['acc'] > 0.84)
+        self.assertTrue(results['f1'] > 0.88)
+        self.assertTrue(results['acc_and_f1'] > 0.86)
+        self.assertTrue(results['loss'] < 0.45)
+
+    def test_bert_fp16_with_mrpc(self):
+        results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True)
+        self.assertTrue(results['acc'] > 0.85)
+        self.assertTrue(results['f1'] > 0.89)
+        self.assertTrue(results['acc_and_f1'] > 0.87)
+        self.assertTrue(results['loss'] < 0.43)
 
     def run_glue(self, model_name, task_name, fp16):
         model_args = ModelArguments(model_name_or_path=model_name, cache_dir=self.cache_dir)
@@ -90,7 +91,7 @@ class ORTGlueTest(unittest.TestCase):
             per_gpu_train_batch_size=self.train_batch_size,
             learning_rate=self.learning_rate, num_train_epochs=self.num_train_epochs,local_rank=self.local_rank,
             overwrite_output_dir=self.overwrite_output_dir, gradient_accumulation_steps=self.gradient_accumulation_steps,
-            fp16=fp16)
+            fp16=fp16, logging_steps=self.logging_steps)
 
         # Setup logging
         logging.basicConfig(
