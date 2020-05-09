@@ -540,6 +540,8 @@ struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int device_id) {
 #ifdef _WIN32
   static ProviderLibrary library("onnxruntime_providers_dnnl.dll");
+#elif defined(__APPLE__)
+  static ProviderLibrary library("libonnxruntime_providers_dnnl.dylib");
 #else
   static ProviderLibrary library("libonnxruntime_providers_dnnl.so");
 #endif
