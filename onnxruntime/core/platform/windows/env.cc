@@ -447,7 +447,8 @@ class WindowsEnv : public Env {
   }
 
   virtual Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
-    *handle = ::LoadLibraryA(library_filename.c_str());
+    *handle = ::LoadLibraryExA(library_filename.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS|LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR);
+
     if (!handle)
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to load library");
     return common::Status::OK();
