@@ -434,8 +434,8 @@ class WindowsEnv : public Env {
   // possible to load other shared libraries installed next to our core runtime code.
   std::string GetRuntimePath() const override {
     char buffer[MAX_PATH];
-    if(!GetModuleFileNameA(reinterpret_cast<HINSTANCE>(&__ImageBase), buffer, _countof(buffer)))
-        return "";
+    if (!GetModuleFileNameA(reinterpret_cast<HINSTANCE>(&__ImageBase), buffer, _countof(buffer)))
+      return "";
 
     // Remove the filename at the end, but keep the trailing slash
     std::string path(buffer);
@@ -447,9 +447,8 @@ class WindowsEnv : public Env {
   }
 
   virtual Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
-    *handle = ::LoadLibraryExA(library_filename.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS|LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR);
-
-    if (!handle)
+    *handle = ::LoadLibraryExA(library_filename.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR);
+    if (!*handle)
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to load library");
     return common::Status::OK();
   }
