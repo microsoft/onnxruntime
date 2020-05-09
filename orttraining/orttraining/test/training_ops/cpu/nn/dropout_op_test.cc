@@ -129,9 +129,11 @@ TEST(DropoutTest, EmptyRatio) {
   RunDropoutTest("Dropout", true, {1000});
 }
 
+#ifdef ENABLE_TRAINING
 TEST(DropoutTest, Float16Ratio) {
   RunDropoutTest("Dropout", true, {1000}, 0.0f, true, true);
 }
+#endif
 
 TEST(TrainableDropoutTest, Basic) {
   RunDropoutTest("TrainableDropout", false, {10, 10, 10}, 0.75);
@@ -149,9 +151,11 @@ TEST(TrainableDropoutTest, EmptyRatio) {
   RunDropoutTest("TrainableDropout", true, {1000}, -1);
 }
 
+#ifdef ENABLE_TRAINING
 TEST(TrainableDropoutTest, Float16Ratio) {
   RunDropoutTest("TrainableDropout", true, {1000}, 0.0f, true, true);
 }
+#endif
 
 namespace {
 void RunDropoutGradTest(const char* op, float ratio, const std::vector<int64_t>& input_dims, bool default_ratio = true) {
