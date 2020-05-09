@@ -128,7 +128,6 @@ TEST(DropoutTest, RatioLimit) {
 TEST(DropoutTest, EmptyRatio) {
   RunDropoutTest("Dropout", true, {1000});
 }
-#endif
 
 TEST(TrainableDropoutTest, Basic) {
   RunDropoutTest("TrainableDropout", false, {10, 10, 10}, 0.75);
