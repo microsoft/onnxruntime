@@ -7,14 +7,6 @@
 #pragma warning(disable : 4267)
 #endif
 
-#include <algorithm>
-#include <functional>
-#include <future>
-#include <string>
-#include <vector>
-
-#include "gsl/gsl"
-
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
@@ -22,6 +14,8 @@
 #include "core/util/math_cpuonly.h"
 
 #include "core/platform/threadpool.h"
+
+#include "gsl/gsl"
 
 namespace onnxruntime {
 class Tensor;
