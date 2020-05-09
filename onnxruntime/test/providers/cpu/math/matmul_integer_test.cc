@@ -9,6 +9,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
 
+#include <algorithm>
 #include <random>
 
 namespace onnxruntime {
@@ -255,24 +256,43 @@ std::vector<T> ToVector(const int* value, int size) {
   return data;
 }
 
+template <typename T>
+T GetMiddle(const std::vector<T>& v) {
+  const auto min_max_pair = std::minmax_element(v.begin(), v.end());
+  return (*(min_max_pair.first) + *(min_max_pair.second)) / 2;
+}
+
 // [M x N] = [M x K] x [K x N] = [batch_seq x input_dim] x [input_dim x embed_dim]
 void RunMatMulIntegerU8S8Test(const int M, const int N, const int K) {
   OpTester test("MatMulInteger", 10);
   static std::default_random_engine e(123);
   static std::uniform_int_distribution<int> n_unsigned(0, 127);
   static std::uniform_int_distribution<int> n_signed(-128, 127);
-  Eigen::MatrixXi T1 = Eigen::MatrixXi::Random(K, M)
-                           .unaryExpr([](int) { return n_unsigned(e); });
-  Eigen::MatrixXi T2 = Eigen::MatrixXi::Random(N, K)
-                           .unaryExpr([](int) { return n_signed(e); });
-  Eigen::MatrixXi T3 = (T2 * T1).eval();
+  Eigen::MatrixXi matrix_a = Eigen::MatrixXi::Random(K, M)
+                                 .unaryExpr([](int) { return n_unsigned(e); });
+  std::vector<uint8_t> matrix_a_data = ToVector<uint8_t>(matrix_a.data(), M * K);
+  uint8_t a_zero_point = 0;
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
+  a_zero_point = GetMiddle(matrix_a_data);
+#endif
+  Eigen::MatrixXi matrix_a_offset = matrix_a - a_zero_point * Eigen::MatrixXi::Ones(K, M);
 
-  test.AddInput<uint8_t>("T1", {M, K},
-                         ToVector<uint8_t>(T1.data(), M * K));
-  test.AddInput<int8_t>("T2", {K, N},
-                        ToVector<int8_t>(T2.data(), K * N), /*is_initializer*/ true);
-  test.AddOutput<int32_t>("T3", {M, N},
-                          ToVector<int32_t>(T3.data(), M * N));
+  Eigen::MatrixXi matrix_b = Eigen::MatrixXi::Random(N, K)
+                                 .unaryExpr([](int) { return n_signed(e); });
+  std::vector<int8_t> matrix_b_data = ToVector<int8_t>(matrix_b.data(), N * K);
+  int8_t b_zero_point = GetMiddle(matrix_b_data);
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
+  b_zero_point = GetMiddle(matrix_a_data);
+#endif
+  Eigen::MatrixXi matrix_b_offset = matrix_b - b_zero_point * Eigen::MatrixXi::Ones(N, K);
+
+  Eigen::MatrixXi matrix_c = (matrix_b_offset * matrix_a_offset).eval();
+
+  test.AddInput<uint8_t>("T1", {M, K}, std::move(matrix_a_data));
+  test.AddInput<int8_t>("T2", {K, N}, std::move(matrix_b_data), true /*is_initializer*/);
+  test.AddInput<uint8_t>("a_zero_point", {}, {a_zero_point});
+  test.AddInput<int8_t>("b_zero_point", {}, {b_zero_point});
+  test.AddOutput<int32_t>("T3", {M, N}, ToVector<int32_t>(matrix_c.data(), M * N));
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});  // currently nGraph provider does not support gemm_u8s8
 }
