@@ -257,8 +257,8 @@ class BertOnnxModel(OnnxModel):
 
             if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input:
                 mask_index = self.process_mask(unsqueeze_mask_0.input[0])
-                if not self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v, root_input,
-                                                  reshape_qkv.output[0]):
+                if not self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
+                                                  root_input, reshape_qkv.output[0]):
                     continue
                 nodes_to_remove.extend([reshape_qkv, transpose_qkv, matmul_qkv])
                 nodes_to_remove.extend(qk_nodes)
@@ -946,7 +946,7 @@ class BertOnnxModel(OnnxModel):
                     if (d.HasField("dim_value")):
                         batch_size = d.dim_value
                     elif (d.HasField("dim_param")):
-                        batch_size =  str(d.dim_param)
+                        batch_size = str(d.dim_param)
 
                     sequence_length = None
                     d = tensor_type.shape.dim[1]
@@ -969,7 +969,10 @@ class BertOnnxModel(OnnxModel):
         for input in graph.input:
             if input.name in bert_inputs:
                 self.remove_cast_int32(input.name)
-                input_shape = [batch_size if isinstance(batch_size, int) else 1, sequence_length if isinstance(sequence_length, int) else 128]
+                input_shape = [
+                    batch_size if isinstance(batch_size, int) else 1,
+                    sequence_length if isinstance(sequence_length, int) else 128
+                ]
                 int32_input = onnx.helper.make_tensor_value_info(input.name, TensorProto.INT32, input_shape)
                 new_graph_inputs.append(int32_input)
             else:
@@ -985,7 +988,8 @@ class BertOnnxModel(OnnxModel):
         self.model = onnx.helper.make_model(graph_def, producer_name='bert model optimizer')
 
         if isinstance(batch_size, str) or isinstance(sequence_length, str):
-            self.use_dynamic_axes(batch_size if isinstance(batch_size, str) else None, sequence_length if isinstance(sequence_length, str) else None)
+            self.use_dynamic_axes(batch_size if isinstance(batch_size, str) else None,
+                                  sequence_length if isinstance(sequence_length, str) else None)
 
         # restore opset version
         self.model.opset_import[0].version = original_opset_version

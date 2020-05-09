@@ -146,15 +146,33 @@ def validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_fla
     return True
 
 
+optimize_model_statistics = {}
+
+
 def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hidden_size, fp16):
     optimized_model_filename = onnx_model_filename.replace(".onnx", "_fp16.onnx" if fp16 else "_fp32.onnx")
     if not os.path.exists(optimized_model_filename):
         import bert_model_optimization as bert_opt
-        bert_model = bert_opt.optimize_model(onnx_model_filename, model_type, num_heads=num_attention_heads, hidden_size=hidden_size, opt_level=0)
-        logger.info(f"Model {optimized_model_filename} is fully optimized: {bert_model.is_fully_optimized()}")
+        # Use onnxruntime to optimize model, which will be saved to *_ort_cpu.onnx
+        opt_model = bert_opt.optimize_model(onnx_model_filename,
+                                            model_type,
+                                            num_heads=num_attention_heads,
+                                            hidden_size=hidden_size,
+                                            opt_level=99,
+                                            only_onnxruntime=True)
+        optimize_model_statistics[onnx_model_filename] = opt_model.get_fused_operator_statistics()
+
+        # Use script to optimize model.
+        opt_model = bert_opt.optimize_model(onnx_model_filename,
+                                            model_type,
+                                            num_heads=num_attention_heads,
+                                            hidden_size=hidden_size,
+                                            opt_level=0)
+        optimize_model_statistics[optimized_model_filename] = opt_model.get_fused_operator_statistics()
+
         if fp16:
-            bert_model.convert_model_float32_to_float16()
-        bert_model.save_model_to_file(optimized_model_filename)
+            opt_model.convert_model_float32_to_float16()
+        opt_model.save_model_to_file(optimized_model_filename)
     else:
         logger.info(f"Skip optimization since model existed: {optimized_model_filename}")
     return optimized_model_filename
@@ -216,7 +234,8 @@ def export_onnx_model(model_name, cache_dir, input_names, fp16, optimize_onnx, v
 
     if optimize_onnx or fp16:
         model_type = MODELS[model_name][2]
-        onnx_model_filename = optimize_onnx_model(onnx_model_filename, model_type, config.num_attention_heads, config.hidden_size, fp16)
+        onnx_model_filename = optimize_onnx_model(onnx_model_filename, model_type, config.num_attention_heads,
+                                                  config.hidden_size, fp16)
 
         if validate_onnx:
             is_valid_onnx_model = validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten)
@@ -224,8 +243,24 @@ def export_onnx_model(model_name, cache_dir, input_names, fp16, optimize_onnx, v
     return onnx_model_filename, is_valid_onnx_model, config.vocab_size, tokenizer.max_model_input_sizes[model_name]
 
 
-def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repeat_times, input_counts, optimize_onnx,
-                    validate_onnx, cache_dir, verbose):
+def get_latency_result(runtimes, batch_size):
+    latency_ms = sum(runtimes) / float(len(runtimes)) * 1000.0
+    latency_variance = numpy.var(runtimes, dtype=numpy.float64) * 1000.0
+    throughput = batch_size * (1000.0 / latency_ms)
+
+    return {
+        "test_times": len(runtimes),
+        "latency_variance": "{:.2f}".format(latency_variance),
+        "latency_90_percentile": "{:.2f}".format(numpy.percentile(runtimes, 90) * 1000.0),
+        "latency_95_percentile": "{:.2f}".format(numpy.percentile(runtimes, 95) * 1000.0),
+        "latency_99_percentile": "{:.2f}".format(numpy.percentile(runtimes, 99) * 1000.0),
+        "average_latency_ms": "{:.2f}".format(latency_ms),
+        "QPS": "{:.2f}".format(throughput),
+    }
+
+
+def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repeat_times, input_counts,
+                    optimize_onnx, validate_onnx, cache_dir, verbose):
     import onnxruntime
 
     results = []
@@ -268,12 +303,9 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
                     logger.info("Run onnxruntime on {} with input shape {}".format(model_name,
                                                                                    [batch_size, sequence_length]))
                     runtimes = timeit.repeat(lambda: ort_session.run(None, ort_input), number=1, repeat=repeat_times)
-                    latency_ms = sum(runtimes) / float(len(runtimes)) * 1000.0
-                    latency_variance = numpy.var(runtimes, dtype=numpy.float64) * 1000.0
-                    throughput = batch_size * (1000.0 / latency_ms)
 
                     result = {
-                        "runtime": "onnxruntime",
+                        "engine": "onnxruntime",
                         "version": onnxruntime.__version__,
                         "device": "cuda" if use_gpu else "cpu",
                         "optimize": optimize_onnx,
@@ -282,14 +314,9 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
                         "inputs": num_inputs,
                         "batch_size": batch_size,
                         "sequence_length": sequence_length,
-                        "latency_variance": "{:.2f}".format(latency_variance),
-                        "latency_90_percentile": "{:.2f}".format(numpy.percentile(runtimes, 90) * 1000.0),
-                        "latency_95_percentile": "{:.2f}".format(numpy.percentile(runtimes, 95) * 1000.0),
-                        "latency_99_percentile": "{:.2f}".format(numpy.percentile(runtimes, 99) * 1000.0),
-                        "average_latency_ms": "{:.2f}".format(latency_ms),
-                        "QPS": "{:.2f}".format(throughput),
                     }
 
+                    result.update(get_latency_result(runtimes, batch_size))
                     logger.info(result)
                     results.append(result)
 
@@ -342,12 +369,9 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
                         inference(input_ids)
 
                     runtimes = timeit.repeat(lambda: inference(input_ids), repeat=repeat_times, number=1)
-                    latency_ms = sum(runtimes) / float(len(runtimes)) * 1000
-                    latency_variance = numpy.var(runtimes, dtype=numpy.float64) * 1000.0
-                    throughput = batch_size * (1000.0 / latency_ms)
 
                     result = {
-                        "runtime": "torchscript" if torchscript else "torch",
+                        "engine": "torchscript" if torchscript else "torch",
                         "version": torch.__version__,
                         "device": device,
                         "optimize": "",
@@ -356,21 +380,74 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
                         "inputs": 1,
                         "batch_size": batch_size,
                         "sequence_length": sequence_length,
-                        "latency_variance": "{:.2f}".format(latency_variance),
-                        "latency_90_percentile": "{:.2f}".format(numpy.percentile(runtimes, 90) * 1000),
-                        "latency_95_percentile": "{:.2f}".format(numpy.percentile(runtimes, 95) * 1000),
-                        "latency_99_percentile": "{:.2f}".format(numpy.percentile(runtimes, 99) * 1000),
-                        "average_latency_ms": "{:.2f}".format(latency_ms),
-                        "QPS": "{:.2f}".format(throughput),
                     }
-
-                    print(result)
+                    result.update(get_latency_result(runtimes, batch_size))
+                    logger.info(result)
                     results.append(result)
                 except RuntimeError as e:
                     logger.exception(e)
                     torch.cuda.empty_cache()
 
     return results
+
+
+def output_details(results, csv_filename):
+    with open(csv_filename, mode="a", newline='') as csv_file:
+        column_names = [
+            "engine", "version", "device", "fp16", "optimize", "model_name", "inputs", "batch_size", "sequence_length",
+            "test_times", "QPS", "average_latency_ms", "latency_variance", "latency_90_percentile",
+            "latency_95_percentile", "latency_99_percentile"
+        ]
+
+        csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
+        csv_writer.writeheader()
+        for result in results:
+            csv_writer.writerow(result)
+
+    logger.info(f"Detail results are saved to csv file: {csv_filename}")
+
+
+def output_summary(results, csv_filename, args):
+    with open(csv_filename, mode="a", newline='') as csv_file:
+        header_names = ["model_name", "inputs", "engine", "version", "device", "fp16", "optimize"]
+        data_names = []
+        for batch_size in args.batch_sizes:
+            for sequence_length in args.sequence_lengths:
+                data_names.append(f"b{batch_size}_s{sequence_length}")
+
+        csv_writer = csv.DictWriter(csv_file, fieldnames=header_names + data_names)
+        csv_writer.writeheader()
+        for model_name in args.models:
+            for input_count in [1, 2, 3]:
+                for engine_name in args.engines:
+                    row = {}
+                    for result in results:
+                        if result["model_name"] == model_name and result["inputs"] == input_count and result[
+                                "engine"] == engine_name:
+                            headers = {k: v for k, v in result.items() if k in header_names}
+                            if not row:
+                                row.update(headers)
+                                row.update({k: "" for k in data_names})
+                            else:
+                                for k in header_names:
+                                    assert row[k] == headers[k]
+                            b = result["batch_size"]
+                            s = result["sequence_length"]
+                            row[f"b{b}_s{s}"] = result["average_latency_ms"]
+                    csv_writer.writerow(row)
+
+    logger.info(f"Summary results are saved to csv file: {csv_filename}")
+
+
+def output_fusion_statistics(optimize_model_statistics, csv_filename):
+    with open(csv_filename, mode="a", newline='') as csv_file:
+        column_names = ["model_filename"] + list(next(iter(optimize_model_statistics.values())).keys())
+        csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
+        csv_writer.writeheader()
+        for key in optimize_model_statistics.keys():
+            optimize_model_statistics[key]["model_filename"] = key
+            csv_writer.writerow(optimize_model_statistics[key])
+    logger.info(f"Fusion statistics is saved to csv file: {csv_filename}")
 
 
 def parse_arguments():
@@ -415,7 +492,15 @@ def parse_arguments():
 
     parser.add_argument("-v", "--validate_onnx", required=False, action="store_true", help="Validate ONNX model")
 
-    parser.add_argument("-f", "--csv_filename", required=False, default=None, help="CSV file for saving results.")
+    parser.add_argument("-f",
+                        "--fusion_csv",
+                        required=False,
+                        default=None,
+                        help="CSV file for saving summary results of graph optimization.")
+
+    parser.add_argument("-d", "--detail_csv", required=False, default=None, help="CSV file for saving detail results.")
+
+    parser.add_argument("-r", "--result_csv", required=False, default=None, help="CSV file for saving summary results.")
 
     parser.add_argument("-i",
                         "--input_counts",
@@ -495,24 +580,21 @@ def main():
         except:
             logger.error(f"Exception", exc_info=True)
 
+    time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    if optimize_model_statistics:
+        csv_filename = args.fusion_csv or f"benchmark_fusion_{time_stamp}.csv"
+        output_fusion_statistics(optimize_model_statistics, csv_filename)
+
     if len(results) == 0:
         logger.warning("No any result avaiable.")
         return
 
-    csv_filename = args.csv_filename or "benchmark_result_{}.csv".format(datetime.now().strftime("%Y%m%d-%H%M%S"))
-    with open(csv_filename, mode="a", newline='') as csv_file:
-        column_names = [
-            "runtime", "version", "device", "fp16", "optimize", "model_name", "inputs", "batch_size", "sequence_length", "QPS",
-            "average_latency_ms", "latency_variance", "latency_90_percentile", "latency_95_percentile",
-            "latency_99_percentile"
-        ]
+    csv_filename = args.detail_csv or f"benchmark_detail_{time_stamp}.csv"
+    output_details(results, csv_filename)
 
-        csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
-        csv_writer.writeheader()
-        for result in results:
-            csv_writer.writerow(result)
+    csv_filename = args.result_csv or f"benchmark_summary_{time_stamp}.csv"
+    output_summary(results, csv_filename, args)
 
-    logger.info(f"result is saved to csv file: {csv_filename}")
 
 if __name__ == "__main__":
     main()
