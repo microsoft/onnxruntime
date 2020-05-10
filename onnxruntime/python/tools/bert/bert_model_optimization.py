@@ -219,7 +219,6 @@ def optimize_model(input,
     input_model_path = input
     if run_onnxruntime and opt_level > 0:
         input_model_path = optimize_by_onnxruntime(input_model_path, use_gpu=False, opt_level=opt_level)
-        logger.info("Use OnnxRuntime to optimize and save the optimized model to {}".format(input_model_path))
 
     model = ModelProto()
     with open(input_model_path, "rb") as f:

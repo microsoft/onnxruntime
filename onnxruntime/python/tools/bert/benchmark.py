@@ -7,11 +7,11 @@
         Export all models to ONNX, optimize and validate them:
             python benchmark.py -b 0 -o -v -i 1 2 3
         Run OnnxRuntime on GPU for all models:
-            python benchmark.py -i 1 2 3 -g
+            python benchmark.py -g
         Run OnnxRuntime on GPU for all models with fp32 optimization:
-            python benchmark.py -i 1 2 3 -g -o
+            python benchmark.py -g -o
         Run OnnxRuntime on GPU with fp16 optimization:
-            python benchmark.py -i 1 2 3 -g -o --fp16
+            python benchmark.py -g -o --fp16
         Run TorchScript on GPU for all models:
             python benchmark.py -e torchscript -g
         Run TorchScript on GPU for all models with fp16:
@@ -42,7 +42,13 @@ MODELS = {
     # The following models need a fix in transformers (https://github.com/huggingface/transformers/pull/4244) for exporting ONNX models.
     "gpt2": (["input_ids"], 11, "gpt2"),  # no past state
     "distilgpt2": (["input_ids"], 11, "gpt2"),  # no past state
-    "albert-base-v2": (["input_ids", "attention_mask", "token_type_ids"], 12, "bert"),
+    
+    #  Models uses Einsum, which lacks cuda implementation right now.
+    "albert-base-v2": (["input_ids"], 12, "bert"),
+    "xlnet-base-cased": (["input_ids"], 12, "bert"),
+
+    # T5 cannot be exported to ONNX right now.
+    #"t5-base": (["input_ids"], 11, "bert"),
 }
 
 cpu_count = psutil.cpu_count(logical=True)
