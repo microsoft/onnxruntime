@@ -74,7 +74,7 @@ std::unique_ptr<const OpKernel> OptimizerExecutionFrame::Info::CreateKernel(cons
 
   // Kernel found in the CPU kernel registry
   if (status.IsOK())
-    return op_kernel;
+    return std::unique_ptr<const OpKernel>(std::move(op_kernel));
 
   // No kernel found in the CPU kernel registry
   return nullptr;
