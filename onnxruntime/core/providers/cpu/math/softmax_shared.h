@@ -15,12 +15,9 @@ Calculate Softmax using CPU memory.
 @param D Number of elements in each row
 @param Xdata Source data
 @param Ydata Output data
-@param scale Storage for scale calculation. Size must be >= N.
-@param sum_multiplier Weights for each element. Size must be >= D.
 @param logarithmic If true, compute LogSoftmax. If false compute Softmax.
-@param rowmax Storage for calculation of maximum in each row. Size must be >= N.
 */
 template <typename T>
-common::Status SoftmaxCPU(int64_t N, int64_t D, const T* Xdata, T* Ydata, T* scale,
-                          const T* sum_multiplier, bool logarithmic, T* rowmax, concurrency::ThreadPool* tp);
+common::Status SoftmaxCPU(size_t N, size_t D, const T* Xdata, T* Ydata,
+                          bool logarithmic, concurrency::ThreadPool* thread_pool);
 }  // namespace onnxruntime

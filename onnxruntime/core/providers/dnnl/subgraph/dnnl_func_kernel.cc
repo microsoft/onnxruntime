@@ -5,7 +5,7 @@
 #endif
 
 #include "dnnl_func_kernel.h"
-#include "core/common/exceptions.h"
+#define EXCLUDE_REFERENCE_TO_ORT_DLL
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/dnnl/dnnl_common.h"
 #include "core/providers/dnnl/subgraph/dnnl_conv.h"
@@ -15,7 +15,6 @@
 #include "core/providers/dnnl/subgraph/dnnl_pool.h"
 #include "core/providers/dnnl/subgraph/dnnl_sum.h"
 #include "core/providers/dnnl/subgraph/dnnl_lrn.h"
-#include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -223,11 +222,8 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
       auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
       auto tensor_shape = ort.GetTensorShape(tensor_info);
       ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
-      auto shape = tensor_shape.data();
-      auto dim = tensor_shape.size();
 
-      TensorShape x_shape(shape, dim);
-      dnnl::memory::dims src_dims(x_shape.GetDims().begin(), x_shape.GetDims().end());
+      dnnl::memory::dims src_dims(tensor_shape);
       AddDimsToKey(dims_str, src_dims);
     }
 
@@ -261,8 +257,7 @@ Status DnnlFuncKernel<T>::Compute(const OrtCustomOpApi* api, OrtKernelContext* c
     primitive->UpdateProvider(params_);
     status = primitive->Compute(api, context);
   } catch (const dnnl::error& e) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status,
-                           ", message: ", e.what());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, ", message: ", e.what());
   }
   return status;
 }
