@@ -2,14 +2,13 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
 template <typename T>
-class Gemm final : public OpKernel {
+class Gemm final : public Provider_OpKernel {
  public:
-  Gemm(const OpKernelInfo& info) : OpKernel(info) {
+  Gemm(const Provider_OpKernelInfo& info) : Provider_OpKernel(info) {
     int64_t temp;
     ORT_ENFORCE(info.GetAttr<int64_t>("transA", &temp).IsOK());
     trans_A_ = (temp != 0);
@@ -21,7 +20,7 @@ class Gemm final : public OpKernel {
     ORT_ENFORCE(info.GetAttr<float>("beta", &beta_).IsOK());
   }
 
-  Status Compute(OpKernelContext* context) const override;
+  Status Compute(Provider_OpKernelContext* context) const override;
 
  private:
   bool trans_A_;
