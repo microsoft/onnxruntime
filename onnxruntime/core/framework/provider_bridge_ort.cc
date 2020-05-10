@@ -504,7 +504,9 @@ struct ProviderHostImpl : ProviderHost {
 
 struct ProviderLibrary {
   ProviderLibrary(const char* filename) {
-    Env::Default().LoadDynamicLibrary(filename, &handle_);
+
+    std::string full_path = Env::Default().GetRuntimePath() + std::string(filename);
+    Env::Default().LoadDynamicLibrary(full_path, &handle_);
     if (!handle_)
       return;
 
