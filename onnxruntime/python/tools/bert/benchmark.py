@@ -32,6 +32,8 @@ from packaging import version
 
 logger = logging.getLogger('')
 
+DEFAULT_MODELS = ["bert-base-cased", "distilbert-base-uncased", "roberta-base", "gpt2"]
+
 # List of pretrained models: https://huggingface.co/transformers/pretrained_models.html
 # Pretrained model name to a tuple of input names, opset_version and optimization model type
 MODELS = {
@@ -39,16 +41,14 @@ MODELS = {
     "distilbert-base-uncased": (["input_ids", "attention_mask"], 11, "bert"),
     "roberta-base": (["input_ids", "attention_mask"], 11, "bert"),
 
-    # The following models need a fix in transformers (https://github.com/huggingface/transformers/pull/4244) for exporting ONNX models.
+    # Gpt2 and Albert models need a fix in transformers (https://github.com/huggingface/transformers/pull/4244) for exporting ONNX models.
     "gpt2": (["input_ids"], 11, "gpt2"),  # no past state
     "distilgpt2": (["input_ids"], 11, "gpt2"),  # no past state
-    
+    "openai-gpt": (["input_ids"], 11, "gpt2"),
+
     #  Models uses Einsum, which lacks cuda implementation right now.
     "albert-base-v2": (["input_ids"], 12, "bert"),
     "xlnet-base-cased": (["input_ids"], 12, "bert"),
-
-    # T5 cannot be exported to ONNX right now.
-    #"t5-base": (["input_ids"], 11, "bert"),
 }
 
 cpu_count = psutil.cpu_count(logical=True)
