@@ -78,7 +78,12 @@ final class OnnxRuntime {
     }
   }
 
-  private static boolean isAndroid() {
+  /**
+   * Check if we're running on Android.
+   *
+   * @return True if the {@code android.app.Activity} class can be loaded, false otherwise.
+   */
+  static boolean isAndroid() {
     try {
       Class.forName("android.app.Activity");
       return true;

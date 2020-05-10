@@ -211,6 +211,13 @@ if (onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_nnapi_src})
 endif()
 
+if (onnxruntime_USE_RKNPU)
+  file(GLOB_RECURSE onnxruntime_test_providers_rknpu_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/rknpu/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_rknpu_src})
+endif()
+
 set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/shared_lib")
 set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/global_thread_pools")
 
@@ -293,6 +300,10 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
 
+if(onnxruntime_USE_RKNPU)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
+endif()
+
 if(onnxruntime_USE_FEATURIZERS)
    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers)
    list(APPEND onnxruntime_test_providers_libs onnxruntime_featurizers re2)
@@ -334,6 +345,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     onnxruntime_optimizer
@@ -368,6 +380,13 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nnapi)
+endif()
+
+if(onnxruntime_USE_RKNPU)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/rknpu/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_rknpu)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_rknpu)
 endif()
 
 if(WIN32)
@@ -775,7 +794,7 @@ endif()
 list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
 target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})
 if(WIN32)
-  target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp)
+  target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp Advapi32)
 endif()
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
@@ -796,6 +815,10 @@ if (onnxruntime_BUILD_JAVA)
     message(STATUS "Running Java tests")
     # delegate to gradle's test runner
     if(WIN32)
+      # If we're on windows, symlink the custom op test library somewhere we can see it
+      set(JAVA_NATIVE_TEST_DIR ${JAVA_OUTPUT_DIR}/native-test)
+      file(MAKE_DIRECTORY ${JAVA_NATIVE_TEST_DIR})
+      add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:custom_op_library> ${JAVA_NATIVE_TEST_DIR}/$<TARGET_FILE_NAME:custom_op_library>)
       # On windows ctest requires a test to be an .exe(.com) file
       # So there are two options 1) Install Chocolatey and its gradle package
       # That package would install gradle.exe shim to its bin so ctest could run gradle.exe
@@ -807,8 +830,8 @@ if (onnxruntime_BUILD_JAVA)
         -DREPO_ROOT=${REPO_ROOT}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
     else()
-        add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR}
-                 WORKING_DIRECTORY ${REPO_ROOT}/java)
+      add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR}
+               WORKING_DIRECTORY ${REPO_ROOT}/java)
     endif()
     set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
 endif()

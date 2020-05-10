@@ -24,6 +24,9 @@
 #ifdef USE_NNAPI
 #include "core/providers/nnapi/nnapi_execution_provider.h"
 #endif
+#ifdef USE_RKNPU
+#include "core/providers/rknpu/rknpu_execution_provider.h"
+#endif
 
 namespace onnxruntime {
 class Graph;
@@ -48,6 +51,10 @@ IExecutionProvider* TestOpenVINOExecutionProvider();
 
 #ifdef USE_NNAPI
 IExecutionProvider* TestNnapiExecutionProvider();
+#endif
+
+#ifdef USE_RKNPU
+IExecutionProvider* TestRknpuExecutionProvider();
 #endif
 
 template <typename T>

@@ -16,6 +16,7 @@ bool LaunchEmbedLayerNormKernel(void* output,                     // output tens
                                 const void* word_embedding,       // weights for word embeddings
                                 const void* position_embedding,   // weights for position embeddings
                                 const void* segment_embedding,    // weights for segment (like sentence) embeddings
+                                float epsilon,                    // epsilon for layer normalization
                                 const int hidden_size,            // hidden size (that is head_size * num_heads)
                                 int batch_size,                   // batch size
                                 int sequence_length,              // sequence length
