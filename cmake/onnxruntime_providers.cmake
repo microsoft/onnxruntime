@@ -871,7 +871,7 @@ if (onnxruntime_USE_HIP)
   #list(APPEND HIP_CXX_FLAGS -std=c++14)
 
   if(CMAKE_BUILD_TYPE MATCHES Debug)
-      #list(APPEND HIP_CXX_FLAGS -g)
+      list(APPEND HIP_CXX_FLAGS -g)
       #list(APPEND HIP_CXX_FLAGS -O0)
   endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
