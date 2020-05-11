@@ -9,23 +9,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T1, typename T2, bool trainable_dropout>
-class Dropout final : public CudaKernel {
- public:
-  Dropout(const OpKernelInfo& info) : CudaKernel(info), default_ratio_(0.5) {
-    int64_t seed = 0;
-    if (info.GetAttr<int64_t>("seed", &seed).IsOK()) {
-      generator_ = onnxruntime::make_unique<PhiloxGenerator>(static_cast<uint64_t>(seed));
-    }
-  }
-
-  Status ComputeInternal(OpKernelContext* context) const override;
-
- private:
-  mutable std::unique_ptr<PhiloxGenerator> generator_;
-  const float default_ratio_;
-};
-
 template <typename T1, typename T2>
 class DropoutGrad final : public CudaKernel {
  public:
