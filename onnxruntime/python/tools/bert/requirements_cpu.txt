@@ -4,6 +4,7 @@ coloredlogs
 psutil
 py-cpuinfo
 py3nvml
+packaging
 transformers
 onnxruntime
 --find-links https://download.pytorch.org/whl/torch_stable.html

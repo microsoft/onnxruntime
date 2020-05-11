@@ -272,7 +272,7 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
         all_input_names = MODELS[model_name][0]
         for num_inputs in input_counts:
             if num_inputs > len(all_input_names):
-                continue
+                break
 
             input_names = all_input_names[:num_inputs]
 
@@ -341,7 +341,7 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
                 continue
             if fp16:
                 model.half()
-            device = "cuda" if use_gpu else "cpu"
+            device = torch.device("cuda:0" if use_gpu else "cpu")
             model.to(device)
 
             for sequence_length in sequence_lengths:
@@ -368,7 +368,7 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
                     result = {
                         "engine": "torchscript" if torchscript else "torch",
                         "version": torch.__version__,
-                        "device": device,
+                        "device": "cuda" if use_gpu else "cpu",
                         "optimize": "",
                         "fp16": fp16,
                         "model_name": model_name,
@@ -509,13 +509,13 @@ def parse_arguments():
     parser.add_argument("-t",
                         "--test_times",
                         required=False,
-                        default=1000,
+                        default=100,
                         type=int,
                         help="Number of repeat times to get average inference latency.")
 
-    parser.add_argument("-b", "--batch_sizes", nargs="+", type=int, default=[1, 2])
+    parser.add_argument("-b", "--batch_sizes", nargs="+", type=int, default=[1])
 
-    parser.add_argument("-s", "--sequence_lengths", nargs="+", type=int, default=[8, 32, 128])
+    parser.add_argument("-s", "--sequence_lengths", nargs="+", type=int, default=[8, 16, 32, 64, 128, 256])
 
     args = parser.parse_args()
     return args
