@@ -35,18 +35,20 @@ logger = logging.getLogger('')
 DEFAULT_MODELS = ["bert-base-cased", "distilbert-base-uncased", "roberta-base", "gpt2"]
 
 # List of pretrained models: https://huggingface.co/transformers/pretrained_models.html
-# Pretrained model name to a tuple of input names, opset_version and optimization model type
+# Pretrained model name to a tuple of input names, opset_version, use_external_data_format and optimization model type
 MODELS = {
-    "bert-base-cased": (["input_ids", "attention_mask", "token_type_ids"], 11, "bert"),
-    "distilbert-base-uncased": (["input_ids", "attention_mask"], 11, "bert"),
-    "roberta-base": (["input_ids", "attention_mask"], 11, "bert"),
-    "gpt2": (["input_ids"], 11, "gpt2"),  # no past state
-    "distilgpt2": (["input_ids"], 11, "gpt2"),  # no past state
-    "openai-gpt": (["input_ids"], 11, "gpt2"),
+    "bert-base-cased": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert"),
+    "distilbert-base-uncased": (["input_ids", "attention_mask"], 11, False, "bert"),
+    "roberta-base": (["input_ids", "attention_mask"], 11, False, "bert"),
+    "gpt2": (["input_ids"], 11, False, "gpt2"),  # no past state
+    "distilgpt2": (["input_ids"], 11, False, "gpt2"),  # no past state
+    "openai-gpt": (["input_ids"], 11, False, "gpt2"),
 
     #  Models uses Einsum, which need opset version 12 and PyTorch 1.5.0 or above.
-    "albert-base-v2": (["input_ids"], 12, "bert"),
-    "xlnet-base-cased": (["input_ids"], 12, "bert"),
+    "albert-base-v2": (["input_ids"], 12, False, "bert"),
+    "xlnet-base-cased": (["input_ids"], 12, False, "bert"),
+
+    "xlm-mlm-en-2048": (["input_ids"], 11, True, "bert"),
 }
 
 cpu_count = psutil.cpu_count(logical=True)
@@ -210,14 +212,15 @@ def export_onnx_model(model_name, cache_dir, input_names, fp16, optimize_onnx, v
         dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
 
         torch.onnx.export(model=model,
-                            args=tuple(example_inputs.values()),
-                            f=onnx_model_filename,
-                            input_names=list(example_inputs.keys()),
-                            output_names=output_names,
-                            example_outputs=example_outputs,
-                            dynamic_axes=dynamic_axes,
-                            do_constant_folding=True,
-                            opset_version=MODELS[model_name][1])
+                          args=tuple(example_inputs.values()),
+                          f=onnx_model_filename,
+                          input_names=list(example_inputs.keys()),
+                          output_names=output_names,
+                          example_outputs=example_outputs,
+                          dynamic_axes=dynamic_axes,
+                          do_constant_folding=True,
+                          opset_version=MODELS[model_name][1],
+                          use_external_data_format=MODELS[model_name][2])
     else:
         logger.info(f"Skip export since model existed: {onnx_model_filename}")
 
@@ -226,7 +229,7 @@ def export_onnx_model(model_name, cache_dir, input_names, fp16, optimize_onnx, v
         is_valid_onnx_model = validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten)
 
     if optimize_onnx or fp16:
-        model_type = MODELS[model_name][2]
+        model_type = MODELS[model_name][3]
         onnx_model_filename = optimize_onnx_model(onnx_model_filename, model_type, config.num_attention_heads,
                                                   config.hidden_size, fp16)
 
@@ -433,11 +436,14 @@ def output_summary(results, csv_filename, args):
 
 
 def output_fusion_statistics(optimize_model_statistics, csv_filename):
+    from transformers import __version__ as transformers_version
     with open(csv_filename, mode="a", newline='') as csv_file:
-        column_names = ["model_filename"] + list(next(iter(optimize_model_statistics.values())).keys())
+        column_names = ["model_filename", "transformers", "torch"] + list(next(iter(optimize_model_statistics.values())).keys())
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
         for key in optimize_model_statistics.keys():
+            optimize_model_statistics[key]["transformers"] = transformers_version
+            optimize_model_statistics[key]["torch"] = torch.__version__
             optimize_model_statistics[key]["model_filename"] = key
             csv_writer.writerow(optimize_model_statistics[key])
     logger.info(f"Fusion statistics is saved to csv file: {csv_filename}")

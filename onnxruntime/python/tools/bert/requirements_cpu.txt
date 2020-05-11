@@ -1,4 +1,4 @@
-onnx
+onnx==1.7.0
 numpy
 coloredlogs
 psutil
