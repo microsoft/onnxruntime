@@ -15,6 +15,7 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/logistic.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/tanh.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/erf.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/compute.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/quantize.cpp
 )
 
@@ -73,6 +74,9 @@ if(MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/SpoolKernelAvx512F.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/sgemma.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/cvtfp16a.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/SoftmaxKernelAvx.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/TransKernelFma3.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/TransKernelAvx512F.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/LogisticKernelFma3.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/TanhKernelFma3.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/ErfKernelFma3.asm
@@ -98,12 +102,16 @@ else()
     elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86")
       set(X86 TRUE)
     endif()
-  elseif(CMAKE_SYSTEM_NAME STREQUAL "iOSCross")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "iOSCross")
     set(IOS TRUE)
     if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
       set(ARM64 TRUE)
-    elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")  
+    elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")
       set(ARM TRUE)
+    elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64")
+      set(X86_64 TRUE)
+    elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "i386")
+      set(X86 TRUE)
     endif()
   else()
     execute_process(
@@ -115,6 +123,8 @@ else()
       set(ARM TRUE)
     elseif(dumpmachine_output MATCHES "^aarch64.*")
       set(ARM64 TRUE)
+    elseif(dumpmachine_output MATCHES "^powerpc.*")
+      set(POWER TRUE)
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
       set(X86 TRUE)
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
@@ -132,6 +142,10 @@ else()
     enable_language(ASM)
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemmKernelNeon.S
+    )
+  elseif(POWER)
+    set(mlas_platform_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/power/SgemmKernelPower.cpp
     )
   elseif(X86)
     enable_language(ASM)
@@ -174,6 +188,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmTransposePackB16x4Avx.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SconvKernelAvx.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SpoolKernelAvx.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SoftmaxKernelAvx.S
     )
     set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
 
@@ -184,6 +199,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SconvKernelFma3.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TransKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/LogisticKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TanhKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/ErfKernelFma3.S
@@ -213,6 +229,7 @@ else()
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelAvx512F.S
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SconvKernelAvx512F.S
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SpoolKernelAvx512F.S
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TransKernelAvx512F.S
       )
       if(HAS_AVX512F)
         set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")

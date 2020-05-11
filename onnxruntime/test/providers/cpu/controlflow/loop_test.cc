@@ -574,6 +574,116 @@ TEST(Loop, InfiniteLoopTermination) {
   terminator_thread.join();
 }
 
+// Add basic test to trigger types override logic in Graph::InferAndVerifySubgraphTypes as well as
+// type/shape inferencing for subgraph to flow the type/shape info through 
+// subgraph.PerformTypeAndShapeInferencing(options).
+// In this test, main graph has original input/expected output defined as "double" where the subgraph as "float".
+// Expectation is types should get propagated properly in subgraph and yield correct output
+//
+// TODO - when the input/output type in main graph is float16, extra Cast nodes will be added and type input type
+//        will be changed by InsertCastTransformer for graph execution thus causes type mismatch failure.
+//        Need to investigate how InsertCastTransformer works in future.
+TEST(Loop, SubgraphTypeOverride) {
+  auto create_subgraph = [](const RunOptions&) {
+    Model model("Loop subgraph", false, DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+
+    std::vector<NodeArg*> inputs;
+    std::vector<NodeArg*> outputs;
+
+    /* 
+            Inputs: iter_num, cond_in, fake_in, loop carried state variables.
+
+         iter_num_in    cond_in      fake_in   [outer_scope_0]
+           (unused)        |            |            |
+                       [Identity]  [Identity]    [Identity]
+                           |            |            |
+                        cond_out    fake_out   loop_var_0_out
+    */
+
+    // graph inputs types.
+    TypeProto int64_scalar;
+    int64_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+    int64_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto bool_scalar;
+    bool_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+    bool_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto float_tensor;
+    float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+    float_tensor.mutable_tensor_type()->mutable_shape()->add_dim();
+
+    // graph inputs
+    auto& iter_num_in = graph.GetOrCreateNodeArg("iter_num_in", &int64_scalar);
+    auto& cond_in = graph.GetOrCreateNodeArg("cond_in", &bool_scalar);
+    auto& fake_in = graph.GetOrCreateNodeArg("fake_in", &float_tensor);
+
+    // outer scope value. need type but not shape.
+    auto& outer_scope_0 = graph.GetOrCreateNodeArg("outer_scope_0", &float_tensor);
+
+    // add so that we don't end up with it being considered a graph input
+    graph.AddOuterScopeNodeArg("outer_scope_0");
+
+    // graph outputs
+    auto& cond_out = graph.GetOrCreateNodeArg("cond_out", &bool_scalar);
+    auto& fake_out = graph.GetOrCreateNodeArg("fake_out", &float_tensor);
+    auto& loop_var_0_out = graph.GetOrCreateNodeArg("loop_var_0_out", &float_tensor);
+
+    // cond_in -> cond_out
+    {
+      inputs = {&cond_in};
+      outputs = {&cond_out};
+
+      graph.AddNode("cond_in_identity", "Identity", "Forward cond_in to cond_out", inputs, outputs);
+    }
+
+    // fake_in -> fake_out
+    {
+      inputs = {&fake_in};
+      outputs = {&fake_out};
+
+      graph.AddNode("fake_in_identity", "Identity", "Forward fake_in to fake_out", inputs, outputs);
+    }
+
+    // outer_scope_0 -> loop_var_0_out
+    {
+      inputs = {&outer_scope_0};
+      outputs = {&loop_var_0_out};
+
+      graph.AddNode("loop_var_out", "Identity", "Forward outer_scope_0 to loop_var_0_out", inputs, outputs);
+    }
+
+    graph.SetInputs({&iter_num_in, &cond_in, &fake_in});
+    graph.SetOutputs({&cond_out, &fake_out, &loop_var_0_out});
+
+    auto status = graph.Resolve();
+    EXPECT_EQ(status, Status::OK());
+
+    return graph.ToGraphProto();
+  };
+
+  LoopOpTester test{{}, create_subgraph};
+
+  test.AddInput<int64_t>("M", {1}, {1});
+  test.AddInput<bool>("cond", {1}, {true});
+  test.AddInput<double>("fake", {1}, {0.f});
+  test.AddInput<double>("outer_scope_0", {1}, {kOuterNodeAddValue});
+
+  test.AddOutput<double>("loop_fake_final", {1}, {0.f});
+  test.AddOutput<double>("loop_var_0_final", {1, 1}, {kOuterNodeAddValue});
+  test.AddOutput<int64_t>("outer_scope_0_out", {1}, {int64_t(kOuterNodeAddValue)});
+
+  OrtRunOptions session_run_options;
+  session_run_options.run_tag = "Loop.SubgraphTypeOverride";
+
+  Graph::ResolveOptions options;
+  options.override_types = true;
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider}, &session_run_options, nullptr,
+           ExecutionMode::ORT_SEQUENTIAL, {}, options);
+}
+
 // Regression test that a subgraph input overrides an outer scope value of the same name.
 // Replicate issue from https://github.com/onnx/onnx/issues/2082
 TEST(Loop, SubgraphInputShadowsOuterScopeValue) {

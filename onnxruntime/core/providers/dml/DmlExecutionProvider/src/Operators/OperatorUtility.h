@@ -55,6 +55,10 @@ namespace Dml
 
     uint32_t GetDmlAdjustedAxis(int32_t onnxAxis, uint32_t onnxDimCount, uint32_t dmlDimCount);
 
+    void GetDmlAdjustedAxes(/*inout*/ gsl::span<const int32_t> axes, uint32_t onnxDimCount, uint32_t dmlDimCount, std::vector<uint32_t>& dmlAxes);
+
     DML_INTERPOLATION_MODE MapStringToInteropolationMode(std::string_view mode);
+
+    DML_DEPTH_SPACE_ORDER MapStringToDepthSpaceMode(std::string_view mode);
 
 } // namespace Dml

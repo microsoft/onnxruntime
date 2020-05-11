@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #include "iengine.h"
+#include "UniqueOrtPtr.h"
 
 #include <memory>
+#include <mutex>
 
 namespace _winml {
 
@@ -75,8 +77,6 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(StartProfiling)
   () override;
   STDMETHOD(FlushContext)
-  () override;
-  STDMETHOD(TrimUploadHeap)
   () override;
   STDMETHOD(ReleaseCompletedReferences)
   () override;
