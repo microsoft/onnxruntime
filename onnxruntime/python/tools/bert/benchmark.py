@@ -40,13 +40,11 @@ MODELS = {
     "bert-base-cased": (["input_ids", "attention_mask", "token_type_ids"], 11, "bert"),
     "distilbert-base-uncased": (["input_ids", "attention_mask"], 11, "bert"),
     "roberta-base": (["input_ids", "attention_mask"], 11, "bert"),
-
-    # Gpt2 and Albert models need a fix in transformers (https://github.com/huggingface/transformers/pull/4244) for exporting ONNX models.
     "gpt2": (["input_ids"], 11, "gpt2"),  # no past state
     "distilgpt2": (["input_ids"], 11, "gpt2"),  # no past state
     "openai-gpt": (["input_ids"], 11, "gpt2"),
 
-    #  Models uses Einsum, which lacks cuda implementation right now.
+    #  Models uses Einsum, which need opset version 12 and PyTorch 1.5.0 or above.
     "albert-base-v2": (["input_ids"], 12, "bert"),
     "xlnet-base-cased": (["input_ids"], 12, "bert"),
 }
