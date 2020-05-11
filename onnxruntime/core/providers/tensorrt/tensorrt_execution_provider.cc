@@ -851,13 +851,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       auto trt_builder = trt_state->builder;
       nvinfer1::IOptimizationProfile* trt_profile = nullptr;
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
-        // TODO: check if getInput indexing is same with binding index
-        auto input = trt_state->network->getInput(i);
-        nvinfer1::Dims dims = input->getDimensions();
-        nvinfer1::Dims dims_min = dims;
-        nvinfer1::Dims dims_opt = dims;
-        nvinfer1::Dims dims_max = dims;
-
         // Check and update shape ranges for dynamic shape inputs
         auto& shape_ranges = trt_state->input_shape_ranges;
         if (shape_ranges.find(i) != shape_ranges.end()) {
