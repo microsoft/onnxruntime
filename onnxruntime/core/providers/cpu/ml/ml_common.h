@@ -425,7 +425,41 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
         break;
       }
       case POST_EVAL_TRANSFORM::SOFTMAX: {
-        MlasComputeSoftmax(s, s, num_batches, batch_size, false, threadpool);
+        bool use_mlas = true;
+        // if there are less than 8 items in each batch it may be slower to use mlas.
+        // currently MlasComputeSoftmax adds threads on 16K blocks of work.
+        // for smaller batches it takes more threads to counter some of the overhead.
+        switch (batch_size) {
+          case 1:
+            use_mlas = false;  // could choose either
+            break;
+          case 2:
+            use_mlas = num_scores >= 48 * 1024;
+            break;
+          case 3:
+            use_mlas = num_scores >= 32 * 1024;
+            break;
+          case 4:
+          case 5:
+          case 6:
+          case 7:
+            use_mlas = num_scores >= 16 * 1024;
+            break;
+          default:
+            // 8 or more mlas is always faster
+            break;
+        }
+
+        if (use_mlas) {
+          MlasComputeSoftmax(s, s, num_batches, batch_size, false, threadpool);
+        } else {
+          while (s < s_end) {
+            gsl::span<float> scores_for_batch(s, s + batch_size);
+            ComputeSoftmax(scores_for_batch);
+            s += batch_size;
+          }
+        }
+
         break;
       }
       case POST_EVAL_TRANSFORM::SOFTMAX_ZERO: {
