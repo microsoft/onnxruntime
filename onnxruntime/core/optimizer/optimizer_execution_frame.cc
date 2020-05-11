@@ -18,13 +18,13 @@
 namespace onnxruntime {
 
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
-                                    const InitializedTensorSet& initialized_tensor_set) {
-  // Create CPU execution provider
-  // For now, CPU execution provider will be created every time when initializing Info.
-  // Later, it will be changed to pass by Info ctor.
-  cpu_execution_provider_ = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+                                    const InitializedTensorSet& initialized_tensor_set,
+                                    std::unique_ptr<CPUExecutionProvider> cpu_execution_provider) {
+  ORT_ENFORCE(cpu_execution_provider, "Provided CPU execution provider is a nullptr");
+  cpu_execution_provider_ = std::move(cpu_execution_provider);
+
   allocator_ptr_ = cpu_execution_provider_->GetAllocator(device_id_, mem_type_);
-  ORT_ENFORCE(allocator_ptr_ != nullptr, "Failed to get allocator for optimizer");
+  ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
   data_transfer_mgr_.RegisterDataTransfer(onnxruntime::make_unique<CPUDataTransfer>());
 
@@ -63,24 +63,21 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   }
 
   node_index_info_ = onnxruntime::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
-
-  // create kernels for these nodes
-  for (auto* node : nodes) {
-    std::unique_ptr<OpKernel> op_kernel;
-    std::shared_ptr<KernelRegistry> kernel_registry = cpu_execution_provider_->GetKernelRegistry();
-    ORT_THROW_IF_ERROR(kernel_registry->TryCreateKernel(*node, *cpu_execution_provider_, initializers_,
-                                                        ort_value_name_idx_map_, FuncManager(), data_transfer_mgr_,
-                                                        op_kernel));
-    kernels_[node->Index()] = std::move(op_kernel);
-  }
 }
 
-const OpKernel* OptimizerExecutionFrame::Info::GetKernel(NodeIndex node_id) const {
-  if (kernels_.find(node_id) == kernels_.cend()) {
-    return nullptr;
-  }
+std::unique_ptr<const OpKernel> OptimizerExecutionFrame::Info::CreateKernel(const Node* node) const {
+  std::unique_ptr<OpKernel> op_kernel;
+  std::shared_ptr<KernelRegistry> kernel_registry = cpu_execution_provider_->GetKernelRegistry();
+  auto status = kernel_registry->TryCreateKernel(*node, *cpu_execution_provider_, initializers_,
+                                                 ort_value_name_idx_map_, FuncManager(), data_transfer_mgr_,
+                                                 op_kernel);
 
-  return kernels_.at(node_id).get();
+  // Kernel found in the CPU kernel registry
+  if (status.IsOK())
+    return std::unique_ptr<const OpKernel>(std::move(op_kernel));
+
+  // No kernel found in the CPU kernel registry
+  return nullptr;
 }
 
 // For optimizer, probably no need to pass feed_mlvalue_idxs, feeds to initialize IExecutionFrame.
