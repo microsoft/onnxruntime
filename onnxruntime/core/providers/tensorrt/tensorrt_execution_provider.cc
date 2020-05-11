@@ -695,9 +695,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     for (unsigned int i = 0, end = trt_network->getNbInputs(); i < end; ++i) {
       auto input = trt_network->getInput(i);
       nvinfer1::Dims dims = input->getDimensions();
-      nvinfer1::Dims dims_min = dims;
-      nvinfer1::Dims dims_opt = dims;
-      nvinfer1::Dims dims_max = dims;
+      nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
 
       int nb_dims = dims.nbDims;
       if (input->isShapeTensor()) {  // Shape tensor
