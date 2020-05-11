@@ -458,13 +458,54 @@ typedef MLAS_POOL_FLOAT_KERNEL* PMLAS_POOL_FLOAT_KERNEL;
 
 typedef
 void
-(MLASCALL MLAS_ELEMENTWISE_KERNEL_ROUTINE)(
+(MLASCALL MLAS_COMPUTE_UNARY_FLOAT_KERNEL)(
     const float* Input,
     float* Output,
     size_t N
     );
 
-typedef MLAS_ELEMENTWISE_KERNEL_ROUTINE* PMLAS_ELEMENTWISE_KERNEL_ROUTINE;
+typedef MLAS_COMPUTE_UNARY_FLOAT_KERNEL* PMLAS_COMPUTE_UNARY_FLOAT_KERNEL;
+
+typedef
+float
+(MLASCALL MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL)(
+    const float* Input,
+    float* Output,
+    size_t N,
+    const float* NegativeMaximum
+    );
+
+typedef MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL* PMLAS_COMPUTE_SUMEXP_FLOAT_KERNEL;
+
+typedef
+void
+(MLASCALL MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL)(
+    float* Output,
+    size_t N,
+    const float* Parameters
+    );
+
+typedef MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL* PMLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL;
+
+typedef
+void
+(MLASCALL MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL)(
+    const float* Input,
+    float* Output,
+    size_t N,
+    const float* Parameters
+    );
+
+typedef MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL* PMLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL;
+
+typedef
+float
+(MLASCALL MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL)(
+    const float* Input,
+    size_t N
+    );
+
+typedef MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL* PMLAS_REDUCE_MAXIMUM_FLOAT_KERNEL;
 
 extern "C" {
 
@@ -558,13 +599,28 @@ extern "C" {
     MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernel;
 #endif
 
-    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasLogisticKernel;
-    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasTanhKernel;
-    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasErfKernel;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernel;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32Kernel;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasLogisticKernel;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasTanhKernel;
+    MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32Kernel;
+    MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32Kernel;
+    MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32Kernel;
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasLogisticKernelFma3;
-    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasTanhKernelFma3;
-    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasErfKernelFma3;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelFma3;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelAvx512F;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasLogisticKernelFma3;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasTanhKernelFma3;
+    MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32KernelFma3;
+    MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32KernelAvx512F;
+    MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelAvx;
+    MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelAvx;
+#endif
+
+    MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
+#if defined(MLAS_TARGET_AMD64)
+    MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
 #endif
 
 }
@@ -645,9 +701,14 @@ struct MLAS_PLATFORM {
     PMLAS_CONV_DEPTHWISE_FLOAT_KERNEL ConvDepthwiseFloatKernel;
     PMLAS_CONV_POINTWISE_FLOAT_KERNEL ConvPointwiseFloatKernel;
     PMLAS_POOL_FLOAT_KERNEL PoolFloatKernel[MlasPoolingKindCount];
-    PMLAS_ELEMENTWISE_KERNEL_ROUTINE LogisticKernelRoutine;
-    PMLAS_ELEMENTWISE_KERNEL_ROUTINE TanhKernelRoutine;
-    PMLAS_ELEMENTWISE_KERNEL_ROUTINE ErfKernelRoutine;
+    PMLAS_COMPUTE_UNARY_FLOAT_KERNEL ErfKernelRoutine;
+    PMLAS_COMPUTE_UNARY_FLOAT_KERNEL ComputeExpF32Kernel;
+    PMLAS_COMPUTE_UNARY_FLOAT_KERNEL LogisticKernelRoutine;
+    PMLAS_COMPUTE_UNARY_FLOAT_KERNEL TanhKernelRoutine;
+    PMLAS_COMPUTE_SUMEXP_FLOAT_KERNEL ComputeSumExpF32Kernel;
+    PMLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL ComputeSoftmaxOutputF32Kernel;
+    PMLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL ComputeLogSoftmaxOutputF32Kernel;
+    PMLAS_REDUCE_MAXIMUM_FLOAT_KERNEL ReduceMaximumF32Kernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
 #endif
@@ -771,6 +832,19 @@ typedef __vector float MLAS_FLOAT32X4;
 typedef __vector int MLAS_INT32X4;
 typedef __vector unsigned MLAS_UINT32X4;
 #endif
+
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasReinterpretAsInt32x4(MLAS_FLOAT32X4 Vector)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_s32_f32(Vector);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_castps_si128(Vector);
+#else
+    return MLAS_INT32X4(Vector);
+#endif
+}
 
 MLAS_FORCEINLINE
 MLAS_INT32X4
@@ -987,6 +1061,20 @@ MlasMultiplyAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2, MLAS_FL
 
 MLAS_FORCEINLINE
 MLAS_FLOAT32X4
+MlasMultiplyAddFloat32x4(MLAS_FLOAT32X4 Vector1, float Scalar2, MLAS_FLOAT32X4 Vector3)
+{
+    return MlasMultiplyAddFloat32x4(Vector1, MlasBroadcastFloat32x4(Scalar2), Vector3);
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT32X4
+MlasMultiplyAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2, float Scalar3)
+{
+    return MlasMultiplyAddFloat32x4(Vector1, Vector2, MlasBroadcastFloat32x4(Scalar3));
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT32X4
 MlasDivideFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
 #if defined(MLAS_NEON64_INTRINSICS)
@@ -1028,6 +1116,19 @@ MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #else
     return vec_sel(Vector2, Vector1, vec_cmpgt(Vector2, Vector1));
 #endif
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT32X4
+MlasClampFloat32x4(MLAS_FLOAT32X4 Value, float LowerRange, float UpperRange)
+{
+#if defined(MLAS_SSE2_INTRINSICS)
+    // N.B. MINPS and MAXPS propagates the value from the second vector if the
+    // value is a NaN.
+#endif
+    Value = MlasMaximumFloat32x4(MlasBroadcastFloat32x4(LowerRange), Value);
+    Value = MlasMinimumFloat32x4(MlasBroadcastFloat32x4(UpperRange), Value);
+    return Value;
 }
 
 MLAS_FORCEINLINE
@@ -1096,6 +1197,147 @@ MlasXorFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return MLAS_FLOAT32X4(MLAS_INT32X4(Vector1) ^ MLAS_INT32X4(Vector2));
 #endif
 }
+
+MLAS_FORCEINLINE
+MLAS_FLOAT32X4
+MlasReinterpretAsFloat32x4(MLAS_INT32X4 Vector)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_f32_s32(Vector);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_castsi128_ps(Vector);
+#else
+    return MLAS_FLOAT32X4(Vector);
+#endif
+}
+
+MLAS_FORCEINLINE
+float
+MlasReduceAddFloat32x4(MLAS_FLOAT32X4 Vector)
+{
+#if defined(MLAS_NEON64_INTRINSICS)
+    Vector = vpaddq_f32(Vector, Vector);
+    Vector = vpaddq_f32(Vector, Vector);
+    return vgetq_lane_f32(Vector, 0);
+#elif defined(MLAS_NEON32_INTRINSICS)
+    float32x2_t VectorLow = vget_low_f32(Vector);
+    float32x2_t VectorHigh = vget_high_f32(Vector);
+    VectorLow = vpadd_f32(VectorLow, VectorHigh);
+    VectorLow = vpadd_f32(VectorLow, VectorHigh);
+    return vget_lane_f32(VectorLow, 0);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    Vector = MlasAddFloat32x4(Vector, _mm_shuffle_ps(Vector, Vector, _MM_SHUFFLE(3, 2, 3, 2)));
+    Vector = MlasAddFloat32x4(Vector, _mm_shuffle_ps(Vector, Vector, _MM_SHUFFLE(1, 1, 1, 1)));
+    return _mm_cvtss_f32(Vector);
+#elif defined(MLAS_VSX_INTRINSICS)
+    Vector = MlasAddFloat32x4(Vector, MLAS_FLOAT32X4(vec_splat((__vector int64_t)Vector, 1)));
+    Vector = MlasAddFloat32x4(Vector, vec_splat(Vector, 1));
+    return Vector[0];
+#else
+#error Unsupported architecture.
+#endif
+}
+
+MLAS_FORCEINLINE
+float
+MlasReduceMaximumFloat32x4(MLAS_FLOAT32X4 Vector)
+{
+#if defined(MLAS_NEON64_INTRINSICS)
+    return vmaxvq_f32(Vector);
+#elif defined(MLAS_NEON32_INTRINSICS)
+    float32x2_t VectorLow = vget_low_f32(Vector);
+    float32x2_t VectorHigh = vget_high_f32(Vector);
+    VectorLow = vpmax_f32(VectorLow, VectorHigh);
+    VectorLow = vpmax_f32(VectorLow, VectorHigh);
+    return vget_lane_f32(VectorLow, 0);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    Vector = MlasMaximumFloat32x4(Vector, _mm_shuffle_ps(Vector, Vector, _MM_SHUFFLE(3, 2, 3, 2)));
+    Vector = MlasMaximumFloat32x4(Vector, _mm_shuffle_ps(Vector, Vector, _MM_SHUFFLE(1, 1, 1, 1)));
+    return _mm_cvtss_f32(Vector);
+#elif defined(MLAS_VSX_INTRINSICS)
+    Vector = MlasMaximumFloat32x4(Vector, MLAS_FLOAT32X4(vec_splat((__vector int64_t)Vector, 1)));
+    Vector = MlasMaximumFloat32x4(Vector, vec_splat(Vector, 1));
+    return Vector[0];
+#else
+#error Unsupported architecture.
+#endif
+}
+
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasAddInt32x4(MLAS_INT32X4 Vector1, MLAS_INT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vaddq_s32(Vector1, Vector2);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_add_epi32(Vector1, Vector2);
+#else
+    return Vector1 + Vector2;
+#endif
+}
+
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasSubtractInt32x4(MLAS_INT32X4 Vector1, MLAS_INT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vsubq_s32(Vector1, Vector2);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_sub_epi32(Vector1, Vector2);
+#else
+    return Vector1 - Vector2;
+#endif
+}
+
+template<unsigned ShiftCount>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasShiftLeftInt32x4(MLAS_INT32X4 Vector)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vshlq_n_s32(Vector, ShiftCount);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_slli_epi32(Vector, ShiftCount);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_sl(Vector, MLAS_UINT32X4(MlasBroadcastInt32x4(ShiftCount)));
+#else
+#error Unsupported architecture.
+#endif
+}
+
+#if !defined(MLAS_SSE2_INTRINSICS) || defined(MLAS_SSE41_INTRINSICS)
+
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasMaximumInt32x4(MLAS_INT32X4 Vector1, MLAS_INT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vmaxq_s32(Vector1, Vector2);
+#elif defined(MLAS_SSE41_INTRINSICS)
+    return _mm_max_epi32(Vector1, Vector2);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_vmaxsw(Vector1, Vector2);
+#else
+#error Unsupported architecture.
+#endif
+}
+
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasMinimumInt32x4(MLAS_INT32X4 Vector1, MLAS_INT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vminq_s32(Vector1, Vector2);
+#elif defined(MLAS_SSE41_INTRINSICS)
+    return _mm_min_epi32(Vector1, Vector2);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_vminsw(Vector1, Vector2);
+#else
+#error Unsupported architecture.
+#endif
+}
+
+#endif
 
 // calc 2^int(N)
 MLAS_FORCEINLINE
