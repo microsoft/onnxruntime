@@ -2,9 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
-#include "core/framework/op_kernel.h"
 #include "core/providers/dnnl/dnnl_fwd.h"
 #include "core/providers/dnnl/dnnl_execution_provider.h"
 #include "core/providers/dnnl/subgraph/dnnl_kernel.h"
@@ -16,9 +13,9 @@ template <typename T>
 class DnnlLrn : public DnnlKernel {
  public:
   DnnlLrn(const DnnlNode& node,
-            DNNLExecutionProvider* provider,
-            const NodeAttributes& attributes,
-            const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
+          DNNLExecutionProvider* provider,
+          const Provider_NodeAttributes& attributes,
+          const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }
 
@@ -66,7 +63,7 @@ class DnnlLrn : public DnnlKernel {
     dnnl::algorithm algo = dnnl::algorithm::lrn_across_channels;
     fwd_desc_ = onnxruntime::make_unique<dnnl::lrn_forward::desc>(
         dnnl::lrn_forward::desc(dnnl::prop_kind::forward_scoring, algo, *src_md_,
-                                  size_, alpha_, beta_, bias_));
+                                size_, alpha_, beta_, bias_));
 
     fwd_primitive_desc_ = onnxruntime::make_unique<dnnl::lrn_forward::primitive_desc>(
         dnnl::lrn_forward::primitive_desc(*fwd_desc_, cpu_engine));
@@ -135,33 +132,33 @@ class DnnlLrn : public DnnlKernel {
   }
 
  private:
-  void ReadAttributes(const NodeAttributes& attributes,
+  void ReadAttributes(const Provider_NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     auto attr = attributes.find(attributes_prefix + "size");
     if (attr != attributes.end() &&
-        attr->second.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT) {
-      size_ = attr->second.i();
+        attr->second->type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT) {
+      size_ = attr->second->i();
     }
     ORT_ENFORCE(size_ > 0);
     ORT_ENFORCE(size_ % 2 == 1);
 
     attr = attributes.find(attributes_prefix + "alpha");
     if (attr != attributes.end() &&
-        attr->second.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT) {
-      alpha_ = attr->second.f();
+        attr->second->type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT) {
+      alpha_ = attr->second->f();
     }
 
     attr = attributes.find(attributes_prefix + "beta");
     if (attr != attributes.end() &&
-        attr->second.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT) {
-      beta_ = attr->second.f();
+        attr->second->type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT) {
+      beta_ = attr->second->f();
     }
 
     bias_ = 1.0f;
     attr = attributes.find(attributes_prefix + "bias");
     if (attr != attributes.end() &&
-        attr->second.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT) {
-      bias_ = attr->second.f();
+        attr->second->type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT) {
+      bias_ = attr->second->f();
     }
   }
 

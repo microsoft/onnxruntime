@@ -24,6 +24,8 @@
 
 using namespace onnxruntime;
 
+static bool g_exit_fast = false;
+
 namespace {
 void usage() {
   printf(
@@ -102,7 +104,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_dml = false;
   bool enable_acl = false;
   int device_id = 0;
-  GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
+  GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
   int verbosity_option_count = 0;
 
@@ -321,6 +323,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     if (enable_dnnl) {
 #ifdef USE_DNNL
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena ? 1 : 0));
+      g_exit_fast = true;
 #else
       fprintf(stderr, "DNNL is not supported in this build");
       return -1;
@@ -495,14 +498,19 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"},
-      {"dropout_default", "result differs", {}},                // Temporary, subsequent PR will remove this.
-      {"dropout_default_mask", "result differs", {}},           // Temporary, subsequent PR will remove this.
-      {"dropout_default_mask_ratio", "result differs", {}},     // Temporary, subsequent PR will remove this.
-      {"dropout_default_ratio", "result differs", {}},          // Temporary, subsequent PR will remove this.
       {"training_dropout", "result differs", {}},               // Temporary, subsequent PR will remove this.
       {"training_dropout_default", "result differs", {}},       // Temporary, subsequent PR will remove this.
       {"training_dropout_default_mask", "result differs", {}},  // Temporary, subsequent PR will remove this.
       {"training_dropout_mask", "result differs", {}},          // Temporary, subsequent PR will remove this.
+      {"adagrad", "not a registered function/op", {}},          // Op not registered.
+      {"adagrad_multiple", "not a registered function/op", {}}, // Op not registered.
+      {"adam", "not a registered function/op", {}},  // Op not registered.
+      {"adam_multiple", "not a registered function/op", {}}, // Op not registered.
+      {"gradient_of_add", "not a registered function/op", {}}, // Op not registered.
+      {"gradient_of_add_and_mul", "not a registered function/op", {}}, // Op not registered.
+      {"momentum", "not a registered function/op", {}},  // Op not registered.
+      {"momentum_multiple", "not a registered function/op", {}}, // Op not registered.
+      {"nesterov_momentum", "not a registered function/op", {}}, // Op not registered.
   };
 
   if (enable_ngraph) {
@@ -846,5 +854,7 @@ int main(int argc, char* argv[]) {
     retval = -1;
   }
   ::google::protobuf::ShutdownProtobufLibrary();
+  if (g_exit_fast)
+    std::_Exit(retval);
   return retval;
 }

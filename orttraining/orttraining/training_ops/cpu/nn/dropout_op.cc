@@ -2,13 +2,13 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/nn/dropout_op.h"
+#include "core/providers/cpu/nn/dropout_op.h"
 #include <chrono>
 #include <random>
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 namespace contrib {
-
 namespace {
 constexpr float k_default_ratio{0.5f};
 
@@ -39,7 +39,7 @@ float GetRatioOrDefault(const Tensor* ratio_tensor) {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())     \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T2>())    \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()), \
-      Dropout<T1, T2, Trainable>);
+      onnxruntime::Dropout<T1, T2, Trainable>);
 
 // Temporary for backward compatibility, will eventually get rid of TrainableDropout when PyTorch exporter will move to
 // opset-12.
@@ -49,72 +49,6 @@ REGISTER_KERNEL_TYPED(TrainableDropout, 9, float, double, true)
 REGISTER_KERNEL_TYPED(TrainableDropout, 9, double, MLFloat16, true)
 REGISTER_KERNEL_TYPED(TrainableDropout, 9, double, float, true)
 REGISTER_KERNEL_TYPED(TrainableDropout, 9, double, double, true)
-
-// REVIEW(mzs): ConstEigenVectorArrayMap.cast<MLFLoat16) does not seem to be supported.
-// However these types work on GPU implementation.
-// REGISTER_KERNEL_TYPED(MLFloat16, MLFloat16)
-// REGISTER_KERNEL_TYPED(MLFloat16, float)
-// REGISTER_KERNEL_TYPED(MLFloat16, double)
-
-REGISTER_KERNEL_TYPED(Dropout, 12, float, MLFloat16, false)
-REGISTER_KERNEL_TYPED(Dropout, 12, float, float, false)
-REGISTER_KERNEL_TYPED(Dropout, 12, float, double, false)
-REGISTER_KERNEL_TYPED(Dropout, 12, double, MLFloat16, false)
-REGISTER_KERNEL_TYPED(Dropout, 12, double, float, false)
-REGISTER_KERNEL_TYPED(Dropout, 12, double, double, false)
-
-template <typename T1, typename T2, bool trainable_dropout>
-Status Dropout<T1, T2, trainable_dropout>::Compute(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
-  auto X_span = X->DataAsSpan<T1>();
-  const Tensor* ratio = context->Input<Tensor>(1);  // optional
-  const float ratio_value = GetRatioOrDefault<T2>(ratio);
-  const auto& X_shape = X->Shape();
-  Tensor* Y = context->Output(0, X_shape);
-  auto Y_span = Y->MutableDataAsSpan<T1>();
-  Tensor* mask = context->Output(1, X_shape);  // optional
-  std::unique_ptr<bool[]> temp_mask_buffer{};  // temporary buffer to use if mask input is not provided
-  auto mask_span = [&X_shape, mask, &temp_mask_buffer]() {
-    if (mask) return mask->MutableDataAsSpan<bool>();
-    temp_mask_buffer = onnxruntime::make_unique<bool[]>(X_shape.Size());
-    return gsl::make_span(temp_mask_buffer.get(), X_shape.Size());
-  }();
-
-  ORT_ENFORCE(!mask || mask->Shape() == X_shape, "X and mask should have the same shape");
-
-  const Tensor* training_mode = context->Input<Tensor>(2);
-  if ((0 == ratio_value /*Backward compat with TrainableDropout*/) ||
-      !trainable_dropout && (training_mode == nullptr || *(training_mode->Data<bool>()) == false)) {
-    // drop none
-    if (X_span.data() != Y_span.data()) {
-      std::copy(X_span.begin(), X_span.end(), Y_span.begin());
-    }
-
-    if (mask != nullptr) {
-      std::fill(mask_span.begin(), mask_span.end(), true);
-    }
-
-  } else {
-    // drop some
-    ConstEigenVectorArrayMap<T1> X_arr(X_span.data(), X_span.size());
-    EigenVectorArrayMap<T1> Y_arr(Y_span.data(), Y_span.size());
-    EigenVectorArrayMap<bool> mask_arr(mask_span.data(), mask_span.size());
-
-    // generate mask
-    {
-      RandomGenerator& generator = generator_ != nullptr ? *generator_.get() : RandomGenerator::Default();
-      std::default_random_engine rng(generator.NextSeed());
-      std::uniform_real_distribution<float> dist{0.0f, 1.0f};
-      mask_arr = Eigen::ArrayX<bool>::NullaryExpr(
-          mask_arr.size(),
-          [ratio_value, &dist, &rng]() { return dist(rng) >= ratio_value; });
-    }
-
-    Y_arr = mask_arr.cast<T1>() * X_arr / (1.0f - ratio_value);
-  }
-
-  return Status::OK();
-}
 
 #define REGISTER_GRADIENT_KERNEL_TYPED(OpName, T1, T2)                \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
@@ -181,6 +115,5 @@ Status DropoutGrad<T1, T2>::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
-
 }  // namespace contrib
 }  // namespace onnxruntime
