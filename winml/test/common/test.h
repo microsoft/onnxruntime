@@ -24,10 +24,4 @@ constexpr bool alwaysFalse() {
 #ifdef BUILD_TAEF_TEST
 #include "taefTestMacros.h"
 #endif
-#endif
-
-#if defined(BUILD_GOOGLE_TEST) || defined(BUILD_TAEF_TEST)
-static void SkipTest() {
-  WINML_SKIP_TEST("")
-}
-#endif
+#endif 

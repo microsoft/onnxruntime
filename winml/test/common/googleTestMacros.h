@@ -98,8 +98,11 @@ static bool SkipGpuTests()
 #endif
 }
 
-
 #define GPUTEST                            \
   if (SkipGpuTests()) {                    \
     WINML_SKIP_TEST("Gpu tests disabled"); \
   }
+
+static void SkipTest() {
+  WINML_SKIP_TEST("");
+}
