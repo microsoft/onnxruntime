@@ -307,8 +307,7 @@ void RunMatMulIntegerU8S8Test(const int M, const int N, const int K, bool non_ze
   RunMatMulIntegerU8S8Test(M, N, K, false /*non_zero_zp*/); \
   RunMatMulIntegerU8S8Test(M, N, K, true /*non_zero_zp*/);
 #else
-#define RUN_MATMUL_INTEGER_U8S8(M, N, K) \
-  RunMatMulIntegerU8S8Test(M, N, K, false /*non_zero_zp*/);
+#define RUN_MATMUL_INTEGER_U8S8(M, N, K)
 #endif  // MLAS_SUPPORTS_GEMM_U8X8
 
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_Scalar) {
