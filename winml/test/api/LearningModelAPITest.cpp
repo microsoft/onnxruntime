@@ -42,6 +42,18 @@ static void CreateModelFileNotFound() {
     });
 }
 
+static void CreateCorruptModel() {
+  LearningModel learningModel = nullptr;
+
+  WINML_EXPECT_THROW_SPECIFIC(
+    APITest::LoadModel(L"corrupt-model.onnx", learningModel),
+    winrt::hresult_error,
+    [](const winrt::hresult_error& e) -> bool {
+        auto f = __HRESULT_FROM_WIN32(e.code());
+          return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
+    });
+}
+
 static void CreateModelFromIStorage() {
   std::wstring path = FileHelpers::GetModulePath() + L"squeezenet_modifiedforruntimestests.onnx";
   auto storageFile = ws::StorageFile::GetFileFromPathAsync(path).get();
@@ -294,7 +306,8 @@ const LearningModelApiTestsApi& getapi() {
     CloseModelCheckMetadata,
     CloseModelCheckEval,
     CloseModelNoNewSessions,
-    CheckMetadataCaseInsensitive
+    CheckMetadataCaseInsensitive,
+    CreateCorruptModel
   };
   return api;
 }
