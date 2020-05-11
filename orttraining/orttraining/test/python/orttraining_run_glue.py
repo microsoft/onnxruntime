@@ -64,7 +64,7 @@ class ORTGlueTest(unittest.TestCase):
         self.overwrite_output_dir = True
         self.gradient_accumulation_steps = 1
         self.data_dir = "/bert_data/hf_data/glue_data/"
-        self.output_dir = os.path.dirname(os.path.realpath(__file__)) + "/glue_test_output/"
+        self.output_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "glue_test_output/")
         self.cache_dir = '/tmp/glue/'
         self.logging_steps = 10
 
@@ -73,14 +73,14 @@ class ORTGlueTest(unittest.TestCase):
         self.assertTrue(results['acc'] > 0.84)
         self.assertTrue(results['f1'] > 0.88)
         self.assertTrue(results['acc_and_f1'] > 0.86)
-        self.assertTrue(results['loss'] < 0.45)
+        self.assertTrue(results['loss'] < 0.47)
 
     def test_bert_fp16_with_mrpc(self):
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True)
         self.assertTrue(results['acc'] > 0.85)
         self.assertTrue(results['f1'] > 0.89)
         self.assertTrue(results['acc_and_f1'] > 0.87)
-        self.assertTrue(results['loss'] < 0.43)
+        self.assertTrue(results['loss'] < 0.46)
 
     def run_glue(self, model_name, task_name, fp16):
         model_args = ModelArguments(model_name_or_path=model_name, cache_dir=self.cache_dir)

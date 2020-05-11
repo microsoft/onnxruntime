@@ -14,7 +14,7 @@ from torch import nn
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.dataset import Dataset
 # from torch.utils.data.distributed import DistributedSampler
-from torch.utils.data.sampler import RandomSampler
+from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from tqdm import tqdm, trange
 
 from transformers.data.data_collator import DataCollator, DefaultDataCollator
@@ -23,7 +23,6 @@ from transformers.training_args import TrainingArguments
 
 import onnxruntime
 from orttraining_test_bert_postprocess import postprocess_model
-from orttraining_test_utils import get_lr
 from onnxruntime.capi.ort_trainer import ORTTrainer, LossScaler, ModelDescription, IODescription
 
 try:
@@ -147,7 +146,7 @@ class ORTTransformerTrainer:
         if self.train_dataset is None:
             raise ValueError("Trainer: training requires a train_dataset.")
         train_sampler = (
-            RandomSampler(self.train_dataset) if self.args.local_rank == -1 else DistributedSampler(self.train_dataset)
+            SequentialSampler(self.train_dataset) if self.args.local_rank == -1 else DistributedSampler(self.train_dataset)
         )
         return DataLoader(
             self.train_dataset,
