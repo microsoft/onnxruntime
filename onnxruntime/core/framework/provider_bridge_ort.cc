@@ -504,7 +504,9 @@ struct ProviderHostImpl : ProviderHost {
 
 struct ProviderLibrary {
   ProviderLibrary(const char* filename) {
-    Env::Default().LoadDynamicLibrary(filename, &handle_);
+
+    std::string full_path = Env::Default().GetRuntimePath() + std::string(filename);
+    Env::Default().LoadDynamicLibrary(full_path, &handle_);
     if (!handle_)
       return;
 
@@ -538,6 +540,8 @@ struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int device_id) {
 #ifdef _WIN32
   static ProviderLibrary library("onnxruntime_providers_dnnl.dll");
+#elif defined(__APPLE__)
+  static ProviderLibrary library("libonnxruntime_providers_dnnl.dylib");
 #else
   static ProviderLibrary library("libonnxruntime_providers_dnnl.so");
 #endif
