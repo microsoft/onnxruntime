@@ -194,8 +194,11 @@ Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 #### Jetson TX1/TX2/Nano(ARM64 Builds)
 
 
-1. ONNX Runtime v1.2.0 or higher requires TensorRT 7 support, make sure Jetson device is upgraded to [JetPack](https://docs.nvidia.com/jetson/jetpack/release-notes/) 4.4 or higher.
-2. Indicate CUDA compiler
+1. ONNX Runtime v1.2.0 or higher requires TensorRT 7 support, at this moment, the compatible TensorRT and CUDA libraries in [JetPack](https://docs.nvidia.com/jetson/jetpack/release-notes/) 4.4 is still under developer preview stage. Therefore, we suggest using ONNX Runtime v1.1.2 with JetPack 4.3 which has been validated. 
+```
+git clone --single-branch --recursive --branch v1.1.2 https://github.com/Microsoft/onnxruntime
+```
+2. Indicate CUDA compiler. It's optional, cmake can automatically find the correct cuda. 
 ```
 export CUDACXX="/usr/local/cuda/bin/nvcc"
 ```
