@@ -8,4 +8,8 @@
       <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)../../build/native/include/;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
   </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <PropertyPageSchema Include="$(MSBuildThisFileDirectory)\Microsoft.AI.MachineLearning.Rules.Project.xml"/>
+  </ItemGroup>
 </Project>

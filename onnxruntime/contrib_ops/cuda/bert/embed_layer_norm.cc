@@ -30,6 +30,8 @@ using namespace ONNX_NAMESPACE;
 
 template <typename T>
 EmbedLayerNorm<T>::EmbedLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
+  ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
+  ORT_ENFORCE(epsilon_ >= 0);
 }
 
 template <typename T>
@@ -76,7 +78,8 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
           word_embedding->template Data<T>(),
           position_embedding->template Data<T>(),
           segment_embedding->template Data<T>(),
-          static_cast<int>(hidden_size),
+          epsilon_,
+          static_cast<int>(hidden_size),          
           batch_size,
           sequence_length,
           element_size)) {

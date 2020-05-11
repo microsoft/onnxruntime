@@ -11,6 +11,7 @@
 #include "core/session/ort_apis.h"
 #include "winml_adapter_apis.h"
 #include "core/framework/error_code_helper.h"
+#include "core/common/common.h"
 
 #include <io.h>
 #include <fcntl.h>
@@ -118,10 +119,14 @@ OrtModel::OrtModel(std::unique_ptr<onnx::ModelProto> model_proto) : model_proto_
 // factory methods for creating an ort model from a path
 static OrtStatus* CreateModelProto(const char* path, std::unique_ptr<onnx::ModelProto>& out) {
   int file_descriptor;
+
+  auto path_str = std::string(path);
+  auto wide_path = onnxruntime::ToWideString(path_str);
+  
   _set_errno(0);  // clear errno
-  _sopen_s(
+  _wsopen_s(
       &file_descriptor,
-      path,
+      wide_path.c_str(),
       O_RDONLY | _O_SEQUENTIAL | _O_BINARY,
       _SH_DENYWR,
       _S_IREAD | _S_IWRITE);
