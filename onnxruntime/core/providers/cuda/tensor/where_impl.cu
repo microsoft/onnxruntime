@@ -148,8 +148,8 @@ __global__ void _TenaryElementWiseSimple(
                        COND_INDEX_TYPE,                                                         \
                        X_INDEX_TYPE,                                                            \
                        Y_INDEX_TYPE,                                                            \
-                      GridDim::maxThreadsPerBlock,                                              \
-                      GridDim::maxElementsPerThread>                                            \
+                       GridDim::maxThreadsPerBlock,                                             \
+                       GridDim::maxElementsPerThread>                                           \
         <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(output_rank_or_simple_broadcast,    \
                                                             cond_padded_strides,                \
                                                             cond_data,                          \
