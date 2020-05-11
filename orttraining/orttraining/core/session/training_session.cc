@@ -959,30 +959,5 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
 
   return trainable_initializers;
 }
-
-std::unordered_set<std::string> TrainingSession::FilterTrainableModelInitializers(
-    const ImmutableWeights& immutable_weights) const {
-  const Graph& graph = model_->MainGraph();
-  const auto& initialized_tensors = graph.GetAllInitializedTensors();
-  std::unordered_set<std::string> model_initializers;
-  std::transform(initialized_tensors.begin(),
-                 initialized_tensors.end(),
-                 std::inserter(model_initializers, model_initializers.end()),
-                 [](const auto& pair) { return pair.first; });
-
-  std::unordered_set<std::string> trainable_initializers(model_initializers);
-  for (const std::string& initializer_name : model_initializers) {
-    const auto& nodes = graph.GetConsumerNodes(initializer_name);
-    for (const Node* node : nodes) {
-      if (IsUntrainable(node, initializer_name, session_logger_) ||
-          IsImmutableWeight(immutable_weights, node, initialized_tensors.at(initializer_name), session_logger_)) {
-        trainable_initializers.erase(initializer_name);
-      }
-    }
-  }
-
-  return trainable_initializers;
-}
-
 }  // namespace training
 }  // namespace onnxruntime

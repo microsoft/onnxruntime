@@ -651,7 +651,7 @@ class ORTTrainer():
             self.torch_model_.cpu()
             # torch buffers created using 'register_buffer' are not meant to be trainable.
             torch_buffers = list(dict(self.torch_model_.named_buffers()).keys())
-            self.frozen_weights_.expand(torch_buffers)
+            self.frozen_weights_.extend(torch_buffers)
             self.onnx_model_ = convert_model_loss_fn_to_onnx(
                 self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_)
 
