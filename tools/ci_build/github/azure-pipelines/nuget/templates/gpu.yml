@@ -62,7 +62,7 @@ jobs:
     DoNugetPack : 'true'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    RunTests: 'false'
+    RunTests: 'true'
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML
      cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
