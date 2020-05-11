@@ -11,17 +11,17 @@
 
 namespace onnxruntime {
 
-template <typename LeftScalr, typename RightScalr, typename OutputScalar>
+template <typename LeftScalar, typename RightScalar, typename OutputScalar>
 void QGemm(
     int M,
     int N,
     int K,
-    const LeftScalr* lhs_data,
+    const LeftScalar* lhs_data,
     int lda,
-    const LeftScalr lhs_offset,
-    const RightScalr* rhs_data,
+    const LeftScalar lhs_offset,
+    const RightScalar* rhs_data,
     int ldb,
-    const RightScalr rhs_offset,
+    const RightScalar rhs_offset,
     OutputScalar* result_data,
     int ldc,
     concurrency::ThreadPool* thread_pool);

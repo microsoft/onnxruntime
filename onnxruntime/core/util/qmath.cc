@@ -69,32 +69,4 @@ void QGemm<uint8_t, uint8_t, int32_t>(
 #endif
 }
 
-template void QGemm<uint8_t, int8_t, int32_t>(
-    int M,
-    int N,
-    int K,
-    const uint8_t* lhs_data,
-    int lda,
-    const uint8_t lhs_offset,
-    const int8_t* rhs_data,
-    int ldb,
-    const int8_t rhs_offset,
-    int32_t* result_data,
-    int ldc,
-    concurrency::ThreadPool* thread_pool);
-
-template void QGemm<uint8_t, uint8_t, int32_t>(
-    int M,
-    int N,
-    int K,
-    const uint8_t* lhs_data,
-    int lda,
-    const uint8_t lhs_offset,
-    const uint8_t* rhs_data,
-    int ldb,
-    const uint8_t rhs_offset,
-    int32_t* result_data,
-    int ldc,
-    concurrency::ThreadPool* thread_pool);
-
 }  // namespace onnxruntime
