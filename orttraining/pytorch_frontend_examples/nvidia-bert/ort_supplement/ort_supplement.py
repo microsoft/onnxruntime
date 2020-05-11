@@ -6,7 +6,7 @@ import torch
 def setup_onnxruntime_with_mpi(args):
     from mpi4py import MPI
     comm = MPI.COMM_WORLD
-    args.local_rank = comm.Get_rank()
+    args.local_rank = comm.Get_rank() % torch.cuda.device_count()
     args.world_rank = comm.Get_rank()
     args.world_size=comm.Get_size()
     torch.cuda.set_device(args.local_rank)
@@ -87,7 +87,7 @@ def create_ort_trainer(args, device, model):
         IODescription('Learning_Rate', [1,], torch.float32),
         device, postprocess_model=postprocess_model, 
         gradient_accumulation_steps=args.gradient_accumulation_steps,
-        world_rank=args.local_rank, world_size=args.world_size,
+        world_rank=args.world_rank, world_size=args.world_size,
         use_mixed_precision = True if args.fp16 else False,
         allreduce_post_accumulation = True if args.allreduce_post_accumulation else False,
         partition_optimizer=True,

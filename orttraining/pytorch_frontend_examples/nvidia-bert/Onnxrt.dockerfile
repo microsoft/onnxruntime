@@ -53,8 +53,8 @@ RUN apt-get update && apt-get install -y pbzip2 pv bzip2 cabextract
 ENV BERT_PREP_WORKING_DIR /workspace/bert/data
 
 WORKDIR /workspace
-RUN git clone https://github.com/attardi/wikiextractor.git
-RUN git clone https://github.com/soskek/bookcorpus.git
+# RUN git clone https://github.com/attardi/wikiextractor.git
+# RUN git clone https://github.com/soskek/bookcorpus.git
 
 # Copy the perf_client over
 # COPY --from=trt /workspace/install/ /workspace/install/
