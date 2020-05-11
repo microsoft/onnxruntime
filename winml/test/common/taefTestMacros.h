@@ -69,7 +69,7 @@ using namespace WEX::TestExecution;
 
 #define RUNTIME_PARAMETER_EXISTS(param) \
   bool param_value;                     \
-  SUCCEEDED(RuntimeParameters::TryGetValue(param, param_value)) && param_value;
+  SUCCEEDED(RuntimeParameters::TryGetValue(param, param_value)) && param_value
 
 #ifndef USE_DML
 #define SKIP_GPU_TESTS \
