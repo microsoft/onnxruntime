@@ -15,7 +15,6 @@
 
 #include <io.h>
 #include <fcntl.h>
-#include <winrt/base.h>
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 
