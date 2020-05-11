@@ -73,6 +73,9 @@ struct TernaryElementwisePreparation {
   TArray<int64_t> b_padded_strides;  // for b shape == output shape, this is nullptr
   TArray<int64_t> c_padded_strides;  // for c shape == output shape, this is nullptr
   TArray<fast_divmod> fdm_output_strides;
+  BroadcastIndexType a_index_type = BroadcastIndexType::NoBroadcast;
+  BroadcastIndexType b_index_type = BroadcastIndexType::NoBroadcast;
+  BroadcastIndexType c_index_type = BroadcastIndexType::NoBroadcast;
 
   TernaryElementwisePreparation(const Tensor* a, const Tensor* b, const Tensor* c)
       : a_tensor(a), b_tensor(b), c_tensor(c) {}
@@ -108,16 +111,34 @@ struct TernaryElementwisePreparation {
       }
     };
 
-    if (a_shape != output_shape) {
+    bool has_need_compute = false;
+    if (a_shape.Size() == 1) {
+      a_index_type = BroadcastIndexType::Scalar;
+    } else if (a_shape != output_shape) {
       padder(a_rank, a_shape, a_padded_strides);
+      a_index_type = BroadcastIndexType::NeedCompute;
+      has_need_compute = true;
     }
 
-    if (b_shape != output_shape) {
+    if (b_shape.Size() == 1) {
+      b_index_type = BroadcastIndexType::Scalar;
+    } else if (b_shape != output_shape) {
       padder(b_rank, b_shape, b_padded_strides);
+      b_index_type = BroadcastIndexType::NeedCompute;
+      has_need_compute = true;
     }
 
-    if (c_shape != output_shape) {
+    if (c_shape.Size() == 1) {
+      c_index_type = BroadcastIndexType::Scalar;
+    } else if (c_shape != output_shape) {
       padder(c_rank, c_shape, c_padded_strides);
+      c_index_type = BroadcastIndexType::NeedCompute;
+      has_need_compute = true;
+    }
+
+    if (!has_need_compute) {
+      output_rank_or_simple_broadcast = static_cast<size_t>(SimpleBroadcast::NoBroadcast);
+      return Status::OK();
     }
 
     TensorPitches output_pitches(output_shape.GetDims());
@@ -154,10 +175,13 @@ Status Where<T>::ComputeInternal(OpKernelContext* context) const {
 
   WhereImpl<CudaT>(
       prepare.output_rank_or_simple_broadcast,
+      prepare.a_index_type,
       prepare.a_padded_strides,
       reinterpret_cast<const bool*>(prepare.a_tensor->template Data<bool>()),
+      prepare.b_index_type,
       prepare.b_padded_strides,
       reinterpret_cast<const CudaT*>(prepare.b_tensor->template Data<T>()),
+      prepare.c_index_type,
       prepare.c_padded_strides,
       reinterpret_cast<const CudaT*>(prepare.c_tensor->template Data<T>()),
       prepare.fdm_output_strides,

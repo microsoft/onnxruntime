@@ -1,0 +1,236 @@
+jobs:
+- job: WindowsAI_DirectML_X64
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-GPU-2019'
+    demands: []
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'x64'
+
+- job: WindowsAI_DirectML_X86
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-GPU-2019'
+    demands: []
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'x86'
+
+- job: WindowsAI_CPU_ARM64
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-CPU-2019'
+    demands: []
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'arm64'
+
+- job: WindowsAI_CPU_ARM
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: 'Win-CPU-2019'
+    demands: []
+  steps:
+  - template: ../../templates/windowsai-nuget-build.yml
+    parameters:
+      BuildArch: 'arm'
+
+- ${{ if eq('false', 'true') }}:
+  - job: WindowsAI_DirectML_X64_Store
+    timeoutInMinutes: 120
+    workspace:
+      clean: all
+    pool:
+      name: 'Win-GPU-2019'
+      demands: []
+    steps:
+    - template: ../../templates/windowsai-nuget-build.yml
+      parameters:
+        BuildArch: 'x64'
+        BuildForStore: 'true'
+  
+  - job: WindowsAI_DirectML_X86_Store
+    timeoutInMinutes: 120
+    workspace:
+      clean: all
+    pool:
+      name: 'Win-GPU-2019'
+      demands: []
+    steps:
+    - template: ../../templates/windowsai-nuget-build.yml
+      parameters:
+        BuildArch: 'x86'
+        BuildForStore: 'true'
+  
+  - job: WindowsAI_CPU_ARM64_Store
+    timeoutInMinutes: 120
+    workspace:
+      clean: all
+    pool:
+      name: 'Win-CPU-2019'
+      demands: []
+    steps:
+    - template: ../../templates/windowsai-nuget-build.yml
+      parameters:
+        BuildArch: 'arm64'
+        BuildForStore: 'true'
+  
+  - job: WindowsAI_CPU_ARM_Store
+    timeoutInMinutes: 120
+    workspace:
+      clean: all
+    pool:
+      name: 'Win-CPU-2019'
+      demands: []
+    steps:
+    - template: ../../templates/windowsai-nuget-build.yml
+      parameters:
+        BuildArch: 'arm'
+        BuildForStore: 'true'
+
+- job: NuGet_Packaging
+  workspace:
+    clean: all
+  pool: 'Win-GPU-2019'
+  dependsOn:
+  - WindowsAI_DirectML_X64
+  - WindowsAI_DirectML_X86
+  - WindowsAI_CPU_ARM64
+  - WindowsAI_CPU_ARM
+  condition: succeeded()
+  steps:
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet DirectML x64'
+    inputs:
+      artifactName: 'Microsoft.AI.MachineLearning.x64'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x64'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet DirectML x86'
+    inputs:
+      artifactName: 'Microsoft.AI.MachineLearning.x86'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x86'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet CPU ARM64'
+    inputs:
+      artifactName: 'Microsoft.AI.MachineLearning.arm64'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet CPU ARM'
+    inputs:
+      artifactName: 'Microsoft.AI.MachineLearning.arm'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm'
+
+  - task: PowerShell@2
+    displayName: 'Bundle NuGet and other binaries'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Add-Type -AssemblyName "System.IO.Compression.FileSystem"
+
+        $packages = (Get-ChildItem -Filter Microsoft.AI.MachineLearning* -Recurse)
+        $x64_nuget_package_name = $packages[0].Name
+        $x64_nuget_package = $packages[0].FullName
+        $x64_unzipped_directory_root = $packages[0].Directory.FullName
+        $x64_unzipped_directory = [System.IO.Path]::Combine($x64_unzipped_directory_root, [System.IO.Path]::GetFileNameWithoutExtension($x64_nuget_package))
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($x64_nuget_package, $x64_unzipped_directory)
+        
+        $packages = (Get-ChildItem ..\nuget-artifact-x86 -Filter Microsoft.AI.MachineLearning* -Recurse)
+        $x86_nuget_package = $packages[0].FullName
+        $x86_unzipped_directory_root = $packages[0].Directory.FullName
+        $x86_unzipped_directory = [System.IO.Path]::Combine($x86_unzipped_directory_root, [System.IO.Path]::GetFileNameWithoutExtension($x86_nuget_package))
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($x86_nuget_package, $x86_unzipped_directory)
+
+        $packages = (Get-ChildItem ..\nuget-artifact-arm64 -Filter Microsoft.AI.MachineLearning* -Recurse)
+        $arm64_nuget_package = $packages[0].FullName
+        $arm64_unzipped_directory_root = $packages[0].Directory.FullName
+        $arm64_unzipped_directory = [System.IO.Path]::Combine($arm64_unzipped_directory_root, [System.IO.Path]::GetFileNameWithoutExtension($arm64_nuget_package))
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($arm64_nuget_package, $arm64_unzipped_directory)
+
+        $packages = (Get-ChildItem ..\nuget-artifact-arm -Filter Microsoft.AI.MachineLearning* -Recurse)
+        $arm_nuget_package = $packages[0].FullName
+        $arm_unzipped_directory_root = $packages[0].Directory.FullName
+        $arm_unzipped_directory = [System.IO.Path]::Combine($arm_unzipped_directory_root, [System.IO.Path]::GetFileNameWithoutExtension($arm_nuget_package))
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($arm_nuget_package, $arm_unzipped_directory)
+
+        $x86_runtime_path_old = [System.IO.Path]::Combine($x86_unzipped_directory, 'runtimes', 'win-x86', 'native')
+        $x86_runtime_path_new = [System.IO.Path]::Combine($x64_unzipped_directory, 'runtimes', 'win-x86', 'native')
+        $arm64_runtime_path_old = [System.IO.Path]::Combine($arm64_unzipped_directory, 'runtimes', 'win-arm64', 'native')
+        $arm64_runtime_path_new = [System.IO.Path]::Combine($x64_unzipped_directory, 'runtimes', 'win-arm64', 'native')
+        $arm_runtime_path_old = [System.IO.Path]::Combine($arm_unzipped_directory, 'runtimes', 'win-arm', 'native')
+        $arm_runtime_path_new = [System.IO.Path]::Combine($x64_unzipped_directory, 'runtimes', 'win-arm', 'native')
+
+        New-Item -Path $x86_runtime_path_new -ItemType Directory
+        New-Item -Path $arm64_runtime_path_new -ItemType Directory
+        New-Item -Path $arm_runtime_path_new -ItemType Directory
+
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.dll'))                    $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.lib'))                    $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.pdb'))                    $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'microsoft.ai.machinelearning.pdb'))   $x86_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'directml.dll'))                       $x86_runtime_path_new
+
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime.dll'))                  $arm64_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime.lib'))                  $arm64_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime.pdb'))                  $arm64_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'microsoft.ai.machinelearning.dll')) $arm64_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'microsoft.ai.machinelearning.lib')) $arm64_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'microsoft.ai.machinelearning.pdb')) $arm64_runtime_path_new
+        
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'onnxruntime.dll'))                    $arm_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'onnxruntime.lib'))                    $arm_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'onnxruntime.pdb'))                    $arm_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   $arm_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   $arm_runtime_path_new
+        Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'microsoft.ai.machinelearning.pdb'))   $arm_runtime_path_new
+
+        $merged_nuget_path = [System.IO.Path]::Combine($Env:BUILD_ARTIFACTSTAGINGDIRECTORY, 'merged')
+        New-Item -Path $merged_nuget_path -ItemType Directory
+
+        $merged_nuget = [System.IO.Path]::Combine($merged_nuget_path, $x64_nuget_package_name)
+
+        $zip_tool_directory = [System.IO.Path]::Combine($x64_unzipped_directory_root, 'ziptool')
+        New-Item -Path $zip_tool_directory -ItemType Directory
+
+        $zip_tool = [System.IO.Path]::Combine($zip_tool_directory, 'zip.exe')
+
+        Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile $zip_tool
+        Start-Process -FilePath $zip_tool -ArgumentList "-r $merged_nuget ." -WorkingDirectory $x64_unzipped_directory -NoNewWindow -Wait
+
+      workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
+
+  - template: ../../templates/esrp_nuget.yml
+    parameters:
+      DisplayName: 'ESRP - sign NuGet package'
+      FolderPath: '$(Build.ArtifactStagingDirectory)/merged'
+      DoEsrp: 'true'
+
+  - template: ../../templates/validate-nuget.yml
+    parameters:
+      NugetPath: '$(Build.ArtifactStagingDirectory)\merged'
+      NugetPackage: 'Microsoft.AI.MachineLearning*nupkg'
+      PlatformsSupported: 'win-x64,win-x86,win-arm64,win-arm'
+      VerifyNugetSigning: 'true'
+
+
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline NuGet Artifact'
+    inputs:
+      artifactName: 'drop-signed-nuget'
+      targetPath: '$(Build.ArtifactStagingDirectory)/merged'

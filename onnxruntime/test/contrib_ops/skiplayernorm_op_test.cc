@@ -8,6 +8,7 @@
 
 namespace onnxruntime {
 namespace test {
+constexpr float epsilon_ = 1e-12f;
 
 static void RunTest(
     const std::vector<float>& input_data,
@@ -16,6 +17,7 @@ static void RunTest(
     const std::vector<float>& beta_data,
     const std::vector<float>& bias_data,
     const std::vector<float>& output_data,
+    float epsilon,
     int batch_size,
     int sequence_length,
     int hidden_size,
@@ -39,7 +41,7 @@ static void RunTest(
     test.AddInput<float>("skip", skip_dims, skip_data);
     test.AddInput<float>("gamma", gamma_dims, gamma_data);
     test.AddInput<float>("beta", beta_dims, beta_data);
-
+    test.AddAttribute("epsilon", epsilon);
     if (!bias_data.empty()) {
       test.AddInput<float>("bias", bias_dims, bias_data);
     }
@@ -52,7 +54,7 @@ static void RunTest(
     test.AddInput<MLFloat16>("skip", skip_dims, ToFloat16(skip_data));
     test.AddInput<MLFloat16>("gamma", gamma_dims, ToFloat16(gamma_data));
     test.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(beta_data));
-
+    test.AddAttribute("epsilon", epsilon);
     if (!bias_data.empty()) {
       test.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
     }
@@ -94,6 +96,7 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1) {
           beta_data,
           std::vector<float>(),
           output_data,
+          epsilon_,
           batch_size,
           sequence_length,
           hidden_size);
@@ -128,6 +131,7 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16) {
           beta_data,
           std::vector<float>(),
           output_data,
+          epsilon_,
           batch_size,
           sequence_length,
           hidden_size,
@@ -169,6 +173,7 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2) {
           beta_data,
           std::vector<float>(),
           output_data,
+          epsilon_,
           batch_size,
           sequence_length,
           hidden_size);
@@ -212,6 +217,7 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Bias) {
           beta_data,
           bias_data,
           output_data,
+          epsilon_,
           batch_size,
           sequence_length,
           hidden_size);

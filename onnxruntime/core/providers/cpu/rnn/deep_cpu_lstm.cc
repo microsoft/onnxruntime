@@ -9,14 +9,7 @@
 #pragma warning(disable : 4996)
 #endif
 
-#include "core/framework/op_kernel_context_internal.h"
-
 #include "core/providers/cpu/rnn/deep_cpu_lstm.h"
-
-#include "core/common/common.h"
-#include "core/common/logging/logging.h"
-#include "core/framework/allocator.h"
-#include "core/platform/threadpool.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -163,7 +156,7 @@ Equations (Default: f=Sigmoid, g=Tanh, h=Tanh):
 namespace onnxruntime {
 
 template <typename TLambda>
-static inline void ExecuteLambdaInParallel(TLambda lambda, int max, int step,
+static inline void ExecuteLambdaInParallel(TLambda lambda, int max, int step, double cost,
                                            onnxruntime::concurrency::ThreadPool* ttp) {
   // #define NOTHREADS to execute the lambdas directly and in order if you need to do that to debug
 
@@ -174,67 +167,12 @@ static inline void ExecuteLambdaInParallel(TLambda lambda, int max, int step,
     std::bind(lambda, i)();
   }
 #else
-
-  // ORT_ENFORCE may and does throw at times from within the tasks that run
-  // on a thread-pool. Without propagating exceptions the process exits silently
-  // which will make diagnosing bugs more difficult.
-
-  // \! UGLY
-  // We have a problem here with the current thread-pool is that it takes std::function
-  // by value and copies it more than once (even though it is movable).
-  //
-  // To report status and exceptions properly it's better to use
-  // futures and promises but they are not copyable, so we can't come up with a functor
-  // with a promise member and we are downgrading to C++11 where we can't have captures that moved in.
-  //
-  // At the same time promises MUST live in the child thread so if we throw from the main thread
-  // we don't destroy any promises that are on the main thread stack which children threads may still be using.
-  //
-  // The only solution with the current Eigen that comes to mind is to have shared_ptr to with std::promise.
-  //
   const int total_tasks = max / (step > 0 ? step : 1) + (max % step > 0 ? 1 : 0);
-  std::vector<std::future<void> > futures;
-  futures.reserve(total_tasks);
-
-  if (ttp != nullptr) {
-    for (int i = 0, t = 0; i < max; i += step, ++t) {
-      auto p_ptr = std::make_shared<std::promise<void> >();
-      futures.push_back(p_ptr->get_future());
-      ttp->Schedule([p_ptr, lambda, i]() {
-        try {
-          lambda(i);
-          p_ptr->set_value();
-        } catch (...) {
-          p_ptr->set_exception(std::current_exception());
-        }
-      });
+  concurrency::ThreadPool::TryParallelFor(ttp, total_tasks, cost, [&lambda, step](ptrdiff_t first, ptrdiff_t last) {
+    for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
+      lambda(i * step);
     }
-
-    // We'd like to wait until all of the tasks have finished
-    // even though one or more have already thrown. We will store
-    // the first exception and then will re-throw at the end.
-    std::exception_ptr pending_exception;
-    for (auto& fut : futures) {
-      try {
-        // get() will re-throw any exceptions
-        // the running task may throw
-        fut.get();
-      } catch (...) {
-        if (!pending_exception) {
-          pending_exception = std::current_exception();
-        }
-      }
-    }
-
-    if (pending_exception) {
-      std::rethrow_exception(pending_exception);
-    }
-  } else {
-    for (int i = 0; i < max; i += step) {
-      std::bind(lambda, i)();
-    }
-  }
-
+  });
 #endif
 }
 
@@ -270,7 +208,7 @@ class UniDirectionalLstm {
                      const gsl::span<const T>& bias, const gsl::span<const T>& peephole_weights,
                      const gsl::span<const T>& initial_hidden_state, const gsl::span<const T>& initial_cell_state,
                      const ActivationFuncs::Entry& activation_func_f, const ActivationFuncs::Entry& activation_func_g,
-                     const ActivationFuncs::Entry& activation_func_h, float clip, concurrency::ThreadPool* mlas_tp_);
+                     const ActivationFuncs::Entry& activation_func_h, float clip, concurrency::ThreadPool* thread_pool);
 
   void Compute(const gsl::span<const T>& inputs, const gsl::span<const int>& sequence_lengths, int num_directions,
                const gsl::span<const T>& input_weights, const gsl::span<const T>& recurrent_weights,
@@ -322,18 +260,14 @@ class UniDirectionalLstm {
   gsl::span<T> hidden0_, batched_hidden0_;
 
   IAllocatorUniquePtr<T> internal_memory_prev_ptr_, batched_internal_memory_prev_ptr_;
-  IAllocatorUniquePtr<T> internal_memory_cur_ptr_, batched_internal_memory_cur_ptr_;
   IAllocatorUniquePtr<T> batched_internal_memory_clipped_ptr_;
   gsl::span<T> internal_memory_prev_, batched_internal_memory_prev_;
-  gsl::span<T> internal_memory_cur_, batched_internal_memory_cur_;
   gsl::span<T> batched_internal_memory_clipped_;
 
   IAllocatorUniquePtr<T> bias_WRi_ptr_, bias_WRf_ptr_, bias_WRo_ptr_, bias_WRc_ptr_;
-  IAllocatorUniquePtr<T> batched_bias_WRi_ptr_, batched_bias_WRf_ptr_, batched_bias_WRo_ptr_, batched_bias_WRc_ptr_;
   IAllocatorUniquePtr<T> peephole_i_ptr_, peephole_f_ptr_, peephole_o_ptr_;
   IAllocatorUniquePtr<T> inputs_reverse_ptr_, outputs_reverse_ptr_;
   gsl::span<T> bias_WRi_, bias_WRf_, bias_WRo_, bias_WRc_;
-  gsl::span<T> batched_bias_WRi_, batched_bias_WRf_, batched_bias_WRo_, *batched_bias_WRc_;
   gsl::span<T> inputs_reverse_, outputs_reverse_;
 
 #if defined(LSTM_NO_PEEPHOLE_COPY)
@@ -351,7 +285,7 @@ class UniDirectionalLstm {
   ActivationInfo<deepcpu::ActivationFuncPtr> activation_g_;
   ActivationInfo<deepcpu::LstmMergeGatesFuncPtr> activation_h_;
 
-  concurrency::ThreadPool* mlas_tp_;
+  concurrency::ThreadPool* thread_pool_;
 };
 
 }  // namespace detail
@@ -383,7 +317,7 @@ Status DeepCpuLstmOp::Compute(OpKernelContext* context) const {
 
 template <typename T>
 Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
-  concurrency::ThreadPool* mlas_thread_pool = context.GetOperatorThreadPool();
+  concurrency::ThreadPool* thread_pool = context.GetOperatorThreadPool();
 
   auto& logger = context.Logger();
 
@@ -488,8 +422,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
 
   const size_t last_cell_size_per_direction = batch_size * hidden_size_;
   IAllocatorUniquePtr<T> local_last_cell;
-  gsl::span<T> last_cell = Y_c ? Y_c->MutableDataAsSpan<T>() :
-                                 Allocate(alloc, last_cell_size_per_direction * num_directions_, local_last_cell);
+  gsl::span<T> last_cell = Y_c ? Y_c->MutableDataAsSpan<T>() : Allocate(alloc, last_cell_size_per_direction * num_directions_, local_last_cell);
 
   gsl::span<T> last_cell_1 = last_cell.subspan(0, last_cell_size_per_direction);
 
@@ -501,17 +434,12 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
         recurrent_weights.subspan(hidden_weights_size_per_direction, hidden_weights_size_per_direction);
     gsl::span<const T> bias_2 = bias.empty() ? bias : bias.subspan(bias_size_per_direction, bias_size_per_direction);
     gsl::span<const T> peephole_weights_2 =
-        peephole_weights.empty() ?
-            peephole_weights :
-            peephole_weights.subspan(peephole_weights_size_per_direction, peephole_weights_size_per_direction);
+        peephole_weights.empty() ? peephole_weights : peephole_weights.subspan(peephole_weights_size_per_direction, peephole_weights_size_per_direction);
 
     gsl::span<const T> initial_hidden_2 =
-        initial_hidden.empty() ?
-            initial_hidden :
-            initial_hidden.subspan(initial_hidden_size_per_direction, initial_hidden_size_per_direction);
+        initial_hidden.empty() ? initial_hidden : initial_hidden.subspan(initial_hidden_size_per_direction, initial_hidden_size_per_direction);
     gsl::span<const T> initial_cell_2 =
-        initial_cell.empty() ? initial_cell :
-                               initial_cell.subspan(initial_cell_size_per_direction, initial_cell_size_per_direction);
+        initial_cell.empty() ? initial_cell : initial_cell.subspan(initial_cell_size_per_direction, initial_cell_size_per_direction);
     gsl::span<T> output_2 =
         output.empty() ? output : output.subspan(per_direction_offset, output_size - per_direction_offset);
 
@@ -522,12 +450,12 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
     detail::UniDirectionalLstm<T> fw(alloc, logger, seq_length, batch_size, input_size, hidden_size_,
                                      Direction::kForward, input_forget_, bias_1, peephole_weights_1, initial_hidden_1,
                                      initial_cell_1, activation_funcs_.Entries()[0], activation_funcs_.Entries()[1],
-                                     activation_funcs_.Entries()[2], clip_, mlas_thread_pool);
+                                     activation_funcs_.Entries()[2], clip_, thread_pool);
 
     detail::UniDirectionalLstm<T> bw(alloc, logger, seq_length, batch_size, input_size, hidden_size_,
                                      Direction::kReverse, input_forget_, bias_2, peephole_weights_2, initial_hidden_2,
                                      initial_cell_2, activation_funcs_.Entries()[3], activation_funcs_.Entries()[4],
-                                     activation_funcs_.Entries()[5], clip_, mlas_thread_pool);
+                                     activation_funcs_.Entries()[5], clip_, thread_pool);
 
     fw.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1,
                hidden_output_1, last_cell_1);
@@ -537,7 +465,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
     detail::UniDirectionalLstm<T> fw(alloc, logger, seq_length, batch_size, input_size, hidden_size_, direction_,
                                      input_forget_, bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1,
                                      activation_funcs_.Entries()[0], activation_funcs_.Entries()[1],
-                                     activation_funcs_.Entries()[2], clip_, mlas_thread_pool);
+                                     activation_funcs_.Entries()[2], clip_, thread_pool);
 
     fw.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1,
                hidden_output_1, last_cell_1);
@@ -596,7 +524,7 @@ UniDirectionalLstm<T>::UniDirectionalLstm(
     const gsl::span<const T>& bias, const gsl::span<const T>& peephole_weights,
     const gsl::span<const T>& initial_hidden_state, const gsl::span<const T>& initial_cell_state,
     const ActivationFuncs::Entry& activation_func_f, const ActivationFuncs::Entry& activation_func_g,
-    const ActivationFuncs::Entry& activation_func_h, const float clip, concurrency::ThreadPool* mlas_tp)
+    const ActivationFuncs::Entry& activation_func_h, const float clip, concurrency::ThreadPool* thread_pool)
     : allocator_(allocator),
       logger_(logger),
       seq_length_(seq_length),
@@ -608,7 +536,7 @@ UniDirectionalLstm<T>::UniDirectionalLstm(
       clip_(clip),
       use_bias_(!bias.empty()),
       use_peepholes_(!peephole_weights.empty()),
-      mlas_tp_(mlas_tp) {
+      thread_pool_(thread_pool) {
   activation_f_ = {deepcpu::ActivationFuncByName(activation_func_f.name), activation_func_f.alpha,
                    activation_func_f.beta};
 
@@ -624,29 +552,26 @@ UniDirectionalLstm<T>::UniDirectionalLstm(
   AllocateBuffers();
   InitializeBuffers(initial_hidden_state, initial_cell_state);
 
-  if (!peephole_weights.empty())
+  if (use_peepholes_)
     LoadPeepholeWeights(peephole_weights);
-  if (!bias.empty())
+  if (use_bias_)
     LoadBias(bias);
 }
 
 template <typename T>
 void UniDirectionalLstm<T>::AllocateBuffers() {
-  // allocate and fill with 0's.
+  // allocate and fill with zeroes
   const bool fill = true;
   hidden0_ = Allocate(allocator_, hidden_size_, hidden0_ptr_, fill);
   internal_memory_prev_ = Allocate(allocator_, hidden_size_, internal_memory_prev_ptr_, fill);
-  internal_memory_cur_ = Allocate(allocator_, hidden_size_, internal_memory_cur_ptr_, fill);
-  batched_hidden0_ = Allocate(allocator_, batch_size_ * hidden_size_, batched_hidden0_ptr_, fill);
+  batched_hidden0_ = Allocate(allocator_, batch_size_ * hidden_size_, batched_hidden0_ptr_);
 
   batched_internal_memory_prev_ =
-      Allocate(allocator_, batch_size_ * hidden_size_, batched_internal_memory_prev_ptr_, fill);
-  batched_internal_memory_cur_ =
-      Allocate(allocator_, batch_size_ * hidden_size_, batched_internal_memory_cur_ptr_, fill);
+      Allocate(allocator_, batch_size_ * hidden_size_, batched_internal_memory_prev_ptr_);
   batched_internal_memory_clipped_ =
       Allocate(allocator_, batch_size_ * hidden_size_, batched_internal_memory_clipped_ptr_, fill);
 
-  output_iofc_ = Allocate(allocator_, hidden_size_ * 4 * batch_size_ * seq_length_, output_iofc_ptr_, fill);
+  output_iofc_ = Allocate(allocator_, hidden_size_ * 4 * batch_size_ * seq_length_, output_iofc_ptr_);
 
   if (use_bias_) {
     bias_WRi_ = Allocate(allocator_, hidden_size_, bias_WRi_ptr_);
@@ -789,7 +714,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   const bool output_sequence = !outputs.empty();
 
   if (direction_ == kReverse) {
-    ReverseSequence(inputs, inputs_reverse_, sequence_lengths, seq_length_, batch_size_, input_size_, 1, mlas_tp_);
+    ReverseSequence(inputs, inputs_reverse_, sequence_lengths, seq_length_, batch_size_, input_size_, 1, thread_pool_);
     inputs = inputs_reverse_;
 
     if (output_sequence)
@@ -813,7 +738,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   // apply the weights to all the inputs and save to output_IOFC
   ComputeGemm(total_rows, hidden_size_x4, input_size_, alpha, inputs.cbegin(), inputs.cend(), input_size_,
               input_weights.cbegin(), input_weights.cend(),  // W[iofc]
-              input_size_, beta, output_iofc_.begin(), output_iofc_.end(), hidden_size_x4, mlas_tp_);
+              input_size_, beta, output_iofc_.begin(), output_iofc_.end(), hidden_size_x4, thread_pool_);
 
   DumpMatrix("Xt*(W[iofc]^T)", output_iofc_.data(), total_rows, hidden_size_x4);
 
@@ -861,7 +786,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
         ComputeGemm(local_fused_hidden_rows, hidden_size_x4, hidden_size_, alpha, previous_state,
                     previous_state_end,                                                  // Ht-1
                     hidden_size_, recurrent_weights.cbegin(), recurrent_weights.cend(),  // R[iofc]
-                    hidden_size_, beta, step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
+                    hidden_size_, beta, step_out_IOFC, output_iofc_.end(),               // input contains Xt*(W[iofc]^T)
                     hidden_size_x4, nullptr);
 
         DumpMatrix("Xt*(W[iofc]^T) + Ht-t*R[iofc]" + row_str, &*step_out_IOFC, local_fused_hidden_rows, hidden_size_x4);
@@ -910,7 +835,10 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       }
     };
 
-    ExecuteLambdaInParallel(hidden_gemm_and_activations, batch_size_, fused_hidden_rows, mlas_tp_);
+    // Approximate worst case cost of hidden_gemm_and_activations.
+    double gemm_cost = fused_hidden_rows * hidden_size_x4 * hidden_size_;
+    double cost = max_sequence_length * (gemm_cost + fused_hidden_rows);
+    ExecuteLambdaInParallel(hidden_gemm_and_activations, batch_size_, fused_hidden_rows, cost, thread_pool_);
 
   } else {
     span_T_const_iter previous_state_end = batched_hidden_state_one_step.cend();
@@ -935,8 +863,8 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       // calculate Xt*(W[iofc]^T) + Ht-t*R[iofc]
       ComputeGemm(batch_size_, hidden_size_x4, hidden_size_, alpha, previous_state, previous_state_end,  // Ht-1
                   hidden_size_, recurrent_weights.cbegin(), recurrent_weights.cend(),                    // R[iofc]
-                  hidden_size_, beta, step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
-                  hidden_size_x4, mlas_tp_);
+                  hidden_size_, beta, step_out_IOFC, output_iofc_.end(),                                 // input contains Xt*(W[iofc]^T)
+                  hidden_size_x4, thread_pool_);
 
       span_T_iter batched_output;
       span_T_iter batched_output_end;
@@ -1011,7 +939,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
   if (output_sequence && direction_ == Direction::kReverse)
     ReverseSequence<T>(outputs, original_outputs, sequence_lengths, seq_length_, batch_size_, hidden_size_,
-                       num_directions,mlas_tp_);
+                       num_directions, thread_pool_);
 }
 
 // #define PREVIOUS_BROKEN_VERSION
@@ -1141,7 +1069,7 @@ void UniDirectionalLstm<T>::GateComputations(
 
 template <typename T>
 void UniDirectionalLstm<T>::SetNumThreads() {
-  int threads = mlas_tp_ == nullptr ? 1 : mlas_tp_->NumThreads();
+  int threads = concurrency::ThreadPool::NumThreads(thread_pool_);
 
   if (threads < 1)
     threads = 1;

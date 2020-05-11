@@ -2,21 +2,6 @@
 // Licensed under the MIT License.
 
 #include <iostream>
-#ifdef _MSC_VER
-#pragma warning(push)
-// 'identifier' : unreferenced formal parameter
-#pragma warning(disable : 4100)
-// 'type' : forcing value to bool 'true' or 'false' (performance warning)
-#pragma warning(disable : 4800)
-#else
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#endif
-#ifdef _MSC_VER
-#pragma warning(pop)
-#else
-#pragma GCC diagnostic pop
-#endif
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
@@ -1307,6 +1292,50 @@ TEST_F(GraphTest, AddRemoveInitializerHandling) {
   auto num_initializers = graph_proto_from_resolved_graph.initializer_size();
   ASSERT_EQ(num_initializers, 0) << "Expected unused initializers to be removed from proto. "
                                  << num_initializers << " remain.";
+}
+
+TEST_F(GraphTest, SetInputsAndSetOutputs_NewInputAndOutput) {
+  std::shared_ptr<Model> model;
+  {
+    ModelProto m;
+    m.set_ir_version(4);
+    ImportOpset(m, "", 10);
+    ConstructASimpleAddGraph(*m.mutable_graph(), nullptr);
+    ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+  }
+
+  // starting from:
+  //   x + y = sum
+  // modify to:
+  //   (x + y) + z = sum_with_z
+  // set z as an additional input
+  // set sum_with_z as an additional output
+
+  Graph& graph = model->MainGraph();
+  TypeProto type_proto{};
+  SetTypeAndShape(type_proto.mutable_tensor_type(), 1, {3, 4, 5});
+  auto* sum = graph.GetNodeArg("sum");
+  auto* z = &graph.GetOrCreateNodeArg("z", &type_proto);
+  auto* sum_with_z = &graph.GetOrCreateNodeArg("sum_with_z", &type_proto);
+
+  graph.AddNode("add_z", "Add", "add z to sum", {sum, z}, {sum_with_z});
+
+  auto inputs = graph.GetInputsIncludingInitializers();
+  inputs.push_back(z);
+  graph.SetInputs(inputs);
+
+  auto outputs = graph.GetOutputs();
+  outputs.push_back(sum_with_z);
+  graph.SetOutputs(outputs);
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  inputs = graph.GetInputsIncludingInitializers();
+  ASSERT_TRUE(std::find(inputs.begin(), inputs.end(), z) != inputs.end()) << "expected new input z";
+
+  outputs = graph.GetOutputs();
+  ASSERT_TRUE(std::find(outputs.begin(), outputs.end(), sum_with_z) != outputs.end())
+      << "expected new output sum_with_z";
 }
 }  // namespace test
 }  // namespace onnxruntime

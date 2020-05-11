@@ -122,7 +122,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        public void AppendExecutionProvider_OpenVINO(string deviceId)
+        public void AppendExecutionProvider_OpenVINO(string deviceId = "")
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(_nativePtr, deviceId));
         }
@@ -298,11 +298,28 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private string _logId = "";
 
+        /// <summary>
+        /// Log Severity Level for the session logs. Default = ORT_LOGGING_LEVEL_WARNING
+        /// </summary>
+        public OrtLoggingLevel LogSeverityLevel
+        {
+            get
+            {
+                return _logSeverityLevel;
+            }
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogSeverityLevel(_nativePtr, value));
+                _logSeverityLevel = value;
+            }
+        }
+        private OrtLoggingLevel _logSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING;
 
         /// <summary>
-        /// Log Verbosity Level for the session logs. Default = LogLevel.Verbose
+        /// Log Verbosity Level for the session logs. Default = 0. Valid values are >=0.
+        /// This takes into effect only when the LogSeverityLevel is set to ORT_LOGGING_LEVEL_VERBOSE.
         /// </summary>
-        public LogLevel LogVerbosityLevel
+        public int LogVerbosityLevel
         {
             get
             {
@@ -314,7 +331,7 @@ namespace Microsoft.ML.OnnxRuntime
                 _logVerbosityLevel = value;
             }
         }
-        private LogLevel _logVerbosityLevel = LogLevel.Verbose;
+        private int _logVerbosityLevel = 0;
 
 
         /// <summary>

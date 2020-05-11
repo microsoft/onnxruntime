@@ -48,6 +48,30 @@ int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type) {
   }
 }
 
+MLDataType NumpyTypeToOnnxRuntimeType(int numpy_type) {
+  static std::map<int, MLDataType> type_map{
+      {NPY_BOOL, DataTypeImpl::GetType<bool>()},
+      {NPY_FLOAT, DataTypeImpl::GetType<float>()},
+      {NPY_FLOAT16, DataTypeImpl::GetType<MLFloat16>()},
+      {NPY_DOUBLE, DataTypeImpl::GetType<double>()},
+      {NPY_INT8, DataTypeImpl::GetType<int8_t>()},
+      {NPY_UINT8, DataTypeImpl::GetType<uint8_t>()},
+      {NPY_INT16, DataTypeImpl::GetType<int16_t>()},
+      {NPY_UINT16, DataTypeImpl::GetType<uint16_t>()},
+      {NPY_INT, DataTypeImpl::GetType<int32_t>()},
+      {NPY_UINT, DataTypeImpl::GetType<uint32_t>()},
+      {NPY_LONGLONG, DataTypeImpl::GetType<int64_t>()},
+      {NPY_ULONGLONG, DataTypeImpl::GetType<uint64_t>()},
+      {NPY_OBJECT, DataTypeImpl::GetType<std::string>()},
+  };
+  const auto it = type_map.find(numpy_type);
+  if (it == type_map.end()) {
+    throw std::runtime_error("No corresponding Numpy type for Tensor Type.");
+  } else {
+    return it->second;
+  }
+}
+
 const DataTypeImpl* NumpyToOnnxRuntimeTensorType(int numpy_type) {
   static std::map<int, MLDataType> type_map{
       {NPY_BOOL, DataTypeImpl::GetType<bool>()},
