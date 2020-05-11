@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/graph/pipeline_transformer.h"
+#include <unistd.h>
 
 using namespace onnxruntime::common;
 
@@ -71,7 +72,9 @@ NodeArg& CreateNodeArg(Graph& graph, const NodeArg* base_arg) {
 Status AddRecordBackward(Graph& graph,
                        Node* send_bw,
                        std::vector<std::string>& new_input_names,
-                       std::vector<std::string>& new_output_names) {
+                       std::vector<std::string>& new_output_names,
+                       std::string &event_id_tensor_name,
+                       std::string &output_tensor_name) {
   std::vector<NodeArg*> input_args;
   AddInputEvent(graph, "RecordEvent", false /* is_forward */, input_args, new_input_names);
   std::vector<NodeArg*> output_args{};
@@ -99,10 +102,20 @@ Status AddRecordBackward(Graph& graph,
                 output_args,
                 nullptr,
                 kMSDomain);
+
+  // First input argument is the recorded event ID tensor.
+  event_id_tensor_name = input_args.front()->Name();
+  // Use first output as output singnal. It will be fetched outside to make sure
+  // event operator is computed.
+  output_tensor_name = output_args.front()->Name();
   return Status::OK();
 }
 
-Status AddWaitForward(Graph& graph, Node* /* recv_fw */, std::vector<std::string>& new_input_names) {
+Status AddWaitForward(Graph& graph,
+                      Node* /* recv_fw */,
+                      std::vector<std::string>& new_input_names,
+                      std::string& forward_waited_event_name,
+                      std::string& output_tensor_name) {
   // Append old_input to input_args and return its pass-through value. Note that
   // input_args and output_args are Wait's inputs and outputs, respectively.
   auto update_wait_input_output = [&](NodeArg* old_input,
@@ -148,11 +161,19 @@ Status AddWaitForward(Graph& graph, Node* /* recv_fw */, std::vector<std::string
                 output_args,
                 nullptr,
                 kMSDomain);
-
+  forward_waited_event_name = input_args.front()->Name();
+  output_tensor_name = output_args.front()->Name();
   return Status::OK();
 }
 
-Status AddOrSkipRecordForwardWaitBackward(Graph& graph, Node* send_fw, Node* recv_bw, std::vector<std::string>& new_input_names) {
+Status AddOrSkipRecordForwardWaitBackward(Graph& graph,
+                                          Node* send_fw,
+                                          Node* recv_bw,
+                                          std::vector<std::string>& new_input_names,
+                                          std::string& forward_recorded_event_name,
+                                          std::string& backward_waited_event_name,
+                                          std::string& forward_output_name,
+                                          std::string& backward_output_name) {
   if (!send_fw != !recv_bw){
     ORT_THROW("Graph requires either having both send forward node "
       "and recv backword node, or none of them. Currently the graph "
@@ -189,6 +210,9 @@ Status AddOrSkipRecordForwardWaitBackward(Graph& graph, Node* send_fw, Node* rec
                                     {},          /* attribute */
                                     kMSDomain);
     record_node = &new_node;
+
+    forward_recorded_event_name = record_node->InputDefs()[0]->Name();
+    forward_output_name = record_node->OutputDefs()[0]->Name();
   }
   // Insert WaitEvent
   {
@@ -213,7 +237,9 @@ Status AddOrSkipRecordForwardWaitBackward(Graph& graph, Node* send_fw, Node* rec
                   {},          /* attribute */
                   kMSDomain);
     wait_node = &new_node;
-    ORT_UNUSED_PARAMETER(wait_node);
+
+    backward_waited_event_name = wait_node->InputDefs()[0]->Name();
+    backward_output_name = wait_node->OutputDefs()[0]->Name();
   }
 
   return Status::OK();
@@ -266,7 +292,7 @@ std::vector<NodeArg*> CreateNewNodeArgs(Graph& graph, std::vector<NodeArg*> node
 
   for (auto& node_arg: node_args) {
     const auto new_name = graph.GenerateNodeArgName(node_arg->Name());
-    ORT_ENFORCE(graph.GetNodeArg(new_name) != nullptr,
+    ORT_ENFORCE(graph.GetNodeArg(new_name) == nullptr,
                 "NodeArg with name ",
                 new_name,
                 " already exists but we still want to create it." );
@@ -281,9 +307,9 @@ std::vector<NodeArg*> CreateNewNodeArgs(Graph& graph, std::vector<NodeArg*> node
 }
   
 // Replace node_args[i] with new_node_args[i] for all inputs in nodes.
-void ReplaceNodeArgs(std::vector<Node*> nodes,
-                     std::vector<NodeArg*> node_args,
-                     std::vector<NodeArg*> new_node_args) {
+void ReplaceNodeArgs(std::vector<Node*>& nodes,
+                     std::vector<NodeArg*>& node_args,
+                     std::vector<NodeArg*>& new_node_args) {
   ORT_ENFORCE(node_args.size() == new_node_args.size());
   for (size_t i = 0; i < node_args.size(); ++i) {
     // At this iteration, we replace node_args[i] with 
@@ -292,6 +318,9 @@ void ReplaceNodeArgs(std::vector<Node*> nodes,
 
     for (auto& node: nodes) {
       for (auto& node_arg: node->MutableInputDefs()) {
+        if (node_arg->Name().compare(node_args[i]->Name()) != 0) {
+          continue;
+        }
         node_arg = new_node_args[i];
       }
     }
@@ -332,6 +361,11 @@ void CreateBottleneckNode(Graph& graph,
                           std::vector<NodeArg*> output_node_args) {
   const auto name = graph.GenerateNodeName(op_name);
   input_node_args.insert(input_node_args.begin(), event);
+  std::cout << getpid() << ": " << op_type << ", " << name << ", " << input_node_args[0]->Name();
+  for (size_t i = 0; i < output_node_args.size(); ++i) {
+    std::cout << input_node_args[i + 1]->Name() << " --> " << output_node_args[i]->Name() << ", ";
+  }
+  std::cout << std::endl;
   graph.AddNode(
     name,
     op_type,
@@ -361,7 +395,9 @@ void InsertEventBottleneckNode(Graph& graph,
   // The reason is that we only want to create a bottlneck between upstream_nodes
   // and downstrem_nodes. We don't want to create a bottleneck between downstrem_nodes
   // and the rest world.
-  FilterStrayNodeArgs(upstream_nodes, downstream_deps);
+  // After this step, downstream_deps should contains node_args in downstream_nodes
+  // produced by upstream_nodes.
+  downstream_deps = FilterStrayNodeArgs(upstream_nodes, downstream_deps);
 
   // New dependencies to be consumed in downstream_nodes. They are outputs of
   // bottleneck node.
@@ -428,26 +464,35 @@ std::vector<Node*> GetDirectDownstreamNodes(Graph& graph, Node* node) {
 NodeArg* AddForwardWaitAfterRecv(Graph& graph) {
   // Find forward Recv node.
   Node* forward_recv_node = nullptr;
+  Node* forward_wait_node = nullptr;
   for (auto& node: graph.Nodes()) {
-    if (IsBackward(node) || !node.OpType().compare("Recv")) {
+    if (IsBackward(node)) {
       continue;
     }
-    // There should be only one forward Recv.
-    // By entering this block, forward_recv_node should haven't been assigned.
-    ORT_ENFORCE(forward_recv_node == nullptr);
-
-    forward_recv_node = &node;
+    if (node.OpType().compare("Recv") == 0) {
+      // There should be only one forward Recv.
+      // By entering this block, forward_recv_node should haven't been assigned.
+      ORT_ENFORCE(forward_recv_node == nullptr);
+      forward_recv_node = &node;
+    }
+    if (node.OpType().compare("WaitEvent") == 0) {
+      // There should be only one forward WaitEvent.
+      // By entering this block, forward_wait_node should haven't been assigned.
+      ORT_ENFORCE(forward_wait_node == nullptr);
+      forward_wait_node = &node;
+    }
   }
+
+  Node* blocked_node = forward_recv_node ? forward_recv_node : forward_wait_node; 
+
+  ORT_ENFORCE(blocked_node, "Either forward Recv or forward WaitEvent should be found.");
 
   // Find nodes connected to Recv's input node_arg. 
-  auto upstream_nodes = GetDirectUpstreamNodes(graph, forward_recv_node);
+  auto upstream_nodes = GetDirectUpstreamNodes(graph, blocked_node);
   // Find nodes connected to Recv's output node_arg. 
-  auto downstream_nodes = GetDirectDownstreamNodes(graph, forward_recv_node);
+  auto downstream_nodes = GetDirectDownstreamNodes(graph, blocked_node);
 
-  // Recv is upstream because the cut happens on the output side of Recv.
-  if (forward_recv_node) {
-    upstream_nodes.push_back(forward_recv_node);
-  }
+  upstream_nodes.push_back(blocked_node);
 
   // Create node_arg for event ID.
   auto event_node_arg = &CreateInt64NodeArg(graph, "event_forward_wait_after_recv");
@@ -463,25 +508,35 @@ NodeArg* AddForwardWaitAfterRecv(Graph& graph) {
 NodeArg* AddForwardRecordBeforeSend(Graph& graph) {
   // Find forward Send node.
   Node* forward_send_node = nullptr;
+  Node* forward_record_node = nullptr;
   for (auto& node: graph.Nodes()) {
-    if (IsBackward(node) || !node.OpType().compare("Recv")) {
+    if (IsBackward(node)) {
       continue;
     }
-    // There should be only one forward Send.
-    // By entering this block, forward_send_node should haven't been assigned.
-    ORT_ENFORCE(forward_send_node == nullptr);
-    forward_send_node = &node;
+    if (node.OpType().compare("Recv") == 0) {
+      // There should be only one forward Send.
+      // By entering this block, forward_send_node should haven't been assigned.
+      ORT_ENFORCE(forward_send_node == nullptr);
+      forward_send_node = &node;
+    }
+    if (node.OpType().compare("RecordEvent") == 0) {
+      // There should be only one forward RecordEvent.
+      // By entering this block, forward_record_node should haven't been assigned.
+      ORT_ENFORCE(forward_record_node == nullptr);
+      forward_record_node = &node;
+    }
   }
+
+  Node* blocked_node = forward_send_node ? forward_send_node : forward_record_node; 
+
+  ORT_ENFORCE(blocked_node, "Either forward Send or forward RecordEvent should be found.");
 
   // Find nodes connected to Send's input node_arg. 
-  auto upstream_nodes = GetDirectUpstreamNodes(graph, forward_send_node);
+  auto upstream_nodes = GetDirectUpstreamNodes(graph, blocked_node);
   // Find nodes connected to Send's output node_arg. 
-  auto downstream_nodes = GetDirectDownstreamNodes(graph, forward_send_node);
+  auto downstream_nodes = GetDirectDownstreamNodes(graph, blocked_node);
 
-  // Send is downstream because the cut happens on the input side of Send.
-  if (forward_send_node) {
-    downstream_nodes.push_back(forward_send_node);
-  }
+  downstream_nodes.push_back(blocked_node);
 
   // Create node_arg for event ID.
   auto event_node_arg = &CreateInt64NodeArg(graph, "event_forward_record_before_send");
@@ -497,26 +552,36 @@ NodeArg* AddForwardRecordBeforeSend(Graph& graph) {
 NodeArg* AddBackwardWaitAfterRecv(Graph& graph) {
   // Find backward Recv node.
   Node* backward_recv_node = nullptr;
+  Node* backward_wait_node = nullptr;
   for (auto& node: graph.Nodes()) {
-    if (!IsBackward(node) || !node.OpType().compare("Recv")) {
+    if (!IsBackward(node)) {
       continue;
     }
-    // There should be only one backward Recv.
-    // By entering this block, backward_recv_node should haven't been assigned.
-    ORT_ENFORCE(backward_recv_node == nullptr);
-
-    backward_recv_node = &node;
+    std::cout << getpid() << ": backward " << node.OpType() << std::endl;
+    if (node.OpType().compare("Recv") == 0) {
+      // There should be only one backward Recv.
+      // By entering this block, backward_recv_node should haven't been assigned.
+      ORT_ENFORCE(backward_recv_node == nullptr);
+      backward_recv_node = &node;
+    }
+    if (node.OpType().compare("WaitEvent") == 0) {
+      // There should be only one backward Wait.
+      // By entering this block, backward_wait_node should haven't been assigned.
+      ORT_ENFORCE(backward_wait_node == nullptr);
+      backward_wait_node = &node;
+    }
   }
+
+  Node* blocked_node = backward_recv_node ? backward_recv_node : backward_wait_node; 
+
+  ORT_ENFORCE(blocked_node, "Either backward Recv or backward WaitEvent should be found.");
 
   // Find nodes connected to Recv's input node_arg. 
-  auto upstream_nodes = GetDirectUpstreamNodes(graph, backward_recv_node);
+  auto upstream_nodes = GetDirectUpstreamNodes(graph, blocked_node);
   // Find nodes connected to Recv's output node_arg. 
-  auto downstream_nodes = GetDirectDownstreamNodes(graph, backward_recv_node);
+  auto downstream_nodes = GetDirectDownstreamNodes(graph, blocked_node);
 
-  // Recv is upstream because the cut happens on the output side of Recv.
-  if (backward_recv_node) {
-    upstream_nodes.push_back(backward_recv_node);
-  }
+  upstream_nodes.push_back(blocked_node);
 
   // Create node_arg for event ID.
   auto event_node_arg = &CreateInt64NodeArg(graph, "event_backward_wait_after_recv");
@@ -532,26 +597,36 @@ NodeArg* AddBackwardWaitAfterRecv(Graph& graph) {
 NodeArg* AddBackwardRecordBeforeSend(Graph& graph) {
   // Find backward Send node.
   Node* backward_send_node = nullptr;
+  Node* backward_record_node = nullptr;
   for (auto& node: graph.Nodes()) {
-    if (!IsBackward(node) || !node.OpType().compare("Send")) {
+    if (!IsBackward(node)) {
       continue;
     }
-    // There should be only one backward Recv.
-    // By entering this block, backward_recv_node should haven't been assigned.
-    ORT_ENFORCE(backward_send_node == nullptr);
-
-    backward_send_node = &node;
+    if (node.OpType().compare("Send") == 0) {
+      // There should be only one backward Recv.
+      // By entering this block, backward_recv_node should haven't been assigned.
+      ORT_ENFORCE(backward_send_node == nullptr);
+      backward_send_node = &node;
+    }
+    if (node.OpType().compare("RecordEvent") == 0) {
+      // There should be only one backward Record.
+      // By entering this block, backward_record_node should haven't been assigned.
+      ORT_ENFORCE(backward_record_node == nullptr);
+      backward_record_node = &node;
+    }
   }
+
+  Node* blocked_node = backward_send_node ? backward_send_node : backward_record_node; 
+
+  ORT_ENFORCE(blocked_node, "Either backward Send or backward RecordEvent should be found.");
 
   // Find nodes connected to Recv's input node_arg. 
-  auto upstream_nodes = GetDirectUpstreamNodes(graph, backward_send_node);
+  auto upstream_nodes = GetDirectUpstreamNodes(graph, blocked_node);
   // Find nodes connected to Recv's output node_arg. 
-  auto downstream_nodes = GetDirectDownstreamNodes(graph, backward_send_node);
+  auto downstream_nodes = GetDirectDownstreamNodes(graph, blocked_node);
 
   // Send is downstream because the cut happens on the input side of Send.
-  if (backward_send_node) {
-    downstream_nodes.push_back(backward_send_node);
-  }
+  downstream_nodes.push_back(backward_send_node);
 
   // Create node_arg for event ID.
   auto event_node_arg = &CreateInt64NodeArg(graph, "event_backward_wait_before_send");
@@ -564,7 +639,194 @@ NodeArg* AddBackwardRecordBeforeSend(Graph& graph) {
   return event_node_arg;
 }
 
-Status TransformGraphForPipeline(Graph& graph) {
+Status AddForwardWaitAfterRecv1(
+    Graph& graph,
+    /* forward Recv */ Node* comm_node,
+    std::vector<std::string>& new_input_names,
+    std::string& event_name) {
+  if (!comm_node) {
+    // No WaitEvent is inserted, so its input event name is empty.
+    event_name = "";
+    return Status::OK();
+  }
+
+  // Get outputs of Recv nodes. They will be connected to a WaitEvent.
+  // Consumers of Recv's will be connected to the newly-added WaitEvent.
+  std::vector<NodeArg*> node_args = comm_node->MutableOutputDefs();
+
+  // Declare mirror variables. node_args[i] will be replaced with new_node_args[i].
+  std::vector<NodeArg*> new_node_args = CreateNewNodeArgs(graph, node_args);
+
+  // Replace the uses of outputs with corresponding new_outputs.
+  std::vector<Node*> nodes;
+  for (auto& node: graph.Nodes()) {
+    nodes.push_back(&node);
+  }
+  ReplaceNodeArgs(nodes, node_args, new_node_args); 
+
+  // Create node_arg for event ID.
+  auto event_node_arg = &CreateInt64NodeArg(graph, "event_forward_wait_after_recv");
+
+  // Create node which produces new_node_args from event and node_arg.
+  auto name = graph.GenerateNodeName("RecordEvent_ForwardAfterRecv");
+  CreateBottleneckNode(graph,
+                       "WaitEvent",
+                       name,
+                       "",
+                       event_node_arg,
+                       node_args,
+                       new_node_args);
+
+  event_name = event_node_arg->Name();
+
+  new_input_names.push_back(event_name);
+
+  return Status::OK();
+}
+
+Status AddForwardRecordBeforeSend1(
+    Graph& graph,
+    Node* comm_node,
+    std::vector<std::string>& new_input_names,
+    std::string& event_name) {
+  if (!comm_node) {
+    // No RecordEvent is inserted, so its input event name is empty.
+    event_name = "";
+    return Status::OK();
+  }
+
+  // Get outputs of Send nodes. They will be connected to a RecordEvent.
+  // Consumers of Send's will be connected to the newly-added RecordEvent.
+  std::vector<NodeArg*> node_args = comm_node->MutableInputDefs();
+
+  // Declare mirror variables. node_args[i] will be replaced with new_node_args[i].
+  std::vector<NodeArg*> new_node_args = CreateNewNodeArgs(graph, node_args);
+
+  // Replace the uses of node_args with corresponding new_node_args.
+  std::vector<Node*> nodes = {comm_node};
+  ReplaceNodeArgs(nodes, node_args, new_node_args); 
+
+  // Create node_arg for event ID.
+  auto event_node_arg = &CreateInt64NodeArg(graph, "event_forward_record_before_send");
+
+  // Create node which produces new_node_args from event and node_arg.
+  auto name = graph.GenerateNodeName("RecordEvent_ForwardRecordBeforeSend");
+  CreateBottleneckNode(graph,
+                       "RecordEvent",
+                       name,
+                       "",
+                       event_node_arg,
+                       node_args,
+                       new_node_args);
+
+  event_name = event_node_arg->Name();
+
+  new_input_names.push_back(event_name);
+
+  return Status::OK();
+}
+
+Status AddBackwardWaitAfterRecv1(
+    Graph& graph,
+    Node* comm_node,
+    std::vector<std::string>& new_input_names,
+    std::string& event_name) {
+  if (!comm_node) {
+    // No WaitEvent is inserted, so its input event name is empty.
+    event_name = "";
+    return Status::OK();
+  }
+
+  // Get outputs of Recv nodes. They will be connected to a WaitEvent.
+  // Consumers of Recv's will be connected to the newly-added WaitEvent.
+  std::vector<NodeArg*> node_args = comm_node->MutableOutputDefs();
+
+  // Declare mirror variables. node_args[i] will be replaced with new_node_args[i].
+  std::vector<NodeArg*> new_node_args = CreateNewNodeArgs(graph, node_args);
+
+  // Replace the uses of node_args with corresponding new_node_args.
+  std::vector<Node*> nodes;
+  for (auto& node: graph.Nodes()) {
+    nodes.push_back(&node);
+  }
+  ReplaceNodeArgs(nodes, node_args, new_node_args); 
+
+  // Create node_arg for event ID.
+  auto event_node_arg = &CreateInt64NodeArg(graph, "event_backward_wait_after_recv");
+
+  // Create node which produces new_node_args from event and node_arg.
+  auto name = graph.GenerateNodeName("WaitEvent_BackwardWaitAfterRecv");
+  CreateBottleneckNode(graph,
+                       "WaitEvent",
+                       name,
+                       "",
+                       event_node_arg,
+                       node_args,
+                       new_node_args);
+
+  event_name = event_node_arg->Name();
+
+  new_input_names.push_back(event_name);
+
+  return Status::OK();
+}
+
+Status AddBackwardRecordBeforeSend1(
+    Graph& graph,
+    Node* comm_node,
+    std::vector<std::string>& new_input_names,
+    std::string& event_name) {
+  if (!comm_node) {
+    // No RecordEvent is inserted, so its input event name is empty.
+    event_name = "";
+    return Status::OK();
+  }
+
+  // Get inputs of Send nodes. They will be connected to a RecordEvent as inputs.
+  // Outputs of RecordEvent may be connected to Send's input list.
+  std::vector<NodeArg*> node_args = comm_node->MutableInputDefs();
+
+  // Declare mirror variables. node_args[i] will be replaced with new_node_args[i].
+  std::vector<NodeArg*> new_node_args = CreateNewNodeArgs(graph, node_args);
+
+  // Replace the uses of node_args with corresponding new_node_args.
+  std::vector<Node*> nodes = {comm_node};
+  ReplaceNodeArgs(nodes, node_args, new_node_args); 
+
+  // Create node_arg for event ID.
+  auto event_node_arg = &CreateInt64NodeArg(graph, "event_forward_record_before_send");
+
+  // Create node which produces new_node_args from event and node_arg.
+  auto name = graph.GenerateNodeName("RecordEvent_ForwardRecordBeforeSend");
+  CreateBottleneckNode(graph,
+                       "RecordEvent",
+                       name,
+                       "",
+                       event_node_arg,
+                       node_args,
+                       new_node_args);
+
+  event_name = event_node_arg->Name();
+
+  new_input_names.push_back(event_name);
+
+  return Status::OK();
+}
+
+Status TransformGraphForPipeline(
+  Graph& graph,
+  std::string& forward_waited_event_name,
+  std::string& forward_recorded_event_name,
+  std::string& backward_waited_event_name,
+  std::string& backward_recorded_event_name,
+  std::string& forward_waited_output_name,
+  std::string& forward_recorded_output_name,
+  std::string& backward_waited_output_name,
+  std::string& backward_recorded_output_name,
+  std::string& forward_waited_event_after_recv_name,
+  std::string& forward_recorded_event_before_send_name,
+  std::string& backward_waited_event_after_recv_name,
+  std::string& backward_recorded_event_before_send_name) {
   // insert WaitEvent and RecordEvent to the partition
   Node* send_fw{nullptr};
   Node* send_bw{nullptr};
@@ -589,9 +851,52 @@ Status TransformGraphForPipeline(Graph& graph) {
   std::vector<std::string> new_input_names;
   std::vector<std::string> new_output_names;
 
-  ORT_RETURN_IF_ERROR(AddRecordBackward(graph, send_bw, new_input_names, new_output_names));
-  ORT_RETURN_IF_ERROR(AddWaitForward(graph, recv_fw, new_input_names));
-  ORT_RETURN_IF_ERROR(AddOrSkipRecordForwardWaitBackward(graph, send_fw, recv_bw, new_input_names));
+  ORT_RETURN_IF_ERROR(AddRecordBackward(
+    graph,
+    send_bw,
+    new_input_names,
+    new_output_names,
+    backward_recorded_event_name,
+    backward_recorded_output_name));
+  ORT_RETURN_IF_ERROR(AddWaitForward(
+    graph,
+    recv_fw,
+    new_input_names,
+    forward_waited_event_name,
+    forward_waited_output_name));
+  ORT_RETURN_IF_ERROR(AddOrSkipRecordForwardWaitBackward(
+    graph,
+    send_fw,
+    recv_bw,
+    new_input_names,
+    forward_recorded_event_name,
+    backward_waited_event_name,
+    forward_recorded_output_name,
+    backward_waited_output_name));
+  ORT_RETURN_IF_ERROR(AddForwardWaitAfterRecv1(
+    graph,
+    recv_fw,
+    new_input_names,
+    forward_waited_event_after_recv_name
+  ));
+  ORT_RETURN_IF_ERROR(AddForwardRecordBeforeSend1(
+    graph,
+    send_fw,
+    new_input_names,
+    forward_recorded_event_before_send_name
+  ));
+  ORT_RETURN_IF_ERROR(AddBackwardWaitAfterRecv1(
+    graph,
+    recv_bw,
+    new_input_names,
+    backward_waited_event_after_recv_name
+  ));
+  ORT_RETURN_IF_ERROR(AddBackwardRecordBeforeSend1(
+    graph,
+    send_bw,
+    new_input_names,
+    backward_recorded_event_before_send_name
+  ));
 
   auto fill_node_args = [&](const Graph& graph,
                             const std::vector<const NodeArg*>& existed_node_args,
@@ -617,7 +922,9 @@ Status TransformGraphForPipeline(Graph& graph) {
   graph.SetOutputs(outputs_args_sets);
   graph.SetGraphResolveNeeded();
   graph.SetGraphProtoSyncNeeded();
-  return graph.Resolve();
+  graph.Resolve();
+
+  return Status::OK();
 }
 
 }  // namespace training
