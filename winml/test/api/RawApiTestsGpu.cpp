@@ -162,7 +162,7 @@ const RawApiTestsGpuApi& getapi() {
       EvaluateNoInputCopy
   };
 
-  if (SKIP_GPU_TESTS) {
+  if (SkipGpuTests()) {
     api.CreateDirectXDevice = SkipTest;
     api.CreateD3D11DeviceDevice = SkipTest;
     api.CreateD3D12CommandQueueDevice = SkipTest;

@@ -302,7 +302,7 @@ const AdapterSessionTestAPI& getapi() {
     CopyInputAcrossDevices_DML
   };
 
-  if (SKIP_GPU_TESTS) {
+  if (SkipGpuTests()) {
     api.AppendExecutionProvider_DML = SkipTest;
     api.GetExecutionProvider_DML = SkipTest;
     api.RegisterGraphTransformers_DML = SkipTest;

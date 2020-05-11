@@ -680,10 +680,10 @@ const CustomOpsTestsApi& getapi() {
           CustomKernelWithCustomSchema
       };
 
-  if (SKIP_GPU_TESTS) {
+  if (SkipGpuTests()) {
     api.CustomOperatorFusion = SkipTest;
   }
-  if (RUNTIME_PARAMETER_EXISTS("noVideoFrameTests")) {
+  if (RuntimeParameterExists(L"noVideoFrameTests")) {
     api.CustomOperatorFusion = SkipTest;
   }
   return api;

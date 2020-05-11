@@ -408,7 +408,7 @@ const LearningModelSessionAPITestsApi& getapi() {
     CloseSession,
   };
 
-  if (SKIP_GPU_TESTS) {
+  if (SkipGpuTests()) {
     api.CreateSessionDeviceDirectX = SkipTest;
     api.CreateSessionDeviceDirectXHighPerformance = SkipTest;
     api.CreateSessionDeviceDirectXMinimumPower = SkipTest;
@@ -416,10 +416,10 @@ const LearningModelSessionAPITestsApi& getapi() {
     api.DISABLED_CreateSessionWithFloat16InitializersInModel = SkipTest;
     api.AdapterIdAndDevice = SkipTest;
   }
-  if (RUNTIME_PARAMETER_EXISTS("EdgeCore")) {
+  if (RuntimeParameterExists(L"EdgeCore")) {
     api.AdapterIdAndDevice = SkipTest;
   }
-  if (RUNTIME_PARAMETER_EXISTS("noIDXGIFactory6Tests")) {
+  if (RuntimeParameterExists(L"noIDXGIFactory6Tests")) {
     api.CreateSessionDeviceDirectXHighPerformance = SkipTest;
     api.CreateSessionDeviceDirectXMinimumPower = SkipTest;
     api.AdapterIdAndDevice = SkipTest;

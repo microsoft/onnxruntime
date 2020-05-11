@@ -286,7 +286,7 @@ const LearningModelApiTestsApi& getapi() {
     CheckMetadataCaseInsensitive
   };
 
-  if (RUNTIME_PARAMETER_EXISTS("noVideoFrameTests")) {
+  if (RuntimeParameterExists(L"noVideoFrameTests")) {
     api.CloseModelCheckEval = SkipTest;
   }
   return api;

@@ -1435,7 +1435,7 @@ const ScenarioTestsApi& getapi() {
           D2DInterop,
       };
 
-  if (SKIP_GPU_TESTS) {
+  if (SkipGpuTests()) {
     api.Scenario6BindWithProperties = SkipTest;
     api.Scenario8SetDeviceSampleDefaultDirectX = SkipTest;
     api.Scenario8SetDeviceSampleMinPower = SkipTest;
@@ -1459,13 +1459,13 @@ const ScenarioTestsApi& getapi() {
     api.D2DInterop = SkipTest;
   }
 
-  if (RUNTIME_PARAMETER_EXISTS("EdgeCore")) {
+  if (RuntimeParameterExists(L"EdgeCore")) {
     api.Scenario8SetDeviceSampleMyCameraDevice = SkipTest;
     api.Scenario8SetDeviceSampleD3D11Device = SkipTest;
     api.D2DInterop = SkipTest;
   }
 
-  if (RUNTIME_PARAMETER_EXISTS("noVideoFrameTests")) {
+  if (RuntimeParameterExists(L"noVideoFrameTests")) {
     api.Scenario1LoadBindEvalDefault = SkipTest;
     api.Scenario3SoftwareBitmapInputBinding = SkipTest;
     api.Scenario5AsyncEval = SkipTest;
@@ -1487,11 +1487,11 @@ const ScenarioTestsApi& getapi() {
     api.QuantizedModels = SkipTest;
     api.MsftQuantizedModels = SkipTest;
   }
-  if (RUNTIME_PARAMETER_EXISTS("noIDXGIFactory6Tests")) {
+  if (RuntimeParameterExists(L"noIDXGIFactory6Tests")) {
     api.Scenario8SetDeviceSampleMinPower = SkipTest;
     api.Scenario8SetDeviceSampleMaxPerf = SkipTest;
   }
-  if (RUNTIME_PARAMETER_EXISTS("noID3D12Device5Tests")) {
+  if (RuntimeParameterExists(L"noID3D12Device5Tests")) {
     api.DeviceLostRecovery = SkipTest;
   }
   return api;

@@ -733,12 +733,12 @@ const LearningModelBindingAPITestsApi& getapi() {
     SequenceConstructTensorString
   };
 
-  if (SKIP_GPU_TESTS) {
+  if (SkipGpuTests()) {
     api.GpuSqueezeNet = SkipTest;
     api.GpuSqueezeNetEmptyOutputs = SkipTest;
     api.GpuSqueezeNetUnboundOutputs = SkipTest;
   }
-  if (RUNTIME_PARAMETER_EXISTS("noVideoFrameTests")) {
+  if (RuntimeParameterExists(L"noVideoFrameTests")) {
     api.ImageBindingDimensions = SkipTest;
     api.BindInvalidInputName = SkipTest;
     api.VerifyOutputAfterImageBindCalledTwice = SkipTest;

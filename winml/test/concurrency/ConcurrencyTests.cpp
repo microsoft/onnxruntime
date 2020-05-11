@@ -25,7 +25,7 @@ void LoadBindEvalSqueezenetRealDataWithValidationConcurrently() {
     for (const auto& instance : {"1", "2", "3", "4"}) {
         threads.emplace_back(load_test_model, instance, LearningModelDeviceKind::Cpu);
     }
-    if (SKIP_GPU_TESTS) {} else {
+    if (SkipGpuTests()) {} else {
       for (const auto& instance : {"GPU_1", "GPU_2", "GPU_3", "GPU_4"}) {
         threads.emplace_back(load_test_model, instance, LearningModelDeviceKind::DirectX);
       }
@@ -339,7 +339,7 @@ const ConcurrencyTestsApi& getapi() {
     EvalAsyncDifferentBindings
   };
 
-  if (SKIP_GPU_TESTS) {
+  if (SkipGpuTests()) {
     api.MultiThreadMultiSessionGpu = SkipTest;
     api.MultiThreadSingleSessionGpu = SkipTest;
   }
