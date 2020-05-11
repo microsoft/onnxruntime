@@ -959,5 +959,6 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
 
   return trainable_initializers;
 }
+
 }  // namespace training
 }  // namespace onnxruntime
