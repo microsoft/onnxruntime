@@ -51,6 +51,8 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
 
     std::unique_ptr<const OpKernel> CreateKernel(const Node* node) const;
 
+    const DataTransferManager& GetDataTransferManager() const { return data_transfer_mgr_; }
+
    private:
     // The optimizer is running on CPU execution provider by default.
     std::unique_ptr<CPUExecutionProvider> cpu_execution_provider_;
@@ -82,6 +84,8 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
   AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const override;
 
   Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) override;
+
+  Status CopyTensor(const Tensor& src, Tensor& dest) const override;
 
   const Info& info_;
 };

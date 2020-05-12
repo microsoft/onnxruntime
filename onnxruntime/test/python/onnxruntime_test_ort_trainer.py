@@ -406,6 +406,26 @@ class TestOrtTrainer(unittest.TestCase):
         trainer.save_as_onnx(onnx_file_name)
         assert os.path.exists(onnx_file_name)
 
+    def testMNISTDevice(self):
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+
+        mnist = MNISTWrapper()
+        train_loader, test_loader = mnist.get_loaders()
+        model, model_desc = mnist.get_model()
+
+        for model_device in [torch.device('cpu'), torch.device('cuda')]:
+            model.to(model_device)
+            trainer = mnist.get_trainer(model, model_desc, device)
+            learningRate = 0.02
+            epoch = 0
+
+            data, target = next(iter(train_loader))
+            data, target = data.to(device), target.to(device)
+            data = data.reshape(data.shape[0], -1)
+
+            loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
+
     def testBertTrainingBasic(self):
         expected_losses = [
             11.02906322479248, 11.094074249267578, 11.00899887084961, 11.06129264831543,
