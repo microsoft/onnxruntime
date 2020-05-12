@@ -129,10 +129,6 @@ TEST(DropoutTest, EmptyRatio) {
   RunDropoutTest("Dropout", true, {1000});
 }
 
-TEST(DropoutTest, Float16Ratio) {
-  RunDropoutTest("Dropout", true, {1000}, 0.0f, true, true);
-}
-
 TEST(TrainableDropoutTest, Basic) {
   RunDropoutTest("TrainableDropout", false, {10, 10, 10}, 0.75);
 }
@@ -147,10 +143,6 @@ TEST(TrainableDropoutTest, RatioLimit) {
 
 TEST(TrainableDropoutTest, EmptyRatio) {
   RunDropoutTest("TrainableDropout", true, {1000}, -1);
-}
-
-TEST(TrainableDropoutTest, Float16Ratio) {
-  RunDropoutTest("TrainableDropout", true, {1000}, 0.0f, true, true);
 }
 
 namespace {

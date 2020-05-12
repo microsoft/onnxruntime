@@ -397,6 +397,18 @@ Status Exp<T>::Compute(OpKernelContext* ctx) const {
 }
 
 template <>
+Status Exp<float>::Compute(OpKernelContext* context) const {
+  const auto* X = context->Input<Tensor>(0);
+  const auto& x_shape = X->Shape();
+  auto* Y = context->Output(0, x_shape);
+  const size_t N = static_cast<size_t>(x_shape.Size());
+
+  MlasComputeExp(X->template Data<float>(), Y->template MutableData<float>(), N);
+
+  return Status::OK();
+}
+
+template <>
 Status Log<float>::Compute(OpKernelContext* ctx) const {
   auto& X = *ctx->Input<Tensor>(0);
   auto& Y = *ctx->Output(0, X.Shape());
@@ -1072,12 +1084,12 @@ REG_EXPAND_KERNEL(MLFloat16)
 
 template <>
 Status Erf<float>::Compute(OpKernelContext* context) const {
-  auto X_ptr = context->Input<Tensor>(0);
-  ORT_ENFORCE(X_ptr != nullptr);
-  auto& X = *X_ptr;
-  auto& Y = *context->Output(0, X.Shape());
+  const auto* X = context->Input<Tensor>(0);
+  const auto& x_shape = X->Shape();
+  auto* Y = context->Output(0, x_shape);
+  const size_t N = static_cast<size_t>(x_shape.Size());
 
-  MlasComputeErf(X.template Data<float>(), Y.template MutableData<float>(), X.Shape().Size());
+  MlasComputeErf(X->template Data<float>(), Y->template MutableData<float>(), N);
 
   return Status::OK();
 }

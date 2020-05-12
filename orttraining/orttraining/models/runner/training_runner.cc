@@ -16,6 +16,9 @@
 #include "orttraining/core/framework/checkpointing.h"
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/models/runner/training_util.h"
+#include "single_include/nlohmann/json.hpp"
+
+using json = nlohmann::json;
 
 namespace onnxruntime {
 namespace training {
@@ -263,7 +266,8 @@ Status TrainingRunner::Initialize() {
   return Status::OK();
 }
 
-Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader) {
+Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader, 
+  const MapStringToString& mapped_dimensions) {
   if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
   }
@@ -274,7 +278,7 @@ Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_
     return Status::OK();
   }
 
-  ORT_RETURN_IF_ERROR(TrainingLoop(*training_data_loader, test_data_loader));
+  ORT_RETURN_IF_ERROR(TrainingLoop(*training_data_loader, test_data_loader, mapped_dimensions));
 
   // after successful Run(), update counters
   ++round_;
@@ -571,7 +575,8 @@ Status TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
   return Status::OK();
 }
 
-Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader) {
+Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,
+                                    const MapStringToString& mapped_dimensions) {
   const bool enable_checkpoint_saving =
       params_.mpi_context.world_rank == 0 &&
       checkpoint_registry_ && params_.checkpoint_period > 0;
@@ -712,16 +717,109 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
     ++epoch;
   }
 
+  const size_t number_of_batches = step_ - step_start;
+  const size_t weight_update_steps = weight_update_step_count_ - weight_update_step_count_start;
+  const double avg_time_per_batch = total_time / (step_ - step_start) * 1000;
+  const double throughput = params_.batch_size * (step_ - step_start) / total_time;
+  const double stabilized_throughput = params_.batch_size / (stabilized_total_time / stabilized_perf_total_step_count);
+
+  if (params_.perf_output_dir.empty()) {
+    printf("No perf output directory specified, skipping save of trained perf metrics.\n");
+  } else {
+    ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.perf_output_dir));
+    // saving json file
+    ORT_RETURN_IF_ERROR(SavePerfMetrics(number_of_batches, gradient_accumulation_step_count, weight_update_steps, 
+                                        total_time, avg_time_per_batch, throughput, stabilized_throughput, mapped_dimensions));
+  }
+
   std::cout << "Round: " << round_ << "\n"
             << "Batch size: " << params_.batch_size << "\n"
-            << "Number of Batches: " << (step_ - step_start) << "\n"
+            << "Number of Batches: " << number_of_batches << "\n"
             << "Gradient Accumulation Steps: " << gradient_accumulation_step_count << "\n"
-            << "Weight Update Steps: " << (weight_update_step_count_ - weight_update_step_count_start) << "\n"
+            << "Weight Update Steps: " << weight_update_steps << "\n"
             << "Total Running Time: " << total_time << " Seconds \n"
-            << "Average Running Time Per Batch: " << total_time / (step_ - step_start) * 1000 << " ms\n"
-            << "Throughput: " << params_.batch_size * (step_ - step_start) / total_time << " Examples / Second\n"
-            << "Stabilized Throughput: " << params_.batch_size / (stabilized_total_time / stabilized_perf_total_step_count)
-            << " Examples / Second\n";
+            << "Average Running Time Per Batch: " << avg_time_per_batch << " ms\n"
+            << "Throughput: " << throughput << " Examples / Second\n"
+            << "Stabilized Throughput: " << stabilized_throughput << " Examples / Second\n";
+
+  return Status::OK();
+}
+
+Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const size_t gradient_accumulation_steps,
+                                       const size_t weight_update_steps, const double total_time,
+                                       const double avg_time_per_batch, const double throughput, const double stabilized_throughput,
+                                       const MapStringToString& mapped_dimensions) {
+  // populate metrics for reporting
+  json perf_metrics;
+  perf_metrics["Model"] = params_.model_type;  
+
+  // loop thru the mapped_dimensions and put it in json sub-structure
+  std::string seq_len;
+  for (auto const& it : mapped_dimensions) {
+    if (it.first == "SeqLen") {
+      seq_len = it.second;     
+    }
+    perf_metrics["DerivedProperties"][it.first] = it.second;
+  }
+
+  perf_metrics["Round"] = round_;
+  perf_metrics["BatchSize"] = params_.batch_size;
+  perf_metrics["NumOfBatches"] = number_of_batches;
+  perf_metrics["GradAccSteps"] = gradient_accumulation_steps;
+  perf_metrics["WeightUpdateSteps"] = weight_update_steps;
+  perf_metrics["TotalTime"] = total_time;
+  perf_metrics["AvgTimePerBatch"] = avg_time_per_batch;
+  perf_metrics["Throughput"] = throughput;
+  perf_metrics["StabilizedThroughput"] = stabilized_throughput;
+  perf_metrics["UseMixedPrecision"] = params_.use_mixed_precision;
+
+  std::string optimizer = params_.training_optimizer_name;
+  std::size_t pos = optimizer.find("Optimizer");
+  if (pos != std::string::npos) 
+    optimizer = optimizer.substr(0, pos);
+  perf_metrics["Optimizer"] = optimizer;
+
+  Path model_path{};
+  ORT_RETURN_IF_ERROR(Path::Parse(params_.model_path, model_path));
+  PathString leaf = model_path.GetComponents().back();
+  std::string model_name = ToMBString(leaf.c_str());
+  perf_metrics["ModelName"] = model_name;
+
+  std::string display_name = model_name + "_" + params_.model_type + "_" + (params_.use_mixed_precision ? "fp16" : "fp32") +
+                             (seq_len.empty() ? "" : "_" + seq_len) + "_" + optimizer;
+  perf_metrics["DisplayName"] = display_name;
+
+
+  // TODO - add memory/cpu
+  //j["Memory"] = ;
+  //j["AvgCPU"] = ;
+
+  //
+  // we will get date/time and commitId in post-run pipeline
+  //          
+
+  // populate other basic params for bookkeeping - add more as needed
+  json bookkeeping_params;
+  bookkeeping_params["LearningRate"] = params_.lr_params.initial_lr;
+  bookkeeping_params["WarmupRatio"] = params_.lr_params.warmup_ratio;
+  bookkeeping_params["WarmupMode"] = params_.lr_params.warmup_mode;
+  bookkeeping_params["TrainSteps"] = params_.num_train_steps;
+  bookkeeping_params["ModelPath"] = ToMBString(params_.model_path.c_str());
+  bookkeeping_params["TrainDataDir"] = ToMBString(params_.train_data_dir.c_str());
+  bookkeeping_params["TestDataDir"] = ToMBString(params_.test_data_dir.c_str());
+
+  perf_metrics["RunConfig"] = bookkeeping_params.dump();  // serialize the params as json string
+
+  std::string json_string = perf_metrics.dump(); 
+
+  // write to a file - the next task in CI will pick up all files with the same prefix
+  const PathString perf_metrics_path =
+      params_.perf_output_dir + GetPathSep<PathChar>() + ORT_TSTR("onnxruntime_perf_metrics_") + ToPathString(display_name) + ORT_TSTR(".json");
+
+  std::ofstream perf_metrics_stream;
+  perf_metrics_stream.open(perf_metrics_path, std::ios::out | std::ios::trunc);
+  ORT_RETURN_IF_NOT(perf_metrics_stream << json_string << "\n", "Failed to write to output file.");
+
   return Status::OK();
 }
 
