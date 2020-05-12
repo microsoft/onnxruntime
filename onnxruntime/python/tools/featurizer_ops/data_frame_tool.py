@@ -98,7 +98,7 @@ class DataFrameTool():
         Return a dictionary of input_name : a typed and shaped np.array of values for a given input_meta
         The function does the heavy lifting for _get_input_feeds()
 
-        :param df: See :class:`pandas.DataFrame`. 
+        :param df: See :class:`pandas.DataFrame`.
         :param input_metas: a list of name/type pairs
         :require is a boolean. If True this helper throws on a missing input.
 
@@ -113,7 +113,9 @@ class DataFrameTool():
                 if (df[input_meta.name].dtype) == 'datetime64[ns]':
                     input_array = np.array([dt.timestamp() for dt in df[input_meta.name]]).astype(np.int64)
                 elif (str(df[input_meta.name].dtype)) == 'category':
-                    input_array = np.array([key + 1 for key in df[input_meta.name].array.codes]).astype(np.uint32)  # in ONNX models trained in ML.NET input coming from "categorical columns" is 1 based indices, whereas Categorical columns save indices that are 0 based, and that need to be retrieved from .array.codes                    
+                    # ONNX models trained in ML.NET input from "categorical columns" is 1 based indices,
+                    # whereas Categorical columns are 0 based and need to be retrieved from .array.codes
+                    input_array = np.array([key + 1 for key in df[input_meta.name].array.codes]).astype(np.uint32)
                 else:
                     # With strings we must cast first to np.object then then reshape
                     # so we do it for everything
