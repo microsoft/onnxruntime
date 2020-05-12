@@ -48,7 +48,7 @@ class DataFrameTool():
         self._model_path = model_path
         self._sess_options = sess_options
         self._sess = onnxrt.InferenceSession(self._model_path, self._sess_options)
-        
+
     def _reshape_input(self, input_array, expected_shape):
         """
         :param - input_array numpy array. This one is obtained from DataFrame and expected to have
@@ -60,16 +60,16 @@ class DataFrameTool():
         # expected_shape rank is one, we will let onnxruntime to deal with it
         if len(expected_shape) == 1:
             return input_array
-            
+
         inferred_shape = [dim if dim else -1 for dim in expected_shape]
         return input_array.reshape(inferred_shape)
-     
+
     def _validate_type(self, input_meta, col_type):
         """
         : input_meta - meta info obtained from the model for the given input
         : col_type - dtype of the column
         : throws if conditions are not met
-        
+
          float16 and bool will always require exact match
          We attempt to convert any type to a string if it is required.
          With strings we always want to put this into a flat array, cast to np.object and then reshape as object
@@ -89,7 +89,7 @@ class DataFrameTool():
            return
         elif expected_type in ort_int_set and str(col_type) in pd_int_set:
            return
-           
+
         raise TypeError("Input {} requires type {} unable to cast column type {} ".format(
             input_meta.name, expected_type, col_type))
 
@@ -101,7 +101,7 @@ class DataFrameTool():
         :param df: See :class:`pandas.DataFrame`. 
         :param input_metas: a list of name/type pairs
         :require is a boolean. If True this helper throws on a missing input.
-        
+
         """
         feeds = {}
         # Process mandadory inputs. Raise an error if anything is not present
@@ -119,11 +119,11 @@ class DataFrameTool():
                     # so we do it for everything
                     input_array = np.array(df[input_meta.name]).astype(types_dict[input_meta.type])
                 feeds[input_meta.name] = self._reshape_input(input_array, input_meta.shape)
-                
+
             elif require:
                 raise RuntimeError(
                     "This model requires input {} of type {} but it is not found in the DataFrame".format(
-                               input_meta.name, types_dict[input_meta.type]))
+                        input_meta.name, types_dict[input_meta.type]))
         return feeds
 
     def _get_input_feeds(self, df, sess):
@@ -141,7 +141,7 @@ class DataFrameTool():
             and feeds the data to the appropriate model inputs.
 
         :param sess: See :class:`onnxruntime.InferenceSession`.
-        
+
         ::
         For example: pd.DataFrame([[0], [4],[20]],index=[0], columns=['A', 'B', 'C'])
 
