@@ -6,7 +6,7 @@ Each Python version uses a specific compiler version. In most cases, you should 
 
 | Visual C++  | CPython                 |
 |-------------|:-----------------------:|
-|2015, 2017   | 3.7, 3.8                     |
+|2015, 2017   | 3.7                     |
 |2015         | 3.5,3.6                 |
 |2010         | 3.3,3.4                 |
 |2008         | 2.6, 2.7, 3.0, 3.1, 3.2 |
