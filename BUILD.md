@@ -104,6 +104,7 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 * [Nuphar Model Compiler](#Nuphar)
 * [DirectML](#DirectML)
 * [ARM Compute Library](#ARM-Compute-Library)
+* [Rockchip RKNPU](#RKNPU)
 * [Xilinx Vitis-AI](#Vitis-AI)
 
 **Options**
@@ -450,6 +451,36 @@ export LD_LIBRARY_PATH=~/ComputeLibrary/build/
 
 ---
 
+### RKNPU
+See more information on the RKNPU Execution Provider [here](./docs/execution_providers/RKNPU-ExecutionProvider.md).
+
+#### Pre-Requisites
+
+* Supported platform: RK1808 Linux
+* See [Build ARM](#ARM) below for information on building for ARM devices
+* Use gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu instead of gcc-linaro-6.3.1-2017.05-x86_64_arm-linux-gnueabihf, and modify CMAKE_CXX_COMPILER & CMAKE_C_COMPILER in tool.cmake:
+  ```
+  set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
+  set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
+  ```
+
+#### Build Instructions
+##### Linux
+1. Download [rknpu_ddk](#https://github.com/airockchip/rknpu_ddk.git) to any directory.
+
+2. Build ONNX Runtime library and test:
+    ```
+    ./build.sh --arm --use_rknpu --parallel --build_shared_lib --build_dir build_arm --config MinSizeRel --cmake_extra_defines RKNPU_DDK_PATH=<Path To rknpu_ddk> CMAKE_TOOLCHAIN_FILE=<Path To tool.cmake> ONNX_CUSTOM_PROTOC_EXECUTABLE=<Path To protoc>
+    ```
+3. Deploy ONNX runtime and librknpu_ddk.so on the RK1808 board:
+    ```
+    libonnxruntime.so.1.2.0
+    onnxruntime_test_all
+    rknpu_ddk/lib64/librknpu_ddk.so
+    ```
+
+---
+
 ### Vitis-AI
 See more information on the Xilinx Vitis-AI execution provider [here](./docs/execution_providers/Vitis-AI-ExecutionProvider.md).
 
@@ -462,8 +493,6 @@ For instructions to setup the hardware environment: [Hardware setup](./docs/exec
 ```
 #### Notes
 The Vitis-AI execution provider is only supported on Linux.
-
----
 
 ## Options
 ### OpenMP

@@ -823,6 +823,11 @@ class Graph {
     }
   }
 
+  /** During constant folding it may become possible to infer the shape for a node.
+      To avoid running a full Resolve allow an individual node to have the shape inferencing re-run.
+  */
+  Status UpdateShapeInference(Node& node);
+
   // Options to control Graph::Resolve.
   struct ResolveOptions {
     // Whether to override existing types with inferred types.

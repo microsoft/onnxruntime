@@ -6,8 +6,8 @@
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 #include "onnx/defs/operator_sets.h"
-#include "onnx/defs/operator_sets-ml.h"
-#include "onnx/defs/operator_sets-training.h"
+#include "onnx/defs/operator_sets_ml.h"
+#include "onnx/defs/operator_sets_training.h"
 #ifndef DISABLE_CONTRIB_OPS
 #include "core/graph/contrib_ops/contrib_defs.h"
 #endif
@@ -62,12 +62,12 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     if (to.name == nullptr) {
       to.name = ORT_TSTR("intra-op");
     }
-    intra_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP, nullptr);
+    intra_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     to = tp_options->inter_op_thread_pool_params;
     if (to.name == nullptr) {
       to.name = ORT_TSTR("inter-op");
     }
-    inter_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP, nullptr);
+    inter_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
   }
 
   try {

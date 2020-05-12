@@ -50,6 +50,9 @@ onnxruntime team members will trigger the build for you.
 
 Please see [Coding Conventions and Standards](./docs/Coding_Conventions_and_Standards.md)
 
+## Guidelines for creating a good PR (pull request)
+[PR Guidelines](./docs/PR_Guidelines.md)
+
 ## Licensing guidelines
 
 This project welcomes contributions and suggestions. Most contributions require you to
