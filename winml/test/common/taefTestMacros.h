@@ -68,14 +68,14 @@ using namespace WEX::TestExecution;
 
 static bool RuntimeParameterExists(std::wstring param) {
   bool param_value;
-  return SUCCEEDED(RuntimeParameters::TryGetValue(param, param_value)) && param_value;
+  return SUCCEEDED(RuntimeParameters::TryGetValue(param.c_str(), param_value)) && param_value;
 }
 
 static bool SkipGpuTests() {
 #ifndef USE_DML
   return true;
 #else
-  RuntimeParameterExists(L"noGPUtests");
+  return RuntimeParameterExists(L"noGPUtests");
 #endif
 }
 
@@ -83,7 +83,3 @@ static bool SkipGpuTests() {
   if (SkipGpuTests()) {                    \
     WINML_SKIP_TEST("Gpu tests disabled"); \
   }
-
-static void SkipTest() {
-  WINML_SKIP_TEST("");
-}
