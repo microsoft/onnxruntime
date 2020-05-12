@@ -5,15 +5,12 @@
 import argparse
 import subprocess
 import sys
-import tempfile
 import os
-
-from compare_results import compare_results_files, Comparisons
 
 SCRIPT_DIR = os.path.realpath(os.path.dirname(__file__))
 
 def parse_args():
-  parser = argparse.ArgumentParser(description="Runs a BERT convergence test.")
+  parser = argparse.ArgumentParser(description="Runs BERT performance tests.")
   parser.add_argument("--binary_dir", required=True,
                       help="Path to the ORT binary directory.")
   parser.add_argument("--training_data_root", required=True,
