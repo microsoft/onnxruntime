@@ -258,19 +258,20 @@ class MNISTWrapper():
         model_desc = MNISTWrapper.mnist_model_description()
         return model, model_desc
 
-    def get_trainer(self, model, model_desc, device):
+    def get_trainer(self, model, model_desc, device, onnx_opset_ver=12):
         return ORTTrainer(model, MNISTWrapper.my_loss, model_desc, "SGDOptimizer", None, IODescription('Learning_Rate', [1, ],
-                                torch.float32), device, _opset_version=12)
+                                torch.float32), device, _opset_version=onnx_opset_ver)
 
 class TestOrtTrainer(unittest.TestCase):
-    def testMNISTTrainingAndTesting(self):
+
+    def run_mnist_training_and_testing(onnx_opset_ver):
         torch.manual_seed(1)
         device = torch.device("cuda")
 
         mnist = MNISTWrapper()
         train_loader, test_loader = mnist.get_loaders()
         model, model_desc = mnist.get_model()
-        trainer = mnist.get_trainer(model, model_desc, device)
+        trainer = mnist.get_trainer(model, model_desc, device, onnx_opset_ver=onnx_opset_ver)
 
         learningRate = 0.01
         args_epochs = 2
@@ -308,6 +309,12 @@ class TestOrtTrainer(unittest.TestCase):
         assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_allclose(expected_test_losses, actual_test_losses, rtol=rtol, err_msg="test loss mismatch")
         assert_allclose(expected_test_accuracies, actual_accuracies, rtol=rtol, err_msg="test accuracy mismatch")
+
+    def testMNISTTrainingAndTestingOpset10(self):
+        TestOrtTrainer.run_mnist_training_and_testing(onnx_opset_ver = 10)
+
+    def testMNISTTrainingAndTestingOpset12(self):
+        TestOrtTrainer.run_mnist_training_and_testing(onnx_opset_ver = 12)
 
     def testMNISTResumeTrainingAndTesting(self):
         torch.manual_seed(1)
