@@ -116,6 +116,10 @@ elif [ $DEVICE_TYPE = "gpu" ]; then
       echo "get PATH_TO_SYMBOLIC10"
       PATH_TO_SYMBOLIC10=$(${PYTHON_EXE} -c 'import torch; import os; print(os.path.join(os.path.dirname(torch.__file__), "onnx/"))')
       echo ${PATH_TO_SYMBOLIC10}
+      echo "ls -la ."
+      ls -la .
+      echo "ls -la ../"
+      ls -la ../
       cp ./pyt_patch/symbolic_opset10.py ${PATH_TO_SYMBOLIC10}
       echo "cp ./pyt_patch/symbolic_opset10.py"
     fi
