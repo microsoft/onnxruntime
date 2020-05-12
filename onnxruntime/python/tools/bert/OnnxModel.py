@@ -384,6 +384,7 @@ class OnnxModel:
                 cast_input = output_value_info.name + '_float16'
                 cast_output = output_value_info.name
                 self.replace_output_of_all_nodes(cast_output, cast_input)
+                self.replace_input_of_all_nodes(cast_output, cast_input)
                 cast_node = onnx.helper.make_node('Cast', inputs=[cast_input], outputs=[cast_output])
                 cast_node.attribute.extend([onnx.helper.make_attribute("to", int(TensorProto.FLOAT))])
                 self.add_node(cast_node)
