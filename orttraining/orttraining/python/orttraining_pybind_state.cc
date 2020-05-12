@@ -51,6 +51,7 @@ struct TrainingParameters {
   int horizontal_parallel_size = 1;
   bool partition_optimizer = false;
   bool enable_grad_norm_clip = true;
+  bool set_gradients_as_graph_outputs = false;
 };
 
 struct TrainingConfigurationResult {
@@ -94,7 +95,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.weight_names_to_not_train = parameters.weights_not_to_train;
   config.immutable_weights = parameters.immutable_weights;
 
-  config.set_gradients_as_graph_outputs = false;
+  config.set_gradients_as_graph_outputs = parameters.set_gradients_as_graph_outputs;
 
   config.gradient_accumulation_steps = parameters.gradient_accumulation_steps;
 
@@ -115,7 +116,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.loss_name = parameters.loss_output_name;
 
   if (!parameters.training_optimizer_name.empty()) {
-    config.set_gradients_as_graph_outputs = true;
     training::TrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
     opt.name = parameters.training_optimizer_name;
     opt.learning_rate_input_name = parameters.lr_params_feed_name;
@@ -181,7 +181,8 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("world_size", &TrainingParameters::world_size)
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
       .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer)
-      .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip);
+      .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
+      .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs);
 
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())
