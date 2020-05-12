@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 if (NOT WINDOWS_STORE)
-  message(FATAL_ERROR "WinML is only supported on WCOS")
+#  message(FATAL_ERROR "WinML is only supported on WCOS")
 endif()
 
 include(precompiled_header.cmake)
