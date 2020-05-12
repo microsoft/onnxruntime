@@ -44,7 +44,7 @@ For data scientists and ML engineers, this provides a high performance solution 
  
 The inference runtime provides a cross platform API compatible with Windows, Linux, and Mac across a variety of hardware architectures. Using graph optimizations and accelerators, ONNX Runtime can provide lower latency compared to other runtimes for faster end-to-end customer experiences and minimized machine utilization costs.
 
-* [Supported languages and architectures](apis-and-official-builds)
+* [Supported languages and architectures](#apis-and-official-builds)
 * [High level architectural design](docs/HighLevelDesign.md)
 * [Performance Tuning](./docs/ONNX_Runtime_Perf_Tuning.md)
 * [Extensibility: Add a new graph transform](include/onnxruntime/core/optimizer/graph_transformer.h)
@@ -54,9 +54,8 @@ The inference runtime provides a cross platform API compatible with Windows, Lin
 ### Supported accelerators ("[Execution Providers](./docs/execution_providers))":
 
 |CPU|GPU|IoT/Edge/Mobile|Other|
-|--|--|--|--|
-<ul><li>Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*</li><li>[Intel DNNL](./docs/execution_providers/DNNL-ExecutionProvider.md)</li><li>[Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)</li><li>Intel MKL-ML</ul>|<ul><li>NVIDIA CUDA</li><li>[NVIDIA TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)</li><li>[DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)</li></ul>| <ul><li>[Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)</li><li>[ARM Compute Library](./docs/execution_providers/ACL-ExecutionProvider.md) (*preview*)</li><li>[Android Neural Networks API](./docs/execution_providers/NNAPI-ExecutionProvider.md) (*preview*)</li></ul>|<ul><li>[Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md)</li></ul>
-|
+|---|---|---|---|
+|<ul><li>Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*</li><li>[Intel DNNL](./docs/execution_providers/DNNL-ExecutionProvider.md)</li><li>[Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)</li><li>Intel MKL-ML</ul>|<ul><li>NVIDIA CUDA</li><li>[NVIDIA TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)</li><li>[DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)</li></ul>|<ul><li>[Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)</li><li>[ARM Compute Library](./docs/execution_providers/ACL-ExecutionProvider.md) (*preview*)</li><li>[Android Neural Networks API](./docs/execution_providers/NNAPI-ExecutionProvider.md) (*preview*)</li></ul>|<ul><li>[Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md)</li></ul>|
 
 * **[Get Started with ONNX Runtime Inferencing](inferencing-start)**
 * [Roadmap: Upcoming accelerators](./docs/Roadmap.md#accelerators-and-execution-providers)
@@ -100,7 +99,7 @@ Official builds are available on PyPi (Python) and Nuget (C#/C/C++):
 Dev builds created from the master branch are available for testing newer changes between official releases. Please use these at your own risk. We strongly advise against deploying these to production workloads as support is limited for dev builds.
 
 |Pypi (Python)|Nuget (C#/C/C++)|Other package repositories|
-|--|--|--|
+|---|---|---|
 *If using pip, run `pip install --upgrade pip` prior to downloading.*<br><br>CPU: [**onnxruntime**](https://pypi.org/project/onnxruntime) / [ort-nightly (dev)](https://test.pypi.org/project/ort-nightly)<br><br>GPU: [**onnxruntime-gpu**](https://pypi.org/project/onnxruntime-gpu) / [ort-gpu-nightly (dev)](https://test.pypi.org/project/ort-gpu-nightly) | CPU: [**Microsoft.ML.OnnxRuntime**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) / [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly) <br><br>GPU: [**Microsoft.ML.OnnxRuntime.Gpu**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu) / [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)</li></ul>|[Contributed non-official packages](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-uwp) (including Homebrew, Linuxbrew, and nixpkgs)<br><br>*These are not maintained by the core ONNX Runtime team and may have limited support; use at your discretion.*|
 
 #### System Requirements
@@ -138,7 +137,7 @@ For production scenarios, it's strongly recommended to build only from an [offic
 ### API Documentation
 
 |API|Supported Versions|Samples|
-|--|--|--|
+|---|---|---|
 [Python](https://aka.ms/onnxruntime-python)| 3.5, 3.6, 3.7<br>[Python Dev Notes](./docs/Python_Dev_Notes.md)| [Samples](./samples#python)|
 |[C#](docs/CSharp_API.md)| | [Samples](./samples#C)|
 |[C++](./include/onnxruntime/core/session/onnxruntime_cxx_api.h)| |[Samples](./samples#CC)|

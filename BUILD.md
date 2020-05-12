@@ -1,14 +1,39 @@
 # Building ONNX Runtime
 *[Dockerfiles](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/linux/docker) / [Pre-built packages](https://github.com/microsoft/onnxruntime#official-builds)*
 
-Inferencing
-* Baseline CPU
+## Content
 
-[Training](#training)
+**[Inferencing](#inferencing)**
+* [Start: Baseline CPU](#start-baseline-cpu)
+* [Supported architectures and build environments](#supported-architectures-and-build-environments)
+* [Common Build Instructions](#common-build-instructions)
+* Additional Build Instructions - complete list: `./build.sh (or .\build.bat) --help`
+  * [ONNX Runtime Server (Linux)](#Build-ONNX-Runtime-Server-on-Linux)
+  * Execution Providers
+    * [NVIDIA CUDA](#CUDA)
+    * [NVIDIA TensorRT](#TensorRT)
+    * [Intel DNNL/MKL-ML](#DNNL-and-MKLML)
+    * [Intel nGraph](#nGraph)
+    * [Intel OpenVINO](#openvino)
+    * [Android NNAPI](#Android-NNAPI)
+    * [Nuphar Model Compiler](#Nuphar)
+    * [DirectML](#DirectML)
+    * [ARM Compute Library](#ARM-Compute-Library)
+    * [Rockchip RKNPU](#RKNPU)
+  * Options
+    * [OpenMP](#OpenMP)
+    * [OpenBLAS](#OpenBLAS)
+    * [DebugNodeInputsOutputs](#DebugNodeInputsOutputs)
+  * Architectures
+    * [x86](#x86)
+    * [ARM](#ARM)
+    * [Android](#Android)
+
+**[Training](#Training)**
 
 ***
-
-## Build the baseline CPU version of ONNX Runtime from source
+# Inferencing
+## Start: Baseline CPU
 
 ### Pre-Requisites
 * Checkout the source tree:
@@ -48,9 +73,9 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
     ```
 ---
 
-# Supported architectures and build environments
+## Supported architectures and build environments
 
-## Architectures
+### Architectures
 
 |           | x86_32       | x86_64       | ARM32v7      | ARM64        |
 |-----------|:------------:|:------------:|:------------:|:------------:|
@@ -58,7 +83,7 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 |Linux      | YES          | YES          |  YES         | YES          |
 |Mac OS X   | NO           | YES          |  NO          | NO           |
 
-## Environments
+### Environments
 
 | OS          | Supports CPU | Supports GPU| Notes                              |
 |-------------|:------------:|:------------:|------------------------------------|
@@ -77,11 +102,8 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 |Windows 10   | YES          | Not tested       |
 |Linux        | NO           | YES(gcc>=5.0)    |
 
-## System Requirements
-For other system requirements and other dependencies, please see [this section](./README.md#system-requirements-pre-requisite-dependencies).
-
 ---
-# Common Build Instructions
+## Common Build Instructions
 |Description|Command|Additional description|
 |-----------|-----------|-----------|
 |**Basic build**|build.bat (Windows)<br>./build.sh (Linux)||
@@ -92,38 +114,10 @@ For other system requirements and other dependencies, please see [this section](
 |**Build Python wheel**|--build_wheel||
 |**Build C# and C packages**|--build_csharp||
 
-
-# Additional Build Instructions
-The complete list of build options can be found by running `./build.sh (or .\build.bat) --help`
-
-* [ONNX Runtime Server (Linux)](#Build-ONNX-Runtime-Server-on-Linux)
-
-**Execution Providers**
-* [NVIDIA CUDA](#CUDA)
-* [NVIDIA TensorRT](#TensorRT)
-* [Intel DNNL/MKL-ML](#DNNL-and-MKLML)
-* [Intel nGraph](#nGraph)
-* [Intel OpenVINO](#openvino)
-* [Android NNAPI](#Android-NNAPI)
-* [Nuphar Model Compiler](#Nuphar)
-* [DirectML](#DirectML)
-* [ARM Compute Library](#ARM-Compute-Library)
-* [Rockchip RKNPU](#RKNPU)
-
-**Options**
-* [OpenMP](#OpenMP)
-* [OpenBLAS](#OpenBLAS)
-* [DebugNodeInputsOutputs](#DebugNodeInputsOutputs)
-
-**Architectures**
-* [x86](#x86)
-* [ARM](#ARM)
-* [Android](#Android)
-
 ---
 
 ## Build ONNX Runtime Server on Linux
-Read more about ONNX Runtime Server [here](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md)
+Read more about ONNX Runtime Server [here](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md).
 
 ### Pre-Requisites
 * ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL.
@@ -142,7 +136,6 @@ Build command:
 ```
 
 ---
-
 
 ## Execution Providers
 
@@ -216,7 +209,9 @@ See more information on DNNL and MKL-ML [here](./docs/execution_providers/DNNL-E
 
 #### Build Instructions
 ##### Linux
+
 DNNL: `./build.sh --use_dnnl`
+
 ---
 
 
@@ -382,7 +377,7 @@ index 7dfa97c..6d99e71 100644
 ./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
-Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#nuphar-public-preview)
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#nuphar-public-preview).
 
 ---
 
@@ -400,7 +395,7 @@ The DirectML execution provider supports building for both x64 and x86 architect
 ### ARM Compute Library
 See more information on the ACL Execution Provider [here](./docs/execution_providers/ACL-ExecutionProvider.md).
 
-#### Prerequisites
+#### Pre-Requisites
 * Supported backend: i.MX8QM Armv8 CPUs
 * Supported BSP: i.MX8QM BSP
   * Install i.MX8QM BSP: `source fsl-imx-xwayland-glibc-x86_64-fsl-image-qt5-aarch64-toolchain-4*.sh`
@@ -432,7 +427,7 @@ onnxruntime_perf_test
 onnxruntime_test_all
 ```
 
-#### Build Instructions(Jetson Nano)
+#### Build Instructions (Jetson Nano)
 
 1. Build ACL Library (skip if already built)
 ```
@@ -521,25 +516,13 @@ See more information on the RKNPU Execution Provider [here](./docs/execution_pro
 
 ### DebugNodeInputsOutputs
 OnnxRuntime supports build options for enabling debugging of intermediate tensor shapes and data.
+
 #### Build Instructions
-##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
-Dump tensor input/output shapes for all nodes to stdout.
-```
-# Linux
-./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
-# Windows
-.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
-```
-##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
-Dump tensor input/output shapes and output data for all nodes to stdout.
-```
-# Linux
-./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
-# Windows
-.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
-```
-##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0
-To disable this functionality after previously enabling, set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0 or delete CMakeCache.txt.
+|Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1|Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2|Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0|
+|--|--|--|
+|Dump tensor input/output shapes for all nodes to stdout|Dump tensor input/output shapes and output data for all nodes to stdout|Disable this functionality after previously enabling|
+**Linux**<br> `./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1`<br><br>**Windows**<br>`.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1`|**Linux**<br>`./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2`<br><br>**Windows**<br>`.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2`| set `onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0` or delete CMakeCache.txt.|
+
 
 ---
 
@@ -670,6 +653,8 @@ Install Android NDK from https://developer.android.com/ndk/downloads
 ```
 
 If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+
+***
 
 # Training
 ## Pre-Requisites
