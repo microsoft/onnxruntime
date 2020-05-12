@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/make_unique.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
@@ -9,6 +10,7 @@
 #include "core/session/inference_session.h"
 #include "test_utils.h"
 #include "test/test_environment.h"
+#include "test/framework/TestAllocatorManager.h"
 #include "asserts.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -19,17 +21,6 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 typedef std::vector<onnxruntime::NodeArg*> ArgMap;
-
-std::shared_ptr<onnxruntime::Model> DummyGraphWithClip() {
-  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
-  onnxruntime::Graph& graph = model->MainGraph();
-  TypeProto tensor_float;
-  tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  onnxruntime::NodeArg input_def("X", &tensor_float), output_def("Y", &tensor_float);
-
-  graph.AddNode("node1", "Clip", "clip operator", ArgMap{&input_def}, ArgMap{&output_def});
-  return model;
-}
 
 std::unique_ptr<IExecutionProvider> CreateCPUExecutionProvider() {
   CPUExecutionProviderInfo info;
@@ -69,8 +60,9 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan;
   // TODO below line is for testing only. In production use SequentialPlanner::CreatePlan()
   SequentialPlannerContext context(ExecutionMode::ORT_SEQUENTIAL);
-  ASSERT_STATUS_OK(SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
-                                         state.GetOrtValueNameIdxMap(), context, p_seq_exec_plan));
+  ASSERT_STATUS_OK(SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers,
+                                                 kernel_registry_manager, state.GetOrtValueNameIdxMap(), context,
+                                                 p_seq_exec_plan));
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
 
   vector<OrtValue> outputs;
@@ -81,8 +73,9 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
 
   TensorShape shape(std::vector<int64_t>{2, 3});
   OrtValue& mlvalue0 = *frame.GetMutableNodeInputOrOutputMLValue(start_index);
+  const auto& memory_info = execution_providers.Get(xp_typ)->GetAllocator(0, OrtMemTypeDefault)->Info();
   ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue0, start_index, DataTypeImpl::GetType<float>(),
-                                                    execution_providers.Get(xp_typ)->GetAllocator(0, OrtMemTypeDefault)->Info(), shape));
+                                                            memory_info, shape));
 
   OrtValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   ASSERT_TRUE(p_ml_value != nullptr);
@@ -97,10 +90,10 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   TensorShape shape2(std::vector<int64_t>{3, 2});
   OrtValue& mlvalue1 = *frame.GetMutableNodeInputOrOutputMLValue(start_index + 1);
   ASSERT_STATUS_OK(frame.AllocateMLValueTensorPreAllocateBuffer(mlvalue1,
-                                                        start_index,
-                                                        DataTypeImpl::GetType<float>(),
-                                                        p_tensor->Location(),
-                                                        shape2));
+                                                                start_index,
+                                                                DataTypeImpl::GetType<float>(),
+                                                                p_tensor->Location(),
+                                                                shape2));
 
   const OrtValue* p_ml_value_const = frame.GetNodeInputOrOutputMLValue(1);
   auto tensor2 = p_ml_value_const ? &(p_ml_value_const->Get<Tensor>()) : nullptr;
@@ -224,8 +217,9 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
 
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan = onnxruntime::make_unique<SequentialExecutionPlan>();
   SequentialPlannerContext context(ExecutionMode::ORT_SEQUENTIAL);
-  ASSERT_STATUS_OK(SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
-                                         mlvalue_name_idx_map, context, p_seq_exec_plan));
+  ASSERT_STATUS_OK(SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers,
+                                                 kernel_registry_manager, mlvalue_name_idx_map, context,
+                                                 p_seq_exec_plan));
 
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
 
@@ -237,19 +231,19 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   OrtValue& mlvalue5 = *frame.GetMutableNodeInputOrOutputMLValue(5);
 
   ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue3, 3,
-                                                    DataTypeImpl::GetType<float>(),
-                                                    cpu_allocator->Info(),
-                                                    TensorShape(std::vector<int64_t>{2, 2})));
+                                                            DataTypeImpl::GetType<float>(),
+                                                            cpu_allocator->Info(),
+                                                            TensorShape(std::vector<int64_t>{2, 2})));
 
   ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue4, 4,
-                                                    DataTypeImpl::GetType<float>(),
-                                                    cpu_allocator->Info(),
-                                                    TensorShape(std::vector<int64_t>{2, 3})));
+                                                            DataTypeImpl::GetType<float>(),
+                                                            cpu_allocator->Info(),
+                                                            TensorShape(std::vector<int64_t>{2, 3})));
 
   ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue5, 5,
-                                                    DataTypeImpl::GetType<float>(),
-                                                    cpu_allocator->Info(),
-                                                    TensorShape(std::vector<int64_t>{2, 3})));
+                                                            DataTypeImpl::GetType<float>(),
+                                                            cpu_allocator->Info(),
+                                                            TensorShape(std::vector<int64_t>{2, 3})));
   MemoryPatternGroup pattern;
   ASSERT_STATUS_OK(frame.GeneratePatterns(&pattern));
 
@@ -295,6 +289,65 @@ TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {
 
   EXPECT_FALSE(st.IsOK()) << st;
   EXPECT_THAT(st.ErrorMessage(), testing::HasSubstr("Shape mismatch attempting to re-use buffer."));
+}
+
+// Test that when an initializer is a graph output it is handled correctly
+TEST(ExecutionFrameTestInit, InitializerAsOutput) {
+  const std::vector<float> expected{
+      1.764052391052246f, 0.40015721321105957f, 0.978738009929657f, 2.2408931255340576f, 1.8675580024719238f,
+      -0.9772778749465942f, 0.9500884413719177f, -0.15135720372200012f, -0.10321885347366333f, 0.4105985164642334f,
+      0.14404356479644775f, 1.4542734622955322f, 0.7610377073287964f, 0.12167501449584961f, 0.44386324286460876f,
+      0.3336743414402008f, 1.4940791130065918f, -0.2051582634449005f, 0.3130677044391632f, -0.8540957570075989f,
+      -2.5529897212982178f, 0.653618574142456f, 0.8644362092018127f, -0.7421650290489197f, 2.269754648208618f};
+
+  SessionOptions so;
+
+  // test if pre-allocated fetch is provided the initializer values are copied into that buffer
+  {
+    InferenceSession session(so, GetEnvironment());
+    ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/initializer_as_output.onnx")));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+    auto p_tensor = onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape({5, 5}), allocator);
+    const void* orig_buffer = p_tensor->DataRaw();
+
+    std::vector<OrtValue> results;
+    results.resize(1);
+    results[0].Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
+                    DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+    RunOptions ro;
+    ASSERT_STATUS_OK(session.Run(ro, {}, {}, {"values"}, &results));
+
+    EXPECT_EQ(results[0].Get<Tensor>().DataRaw(), orig_buffer);
+    EXPECT_THAT(results[0].Get<Tensor>().DataAsSpan<float>(), ::testing::ContainerEq(gsl::make_span(expected)));
+  }
+
+  // test that if no pre-allocated fetch is provided a new OrtValue is allocated for the results
+  {
+    class TestInferenceSesssion : public InferenceSession {
+     public:
+      TestInferenceSesssion(const SessionOptions& session_options,
+                            const Environment& session_env)
+          : InferenceSession(session_options, session_env) {
+      }
+
+      const SessionState& GetSessionState() const { return *session_state_; }
+    };
+
+    TestInferenceSesssion session(so, GetEnvironment());
+    ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/initializer_as_output.onnx")));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    std::vector<OrtValue> results;
+    RunOptions ro;
+    ASSERT_STATUS_OK(session.Run(ro, {}, {}, {"values"}, &results));
+
+    // output buffer should not be the same as the initializer in SessionState
+    const auto& initializers = session.GetSessionState().GetInitializedTensors();
+    EXPECT_NE(results[0].Get<Tensor>().DataRaw(), initializers.at(0).Get<Tensor>().DataRaw());
+    EXPECT_THAT(results[0].Get<Tensor>().DataAsSpan<float>(), ::testing::ContainerEq(gsl::make_span(expected)));
+  }
 }
 
 }  // namespace test
