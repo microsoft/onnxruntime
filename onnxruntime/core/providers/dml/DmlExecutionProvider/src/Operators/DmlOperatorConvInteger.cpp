@@ -37,6 +37,20 @@ public:
         m_inputTensorDescs[IN_X] = CreateTensorDescFromInput(kernelInfo, 0/*Onnx Index*/, TensorAxis::DoNotCoerce, TensorAxis::NoPlacementAdjustment, NonspatialDimensionCount, std::nullopt);
         m_inputTensorDescs[IN_F] = CreateTensorDescFromInput(kernelInfo, 1/*Onnx Index*/, TensorAxis::DoNotCoerce, TensorAxis::NoPlacementAdjustment, NonspatialDimensionCount, std::nullopt);
 
+        uint32_t dmlDimSize = m_inputTensorDescs[0].GetDimensionCount();
+
+        // Resize the Filter ZeroPoint to be the same dimension as the input tensor.
+        // The 1D tensor needs to be moved to the C channel.
+        m_inputTensorDescs[IN_F_ZERO_POINT] = CreateTensorDescFromInput(
+            kernelInfo, 
+            3/*Onnx Index*/, 
+            TensorAxis::DoNotCoerce, 
+            TensorAxis::C,
+            TensorAxis::LeftAligned,
+            std::nullopt,
+            dmlDimSize
+            );
+
         m_outputTensorDescs[0] = CreateTensorDescFromOutput(kernelInfo, 0, TensorAxis::DoNotCoerce, TensorAxis::NoPlacementAdjustment, NonspatialDimensionCount, std::nullopt);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
