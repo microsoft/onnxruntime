@@ -102,7 +102,3 @@ static bool SkipGpuTests()
   if (SkipGpuTests()) {                    \
     WINML_SKIP_TEST("Gpu tests disabled"); \
   }
-
-static void SkipTest() {
-  WINML_SKIP_TEST("");
-}
