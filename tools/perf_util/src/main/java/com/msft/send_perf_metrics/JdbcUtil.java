@@ -7,7 +7,7 @@ public class JdbcUtil {
 	static java.sql.Connection GetConn() throws Exception {
 		try (java.io.InputStream in = App.class.getResourceAsStream("/jdbc.properties")) {
 			if (in == null)
-				throw new RuntimeException("err");
+				throw new RuntimeException("Error reading jdbc properties");
 			Properties props = new Properties();
 			props.load(in);
 			return DriverManager.getConnection(props.getProperty("url"), props.getProperty("user"),
