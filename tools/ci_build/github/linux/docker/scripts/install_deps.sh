@@ -120,8 +120,12 @@ elif [ $DEVICE_TYPE = "gpu" ]; then
       ls -la .
       echo "ls -la ../"
       ls -la ../
-      cp ./pyt_patch/symbolic_opset10.py ${PATH_TO_SYMBOLIC10}
-      echo "cp ./pyt_patch/symbolic_opset10.py"
+      echo "ls -la ../scripts"
+      ls -la ../scripts
+      echo "ls -la ../src"
+      ls -la ../src
+      cp ../scripts/pyt_patch/symbolic_opset10.py ${PATH_TO_SYMBOLIC10}
+      echo "cp ../scripts/pyt_patch/symbolic_opset10.py"
     fi
     if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
       ${PYTHON_EXE} -m pip install transformers
