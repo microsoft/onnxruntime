@@ -526,21 +526,17 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
   const int total_rows = max_sequence_length * batch_size_;
 
   float alpha = 1.0f;
-  float beta = 0.0f;  // zero out outputZRH_ when calling ComputeGemm.
 
   // apply weights to all the inputs
   ComputeGemm(total_rows, hidden_size_x3, input_size_, alpha,
               inputs.cbegin(), inputs.cend(),
               input_size_,
               input_weights.cbegin(), input_weights.cend(),
-              input_size_, beta,
+              input_size_, 0.f,
               outputZRH_.begin(), outputZRH_.end(),
               hidden_size_x3, ttp_);
 
   DumpMatrix("inputs with weights applied", outputZRH_.data(), seq_length_ * batch_size_ * 3, hidden_size_);
-
-  // set to 1 so the weighted inputs in outputZRH_ are added to the result in the next call to ComputeGemm
-  beta = 1.0f;
 
   // output shape is [seq_length, num_directions, batch_size, hidden_size]
   // if we are doing 2 directions and this is the forward pass we're writing to the real output so
@@ -599,7 +595,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
                 prev_Ht, prev_Ht_end,
                 hidden_size_,
                 recurrent_weightsZR.cbegin(), recurrent_weightsZR.cend(),
-                hidden_size_, beta,
+                hidden_size_, 1.f,  // beta == 1 so we add existing values in outputZRH_
                 outputZRH_.begin() + out_added_offset, outputZRH_.end(),
                 hidden_size_x3, ttp_);
 
@@ -619,8 +615,10 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
                   prev_Ht, prev_Ht_end,  // Ht-1
                   hidden_size_,
                   recurrent_weightsH.cbegin(), recurrent_weightsH.cend(),  // Rh^T
-                  hidden_size_, beta,
-                  linear_output_.begin(), linear_output_.end(),  // pre: Rbh if use_bias_, post:output
+                  hidden_size_,
+                  use_bias_ ? 1.f : 0.f,  // don't add values in linear_output_ if no bias input
+                  linear_output_.begin(),
+                  linear_output_.end(),  // pre: Rbh if use_bias_, post:output
                   hidden_size_, ttp_);
 
       DumpMatrix("Ht-1 * (Rh^T) + Rbh " + seqno_str, linear_output_.data(), batch_size_, hidden_size_);
@@ -690,7 +688,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
                   cur_h_local, cur_h_local_end,  // rt (.) Ht-1
                   hidden_size_,
                   recurrent_weightsH.cbegin(), recurrent_weightsH.cend(),  // Rh^T
-                  hidden_size_, beta,
+                  hidden_size_, 1.f,                                       // beta == 1 to add Xt*(Wh^T) from out_H
                   out_H, outputZRH_.end(),
                   hidden_size_x3, ttp_);
     }
@@ -830,9 +828,7 @@ void UniDirectionalGru<T>::AllocateBuffers() {
   }
 
   if (linear_before_reset_) {
-    // if use_bias_ is true we copy bias values to this as the first use. if it's false we don't and need to initialize
-    bool fill = !use_bias_;
-    linear_output_ = Allocate(allocator_, batch_size_ * hidden_size_, linear_output_ptr_, fill);
+    linear_output_ = Allocate(allocator_, batch_size_ * hidden_size_, linear_output_ptr_);
   }
 
   auto batch_times_seq_length = batch_size_ * seq_length_;
