@@ -67,10 +67,31 @@ elif '--use_nuphar' in sys.argv:
     sys.argv.remove('--use_nuphar')
 # --use_acl is specified in build.py, but not parsed here
 
-
-is_manylinux1 = False
-if environ.get('AUDITWHEEL_PLAT', None) == 'manylinux1_x86_64' or environ.get('AUDITWHEEL_PLAT', None) == 'manylinux2010_x86_64' :
-    is_manylinux1 = True
+# PEP 513 defined manylinux1_x86_64 and manylinux1_i686
+# PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
+# PEP 599 defines the following platform tags:
+# manylinux2014_x86_64
+# manylinux2014_i686
+# manylinux2014_aarch64
+# manylinux2014_armv7l
+# manylinux2014_ppc64
+# manylinux2014_ppc64le
+# manylinux2014_s390x
+manylinux_tags = [
+    'manylinux1_x86_64',
+    'manylinux1_i686',
+    'manylinux2010_x86_64',
+    'manylinux2010_i686',
+    'manylinux2014_x86_64',
+    'manylinux2014_i686',
+    'manylinux2014_aarch64',
+    'manylinux2014_armv7l',
+    'manylinux2014_ppc64',
+    'manylinux2014_ppc64le',
+    'manylinux2014_s390x',
+]
+ENV_AUDITWHEEL_PLAT = environ.get('AUDITWHEEL_PLAT', None)
+is_manylinux1 = ENV_AUDITWHEEL_PLAT in manylinux_tags
 
 
 class build_ext(_build_ext):

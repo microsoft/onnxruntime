@@ -724,12 +724,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"resize_downsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
     broken_tests.insert({"resize_upsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
     broken_tests.insert({"resize_upsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
-    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-
-    // These tests are temporarily disabled pending a fix to the DML EP for handling of the output_padding attribute
-    broken_tests.insert({"ConvTranspose2d", "Temporarily disabled due to EP bug"});
-    broken_tests.insert({"ConvTranspose2d_no_bias", "Temporarily disabled due to EP bug"});
-    broken_tests.insert({"operator_convtranspose", "Temporarily disabled due to EP bug"});
 
     // These tests are temporarily disabled pending investigation
     broken_tests.insert({"dynamicquantizelinear_expanded", "Temporarily disabled pending investigation"});
