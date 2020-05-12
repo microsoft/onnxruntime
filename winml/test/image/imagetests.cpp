@@ -451,6 +451,12 @@ TEST_P(BatchTest, BatchSupport) {
     if (VideoFrameSource::FromDirect3DSurface == param.video_frame_source && LearningModelDeviceKind::Cpu == param.device_kind) {
         return;
     }
+    if (LearningModelDeviceKind::Cpu != param.device_kind ||
+        VideoFrameSource::FromDirect3DSurface == param.video_frame_source ||
+        VideoFrameSource::FromDirect3DSurface == param.output_video_frame_source ||
+        VideoFrameSource::FromUnsupportedD3DSurface == param.output_video_frame_source) {
+        GPUTEST;
+    }
 
     // create model, device and session
     PrepareModelSessionBinding(param.model_file_name, param.device_kind, optimized_batch_size);
