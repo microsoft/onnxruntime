@@ -143,7 +143,7 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
 
   const T* logit_data = logit.template Data<T>();
   const Tin* label_data = label.template Data<Tin>();
-  T* total_loss_data __attribute__((unused)) = total_loss->template MutableData<T>();
+  T* total_loss_data = total_loss->template MutableData<T>();
   T* log_prob_data = log_prob->template MutableData<T>();
 
   // calculate logsoftmax
