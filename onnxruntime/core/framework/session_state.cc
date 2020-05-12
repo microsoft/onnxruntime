@@ -239,6 +239,9 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
     int node_index = node_index_info.GetNodeOffset(node_plan.node_index);
     auto* node = graph_viewer_->GetNode(node_plan.node_index);
     int output_start = node_index + static_cast<int>(node->InputDefs().size()) + static_cast<int>(node->ImplicitInputDefs().size());
+#ifdef PRINT_MEM_PATTERN
+    std::cout << "Plan for node: " << node->Name() << "(" << node->OpType() << ")" << std::endl;
+#endif
     //allocate output
     for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
       const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);

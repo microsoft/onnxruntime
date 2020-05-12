@@ -92,6 +92,13 @@ class TrainingSession : public InferenceSession {
     // If not provided, GIST is disabled.
     optional<GistConfiguration> gist_config{};
 
+    struct MemorySwapConfiguration {
+      int min_topo_distance{10};
+    };
+    // The memory swap configuration.
+    // If not provided, memory swap is disabled.
+    optional<MemorySwapConfiguration> memswap_config{};
+
     struct TensorboardConfiguration {
       // The summary name.
       std::string summary_name{};
@@ -337,6 +344,11 @@ class TrainingSession : public InferenceSession {
 
   common::Status AddGistEncoding();
 
+  /** Add memory swap to graph.
+  @param min_topo_distance minimal distance in topological sort to enable memory swap.
+  */
+  common::Status AddMemorySwap(int min_topo_distance);
+
   /** Add tensorboard summary nodes to the graph.
   @param summary_name name for the merged summary node.
   @param scalar_nodes tensor names to add scalar summary nodes for.
@@ -464,6 +476,8 @@ class TrainingSession : public InferenceSession {
   std::unordered_set<std::string> dropout_eval_feeds_;
   OptimizerGraphConfig opt_graph_config_;
   std::unordered_map<std::string, OptimizerNodeConfig> opt_configs_;
+
+  optional<int> memswap_min_topo_distance_;
 };
 }  // namespace training
 }  // namespace onnxruntime

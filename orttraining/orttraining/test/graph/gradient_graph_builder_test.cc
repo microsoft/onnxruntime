@@ -71,17 +71,26 @@ static Status BuildBackPropGraph(
 }
 
 /**
- * Run a training session for this model for 1 epoch, using batch size of 1 and synthetic input data.
+  * Run a training session for this model for 1 epoch, using batch size of 1 and synthetic input data.
  * @param so - SessionOptions for this run.
  * @param backprop_model_file - Model file to be run. This should already contain loss function and backward prop nodes.
  * @return TrainingSession for this run.
  */
 static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
-    const SessionOptions& so, const PathString& backprop_model_file) {
+    const SessionOptions& so, const PathString& backprop_model_file, bool use_cuda = false) {
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
 
   std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, *env);
+
+#ifdef USE_CUDA
+  if (use_cuda) {
+    CUDAExecutionProviderInfo xp_info;
+    EXPECT_TRUE(training_session->RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)).IsOK());
+  }
+#else
+  ORT_UNUSED_PARAMETER(use_cuda);
+#endif
 
   ORT_THROW_IF_ERROR(training_session->Load(backprop_model_file));
 
@@ -203,6 +212,21 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
   SessionOptions so{};
   RunTrainingSessionWithChecks(so, backprop_model_file);
 }
+
+#ifdef USE_CUDA
+TEST(GradientGraphBuilderTest, TrainingSession_WithMemSwap) {
+  auto config = MakeBasicTrainingConfig();
+  // config to enable memory swap
+  config.memswap_config = TrainingSession::TrainingConfiguration::MemorySwapConfiguration{};
+  config.memswap_config.value().min_topo_distance = 1;
+
+  PathString backprop_model_file;
+  ASSERT_STATUS_OK(BuildBackPropGraph(ORIGINAL_MODEL_PATH, config, backprop_model_file));
+
+  SessionOptions so{};
+  RunTrainingSessionWithChecks(so, backprop_model_file, /*use_cuda*/ true);
+}
+#endif
 
 TEST(GradientGraphBuilderTest, TrainingSession_WithLogging) {
   const auto& log_manager = DefaultLoggingManager();
@@ -486,6 +510,9 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
       {"Add", {{1, 1.0f}, {1, 9.999999960041972e-13f}}},
       {"Mul", {{1, 0.5f}, {1, -10000.0f}}},
       {"Sub", {{0, 1.0f}}}};
+
+  // config to enable memory swap
+  config.memswap_config = TrainingSession::TrainingConfiguration::MemorySwapConfiguration{};
 
   PathString backprop_model_file;
   ASSERT_STATUS_OK(BuildBackPropGraph(model_path, config, backprop_model_file));

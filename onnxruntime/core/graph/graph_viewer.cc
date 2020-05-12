@@ -14,6 +14,16 @@ namespace onnxruntime {
 
 struct NodeCompare {
   bool operator()(const Node* n1, const Node* n2) const {
+    // some special node compare rules
+    // to make sure SwapFromHost shows as late as possible in topological sort
+    // since graph travesed in reverse DFS order
+    if (n1->OpType() != n2->OpType()) {
+      if (n1->OpType() == "SwapFromHost")
+        return true;
+      if (n2->OpType() == "SwapFromHost")
+        return false;
+    }
+
     return n1->Index() < n2->Index();
   }
 };

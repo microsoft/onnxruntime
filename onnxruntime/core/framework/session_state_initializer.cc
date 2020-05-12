@@ -27,6 +27,13 @@
 
 namespace onnxruntime {
 
+// uncomment this to print execution and allocation plan
+//#define PRINT_EXECUTION_PLAN
+
+#ifdef PRINT_EXECUTION_PLAN
+std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionPlan*, const SessionState*> planinfo);
+#endif
+
 // T should have signature of '(int idx, const OrtValue& value, const OrtCallback& d) -> Status'
 template <typename T>
 static common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
@@ -85,6 +92,10 @@ common::Status SessionStateInitializer::CreatePlan(
 
   const auto* exec_plan_ptr = session_state_.GetExecutionPlan();
   ORT_ENFORCE(exec_plan_ptr, "Execution plan was not found in SessionState. CreatePlan must be called first.");
+
+#ifdef PRINT_EXECUTION_PLAN
+  std::cout << std::make_pair(exec_plan_ptr, &session_state_) << std::endl;
+#endif
 
   std::unique_ptr<ITensorAllocator> tensor_allocator(ITensorAllocator::Create(
       enable_mem_pattern_, *exec_plan_ptr, execution_providers_, session_state_.GetMutableWeightsBuffers()));

@@ -23,6 +23,10 @@
 //Gist Encoding
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 
+//Memory Swap
+#include "orttraining/core/optimizer/memory_swap_rewriter.h"
+#include "orttraining/core/optimizer/promote_topo_order_rewriter.h"
+
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_allocator.h"
@@ -120,7 +124,7 @@ Status TrainingSession::ConfigureForTraining(
   TrainingConfigurationResult config_result{};
 
   ORT_ENFORCE(config.distributed_config.pipeline_parallel_size > 0,
-    "This parameter should be 1 if there is no pipelie parallelism. Otherwise, it's the number of pipeline stages.");
+              "This parameter should be 1 if there is no pipelie parallelism. Otherwise, it's the number of pipeline stages.");
 
   DistributedRunContext::CreateInstance({config.distributed_config.world_rank,
                                          config.distributed_config.world_size,
@@ -337,6 +341,13 @@ Status TrainingSession::ConfigureForTraining(
     ORT_RETURN_IF_ERROR(AddGistEncoding());
   }
 
+  // add mem swap
+  if (config.memswap_config.has_value()) {
+    // we need to run predefined optimization again
+    // to make sure memory swap on final graph
+    ORT_RETURN_IF_ERROR(AddMemorySwap(config.memswap_config.value().min_topo_distance));
+  }
+
   // If the current node is in rank0 or if the current session is running pipeline (in which case different rank would
   // store different model partition), and if model_with_training_graph_path is specified, save the model.
   // Note: in the pipeline case, different ranks may resident in the same node. This could lead to a potential write
@@ -544,6 +555,65 @@ Status TrainingSession::AddGistEncoding() {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add Gist Encoding:", exp.what());
   }
   return DoPostLoadProcessing(*model_);
+}
+
+Status TrainingSession::AddMemorySwap(int min_topo_distance) {
+  Graph& graph = model_->MainGraph();
+
+  // apply default transformers in inference session, same as in core/framework/session_options.h
+  // this is required to make sure mem swap nodes are instead in the right place in final graph.
+  // 10 is the same as in max_num_graph_transformation_steps in core/framework/session_options.h
+  onnxruntime::GraphTransformerManager default_graph_transformation_mgr{10};
+  AddPredefinedTransformers(default_graph_transformation_mgr, TransformerLevel::Level2, {});
+  graph.Resolve();
+
+  // then apply mem swap transformers
+  onnxruntime::GraphTransformerManager memswap_graph_transformation_mgr{1};
+
+  auto transformer1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleMemSwapTransformer");
+  ORT_RETURN_IF_ERROR(transformer1->Register(onnxruntime::make_unique<MemorySwapRewriter>(min_topo_distance)));
+  ORT_RETURN_IF_ERROR(memswap_graph_transformation_mgr.Register(std::move(transformer1), TransformerLevel::Level3));
+
+  auto transformer2 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RulePromoteTopologicalOrderTransformer");
+  ORT_RETURN_IF_ERROR(transformer2->Register(onnxruntime::make_unique<PromoteTopologicalOrderRewriter>()));
+  ORT_RETURN_IF_ERROR(memswap_graph_transformation_mgr.Register(std::move(transformer2), TransformerLevel::Level3));
+
+  ORT_RETURN_IF_ERROR(memswap_graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *session_logger_));
+
+#if 0
+  std::cout << "Topo order after memory swap:" << std::endl;
+  GraphViewer gv(graph);
+  for (auto i : gv.GetNodesInTopologicalOrder()) {
+    const auto& node = *gv.GetNode(i);
+    std::cout << node.Name() << "(" << node.OpType() << ") [";
+    const auto* shape_proto = node.OutputDefs()[0]->Shape();
+    if (shape_proto) {
+      for (auto dim : shape_proto->dim()) {
+        if (dim.has_dim_value())
+          std::cout << dim.dim_value();
+        else if (dim.has_dim_param())
+          std::cout << dim.dim_param();
+        else
+          std::cout << "?";
+
+        std::cout << ",";
+      }
+    } else {
+      std::cout << "*";
+    }
+    std::cout << "], Output/control to {";
+    for (auto out_iter = node.OutputEdgesBegin(); out_iter != node.OutputEdgesEnd(); ++out_iter) {
+      if (out_iter->IsControlEdge()) {
+        std::cout << "(c) ";
+      }
+      std::cout << out_iter->GetNode().Name() << "(" << out_iter->GetNode().OpType() << "), ";
+    }
+    std::cout << "}" << std::endl;
+  }
+  std::cout << std::endl;
+#endif
+
+  return Status::OK();
 }
 
 Status TrainingSession::AddTensorboard(const std::string& summary_name,
@@ -804,8 +874,8 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
       OrtValue feed_value;
       // We allocate on CPU first, copy will be taken care off downstream.
       auto cpu_allocator = session_state_->GetExecutionProviders()
-                           .Get(onnxruntime::kCpuExecutionProvider)
-                           ->GetAllocator(0, OrtMemTypeDefault);
+                               .Get(onnxruntime::kCpuExecutionProvider)
+                               ->GetAllocator(0, OrtMemTypeDefault);
       feed_value = onnxruntime::MakeScalarMLValue<float>(cpu_allocator, 0.f, true /*is_1d*/);
       // Bind new feed to graph input.
       ORT_RETURN_IF_ERROR(io_binding.BindInput(drop_ratio, feed_value));
@@ -835,11 +905,11 @@ Status TrainingSession::SetDropoutEvalFeedNames() {
 
   for (const auto& node : graph.Nodes()) {
     auto it = Dropout_Nodes.find(node.OpType());
-    if(it != Dropout_Nodes.cend()) {
+    if (it != Dropout_Nodes.cend()) {
       auto& ratio_name = node.InputDefs()[1]->Name();
       dropout_eval_feeds_.insert(ratio_name);
       ORT_ENFORCE(model_->MainGraph().GetProducerNode(ratio_name) == nullptr,
-      "Input: " + ratio_name + " should not have any producer node.");
+                  "Input: " + ratio_name + " should not have any producer node.");
       defs.AddGraphInputs({ratio_name});
     }
   }

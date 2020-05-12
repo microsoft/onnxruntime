@@ -54,6 +54,30 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
+// this is similar to MemcpyFromHost/MemcpyToHost
+// but with different OpTypes and CPU memory type for cudaMemcpyAsync
+ONNX_OPERATOR_KERNEL_EX(
+    SwapFromHost,
+    kOnnxDomain,
+    1,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .InputMemoryType<OrtMemTypeCPU>(0)
+        .ExecQueueId(kCudaStreamCopyIn)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Memcpy);
+
+ONNX_OPERATOR_KERNEL_EX(
+    SwapToHost,
+    kOnnxDomain,
+    1,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .OutputMemoryType<OrtMemTypeCPU>(0)
+        .ExecQueueId(kCudaStreamCopyOut)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Memcpy);
+
 }  // namespace cuda
 
 CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
@@ -106,6 +130,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   size_t free = 0;
   size_t total = 0;
   CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
+  cuda_mem_limit_ = std::min(free, cuda_mem_limit_);
 
   DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault,
@@ -295,6 +320,8 @@ namespace cuda {
 // opset 1 to 9
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, SwapFromHost);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, SwapToHost);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 4, 10, Concat);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 10, Unsqueeze);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 8, Flatten);
@@ -822,6 +849,8 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, SwapFromHost)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, SwapToHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 4, 10, Concat)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 10, Unsqueeze)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 8, Flatten)>,

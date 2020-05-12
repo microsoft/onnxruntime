@@ -4,6 +4,7 @@
 #pragma once
 
 #include <vector>
+#include <deque>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -74,13 +75,13 @@ class IExecutionFrame {
   // returns true if the ort_value_idx is an output from the graph
   bool IsOutput(int ort_value_idx) const;
 
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IExecutionFrame);
-
   const OrtValue& GetMLValue(int ort_value_index) const {
     ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_size_);
     return all_values_[ort_value_index];
   }
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IExecutionFrame);
 
   virtual AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const = 0;
 
@@ -164,6 +165,8 @@ class ExecutionFrame final : public IExecutionFrame {
 
   const AllocPlanPerValue& GetAllocationPlan(int ort_value_idx);
 
+  std::deque<int>* FindOrCreateQueueForGroupedAsyncBuffers(const void* p, bool create);
+
   const SessionState& session_state_;
 
   // map of index to custom allocator
@@ -188,5 +191,7 @@ class ExecutionFrame final : public IExecutionFrame {
   // we may allocate some memory for its outputs, if not planned.).
   // This field is not physical memory size.
   std::unordered_map<std::string, size_t> dynamic_activation_memory_sizes_in_byte_;
+  // deque for grouped async buffers
+  std::unordered_map<const void*, std::deque<int>> queues_for_grouped_async_buffers_;
 };
 }  // namespace onnxruntime

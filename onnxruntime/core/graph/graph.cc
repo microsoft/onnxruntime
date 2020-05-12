@@ -373,6 +373,10 @@ int Node::EdgeEnd::GetDstArgIndex() const {
   return dst_arg_index_;
 }
 
+bool Node::EdgeEnd::IsControlEdge() const {
+  return src_arg_index_ == INT_MAX && dst_arg_index_ == INT_MAX;
+}
+
 Node::NodeConstIterator::NodeConstIterator(EdgeConstIterator p_iter) {
   m_iter = p_iter;
 }
@@ -1116,21 +1120,16 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
     src_arg = nodes_[src_node_index]->GetDefinitions().output_defs[src_arg_slot];
   }
 
-  if (nullptr == src_arg) {
-    ORT_THROW("Invalid source node arg slot specified when removing edge.");
-  }
-
-  auto& dst_node_defs = nodes_[dst_node_index]->GetDefinitions();
-  if (dst_node_defs.input_defs.size() > static_cast<size_t>(dst_arg_slot)) {
-    dst_arg = dst_node_defs.input_defs[dst_arg_slot];
-  } else {
-    auto num_of_explicit_inputs = dst_node_defs.input_defs.size();
-    if (num_of_explicit_inputs + dst_node_defs.implicit_input_defs.size() > static_cast<size_t>(dst_arg_slot)) {
-      dst_arg = dst_node_defs.implicit_input_defs[dst_arg_slot - num_of_explicit_inputs];
+  if (nullptr != src_arg) {
+    auto& dst_node_defs = nodes_[dst_node_index]->GetDefinitions();
+    if (dst_node_defs.input_defs.size() > static_cast<size_t>(dst_arg_slot)) {
+      dst_arg = dst_node_defs.input_defs[dst_arg_slot];
+    } else {
+      auto num_of_explicit_inputs = dst_node_defs.input_defs.size();
+      if (num_of_explicit_inputs + dst_node_defs.implicit_input_defs.size() > static_cast<size_t>(dst_arg_slot)) {
+        dst_arg = dst_node_defs.implicit_input_defs[dst_arg_slot - num_of_explicit_inputs];
+      }
     }
-  }
-  if (nullptr == dst_arg) {
-    ORT_THROW("Invalid destination node arg slot specified when removing edge.");
   }
 
   if (src_arg != dst_arg) {
@@ -2577,11 +2576,8 @@ bool Graph::AddControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
     return false;
   }
 
-  GSL_SUPPRESS(es .84) {  // ignoring return from insert()
-    nodes_[src_node_index]->MutableRelationships().output_edges.insert(Node::EdgeEnd(*nodes_[dst_node_index]));
-    nodes_[dst_node_index]->MutableRelationships().input_edges.insert(Node::EdgeEnd(*nodes_[src_node_index]));
-    nodes_[dst_node_index]->MutableRelationships().control_inputs.insert(nodes_[src_node_index]->Name());
-  }
+  nodes_[src_node_index]->MutableRelationships().AddControlOutputEdge(Node::EdgeEnd(*nodes_[dst_node_index]));
+  nodes_[dst_node_index]->MutableRelationships().AddControlInputEdge(Node::EdgeEnd(*nodes_[src_node_index]));
 
   return true;
 }
@@ -2996,7 +2992,7 @@ Status Graph::InlineFunction(Node& node) {
       ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(subgraph_node_proto, *tensor));
       name_to_initial_tensor_[tensor->name()] = tensor;
     } else {
-      std::vector<NodeArg*> inputs, outputs;
+      std::vector<NodeArg *> inputs, outputs;
       for (auto* input : subgraph_node.InputDefs()) {
         auto it = remap_input_output.find(input->Name());
         if (it != remap_input_output.end())
