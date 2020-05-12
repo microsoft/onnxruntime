@@ -2,11 +2,14 @@
 // Licensed under the MIT License.
 
 #include "dynamicquantizelinear.h"
+
+#include <cfenv>
+#include <cmath>
+
+#include "core/mlas/inc/mlas.h"
+#include "core/platform/threadpool.h"
 #include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
-#include "core/mlas/inc/mlas.h"
-#include <cmath>
-#include <cfenv>
 
 namespace onnxruntime {
 
@@ -66,7 +69,11 @@ Status DynamicQuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   // quantize the data
   auto* output = y.template MutableData<T>();
-  MlasQuantizeLinear(x_data, output, num_of_elements, scale, zero_point);
+
+  concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
+  concurrency::ThreadPool::TryParallelFor(tp, num_of_elements, 2.0 /*cost*/, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+    MlasQuantizeLinear(x_data + begin, output + begin, end - begin, scale, zero_point);
+  });
 
   return Status::OK();
 }
