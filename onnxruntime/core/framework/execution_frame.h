@@ -25,10 +25,15 @@ class NodeIndexInfo;
 
 class IExecutionFrame {
  protected:
-  IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
-                  const std::unordered_map<int, OrtValue>& initializers, const std::vector<int>& fetch_mlvalue_idxs,
-                  const std::vector<OrtValue>& fetches, const OrtValueNameIdxMap& ort_value_idx_map,
-                  const NodeIndexInfo& node_index_info);
+  // Derived class must call Init in its ctor. We need to use some of the virtual methods in Init and those aren't
+  // initialized until the derived class is constructed.
+  IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
+                  const NodeIndexInfo& node_index_info,
+                  const std::vector<int>& fetch_mlvalue_idxs);
+
+  void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
+            const std::unordered_map<int, OrtValue>& initializers,
+            const std::vector<OrtValue>& fetches);
 
  public:
   virtual ~IExecutionFrame();
@@ -72,10 +77,6 @@ class IExecutionFrame {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IExecutionFrame);
 
-  void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
-            const std::unordered_map<int, OrtValue>& initializers,
-            const std::vector<OrtValue>& fetches);
-
   const OrtValue& GetMLValue(int ort_value_index) const {
     ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_size_);
     return all_values_[ort_value_index];
@@ -83,7 +84,10 @@ class IExecutionFrame {
 
   virtual AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const = 0;
 
-  virtual Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) = 0;
+  virtual Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape,
+                                             size_t nnz) = 0;
+
+  virtual Status CopyTensor(const Tensor& src, Tensor& dest) const = 0;
 
   const NodeIndexInfo& node_index_info_;
 
@@ -131,6 +135,7 @@ class ExecutionFrame final : public IExecutionFrame {
   AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const override;
   Status ReleaseMLValueImpl(int ort_value_idx) override;
   Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) override;
+  Status CopyTensor(const Tensor& src, Tensor& dest) const override;
 
   common::Status AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape,
                                              size_t nnz);

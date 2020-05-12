@@ -21,7 +21,6 @@
 INCLUDE mlasi.inc
         .list
 
-        EXTERN  MlasMaskMoveTableAvx:NEAR
         EXTERN  MlasMinimumF32Value:NEAR
 
 ;++
@@ -46,6 +45,10 @@ INCLUDE mlasi.inc
         LEAF_ENTRY MlasReduceMaximumF32KernelAvx, _TEXT
 
         vbroadcastss ymm0,DWORD PTR [MlasMinimumF32Value]
+        test    rdx,rdx
+        jz      ExitKernel
+        cmp     rdx,8
+        jb      ProcessRemainingCountBy1
         cmp     rdx,32
         jb      ProcessRemainingCountBy8
         vmovaps ymm1,ymm0
@@ -74,23 +77,22 @@ ProcessRemainingCountBy8:
         jmp     ProcessRemainingCountBy8
 
 ProcessRemainingCountLessThan8:
-        test    rdx,rdx
-        jz      ReduceScalar
-        lea     r10,MlasMaskMoveTableAvx+8*4
-        neg     rdx
-        vmovups ymm3,YMMWORD PTR [r10+rdx*4]
-        vmaskmovps ymm1,ymm3,YMMWORD PTR [rcx]
-        vmaxps  ymm1,ymm0,ymm1
-        vblendvps ymm0,ymm0,ymm1,ymm3           ; ignore masked elements
-
-ReduceScalar:
-        vextractf128 xmm1,ymm0,1
+        vextractf128 xmm1,ymm0,1                ; reduce to single scalar
         vmaxps  xmm0,xmm0,xmm1
         vshufps xmm1,xmm0,xmm0,0EEh
         vmaxps  xmm0,xmm0,xmm1
         vshufps xmm1,xmm0,xmm0,055h
         vmaxss  xmm0,xmm0,xmm1
+        test    rdx,rdx
+        jz      ExitKernel
 
+ProcessRemainingCountBy1:
+        vmaxss  xmm0,xmm0,DWORD PTR [rcx]
+        add     rcx,4                           ; advance input by 1 element
+        dec     edx
+        jnz     ProcessRemainingCountBy1
+
+ExitKernel:
         vzeroupper
         ret
 
@@ -149,12 +151,13 @@ ProcessRemainingCountBy8:
 ProcessRemainingCountLessThan8:
         test    rdx,rdx
         jz      ExitKernel
-        lea     r10,MlasMaskMoveTableAvx+8*4
-        neg     rdx
-        vmovups ymm3,YMMWORD PTR [r10+rdx*4]
-        vmaskmovps ymm0,ymm3,YMMWORD PTR [rcx]
-        vmulps  ymm0,ymm4,ymm0
-        vmaskmovps YMMWORD PTR [rcx],ymm3,ymm0
+
+ProcessRemainingCountBy1:
+        vmulss  xmm0,xmm4,DWORD PTR [rcx]
+        vmovss  DWORD PTR [rcx],xmm0
+        add     rcx,4                           ; advance output by 1 element
+        dec     edx
+        jnz     ProcessRemainingCountBy1
 
 ExitKernel:
         vzeroupper
@@ -226,13 +229,15 @@ ProcessRemainingCountBy8:
 ProcessRemainingCountLessThan8:
         test    r8,r8
         jz      ExitKernel
-        lea     r10,MlasMaskMoveTableAvx+8*4
-        neg     r8
-        vmovups ymm3,YMMWORD PTR [r10+r8*4]
-        vmaskmovps ymm0,ymm3,YMMWORD PTR [rcx]
-        vaddps  ymm0,ymm4,ymm0
-        vsubps  ymm0,ymm0,ymm5                  ; do as two steps for numeric stability
-        vmaskmovps YMMWORD PTR [rdx],ymm3,ymm0
+
+ProcessRemainingCountBy1:
+        vaddss  xmm0,xmm4,DWORD PTR [rcx]
+        add     rcx,4                           ; advance input by 1 element
+        vsubss  xmm0,xmm0,xmm5
+        vmovss  DWORD PTR [rdx],xmm0
+        add     rdx,4                           ; advance output by 1 element
+        dec     r8d
+        jnz     ProcessRemainingCountBy1
 
 ExitKernel:
         vzeroupper
