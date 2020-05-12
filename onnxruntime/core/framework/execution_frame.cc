@@ -132,6 +132,14 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
 
     // if the initializer is an output we need to allocate or use a provided fetch buffer and copy the data
     // so it can be returned to the caller.
+    //
+    // The alternative to handling this as a special case would be to disallow an initializer providing a graph output.
+    // There's nothing in the ONNX spec that says a graph output must come from a node output though.
+    // If we took that approach we'd need to:
+    //   - reject a model with an initializer or Constant node (as we convert those to initializers in Graph::Graph)
+    //     that produces a graph output even though it conforms to the ONNX spec
+    //   - update optimizers to not convert something to an initializer that is a graph output
+    //     (e.g. constant folding)
     if (IsOutput(ort_value_index)) {
       const Tensor& src = entry.second.Get<Tensor>();  // all initializers in ONNX are tensors
       OrtValue& dest = all_values_[ort_value_index];
