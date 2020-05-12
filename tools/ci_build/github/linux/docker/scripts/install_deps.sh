@@ -113,19 +113,9 @@ elif [ $DEVICE_TYPE = "gpu" ]; then
       ${PYTHON_EXE} -m pip install --upgrade --pre torch torchvision -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
 
       # patch pytorch onnx export opset version 10 to export nll_loss
-      echo "get PATH_TO_SYMBOLIC10"
       PATH_TO_SYMBOLIC10=$(${PYTHON_EXE} -c 'import torch; import os; print(os.path.join(os.path.dirname(torch.__file__), "onnx/"))')
-      echo ${PATH_TO_SYMBOLIC10}
-      echo "ls -la ."
-      ls -la .
-      echo "ls -la ../"
-      ls -la ../
-      echo "ls -la ../scripts"
-      ls -la ../scripts
-      echo "ls -la ../src"
-      ls -la ../src
+      echo "cp ../scripts/pyt_patch/symbolic_opset10.py ${PATH_TO_SYMBOLIC10}"
       cp ../scripts/pyt_patch/symbolic_opset10.py ${PATH_TO_SYMBOLIC10}
-      echo "cp ../scripts/pyt_patch/symbolic_opset10.py"
     fi
     if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
       ${PYTHON_EXE} -m pip install transformers
