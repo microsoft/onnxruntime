@@ -16,7 +16,7 @@ except ImportError as e:
     # If on Windows, check if this import error is caused by the user not installing the 2019 VC Runtime
     # The VC Redist installer usually puts the VC Runtime dlls in the System32 folder
     # This may not always paint the true picture as anyone building from source using VS 2017 might hit this error
-   	# because the machine might be missing the 2019 VC Runtime but it is not actually needed in that case and the 
+    # because the machine might be missing the 2019 VC Runtime but it is not actually needed in that case and the 
     # import error might actually be due to some other reason.
     # TODO: Add a guard against False Positive error message
     # As a proxy for checking if the 2019 VC Runtime is installed, we look for a specific dll only shipped with the 2019 VC Runtime
