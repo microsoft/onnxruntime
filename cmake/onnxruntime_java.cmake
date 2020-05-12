@@ -104,7 +104,7 @@ endif()
 if(CMAKE_SIZEOF_VOID_P EQUAL "8")
     set(JNI_ARCH x64)
 else()
-    set(JNI_ARCH x86)
+    message(FATAL_ERROR "Java is currently not supported for x86 architecture")
 endif()
 
 if (WIN32)
