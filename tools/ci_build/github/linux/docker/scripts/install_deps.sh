@@ -114,7 +114,7 @@ elif [ $DEVICE_TYPE = "gpu" ]; then
 
       # patch pytorch onnx export opset version 10 to export nll_loss
       PATH_TO_SYMBOLIC10=$(${PYTHON_EXE} -c 'import torch; import os; print(os.path.join(os.path.dirname(torch.__file__), "onnx/"))')
-      RUN cp ./pyt_patch/symbolic_opset10.py PATH_TO_SYMBOLIC10
+      cp ./pyt_patch/symbolic_opset10.py PATH_TO_SYMBOLIC10
     fi
     if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
       ${PYTHON_EXE} -m pip install transformers
