@@ -174,6 +174,9 @@ void VideoFrameToTensorConverter::VideoFrameToDX12Tensor(
     D3D11_TEXTURE2D_DESC videoFrameTextureDesc;
     spVideoFrameTexture->GetDesc(&videoFrameTextureDesc);
 
+    // Try to create shared surface so that the surface can be shared by other DX devices on the same adapter.
+    videoFrameTextureDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED | D3D11_RESOURCE_MISC_SHARED_NTHANDLE;
+
     if (_winmli::TextureIsOnDevice(spVideoFrameTexture.Get(), pDeviceCache->GetD3D11Device())) {
       // The texture is on our device, so we can just create own texture, share it and cache it
       if (!D3D11_cached_texture_) {
