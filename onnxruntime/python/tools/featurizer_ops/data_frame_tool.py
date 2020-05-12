@@ -5,7 +5,9 @@
 # This script is an experimental feature. Use at your own risk.
 # Contributions are welcome.
 
+from datetime import datetime
 import numpy as np
+import pandas as pd
 import onnxruntime as onnxrt
 
 ort_float_set = set([np.float32, np.float64])
@@ -46,7 +48,7 @@ class DataFrameTool():
         self._model_path = model_path
         self._sess_options = sess_options
         self._sess = onnxrt.InferenceSession(self._model_path, self._sess_options)
-
+        
     def _reshape_input(self, input_array, expected_shape):
         """
         :param - input_array numpy array. This one is obtained from DataFrame and expected to have
@@ -58,31 +60,36 @@ class DataFrameTool():
         # expected_shape rank is one, we will let onnxruntime to deal with it
         if len(expected_shape) == 1:
             return input_array
-
+            
         inferred_shape = [dim if dim else -1 for dim in expected_shape]
         return input_array.reshape(inferred_shape)
-
+     
     def _validate_type(self, input_meta, col_type):
         """
         : input_meta - meta info obtained from the model for the given input
         : col_type - dtype of the column
         : throws if conditions are not met
-
+        
          float16 and bool will always require exact match
          We attempt to convert any type to a string if it is required.
          With strings we always want to put this into a flat array, cast to np.object and then reshape as object
          Any other type to qualify for casting must match either integer or floating point types
+         Python datetime which is denoted in Pandas as datetime64[ns] is cast to int64
         """
         expected_type = types_dict[input_meta.type]
         if input_meta.type == 'tensor(string)':
-            return
+           return
         elif expected_type == col_type:
-            return
+           return
+        elif expected_type == np.int64 and str(col_type) == 'datetime64[ns]':
+           return
+        elif expected_type == np.uint32 and str(col_type) == 'category':
+           return
         elif expected_type in ort_float_set and str(col_type) in pd_float_set:
-            return
+           return
         elif expected_type in ort_int_set and str(col_type) in pd_int_set:
-            return
-
+           return
+           
         raise TypeError("Input {} requires type {} unable to cast column type {} ".format(
             input_meta.name, expected_type, col_type))
 
@@ -91,10 +98,10 @@ class DataFrameTool():
         Return a dictionary of input_name : a typed and shaped np.array of values for a given input_meta
         The function does the heavy lifting for _get_input_feeds()
 
-        :param df: See :class:`pandas.DataFrame`.
+        :param df: See :class:`pandas.DataFrame`. 
         :param input_metas: a list of name/type pairs
         :require is a boolean. If True this helper throws on a missing input.
-
+        
         """
         feeds = {}
         # Process mandadory inputs. Raise an error if anything is not present
@@ -103,15 +110,20 @@ class DataFrameTool():
             assert input_meta.type in types_dict, "Update types_dict for the new type"
             if input_meta.name in df.columns:
                 self._validate_type(input_meta, df[input_meta.name].dtype)
-                # With strings we must cast first to np.object then then reshape
-                # so we do it for everything
-                input_array = np.array(df[input_meta.name]).astype(types_dict[input_meta.type])
+                if (df[input_meta.name].dtype) == 'datetime64[ns]':
+                    input_array = np.array([dt.timestamp() for dt in df[input_meta.name]]).astype(np.int64)
+                elif (str(df[input_meta.name].dtype)) == 'category':
+                    input_array = np.array([key + 1 for key in df[input_meta.name].array.codes]).astype(np.uint32)  # in ONNX models trained in ML.NET input coming from "categorical columns" is 1 based indices, whereas Categorical columns save indices that are 0 based, and that need to be retrieved from .array.codes                    
+                else:
+                    # With strings we must cast first to np.object then then reshape
+                    # so we do it for everything
+                    input_array = np.array(df[input_meta.name]).astype(types_dict[input_meta.type])
                 feeds[input_meta.name] = self._reshape_input(input_array, input_meta.shape)
-
+                
             elif require:
                 raise RuntimeError(
                     "This model requires input {} of type {} but it is not found in the DataFrame".format(
-                        input_meta.name, types_dict[input_meta.type]))
+                               input_meta.name, types_dict[input_meta.type]))
         return feeds
 
     def _get_input_feeds(self, df, sess):
@@ -129,7 +141,7 @@ class DataFrameTool():
             and feeds the data to the appropriate model inputs.
 
         :param sess: See :class:`onnxruntime.InferenceSession`.
-
+        
         ::
         For example: pd.DataFrame([[0], [4],[20]],index=[0], columns=['A', 'B', 'C'])
 
@@ -147,18 +159,51 @@ class DataFrameTool():
 
         return feeds
 
-    def execute(self, df, output_names, run_options=None):
+    def execute(self, df, output_names=None, output_types=None, run_options=None):
         "Return a list of output values restricted to output names if not empty"
         """
         Compute the predictions.
 
         :param df: See :class:`pandas.DataFrame`.
         :param output_names: name of the outputs that we are interested in
+        :param output_types: { output_name : dtype } cast output to the colum type
         :param run_options: See :class:`onnxruntime.RunOptions`.
-
         ::
-
         sess.run([output_name], {input_name: x})
         """
-        input_feed = self._get_input_feeds(df, self._sess)
-        return self._sess.run(output_names, input_feed, run_options)
+        input_feed = self._get_input_feeds(df, self._sess);
+        if not output_names:
+            output_names = [output.name for output in self._sess._outputs_meta]
+
+        results = self._sess.run(output_names, input_feed, run_options)
+
+        df = None
+        for i, r in enumerate(results):
+            # ML.NET specific columns that needs to be removed.
+            if output_names[i].startswith('mlnet.') and \
+               output_names[i].endswith('.unusedOutput') and \
+               r.shape == (1,1):
+                continue
+
+            r = pd.DataFrame(r)
+            col_names = []
+            for suffix in range(0, len(r.columns)):
+                if output_types and output_names[i] in output_types:
+                    dtype = output_types[output_names[i]]
+                    if dtype == np.dtype('datetime64'):
+                        r[suffix]= r[suffix].astype(np.int64)
+                        r[suffix] = [datetime.utcfromtimestamp(ts) for ts in r[suffix]]
+                    else:
+                        r[suffix] = r[suffix].astype(dtype)
+
+                col_name = output_names[i] if len(r.columns) == 1 else \
+                           output_names[i] + '.' + str(suffix)
+                col_names.append(col_name)
+
+            r.columns = col_names
+            if df is None:
+                df = r
+            else:
+                df = df.join(r)
+
+        return df
