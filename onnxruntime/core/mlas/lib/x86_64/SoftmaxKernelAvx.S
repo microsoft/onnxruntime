@@ -46,6 +46,10 @@ Return Value:
 C_UNDERSCORE(MlasReduceMaximumF32KernelAvx):
 
         vbroadcastss ymm0,DWORD PTR C_UNDERSCORE(MlasMinimumF32Value)[rip]
+        test    rsi,rsi
+        jz      .LReduceMaximum.ExitKernel
+        cmp     rsi,8
+        jb      .LReduceMaximum.ProcessRemainingCountBy1
         cmp     rsi,32
         jb      .LReduceMaximum.ProcessRemainingCountBy8
         vmovaps ymm1,ymm0
@@ -74,23 +78,22 @@ C_UNDERSCORE(MlasReduceMaximumF32KernelAvx):
         jmp     .LReduceMaximum.ProcessRemainingCountBy8
 
 .LReduceMaximum.ProcessRemainingCountLessThan8:
-        test    rsi,rsi
-        jz      .LReduceMaximum.ReduceScalar
-        lea     r10,C_UNDERSCORE(MlasMaskMoveTableAvx)[rip+8*4]
-        neg     rsi
-        vmovups ymm3,YMMWORD PTR [r10+rsi*4]
-        vmaskmovps ymm1,ymm3,YMMWORD PTR [rdi]
-        vmaxps  ymm1,ymm0,ymm1
-        vblendvps ymm0,ymm0,ymm1,ymm3           # ignore masked elements
-
-.LReduceMaximum.ReduceScalar:
-        vextractf128 xmm1,ymm0,1
+        vextractf128 xmm1,ymm0,1                # reduce to single scalar
         vmaxps  xmm0,xmm0,xmm1
         vshufps xmm1,xmm0,xmm0,0xEE
         vmaxps  xmm0,xmm0,xmm1
         vshufps xmm1,xmm0,xmm0,0x55
         vmaxss  xmm0,xmm0,xmm1
+        test    rsi,rsi
+        jz      .LReduceMaximum.ExitKernel
 
+.LReduceMaximum.ProcessRemainingCountBy1:
+        vmaxss  xmm0,xmm0,DWORD PTR [rdi]
+        add     rdi,4                           # advance input by 1 element
+        dec     esi
+        jnz     .LReduceMaximum.ProcessRemainingCountBy1
+
+.LReduceMaximum.ExitKernel:
         vzeroupper
         ret
 
@@ -148,12 +151,13 @@ C_UNDERSCORE(MlasComputeSoftmaxOutputF32KernelAvx):
 .LComputeSoftmaxOutput.ProcessRemainingCountLessThan8:
         test    rsi,rsi
         jz      .LComputeSoftmaxOutput.ExitKernel
-        lea     r10,C_UNDERSCORE(MlasMaskMoveTableAvx)[rip+8*4]
-        neg     rsi
-        vmovups ymm3,YMMWORD PTR [r10+rsi*4]
-        vmaskmovps ymm0,ymm3,YMMWORD PTR [rdi]
-        vmulps  ymm0,ymm4,ymm0
-        vmaskmovps YMMWORD PTR [rdi],ymm3,ymm0
+
+.LComputeSoftmaxOutput.ProcessRemainingCountBy1:
+        vmulss  xmm0,xmm4,DWORD PTR [rdi]
+        vmovss  DWORD PTR [rdi],xmm0
+        add     rdi,4                           # advance output by 1 element
+        dec     esi
+        jnz     .LComputeSoftmaxOutput.ProcessRemainingCountBy1
 
 .LComputeSoftmaxOutput.ExitKernel:
         vzeroupper
@@ -224,13 +228,15 @@ C_UNDERSCORE(MlasComputeLogSoftmaxOutputF32KernelAvx):
 .LComputeLogSoftmaxOutput.ProcessRemainingCountLessThan8:
         test    rdx,rdx
         jz      .LComputeLogSoftmaxOutput.ExitKernel
-        lea     r10,C_UNDERSCORE(MlasMaskMoveTableAvx)[rip+8*4]
-        neg     rdx
-        vmovups ymm3,YMMWORD PTR [r10+rdx*4]
-        vmaskmovps ymm0,ymm3,YMMWORD PTR [rdi]
-        vaddps  ymm0,ymm4,ymm0
-        vsubps  ymm0,ymm0,ymm5                  # do as two steps for numeric stability
-        vmaskmovps YMMWORD PTR [rsi],ymm3,ymm0
+
+.LComputeLogSoftmaxOutput.ProcessRemainingCountBy1:
+        vaddss  xmm0,xmm4,DWORD PTR [rdi]
+        add     rdi,4                           # advance input by 1 element
+        vsubss  xmm0,xmm0,xmm5
+        vmovss  DWORD PTR [rsi],xmm0
+        add     rsi,4                           # advance output by 1 element
+        dec     edx
+        jnz     .LComputeLogSoftmaxOutput.ProcessRemainingCountBy1
 
 .LComputeLogSoftmaxOutput.ExitKernel:
         vzeroupper

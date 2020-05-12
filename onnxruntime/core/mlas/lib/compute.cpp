@@ -289,7 +289,8 @@ Routine Description:
 
     This routine computes the exponential function for the supplied vector.
 
-    This function handles a narrower range of inputs compaerd to MlasExp
+    This function handles a narrower range of inputs compared to
+    MlasComputeExpVector in order to improve efficiency.
 
 Arguments:
 
@@ -510,39 +511,44 @@ Return Value:
 
 --*/
 {
-    MLAS_FLOAT32X4 MaximumVector0 = MlasBroadcastFloat32x4(MlasMinimumF32Value);
+    float Maximum = MlasMinimumF32Value;
 
-    if (N >= 16) {
+    if (N >= 4) {
 
-        MLAS_FLOAT32X4 MaximumVector1 = MaximumVector0;
-        MLAS_FLOAT32X4 MaximumVector2 = MaximumVector0;
-        MLAS_FLOAT32X4 MaximumVector3 = MaximumVector0;
+        MLAS_FLOAT32X4 MaximumVector0 = MlasBroadcastFloat32x4(Maximum);
 
-        while (N >= 16) {
+        if (N >= 16) {
 
-            MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, MlasLoadFloat32x4(Input));
-            MaximumVector1 = MlasMaximumFloat32x4(MaximumVector1, MlasLoadFloat32x4(Input + 4));
-            MaximumVector2 = MlasMaximumFloat32x4(MaximumVector2, MlasLoadFloat32x4(Input + 8));
-            MaximumVector3 = MlasMaximumFloat32x4(MaximumVector3, MlasLoadFloat32x4(Input + 12));
+            MLAS_FLOAT32X4 MaximumVector1 = MaximumVector0;
+            MLAS_FLOAT32X4 MaximumVector2 = MaximumVector0;
+            MLAS_FLOAT32X4 MaximumVector3 = MaximumVector0;
 
-            Input += 16;
-            N -= 16;
+            while (N >= 16) {
+
+                MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, MlasLoadFloat32x4(Input));
+                MaximumVector1 = MlasMaximumFloat32x4(MaximumVector1, MlasLoadFloat32x4(Input + 4));
+                MaximumVector2 = MlasMaximumFloat32x4(MaximumVector2, MlasLoadFloat32x4(Input + 8));
+                MaximumVector3 = MlasMaximumFloat32x4(MaximumVector3, MlasLoadFloat32x4(Input + 12));
+
+                Input += 16;
+                N -= 16;
+            }
+
+            MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, MaximumVector1);
+            MaximumVector2 = MlasMaximumFloat32x4(MaximumVector2, MaximumVector3);
+            MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, MaximumVector2);
         }
 
-        MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, MaximumVector1);
-        MaximumVector2 = MlasMaximumFloat32x4(MaximumVector2, MaximumVector3);
-        MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, MaximumVector2);
+        while (N >= 4) {
+
+            MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, MlasLoadFloat32x4(Input));
+
+            Input += 4;
+            N -= 4;
+        }
+
+        Maximum = MlasReduceMaximumFloat32x4(MaximumVector0);
     }
-
-    while (N >= 4) {
-
-        MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, MlasLoadFloat32x4(Input));
-
-        Input += 4;
-        N -= 4;
-    }
-
-    float Maximum = MlasReduceMaximumFloat32x4(MaximumVector0);
 
     while (N > 0) {
 
