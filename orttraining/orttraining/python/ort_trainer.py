@@ -488,7 +488,9 @@ class ORTTrainer():
         """
         Initialize ORTTrainer.
 
-        :param model: one of
+        Args:
+
+            model: one of
                - a PyTorch model (class that inherits from torch.nn.Module)
                - a combined PyTorch model and loss function.
                   Inputs to this combined PyTorch model are a concatenation of the
@@ -496,54 +498,55 @@ class ORTTrainer():
                   Outputs are a concatenation of the loss function's output and the
                   model's output.
                - a combined ONNX model and loss function.
-        :param loss_fn: one of
+            loss_fn: one of
                - a PyTorch loss function if 'model' is a PyTorch model. A loss
-                 function takes two inputs (prediction, label) and output a loss
+                 function takes two inputs (prediction, label) and outputs a loss
                  tensor.
                - None if model is already combined with a loss function.
-        :param model_desc: Specify input/output shapes, types, and names.
+            model_desc: Specify input/output shapes, types, and names.
                Must be consistent with the training model.
-        :param training_optimizer_name: one of
+            training_optimizer_name: one of
                - 'SGDOptimizer'
                - 'AdamOptimizer'
                - 'LambOptimizer'
-        :param map_optimizer_attributes: for optimizers with weight-dependent
-               parameters. Maps weight name to a set of optimization parameters.
+            map_optimizer_attributes: for optimizers with weight-dependent
+               parameters. A callable that maps weight name to a set of optimization
+               parameters.
                Defaults to None.
-        :param learning_rate_description: the name, shape and type of the learning
+            learning_rate_description: the name, shape and type of the learning
                rate in form of IODescription(Learning_Rate_Name, [1,], torch.float32).
                Because learning_rate is an input to the training model,
                Learning_Rate_Name must be specified so that there is no name conflict
                within the model.
-        :param device: device to store tensors (e.g. 'cpu', 'cuda', 'cuda:<int_idx>').
-        :param gradient_accumulation_steps: number of training steps to accumulate
+            device: device to store tensors (e.g. 'cpu', 'cuda', 'cuda:<int_idx>').
+            gradient_accumulation_steps: number of training steps to accumulate
                gradients before averaging and applying them.
                Defaults to 1.
-        :param postprocess_model: a callable to postprocess the ONNX model that is
+            postprocess_model: a callable to postprocess the ONNX model that is
                converted from PyTorch.
                Defaults to None.
-        :param world_rank: rank id used for distributed training.
+            world_rank: rank id used for distributed training.
                Defaults to 0.
-        :param world_size: number of ranks participating in distributed training.
+            world_size: number of ranks participating in distributed training.
                Defaults to 1.
-        :param use_mixed_precision: flag to enable mixed precision (aka fp16).
+            use_mixed_precision: flag to enable mixed precision (aka fp16).
                Defaults to False.
-        :param allreduce_post_accumulation: controls whether overlaping gradient
+            allreduce_post_accumulation: controls whether overlaping gradient
                computation is applied with allreduce.
                Defaults to False.
-        :param global_step: training step that is used as input to 'get_lr_this_step'.
+            global_step: training step that is used as input to 'get_lr_this_step'.
                Defaults to 0.
-        :param get_lr_this_step: functor used as learning rate scheduler.
+            get_lr_this_step: functor used as learning rate scheduler.
                It uses 'global_step' as input.
                Defaults to None.
-        :param loss_scaler: updates loss scale automatically when 'use_mixed_precision'
+            loss_scaler: updates loss scale automatically when 'use_mixed_precision'
                is specified.
                Defaults to None.
-        :param partition_optimizer: controls whether to partition the optimizer state.
+            partition_optimizer: controls whether to partition the optimizer state.
                Defaults to False.
-        :param enable_grad_norm_clip: enables gradient norm clipping.
+            enable_grad_norm_clip: enables gradient norm clipping.
                Defaults to True.
-        :param frozen_weights: list of model parameters to be frozen (not trained).
+            frozen_weights: list of model parameters to be frozen (not trained).
                Defaults to [].
         """
         warnings.warn('DISCLAIMER: This is an early version of an experimental training API and it is subject to change. DO NOT create production applications with it')
