@@ -338,8 +338,11 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
         for i, name in enumerate(n.input):
             if name in replace_name_dict:
                 n.input[i] = replace_name_dict[name]
-    assert set([n.name for n in onnx_model.graph.initializer]) == \
-        set([n for n, t in model.model_.named_parameters()]), \
+
+    # onnx model initializer may contain non-trainable registered buffers that are not part
+    # of pytorch model named parameteres.
+    assert set([n for n, t in model.model_.named_parameters()]).issubset(
+        set([n.name for n in onnx_model.graph.initializer])), \
         "Initializer names do not match between PyTorch model and ONNX model, " \
         "please report a bug to ONNX Runtime."
 
@@ -379,8 +382,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
 
     unused_frozen_weights = [n for n in frozen_weights if n not in [i.name for i in model.graph.initializer]]
     if unused_frozen_weights:
-        warnings.warn("Ignoring {} in frozen_weights as they are not found in model weights."\
-            .format(unused_frozen_weights))
+        raise RuntimeError("{} in frozen_weights not found in model weights.".format(unused_frozen_weights))
 
     weights_to_train = set()
     for initializer in model.graph.initializer:
@@ -660,37 +662,7 @@ class ORTTrainer():
     def eval(self):
         self.is_train = False
 
-    def state_dict(self):
-        if not self.session:
-            warnings.warn("ONNXRuntime training session is not initialized yet. "
-                          "Please run train_step or eval_step at least once before calling state_dict().")
-            return {}
-        session_state = self.session.get_state()
-        torch_state = {}
-        for name in session_state:
-            torch_state[name] = torch.from_numpy(session_state[name])
-        return torch_state
-
-    def load_state_dict(self, state_dict, strict=False):
-        # Note: It may happen ONNX model has not yet been initialized
-        # In this case we cache a reference to desired state and delay the restore until after initialization
-        # Unexpected behavior will result if the user changes the reference before initialization
-        if not self.session:
-            self.state_dict_ = state_dict
-            self.strict_ = strict
-            return
-
-        session_state = {}
-        for name in state_dict:
-            session_state[name] = state_dict[name].numpy()
-        self.session.load_state(session_state, strict)
-
-    def save_as_onnx(self, path):
-        if not self.session:
-            warnings.warn("ONNXRuntime training session is not initialized yet. "
-                          "Please run train_step or eval_step at least once before calling save_as_onnx().")
-            return
-        state_tensors = self.session.get_state()
+    def _update_onnx_model_initializers(self, state_tensors):
         # replace the initializers with new value
         new_weights = []
         replace_indices = []
@@ -704,6 +676,58 @@ class ORTTrainer():
         for w_i in replace_indices:
             del self.onnx_model_.graph.initializer[w_i]
         self.onnx_model_.graph.initializer.extend(new_weights)
+
+    def state_dict(self):
+        if not self.session:
+            warnings.warn("ONNXRuntime training session is not initialized yet. "
+                          "Please run train_step or eval_step at least once before calling state_dict().")
+            return {}
+
+        # extract trained weights
+        session_state = self.session.get_state()
+        torch_state = {}
+        for name in session_state:
+            torch_state[name] = torch.from_numpy(session_state[name])
+
+        # extract untrained weights and buffer
+        for n in self.onnx_model_.graph.initializer:
+            if n.name not in torch_state:
+                torch_state[n.name] = torch.from_numpy(numpy_helper.to_array(n))
+
+        return torch_state
+
+    def load_state_dict(self, state_dict, strict=False):
+        # Note: It may happen ONNX model has not yet been initialized
+        # In this case we cache a reference to desired state and delay the restore until after initialization
+        # Unexpected behavior will result if the user changes the reference before initialization
+        if not self.session:
+            self.state_dict_ = state_dict
+            self.strict_ = strict
+            return
+
+        # update onnx model from loaded state dict
+        cur_initializers_names = [n.name for n in self.onnx_model_.graph.initializer]
+        new_initializers = {}
+
+        for name in state_dict:
+            if name in cur_initializers_names:
+                new_initializers[name] = state_dict[name].numpy()
+            elif strict:
+                raise RuntimeError("Checkpoint tensor: {} is not present in the model.".format(name))
+
+        self._update_onnx_model_initializers(new_initializers)
+
+        # create new session based on updated onnx model
+        self.state_dict_ = None
+        self._init_session()
+
+    def save_as_onnx(self, path):
+        if not self.session:
+            warnings.warn("ONNXRuntime training session is not initialized yet. "
+                          "Please run train_step or eval_step at least once before calling save_as_onnx().")
+            return
+        state_tensors = self.session.get_state()
+        self._update_onnx_model_initializers(state_tensors)
 
         with open(path, "wb") as f:
             f.write(self.onnx_model_.SerializeToString())
