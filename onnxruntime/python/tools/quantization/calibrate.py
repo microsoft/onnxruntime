@@ -242,7 +242,9 @@ def main():
     args = parser.parse_args()
     calibrate_op_types = args.op_types.split(',')
     black_nodes = args.black_nodes.split(',')
+    black_nodes = [x for x in black_nodes if x]
     white_nodes = args.white_nodes.split(',')
+    white_nodes = [x for x in white_nodes if x]
     model_path = args.model_path
     output_model_path = args.output_model_path
     images_folder = args.dataset_path
