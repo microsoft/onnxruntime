@@ -205,6 +205,14 @@ namespace Dml::GraphDescBuilder
                 if (arg->Exists())
                 {
                     auto iter = nameToFusedNodeInputIndex.find(arg->Name());
+
+                    // The graph input could be missing the suffix, so try to match without it.
+                    // This is part of a temporary workaround; see comments in GetFusedNodeArgNameMatchingGraph.
+                    if (iter == nameToFusedNodeInputIndex.end())
+                    {
+                        iter = nameToFusedNodeInputIndex.find(GetFusedNodeArgNameMatchingGraph(arg->Name()));
+                    }
+
                     if (iter != nameToFusedNodeInputIndex.end())
                     {
                         // This is a graph input

@@ -23,10 +23,12 @@ Open Developer Command Prompt for Visual Studio version you are going to use. Th
 The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`
 
 
-#### Linux
+#### Linux/Mac OS X
 ```
 ./build.sh --config RelWithDebInfo --build_shared_lib --parallel
 ```
+By default, ORT is configured to be built for a minimum target Mac OS X version of 10.12. 
+The shared library in the release Nuget(s) and the Python wheel may be installed on Mac OS X versions of 10.12+. 
 
 #### Notes
 
@@ -61,15 +63,17 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 |Windows 10   | YES          | YES         | VS2019 through the latest VS2015 are supported |
 |Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
 |Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
+|Mac OS X  | YES          | NO         |    |
 
 * GCC 4.x and below are not supported.
 
 ### OS/Compiler Matrix:
 
-| OS/Compiler | Supports VC  | Supports GCC     |
-|-------------|:------------:|:----------------:|
-|Windows 10   | YES          | Not tested       |
-|Linux        | NO           | YES(gcc>=4.8)    |
+| OS/Compiler | Supports VC  | Supports GCC     |  Supports Clang  |
+|-------------|:------------:|:----------------:|:----------------:|
+|Windows 10   | YES          | Not tested       | Not tested       |
+|Linux        | NO           | YES(gcc>=4.8)    | Not tested       |
+|Mac OS X     | NO           | Not tested       | YES (Minimum version required not ascertained)|
 
 ## System Requirements
 For other system requirements and other dependencies, please see [this section](./README.md#system-requirements-pre-requisite-dependencies).
@@ -125,7 +129,8 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 ### CUDA
 #### Pre-Requisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-  * ONNX Runtime is built and tested with CUDA 10.0 and cuDNN 7.6 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3). CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017.
+  * ONNX Runtime is built and tested with CUDA 10.1 and cuDNN 7.6 using the Visual Studio 2019 14.12 toolset (i.e. Visual Studio 2019 v16.5).
+    ONNX Runtime can also be built with CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4.
   * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`
   * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`. The cuDNN path should contain `bin`, `include` and `lib` directories.
   * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
