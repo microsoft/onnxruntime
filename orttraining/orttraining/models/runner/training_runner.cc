@@ -820,6 +820,8 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
   perf_metrics_stream.open(perf_metrics_path, std::ios::out | std::ios::trunc);
   ORT_RETURN_IF_NOT(perf_metrics_stream << json_string << "\n", "Failed to write to output file.");
 
+  std::cout << "\n\nSaved perf metrics file: " << ToMBString(perf_metrics_path) << "\n\n";
+
   return Status::OK();
 }
 
