@@ -835,7 +835,7 @@ def build_targets(args, cmake_path, build_dir, configs, parallel):
 
         build_tool_args = []
         if parallel:
-            num_cores = str(round(multiprocessing.cpu_count() / 4))
+            num_cores = str(multiprocessing.cpu_count())
             if is_windows():
                 build_tool_args += [
                     "/maxcpucount:" + num_cores,

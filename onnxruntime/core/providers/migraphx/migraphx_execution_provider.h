@@ -22,10 +22,12 @@ struct MIGraphXFuncState {
   DestroyFunc release_func = nullptr;
   AllocatorHandle allocate_handle = nullptr;
   migraphx::program prog{};
+  std::string onnx_string;
+  migraphx::onnx_options options;
   migraphx::target t{};
-  std::unordered_map<std::size_t, std::size_t> input_indexes;
-  std::unordered_map<std::size_t, std::size_t> output_indexes;
+  std::unordered_map<std::string, std::size_t> input_name_indexes;
   OrtMutex* mgx_mu_ptr = nullptr;
+  bool no_input_shape = false;
 };
 
 // Logical device representation.
@@ -51,8 +53,9 @@ private:
   OrtMutex mgx_mu_;
 
   std::unordered_map<std::string, migraphx::program> map_progs_;
-  std::unordered_map<std::string, std::unordered_map<std::size_t, std::size_t>> map_input_index_;
-  std::unordered_map<std::string, std::unordered_map<std::size_t, std::size_t>> map_output_index_;
+  std::unordered_map<std::string, std::string> map_onnx_string_;
+  std::unordered_map<std::string, std::unordered_map<std::string, std::size_t>> map_input_index_;
+  std::unordered_map<std::string, bool> map_no_input_shape_;
 
   AllocatorPtr allocator_;
 };
