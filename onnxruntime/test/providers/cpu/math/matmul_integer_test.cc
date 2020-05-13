@@ -296,9 +296,9 @@ void RunMatMulIntegerU8S8Test(const int M, const int N, const int K, bool non_ze
   // currently nGraph provider does not support gemm_u8s8
   // Nuphar provider does not support non-zero zero point
   if (non_zero_zp) {
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
-  } else {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kNupharExecutionProvider});
+  } else {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
   }
 }
 
