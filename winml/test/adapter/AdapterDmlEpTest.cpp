@@ -225,54 +225,40 @@ void ExecutionProviderSync() {
   THROW_IF_NOT_OK_MSG(winml_adapter_api->ExecutionProviderSync(ort_provider), ort_api);
 }
 
-#define watch(x) std::cerr << (#x) << " = " << (x) << "\n";
-
 void DmlCopyTensor() {
   GPUTEST;
   const auto session_options = CreateUniqueOrtSessionOptions();
   THROW_IF_NOT_OK_MSG(ort_api->DisableMemPattern(session_options.get()), ort_api);
-  watch(session_options.get());
 
   winrt::com_ptr<ID3D12Device> device;
   WINML_EXPECT_NO_THROW(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device.put())));
-  watch(device.get());
 
   winrt::com_ptr<ID3D12CommandQueue> queue;
   D3D12_COMMAND_QUEUE_DESC command_queue_desc = {};
   command_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
   WINML_EXPECT_HRESULT_SUCCEEDED(device->CreateCommandQueue(&command_queue_desc, IID_PPV_ARGS(queue.put())));
-  watch(queue.get());
 
   THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get(), false), ort_api);
-  watch(session_options.get());
   auto session = CreateUniqueOrtSession(FileHelpers::GetModulePath() + L"fns-candy.onnx", session_options);
-  watch(session.get());
 
   OrtExecutionProvider* dml_provider;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &dml_provider), ort_api);
-  watch(dml_provider);
 
   // CPU to CPU is not supported
   OrtMemoryInfo* cpu_memory_info;
   THROW_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info), ort_api);
   auto cpu_tensor = CreateTensorFromMemoryInfo(cpu_memory_info);
-  watch(cpu_tensor.get());
   auto dst_cpu_tensor = CreateTensorFromMemoryInfo(cpu_memory_info);
-  watch(dst_cpu_tensor.get());
   WINML_EXPECT_NOT_EQUAL(nullptr, winml_adapter_api->DmlCopyTensor(dml_provider, cpu_tensor.get(), dst_cpu_tensor.get()));
-  watch(dml_provider);
 
   // GPU to CPU
   OrtMemoryInfo* dml_memory;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->GetProviderMemoryInfo(dml_provider, &dml_memory), ort_api);
-  watch(dml_memory);
   auto unique_dml_memory = UniqueOrtMemoryInfo(dml_memory, ort_api->ReleaseMemoryInfo);
 
   auto resource = CreateD3D12Resource(*device);
   void* dml_allocator_resource;
-  watch(resource.get());
   THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlCreateGPUAllocationFromD3DResource(resource.get(), &dml_allocator_resource), ort_api);
-  watch(dml_allocator_resource);
 
   std::array<int64_t, 3> shape = {720, 720, 3};
   OrtValue* gpu_value;
@@ -285,15 +271,10 @@ void DmlCopyTensor() {
       ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
       &gpu_value),
     ort_api);
-  watch(gpu_value);
   dst_cpu_tensor = CreateTensorFromMemoryInfo(cpu_memory_info);
-  watch(dst_cpu_tensor.get());
   THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlCopyTensor(dml_provider, gpu_value, dst_cpu_tensor.get()), ort_api);
-  watch(dml_provider);
 
-  watch(dml_allocator_resource);
   THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlFreeGPUAllocation(dml_allocator_resource), ort_api);
-  watch(dml_allocator_resource);
 }
 
 void CreateCustomRegistry() {
