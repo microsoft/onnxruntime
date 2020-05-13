@@ -24,17 +24,17 @@ def parse_args():
 def main():
     args = parse_args()
 
-    Config = namedtuple('Config', ['name', 'use_mixed_precision', 'max_seq_length', 'batch_size', 'max_predictions_per_seq'])
+    Config = namedtuple('Config', ['use_mixed_precision', 'max_seq_length', 'batch_size', 'max_predictions_per_seq'])
     configs = [
-        Config('fp16-128', True, 128, 66, 20),
-        Config('fp16-512', True, 512, 10, 80),
-        Config('fp32-128', False, 128, 33, 20),
-        Config('fp32-512', False, 512, 5, 80)
+        Config(True, 128, 66, 20),
+        Config(True, 512, 10, 80),
+        Config(False, 128, 33, 20),
+        Config(False, 512, 5, 80)
     ]
 
     # run BERT training
     for c in configs:
-        print("######## testing name - " + c.name + " ##############")
+        print("######## testing name - " + ('fp16-' if c.use_mixed_precision else 'fp32-') + str(c.max_seq_length) + " ##############")
         cmds = [
             os.path.join(args.binary_dir, "onnxruntime_training_bert"),
             "--model_name", os.path.join(
