@@ -1,0 +1,40 @@
+# sets up common build tools for the windows build machines before build
+
+parameters:
+  buildConfig: 'RelWithDebInfo'
+  artifactName: 'onnxruntime-win-x64'
+  comitId: ''
+steps:
+    - task: CmdLine@2
+      displayName: 'Copy build artifacts for zipping'
+      inputs:
+        script: |
+          mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          echo "Directories created"
+
+          # Copy all jars
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\java\build\libs\*.jar $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+           # We will need to make this a part of a jar
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime4j_jni.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+
+          # copy the licence, privacy and TPN
+          copy $(Build.SourcesDirectory)\LICENSE $(Build.BinariesDirectory)\${{parameters.artifactName}}\LICENSE
+          copy $(Build.SourcesDirectory)\docs\Privacy.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\Privacy.md
+          copy $(Build.SourcesDirectory)\ThirdPartyNotices.txt $(Build.BinariesDirectory)\${{parameters.artifactName}}\ThirdPartyNotices.txt
+          @echo ${{parameters.commitId}} > $(Build.BinariesDirectory)\${{parameters.artifactName}}\GIT_COMMIT_ID
+
+        workingDirectory: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}'
+
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: '$(Build.BinariesDirectory)\${{parameters.artifactName}}' 
+        includeRootFolder: true
+        archiveType: 'zip' # Options: zip, 7z, tar, wim
+        archiveFile: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip' 
+        replaceExistingArchive: true 
+      
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip' 
+        artifactName: 'drop-${{parameters.artifactName}}'

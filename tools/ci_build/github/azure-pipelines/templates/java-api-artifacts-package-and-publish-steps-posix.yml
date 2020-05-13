@@ -1,0 +1,28 @@
+# sets up common build tools for the windows build machines before build
+
+parameters:
+  buildConfig: 'RelWithDebInfo'
+  artifactName: 'onnxruntime-linux-x64'
+  libraryName: 'libonnxruntime.so'
+  commitId: ''
+steps:
+    - task: ShellScript@2
+      displayName: 'Copy build artifacts for zipping'
+      inputs:
+        scriptPath: 'tools/ci_build/github/linux/copy_strip_binary.sh'
+        args: '-r $(Build.BinariesDirectory) -a ${{parameters.artifactName}} -l ${{parameters.libraryName}} -c ${{parameters.buildConfig}} -s $(Build.SourcesDirectory) -t ${{parameters.commitId}}'
+        workingDirectory: '$(Build.BinariesDirectory)/${{parameters.buildConfig}}'
+
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
+        includeRootFolder: true
+        archiveType: 'tar' # Options: zip, 7z, tar, wim
+        tarCompression: 'gz'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.tgz'
+        replaceExistingArchive: true
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.tgz'
+        artifactName: 'drop-${{parameters.artifactName}}'
