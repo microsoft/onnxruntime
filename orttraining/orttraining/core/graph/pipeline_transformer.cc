@@ -397,7 +397,10 @@ Status AddForwardWaitAfterRecv(
     /* forward Recv */ Node* comm_node,
     std::vector<std::string>& new_input_names,
     std::string& event_name) {
-  event_name = AddEventAfterNode(graph, comm_node, "WaitEvent", "forward_wait_after_recv", "forward_wait_after_recv_event_id"); 
+  event_name = AddEventAfterNode( 
+    graph, comm_node,
+    "WaitEvent", "forward_wait_after_recv",
+    "forward_wait_after_recv_event_id"); 
   if (event_name.empty()) {
     return Status::OK();
   } else {
@@ -411,7 +414,10 @@ Status AddForwardRecordBeforeSend(
     Node* comm_node,
     std::vector<std::string>& new_input_names,
     std::string& event_name) {
-  event_name = AddEventBeforeNode(graph, comm_node, "RecordEvent", "forward_record_before_send", "forward_record_before_send_event_id");
+  event_name = AddEventBeforeNode(
+    graph, comm_node,
+    "RecordEvent", "forward_record_before_send",
+    "forward_record_before_send_event_id");
   if (event_name.empty()) {
     return Status::OK();
   } else {
@@ -425,7 +431,10 @@ Status AddBackwardWaitAfterRecv(
     Node* comm_node,
     std::vector<std::string>& new_input_names,
     std::string& event_name) {
-  event_name = AddEventAfterNode(graph, comm_node, "WaitEvent", "backward_wait_after_recv", "backward_wait_after_recv_event_id");
+  event_name = AddEventAfterNode(
+    graph, comm_node,
+    "WaitEvent", "backward_wait_after_recv",
+    "backward_wait_after_recv_event_id");
   if (event_name.empty()) {
     return Status::OK();
   } else {
@@ -439,7 +448,10 @@ Status AddBackwardRecordBeforeSend(
     Node* comm_node,
     std::vector<std::string>& new_input_names,
     std::string& event_name) {
-  event_name = AddEventBeforeNode(graph, comm_node, "RecordEvent", "backward_record_before_send", "backward_record_before_send_event_id");
+  event_name = AddEventBeforeNode(
+    graph, comm_node,
+    "RecordEvent", "backward_record_before_send",
+    "backward_record_before_send_event_id");
   if (event_name.empty()) {
     return Status::OK();
   } else {
@@ -511,9 +523,44 @@ Status TransformGraphForPipeline(
     forward_recorded_output_name,
     backward_waited_output_name));
   
+  // Different stages have different patterns of Send & Recv.
+  // For different patterns, we add different WaitEvent and Record.
+  // 
+  // Current pattern of first stage:
+  //  Wait -----------------> FW -> --------> Send -> Record ->
+  //  Wait -> Recv ---------> BW -> ----------------> Record
+  // Current pattern of middle stage:
+  //  Wait -> Recv -> Wait -> FW -> Record -> Send -> Record ->
+  //  Wait -> Recv -> Wait -> BW -> Record -> Send -> Record
+  // Current pattern of last stage:
+  //  Wait -> Recv ---------> FW ----------------------------->
+  //  ----------------------> BW -----------> Send -> Record
+  //
+  // After applying all transformations below, we will have
+  //
+  // At the end of this function, the pattern of first stage:
+  //  Wait ---------> Wait -> FW -> Record -> Send -> Record ->
+  //  Wait -> Recv -> Wait -> BW -> Record ---------> Record
+  // At the end of this function, the pattern of middle stage:
+  //  Wait -> Recv -> Wait -> FW -> Record -> Send -> Record ->
+  //  Wait -> Recv -> Wait -> BW -> Record -> Send -> Record
+  // At the end of this function, the pattern of last stage:
+  //  Wait -> Recv -> Wait -> FW ----------------------------->
+  //  ----------------------> BW -> Record -> Send -> Record
   const bool is_first_stage = !recv_fw && send_fw && recv_bw && !send_bw;
   const bool is_middle_stage = recv_fw && send_fw && recv_bw && send_bw;
   const bool is_last_stage = recv_fw && !send_fw && !recv_bw && send_bw;
+
+  // Now, we add Wait's in parentheses shown below.
+  // First stage is:
+  //  Wait ---------> (Wait) -> FW -> Record -> Send -> Record ->
+  //  Wait -> Recv -> Wait -> BW -> Record ---------> Record
+  // Middle stage is:
+  //  Wait -> Recv -> (Wait) -> FW -> Record -> Send -> Record ->
+  //  Wait -> Recv -> Wait -> BW -> Record -> Send -> Record
+  // Last stage is:
+  //  Wait -> Recv -> (Wait) -> FW ----------------------------->
+  //  ----------------------> BW -> Record -> Send -> Record
   if (is_first_stage) {
     // If first stage, insert after forward WaitEvent.
     ORT_RETURN_IF_ERROR(AddForwardWaitAfterRecv(
@@ -532,6 +579,16 @@ Status TransformGraphForPipeline(
     ));
   }
 
+  // Now, we add Record's in parentheses shown below.
+  // First stage:
+  //  Wait ---------> Wait -> FW -> (Record) -> Send -> Record ->
+  //  Wait -> Recv -> Wait -> BW -> Record ---------> Record
+  // Middle stage:
+  //  Wait -> Recv -> Wait -> FW -> (Record) -> Send -> Record ->
+  //  Wait -> Recv -> Wait -> BW -> Record -> Send -> Record
+  // Last stage (no change):
+  //  Wait -> Recv -> Wait -> FW ----------------------------->
+  //  ----------------------> BW -> Record -> Send -> Record
   if (is_first_stage || is_middle_stage) {
     ORT_RETURN_IF_ERROR(AddForwardRecordBeforeSend(
       graph,
@@ -541,6 +598,16 @@ Status TransformGraphForPipeline(
     ));
   }
 
+  // Now, we add Wait's in parentheses shown below.
+  // First stage:
+  //  Wait ---------> Wait -> FW -> Record -> Send -> Record ->
+  //  Wait -> Recv -> (Wait) -> BW -> Record ---------> Record
+  // Middle stage:
+  //  Wait -> Recv -> Wait -> FW -> Record -> Send -> Record ->
+  //  Wait -> Recv -> (Wait) -> BW -> Record -> Send -> Record
+  // Last stage (no change):
+  //  Wait -> Recv -> Wait -> FW ----------------------------->
+  //  ----------------------> BW -> Record -> Send -> Record
   if (is_first_stage || is_middle_stage) {
     ORT_RETURN_IF_ERROR(AddBackwardWaitAfterRecv(
       graph,
@@ -550,6 +617,16 @@ Status TransformGraphForPipeline(
     ));
   }
 
+  // Now, we add Record's in parentheses shown below.
+  // First stage is:
+  //  Wait ---------> Wait -> FW -> Record -> Send -> Record ->
+  //  Wait -> Recv -> Wait -> BW -> (Record) ---------> Record
+  // Middle stage is:
+  //  Wait -> Recv -> Wait -> FW -> Record -> Send -> Record ->
+  //  Wait -> Recv -> Wait -> BW -> (Record) -> Send -> Record
+  // Final pattern of last stage is:
+  //  Wait -> Recv -> Wait -> FW ----------------------------->
+  //  ----------------------> BW -> (Record) -> Send -> Record
   if (is_first_stage) {
     ORT_RETURN_IF_ERROR(AddBackwardRecordBeforeSend(
       graph,
@@ -557,7 +634,7 @@ Status TransformGraphForPipeline(
       new_input_names,
       backward_recorded_event_before_send_name
     ));
-  } else {
+  } else if (is_middle_stage || is_last_stage) {
     ORT_RETURN_IF_ERROR(AddBackwardRecordBeforeSend(
       graph,
       send_bw,
