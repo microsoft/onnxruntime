@@ -666,12 +666,10 @@ class ORTTrainer():
         # replace the initializers with new value
         new_weights = []
         replace_indices = []
-        i = 0
-        for w in self.onnx_model_.graph.initializer:
+        for i, w in enumerate(self.onnx_model_.graph.initializer):
             if w.name in state_tensors:
                 new_weights.append(numpy_helper.from_array(state_tensors[w.name], w.name))
                 replace_indices.append(i)
-            i += 1
         replace_indices.sort(reverse=True)
         for w_i in replace_indices:
             del self.onnx_model_.graph.initializer[w_i]
