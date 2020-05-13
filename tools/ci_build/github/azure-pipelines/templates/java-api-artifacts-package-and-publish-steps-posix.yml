@@ -2,15 +2,17 @@
 
 parameters:
   buildConfig: 'RelWithDebInfo'
-  artifactName: 'onnxruntime-linux-x64'
+  artifactName: 'onnxruntime-java-linux-x64'
   libraryName: 'libonnxruntime.so'
+  nativeLibraryName: 'libonnxruntime4j_jni.so'
+  version: ''
   commitId: ''
 steps:
     - task: ShellScript@2
       displayName: 'Copy build artifacts for zipping'
       inputs:
-        scriptPath: 'tools/ci_build/github/linux/copy_strip_binary.sh'
-        args: '-r $(Build.BinariesDirectory) -a ${{parameters.artifactName}} -l ${{parameters.libraryName}} -c ${{parameters.buildConfig}} -s $(Build.SourcesDirectory) -t ${{parameters.commitId}}'
+        scriptPath: 'tools/ci_build/github/linux/java_copy_strip_binary.sh'
+        args: '-r $(Build.BinariesDirectory) -c ${{parameters.buildConfig}} -a ${{parameters.artifactName}} -l ${{parameters.libraryName}} -s $(Build.SourcesDirectory) -n {{parameters.nativeLibraryName}} -v {{parameters.version}} -t ${{parameters.commitId}}'
         workingDirectory: '$(Build.BinariesDirectory)/${{parameters.buildConfig}}'
 
     - task: ArchiveFiles@2

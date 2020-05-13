@@ -1,15 +1,16 @@
 #!/bin/bash
 set -e -o -x
 
-while getopts r:a:l:n:c:h: parameter_Option
+while getopts r:a:l:n:c:h:v: parameter_Option
 do case "${parameter_Option}"
 in
 r) BINARY_DIR=${OPTARG};;
 a) ARTIFACT_NAME=${OPTARG};;
+c) BUILD_CONFIG=${OPTARG};;
 l) LIB_NAME=${OPTARG};;
 n) NATIVE_LIB_NAME=${OPTARG};;
-c) BUILD_CONFIG=${OPTARG};;
 h) ARCH=${OPTARG};;
+v) VERSION_NUMBER=${OPTARG};;
 esac
 done
 
@@ -17,7 +18,6 @@ EXIT_CODE=1
 
 uname -a
 
-VERSION_NUMBER=`cat $SOURCE_DIR/VERSION_NUMBER | xarg`
 echo "Version: $VERSION_NUMBER"
 NATIVE_FOLDER=ai/onnxruntime/native/$ARCH
 
