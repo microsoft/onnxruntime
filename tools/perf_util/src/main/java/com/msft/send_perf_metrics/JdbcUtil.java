@@ -11,23 +11,9 @@ public class JdbcUtil {
 				throw new RuntimeException("Error reading jdbc properties");
 			Properties props = new Properties();
 			props.load(in);
-
-			String password = System.getenv("ORT_PERF_PASSWORD");
-
-			//String password = System.getProperty("ORT_PERF_PASSWORD") ;
-
-			Map<String, String> env = System.getenv();
-			for (String envName : env.keySet()) {
-				System.out.format("env=%s%n", envName);
-			}
-
-			// ORT_PERF_PASSWORD
-
-//			return DriverManager.getConnection(props.getProperty("url"), props.getProperty("user"),
-//					props.getProperty("password"));
-
+			// loading password via env: ORT_PERF_PASSWORD
 			return DriverManager.getConnection(props.getProperty("url"), props.getProperty("user"),
-					password);
+					System.getProperty(props.getProperty("password")));
 		}
 	}
 }
