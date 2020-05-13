@@ -28,12 +28,14 @@ class BaseError(Exception):
 
 class BuildError(BaseError):
     """Error from running build steps."""
+
     def __init__(self, *messages):
         super().__init__("\n".join(messages))
 
 
 class UsageError(BaseError):
     """Usage related error."""
+
     def __init__(self, message):
         super().__init__(message)
 
@@ -619,7 +621,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
     if not is_windows():
         if args.use_cuda:
             if "-Donnxruntime_USE_HOROVOD=OFF" in cmake_args:
-               cmake_args.remove("-Donnxruntime_USE_HOROVOD=OFF")
+                cmake_args.remove("-Donnxruntime_USE_HOROVOD=OFF")
             cmake_args += [
                 "-Donnxruntime_USE_HOROVOD=ON",
                 "-Donnxruntime_USE_FULL_PROTOBUF=ON"]
@@ -677,8 +679,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
                 raise BuildError(
                     "iOS build on MacOS canceled due to missing arguments: " +
                     ', '.join(
-                         val for val, cond in zip(arg_names, needed_args)
-                         if not cond))
+                        val for val, cond in zip(arg_names, needed_args)
+                        if not cond))
             cmake_args += [
                 "-DCMAKE_SYSTEM_NAME=iOS",
                 "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
@@ -707,8 +709,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
                 raise BuildError(
                     "iOS build canceled due to missing arguments: " +
                     ', '.join(
-                            val for val, cond in zip(arg_names, needed_args)
-                            if not cond))
+                        val for val, cond in zip(arg_names, needed_args)
+                        if not cond))
             compilers = sorted(
                 glob.glob(args.ios_toolchain_dir + "/bin/*-clang*"))
             os.environ["PATH"] = os.path.join(
@@ -834,7 +836,7 @@ def build_targets(args, cmake_path, build_dir, configs, parallel):
                     "/maxcpucount:" + num_cores,
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
                     "/nodeReuse:False",
-                    ]
+                ]
             elif (is_macOS() and args.use_xcode):
                 # CMake will generate correct build tool args for Xcode
                 cmd_args += ["--parallel", num_cores]
@@ -1008,6 +1010,7 @@ def adb_push(source_dir, src, dest, **kwargs):
 def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
 
+
 def run_training_python_frontend_e2e_tests(args, cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
@@ -1016,6 +1019,7 @@ def run_training_python_frontend_e2e_tests(args, cwd):
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
 
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer_with_mixed_precision.py'], cwd=cwd)
+
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                           enable_tvm=False, enable_tensorrt=False):
@@ -1235,50 +1239,52 @@ def tensorrt_run_onnx_tests(args, build_dir, configs, onnx_test_data_dir,
                 run_subprocess(
                     [exe] + model_test_cmd, cwd=cwd, dll_path=dll_path)
 
+
 def openvino_run_onnx_tests(build_dir, configs, onnx_test_data_dir,
                             provider, num_parallel_models,
                             num_parallel_tests=0):
     """openvino function to run onnx tests and model tests
     """
     for config in configs:
-      cwd = get_config_build_dir(build_dir, config)
-      if is_windows():
-        exe = os.path.join(cwd, config, 'onnx_test_runner')
-        model_dir = os.path.join(cwd, "models")
-      else:
-        exe = os.path.join(cwd, 'onnx_test_runner')
-        model_dir = os.path.join(build_dir, "models")
+        cwd = get_config_build_dir(build_dir, config)
+        if is_windows():
+            exe = os.path.join(cwd, config, 'onnx_test_runner')
+            model_dir = os.path.join(cwd, "models")
+        else:
+            exe = os.path.join(cwd, 'onnx_test_runner')
+            model_dir = os.path.join(build_dir, "models")
 
-      cmd = ['-o', '0']
-      if provider:
-        cmd += ["-e", provider]
+        cmd = ['-o', '0']
+        if provider:
+            cmd += ["-e", provider]
 
-      if num_parallel_tests != 0:
-        cmd += ['-c', str(num_parallel_tests)]
+        if num_parallel_tests != 0:
+            cmd += ['-c', str(num_parallel_tests)]
 
-      if num_parallel_models > 0:
-        cmd += ["-j", str(num_parallel_models)]
+        if num_parallel_models > 0:
+            cmd += ["-j", str(num_parallel_models)]
 
-      #onnx test
-      if os.path.exists(onnx_test_data_dir):
-        cmd.append(onnx_test_data_dir)
-        run_subprocess([exe] + cmd, cwd=cwd)
+        # onnx test
+        if os.path.exists(onnx_test_data_dir):
+            cmd.append(onnx_test_data_dir)
+            run_subprocess([exe] + cmd, cwd=cwd)
 
-      #model test
-      #OpenVINO can run most of the model tests, but only part of
-      #them are enabled here to save CI build time.
-      if config != 'Debug' and os.path.exists(model_dir):
-        model_dir_opset8 = os.path.join(model_dir, "opset8")
-        model_dir_opset8 = glob.glob(os.path.join(
-            model_dir_opset8, "test_*"))
-        model_dir_opset10 = os.path.join(model_dir, "opset10")
-        model_dir_opset10 = glob.glob(os.path.join(
-            model_dir_opset10, "*v1*"))
-        for dir_path in itertools.chain(model_dir_opset8,
-                                        model_dir_opset10):
-          model_test_cmd = cmd + [dir_path]
-          run_subprocess(
-            [exe] + model_test_cmd, cwd=cwd)
+        # model test
+        # OpenVINO can run most of the model tests, but only part of
+        # them are enabled here to save CI build time.
+        if config != 'Debug' and os.path.exists(model_dir):
+            model_dir_opset8 = os.path.join(model_dir, "opset8")
+            model_dir_opset8 = glob.glob(os.path.join(
+                model_dir_opset8, "test_*"))
+            model_dir_opset10 = os.path.join(model_dir, "opset10")
+            model_dir_opset10 = glob.glob(os.path.join(
+                model_dir_opset10, "*v1*"))
+            for dir_path in itertools.chain(model_dir_opset8,
+                                            model_dir_opset10):
+                model_test_cmd = cmd + [dir_path]
+                run_subprocess(
+                    [exe] + model_test_cmd, cwd=cwd)
+
 
 def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
     """dnnl temporary function for running onnx tests and
@@ -1472,7 +1478,7 @@ def generate_documentation(source_dir, build_dir, configs):
         log.warning(
             'The updated opkernel document file ' + str(opkernel_doc_path)
             + ' is different from the checked in version. Consider '
-            'regenrating the file with CPU, DNNL and CUDA providers enabled.')
+            'regenerating the file with CPU, DNNL and CUDA providers enabled.')
         log.debug('diff:\n' + str(docdiff))
 
     docdiff = ''

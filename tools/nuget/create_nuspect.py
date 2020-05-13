@@ -14,6 +14,7 @@ def parse_arguments():
     parser.add_argument("--release_binary_root", required=True, help="Path to the release binary directory.")
     return parser.parse_args()
 
+
 def generate_nuspec(source_dir, debug_binary_root, release_binary_root, architecture):
     template_path = '%s/tools/nuget/template.nuspec' % source_dir
     with open(template_path, 'rt') as f:
@@ -39,6 +40,7 @@ def main():
     targets = generate_targets(args.source_dir)
     with open('onnxruntime.targets', 'wt') as f:
         f.write(targets)
+
 
 if __name__ == "__main__":
     sys.exit(main())

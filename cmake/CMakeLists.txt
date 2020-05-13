@@ -1009,3 +1009,5 @@ if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
     target_link_options(winml_dll PRIVATE /SAFESEH)
   endif()
 endif()
+
+include(flake8.cmake)
