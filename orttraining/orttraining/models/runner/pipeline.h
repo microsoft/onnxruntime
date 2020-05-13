@@ -27,7 +27,29 @@ struct Slot {
 
   Type type;
   int batch_id;
+  
+  // If type is Forward,
+  //  waited_events[0]: The first (before forward Recv)
+  //  waited event in forward pass.
+  //  waited_events[1]: The second (after forward Recv)
+  //  waited event in forward pass.
+  // If type is Backward,
+  //  waited_events[0]: The first (before backward Recv)
+  //  waited event in backward pass.
+  //  waited_events[1]: The second (after backward Recv)
+  //  waited event in backward pass.
   std::vector<int> waited_events;
+
+  // If type is Forward,
+  //  recorded_events[0]: The first (before forward Send)
+  //  recorded event in forward pass.
+  //  recorded_events[1]: The second (after forward Send)
+  //  recorded event in forward pass.
+  // If type is Backward,
+  //  recorded_events[0]: The first (before backward Send)
+  //  recorded event in backward pass.
+  //  recorded_events[1]: The second (after backward Send)
+  //  recorded event in backward pass.
   std::vector<int> recorded_events;
 };
 
@@ -38,8 +60,12 @@ public:
   void Add(int batch_id);
   void Add(int batch_id_begin, int batch_id_end);
   int GetForwardWaitedEventId(int stage_id, int batch_id) const;
+  int GetForwardWaitedEventIdAfterRecv(int stage_id, int batch_id) const;
+  int GetForwardRecordedEventIdBeforeSend(int stage_id, int batch_id) const;
   int GetForwardRecordedEventId(int stage_id, int batch_id) const;
   int GetBackwardWaitedEventId(int stage_id, int batch_id) const;
+  int GetBackwardWaitedEventIdAfterRecv(int stage_id, int batch_id) const;
+  int GetBackwardRecordedEventIdBeforeSend(int stage_id, int batch_id) const;
   int GetBackwardRecordedEventId(int stage_id, int batch_id) const;
   void Show() const;
 

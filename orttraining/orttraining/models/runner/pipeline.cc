@@ -38,16 +38,18 @@ bool Slot::IsBackward() const {
 
 void Slot::Show() const {
     const int waited_event_id = waited_events.size() > 0 ? waited_events[0] : -1;
-    const int recorded_event_id = recorded_events.size() > 0 ? recorded_events[0] : -1;
+    const int waited_event_id_after_recv = waited_events.size() > 0 ? waited_events[1] : -1;
+    const int recorded_event_id_before_send = recorded_events.size() > 0 ? recorded_events[0] : -1;
+    const int recorded_event_id = recorded_events.size() > 0 ? recorded_events[1] : -1;
     switch (type) {
     case Empty:
-        std::cout << "         ";
+        std::cout << "             ";
         break;
     case Forward:
-        std::cout << " F" << batch_id << "(" << waited_event_id << "," << recorded_event_id << ")" << " ";
+        std::cout << " F" << batch_id << "(" << waited_event_id << "," << waited_event_id_after_recv << "," << recorded_event_id_before_send << "," << recorded_event_id << ")" << " ";
         break;
     case Backward:
-        std::cout << " B" << batch_id << "(" << waited_event_id << "," << recorded_event_id << ")" << " ";
+        std::cout << " B" << batch_id << "(" << waited_event_id << "," << waited_event_id_after_recv << "," << recorded_event_id_before_send << "," << recorded_event_id << ")" << " ";
         break;
     }
 }
@@ -75,18 +77,25 @@ void PipelineSchedule::Add(int batch_id) {
     for (int s = 0; s < num_stages_; ++s) {
         for (int t = 0; t < required_max_time; ++t) {
         if (!table_[t][s].IsEmpty()) {
+            // One slot cannot be occupied by two batches.
             continue;
         }
 
         if (s > 0 && t <= forward_time[s - 1]) {
+            // Foward of the s-th stage must happen after Forward of (s-1)-th stage.
+            // Note that forward_time[s] is the time slot of the s-th stage.
             continue;
         }
 
         if (batch_count_[t] >= num_stages_) {
+            // At time t, the number of running batches is at maximum,
+            // so we need to put this stage to another time slot.
             continue;
         }
 
+        // The s-th stage happens at time t. 
         forward_time[s] = t;
+        // This s-th stage is forward pass of the batch_id-th batch.
         table_[t][s].type = Slot::Type::Forward;
         table_[t][s].batch_id = batch_id;
 
@@ -94,18 +103,25 @@ void PipelineSchedule::Add(int batch_id) {
         table_[t][s].waited_events = events;
 
         if (events.size() != 0) {
-            table_[t][s].recorded_events = std::vector<int>{ /* max event id */ events[events.size() - 1] + 1 };
+            table_[t][s].recorded_events = std::vector<int>{events[events.size() - 1] + 1,
+                                                            events[events.size() - 1] + 2};
         }
         else {
-            table_[t][s].recorded_events = std::vector<int>{ /* first event id */ 0 };
+            table_[t][s].recorded_events = std::vector<int>{0, 1};
         }
 
         for (int t_ = t + 1; t_ < required_max_time; ++t_) {
-            if (table_[t_][s].IsEmpty())
-            continue;
+            if (table_[t_][s].IsEmpty()) {
+                continue;
+            }
+            // Find the non-empty slot happens right before this slot.
             events = SearchLastRecordedEvents(t_, s);
+            // Wait previously recorded events in the slot right before this slot table_[t_][s].
             table_[t_][s].waited_events = events;
-            table_[t_][s].recorded_events = std::vector<int>{ /* max event id */ events[events.size() - 1] + 1 };
+            // Generate two new unique events; one for RecordEvent before Send and the other one
+            // for RecordEvent after Send.
+            table_[t_][s].recorded_events = std::vector<int>{events[events.size() - 1] + 1,
+                                                             events[events.size() - 1] + 2};
         }
 
         break;
@@ -140,18 +156,21 @@ void PipelineSchedule::Add(int batch_id) {
         table_[t][s].waited_events = events;
 
         if (events.size() != 0) {
-            table_[t][s].recorded_events = std::vector<int>{ /* max event id */ events[events.size() - 1] + 1 };
+            table_[t][s].recorded_events = std::vector<int>{events[events.size() - 1] + 1,
+                                                            events[events.size() - 1] + 2};
         }
         else {
             table_[t][s].recorded_events = std::vector<int>{ /* first event id */ 0 };
         }
 
         for (int t_ = t + 1; t_ < required_max_time; ++t_) {
-            if (table_[t_][s].IsEmpty())
-            continue;
+            if (table_[t_][s].IsEmpty()) {
+                continue;
+            }
             events = SearchLastRecordedEvents(t_, s);
             table_[t_][s].waited_events = events;
-            table_[t_][s].recorded_events = std::vector<int>{ /* max event id */ events[events.size() - 1] + 1 };
+            table_[t][s].recorded_events = std::vector<int>{events[events.size() - 1] + 1,
+                                                            events[events.size() - 1] + 2};
         }
 
         break;
@@ -174,63 +193,124 @@ void PipelineSchedule::Add(int batch_id_begin, int batch_id_end) {
 }
 
 int PipelineSchedule::GetForwardWaitedEventId(int stage_id, int batch_id) const {
-    std::vector<int> events = {-1};
+    std::vector<int> events = {-1, -1};
     for (size_t t = 0; t < table_.size(); ++t) {
         auto& slot = table_[t][stage_id];
         if (!slot.IsForward()) {
-        continue;
+            continue;
         }
         if (slot.batch_id != batch_id) {
-        continue;
+            continue;
         }
         events = slot.waited_events;
+    }
+    return events[0];
+}
+
+int PipelineSchedule::GetForwardWaitedEventIdAfterRecv(int stage_id, int batch_id) const {
+    std::vector<int> events = {-1, -1};
+    for (size_t t = 0; t < table_.size(); ++t) {
+        auto& slot = table_[t][stage_id];
+        if (!slot.IsForward()) {
+            continue;
+        }
+        if (slot.batch_id != batch_id) {
+            continue;
+        }
+        events = slot.waited_events;
+    }
+    return events[1];
+}
+
+int PipelineSchedule::GetForwardRecordedEventIdBeforeSend(int stage_id, int batch_id) const {
+    std::vector<int> events = {-1, -1};
+    for (size_t t = 0; t < table_.size(); ++t) {
+        auto& slot = table_[t][stage_id];
+        if (!slot.IsForward()) {
+            continue;
+        }
+        if (slot.batch_id != batch_id) {
+            continue;
+        }
+        events = slot.recorded_events;
     }
     return events[0];
 }
 
 int PipelineSchedule::GetForwardRecordedEventId(int stage_id, int batch_id) const {
-    std::vector<int> events = {-1};
+    std::vector<int> events = {-1, -1};
     for (size_t t = 0; t < table_.size(); ++t) {
         auto& slot = table_[t][stage_id];
         if (!slot.IsForward()) {
-        continue;
+            continue;
         }
         if (slot.batch_id != batch_id) {
-        continue;
+            continue;
         }
         events = slot.recorded_events;
     }
-    return events[0];
+    return events[1];
 }
 
 int PipelineSchedule::GetBackwardWaitedEventId(int stage_id, int batch_id) const {
-    std::vector<int> events = {-1};
+    std::vector<int> events = {-1, -1};
     for (size_t t = 0; t < table_.size(); ++t) {
         auto& slot = table_[t][stage_id];
         if (!slot.IsBackward()) {
-        continue;
+            continue;
         }
         if (slot.batch_id != batch_id) {
-        continue;
+            continue;
         }
         events = slot.waited_events;
     }
     return events[0];
 }
 
-int PipelineSchedule::GetBackwardRecordedEventId(int stage_id, int batch_id) const {
-    std::vector<int> events = {-1};
+int PipelineSchedule::GetBackwardWaitedEventIdAfterRecv(int stage_id, int batch_id) const {
+    std::vector<int> events = {-1, -1};
     for (size_t t = 0; t < table_.size(); ++t) {
         auto& slot = table_[t][stage_id];
         if (!slot.IsBackward()) {
-        continue;
+            continue;
         }
         if (slot.batch_id != batch_id) {
-        continue;
+            continue;
+        }
+        events = slot.waited_events;
+    }
+    return events[1];
+}
+
+int PipelineSchedule::GetBackwardRecordedEventIdBeforeSend(int stage_id, int batch_id) const {
+    std::vector<int> events = {-1, -1};
+    for (size_t t = 0; t < table_.size(); ++t) {
+        auto& slot = table_[t][stage_id];
+        if (!slot.IsBackward()) {
+            continue;
+        }
+        if (slot.batch_id != batch_id) {
+            continue;
         }
         events = slot.recorded_events;
     }
     return events[0];
+}
+
+
+int PipelineSchedule::GetBackwardRecordedEventId(int stage_id, int batch_id) const {
+    std::vector<int> events = {-1, -1};
+    for (size_t t = 0; t < table_.size(); ++t) {
+        auto& slot = table_[t][stage_id];
+        if (!slot.IsBackward()) {
+            continue;
+        }
+        if (slot.batch_id != batch_id) {
+            continue;
+        }
+        events = slot.recorded_events;
+    }
+    return events[1];
 }
 
 void PipelineSchedule::Show() const {
@@ -251,7 +331,7 @@ std::vector<int> PipelineSchedule::SearchLastRecordedEvents(int time_id, int sta
     for (int t = time_id - 1; t >= 0; --t) {
         auto& slot = table_[t][stage_id];
         if (slot.IsEmpty()) {
-        continue;
+            continue;
         }
 
         events = slot.recorded_events;
@@ -272,7 +352,7 @@ void PipelineWorkerPool::JoinAll() {
     for(size_t i = 0; i < workers.size(); ++i) {
         auto& worker = workers[i];
         if (!worker.joinable())
-        continue;
+            continue;
         worker.join();
     };
 }

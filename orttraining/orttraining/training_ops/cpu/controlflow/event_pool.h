@@ -9,9 +9,19 @@
 #include <mutex>
 #include <memory>
 #include <condition_variable>
+#include <thread>
 
 namespace onnxruntime {
 namespace contrib {
+
+class TidToBid {
+public:
+  static TidToBid& GetInstance() {
+    static TidToBid instance_;
+    return instance_;
+  }
+  std::unordered_map<std::thread::id, int> map;
+};
 
 class OrtEventPool final {
  public:
