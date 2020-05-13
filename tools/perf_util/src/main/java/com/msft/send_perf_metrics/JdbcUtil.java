@@ -13,7 +13,7 @@ public class JdbcUtil {
 			props.load(in);
 			// loading password via env: ORT_PERF_PASSWORD
 			return DriverManager.getConnection(props.getProperty("url"), props.getProperty("user"),
-					System.getProperty(props.getProperty("password")));
+					System.getenv(props.getProperty("password")));
 		}
 	}
 }
