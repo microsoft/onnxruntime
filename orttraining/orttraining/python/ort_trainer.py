@@ -310,7 +310,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
 
     # Other export options to use(this is for backward compatibility).
     other_export_options = {}
-    
+
     # This option was added after 1.4 release.
     if LooseVersion(torch.__version__) > LooseVersion('1.4.0'):
         other_export_options['enable_onnx_checker'] = False
@@ -623,6 +623,8 @@ class ORTTrainer():
             return
 
         if self.torch_model_ is not None:
+            # NOTE: pt model is moved to cpu to conserve gpu memory.
+            self.torch_model_.cpu()
             self.onnx_model_ = convert_model_loss_fn_to_onnx(
                 self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_)
 
@@ -704,7 +706,7 @@ class ORTTrainer():
             #   kwargs[model.loss_scale_input_name] = loss_scale
             #   outputs = model.train_step(*args, **kwargs)
             # However, when first time train_step is called model.loss_scale_input_name is not set.
-            # To workaround this problem, we use the special name 'default_loss_scale_input_name' to indicate 
+            # To workaround this problem, we use the special name 'default_loss_scale_input_name' to indicate
             # the loss_scale.
             if 'default_loss_scale_input_name' in kwargs.keys():
                 input = input + (kwargs['default_loss_scale_input_name'],)
