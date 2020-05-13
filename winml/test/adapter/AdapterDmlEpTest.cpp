@@ -99,8 +99,12 @@ void DmlExecutionProviderReleaseCompletedReferences() {
   THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlExecutionProviderReleaseCompletedReferences(ort_provider), ort_api);
 }
 
+constexpr std::array<int64_t, 4> dimensions{1, 3, 720, 720};
+constexpr uint64_t tensor_size = 3 * 720 * 720;
+std::array<float, tensor_size> tensor_values = {};
+
 winrt::com_ptr<ID3D12Resource> CreateD3D12Resource(ID3D12Device& device) {
-  constexpr uint64_t buffer_size = 720 * 720 * 3 * sizeof(float);
+  constexpr uint64_t buffer_size = tensor_size * sizeof(float);
   constexpr D3D12_HEAP_PROPERTIES heap_properties = {
       D3D12_HEAP_TYPE_DEFAULT,
       D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
@@ -163,12 +167,8 @@ void DmlGetD3D12ResourceFromAllocation() {
 }
 
 UniqueOrtValue CreateTensorFromMemoryInfo(OrtMemoryInfo* memory_info) {
-  constexpr std::array<int64_t, 4> dimensions{1, 3, 720, 720};
-  auto input_tensor_size = std::accumulate(begin(dimensions), end(dimensions), static_cast<int64_t>(1), std::multiplies<int64_t>());
-  std::vector<float> input_tensor_values(input_tensor_size);
-
   OrtValue* tensor;
-  THROW_IF_NOT_OK_MSG(ort_api->CreateTensorWithDataAsOrtValue(memory_info, input_tensor_values.data(), input_tensor_size * sizeof(float), dimensions.data(), dimensions.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &tensor), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_api->CreateTensorWithDataAsOrtValue(memory_info, tensor_values.data(), tensor_size * sizeof(float), dimensions.data(), dimensions.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &tensor), ort_api);
   return UniqueOrtValue(tensor, ort_api->ReleaseValue);
 }
 
@@ -246,7 +246,7 @@ void DmlCopyTensor() {
 
   // CPU to CPU is not supported
   OrtMemoryInfo* cpu_memory_info;
-  THROW_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &cpu_memory_info), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info), ort_api);
   auto cpu_tensor = CreateTensorFromMemoryInfo(cpu_memory_info);
   auto dst_cpu_tensor = CreateTensorFromMemoryInfo(cpu_memory_info);
   WINML_EXPECT_NOT_EQUAL(nullptr, winml_adapter_api->DmlCopyTensor(dml_provider, cpu_tensor.get(), dst_cpu_tensor.get()));
@@ -271,18 +271,9 @@ void DmlCopyTensor() {
       ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
       &gpu_value),
     ort_api);
-  // Create DML tensor data interface
-  Microsoft::WRL::ComPtr<_winml::OnnxruntimeValue> data_value;
-  WINML_EXPECT_HRESULT_SUCCEEDED(Microsoft::WRL::MakeAndInitialize<_winml::OnnxruntimeValue>(
-      &data_value,
-      nullptr,
-      UniqueOrtValue(gpu_value, ort_api->ReleaseValue),
-      UniqueOrtAllocator(nullptr, nullptr)));
   dst_cpu_tensor = CreateTensorFromMemoryInfo(cpu_memory_info);
   THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlCopyTensor(dml_provider, gpu_value, dst_cpu_tensor.get()), ort_api);
 
-  // Free the tensor before the allocator
-  data_value = nullptr;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlFreeGPUAllocation(dml_allocator_resource), ort_api);
 }
 
@@ -306,7 +297,7 @@ void ValueGetDeviceId() {
   THROW_IF_NOT_OK_MSG(winml_adapter_api->ValueGetDeviceId(gpu_tensor.get(), &device_id), ort_api);
 
   OrtMemoryInfo* cpu_memory_info;
-  THROW_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &cpu_memory_info), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info), ort_api);
   auto unique_cpu_memory_info = UniqueOrtMemoryInfo(memory_info, ort_api->ReleaseMemoryInfo);
   auto cpu_tensor = CreateTensorFromMemoryInfo(unique_cpu_memory_info.get());
   THROW_IF_NOT_OK_MSG(winml_adapter_api->ValueGetDeviceId(cpu_tensor.get(), &device_id), ort_api);
